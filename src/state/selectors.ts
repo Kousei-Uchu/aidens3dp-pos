@@ -9,12 +9,13 @@ import type { Variant } from '../lib/types';
 export function useCatalogue() {
   const data = useApp(s => s.data);
   return useMemo(() => {
-    const list = Object.values(data.variants).filter(v => v.active);
+    const all = Object.values(data.variants); // every variant incl. draft/archived (Inventory)
+    const list = all.filter(v => v.active); // sellable (everything else)
     const byProduct: Record<string, Variant[]> = {};
     for (const v of list) (byProduct[v.productId] ??= []).push(v);
     const collectionsOfProduct: Record<string, string[]> = {};
     for (const c of data.collections) for (const p of c.productIds) (collectionsOfProduct[p] ??= []).push(c.id);
-    return { list, byProduct, collectionsOfProduct, titles: collectionTitlesByProduct(data.collections), collections: data.collections, variants: data.variants };
+    return { all, list, byProduct, collectionsOfProduct, titles: collectionTitlesByProduct(data.collections), collections: data.collections, variants: data.variants };
   }, [data]);
 }
 

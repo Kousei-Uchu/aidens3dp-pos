@@ -38,7 +38,7 @@ export function CustomAmountSheet({ visible, onClose }: { visible: boolean; onCl
   return (
     <Sheet visible={visible} onClose={onClose} title="Custom amount">
       <Txt size={40} weight="700" style={{ textAlign: 'center', marginBottom: 10 }}>{fmt(digitsToCents(digits))}</Txt>
-      <Field placeholder="Note (optional)" value={note} onChangeText={setNote} />
+      <Field kind="text" placeholder="Note (optional)" value={note} onChangeText={setNote} />
       <Keypad value={digits} onChange={setDigits} onSubmit={add} submitLabel="Add to cart" />
     </Sheet>
   );
@@ -53,8 +53,8 @@ export function SaveCartSheet({ visible, onClose, onSaved }: { visible: boolean;
   };
   return (
     <Sheet visible={visible} onClose={onClose} title="Save cart">
-      <Field label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam – holding for Friday'} value={name} onChangeText={setName} autoFocus />
-      <Field label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
+      <Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam – holding for Friday'} value={name} onChangeText={setName} autoFocus />
+      <Field kind="text" label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
       <Btn title="Save to Saved carts" onPress={save} />
     </Sheet>
   );
@@ -79,14 +79,14 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
     <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
       {creating ? (
         <View>
-          <Field label="First name" value={f.first} onChangeText={v => setF({ ...f, first: v })} /><Field label="Last name" value={f.last} onChangeText={v => setF({ ...f, last: v })} />
-          <Field label="Email" value={f.email} onChangeText={v => setF({ ...f, email: v })} keyboardType="email-address" autoCapitalize="none" />
-          <Field label="Mobile" value={f.phone} onChangeText={v => setF({ ...f, phone: v })} keyboardType="phone-pad" />
+          <Field kind="name" label="First name" value={f.first} onChangeText={v => setF({ ...f, first: v })} /><Field kind="name" label="Last name" value={f.last} onChangeText={v => setF({ ...f, last: v })} />
+          <Field kind="email" label="Email" value={f.email} onChangeText={v => setF({ ...f, email: v })} />
+          <Field kind="phone" label="Mobile" value={f.phone} onChangeText={v => setF({ ...f, phone: v })} />
           <Btn title="Create & attach" onPress={create} busy={busy} /><Btn title="Back" kind="ghost" onPress={() => setCreating(false)} />
         </View>
       ) : (
         <View>
-          <Field placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={search} returnKeyType="search" autoCapitalize="none" />
+          <Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={search} />
           {shown.map(cu => <Row key={cu.id} title={cu.name || cu.email || cu.phone || 'Customer'} sub={[cu.email, cu.phone].filter(Boolean).join(' · ')} onPress={() => { onPick(cu); onClose(); }} />)}
           {q.trim() && !busy ? <Btn title="Search Shopify" kind="secondary" small onPress={search} style={{ marginTop: 8 }} /> : null}
           {allowCreate ? <Btn title="Create customer" icon="person-add-outline" kind="secondary" onPress={() => setCreating(true)} style={{ marginTop: 12 }} /> : null}
@@ -114,7 +114,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
           {siblings.map(s => <Chip key={s.id} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
         <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
         <Row title="Price adjustment" sub={line.overrideCents !== undefined ? `${fmt(line.overrideCents)} (was ${fmt(line.unitCents)})` : fmt(line.unitCents)} icon="create-outline" onPress={() => { setDigits(''); setPrice(true); }} />
-        <Field label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
+        <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
         <Btn title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
       </Sheet>
@@ -149,9 +149,9 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
       <Segmented value={how} onChange={setHow} options={[{ v: 'hand', label: 'Hand over / print' }, { v: 'email', label: 'Email it' }]} />
       {how === 'email' ? <View style={{ marginTop: 12 }}>
         {buyer?.email && email !== buyer.email ? <Chip label={`Use ${buyer.email}`} onPress={() => { setEmail(buyer.email!); if (!name) setName(buyer.name ?? ''); }} /> : null}
-        <Field label="Recipient email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="name@example.com" />
-        <Field label="Recipient name (optional)" value={name} onChangeText={setName} />
-        <Field label="Message (optional)" value={msg} onChangeText={setMsg} placeholder="Happy birthday!" />
+        <Field kind="email" label="Recipient email" value={email} onChangeText={setEmail} placeholder="name@example.com" />
+        <Field kind="name" label="Recipient name (optional)" value={name} onChangeText={setName} />
+        <Field kind="text" label="Message (optional)" value={msg} onChangeText={setMsg} placeholder="Happy birthday!" />
         <Txt size={12} sub>Shopify emails the card after payment completes. Add to Apple Wallet appears in that email if enabled in Shopify settings.</Txt>
       </View> : <Txt size={13} sub style={{ marginTop: 10 }}>The code is shown on the receipt screen after payment.</Txt>}
       <Btn title="Add gift card to cart" onPress={confirmAdd} style={{ marginTop: 14 }} />
@@ -174,7 +174,7 @@ export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean; 
   return (
     <>
       <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">
-        <Field label="Code" value={code} onChangeText={t => { setCode(t); setInfo(undefined); }} autoCapitalize="characters" autoCorrect={false} placeholder="Type or scan the code" />
+        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(t); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
         <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setCam(true)} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(code)} busy={busy} disabled={code.trim().length < 4} style={{ flex: 1 }} /></View>
         {info === null ? <Txt color="#DC2626" style={{ marginTop: 14 }}>No gift card found for that code.</Txt> : null}
         {info ? <View style={{ marginTop: 16, gap: 4 }}><Txt sub>Card ••••{info.last4}</Txt><Money cents={info.balanceCents} size={34} weight="700" /><Txt sub size={13}>{info.enabled ? 'Active' : 'Disabled'}{info.verified ? '' : ' · code could not be verified'}{info.expiresOn ? ` · expires ${info.expiresOn}` : ''}</Txt>

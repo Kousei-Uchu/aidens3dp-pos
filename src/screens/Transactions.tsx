@@ -48,7 +48,7 @@ export default function Transactions() {
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <Txt size={24} weight="700" style={{ marginBottom: 8, marginLeft: 4 }}>Transactions</Txt>
-        <Field placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} returnKeyType="search" autoCapitalize="none" style={{ marginBottom: 0 }} />
+        <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
       </View>
       <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
         ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'Press search to look in Shopify.' : 'Completed sales appear here.'} />}

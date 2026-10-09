@@ -20,7 +20,7 @@ export default function Customers() {
   const startSale = (c: Customer) => { useApp.getState().setCart(cc => ({ ...cc, customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } })); setSel(null); nav.setTab('checkout'); };
   return (
     <Page title="Customers" onBack={nav.pop} scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
-      <View style={{ padding: 12 }}><Field placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} autoCapitalize="none" style={{ marginBottom: 0 }} /></View>
+      <View style={{ padding: 12 }}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} style={{ marginBottom: 0 }} /></View>
       <FlatList data={shown} keyExtractor={c => c.id} ListEmptyComponent={<Empty icon="people-outline" title="No customers" />} renderItem={({ item: c }) => <Row title={c.name || c.email || c.phone || 'Customer'} sub={[c.email, c.phone].filter(Boolean).join(' · ') || undefined} onPress={() => setSel(c)} />} />
       <Sheet visible={!!sel && !form} onClose={() => setSel(null)} title={sel?.name || 'Customer'}>
         <Txt sub>{[sel?.email, sel?.phone].filter(Boolean).join(' · ')}</Txt>
@@ -28,7 +28,7 @@ export default function Customers() {
         <View style={{ gap: 8, marginTop: 14 }}><Btn title="Start sale" onPress={() => sel && startSale(sel)} /><Btn title="Edit" kind="secondary" onPress={() => { if (!sel) return; const [first, ...rest] = (sel.name || '').split(' '); setForm({ id: sel.id, first: first ?? '', last: rest.join(' '), email: sel.email ?? '', phone: sel.phone ?? '', note: sel.note ?? '' }); }} /></View>
       </Sheet>
       <Sheet visible={!!form} onClose={() => setForm(null)} title={form?.id ? 'Edit customer' : 'New customer'}>
-        {form ? <><Field label="First name" value={form.first} onChangeText={t => setForm({ ...form, first: t })} /><Field label="Last name" value={form.last} onChangeText={t => setForm({ ...form, last: t })} /><Field label="Email" value={form.email} onChangeText={t => setForm({ ...form, email: t })} keyboardType="email-address" autoCapitalize="none" /><Field label="Mobile" value={form.phone} onChangeText={t => setForm({ ...form, phone: t })} keyboardType="phone-pad" /><Field label="Note" value={form.note} onChangeText={t => setForm({ ...form, note: t })} multiline /><Btn title="Save" busy={busy} onPress={() => void save()} /></> : null}
+        {form ? <><Field kind="name" label="First name" value={form.first} onChangeText={t => setForm({ ...form, first: t })} /><Field kind="name" label="Last name" value={form.last} onChangeText={t => setForm({ ...form, last: t })} /><Field kind="email" label="Email" value={form.email} onChangeText={t => setForm({ ...form, email: t })} /><Field kind="phone" label="Mobile" value={form.phone} onChangeText={t => setForm({ ...form, phone: t })} /><Field kind="text" label="Note" value={form.note} onChangeText={t => setForm({ ...form, note: t })} multiline /><Btn title="Save" busy={busy} onPress={() => void save()} /></> : null}
       </Sheet>
     </Page>
   );

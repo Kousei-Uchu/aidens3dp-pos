@@ -10,6 +10,7 @@ import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPres
 import type { Totals } from '../lib/rollup';
 import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
 import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
+import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
@@ -20,11 +21,12 @@ export type Settings = {
   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
+  inventory: InvPrefs; // Inventory screen filters / sort / grouping (per device)
   sharedVersion: number;
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), sharedVersion: 0,
+  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
@@ -83,7 +85,7 @@ export const useApp = create<App>((set, get) => ({
       kvGet<Settings | null>('settings', null), kvGet<Data | null>('data', null), kvGet<{ grid: Grid; version: number } | null>('grid', null), kvGet<Pos | null>('pos', null),
     ]);
     set({
-      settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
+      settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}) }, ready: true,
     });
     if (!settings) persist('settings', () => get().settings); // keep the generated registerId

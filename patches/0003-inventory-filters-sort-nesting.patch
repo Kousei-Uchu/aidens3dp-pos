@@ -1,0 +1,447 @@
+From 3ef76a2f414f0278627851e7ecf740677ec8051e Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Fri, 9 Oct 2026 22:37:20 +0000
+Subject: [PATCH] 0003: inventory filters/sort/nesting, remove 300-row cap,
+ include draft/archived
+
+---
+ docs/PROGRESS.md             | 13 +++--
+ src/lib/backupFile.ts        |  2 +-
+ src/lib/inventoryView.ts     | 96 ++++++++++++++++++++++++++++++++++++
+ src/lib/shopify/catalogue.ts |  2 +-
+ src/lib/types.ts             |  1 +
+ src/screens/Inventory.tsx    | 67 ++++++++++++++++++++++---
+ src/screens/Items.tsx        |  2 +-
+ src/state/selectors.ts       |  5 +-
+ src/state/store.ts           |  6 ++-
+ tests/inventory.test.ts      | 69 ++++++++++++++++++++++++++
+ 10 files changed, 245 insertions(+), 18 deletions(-)
+ create mode 100644 src/lib/inventoryView.ts
+ create mode 100644 tests/inventory.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index ee151e3..2d30864 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -9,6 +9,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ |---|------|------|-------|
+ | 0001 | 2026-10-10 | iOS folder reset script + stop the scanner stealing the keyboard | A1, A2 |
+ | 0002 | 2026-10-10 | Keyboard avoidance (field always visible) + consistent keyboard types on all 67 fields | A3, A4 |
++| 0003 | 2026-10-10 | Inventory: no row cap, draft/archived products, category/stock/status filters, sort, nest variants | A5 |
+ 
+ ---
+ 
+@@ -44,9 +45,15 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ - [ ] A4.5 **You:** try one of each kind (customer email/phone, item price, PIN, search) and tell me any that feel wrong.
+ 
+ ### A5. Inventory screen: all products/variants, category filter, nesting, sort/filter
+-- [ ] A5.1 Find why not everything loads (pagination in `catalogue.ts` / `inventory.ts`; `Inventory.tsx` list cap).
+-- [ ] A5.2 Category (collection) filter, sort (name, stock, price, updated), stock filters (negative / low / zero / tracked).
+-- [ ] A5.3 "Group variants under items" toggle (nested rows), remembered per register.
++- [x] A5.1 Why it didn't show everything: (a) the list was hard-capped with `.slice(0, 300)` (Inventory and Items), and (b) it only ever included ACTIVE products, so draft/archived ones never appeared. Both removed; Inventory now uses `cat.all`.
++- [x] A5.2 `Variant.status` (ACTIVE/DRAFT/ARCHIVED) is now saved on import; older saved catalogues fall back to the `active` flag until the next import.
++- [x] A5.3 `src/lib/inventoryView.ts` (pure, 9 tests incl. a 5,000-variant run): search (every word must match name/variant/SKU/barcode), stock filters (All, Low, Out, Negative, Tracked, Not tracked), status, category, sort (name, stock ↑↓, price ↑↓, recently updated; untracked always last), grouping, row flattening.
++- [x] A5.4 UI: **Filters** button (with badge) opens a sheet with Category (every collection), Stock level (+ configurable "low" threshold 1/2/3/5/10), Product status, Sort, and **Flat / Nested under item**. Quick chips for Low/Out/Negative and a Flat↔Nested toggle sit under the search box. Choices are remembered per device (`settings.inventory`, included in backups).
++- [x] A5.5 Nested view: multi-variant products show an expandable header (variation count, total stock, lowest price); single-variant products stay plain rows; searching auto-expands matches.
++- [x] A5.6 Header shows "N variants · M products"; the Filters sheet shows how many variants this device holds and when it was last imported, so you can compare with Shopify.
++- [~] A5.7 **You:** if the count is still lower than Shopify's after "Refresh stock from Shopify", tell me both numbers. The bulk query (`fetchVariants`) is the next suspect and I can't test it without your store.
++- Note: Low = 0 up to the threshold (negatives have their own filter). The old "Low" chip also included negatives.
++- Also fixed: the Items list had the same 300 cap. The Refund product search still shows the top 40 matches on purpose (it's a search box).
+ 
+ ### A6. Per-order emails for POS orders
+ - [ ] A6.1 Stop Shopify notifying you for POS orders (cause is almost certainly Shopify admin notification settings for "New order"; the `pos` tag can't filter it). Plan: set `sendReceipt:false`/`sendFulfillmentReceipt:false` on `orderCreate`, and give you the Shopify Flow / notification steps.
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index 68eb621..82297d0 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -54,7 +54,7 @@ export function validateBackup(x: unknown): BackupV1 {
+ /** Restored settings laid over this device's current ones; nested groups merge so new fields keep their defaults. */
+ export function mergeSettings<S extends Record<string, any>>(current: S, restored: Record<string, any>): S {
+   const out: Record<string, any> = { ...current, ...restored };
+-  for (const k of ['fees', 'receipt', 'screensaver']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
++  for (const k of ['fees', 'receipt', 'screensaver', 'inventory']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
+   for (const k of DEVICE_KEYS) if (k in current) out[k] = current[k];
+   return out as S;
+ }
+diff --git a/src/lib/inventoryView.ts b/src/lib/inventoryView.ts
+new file mode 100644
+index 0000000..3f83e32
+--- /dev/null
++++ b/src/lib/inventoryView.ts
+@@ -0,0 +1,96 @@
++// Location: src/lib/inventoryView.ts
++// Pure logic behind the Inventory list: filter, sort, group variants under their product, and flatten to rows. Unit-tested.
++import type { Variant } from './types';
++
++export type StockFilter = 'all' | 'low' | 'zero' | 'neg' | 'tracked' | 'untracked';
++export type StatusFilter = 'active' | 'draft' | 'archived' | 'all';
++export type InvSort = 'name' | 'stock-asc' | 'stock-desc' | 'price-asc' | 'price-desc' | 'updated';
++export type InvPrefs = { stock: StockFilter; status: StatusFilter; sort: InvSort; grouped: boolean; collectionId: string | null; lowAt: number };
++export const defaultInvPrefs = (): InvPrefs => ({ stock: 'all', status: 'active', sort: 'stock-asc', grouped: false, collectionId: null, lowAt: 2 });
++
++export const statusOf = (v: Variant): 'ACTIVE' | 'DRAFT' | 'ARCHIVED' => v.status ?? (v.active ? 'ACTIVE' : 'DRAFT');
++const nameOf = (v: Variant) => `${v.productTitle} ${v.variantTitle}`.trim();
++const cmpText = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
++
++/** Search text matches name, variant, SKU or barcode; every word must match somewhere. */
++export function matchesQuery(v: Variant, q: string): boolean {
++  const words = q.trim().toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return true;
++  const hay = `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase();
++  return words.every(w => hay.includes(w));
++}
++export function matchesStock(v: Variant, f: StockFilter, lowAt: number): boolean {
++  switch (f) {
++    case 'all': return true;
++    case 'tracked': return v.stock !== null;
++    case 'untracked': return v.stock === null;
++    case 'neg': return v.stock !== null && v.stock < 0;
++    case 'zero': return v.stock === 0;
++    case 'low': return v.stock !== null && v.stock >= 0 && v.stock <= lowAt;
++  }
++}
++/** `productIdsInCollection`: pass the set for prefs.collectionId (or null for no category filter). */
++export function filterVariants(all: Variant[], prefs: InvPrefs, q: string, productIdsInCollection: Set<string> | null): Variant[] {
++  return all.filter(v =>
++    (prefs.status === 'all' || statusOf(v) === prefs.status.toUpperCase()) &&
++    (!productIdsInCollection || productIdsInCollection.has(v.productId)) &&
++    matchesStock(v, prefs.stock, prefs.lowAt) && matchesQuery(v, q));
++}
++
++/** Untracked stock (null) always sorts last, in both directions. */
++const stockCmp = (a: number | null, b: number | null, dir: 1 | -1) => (a === null && b === null ? 0 : a === null ? 1 : b === null ? -1 : (a - b) * dir);
++export function sortVariants(list: Variant[], sort: InvSort): Variant[] {
++  const by: Record<InvSort, (a: Variant, b: Variant) => number> = {
++    name: (a, b) => cmpText(nameOf(a), nameOf(b)),
++    'stock-asc': (a, b) => stockCmp(a.stock, b.stock, 1) || cmpText(nameOf(a), nameOf(b)),
++    'stock-desc': (a, b) => stockCmp(a.stock, b.stock, -1) || cmpText(nameOf(a), nameOf(b)),
++    'price-asc': (a, b) => a.priceCents - b.priceCents || cmpText(nameOf(a), nameOf(b)),
++    'price-desc': (a, b) => b.priceCents - a.priceCents || cmpText(nameOf(a), nameOf(b)),
++    updated: (a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || cmpText(nameOf(a), nameOf(b)),
++  };
++  return [...list].sort(by[sort]);
++}
++
++export type Group = { productId: string; title: string; image?: string; variants: Variant[]; stock: number | null; minPrice: number; maxPrice: number; updatedAt?: string };
++/** Variants → one group per product. Group order follows the chosen sort using the group's total stock / lowest price / newest update. */
++export function groupVariants(list: Variant[], sort: InvSort): Group[] {
++  const map = new Map<string, Group>();
++  for (const v of sortVariants(list, 'name')) {
++    let g = map.get(v.productId);
++    if (!g) { g = { productId: v.productId, title: v.productTitle, image: v.image, variants: [], stock: null, minPrice: v.priceCents, maxPrice: v.priceCents, updatedAt: v.updatedAt }; map.set(v.productId, g); }
++    g.variants.push(v); g.image ??= v.image;
++    if (v.stock !== null) g.stock = (g.stock ?? 0) + v.stock;
++    g.minPrice = Math.min(g.minPrice, v.priceCents); g.maxPrice = Math.max(g.maxPrice, v.priceCents);
++    if ((v.updatedAt ?? '') > (g.updatedAt ?? '')) g.updatedAt = v.updatedAt;
++  }
++  const groups = [...map.values()];
++  const by: Record<InvSort, (a: Group, b: Group) => number> = {
++    name: (a, b) => cmpText(a.title, b.title),
++    'stock-asc': (a, b) => stockCmp(a.stock, b.stock, 1) || cmpText(a.title, b.title),
++    'stock-desc': (a, b) => stockCmp(a.stock, b.stock, -1) || cmpText(a.title, b.title),
++    'price-asc': (a, b) => a.minPrice - b.minPrice || cmpText(a.title, b.title),
++    'price-desc': (a, b) => b.maxPrice - a.maxPrice || cmpText(a.title, b.title),
++    updated: (a, b) => (b.updatedAt ?? '').localeCompare(a.updatedAt ?? '') || cmpText(a.title, b.title),
++  };
++  return groups.sort(by[sort]);
++}
++
++export type InvRow =
++  | { kind: 'group'; key: string; group: Group; expanded: boolean }
++  | { kind: 'variant'; key: string; v: Variant; nested: boolean };
++/** Flat list for the FlatList. Single-variant products show as a plain variant row; multi-variant ones as an expandable header. */
++export function buildRows(groups: Group[], expanded: ReadonlySet<string>, expandAll: boolean): InvRow[] {
++  const rows: InvRow[] = [];
++  for (const g of groups) {
++    if (g.variants.length === 1) { rows.push({ kind: 'variant', key: `v:${g.variants[0].id}`, v: g.variants[0], nested: false }); continue; }
++    const open = expandAll || expanded.has(g.productId);
++    rows.push({ kind: 'group', key: `g:${g.productId}`, group: g, expanded: open });
++    if (open) for (const v of g.variants) rows.push({ kind: 'variant', key: `v:${v.id}`, v, nested: true });
++  }
++  return rows;
++}
++
++/** How many filters differ from the defaults (shown as a badge on the Filters button). */
++export function activeFilterCount(p: InvPrefs): number {
++  const d = defaultInvPrefs();
++  return (p.stock !== d.stock ? 1 : 0) + (p.status !== d.status ? 1 : 0) + (p.collectionId ? 1 : 0) + (p.lowAt !== d.lowAt && p.stock === 'low' ? 1 : 0);
++}
+diff --git a/src/lib/shopify/catalogue.ts b/src/lib/shopify/catalogue.ts
+index 3cad83c..18ff5ab 100644
+--- a/src/lib/shopify/catalogue.ts
++++ b/src/lib/shopify/catalogue.ts
+@@ -59,7 +59,7 @@ export async function fetchVariants(locationId: string, onProgress?: (s: string)
+       costCents: n.inventoryItem?.unitCost ? toCents(n.inventoryItem.unitCost.amount) : undefined,
+       inventoryItemId: n.inventoryItem?.id, tracked, stock: tracked ? (q?.quantity ?? 0) : null,
+       image: img(n.image?.url ?? n.product.featuredMedia?.preview?.image?.url), tags: n.product.tags ?? [],
+-      active: n.product.status === 'ACTIVE', updatedAt: n.updatedAt,
++      active: n.product.status === 'ACTIVE', status: (['ACTIVE', 'DRAFT', 'ARCHIVED'] as const).find(x => x === n.product.status), updatedAt: n.updatedAt,
+     };
+   });
+ }
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index 407cfbf..7e51a14 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -17,6 +17,7 @@ export type Variant = {
+   image?: string;
+   tags: string[];
+   active: boolean; // product status ACTIVE
++  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'; // full product status (older saved catalogues only have `active`)
+   updatedAt?: string;
+ };
+ export type Collection = { id: string; title: string; image?: string; productIds: string[] };
+diff --git a/src/screens/Inventory.tsx b/src/screens/Inventory.tsx
+index 57061c2..5e68e6b 100644
+--- a/src/screens/Inventory.tsx
++++ b/src/screens/Inventory.tsx
+@@ -1,6 +1,7 @@
+ // Location: src/screens/Inventory.tsx
+ import React, { useMemo, useState } from 'react';
+ import { FlatList, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
+ import { Btn, Chip, Empty, Field, Keypad, Money, Row, Segmented, Sheet, Thumb, Txt, alertMsg } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+@@ -8,14 +9,31 @@ import { useCatalogue } from '../state/selectors';
+ import { adjustStock, setStock, type AdjustReason } from '../lib/shopify/inventory';
+ import { isNetworkError } from '../lib/shopify/client';
+ import { importFromShopify } from '../lib/sync';
++import { activeFilterCount, buildRows, defaultInvPrefs, filterVariants, groupVariants, sortVariants, statusOf, type InvPrefs, type InvRow, type InvSort, type StatusFilter, type StockFilter } from '../lib/inventoryView';
+ import type { Variant } from '../lib/types';
+ 
+-/** Inventory: receive stock, adjust, stock counts. Negative stock is shown red (allowed by design). */
++const STOCK_LABEL: [StockFilter, string][] = [['all', 'All'], ['low', 'Low'], ['zero', 'Out (0)'], ['neg', 'Negative'], ['tracked', 'Tracked'], ['untracked', 'Not tracked']];
++const STATUS_LABEL: [StatusFilter, string][] = [['active', 'Active'], ['draft', 'Draft'], ['archived', 'Archived'], ['all', 'All']];
++const SORT_LABEL: [InvSort, string][] = [['name', 'Name A–Z'], ['stock-asc', 'Stock: low first'], ['stock-desc', 'Stock: high first'], ['price-asc', 'Price: low first'], ['price-desc', 'Price: high first'], ['updated', 'Recently updated']];
++
++/** Inventory: receive stock, adjust, stock counts. Negative stock is shown red (allowed by design). Lists EVERY variant (no row cap). */
+ export default function Inventory() {
+-  const { c } = useTheme(); const cat = useCatalogue(); const loc = useApp(s => s.settings.locationId); const [q, setQ] = useState(''); const [f, setF] = useState<'all' | 'low' | 'neg'>('all');
++  const { c } = useTheme(); const cat = useCatalogue(); const loc = useApp(s => s.settings.locationId); const stored = useApp(s => s.settings.inventory); const patchSettings = useApp(s => s.patchSettings); const catalogueAt = useApp(s => s.data.catalogueAt);
++  const prefs: InvPrefs = { ...defaultInvPrefs(), ...stored }; const setPrefs = (p: Partial<InvPrefs>) => patchSettings({ inventory: { ...prefs, ...p } });
++  const [q, setQ] = useState(''); const [filters, setFilters] = useState(false); const [open, setOpen] = useState<Set<string>>(new Set());
+   const [v, setV] = useState<Variant | null>(null); const [mode, setMode] = useState<'receive' | 'adjust' | 'count'>('receive'); const [digits, setDigits] = useState(''); const [neg, setNeg] = useState(false); const [reason, setReason] = useState<AdjustReason>('correction'); const [busy, setBusy] = useState(false);
+-  const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(x => (!t || `${x.productTitle} ${x.variantTitle} ${x.sku ?? ''} ${x.barcode ?? ''}`.toLowerCase().includes(t)) && (f === 'all' || (f === 'neg' ? (x.stock ?? 0) < 0 : x.stock !== null && x.stock <= 2))).sort((a, b) => (a.stock ?? 1e9) - (b.stock ?? 1e9)).slice(0, 300); }, [q, f, cat.list]);
++
++  const collection = useMemo(() => cat.collections.find(x => x.id === prefs.collectionId) ?? null, [cat.collections, prefs.collectionId]);
++  const filtered = useMemo(() => filterVariants(cat.all, prefs, q, collection ? new Set(collection.productIds) : null), [cat.all, prefs.stock, prefs.status, prefs.lowAt, prefs.collectionId, q, collection]);
++  const rows: InvRow[] = useMemo(() => prefs.grouped
++    ? buildRows(groupVariants(filtered, prefs.sort), open, !!q.trim())
++    : sortVariants(filtered, prefs.sort).map(x => ({ kind: 'variant' as const, key: `v:${x.id}`, v: x, nested: false })), [filtered, prefs.grouped, prefs.sort, open, q]);
++  const productCount = useMemo(() => new Set(filtered.map(x => x.productId)).size, [filtered]);
++  const nFilters = activeFilterCount(prefs);
++  const toggle = (id: string) => setOpen(s => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
++  const pick = (x: Variant) => { setV(x); setMode('receive'); setDigits(''); setNeg(false); };
+   const n = (neg ? -1 : 1) * (Number(digits) || 0);
++
+   const apply = async () => {
+     if (!v?.inventoryItemId || !loc) return alertMsg('Not linked', 'This item has no inventory item or no location is set.');
+     setBusy(true);
+@@ -27,16 +45,37 @@ export default function Inventory() {
+     } catch (e: any) { alertMsg(isNetworkError(e) ? 'No connection' : 'Stock update failed', e.message); }
+     setBusy(false);
+   };
++
++  const stockText = (x: Variant) => <Txt weight="700" size={17} color={(x.stock ?? 0) < 0 ? c.bad : undefined}>{x.stock === null ? '—' : x.stock}</Txt>;
++  const renderRow = ({ item: r }: { item: InvRow }) => {
++    if (r.kind === 'group') {
++      const g = r.group;
++      return <Row image={g.image ?? null} title={g.title} sub={`${g.variants.length} variations · ${g.minPrice === g.maxPrice ? '' : 'from '}${(g.minPrice / 100).toFixed(2)}`} onPress={() => toggle(g.productId)}
++        right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ alignItems: 'flex-end' }}>{g.stock === null ? <Txt weight="700" size={17}>—</Txt> : <Txt weight="700" size={17} color={g.stock < 0 ? c.bad : undefined}>{g.stock}</Txt>}<Txt size={11} sub>total</Txt></View><Ionicons name={r.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={c.sub} /></View>} />;
++    }
++    const x = r.v; const draft = statusOf(x) !== 'ACTIVE';
++    const row = <Row image={r.nested ? undefined : x.image ?? null} title={r.nested ? (x.variantTitle || 'Default') : x.productTitle} sub={[r.nested ? undefined : x.variantTitle, x.sku, draft ? statusOf(x).toLowerCase() : undefined].filter(Boolean).join(' · ') || undefined} onPress={() => pick(x)}
++      right={<View style={{ alignItems: 'flex-end' }}>{stockText(x)}<Money cents={x.priceCents} size={12} color={c.sub} /></View>} />;
++    return r.nested ? <View style={{ marginLeft: 28, borderLeftWidth: 2, borderLeftColor: c.line }}>{row}</View> : row;
++  };
++  const group = (title: string, children: React.ReactNode) => <View style={{ marginBottom: 16 }}><Txt size={13} sub weight="600" style={{ marginBottom: 8, textTransform: 'uppercase' }}>{title}</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{children}</View></View>;
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 54, padding: 12, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
+-        <Txt size={24} weight="700" style={{ marginLeft: 4 }}>Inventory</Txt>
++        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
++          <View style={{ flex: 1, marginLeft: 4 }}><Txt size={24} weight="700">Inventory</Txt><Txt size={12} sub>{rows.length ? `${filtered.length} variants · ${productCount} products` : 'Nothing matches'}</Txt></View>
++          <Chip label={nFilters ? `Filters · ${nFilters}` : 'Filters'} icon="options-outline" active={nFilters > 0} onPress={() => setFilters(true)} />
++        </View>
+         <Field kind="search" placeholder="Search name, SKU or barcode" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} />
+-        <View style={{ flexDirection: 'row', gap: 8 }}>{([['all', 'All'], ['low', 'Low'], ['neg', 'Negative']] as const).map(([k, l]) => <Chip key={k} label={l} active={f === k} onPress={() => setF(k)} />)}</View>
++        <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
++          {STOCK_LABEL.slice(0, 4).map(([k, l]) => <Chip key={k} label={l} active={prefs.stock === k} onPress={() => setPrefs({ stock: k })} />)}
++          {collection ? <Chip label={collection.title} icon="close-circle" active onPress={() => setPrefs({ collectionId: null })} /> : null}
++          <Chip label={prefs.grouped ? 'Nested' : 'Flat'} icon={prefs.grouped ? 'layers' : 'list'} onPress={() => setPrefs({ grouped: !prefs.grouped })} />
++        </View>
+       </View>
+-      <FlatList data={list} keyExtractor={x => x.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
+-        renderItem={({ item: x }) => <Row image={x.image ?? null} title={x.productTitle} sub={[x.variantTitle, x.sku].filter(Boolean).join(' · ') || undefined} onPress={() => { setV(x); setMode('receive'); setDigits(''); setNeg(false); }}
+-          right={<View style={{ alignItems: 'flex-end' }}><Txt weight="700" size={17} color={(x.stock ?? 0) < 0 ? c.bad : undefined}>{x.stock === null ? '—' : x.stock}</Txt><Money cents={x.priceCents} size={12} color={c.sub} /></View>} />} />
++      <FlatList data={rows} keyExtractor={r => r.key} renderItem={renderRow} initialNumToRender={20} maxToRenderPerBatch={20} windowSize={9} keyboardShouldPersistTaps="handled"
++        ListEmptyComponent={<Empty title="No items" sub={cat.all.length ? 'Nothing matches the current search and filters.' : 'Import from Shopify in More ▸ Settings ▸ Shopify.'} />} />
++
+       <Sheet visible={!!v} onClose={() => setV(null)} title={v?.productTitle ?? ''}>
+         {v ? <View style={{ alignItems: 'center', marginBottom: 8 }}><Thumb uri={v.image} size={96} radius={14} /></View> : null}
+         <Txt sub style={{ marginBottom: 8 }}>{v?.variantTitle ? v.variantTitle + ' · ' : ''}Current stock: {v?.stock ?? 'not tracked'}</Txt>
+@@ -46,6 +85,18 @@ export default function Inventory() {
+         <Keypad value={digits} onChange={d => setDigits(d.slice(0, 5))} decimal={false} />
+         <Btn title={mode === 'count' ? `Set stock to ${digits || 0}` : 'Apply'} onPress={() => void apply()} busy={busy} disabled={!digits} style={{ marginTop: 10 }} />
+       </Sheet>
++      <Sheet visible={filters} onClose={() => setFilters(false)} title="Filters & sort" full>
++        {group('Category', <><Chip label="All categories" active={!prefs.collectionId} onPress={() => setPrefs({ collectionId: null })} />{cat.collections.map(col => <Chip key={col.id} label={col.title} active={prefs.collectionId === col.id} onPress={() => setPrefs({ collectionId: col.id })} />)}</>)}
++        {group('Stock level', STOCK_LABEL.map(([k, l]) => <Chip key={k} label={l} active={prefs.stock === k} onPress={() => setPrefs({ stock: k })} />))}
++        {prefs.stock === 'low' ? <View style={{ marginBottom: 16 }}><Txt size={13} sub weight="600" style={{ marginBottom: 8 }}>“Low” means {prefs.lowAt} or fewer</Txt><View style={{ flexDirection: 'row', gap: 8 }}>{[1, 2, 3, 5, 10].map(k => <Chip key={k} label={String(k)} active={prefs.lowAt === k} onPress={() => setPrefs({ lowAt: k })} />)}</View></View> : null}
++        {group('Product status', STATUS_LABEL.map(([k, l]) => <Chip key={k} label={l} active={prefs.status === k} onPress={() => setPrefs({ status: k })} />))}
++        {group('Sort by', SORT_LABEL.map(([k, l]) => <Chip key={k} label={l} active={prefs.sort === k} onPress={() => setPrefs({ sort: k })} />))}
++        <Txt size={13} sub weight="600" style={{ marginBottom: 8, textTransform: 'uppercase' }}>Show variations</Txt>
++        <Segmented value={prefs.grouped ? 'nested' : 'flat'} onChange={m => setPrefs({ grouped: m === 'nested' })} options={[{ v: 'flat', label: 'Each on its own' }, { v: 'nested', label: 'Nested under item' }]} />
++        <Btn title="Reset filters" kind="secondary" style={{ marginTop: 16 }} onPress={() => setPrefs({ ...defaultInvPrefs(), sort: prefs.sort, grouped: prefs.grouped })} />
++        <Txt size={12} sub style={{ marginTop: 12 }}>{cat.all.length} variants in this device's catalogue{catalogueAt ? ` · imported ${new Date(catalogueAt).toLocaleString()}` : ''}. If that number is lower than Shopify's, tap “Refresh stock from Shopify”.</Txt>
++      </Sheet>
++
+       <View style={{ padding: 8 }}><Btn title="Refresh stock from Shopify" kind="ghost" small onPress={async () => { try { await importFromShopify(() => {}); } catch (e: any) { alertMsg('Refresh failed', e.message); } }} /></View>
+     </View>
+   );
+diff --git a/src/screens/Items.tsx b/src/screens/Items.tsx
+index 1a44013..9dbeb9c 100644
+--- a/src/screens/Items.tsx
++++ b/src/screens/Items.tsx
+@@ -12,7 +12,7 @@ import type { Variant } from '../lib/types';
+ 
+ export function ItemsList() {
+   const nav = useNav(); const cat = useCatalogue(); const [q, setQ] = useState('');
+-  const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)).slice(0, 300); }, [q, cat.list]);
++  const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)); }, [q, cat.list]);
+   return (
+     <Page title="Items" onBack={nav.pop} scroll={false} right={<IconBtn icon="add" label="Create item" onPress={() => nav.push('createItem')} />}>
+       <View style={{ padding: 12 }}><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></View>
+diff --git a/src/state/selectors.ts b/src/state/selectors.ts
+index 08be9db..f978efd 100644
+--- a/src/state/selectors.ts
++++ b/src/state/selectors.ts
+@@ -9,12 +9,13 @@ import type { Variant } from '../lib/types';
+ export function useCatalogue() {
+   const data = useApp(s => s.data);
+   return useMemo(() => {
+-    const list = Object.values(data.variants).filter(v => v.active);
++    const all = Object.values(data.variants); // every variant incl. draft/archived (Inventory)
++    const list = all.filter(v => v.active); // sellable (everything else)
+     const byProduct: Record<string, Variant[]> = {};
+     for (const v of list) (byProduct[v.productId] ??= []).push(v);
+     const collectionsOfProduct: Record<string, string[]> = {};
+     for (const c of data.collections) for (const p of c.productIds) (collectionsOfProduct[p] ??= []).push(c.id);
+-    return { list, byProduct, collectionsOfProduct, titles: collectionTitlesByProduct(data.collections), collections: data.collections, variants: data.variants };
++    return { all, list, byProduct, collectionsOfProduct, titles: collectionTitlesByProduct(data.collections), collections: data.collections, variants: data.variants };
+   }, [data]);
+ }
+ 
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 6cc4f15..2adfe65 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -10,6 +10,7 @@ import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPres
+ import type { Totals } from '../lib/rollup';
+ import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
+ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
++import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+ 
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+@@ -20,11 +21,12 @@ export type Settings = {
+   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
+   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
+   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
++  inventory: InvPrefs; // Inventory screen filters / sort / grouping (per device)
+   sharedVersion: number;
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, consolidate: true, fees: DEFAULT_FEES,
+-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), sharedVersion: 0,
++  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
+ });
+ 
+ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+@@ -83,7 +85,7 @@ export const useApp = create<App>((set, get) => ({
+       kvGet<Settings | null>('settings', null), kvGet<Data | null>('data', null), kvGet<{ grid: Grid; version: number } | null>('grid', null), kvGet<Pos | null>('pos', null),
+     ]);
+     set({
+-      settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
++      settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
+       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}) }, ready: true,
+     });
+     if (!settings) persist('settings', () => get().settings); // keep the generated registerId
+diff --git a/tests/inventory.test.ts b/tests/inventory.test.ts
+new file mode 100644
+index 0000000..ad59ca6
+--- /dev/null
++++ b/tests/inventory.test.ts
+@@ -0,0 +1,69 @@
++// Location: tests/inventory.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { activeFilterCount, buildRows, defaultInvPrefs, filterVariants, groupVariants, matchesQuery, sortVariants, statusOf } from '../src/lib/inventoryView';
++import type { Variant } from '../src/lib/types';
++
++let n = 0;
++const V = (o: Partial<Variant> & { productId: string; productTitle: string }): Variant => ({ id: `v${++n}`, variantTitle: '', priceCents: 1000, tracked: o.stock !== null && o.stock !== undefined, stock: 5, tags: [], active: true, ...o });
++const cow = (t: string, stock: number | null, price = 1500) => V({ productId: 'p-cow', productTitle: 'Highland cow', variantTitle: t, stock, priceCents: price });
++const data: Variant[] = [
++  cow('Small', 3), cow('Large', 0, 2500), cow('Giant', -2, 4000),
++  V({ productId: 'p-tad', productTitle: 'Tadling', stock: 12, sku: 'TAD-1', barcode: '9300000000017' }),
++  V({ productId: 'p-key', productTitle: 'Keyring', stock: null, priceCents: 500 }),
++  V({ productId: 'p-old', productTitle: 'Retired dragon', stock: 1, active: false, status: 'ARCHIVED' }),
++  V({ productId: 'p-dr', productTitle: 'Draft thing', stock: 7, active: false }),
++];
++const P = (o: Partial<ReturnType<typeof defaultInvPrefs>> = {}) => ({ ...defaultInvPrefs(), ...o });
++
++test('no cap: 5,000 variants all come through the filter and sort', () => {
++  const big = Array.from({ length: 5000 }, (_, i) => V({ productId: `p${i % 900}`, productTitle: `Item ${i % 900}`, variantTitle: `v${i}`, stock: i % 7 }));
++  assert.equal(filterVariants(big, P(), '', null).length, 5000);
++  assert.equal(sortVariants(big, 'name').length, 5000);
++});
++test('status: default shows active only; draft/archived/all available; older data without status falls back to active flag', () => {
++  assert.equal(filterVariants(data, P(), '', null).length, 5);
++  assert.deepEqual(filterVariants(data, P({ status: 'archived' }), '', null).map(v => v.productTitle), ['Retired dragon']);
++  assert.deepEqual(filterVariants(data, P({ status: 'draft' }), '', null).map(v => v.productTitle), ['Draft thing']);
++  assert.equal(filterVariants(data, P({ status: 'all' }), '', null).length, 7);
++  assert.equal(statusOf(data[6]), 'DRAFT');
++});
++test('stock filters', () => {
++  const t = (stock: any) => filterVariants(data, P({ stock, status: 'all' }), '', null).map(v => v.variantTitle || v.productTitle);
++  assert.deepEqual(t('neg'), ['Giant']); assert.deepEqual(t('zero'), ['Large']);
++  assert.deepEqual(t('low'), ['Large', 'Retired dragon']); // 0..2 only (Small has 3), negatives are their own filter
++  assert.deepEqual(t('untracked'), ['Keyring']);
++});
++test('category filter uses the product set', () => assert.deepEqual(filterVariants(data, P(), '', new Set(['p-tad'])).map(v => v.productTitle), ['Tadling']));
++test('search: every word must match name, variant, SKU or barcode', () => {
++  assert.ok(matchesQuery(data[0], 'cow small')); assert.ok(!matchesQuery(data[0], 'cow large'));
++  assert.ok(matchesQuery(data[3], 'tad-1')); assert.ok(matchesQuery(data[3], '9300000000017')); assert.ok(matchesQuery(data[0], ''));
++});
++test('sorts: name is natural, stock puts untracked last both ways, price, updated', () => {
++  const names = (s: any) => sortVariants(filterVariants(data, P({ status: 'active' }), '', null), s).map(v => v.variantTitle || v.productTitle);
++  assert.deepEqual(names('stock-asc'), ['Giant', 'Large', 'Small', 'Tadling', 'Keyring']);
++  assert.deepEqual(names('stock-desc'), ['Tadling', 'Small', 'Large', 'Giant', 'Keyring']);
++  assert.deepEqual(names('price-asc'), ['Keyring', 'Tadling', 'Small', 'Large', 'Giant']);
++  const nat = sortVariants([V({ productId: 'a', productTitle: 'Box 10' }), V({ productId: 'b', productTitle: 'Box 2' })], 'name').map(v => v.productTitle);
++  assert.deepEqual(nat, ['Box 2', 'Box 10']);
++  const u = sortVariants([V({ productId: 'a', productTitle: 'A', updatedAt: '2026-01-01' }), V({ productId: 'b', productTitle: 'B', updatedAt: '2026-06-01' })], 'updated').map(v => v.productTitle);
++  assert.deepEqual(u, ['B', 'A']);
++});
++test('grouping: variants nest under their product, totals add up, untracked ignored in totals', () => {
++  const g = groupVariants(filterVariants(data, P(), '', null), 'name');
++  const cowG = g.find(x => x.productId === 'p-cow')!;
++  assert.equal(cowG.variants.length, 3); assert.equal(cowG.stock, 1); assert.equal(cowG.minPrice, 1500); assert.equal(cowG.maxPrice, 4000);
++  assert.equal(g.find(x => x.productId === 'p-key')!.stock, null);
++  assert.deepEqual(groupVariants(filterVariants(data, P(), '', null), 'stock-asc').map(x => x.title), ['Highland cow', 'Tadling', 'Keyring']);
++});
++test('rows: collapsed shows header only, expanded shows nested variants, single-variant products are plain rows, searching expands all', () => {
++  const g = groupVariants(filterVariants(data, P(), '', null), 'name');
++  const closed = buildRows(g, new Set(), false); const kinds = (r: ReturnType<typeof buildRows>) => r.map(x => x.kind + (x.kind === 'variant' && x.nested ? '*' : ''));
++  assert.deepEqual(kinds(closed), ['group', 'variant', 'variant']);
++  assert.deepEqual(kinds(buildRows(g, new Set(['p-cow']), false)), ['group', 'variant*', 'variant*', 'variant*', 'variant', 'variant']);
++  assert.equal(buildRows(g, new Set(), true).length, 6);
++  assert.equal(new Set(buildRows(g, new Set(), true).map(r => r.key)).size, 6);
++});
++test('filter badge counts only non-default filters', () => {
++  assert.equal(activeFilterCount(P()), 0); assert.equal(activeFilterCount(P({ stock: 'neg', collectionId: 'c1' })), 2); assert.equal(activeFilterCount(P({ status: 'all' })), 1);
++});
+-- 
+2.43.0
+

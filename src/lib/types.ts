@@ -17,6 +17,7 @@ export type Variant = {
   image?: string;
   tags: string[];
   active: boolean; // product status ACTIVE
+  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'; // full product status (older saved catalogues only have `active`)
   updatedAt?: string;
 };
 export type Collection = { id: string; title: string; image?: string; productIds: string[] };

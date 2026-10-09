@@ -1,12 +1,16 @@
 // Location: src/ui/kit.tsx
-import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Image, InputAccessoryView, Keyboard, Modal, Platform, Pressable, StyleProp, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme, useLayout } from './theme';
 import { digitsToCents, fmt } from '../lib/money';
 import { NativeSegmented, NativeSwitch, hasSwiftUI } from './native';
 import { noteActivity } from '../lib/idle';
+import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
+import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
+import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
+import { sheetMaxHeight } from '../lib/keyboardMath';
 
 export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -78,10 +82,18 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
     <Pressable key={o.v} onPress={() => { tap(); onChange(o.v); }} accessibilityRole="button" accessibilityState={{ selected: o.v === value }} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: o.v === value ? c.card : 'transparent' }}>
       <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: 14 }}>{o.label}</Text></Pressable>))}</View>;
 }
-export function Field({ label, style, ...p }: TextInputProps & { label?: string }) {
-  const { c } = useTheme();
+/** `kind` picks the keyboard + capitalisation + autocorrect for the data (see lib/fieldKinds.ts); explicit props override it. */
+export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
+  const { c } = useTheme(); const has = useRef(false); const input = useRef<TextInput>(null); const reveal = useReveal(); const accId = useId();
+  const preset = kind ? KIND_PROPS[kind] : {};
+  const doneBar = Platform.OS === 'ios' && needsDoneBar(kind, p.keyboardType);
+  // Tell the focus guard when this field is being typed in so the Bluetooth-scanner capture input leaves it alone.
+  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } reveal?.reveal(input.current); onFocus?.(e); };
+  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } reveal?.reveal(null); onBlur?.(e); };
+  useEffect(() => () => { if (has.current) { has.current = false; fieldBlurred(); } }, []); // unmounted while focused: onBlur never fires
   return <View style={{ marginBottom: 12 }}>{label ? <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>{label}</Txt> : null}
-    <TextInput placeholderTextColor={c.sub} {...p} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} /></View>;
+    <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
+    {doneBar ? <InputAccessoryView nativeID={accId}><View style={{ flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 8 }}><Btn title="Done" kind="ghost" small onPress={() => Keyboard.dismiss()} /></View></InputAccessoryView> : null}</View>;
 }
 export function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
   return <Row title={label} sub={sub} right={<NativeSwitch value={value} onChange={v => { tap(); onChange(v); }} label={label} />} />;
@@ -100,25 +112,25 @@ export function Page({ title, onBack, right, children, scroll = true, pad = true
         {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} /> : <View style={{ width: 12 }} />}
         <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}
       </View>
-      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</ScrollView> : <View style={{ flex: 1 }}>{children}</View>}
+      {scroll ? <RevealScroll inset contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</RevealScroll> : <View style={{ flex: 1 }}>{children}</View>}
     </View>
   );
 }
 
-/** Bottom sheet on phone, centred card on tablet. */
+/** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
 export function Sheet({ visible, onClose, title, children, full, dismissable = true }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean }) {
-  const { c } = useTheme(); const { tablet, height } = useLayout();
+  const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
-      <KeyboardAvoidingView onTouchStart={noteActivity} behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay }}>
+      <View onTouchStart={noteActivity} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay, paddingBottom: overlap }}>
         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
-        <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: height * (full ? 0.94 : 0.86), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: tablet ? 8 : 24 }}>
+        <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 }}>
             <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} /> : null}
           </View>
-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</ScrollView>
+          <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
         </View>
-      </KeyboardAvoidingView>
+      </View>
     </Modal>
   );
 }

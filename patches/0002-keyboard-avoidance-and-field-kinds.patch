@@ -1,0 +1,729 @@
+From c4b5e26b6731398e26efb5de0164e6335a255a80 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Fri, 9 Oct 2026 22:34:51 +0000
+Subject: [PATCH] 0002: keyboard avoidance + consistent keyboard kinds
+
+---
+ docs/PROGRESS.md             | 18 ++++++++----
+ src/lib/fieldKinds.ts        | 34 +++++++++++++++++++++++
+ src/lib/keyboardMath.ts      | 25 +++++++++++++++++
+ src/screens/Checkout.tsx     |  6 ++--
+ src/screens/Customers.tsx    |  4 +--
+ src/screens/Drawer.tsx       |  2 +-
+ src/screens/Inventory.tsx    |  2 +-
+ src/screens/Items.tsx        | 12 ++++----
+ src/screens/Refund.tsx       |  2 +-
+ src/screens/Reports.tsx      |  2 +-
+ src/screens/Settings.tsx     | 48 ++++++++++++++++----------------
+ src/screens/Staff.tsx        |  2 +-
+ src/screens/Tiles.tsx        |  4 +--
+ src/screens/Transactions.tsx |  2 +-
+ src/screens/sheets.tsx       | 24 ++++++++--------
+ src/ui/keyboard.tsx          | 53 ++++++++++++++++++++++++++++++++++++
+ src/ui/kit.tsx               | 35 ++++++++++++++----------
+ tests/keyboard.test.ts       | 39 ++++++++++++++++++++++++++
+ 18 files changed, 239 insertions(+), 75 deletions(-)
+ create mode 100644 src/lib/fieldKinds.ts
+ create mode 100644 src/lib/keyboardMath.ts
+ create mode 100644 src/ui/keyboard.tsx
+ create mode 100644 tests/keyboard.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 1bc8092..ee151e3 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -8,6 +8,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | # | Date | What | Items |
+ |---|------|------|-------|
+ | 0001 | 2026-10-10 | iOS folder reset script + stop the scanner stealing the keyboard | A1, A2 |
++| 0002 | 2026-10-10 | Keyboard avoidance (field always visible) + consistent keyboard types on all 67 fields | A3, A4 |
+ 
+ ---
+ 
+@@ -28,14 +29,19 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ - [ ] A2.6 **You:** open "All products" filter and a cart sheet with the scanner enabled; keyboard should stay up. Trade-off: a Bluetooth scan within ~2.5 s of finishing typing in a field is ignored until the grace ends.
+ 
+ ### A3. View doesn't move for the keyboard (field hidden behind it)
+-- [ ] A3.1 `useKeyboard()` hook (height + visible, via `Keyboard` events).
+-- [ ] A3.2 `Page` scroll area: bottom padding = keyboard height, auto-scroll the focused field into view.
+-- [ ] A3.3 `Sheet`: shrink to the space above the keyboard, anchor above it, scroll focused field into view.
+-- [ ] A3.4 Non-scrolling layouts with fields (Checkout "All" filter, Pay) checked.
++- [x] A3.1 `src/lib/keyboardMath.ts` (pure, tested): keyboard overlap, "how far to scroll to reveal a field", sheet max height.
++- [x] A3.2 `src/ui/keyboard.tsx`: `useKeyboardOverlap()` (uses the keyboard's top edge, so split/floating iPad keyboards are handled) and `RevealScroll`, which scrolls the focused field above the keyboard (on focus, and again when the keyboard finishes moving).
++- [x] A3.3 `Page` now scrolls with `RevealScroll` (adds bottom padding = keyboard height so the last field can always be reached).
++- [x] A3.4 `Sheet` no longer uses `KeyboardAvoidingView`: it sits above the keyboard, caps its height to the space left, and uses `RevealScroll` inside.
++- [~] A3.5 Screens with their own non-scrolling layout (Checkout filter, Inventory/Transactions search) have the field at the top, so nothing to reveal. Confirm on device, particularly iPad with the floating keyboard and landscape.
+ 
+ ### A4. Inconsistent keyboard types
+-- [ ] A4.1 Audit every `<Field>` (≈60) and set `keyboardType` / `inputMode` / `autoCapitalize` / `autoCorrect` / `returnKeyType` deliberately.
+-- [ ] A4.2 Add `kind` presets to `Field` (`text`, `name`, `email`, `phone`, `url`, `integer`, `money`, `code`, `secret`) so it stays consistent.
++- [x] A4.1 `src/lib/fieldKinds.ts`: `kind` presets — `text name email phone url integer decimal money pin secret code search date json` (tested).
++- [x] A4.2 `Field` takes `kind="…"`; explicit props still override it.
++- [x] A4.3 All 67 `<Field>`s audited and given a kind. Redundant props removed.
++- [x] A4.4 iOS number/decimal/phone pads have no Return key, so those fields get a **Done** bar above the keyboard.
++- Choices you may want to change: **Barcode** = number pad (EAN/UPC; alphanumeric Code128 barcodes can't be typed — say if you have any). **ABN** = number pad (no spaces). **Reports dates** = numbers-and-punctuation. **Gift card code** stays all-caps. Names/titles = capitalise words, no autocorrect.
++- [ ] A4.5 **You:** try one of each kind (customer email/phone, item price, PIN, search) and tell me any that feel wrong.
+ 
+ ### A5. Inventory screen: all products/variants, category filter, nesting, sort/filter
+ - [ ] A5.1 Find why not everything loads (pagination in `catalogue.ts` / `inventory.ts`; `Inventory.tsx` list cap).
+diff --git a/src/lib/fieldKinds.ts b/src/lib/fieldKinds.ts
+new file mode 100644
+index 0000000..f0b7bb4
+--- /dev/null
++++ b/src/lib/fieldKinds.ts
+@@ -0,0 +1,34 @@
++// Location: src/lib/fieldKinds.ts
++// One place that decides keyboard type / capitalisation / autocorrect for every text field, so the same kind of data
++// always gets the same keyboard. Pure data; unit-tested. Explicit props on a <Field> still override these.
++export type FieldKind = 'text' | 'name' | 'email' | 'phone' | 'url' | 'integer' | 'decimal' | 'money' | 'pin' | 'secret' | 'code' | 'search' | 'date' | 'json';
++
++export type KindProps = {
++  keyboardType?: 'default' | 'email-address' | 'phone-pad' | 'url' | 'number-pad' | 'decimal-pad' | 'numbers-and-punctuation';
++  autoCapitalize?: 'none' | 'sentences' | 'words' | 'characters';
++  autoCorrect?: boolean; spellCheck?: boolean; secureTextEntry?: boolean; returnKeyType?: 'done' | 'search' | 'next' | 'go';
++  clearButtonMode?: 'while-editing'; multiline?: boolean;
++};
++const NO_FUSS = { autoCapitalize: 'none', autoCorrect: false, spellCheck: false } as const;
++
++export const KIND_PROPS: Record<FieldKind, KindProps> = {
++  text: { autoCapitalize: 'sentences' },
++  name: { autoCapitalize: 'words', autoCorrect: false, returnKeyType: 'done' },
++  email: { ...NO_FUSS, keyboardType: 'email-address', returnKeyType: 'done' },
++  phone: { ...NO_FUSS, keyboardType: 'phone-pad' },
++  url: { ...NO_FUSS, keyboardType: 'url', returnKeyType: 'go' },
++  integer: { ...NO_FUSS, keyboardType: 'number-pad' },
++  decimal: { ...NO_FUSS, keyboardType: 'decimal-pad' },
++  money: { ...NO_FUSS, keyboardType: 'decimal-pad' },
++  pin: { ...NO_FUSS, keyboardType: 'number-pad', secureTextEntry: true },
++  secret: { ...NO_FUSS, secureTextEntry: true, returnKeyType: 'done' },
++  code: { ...NO_FUSS, returnKeyType: 'done' },
++  search: { ...NO_FUSS, returnKeyType: 'search', clearButtonMode: 'while-editing' },
++  date: { ...NO_FUSS, keyboardType: 'numbers-and-punctuation' },
++  json: { ...NO_FUSS, multiline: true },
++};
++/** iOS number/decimal/phone pads have no Return key, so we attach a "Done" bar to them. */
++export const needsDoneBar = (k: FieldKind | undefined, keyboardType?: string): boolean => {
++  const t = keyboardType ?? (k ? KIND_PROPS[k].keyboardType : undefined);
++  return t === 'number-pad' || t === 'decimal-pad' || t === 'phone-pad';
++};
+diff --git a/src/lib/keyboardMath.ts b/src/lib/keyboardMath.ts
+new file mode 100644
+index 0000000..40302d2
+--- /dev/null
++++ b/src/lib/keyboardMath.ts
+@@ -0,0 +1,25 @@
++// Location: src/lib/keyboardMath.ts
++// Pure geometry for "keep the focused field visible above the on-screen keyboard". Unit-tested; no React Native imports.
++
++/** How many points of the window the keyboard covers. screenY = top edge of the keyboard (window coords). */
++export function keyboardOverlap(windowHeight: number, screenY: number, keyboardHeight: number): number {
++  if (!(keyboardHeight > 0) || !(screenY < windowHeight)) return 0;
++  return Math.max(0, Math.min(keyboardHeight, windowHeight - screenY));
++}
++
++/**
++ * How far to scroll (positive = further down, i.e. content moves up) so a field sits fully inside the visible band.
++ * All numbers are window coordinates. A field taller than the band is aligned to its top edge.
++ */
++export function revealDelta(o: { fieldTop: number; fieldBottom: number; viewTop: number; viewBottom: number; margin?: number }): number {
++  const m = o.margin ?? 12; const top = o.viewTop + m; const bottom = o.viewBottom - m;
++  if (o.fieldBottom - o.fieldTop >= bottom - top) return o.fieldTop - top;
++  if (o.fieldBottom > bottom) return o.fieldBottom - bottom;
++  if (o.fieldTop < top) return o.fieldTop - top;
++  return 0;
++}
++
++/** Height a sheet may use: the lesser of its preferred share of the screen and the space left above the keyboard. */
++export function sheetMaxHeight(windowHeight: number, overlap: number, share: number, topGap: number): number {
++  return Math.max(160, Math.min(windowHeight * share, windowHeight - overlap - topGap));
++}
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index db7697c..7e5beea 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -152,7 +152,7 @@ export default function Checkout() {
+ 
+       {tab === 'all' ? (
+         <View style={{ flex: 1 }}>
+-          <View style={{ paddingHorizontal: 12 }}><Field placeholder="Filter products" value={allQ} onChangeText={setAllQ} autoCapitalize="none" style={{ marginBottom: 0 }} /></View>
++          <View style={{ paddingHorizontal: 12 }}><Field kind="search" placeholder="Filter products" value={allQ} onChangeText={setAllQ} style={{ marginBottom: 0 }} /></View>
+           <FlatList data={allList} keyExtractor={v => v.productId} style={{ marginTop: 8 }} ListEmptyComponent={<Empty title="No products" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
+             renderItem={({ item: v }) => { const many = (cat.byProduct[v.productId]?.length ?? 1) > 1; const tone = stockTone(v); return (
+               <Row image={v.image ?? null} title={v.productTitle} sub={many ? `${cat.byProduct[v.productId].length} variations` : v.stock === null ? undefined : `${v.stock} in stock`} onPress={() => addItems(many ? cat.byProduct[v.productId] : [v])}
+@@ -197,7 +197,7 @@ export default function Checkout() {
+       </Sheet>
+ 
+       <Sheet visible={sheet === 'search'} onClose={() => { setSheet('none'); setQ(''); }} title="Search" full>
+-        <Field placeholder="Search items, customers, discounts, saved carts" value={q} onChangeText={setQ} autoFocus autoCapitalize="none" />
++        <Field kind="search" placeholder="Search items, customers, discounts, saved carts" value={q} onChangeText={setQ} autoFocus />
+         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
+           {([['all', 'All'], ['items', 'Items'], ['customers', 'Customers'], ['discounts', 'Discounts'], ['carts', 'Saved carts']] as const).map(([k, l]) => <Chip key={k} label={l} active={filter === k} onPress={() => setFilter(k)} />)}</ScrollView>
+         {show('items') && results.items.map(v => <Row key={v.id} image={v.image ?? null} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} sub={[v.sku, v.barcode].filter(Boolean).join(' · ')} right={<Money cents={v.priceCents} weight="600" />} onPress={() => { add(v); setSheet('none'); setQ(''); }} />)}
+@@ -211,7 +211,7 @@ export default function Checkout() {
+ }
+ function PageAdder({ onAdd, onRename, currentName }: { onAdd: (n: string) => void; onRename: (n: string) => void; currentName: string }) {
+   const [name, setName] = useState('');
+-  return <View style={{ marginTop: 14 }}><Field label="Page name" value={name} onChangeText={setName} placeholder={currentName || 'e.g. Drinks'} />
++  return <View style={{ marginTop: 14 }}><Field kind="name" label="Page name" value={name} onChangeText={setName} placeholder={currentName || 'e.g. Drinks'} />
+     <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Add page" kind="secondary" small disabled={!name.trim()} onPress={() => { onAdd(name.trim()); setName(''); }} style={{ flex: 1 }} /><Btn title="Rename current" kind="secondary" small disabled={!name.trim()} onPress={() => { onRename(name.trim()); setName(''); }} style={{ flex: 1 }} /></View></View>;
+ }
+ void ACTION_LABEL;
+diff --git a/src/screens/Customers.tsx b/src/screens/Customers.tsx
+index b1dfb60..a60d021 100644
+--- a/src/screens/Customers.tsx
++++ b/src/screens/Customers.tsx
+@@ -20,7 +20,7 @@ export default function Customers() {
+   const startSale = (c: Customer) => { useApp.getState().setCart(cc => ({ ...cc, customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } })); setSel(null); nav.setTab('checkout'); };
+   return (
+     <Page title="Customers" onBack={nav.pop} scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
+-      <View style={{ padding: 12 }}><Field placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} autoCapitalize="none" style={{ marginBottom: 0 }} /></View>
++      <View style={{ padding: 12 }}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} style={{ marginBottom: 0 }} /></View>
+       <FlatList data={shown} keyExtractor={c => c.id} ListEmptyComponent={<Empty icon="people-outline" title="No customers" />} renderItem={({ item: c }) => <Row title={c.name || c.email || c.phone || 'Customer'} sub={[c.email, c.phone].filter(Boolean).join(' · ') || undefined} onPress={() => setSel(c)} />} />
+       <Sheet visible={!!sel && !form} onClose={() => setSel(null)} title={sel?.name || 'Customer'}>
+         <Txt sub>{[sel?.email, sel?.phone].filter(Boolean).join(' · ')}</Txt>
+@@ -28,7 +28,7 @@ export default function Customers() {
+         <View style={{ gap: 8, marginTop: 14 }}><Btn title="Start sale" onPress={() => sel && startSale(sel)} /><Btn title="Edit" kind="secondary" onPress={() => { if (!sel) return; const [first, ...rest] = (sel.name || '').split(' '); setForm({ id: sel.id, first: first ?? '', last: rest.join(' '), email: sel.email ?? '', phone: sel.phone ?? '', note: sel.note ?? '' }); }} /></View>
+       </Sheet>
+       <Sheet visible={!!form} onClose={() => setForm(null)} title={form?.id ? 'Edit customer' : 'New customer'}>
+-        {form ? <><Field label="First name" value={form.first} onChangeText={t => setForm({ ...form, first: t })} /><Field label="Last name" value={form.last} onChangeText={t => setForm({ ...form, last: t })} /><Field label="Email" value={form.email} onChangeText={t => setForm({ ...form, email: t })} keyboardType="email-address" autoCapitalize="none" /><Field label="Mobile" value={form.phone} onChangeText={t => setForm({ ...form, phone: t })} keyboardType="phone-pad" /><Field label="Note" value={form.note} onChangeText={t => setForm({ ...form, note: t })} multiline /><Btn title="Save" busy={busy} onPress={() => void save()} /></> : null}
++        {form ? <><Field kind="name" label="First name" value={form.first} onChangeText={t => setForm({ ...form, first: t })} /><Field kind="name" label="Last name" value={form.last} onChangeText={t => setForm({ ...form, last: t })} /><Field kind="email" label="Email" value={form.email} onChangeText={t => setForm({ ...form, email: t })} /><Field kind="phone" label="Mobile" value={form.phone} onChangeText={t => setForm({ ...form, phone: t })} /><Field kind="text" label="Note" value={form.note} onChangeText={t => setForm({ ...form, note: t })} multiline /><Btn title="Save" busy={busy} onPress={() => void save()} /></> : null}
+       </Sheet>
+     </Page>
+   );
+diff --git a/src/screens/Drawer.tsx b/src/screens/Drawer.tsx
+index d59b9f7..a8da401 100644
+--- a/src/screens/Drawer.tsx
++++ b/src/screens/Drawer.tsx
+@@ -33,7 +33,7 @@ export default function Drawer() {
+         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}
+       <Sheet visible={sheet !== 'none'} onClose={done} title={sheet === 'open' ? 'Opening float' : sheet === 'in' ? 'Paid in' : sheet === 'out' ? 'Paid out' : 'Counted cash'}>
+         <Txt size={38} weight="700" style={{ textAlign: 'center', marginBottom: 8 }}>{fmt(amt)}</Txt>
+-        {sheet === 'in' || sheet === 'out' ? <Field placeholder="Reason" value={note} onChangeText={setNote} /> : null}
++        {sheet === 'in' || sheet === 'out' ? <Field kind="text" placeholder="Reason" value={note} onChangeText={setNote} /> : null}
+         {sheet === 'close' ? <Txt sub style={{ textAlign: 'center', marginBottom: 8 }}>Expected {fmt(expected)}</Txt> : null}
+         <Keypad value={digits} onChange={setDigits} onSubmit={() => void submit()} submitLabel="Confirm" />
+       </Sheet>
+diff --git a/src/screens/Inventory.tsx b/src/screens/Inventory.tsx
+index 3cb930b..57061c2 100644
+--- a/src/screens/Inventory.tsx
++++ b/src/screens/Inventory.tsx
+@@ -31,7 +31,7 @@ export default function Inventory() {
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 54, padding: 12, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
+         <Txt size={24} weight="700" style={{ marginLeft: 4 }}>Inventory</Txt>
+-        <Field placeholder="Search name, SKU or barcode" value={q} onChangeText={setQ} autoCapitalize="none" style={{ marginBottom: 0 }} />
++        <Field kind="search" placeholder="Search name, SKU or barcode" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} />
+         <View style={{ flexDirection: 'row', gap: 8 }}>{([['all', 'All'], ['low', 'Low'], ['neg', 'Negative']] as const).map(([k, l]) => <Chip key={k} label={l} active={f === k} onPress={() => setF(k)} />)}</View>
+       </View>
+       <FlatList data={list} keyExtractor={x => x.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
+diff --git a/src/screens/Items.tsx b/src/screens/Items.tsx
+index 0d1f4a4..1a44013 100644
+--- a/src/screens/Items.tsx
++++ b/src/screens/Items.tsx
+@@ -15,7 +15,7 @@ export function ItemsList() {
+   const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)).slice(0, 300); }, [q, cat.list]);
+   return (
+     <Page title="Items" onBack={nav.pop} scroll={false} right={<IconBtn icon="add" label="Create item" onPress={() => nav.push('createItem')} />}>
+-      <View style={{ padding: 12 }}><Field placeholder="Search items" value={q} onChangeText={setQ} autoCapitalize="none" style={{ marginBottom: 0 }} /></View>
++      <View style={{ padding: 12 }}><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></View>
+       <FlatList data={list} keyExtractor={v => v.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify, or create one." />} renderItem={({ item: v }) => <Row image={v.image ?? null} title={v.productTitle} sub={[v.variantTitle, v.sku, v.barcode].filter(Boolean).join(' · ') || undefined} right={<Money cents={v.priceCents} weight="600" />} onPress={() => nav.push('editItem', { id: v.id })} />} />
+     </Page>
+   );
+@@ -37,9 +37,9 @@ export function CreateItem() {
+   return (
+     <Page title="Create item" onBack={nav.pop}>
+       <View style={{ padding: 16 }}>
+-        <Field label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} keyboardType="decimal-pad" placeholder="0.00" />
+-        <Field label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} autoCapitalize="none" /><Field label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} keyboardType="number-pad" />
+-        <Field label="Cost (for profit reports)" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} keyboardType="decimal-pad" placeholder="0.00" /><Field label="Starting stock" value={f.stock} onChangeText={t => setF({ ...f, stock: t })} keyboardType="number-pad" />
++        <Field kind="name" label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} placeholder="0.00" />
++        <Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} /><Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} />
++        <Field kind="money" label="Cost (for profit reports)" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} placeholder="0.00" /><Field kind="integer" label="Starting stock" value={f.stock} onChangeText={t => setF({ ...f, stock: t })} />
+         {cat.collections.length ? <><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Category</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>{cat.collections.slice(0, 30).map(c => <Chip key={c.id} label={c.title} active={col === c.id} onPress={() => setCol(col === c.id ? undefined : c.id)} />)}</View></> : null}
+         <Btn title="Create item" busy={busy} onPress={() => void save()} />
+       </View>
+@@ -61,8 +61,8 @@ export function EditItem({ id }: { id: string }) {
+     <Page title={v.productTitle} onBack={nav.pop}><View style={{ padding: 16 }}>
+       {v.image ? <View style={{ alignItems: 'center', marginBottom: 12 }}><Thumb uri={v.image} size={160} radius={16} /></View> : null}
+       <Txt sub style={{ marginBottom: 10 }}>{v.variantTitle ? v.variantTitle + ' · ' : ''}Stock {v.stock ?? 'not tracked'} · current {fmt(v.priceCents)}</Txt>
+-      <Field label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} keyboardType="decimal-pad" /><Field label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} autoCapitalize="none" />
+-      <Field label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} keyboardType="number-pad" /><Field label="Cost" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} keyboardType="decimal-pad" />
++      <Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} /><Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} />
++      <Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} /><Field kind="money" label="Cost" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} />
+       <Btn title="Save to Shopify" busy={busy} onPress={() => void save()} /></View></Page>
+   );
+ }
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index a7494d0..be149c5 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -74,7 +74,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+       </View>
+ 
+       <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" full>
+-        <Field placeholder="Search products" value={q} onChangeText={setQ} autoCapitalize="none" />
++        <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
+         {hits.map((v: Variant) => <Row key={v.id} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
+       </Sheet>
+       <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
+diff --git a/src/screens/Reports.tsx b/src/screens/Reports.tsx
+index 172b1dd..77299b9 100644
+--- a/src/screens/Reports.tsx
++++ b/src/screens/Reports.tsx
+@@ -54,7 +54,7 @@ export default function Reports() {
+       {tab === 'sales' ? <>
+         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+           {PERIODS.map(p => <Chip key={p} label={p} active={period === p} onPress={() => setPeriod(p)} />)}<Chip label="Custom" active={period === 'custom'} onPress={() => setPeriod('custom')} /><Chip label="Customise" icon="options-outline" onPress={() => setFilter(true)} /></ScrollView>
+-        {period === 'custom' ? <View style={{ flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 0 }}><View style={{ flex: 1 }}><Field label="From (YYYY-MM-DD)" value={custom.from} onChangeText={t => setCustom(s => ({ ...s, from: t }))} autoCapitalize="none" /></View><View style={{ flex: 1 }}><Field label="To" value={custom.to} onChangeText={t => setCustom(s => ({ ...s, to: t }))} autoCapitalize="none" /></View></View> : null}
++        {period === 'custom' ? <View style={{ flexDirection: 'row', gap: 8, padding: 16, paddingBottom: 0 }}><View style={{ flex: 1 }}><Field kind="date" label="From (YYYY-MM-DD)" value={custom.from} onChangeText={t => setCustom(s => ({ ...s, from: t }))} /></View><View style={{ flex: 1 }}><Field kind="date" label="To" value={custom.to} onChangeText={t => setCustom(s => ({ ...s, to: t }))} /></View></View> : null}
+         <View style={{ paddingHorizontal: 16, paddingTop: 12 }}><Segmented value={cmp} onChange={setCmp} options={[{ v: 'none', label: 'No compare' }, { v: 'prev', label: 'Prev period' }, { v: 'year', label: 'Last year' }]} /></View>
+         <View style={{ marginTop: 14 }}><Card style={{ marginHorizontal: 16 }}>
+           <Stat label="Gross sales" cents={d.grossSales} before={was?.grossSales} /><Stat label="Discounts" cents={-d.discounts} before={was ? -was.discounts : undefined} /><Stat label="Refunds" cents={-d.refunds} before={was ? -was.refunds : undefined} />
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index a1a5bb8..41f9fed 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -53,19 +53,19 @@ export default function Settings() {
+       {sub === 'display' ? <DisplaySettings /> : null}
+       {sub === 'payments' ? <Section footer="Fees are estimated from these rates – the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
+         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
+-        <View style={{ padding: 16 }}><Field label="Card-present fee %" keyboardType="decimal-pad" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
+-          <Field label="Keyed / card-not-present fee %" keyboardType="decimal-pad" defaultValue={String(s.fees.keyedRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, keyedRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} /></View>
++        <View style={{ padding: 16 }}><Field kind="decimal" label="Card-present fee %" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
++          <Field kind="decimal" label="Keyed / card-not-present fee %" defaultValue={String(s.fees.keyedRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, keyedRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} /></View>
+         <Row title="Reader & pairing" sub="More ▸ Support ▸ Zeller" last onPress={() => nav.push('diagnostics')} /></Section> : null}
+       {sub === 'discounts' ? <BundlesEditor /> : null}
+       {sub === 'hardware' ? <HardwareTest /> : null}
+       {sub === 'data' ? <DataSettings /> : null}
+       {sub === 'grid' ? <GridSettings /> : null}
+-      {sub === 'gift' ? <View style={{ padding: 16 }}><Field label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} autoCapitalize="none" keyboardType="url" placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
++      {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
+       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
+         <Txt weight="600">Tile size</Txt><Segmented value={s.tileSize} onChange={v => patch({ tileSize: v })} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
+         <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View></View> : null}
+       {sub === 'about' ? <Section><Row title="Register" sub={`${s.registerName} · ${s.registerId}`} /><Row title="Shopify API" sub="2026-07" /><Row title="Currency" sub="AUD" last /></Section> : null}
+-      {sub === 'about' ? <View style={{ padding: 16 }}><Field label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
++      {sub === 'about' ? <View style={{ padding: 16 }}><Field kind="name" label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
+     </Page>
+   );
+ }
+@@ -85,9 +85,9 @@ function ShopifySettings() {
+   const imp = async () => { setBusy(true); try { const r = await importFromShopify(m => setMsg(m)); setMsg(`Imported ${r.variants} variants, ${r.collections} collections, ${r.customers} customers, ${r.discounts} discounts.`); void pollShared(); } catch (e: any) { setMsg(`Import failed: ${e.message}`); } setBusy(false); };
+   return (
+     <View style={{ padding: 16, gap: 4 }}>
+-      <Field label="Store domain" value={f.domain} onChangeText={t => setF({ ...f, domain: t })} autoCapitalize="none" placeholder="yourshop.myshopify.com" />
+-      <Field label="Client ID (Dev Dashboard app)" value={f.id} onChangeText={t => setF({ ...f, id: t })} autoCapitalize="none" autoCorrect={false} />
+-      <Field label="Client secret" value={f.secret} onChangeText={t => setF({ ...f, secret: t })} autoCapitalize="none" autoCorrect={false} secureTextEntry />
++      <Field kind="code" label="Store domain" value={f.domain} onChangeText={t => setF({ ...f, domain: t })} placeholder="yourshop.myshopify.com" />
++      <Field kind="code" label="Client ID (Dev Dashboard app)" value={f.id} onChangeText={t => setF({ ...f, id: t })} />
++      <Field kind="secret" label="Client secret" value={f.secret} onChangeText={t => setF({ ...f, secret: t })} />
+       <Txt size={12} sub>Stored in the iOS Keychain on this device only.</Txt>
+       <Btn title="Save & test connection" onPress={() => void connect()} busy={busy} style={{ marginTop: 10 }} />
+       {locs.length > 1 || s.locationName ? <View style={{ marginTop: 14 }}><Txt weight="600" style={{ marginBottom: 6 }}>Location (stock & orders)</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{(locs.length ? locs : [{ id: s.locationId!, name: s.locationName! }]).map(l => <Chip key={l.id} label={l.name} active={s.locationId === l.id} onPress={() => patch({ locationId: l.id, locationName: l.name })} />)}</View></View> : null}
+@@ -112,7 +112,7 @@ function BundlesEditor() {
+   return (
+     <View style={{ padding: 16, gap: 8 }}>
+       <Txt size={13} sub>Automatic discounts from Shopify apply by themselves. Bundle deals (one unit from each set → price change) are configured here as JSON and applied before Shopify discounts. Items tagged no-discount are excluded.</Txt>
+-      <Field value={text} onChangeText={setText} multiline autoCapitalize="none" autoCorrect={false} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
++      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
+       <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save" onPress={save} style={{ flex: 1 }} /><Btn title="Insert example" kind="secondary" onPress={() => setText(SAMPLE_BUNDLES)} style={{ flex: 1 }} /></View>
+       {msg.map((m, i) => <Txt key={i} size={13} sub>{m}</Txt>)}
+     </View>
+@@ -147,7 +147,7 @@ function GridSettings() {
+   return (
+     <View style={{ padding: 16, gap: 10 }}>
+       <Txt size={13} sub>Paste a grid.json or pick a file. Categories and items are matched to your imported Shopify catalogue by id.</Txt>
+-      <Field value={text} onChangeText={setText} multiline autoCapitalize="none" autoCorrect={false} style={{ minHeight: 160, fontFamily: 'Menlo', fontSize: 12 }} placeholder='{"version":1,"pages":[…]}' />
++      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 160, fontFamily: 'Menlo', fontSize: 12 }} placeholder='{"version":1,"pages":[…]}' />
+       <Btn title="Import pasted JSON" onPress={() => doImport(text)} disabled={!text.trim()} />
+       <Btn title="Import from file…" kind="secondary" onPress={async () => { const r = await DocPicker.getDocumentAsync({ type: ['application/json', 'text/plain', '*/*'], copyToCacheDirectory: true }); if (r.canceled || !r.assets?.[0]) return; doImport(await FS.readAsStringAsync(r.assets[0].uri)); }} />
+       <Btn title="Export grid.json" kind="secondary" onPress={() => void Share.share({ message: serialiseGrid(grid), title: 'grid.json' })} />
+@@ -160,7 +160,7 @@ void Linking; void Sheet;
+ 
+ function PassSecret() {
+   const [v, setV] = useState(''); useEffect(() => { void getPassSecret().then(setV); }, []);
+-  return <Field label="Pass server secret (POS_SECRET)" value={v} onChangeText={t => { setV(t); void setPassSecret(t); }} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Same value as the Worker's POS_SECRET" />;
++  return <Field kind="secret" label="Pass server secret (POS_SECRET)" value={v} onChangeText={t => { setV(t); void setPassSecret(t); }} placeholder="Same value as the Worker's POS_SECRET" />;
+ }
+ 
+ /** Settings ▸ Backup & transfer: export settings + logins to a file (encrypted or plain JSON) and restore one on another device. */
+@@ -211,8 +211,8 @@ function BackupSettings() {
+     <View>
+       <Section title="Export" footer="Includes your settings, staff, grid layout and logins (Shopify, receipt server, pass server). It does not include sales history or the catalogue, which come back from Shopify. The Zeller reader pairing is stored on the device and has to be set up again.">
+         <View style={{ padding: 16 }}>
+-          <Field label="Passphrase" value={pass} onChangeText={setPass} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={`At least ${MIN_PASSPHRASE} characters`} />
+-          <Field label="Repeat passphrase" value={pass2} onChangeText={setPass2} secureTextEntry autoCapitalize="none" autoCorrect={false} />
++          <Field kind="secret" label="Passphrase" value={pass} onChangeText={setPass} placeholder={`At least ${MIN_PASSPHRASE} characters`} />
++          <Field kind="secret" label="Repeat passphrase" value={pass2} onChangeText={setPass2} />
+           <Btn title="Export encrypted backup" icon="lock-closed-outline" onPress={() => void exportEncrypted()} busy={busy} disabled={!pass || !pass2} />
+           <Btn title="Export plain JSON (not encrypted)" kind="ghost" onPress={() => void exportPlain()} disabled={busy} />
+         </View></Section>
+@@ -220,7 +220,7 @@ function BackupSettings() {
+         <View style={{ padding: 16 }}>
+           <Btn title="Choose backup file…" kind="secondary" icon="folder-open-outline" onPress={() => void pick()} busy={busy && !pending} />
+           {pending ? <View style={{ marginTop: 10 }}>
+-            <Field label="Passphrase for this backup" value={importPass} onChangeText={setImportPass} secureTextEntry autoCapitalize="none" autoCorrect={false} />
++            <Field kind="secret" label="Passphrase for this backup" value={importPass} onChangeText={setImportPass} />
+             <Btn title="Decrypt & restore" onPress={() => void unlock()} busy={busy} disabled={!importPass} /></View> : null}
+         </View></Section>
+       {msg ? <View style={{ paddingHorizontal: 16 }}><Txt size={13} sub>{msg}</Txt></View> : null}
+@@ -269,7 +269,7 @@ function DisplaySettings() {
+         <Toggle label="Show the time" value={s.showClock} onChange={v => set({ showClock: v })} /></Section>
+       <Section title="Logo" footer="PNG or JPG. A transparent PNG looks best. An uploaded image is saved on this device and is included in backups; a link is not downloaded until it is shown.">
+         <View style={{ padding: 16 }}>
+-          <Field label="Logo link (https)" value={url} onChangeText={onUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://example.com/logo.png" />
++          <Field kind="url" label="Logo link (https)" value={url} onChangeText={onUrl} placeholder="https://example.com/logo.png" />
+           <Btn title="Upload an image from Files…" kind="secondary" icon="image-outline" onPress={() => void upload()} />
+           {s.logoFile ? <Btn title="Remove uploaded image" kind="ghost" onPress={() => void removeUpload()} /> : null}
+         </View></Section>
+@@ -279,7 +279,7 @@ function DisplaySettings() {
+             {SWATCHES.map(sw => <Pressable key={sw} accessibilityRole="button" accessibilityLabel={`Colour ${sw}`} onPress={() => { setHex(sw); set({ bgColor: sw.toLowerCase() }); }}
+               style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: sw, borderWidth: s.bgColor.toLowerCase() === sw.toLowerCase() ? 3 : 1, borderColor: s.bgColor.toLowerCase() === sw.toLowerCase() ? c.accent : c.line }} />)}
+           </View>
+-          <Field label="Or type a hex code" value={hex} onChangeText={onHex} autoCapitalize="none" autoCorrect={false} placeholder="#1E3A5F" maxLength={7} />
++          <Field kind="code" label="Or type a hex code" value={hex} onChangeText={onHex} placeholder="#1E3A5F" maxLength={7} />
+           {!normaliseHex(hex) ? <Txt size={13} color="#DC2626">Enter 3 or 6 hex digits, like #1E3A5F.</Txt> : null}
+         </View></Section>
+       <Section title="Preview">
+@@ -296,7 +296,7 @@ function DisplaySettings() {
+ 
+ function ReceiptSecret() {
+   const [v, setV] = useState(''); useEffect(() => { void getReceiptSecret().then(setV); }, []);
+-  return <Field label="Receipt server secret (RECEIPT_SECRET)" value={v} onChangeText={t => { setV(t); void setReceiptSecret(t); }} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="stored in this iPad's Keychain" />;
++  return <Field kind="secret" label="Receipt server secret (RECEIPT_SECRET)" value={v} onChangeText={t => { setV(t); void setReceiptSecret(t); }} placeholder="stored in this iPad's Keychain" />;
+ }
+ /** Settings ▸ Receipts: where receipts are hosted + the business details printed on them (needed for tax records). */
+ function ReceiptSettings() {
+@@ -307,19 +307,19 @@ function ReceiptSettings() {
+     <View>
+       <Section footer="Customers scan a QR code (or get a link) to a page that merges the Shopify order lines with the Zeller card details, with PDF and image download. Deploy receipt-server/ first (see its README).">
+         <View style={{ padding: 16 }}>
+-          <Field label="Receipt server URL" value={r.serverUrl} onChangeText={t => set({ serverUrl: t.trim() })} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://pos-receipts.yourname.workers.dev" />
++          <Field kind="url" label="Receipt server URL" value={r.serverUrl} onChangeText={t => set({ serverUrl: t.trim() })} placeholder="https://pos-receipts.yourname.workers.dev" />
+           <ReceiptSecret />
+           <Btn title="Send test receipt" kind="secondary" busy={busy} disabled={!r.serverUrl.trim()} onPress={() => void test()} />
+         </View></Section>
+       <Section title="Business details on receipts" footer="Receipts for tax purposes need the seller's name and ABN. These are copied into each receipt when it is made.">
+         <View style={{ padding: 16 }}>
+-          <Field label="Business / trading name" value={r.name} onChangeText={t => set({ name: t })} placeholder="Defaults to your shop name" />
+-          <Field label="ABN" value={r.abn} onChangeText={t => set({ abn: t })} keyboardType="number-pad" placeholder="12 345 678 901" />
+-          <Field label="Address" value={r.address} onChangeText={t => set({ address: t })} />
+-          <Field label="Phone" value={r.phone} onChangeText={t => set({ phone: t })} keyboardType="phone-pad" />
+-          <Field label="Email" value={r.email} onChangeText={t => set({ email: t })} autoCapitalize="none" keyboardType="email-address" />
+-          <Field label="Website" value={r.website} onChangeText={t => set({ website: t })} autoCapitalize="none" keyboardType="url" />
+-          <Field label="Return policy (optional)" value={r.returnPolicy} onChangeText={t => set({ returnPolicy: t })} multiline /></View></Section>
++          <Field kind="name" label="Business / trading name" value={r.name} onChangeText={t => set({ name: t })} placeholder="Defaults to your shop name" />
++          <Field kind="integer" label="ABN" value={r.abn} onChangeText={t => set({ abn: t })} placeholder="12 345 678 901" />
++          <Field kind="text" label="Address" value={r.address} onChangeText={t => set({ address: t })} />
++          <Field kind="phone" label="Phone" value={r.phone} onChangeText={t => set({ phone: t })} />
++          <Field kind="email" label="Email" value={r.email} onChangeText={t => set({ email: t })} />
++          <Field kind="url" label="Website" value={r.website} onChangeText={t => set({ website: t })} />
++          <Field kind="text" label="Return policy (optional)" value={r.returnPolicy} onChangeText={t => set({ returnPolicy: t })} multiline /></View></Section>
+       <Section footer="Turn on only if you are registered for GST. Receipts are then titled “Tax invoice” and show the GST included (1/11 of the total, gift cards excluded). Check with your accountant before relying on this.">
+         <Toggle label="Registered for GST" sub="Prices are treated as GST-inclusive" value={r.gstRegistered} onChange={v => set({ gstRegistered: v })} /></Section>
+     </View>
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index 39a86dc..fa3129e 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -35,7 +35,7 @@ export default function Staff() {
+       </Sheet>
+       <StaffPassSheet memberId={passFor} visible={!!passFor} onClose={() => setPassFor(null)} />
+       <Sheet visible={open} onClose={() => setOpen(false)} title="New staff member">
+-        <Field label="Name" value={f.name} onChangeText={t => setF({ ...f, name: t })} /><Field label="PIN (4–6 digits)" value={f.pin} onChangeText={t => setF({ ...f, pin: t.replace(/\D/g, '').slice(0, 6) })} keyboardType="number-pad" secureTextEntry />
++        <Field kind="name" label="Name" value={f.name} onChangeText={t => setF({ ...f, name: t })} /><Field kind="pin" label="PIN (4–6 digits)" value={f.pin} onChangeText={t => setF({ ...f, pin: t.replace(/\D/g, '').slice(0, 6) })} />
+         <Segmented value={f.role} onChange={role => setF({ ...f, role })} options={[{ v: 'cashier', label: 'Cashier' }, { v: 'manager', label: 'Manager' }, { v: 'owner', label: 'Owner' }]} /><View style={{ height: 12 }} /><Btn title="Add" onPress={() => void save()} />
+       </Sheet>
+     </Page>
+diff --git a/src/screens/Tiles.tsx b/src/screens/Tiles.tsx
+index 6b6ad50..6d63403 100644
+--- a/src/screens/Tiles.tsx
++++ b/src/screens/Tiles.tsx
+@@ -99,11 +99,11 @@ export function AddTileSheet({ visible, onClose, onPick }: { visible: boolean; o
+       {mode === 'menu' ? <View>
+         <Row icon="cube-outline" title="Items" onPress={() => setMode('items')} /><Row icon="folder-outline" title="Categories" onPress={() => setMode('cats')} />
+         <Row icon="albums-outline" title="Display groups" onPress={() => setMode('group')} /><Row icon="flash-outline" title="Actions" onPress={() => setMode('actions')} /><Row icon="pricetag-outline" title="Discounts" last onPress={() => setMode('discounts')} /></View> : null}
+-      {mode === 'items' ? <View><Field placeholder="Search items" value={q} onChangeText={setQ} autoCapitalize="none" />{items.map(v => <Row key={v.productId} image={v.image ?? null} title={v.productTitle} sub={(cat.byProduct[v.productId]?.length ?? 1) > 1 ? `${cat.byProduct[v.productId].length} variations` : undefined} onPress={() => pick({ type: 'item', productId: v.productId })} />)}</View> : null}
++      {mode === 'items' ? <View><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} />{items.map(v => <Row key={v.productId} image={v.image ?? null} title={v.productTitle} sub={(cat.byProduct[v.productId]?.length ?? 1) > 1 ? `${cat.byProduct[v.productId].length} variations` : undefined} onPress={() => pick({ type: 'item', productId: v.productId })} />)}</View> : null}
+       {mode === 'cats' ? <View>{cat.collections.map(col => <Row key={col.id} title={col.title} sub={`${col.productIds.length} items`} onPress={() => pick({ type: 'category', collectionId: col.id })} />)}{!cat.collections.length ? <Empty title="No categories" sub="Import from Shopify first." /> : null}</View> : null}
+       {mode === 'actions' ? <View>{ACTIONS.map(a => <Row key={a} title={ACTION_LABEL[a]} icon={ACTION_ICON[a]} onPress={() => pick({ type: 'action', action: a })} />)}</View> : null}
+       {mode === 'discounts' ? <View>{presets.map(p => <Row key={p.id} title={p.label} onPress={() => pick({ type: 'discount', code: p.label, pct: p.kind === 'pct' ? p.value : undefined, amtCents: p.kind === 'amt' ? p.value : undefined, label: p.label })} />)}{!presets.length ? <Empty title="No discount codes" sub="Create discount codes in Shopify, then re-import." /> : null}</View> : null}
+-      {mode === 'group' ? <View><Field label="Group name" value={groupName} onChangeText={setGroupName} placeholder="e.g. Plushies" /><Btn title="Create group" disabled={!groupName.trim()} onPress={() => { pick({ type: 'group', name: groupName.trim(), tiles: [] }); setGroupName(''); }} /></View> : null}
++      {mode === 'group' ? <View><Field kind="name" label="Group name" value={groupName} onChangeText={setGroupName} placeholder="e.g. Plushies" /><Btn title="Create group" disabled={!groupName.trim()} onPress={() => { pick({ type: 'group', name: groupName.trim(), tiles: [] }); setGroupName(''); }} /></View> : null}
+     </Sheet>
+   );
+ }
+diff --git a/src/screens/Transactions.tsx b/src/screens/Transactions.tsx
+index 9ef7f1c..b2440c8 100644
+--- a/src/screens/Transactions.tsx
++++ b/src/screens/Transactions.tsx
+@@ -48,7 +48,7 @@ export default function Transactions() {
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+         <Txt size={24} weight="700" style={{ marginBottom: 8, marginLeft: 4 }}>Transactions</Txt>
+-        <Field placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} returnKeyType="search" autoCapitalize="none" style={{ marginBottom: 0 }} />
++        <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
+       </View>
+       <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
+         ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'Press search to look in Shopify.' : 'Completed sales appear here.'} />}
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 51d758a..ee19f90 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -38,7 +38,7 @@ export function CustomAmountSheet({ visible, onClose }: { visible: boolean; onCl
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Custom amount">
+       <Txt size={40} weight="700" style={{ textAlign: 'center', marginBottom: 10 }}>{fmt(digitsToCents(digits))}</Txt>
+-      <Field placeholder="Note (optional)" value={note} onChangeText={setNote} />
++      <Field kind="text" placeholder="Note (optional)" value={note} onChangeText={setNote} />
+       <Keypad value={digits} onChange={setDigits} onSubmit={add} submitLabel="Add to cart" />
+     </Sheet>
+   );
+@@ -53,8 +53,8 @@ export function SaveCartSheet({ visible, onClose, onSaved }: { visible: boolean;
+   };
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Save cart">
+-      <Field label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam – holding for Friday'} value={name} onChangeText={setName} autoFocus />
+-      <Field label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
++      <Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam – holding for Friday'} value={name} onChangeText={setName} autoFocus />
++      <Field kind="text" label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
+       <Btn title="Save to Saved carts" onPress={save} />
+     </Sheet>
+   );
+@@ -79,14 +79,14 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+     <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
+       {creating ? (
+         <View>
+-          <Field label="First name" value={f.first} onChangeText={v => setF({ ...f, first: v })} /><Field label="Last name" value={f.last} onChangeText={v => setF({ ...f, last: v })} />
+-          <Field label="Email" value={f.email} onChangeText={v => setF({ ...f, email: v })} keyboardType="email-address" autoCapitalize="none" />
+-          <Field label="Mobile" value={f.phone} onChangeText={v => setF({ ...f, phone: v })} keyboardType="phone-pad" />
++          <Field kind="name" label="First name" value={f.first} onChangeText={v => setF({ ...f, first: v })} /><Field kind="name" label="Last name" value={f.last} onChangeText={v => setF({ ...f, last: v })} />
++          <Field kind="email" label="Email" value={f.email} onChangeText={v => setF({ ...f, email: v })} />
++          <Field kind="phone" label="Mobile" value={f.phone} onChangeText={v => setF({ ...f, phone: v })} />
+           <Btn title="Create & attach" onPress={create} busy={busy} /><Btn title="Back" kind="ghost" onPress={() => setCreating(false)} />
+         </View>
+       ) : (
+         <View>
+-          <Field placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={search} returnKeyType="search" autoCapitalize="none" />
++          <Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={search} />
+           {shown.map(cu => <Row key={cu.id} title={cu.name || cu.email || cu.phone || 'Customer'} sub={[cu.email, cu.phone].filter(Boolean).join(' · ')} onPress={() => { onPick(cu); onClose(); }} />)}
+           {q.trim() && !busy ? <Btn title="Search Shopify" kind="secondary" small onPress={search} style={{ marginTop: 8 }} /> : null}
+           {allowCreate ? <Btn title="Create customer" icon="person-add-outline" kind="secondary" onPress={() => setCreating(true)} style={{ marginTop: 12 }} /> : null}
+@@ -114,7 +114,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+           {siblings.map(s => <Chip key={s.id} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
+         <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
+         <Row title="Price adjustment" sub={line.overrideCents !== undefined ? `${fmt(line.overrideCents)} (was ${fmt(line.unitCents)})` : fmt(line.unitCents)} icon="create-outline" onPress={() => { setDigits(''); setPrice(true); }} />
+-        <Field label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
++        <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
+         <Btn title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
+         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
+       </Sheet>
+@@ -149,9 +149,9 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
+       <Segmented value={how} onChange={setHow} options={[{ v: 'hand', label: 'Hand over / print' }, { v: 'email', label: 'Email it' }]} />
+       {how === 'email' ? <View style={{ marginTop: 12 }}>
+         {buyer?.email && email !== buyer.email ? <Chip label={`Use ${buyer.email}`} onPress={() => { setEmail(buyer.email!); if (!name) setName(buyer.name ?? ''); }} /> : null}
+-        <Field label="Recipient email" value={email} onChangeText={setEmail} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" placeholder="name@example.com" />
+-        <Field label="Recipient name (optional)" value={name} onChangeText={setName} />
+-        <Field label="Message (optional)" value={msg} onChangeText={setMsg} placeholder="Happy birthday!" />
++        <Field kind="email" label="Recipient email" value={email} onChangeText={setEmail} placeholder="name@example.com" />
++        <Field kind="name" label="Recipient name (optional)" value={name} onChangeText={setName} />
++        <Field kind="text" label="Message (optional)" value={msg} onChangeText={setMsg} placeholder="Happy birthday!" />
+         <Txt size={12} sub>Shopify emails the card after payment completes. Add to Apple Wallet appears in that email if enabled in Shopify settings.</Txt>
+       </View> : <Txt size={13} sub style={{ marginTop: 10 }}>The code is shown on the receipt screen after payment.</Txt>}
+       <Btn title="Add gift card to cart" onPress={confirmAdd} style={{ marginTop: 14 }} />
+@@ -174,7 +174,7 @@ export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean;
+   return (
+     <>
+       <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">
+-        <Field label="Code" value={code} onChangeText={t => { setCode(t); setInfo(undefined); }} autoCapitalize="characters" autoCorrect={false} placeholder="Type or scan the code" />
++        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(t); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
+         <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setCam(true)} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(code)} busy={busy} disabled={code.trim().length < 4} style={{ flex: 1 }} /></View>
+         {info === null ? <Txt color="#DC2626" style={{ marginTop: 14 }}>No gift card found for that code.</Txt> : null}
+         {info ? <View style={{ marginTop: 16, gap: 4 }}><Txt sub>Card ••••{info.last4}</Txt><Money cents={info.balanceCents} size={34} weight="700" /><Txt sub size={13}>{info.enabled ? 'Active' : 'Disabled'}{info.verified ? '' : ' · code could not be verified'}{info.expiresOn ? ` · expires ${info.expiresOn}` : ''}</Txt>
+diff --git a/src/ui/keyboard.tsx b/src/ui/keyboard.tsx
+new file mode 100644
+index 0000000..e2ec94b
+--- /dev/null
++++ b/src/ui/keyboard.tsx
+@@ -0,0 +1,53 @@
++// Location: src/ui/keyboard.tsx
++// Keyboard awareness: a hook for the keyboard's size, and a ScrollView that scrolls the focused field into view.
++import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
++import { Dimensions, Keyboard, KeyboardEvent, Platform, ScrollView, ScrollViewProps, TextInput, View } from 'react-native';
++import { keyboardOverlap, revealDelta } from '../lib/keyboardMath';
++
++/** Points of the window covered by the keyboard (0 when hidden). Uses the keyboard's top edge so floating/split iPad keyboards behave. */
++export function useKeyboardOverlap(): number {
++  const [o, setO] = useState(0);
++  useEffect(() => {
++    const ios = Platform.OS === 'ios';
++    const set = (e: KeyboardEvent) => setO(keyboardOverlap(Dimensions.get('window').height, e.endCoordinates.screenY, e.endCoordinates.height));
++    const subs = [
++      Keyboard.addListener(ios ? 'keyboardWillChangeFrame' : 'keyboardDidShow', set),
++      Keyboard.addListener(ios ? 'keyboardWillHide' : 'keyboardDidHide', () => setO(0)),
++    ];
++    return () => subs.forEach(s => s.remove());
++  }, []);
++  return o;
++}
++
++type Reveal = { reveal: (input: TextInput | null) => void } | null;
++export const RevealCtx = createContext<Reveal>(null);
++export const useReveal = () => useContext(RevealCtx);
++
++/**
++ * ScrollView that keeps the focused <Field> clear of the keyboard. Fields call `reveal(ref)` on focus;
++ * we also re-check when the keyboard finishes moving (it usually arrives after the focus event).
++ * `inset`: add the keyboard height as bottom padding (use when the scroll view itself is NOT shrunk by the keyboard).
++ */
++export function RevealScroll({ inset, children, contentContainerStyle, ...rest }: ScrollViewProps & { inset?: boolean }) {
++  const overlap = useKeyboardOverlap();
++  const box = useRef<View>(null); const sv = useRef<ScrollView>(null); const offset = useRef(0); const focused = useRef<TextInput | null>(null); const overlapRef = useRef(0);
++  overlapRef.current = overlap;
++  const run = useCallback(() => {
++    const input = focused.current; const b = box.current; if (!input || !b) return;
++    b.measureInWindow((_bx, by, _bw, bh) => input.measureInWindow((_fx, fy, _fw, fh) => {
++      const kbTop = Dimensions.get('window').height - overlapRef.current;
++      const delta = revealDelta({ fieldTop: fy, fieldBottom: fy + fh, viewTop: by, viewBottom: Math.min(by + bh, kbTop) });
++      if (Math.abs(delta) > 1) sv.current?.scrollTo({ y: Math.max(0, offset.current + delta), animated: true });
++    }));
++  }, []);
++  const ctx = useRef({ reveal: (input: TextInput | null) => { focused.current = input; if (input) { setTimeout(run, 60); setTimeout(run, 350); } } }).current;
++  useEffect(() => { if (focused.current) setTimeout(run, 30); }, [overlap, run]);
++  return (
++    <RevealCtx.Provider value={ctx}>
++      <View ref={box} collapsable={false} style={{ flexGrow: 1, flexShrink: 1 }}>
++        <ScrollView ref={sv} keyboardShouldPersistTaps="handled" scrollEventThrottle={16} onScroll={e => { offset.current = e.nativeEvent.contentOffset.y; rest.onScroll?.(e); }}
++          {...rest} contentContainerStyle={[contentContainerStyle, inset && overlap ? { paddingBottom: overlap + 24 } : null]}>{children}</ScrollView>
++      </View>
++    </RevealCtx.Provider>
++  );
++}
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 3c4149a..c52296e 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -1,6 +1,6 @@
+ // Location: src/ui/kit.tsx
+-import React, { useEffect, useRef, useState } from 'react';
+-import { ActivityIndicator, Alert, Image, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleProp, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
++import React, { useEffect, useId, useRef, useState } from 'react';
++import { ActivityIndicator, Alert, Image, InputAccessoryView, Keyboard, Modal, Platform, Pressable, StyleProp, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import * as Haptics from 'expo-haptics';
+ import { useTheme, useLayout } from './theme';
+@@ -8,6 +8,9 @@ import { digitsToCents, fmt } from '../lib/money';
+ import { NativeSegmented, NativeSwitch, hasSwiftUI } from './native';
+ import { noteActivity } from '../lib/idle';
+ import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
++import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
++import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
++import { sheetMaxHeight } from '../lib/keyboardMath';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+ export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+@@ -79,14 +82,18 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
+     <Pressable key={o.v} onPress={() => { tap(); onChange(o.v); }} accessibilityRole="button" accessibilityState={{ selected: o.v === value }} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: o.v === value ? c.card : 'transparent' }}>
+       <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: 14 }}>{o.label}</Text></Pressable>))}</View>;
+ }
+-export function Field({ label, style, onFocus, onBlur, ...p }: TextInputProps & { label?: string }) {
+-  const { c } = useTheme(); const has = useRef(false);
++/** `kind` picks the keyboard + capitalisation + autocorrect for the data (see lib/fieldKinds.ts); explicit props override it. */
++export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
++  const { c } = useTheme(); const has = useRef(false); const input = useRef<TextInput>(null); const reveal = useReveal(); const accId = useId();
++  const preset = kind ? KIND_PROPS[kind] : {};
++  const doneBar = Platform.OS === 'ios' && needsDoneBar(kind, p.keyboardType);
+   // Tell the focus guard when this field is being typed in so the Bluetooth-scanner capture input leaves it alone.
+-  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } onFocus?.(e); };
+-  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } onBlur?.(e); };
++  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } reveal?.reveal(input.current); onFocus?.(e); };
++  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } reveal?.reveal(null); onBlur?.(e); };
+   useEffect(() => () => { if (has.current) { has.current = false; fieldBlurred(); } }, []); // unmounted while focused: onBlur never fires
+   return <View style={{ marginBottom: 12 }}>{label ? <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>{label}</Txt> : null}
+-    <TextInput placeholderTextColor={c.sub} {...p} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} /></View>;
++    <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
++    {doneBar ? <InputAccessoryView nativeID={accId}><View style={{ flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 8 }}><Btn title="Done" kind="ghost" small onPress={() => Keyboard.dismiss()} /></View></InputAccessoryView> : null}</View>;
+ }
+ export function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
+   return <Row title={label} sub={sub} right={<NativeSwitch value={value} onChange={v => { tap(); onChange(v); }} label={label} />} />;
+@@ -105,25 +112,25 @@ export function Page({ title, onBack, right, children, scroll = true, pad = true
+         {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} /> : <View style={{ width: 12 }} />}
+         <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}
+       </View>
+-      {scroll ? <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</ScrollView> : <View style={{ flex: 1 }}>{children}</View>}
++      {scroll ? <RevealScroll inset contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</RevealScroll> : <View style={{ flex: 1 }}>{children}</View>}
+     </View>
+   );
+ }
+ 
+-/** Bottom sheet on phone, centred card on tablet. */
++/** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
+ export function Sheet({ visible, onClose, title, children, full, dismissable = true }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean }) {
+-  const { c } = useTheme(); const { tablet, height } = useLayout();
++  const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
+   return (
+     <Modal visible={visible} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
+-      <KeyboardAvoidingView onTouchStart={noteActivity} behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay }}>
++      <View onTouchStart={noteActivity} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay, paddingBottom: overlap }}>
+         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
+-        <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: height * (full ? 0.94 : 0.86), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: tablet ? 8 : 24 }}>
++        <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
+           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 }}>
+             <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} /> : null}
+           </View>
+-          <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</ScrollView>
++          <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
+         </View>
+-      </KeyboardAvoidingView>
++      </View>
+     </Modal>
+   );
+ }
+diff --git a/tests/keyboard.test.ts b/tests/keyboard.test.ts
+new file mode 100644
+index 0000000..db4e30b
+--- /dev/null
++++ b/tests/keyboard.test.ts
+@@ -0,0 +1,39 @@
++// Location: tests/keyboard.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { keyboardOverlap, revealDelta, sheetMaxHeight } from '../src/lib/keyboardMath';
++import { KIND_PROPS, needsDoneBar, type FieldKind } from '../src/lib/fieldKinds';
++
++test('keyboard overlap: hidden, shown, floating/partial, bad input', () => {
++  assert.equal(keyboardOverlap(800, 800, 0), 0);
++  assert.equal(keyboardOverlap(800, 540, 260), 260);
++  assert.equal(keyboardOverlap(800, 700, 260), 100); // keyboard partly off-screen / floating
++  assert.equal(keyboardOverlap(800, 900, 260), 0);
++  assert.equal(keyboardOverlap(800, NaN, NaN), 0);
++});
++
++test('reveal: already visible → no scroll', () => assert.equal(revealDelta({ fieldTop: 200, fieldBottom: 250, viewTop: 100, viewBottom: 600 }), 0));
++test('reveal: field under the keyboard → scroll down just enough (plus margin)', () => assert.equal(revealDelta({ fieldTop: 560, fieldBottom: 610, viewTop: 100, viewBottom: 600, margin: 12 }), 22));
++test('reveal: field above the view → scroll up', () => assert.equal(revealDelta({ fieldTop: 60, fieldBottom: 110, viewTop: 100, viewBottom: 600, margin: 12 }), -52));
++test('reveal: field taller than the visible band aligns to its top', () => assert.equal(revealDelta({ fieldTop: 300, fieldBottom: 900, viewTop: 100, viewBottom: 500, margin: 10 }), 190));
++
++test('sheet height: limited by screen share and by space above keyboard, never tiny', () => {
++  assert.equal(sheetMaxHeight(1000, 0, 0.86, 48), 860);
++  assert.equal(sheetMaxHeight(1000, 400, 0.86, 48), 552);
++  assert.equal(sheetMaxHeight(400, 380, 0.86, 48), 160);
++});
++
++test('every kind is defined; keyboards are consistent for each data type', () => {
++  const kinds: FieldKind[] = ['text', 'name', 'email', 'phone', 'url', 'integer', 'decimal', 'money', 'pin', 'secret', 'code', 'search', 'date', 'json'];
++  for (const k of kinds) assert.ok(KIND_PROPS[k], k);
++  assert.equal(KIND_PROPS.email.keyboardType, 'email-address'); assert.equal(KIND_PROPS.email.autoCapitalize, 'none');
++  assert.equal(KIND_PROPS.money.keyboardType, 'decimal-pad'); assert.equal(KIND_PROPS.integer.keyboardType, 'number-pad');
++  assert.equal(KIND_PROPS.pin.secureTextEntry, true); assert.equal(KIND_PROPS.secret.secureTextEntry, true);
++  assert.equal(KIND_PROPS.search.returnKeyType, 'search'); assert.equal(KIND_PROPS.name.autoCapitalize, 'words');
++  for (const k of ['email', 'url', 'code', 'secret', 'search'] as FieldKind[]) { assert.equal(KIND_PROPS[k].autoCorrect, false, k); assert.equal(KIND_PROPS[k].autoCapitalize, 'none', k); }
++});
++test('Done bar only for pads that have no Return key', () => {
++  assert.equal(needsDoneBar('money'), true); assert.equal(needsDoneBar('integer'), true); assert.equal(needsDoneBar('phone'), true); assert.equal(needsDoneBar('pin'), true);
++  assert.equal(needsDoneBar('text'), false); assert.equal(needsDoneBar('email'), false); assert.equal(needsDoneBar(undefined), false);
++  assert.equal(needsDoneBar(undefined, 'decimal-pad'), true); assert.equal(needsDoneBar('money', 'default'), false);
++});
+-- 
+2.43.0
+

@@ -1,9 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Modal, Pressable, Text, TextInput, View } from 'react-native';
+import { Keyboard, Modal, Pressable, Text, TextInput, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Btn, Txt } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { noteActivity } from '../lib/idle';
+import { isUserTyping } from '../lib/focusGuard';
 
 /** Camera scanner. `onScan` returns a short confirmation ("Added Dragon plush") or null if the code was unknown. Stays open until Done. */
 export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
@@ -36,9 +37,17 @@ export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode'
  */
 export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) => void; enabled?: boolean }) {
   const ref = useRef<TextInput>(null); const [v, setV] = useState('');
-  useEffect(() => { if (!enabled) return; const t = setInterval(() => { if (ref.current && !ref.current.isFocused()) ref.current.focus(); }, 1500); return () => clearInterval(t); }, [enabled]);
+  // Never grab focus while someone is typing in a real field (that is what made the keyboard vanish): the guard
+  // knows about every <Field>, and Keyboard.isVisible() covers any raw TextInput we don't own.
+  const canGrab = () => !isUserTyping() && !Keyboard.isVisible();
+  useEffect(() => {
+    if (!enabled) return;
+    if (canGrab()) ref.current?.focus();
+    const t = setInterval(() => { if (ref.current && !ref.current.isFocused() && canGrab()) ref.current.focus(); }, 1500);
+    return () => clearInterval(t);
+  }, [enabled]);
   if (!enabled) return null;
-  return <TextInput ref={ref} value={v} onChangeText={t => { noteActivity(); setV(t); }} autoFocus showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
+  return <TextInput ref={ref} value={v} onChangeText={t => { noteActivity(); setV(t); }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
     onSubmitEditing={() => { const code = v.trim(); setV(''); if (code) onScan(code); }} style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01, top: 0, left: 0 }} accessibilityElementsHidden importantForAccessibility="no" />;
 }
 export const ScannerHint = () => <Txt size={12} sub>Bluetooth scanner ready</Txt>;

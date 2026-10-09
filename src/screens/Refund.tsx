@@ -74,7 +74,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
       </View>
 
       <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" full>
-        <Field placeholder="Search products" value={q} onChangeText={setQ} autoCapitalize="none" />
+        <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
         {hits.map((v: Variant) => <Row key={v.id} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
       </Sheet>
       <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
