@@ -152,7 +152,7 @@ export default function Checkout() {
 
       {tab === 'all' ? (
         <View style={{ flex: 1 }}>
-          <View style={{ paddingHorizontal: 12 }}><Field placeholder="Filter products" value={allQ} onChangeText={setAllQ} autoCapitalize="none" style={{ marginBottom: 0 }} /></View>
+          <View style={{ paddingHorizontal: 12 }}><Field kind="search" placeholder="Filter products" value={allQ} onChangeText={setAllQ} style={{ marginBottom: 0 }} /></View>
           <FlatList data={allList} keyExtractor={v => v.productId} style={{ marginTop: 8 }} ListEmptyComponent={<Empty title="No products" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
             renderItem={({ item: v }) => { const many = (cat.byProduct[v.productId]?.length ?? 1) > 1; const tone = stockTone(v); return (
               <Row image={v.image ?? null} title={v.productTitle} sub={many ? `${cat.byProduct[v.productId].length} variations` : v.stock === null ? undefined : `${v.stock} in stock`} onPress={() => addItems(many ? cat.byProduct[v.productId] : [v])}
@@ -197,7 +197,7 @@ export default function Checkout() {
       </Sheet>
 
       <Sheet visible={sheet === 'search'} onClose={() => { setSheet('none'); setQ(''); }} title="Search" full>
-        <Field placeholder="Search items, customers, discounts, saved carts" value={q} onChangeText={setQ} autoFocus autoCapitalize="none" />
+        <Field kind="search" placeholder="Search items, customers, discounts, saved carts" value={q} onChangeText={setQ} autoFocus />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
           {([['all', 'All'], ['items', 'Items'], ['customers', 'Customers'], ['discounts', 'Discounts'], ['carts', 'Saved carts']] as const).map(([k, l]) => <Chip key={k} label={l} active={filter === k} onPress={() => setFilter(k)} />)}</ScrollView>
         {show('items') && results.items.map(v => <Row key={v.id} image={v.image ?? null} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} sub={[v.sku, v.barcode].filter(Boolean).join(' · ')} right={<Money cents={v.priceCents} weight="600" />} onPress={() => { add(v); setSheet('none'); setQ(''); }} />)}
@@ -211,7 +211,7 @@ export default function Checkout() {
 }
 function PageAdder({ onAdd, onRename, currentName }: { onAdd: (n: string) => void; onRename: (n: string) => void; currentName: string }) {
   const [name, setName] = useState('');
-  return <View style={{ marginTop: 14 }}><Field label="Page name" value={name} onChangeText={setName} placeholder={currentName || 'e.g. Drinks'} />
+  return <View style={{ marginTop: 14 }}><Field kind="name" label="Page name" value={name} onChangeText={setName} placeholder={currentName || 'e.g. Drinks'} />
     <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Add page" kind="secondary" small disabled={!name.trim()} onPress={() => { onAdd(name.trim()); setName(''); }} style={{ flex: 1 }} /><Btn title="Rename current" kind="secondary" small disabled={!name.trim()} onPress={() => { onRename(name.trim()); setName(''); }} style={{ flex: 1 }} /></View></View>;
 }
 void ACTION_LABEL;

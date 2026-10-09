@@ -35,7 +35,7 @@ export default function Staff() {
       </Sheet>
       <StaffPassSheet memberId={passFor} visible={!!passFor} onClose={() => setPassFor(null)} />
       <Sheet visible={open} onClose={() => setOpen(false)} title="New staff member">
-        <Field label="Name" value={f.name} onChangeText={t => setF({ ...f, name: t })} /><Field label="PIN (4–6 digits)" value={f.pin} onChangeText={t => setF({ ...f, pin: t.replace(/\D/g, '').slice(0, 6) })} keyboardType="number-pad" secureTextEntry />
+        <Field kind="name" label="Name" value={f.name} onChangeText={t => setF({ ...f, name: t })} /><Field kind="pin" label="PIN (4–6 digits)" value={f.pin} onChangeText={t => setF({ ...f, pin: t.replace(/\D/g, '').slice(0, 6) })} />
         <Segmented value={f.role} onChange={role => setF({ ...f, role })} options={[{ v: 'cashier', label: 'Cashier' }, { v: 'manager', label: 'Manager' }, { v: 'owner', label: 'Owner' }]} /><View style={{ height: 12 }} /><Btn title="Add" onPress={() => void save()} />
       </Sheet>
     </Page>

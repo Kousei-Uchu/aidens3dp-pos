@@ -53,19 +53,19 @@ export default function Settings() {
       {sub === 'display' ? <DisplaySettings /> : null}
       {sub === 'payments' ? <Section footer="Fees are estimated from these rates – the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
-        <View style={{ padding: 16 }}><Field label="Card-present fee %" keyboardType="decimal-pad" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
-          <Field label="Keyed / card-not-present fee %" keyboardType="decimal-pad" defaultValue={String(s.fees.keyedRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, keyedRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} /></View>
+        <View style={{ padding: 16 }}><Field kind="decimal" label="Card-present fee %" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
+          <Field kind="decimal" label="Keyed / card-not-present fee %" defaultValue={String(s.fees.keyedRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, keyedRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} /></View>
         <Row title="Reader & pairing" sub="More ▸ Support ▸ Zeller" last onPress={() => nav.push('diagnostics')} /></Section> : null}
       {sub === 'discounts' ? <BundlesEditor /> : null}
       {sub === 'hardware' ? <HardwareTest /> : null}
       {sub === 'data' ? <DataSettings /> : null}
       {sub === 'grid' ? <GridSettings /> : null}
-      {sub === 'gift' ? <View style={{ padding: 16 }}><Field label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} autoCapitalize="none" keyboardType="url" placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
+      {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
         <Txt weight="600">Tile size</Txt><Segmented value={s.tileSize} onChange={v => patch({ tileSize: v })} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
         <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View></View> : null}
       {sub === 'about' ? <Section><Row title="Register" sub={`${s.registerName} · ${s.registerId}`} /><Row title="Shopify API" sub="2026-07" /><Row title="Currency" sub="AUD" last /></Section> : null}
-      {sub === 'about' ? <View style={{ padding: 16 }}><Field label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
+      {sub === 'about' ? <View style={{ padding: 16 }}><Field kind="name" label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
     </Page>
   );
 }
@@ -85,9 +85,9 @@ function ShopifySettings() {
   const imp = async () => { setBusy(true); try { const r = await importFromShopify(m => setMsg(m)); setMsg(`Imported ${r.variants} variants, ${r.collections} collections, ${r.customers} customers, ${r.discounts} discounts.`); void pollShared(); } catch (e: any) { setMsg(`Import failed: ${e.message}`); } setBusy(false); };
   return (
     <View style={{ padding: 16, gap: 4 }}>
-      <Field label="Store domain" value={f.domain} onChangeText={t => setF({ ...f, domain: t })} autoCapitalize="none" placeholder="yourshop.myshopify.com" />
-      <Field label="Client ID (Dev Dashboard app)" value={f.id} onChangeText={t => setF({ ...f, id: t })} autoCapitalize="none" autoCorrect={false} />
-      <Field label="Client secret" value={f.secret} onChangeText={t => setF({ ...f, secret: t })} autoCapitalize="none" autoCorrect={false} secureTextEntry />
+      <Field kind="code" label="Store domain" value={f.domain} onChangeText={t => setF({ ...f, domain: t })} placeholder="yourshop.myshopify.com" />
+      <Field kind="code" label="Client ID (Dev Dashboard app)" value={f.id} onChangeText={t => setF({ ...f, id: t })} />
+      <Field kind="secret" label="Client secret" value={f.secret} onChangeText={t => setF({ ...f, secret: t })} />
       <Txt size={12} sub>Stored in the iOS Keychain on this device only.</Txt>
       <Btn title="Save & test connection" onPress={() => void connect()} busy={busy} style={{ marginTop: 10 }} />
       {locs.length > 1 || s.locationName ? <View style={{ marginTop: 14 }}><Txt weight="600" style={{ marginBottom: 6 }}>Location (stock & orders)</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{(locs.length ? locs : [{ id: s.locationId!, name: s.locationName! }]).map(l => <Chip key={l.id} label={l.name} active={s.locationId === l.id} onPress={() => patch({ locationId: l.id, locationName: l.name })} />)}</View></View> : null}
@@ -112,7 +112,7 @@ function BundlesEditor() {
   return (
     <View style={{ padding: 16, gap: 8 }}>
       <Txt size={13} sub>Automatic discounts from Shopify apply by themselves. Bundle deals (one unit from each set → price change) are configured here as JSON and applied before Shopify discounts. Items tagged no-discount are excluded.</Txt>
-      <Field value={text} onChangeText={setText} multiline autoCapitalize="none" autoCorrect={false} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
+      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
       <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save" onPress={save} style={{ flex: 1 }} /><Btn title="Insert example" kind="secondary" onPress={() => setText(SAMPLE_BUNDLES)} style={{ flex: 1 }} /></View>
       {msg.map((m, i) => <Txt key={i} size={13} sub>{m}</Txt>)}
     </View>
@@ -147,7 +147,7 @@ function GridSettings() {
   return (
     <View style={{ padding: 16, gap: 10 }}>
       <Txt size={13} sub>Paste a grid.json or pick a file. Categories and items are matched to your imported Shopify catalogue by id.</Txt>
-      <Field value={text} onChangeText={setText} multiline autoCapitalize="none" autoCorrect={false} style={{ minHeight: 160, fontFamily: 'Menlo', fontSize: 12 }} placeholder='{"version":1,"pages":[…]}' />
+      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 160, fontFamily: 'Menlo', fontSize: 12 }} placeholder='{"version":1,"pages":[…]}' />
       <Btn title="Import pasted JSON" onPress={() => doImport(text)} disabled={!text.trim()} />
       <Btn title="Import from file…" kind="secondary" onPress={async () => { const r = await DocPicker.getDocumentAsync({ type: ['application/json', 'text/plain', '*/*'], copyToCacheDirectory: true }); if (r.canceled || !r.assets?.[0]) return; doImport(await FS.readAsStringAsync(r.assets[0].uri)); }} />
       <Btn title="Export grid.json" kind="secondary" onPress={() => void Share.share({ message: serialiseGrid(grid), title: 'grid.json' })} />
@@ -160,7 +160,7 @@ void Linking; void Sheet;
 
 function PassSecret() {
   const [v, setV] = useState(''); useEffect(() => { void getPassSecret().then(setV); }, []);
-  return <Field label="Pass server secret (POS_SECRET)" value={v} onChangeText={t => { setV(t); void setPassSecret(t); }} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="Same value as the Worker's POS_SECRET" />;
+  return <Field kind="secret" label="Pass server secret (POS_SECRET)" value={v} onChangeText={t => { setV(t); void setPassSecret(t); }} placeholder="Same value as the Worker's POS_SECRET" />;
 }
 
 /** Settings ▸ Backup & transfer: export settings + logins to a file (encrypted or plain JSON) and restore one on another device. */
@@ -211,8 +211,8 @@ function BackupSettings() {
     <View>
       <Section title="Export" footer="Includes your settings, staff, grid layout and logins (Shopify, receipt server, pass server). It does not include sales history or the catalogue, which come back from Shopify. The Zeller reader pairing is stored on the device and has to be set up again.">
         <View style={{ padding: 16 }}>
-          <Field label="Passphrase" value={pass} onChangeText={setPass} secureTextEntry autoCapitalize="none" autoCorrect={false} placeholder={`At least ${MIN_PASSPHRASE} characters`} />
-          <Field label="Repeat passphrase" value={pass2} onChangeText={setPass2} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+          <Field kind="secret" label="Passphrase" value={pass} onChangeText={setPass} placeholder={`At least ${MIN_PASSPHRASE} characters`} />
+          <Field kind="secret" label="Repeat passphrase" value={pass2} onChangeText={setPass2} />
           <Btn title="Export encrypted backup" icon="lock-closed-outline" onPress={() => void exportEncrypted()} busy={busy} disabled={!pass || !pass2} />
           <Btn title="Export plain JSON (not encrypted)" kind="ghost" onPress={() => void exportPlain()} disabled={busy} />
         </View></Section>
@@ -220,7 +220,7 @@ function BackupSettings() {
         <View style={{ padding: 16 }}>
           <Btn title="Choose backup file…" kind="secondary" icon="folder-open-outline" onPress={() => void pick()} busy={busy && !pending} />
           {pending ? <View style={{ marginTop: 10 }}>
-            <Field label="Passphrase for this backup" value={importPass} onChangeText={setImportPass} secureTextEntry autoCapitalize="none" autoCorrect={false} />
+            <Field kind="secret" label="Passphrase for this backup" value={importPass} onChangeText={setImportPass} />
             <Btn title="Decrypt & restore" onPress={() => void unlock()} busy={busy} disabled={!importPass} /></View> : null}
         </View></Section>
       {msg ? <View style={{ paddingHorizontal: 16 }}><Txt size={13} sub>{msg}</Txt></View> : null}
@@ -269,7 +269,7 @@ function DisplaySettings() {
         <Toggle label="Show the time" value={s.showClock} onChange={v => set({ showClock: v })} /></Section>
       <Section title="Logo" footer="PNG or JPG. A transparent PNG looks best. An uploaded image is saved on this device and is included in backups; a link is not downloaded until it is shown.">
         <View style={{ padding: 16 }}>
-          <Field label="Logo link (https)" value={url} onChangeText={onUrl} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://example.com/logo.png" />
+          <Field kind="url" label="Logo link (https)" value={url} onChangeText={onUrl} placeholder="https://example.com/logo.png" />
           <Btn title="Upload an image from Files…" kind="secondary" icon="image-outline" onPress={() => void upload()} />
           {s.logoFile ? <Btn title="Remove uploaded image" kind="ghost" onPress={() => void removeUpload()} /> : null}
         </View></Section>
@@ -279,7 +279,7 @@ function DisplaySettings() {
             {SWATCHES.map(sw => <Pressable key={sw} accessibilityRole="button" accessibilityLabel={`Colour ${sw}`} onPress={() => { setHex(sw); set({ bgColor: sw.toLowerCase() }); }}
               style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: sw, borderWidth: s.bgColor.toLowerCase() === sw.toLowerCase() ? 3 : 1, borderColor: s.bgColor.toLowerCase() === sw.toLowerCase() ? c.accent : c.line }} />)}
           </View>
-          <Field label="Or type a hex code" value={hex} onChangeText={onHex} autoCapitalize="none" autoCorrect={false} placeholder="#1E3A5F" maxLength={7} />
+          <Field kind="code" label="Or type a hex code" value={hex} onChangeText={onHex} placeholder="#1E3A5F" maxLength={7} />
           {!normaliseHex(hex) ? <Txt size={13} color="#DC2626">Enter 3 or 6 hex digits, like #1E3A5F.</Txt> : null}
         </View></Section>
       <Section title="Preview">
@@ -296,7 +296,7 @@ function DisplaySettings() {
 
 function ReceiptSecret() {
   const [v, setV] = useState(''); useEffect(() => { void getReceiptSecret().then(setV); }, []);
-  return <Field label="Receipt server secret (RECEIPT_SECRET)" value={v} onChangeText={t => { setV(t); void setReceiptSecret(t); }} autoCapitalize="none" autoCorrect={false} secureTextEntry placeholder="stored in this iPad's Keychain" />;
+  return <Field kind="secret" label="Receipt server secret (RECEIPT_SECRET)" value={v} onChangeText={t => { setV(t); void setReceiptSecret(t); }} placeholder="stored in this iPad's Keychain" />;
 }
 /** Settings ▸ Receipts: where receipts are hosted + the business details printed on them (needed for tax records). */
 function ReceiptSettings() {
@@ -307,19 +307,19 @@ function ReceiptSettings() {
     <View>
       <Section footer="Customers scan a QR code (or get a link) to a page that merges the Shopify order lines with the Zeller card details, with PDF and image download. Deploy receipt-server/ first (see its README).">
         <View style={{ padding: 16 }}>
-          <Field label="Receipt server URL" value={r.serverUrl} onChangeText={t => set({ serverUrl: t.trim() })} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://pos-receipts.yourname.workers.dev" />
+          <Field kind="url" label="Receipt server URL" value={r.serverUrl} onChangeText={t => set({ serverUrl: t.trim() })} placeholder="https://pos-receipts.yourname.workers.dev" />
           <ReceiptSecret />
           <Btn title="Send test receipt" kind="secondary" busy={busy} disabled={!r.serverUrl.trim()} onPress={() => void test()} />
         </View></Section>
       <Section title="Business details on receipts" footer="Receipts for tax purposes need the seller's name and ABN. These are copied into each receipt when it is made.">
         <View style={{ padding: 16 }}>
-          <Field label="Business / trading name" value={r.name} onChangeText={t => set({ name: t })} placeholder="Defaults to your shop name" />
-          <Field label="ABN" value={r.abn} onChangeText={t => set({ abn: t })} keyboardType="number-pad" placeholder="12 345 678 901" />
-          <Field label="Address" value={r.address} onChangeText={t => set({ address: t })} />
-          <Field label="Phone" value={r.phone} onChangeText={t => set({ phone: t })} keyboardType="phone-pad" />
-          <Field label="Email" value={r.email} onChangeText={t => set({ email: t })} autoCapitalize="none" keyboardType="email-address" />
-          <Field label="Website" value={r.website} onChangeText={t => set({ website: t })} autoCapitalize="none" keyboardType="url" />
-          <Field label="Return policy (optional)" value={r.returnPolicy} onChangeText={t => set({ returnPolicy: t })} multiline /></View></Section>
+          <Field kind="name" label="Business / trading name" value={r.name} onChangeText={t => set({ name: t })} placeholder="Defaults to your shop name" />
+          <Field kind="integer" label="ABN" value={r.abn} onChangeText={t => set({ abn: t })} placeholder="12 345 678 901" />
+          <Field kind="text" label="Address" value={r.address} onChangeText={t => set({ address: t })} />
+          <Field kind="phone" label="Phone" value={r.phone} onChangeText={t => set({ phone: t })} />
+          <Field kind="email" label="Email" value={r.email} onChangeText={t => set({ email: t })} />
+          <Field kind="url" label="Website" value={r.website} onChangeText={t => set({ website: t })} />
+          <Field kind="text" label="Return policy (optional)" value={r.returnPolicy} onChangeText={t => set({ returnPolicy: t })} multiline /></View></Section>
       <Section footer="Turn on only if you are registered for GST. Receipts are then titled “Tax invoice” and show the GST included (1/11 of the total, gift cards excluded). Check with your accountant before relying on this.">
         <Toggle label="Registered for GST" sub="Prices are treated as GST-inclusive" value={r.gstRegistered} onChange={v => set({ gstRegistered: v })} /></Section>
     </View>

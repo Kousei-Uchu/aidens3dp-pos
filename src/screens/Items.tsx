@@ -12,10 +12,10 @@ import type { Variant } from '../lib/types';
 
 export function ItemsList() {
   const nav = useNav(); const cat = useCatalogue(); const [q, setQ] = useState('');
-  const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)).slice(0, 300); }, [q, cat.list]);
+  const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)); }, [q, cat.list]);
   return (
     <Page title="Items" onBack={nav.pop} scroll={false} right={<IconBtn icon="add" label="Create item" onPress={() => nav.push('createItem')} />}>
-      <View style={{ padding: 12 }}><Field placeholder="Search items" value={q} onChangeText={setQ} autoCapitalize="none" style={{ marginBottom: 0 }} /></View>
+      <View style={{ padding: 12 }}><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></View>
       <FlatList data={list} keyExtractor={v => v.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify, or create one." />} renderItem={({ item: v }) => <Row image={v.image ?? null} title={v.productTitle} sub={[v.variantTitle, v.sku, v.barcode].filter(Boolean).join(' · ') || undefined} right={<Money cents={v.priceCents} weight="600" />} onPress={() => nav.push('editItem', { id: v.id })} />} />
     </Page>
   );
@@ -37,9 +37,9 @@ export function CreateItem() {
   return (
     <Page title="Create item" onBack={nav.pop}>
       <View style={{ padding: 16 }}>
-        <Field label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} keyboardType="decimal-pad" placeholder="0.00" />
-        <Field label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} autoCapitalize="none" /><Field label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} keyboardType="number-pad" />
-        <Field label="Cost (for profit reports)" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} keyboardType="decimal-pad" placeholder="0.00" /><Field label="Starting stock" value={f.stock} onChangeText={t => setF({ ...f, stock: t })} keyboardType="number-pad" />
+        <Field kind="name" label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} placeholder="0.00" />
+        <Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} /><Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} />
+        <Field kind="money" label="Cost (for profit reports)" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} placeholder="0.00" /><Field kind="integer" label="Starting stock" value={f.stock} onChangeText={t => setF({ ...f, stock: t })} />
         {cat.collections.length ? <><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Category</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>{cat.collections.slice(0, 30).map(c => <Chip key={c.id} label={c.title} active={col === c.id} onPress={() => setCol(col === c.id ? undefined : c.id)} />)}</View></> : null}
         <Btn title="Create item" busy={busy} onPress={() => void save()} />
       </View>
@@ -61,8 +61,8 @@ export function EditItem({ id }: { id: string }) {
     <Page title={v.productTitle} onBack={nav.pop}><View style={{ padding: 16 }}>
       {v.image ? <View style={{ alignItems: 'center', marginBottom: 12 }}><Thumb uri={v.image} size={160} radius={16} /></View> : null}
       <Txt sub style={{ marginBottom: 10 }}>{v.variantTitle ? v.variantTitle + ' · ' : ''}Stock {v.stock ?? 'not tracked'} · current {fmt(v.priceCents)}</Txt>
-      <Field label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} keyboardType="decimal-pad" /><Field label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} autoCapitalize="none" />
-      <Field label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} keyboardType="number-pad" /><Field label="Cost" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} keyboardType="decimal-pad" />
+      <Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} /><Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} />
+      <Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} /><Field kind="money" label="Cost" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} />
       <Btn title="Save to Shopify" busy={busy} onPress={() => void save()} /></View></Page>
   );
 }

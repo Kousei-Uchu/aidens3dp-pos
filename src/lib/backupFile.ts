@@ -54,7 +54,7 @@ export function validateBackup(x: unknown): BackupV1 {
 /** Restored settings laid over this device's current ones; nested groups merge so new fields keep their defaults. */
 export function mergeSettings<S extends Record<string, any>>(current: S, restored: Record<string, any>): S {
   const out: Record<string, any> = { ...current, ...restored };
-  for (const k of ['fees', 'receipt', 'screensaver']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
+  for (const k of ['fees', 'receipt', 'screensaver', 'inventory']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
   for (const k of DEVICE_KEYS) if (k in current) out[k] = current[k];
   return out as S;
 }

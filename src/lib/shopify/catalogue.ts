@@ -59,7 +59,7 @@ export async function fetchVariants(locationId: string, onProgress?: (s: string)
       costCents: n.inventoryItem?.unitCost ? toCents(n.inventoryItem.unitCost.amount) : undefined,
       inventoryItemId: n.inventoryItem?.id, tracked, stock: tracked ? (q?.quantity ?? 0) : null,
       image: img(n.image?.url ?? n.product.featuredMedia?.preview?.image?.url), tags: n.product.tags ?? [],
-      active: n.product.status === 'ACTIVE', updatedAt: n.updatedAt,
+      active: n.product.status === 'ACTIVE', status: (['ACTIVE', 'DRAFT', 'ARCHIVED'] as const).find(x => x === n.product.status), updatedAt: n.updatedAt,
     };
   });
 }

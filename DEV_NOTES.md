@@ -228,6 +228,16 @@ Continue. Btw you can just keep continuing on until you need something from me (
 continue. also just to clarify, the adapter for the smart drawer should remain as literally an empty function, and should be disabled by default in the settings. I will add that later once ive built the hardware. For that part, just show what coins and notes to take out for now, so it should all be inputted, displayed, and confirmed manually by the cashier, and prompted/informed/displayed by the UI. You get what I mean? If you need clarification, ask for it when we get to that step. that should be a pretty soon step tho i think. ok keep goin.
 
 
+## ADDITION AFTER THE COMPLETION OF PATCHES 1-3 (NEW)
+
+continue. also in the next patch, a note to include of an issue i disocvered, id like to be able to nest categories within others in the grid editor, so like I can add a category, then in that tile's settings (add per tile settings for colour, etc. also allow display groups to impersonate collections) i would like to be able to select a subcategory, and the same for the subcategories and tiles within. Items contained in both any attached subcategory of any depth, and the parent category, only display said item within the subcategory(s) and in none of the parents. also btw the grid view seems to currently be only able to go to go 'back' to the main screen (depth 0), so make it track the path it's in and return back depth by depth instead of one big jump, and also up the top display the full path like `Dragons > Extreme Dragons > Rose` for example, and the user can tap each level in that to jump to that level, or just click the back button to go back one level. ok thats all my notes for now, continue :3
+
+Batch this together with the other bits mentioning the grid and thingsies :3
+
+# IMPORTANT FILE LOCATIONS
+
+The current progress on this list's implementation is found in `docs/PROGRESS.md` from the project root. Some of the above sections were only specified after that list's last update, and need to have checklist entries added in said file for the tasks those entail. These new bits are marked with `(NEW)` in their header. In the same patch that adds that section's tasks to the progress checklist, remove the 'new' tag from that section in this document (found at `DEV_NOTES.md` at the project root).
+
 # INSTRUCTIONS FOR CLAUDE
 
 Your response loop should be:

@@ -33,7 +33,7 @@ export default function Drawer() {
         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}
       <Sheet visible={sheet !== 'none'} onClose={done} title={sheet === 'open' ? 'Opening float' : sheet === 'in' ? 'Paid in' : sheet === 'out' ? 'Paid out' : 'Counted cash'}>
         <Txt size={38} weight="700" style={{ textAlign: 'center', marginBottom: 8 }}>{fmt(amt)}</Txt>
-        {sheet === 'in' || sheet === 'out' ? <Field placeholder="Reason" value={note} onChangeText={setNote} /> : null}
+        {sheet === 'in' || sheet === 'out' ? <Field kind="text" placeholder="Reason" value={note} onChangeText={setNote} /> : null}
         {sheet === 'close' ? <Txt sub style={{ textAlign: 'center', marginBottom: 8 }}>Expected {fmt(expected)}</Txt> : null}
         <Keypad value={digits} onChange={setDigits} onSubmit={() => void submit()} submitLabel="Confirm" />
       </Sheet>

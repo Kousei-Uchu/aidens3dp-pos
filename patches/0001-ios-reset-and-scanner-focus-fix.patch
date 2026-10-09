@@ -1,0 +1,300 @@
+From d44728f3e2874c7f365955f30873a5328cf65278 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Fri, 9 Oct 2026 22:30:50 +0000
+Subject: [PATCH] 0001: iOS reset script + stop HID scanner stealing keyboard
+ focus; add progress checklist
+
+---
+ docs/PROGRESS.md         | 101 +++++++++++++++++++++++++++++++++++++++
+ package.json             |   4 +-
+ scripts/reset-ios.sh     |  37 ++++++++++++++
+ src/lib/focusGuard.ts    |  13 +++++
+ src/screens/Scanner.tsx  |  15 ++++--
+ src/ui/kit.tsx           |  11 +++--
+ tests/focusguard.test.ts |  16 +++++++
+ 7 files changed, 190 insertions(+), 7 deletions(-)
+ create mode 100644 docs/PROGRESS.md
+ create mode 100755 scripts/reset-ios.sh
+ create mode 100644 src/lib/focusGuard.ts
+ create mode 100644 tests/focusguard.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+new file mode 100644
+index 0000000..1bc8092
+--- /dev/null
++++ b/docs/PROGRESS.md
+@@ -0,0 +1,101 @@
++# Build checklist & progress log
++
++Master list for everything in `DEV_NOTES.md`. Updated inside every patch, so each patch shows what changed and what's left.
++Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm · `[ ]` not started · `[?]` needs your answer.
++**Nothing here has been run on a device by me** — I can only run the pure-logic tests (`npm test`) in my sandbox. Every UI item is "code-complete, untested on hardware" until you say it works.
++
++## Patch log (apply in order: `git apply patches/000N-*.patch`)
++| # | Date | What | Items |
++|---|------|------|-------|
++| 0001 | 2026-10-10 | iOS folder reset script + stop the scanner stealing the keyboard | A1, A2 |
++
++---
++
++## A. Round 3 list (the 15 issues) — NOT yet addressed before this session
++
++### A1. `npm run ios` hangs / device timeout / two `.xcodeproj` files
++- [x] A1.1 `scripts/reset-ios.sh` (`npm run ios:reset`): deletes `ios/` + this app's DerivedData, `expo prebuild --platform ios --clean`, verifies exactly one `.xcodeproj`, lists devices.
++- [x] A1.2 `npm run ios:devices` (`xcrun xctrace list devices`) so you can see what Xcode sees.
++- [x] A1.3 Script prints the device-timeout checklist (unlock/trust, Developer Mode, Devices window, cable, explicit device name, keep the project out of iCloud-synced folders).
++- [ ] A1.4 **You:** run `npm run ios:reset` then `npm run ios`. Likely cause of two projects: a prebuild from before the app name/slug changed left the old one behind; `--clean` fixes that. I can't test the device timeout from here.
++
++### A2. Keyboard disappears on some text boxes
++- [x] A2.1 Root cause found: `HidScanner` (Bluetooth scanner capture input, `Scanner.tsx`) re-focused itself every 1.5 s whenever it wasn't focused. Any real field outside the sheets Checkout tracks (the "All products" filter, cart-pane sheets) lost focus → keyboard dropped.
++- [x] A2.2 `src/lib/focusGuard.ts` (pure, tested): counts focused `<Field>`s + a 2.5 s grace after blur.
++- [x] A2.3 `Field` reports focus/blur to the guard (and releases it if unmounted while focused).
++- [x] A2.4 `HidScanner` only grabs focus when not typing and `Keyboard.isVisible()` is false; removed its `autoFocus` (replaced by a guarded focus on mount).
++- [x] A2.5 Tests: `tests/focusguard.test.ts`.
++- [ ] A2.6 **You:** open "All products" filter and a cart sheet with the scanner enabled; keyboard should stay up. Trade-off: a Bluetooth scan within ~2.5 s of finishing typing in a field is ignored until the grace ends.
++
++### A3. View doesn't move for the keyboard (field hidden behind it)
++- [ ] A3.1 `useKeyboard()` hook (height + visible, via `Keyboard` events).
++- [ ] A3.2 `Page` scroll area: bottom padding = keyboard height, auto-scroll the focused field into view.
++- [ ] A3.3 `Sheet`: shrink to the space above the keyboard, anchor above it, scroll focused field into view.
++- [ ] A3.4 Non-scrolling layouts with fields (Checkout "All" filter, Pay) checked.
++
++### A4. Inconsistent keyboard types
++- [ ] A4.1 Audit every `<Field>` (≈60) and set `keyboardType` / `inputMode` / `autoCapitalize` / `autoCorrect` / `returnKeyType` deliberately.
++- [ ] A4.2 Add `kind` presets to `Field` (`text`, `name`, `email`, `phone`, `url`, `integer`, `money`, `code`, `secret`) so it stays consistent.
++
++### A5. Inventory screen: all products/variants, category filter, nesting, sort/filter
++- [ ] A5.1 Find why not everything loads (pagination in `catalogue.ts` / `inventory.ts`; `Inventory.tsx` list cap).
++- [ ] A5.2 Category (collection) filter, sort (name, stock, price, updated), stock filters (negative / low / zero / tracked).
++- [ ] A5.3 "Group variants under items" toggle (nested rows), remembered per register.
++
++### A6. Per-order emails for POS orders
++- [ ] A6.1 Stop Shopify notifying you for POS orders (cause is almost certainly Shopify admin notification settings for "New order"; the `pos` tag can't filter it). Plan: set `sendReceipt:false`/`sendFulfillmentReceipt:false` on `orderCreate`, and give you the Shopify Flow / notification steps.
++
++### A7. Import previous sales from Square
++- [ ] A7.1 Square "Transactions/Items detail" CSV importer (CSV first: no API keys needed).
++- [ ] A7.2 Optional Square Orders API importer (token in Keychain), idempotent by Square order id.
++- [ ] A7.3 Imported sales appear in Reports/Transactions, marked "Square", never touching Shopify stock.
++
++### A8. GUI bundle builder
++- [ ] A8.1 Bundle list + create/edit form (pick items, quantity, deal price or $/% off, dates, on/off) writing the same JSON the engine already reads.
++- [ ] A8.2 Keep the JSON editor as an "Advanced" view.
++
++### A9. Gift card details at checkout, not when added
++- [ ] A9.1 Adding a gift card to the cart just records amount.
++- [ ] A9.2 At charge time: prompt for recipient name/email/message/print-or-QR once, for all gift cards in the cart.
++
++### A10. Gift card web page / QR / recipient form
++- [ ] A10.1 QR to the card's Shopify gift-card page where available.
++- [ ] A10.2 Fallback Cloudflare Worker "claim your gift card" page (recipient name + email).
++
++### A11. Zeller terminal shouldn't show our own sheet
++- [ ] A11.1 Remove our payment sheet for terminal calls; show only a slim in-app "waiting on terminal" state while Zeller's UI is up.
++- [ ] A11.2 Answer to "can Zeller's popup live inside a custom sheet?" (needs a look at the SDK's WebView API in `zellerBridge.tsx`).
++
++### A12. Compound per-unit discounts
++- [ ] A12.1 Allocation engine: each unit gets at most one deal; best total saving per group; multiple deals per order (cows ×2, Tadlings ×8 example).
++- [ ] A12.2 Unit tests, including 6 tadlings = one 5-deal not two 3-deals.
++
++### A13. Swipe actions (cart lines, saved carts; not customers)
++- [ ] A13.1 Swipe-to-delete row component; apply to cart lines, saved carts, held/other quick-delete lists.
++
++### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
++- [ ] A14.1 Collection image on tiles + lists.
++- [ ] A14.2 Variant picker as a grid sub-page instead of a popup.
++
++### A15. New grid buttons: Lock POS, Price check, Stock check
++- [ ] A15.1 Lock POS tile.
++- [ ] A15.2 Price check (scan → price, no cart change).
++- [ ] A15.3 Stock check (scan variant → stock of its siblings; scan item → its own stock).
++
++---
++
++## B. Round 2 list ("fun little bitsies")
++Status as found in the zip you sent (I only inspected files; not run).
++- [ ] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **I found no denomination/ledger code in this zip (`Drawer.tsx` is still the keypad version).** Confirm whether that part was meant to be included; I'll build it as its own run of patches.
++  - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: empty stub, off by default (as you asked)
++- [~] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) — present in zip; Wallet pass needs your certificate.
++- [~] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) — present in zip.
++- [ ] B4 Bundle GUI (same as A8)
++- [ ] B5 Simple / Minimal / Custom staff modes
++- [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
++- [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
++- [ ] B8 Extra ideas
++
++## Notes
++- Baseline tests: 25/30 pass in my sandbox. The 5 failing files need `@noble/hashes`, which isn't installed here (no network) — they should pass after your `npm install`.
++- Type-checking: I can't run `tsc` here (no `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.
+diff --git a/package.json b/package.json
+index 06975df..4c65703 100644
+--- a/package.json
++++ b/package.json
+@@ -7,6 +7,8 @@
+     "start": "expo start --dev-client",
+     "ios": "expo run:ios --configuration Release --device",
+     "prebuild": "expo prebuild --platform ios",
++    "ios:reset": "sh scripts/reset-ios.sh",
++    "ios:devices": "xcrun xctrace list devices",
+     "typecheck": "tsc --noEmit",
+     "test": "tsx --test tests/*.test.ts",
+     "zeller": "sh scripts/install-zeller.sh",
+@@ -51,4 +53,4 @@
+     "tsx": "^4.19.0",
+     "typescript": "~5.9.2"
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/scripts/reset-ios.sh b/scripts/reset-ios.sh
+new file mode 100755
+index 0000000..1c83d0f
+--- /dev/null
++++ b/scripts/reset-ios.sh
+@@ -0,0 +1,37 @@
++#!/bin/sh
++# Recreate the ios/ folder from scratch. Fixes "two .xcodeproj files" (a stale project left behind when the app
++# name/slug changed) and most "stuck on selecting device / timed out" builds caused by a half-generated project.
++#   npm run ios:reset
++set -e
++cd "$(dirname "$0")/.."
++
++echo "==> 1/5 Removing the old native project (ios/) and Xcode caches for this app"
++rm -rf ios
++rm -rf "$HOME"/Library/Developer/Xcode/DerivedData/ShopifyPOS-* 2>/dev/null || true
++
++echo "==> 2/5 Making sure dependencies are installed"
++[ -d node_modules ] || npm install
++
++echo "==> 3/5 Regenerating ios/ (expo prebuild --clean)"
++npx expo prebuild --platform ios --clean
++
++echo "==> 4/5 Checking the result"
++COUNT=$(find ios -maxdepth 1 -name '*.xcodeproj' | wc -l | tr -d ' ')
++echo "    .xcodeproj files in ios/: $COUNT (should be 1)"
++find ios -maxdepth 1 -name '*.xcodeproj' -o -maxdepth 1 -name '*.xcworkspace'
++
++echo "==> 5/5 Connected devices Xcode can see"
++xcrun xctrace list devices 2>/dev/null | sed -n '1,25p' || echo "    (xcrun not available - is Xcode installed?)"
++
++cat <<'TXT'
++
++Next:  npm run ios
++If it still says "timed out" while selecting the device, check, in this order:
++  1. iPad/iPhone is unlocked, and you tapped "Trust This Computer".
++  2. Settings > Privacy & Security > Developer Mode is ON on the device (restarts it once).
++  3. Xcode > Window > Devices and Simulators shows the device as "Connected" (not "Preparing"/"Unavailable").
++  4. Try a different cable/port, or unplug and replug; avoid hubs.
++  5. Run this once with the device name:  npx expo run:ios --configuration Release --device "<name from the list above>"
++  6. The project folder should NOT live in iCloud Drive / Desktop / Documents sync. Slow file systems make every step
++     (node_modules, Pods) crawl. Move it to e.g. ~/dev/zeller-pos.
++TXT
+diff --git a/src/lib/focusGuard.ts b/src/lib/focusGuard.ts
+new file mode 100644
+index 0000000..d63098d
+--- /dev/null
++++ b/src/lib/focusGuard.ts
+@@ -0,0 +1,13 @@
++// Location: src/lib/focusGuard.ts
++// Tracks whether a person is typing in a normal text field, so background "focus grabbers" (the Bluetooth
++// scanner capture input) never steal the keyboard from them. Pure module: no React / RN imports, unit-tested.
++let focused = 0;
++let lastBlur = 0;
++/** After a field loses focus we keep treating the user as "still typing" briefly (they may be tapping the next field). */
++export const TYPING_GRACE_MS = 2500;
++
++export const fieldFocused = (): void => { focused += 1; };
++export const fieldBlurred = (now = Date.now()): void => { focused = Math.max(0, focused - 1); lastBlur = now; };
++export const isUserTyping = (now = Date.now()): boolean => focused > 0 || now - lastBlur < TYPING_GRACE_MS;
++/** Test helper. */
++export const resetFocusGuard = (): void => { focused = 0; lastBlur = 0; };
+diff --git a/src/screens/Scanner.tsx b/src/screens/Scanner.tsx
+index c65b189..d2135f1 100644
+--- a/src/screens/Scanner.tsx
++++ b/src/screens/Scanner.tsx
+@@ -1,9 +1,10 @@
+ import React, { useEffect, useRef, useState } from 'react';
+-import { Modal, Pressable, Text, TextInput, View } from 'react-native';
++import { Keyboard, Modal, Pressable, Text, TextInput, View } from 'react-native';
+ import { CameraView, useCameraPermissions } from 'expo-camera';
+ import { Btn, Txt } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { noteActivity } from '../lib/idle';
++import { isUserTyping } from '../lib/focusGuard';
+ 
+ /** Camera scanner. `onScan` returns a short confirmation ("Added Dragon plush") or null if the code was unknown. Stays open until Done. */
+ export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
+@@ -36,9 +37,17 @@ export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode'
+  */
+ export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) => void; enabled?: boolean }) {
+   const ref = useRef<TextInput>(null); const [v, setV] = useState('');
+-  useEffect(() => { if (!enabled) return; const t = setInterval(() => { if (ref.current && !ref.current.isFocused()) ref.current.focus(); }, 1500); return () => clearInterval(t); }, [enabled]);
++  // Never grab focus while someone is typing in a real field (that is what made the keyboard vanish): the guard
++  // knows about every <Field>, and Keyboard.isVisible() covers any raw TextInput we don't own.
++  const canGrab = () => !isUserTyping() && !Keyboard.isVisible();
++  useEffect(() => {
++    if (!enabled) return;
++    if (canGrab()) ref.current?.focus();
++    const t = setInterval(() => { if (ref.current && !ref.current.isFocused() && canGrab()) ref.current.focus(); }, 1500);
++    return () => clearInterval(t);
++  }, [enabled]);
+   if (!enabled) return null;
+-  return <TextInput ref={ref} value={v} onChangeText={t => { noteActivity(); setV(t); }} autoFocus showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
++  return <TextInput ref={ref} value={v} onChangeText={t => { noteActivity(); setV(t); }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
+     onSubmitEditing={() => { const code = v.trim(); setV(''); if (code) onScan(code); }} style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01, top: 0, left: 0 }} accessibilityElementsHidden importantForAccessibility="no" />;
+ }
+ export const ScannerHint = () => <Txt size={12} sub>Bluetooth scanner ready</Txt>;
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index e540d2a..3c4149a 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -7,6 +7,7 @@ import { useTheme, useLayout } from './theme';
+ import { digitsToCents, fmt } from '../lib/money';
+ import { NativeSegmented, NativeSwitch, hasSwiftUI } from './native';
+ import { noteActivity } from '../lib/idle';
++import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+ export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+@@ -78,10 +79,14 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
+     <Pressable key={o.v} onPress={() => { tap(); onChange(o.v); }} accessibilityRole="button" accessibilityState={{ selected: o.v === value }} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: o.v === value ? c.card : 'transparent' }}>
+       <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: 14 }}>{o.label}</Text></Pressable>))}</View>;
+ }
+-export function Field({ label, style, ...p }: TextInputProps & { label?: string }) {
+-  const { c } = useTheme();
++export function Field({ label, style, onFocus, onBlur, ...p }: TextInputProps & { label?: string }) {
++  const { c } = useTheme(); const has = useRef(false);
++  // Tell the focus guard when this field is being typed in so the Bluetooth-scanner capture input leaves it alone.
++  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } onFocus?.(e); };
++  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } onBlur?.(e); };
++  useEffect(() => () => { if (has.current) { has.current = false; fieldBlurred(); } }, []); // unmounted while focused: onBlur never fires
+   return <View style={{ marginBottom: 12 }}>{label ? <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>{label}</Txt> : null}
+-    <TextInput placeholderTextColor={c.sub} {...p} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} /></View>;
++    <TextInput placeholderTextColor={c.sub} {...p} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} /></View>;
+ }
+ export function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
+   return <Row title={label} sub={sub} right={<NativeSwitch value={value} onChange={v => { tap(); onChange(v); }} label={label} />} />;
+diff --git a/tests/focusguard.test.ts b/tests/focusguard.test.ts
+new file mode 100644
+index 0000000..903b621
+--- /dev/null
++++ b/tests/focusguard.test.ts
+@@ -0,0 +1,16 @@
++// Location: tests/focusguard.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { TYPING_GRACE_MS, fieldBlurred, fieldFocused, isUserTyping, resetFocusGuard } from '../src/lib/focusGuard';
++
++test('not typing by default', () => { resetFocusGuard(); assert.equal(isUserTyping(1_000_000), false); });
++test('typing while a field is focused, however long', () => { resetFocusGuard(); fieldFocused(); assert.equal(isUserTyping(Date.now() + 60 * 60_000), true); });
++test('grace period after blur, then released', () => {
++  resetFocusGuard(); fieldFocused(); fieldBlurred(10_000);
++  assert.equal(isUserTyping(10_000 + TYPING_GRACE_MS - 1), true);
++  assert.equal(isUserTyping(10_000 + TYPING_GRACE_MS + 1), false);
++});
++test('moving between two fields never reports "not typing"', () => {
++  resetFocusGuard(); fieldFocused(); fieldBlurred(5_000); fieldFocused(); assert.equal(isUserTyping(5_001 + TYPING_GRACE_MS * 10), true);
++});
++test('extra blur events never go negative', () => { resetFocusGuard(); fieldBlurred(1); fieldBlurred(2); fieldFocused(); assert.equal(isUserTyping(1e12), true); });
+-- 
+2.43.0
+
