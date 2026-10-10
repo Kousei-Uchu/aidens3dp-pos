@@ -14,6 +14,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0005 | 2026-10-10 | Progress doc only: your notes organised, A12 corrected to Shopify discounts, new A16 (price adjustments) | docs |
 | 0006 | 2026-10-10 | Several Shopify automatic discounts now combine in one order (5x + 3x Tadlings, Tadlings + cows) | A12.4-A12.6 |
 | 0007 | 2026-10-10 | Progress doc only: your answers recorded, scanner finding, "Needed from You" and "Deferred" sections | docs |
+| 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
 
 ---
 
@@ -66,9 +67,16 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 - [x] A6.3 **You:** follow `docs/POS_ORDER_EMAILS.md`, ring up a test sale, and tell me if the `[POS]` marker shows up. If not I will switch the marker to a custom attribute.
 
 ### A7. Import previous sales from Square
-- [ ] A7.1 Square "Transactions/Items detail" CSV importer (CSV first: no API keys needed).
-- [ ] A7.2 Optional Square Orders API importer (token in Keychain), idempotent by Square order id.
-- [ ] A7.3 Imported sales appear in Reports/Transactions, marked "Square", never touching Shopify stock.
+Done through the Square API/SDK instead of CSV (your call), as a one-off PC script. Read-only: it never touches stock, items, customers or Shopify.
+- [-] A7.1 CSV importer: dropped, the API gives exact fields so no CSV headers are guessed.
+- [x] A7.2 `tools/square-history/export.ts` (official `square` SDK v46, typechecked against it): pulls completed orders (30-day windows, every location), the catalogue (SKU, item, variation, category), and customers (names only). Converts in `src/lib/squareConvert.ts` (pure, tested): sales, itemised refunds (counted once even though Square lists them on two orders), amount-only refunds, tips, cash tendered/change, Square's real card fees, discount names, gift card sales. Writes one gzip file per month + `manifest.json` to `tools/square-history/out/`.
+- [x] A7.3 Delivery: the script prints a QR code for `http://<PC LAN IP>:8787/<random key>/manifest.json` and serves only `out/` while it runs. App: Settings ▸ Square history ▸ Scan QR from PC (or type the address, or Pick files copied across from the PC). Install once per device.
+- [x] A7.4 Storage: stays gzip-compressed in `Documents/square-history/` (monthly files, read one month at a time) plus a small `rollups.json.gz` for Reports. Test: 400 sales pack to under 1/8 of their JSON size. Needs the new `fflate` dependency.
+- [x] A7.5 Linking: Square variation → SKU → Shopify variant, read from the catalogue already on the device (no Shopify call), then barcode/UPC as a second try. A match gives the Shopify item name, Shopify cost (for profit) and Shopify collection (for category reports). No match → custom line titled `Item - Variation - Notes` (Square's default "Regular" is left out), grouped under its Square category. **Re-match** button redoes this after a catalogue refresh.
+- [x] A7.6 Reports: imported days appear under register "Square (old)" and add to every report; nothing is written to Shopify metaobjects. Transactions: new **Square history** chip loads them (read-only, no return button).
+- [~] A7.7 **Not run against a real Square account** (I have no token). The converter is tested on hand-made orders shaped like the SDK's types. First run: compare one day's Net sales in Reports with Square's own report for that day and tell me any difference.
+- Assumptions to check: Square "Other" tenders show as "Exchange credit" in the tender breakdown; GST is treated as included in prices (tax ignored, matching the app's `tax = 0`); Square service charges become a custom "Service charge" line; modifiers are folded into the line note; customers are not imported as records.
+- Needs a native rebuild: `app.json` gained `NSAllowsLocalNetworking` + a Local Network message (so the app may talk to the PC over plain http on your LAN). Run `npm install` then `npm run ios:reset`. The Pick-files route works without the QR/Wi-Fi part.
 
 ### A8. GUI bundle builder
 - [ ] A8.1 Bundle list + create/edit form (pick items, quantity, deal price or $/% off, dates, on/off) writing the same JSON the engine already reads.
@@ -164,7 +172,7 @@ Status as found in the zip you sent (I only inspected files; not run).
 - [ ] B8 Extra ideas
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (113 after patch 0006). `npm test` on your machine runs the same files.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (121 after patch 0008, with `qrcode-generator` installed). `npm test` on your machine runs the same files.
 - Type-checking: I can't run `tsc` here (no full `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.
 
 ---
@@ -177,7 +185,8 @@ Ordered by priority, highest first.
 - [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. Run `npm run zeller:pack` once A11.3 exists and send me the zip. The script strips credentials first.
 
 ### Priority 2
-- [ ] N2 **Non-blocking (A7):** a small sample of your Square exports, with customer names and card details removed: the Transactions CSV and the Items detail CSV. I am building the importer from Square's documented columns, and a real file lets me match yours exactly.
+- [-] N2 No longer needed (A7 uses the Square API, not CSV).
+- [ ] N8 **Non-blocking (A7):** run `tools/square-history` (README there), import on the iPad, and check one day's Net sales against Square's report. Tell me the matched-lines count shown after import and anything that looks off.
 - [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I cannot run `tsc` here.
 - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
 - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
@@ -197,7 +206,7 @@ Set aside by agreement. Ordered by priority, highest first.
 
 ### Low
 - [ ] D3 A2.7: talking to the scanner directly over BLE. Not needed while the double-click keyboard toggle works, and POS-mate publishes no protocol details (we would have to ask them).
-- [ ] D4 A7.2: Square Orders API importer. The CSV importer comes first and may be enough.
+- [x] D4 A7.2: Square Orders API importer: done in 0008 (CSV dropped).
 - [ ] D5 B1g: tender machine adapter stays an empty stub, off by default, until you have built the hardware.
 - [ ] D6 B2: Wallet pass, until the certificate in N6 is set up.
 - [ ] D7 B8: extra ideas, saved for last.

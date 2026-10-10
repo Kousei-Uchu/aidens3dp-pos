@@ -1,0 +1,2734 @@
+From 9f7bb252953a7ba721fcb019e3a1aa4300f3ac66 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 03:19:29 +0000
+Subject: [PATCH] 0008: Square history import (PC script + QR, compressed
+ read-only history in Reports and Transactions)
+
+---
+ .gitignore                             |    6 +
+ app.json                               |    4 +-
+ docs/PROGRESS.md                       |   21 +-
+ package-lock.json                      |    7 +
+ package.json                           |    1 +
+ src/lib/squareConvert.ts               |  142 ++
+ src/lib/squareHistory.ts               |   79 ++
+ src/lib/squareHistoryIO.ts             |  103 ++
+ src/screens/Reports.tsx                |    9 +-
+ src/screens/Settings.tsx               |    5 +-
+ src/screens/SquareHistory.tsx          |   47 +
+ src/screens/Transactions.tsx           |   13 +-
+ tests/squarehistory.test.ts            |  110 ++
+ tools/square-history/.env.example      |    1 +
+ tools/square-history/README.md         |   25 +
+ tools/square-history/export.ts         |   97 ++
+ tools/square-history/package-lock.json | 1758 ++++++++++++++++++++++++
+ tools/square-history/package.json      |    1 +
+ tools/square-history/tsconfig.json     |    1 +
+ 19 files changed, 2416 insertions(+), 14 deletions(-)
+ create mode 100644 src/lib/squareConvert.ts
+ create mode 100644 src/lib/squareHistory.ts
+ create mode 100644 src/lib/squareHistoryIO.ts
+ create mode 100644 src/screens/SquareHistory.tsx
+ create mode 100644 tests/squarehistory.test.ts
+ create mode 100644 tools/square-history/.env.example
+ create mode 100644 tools/square-history/README.md
+ create mode 100644 tools/square-history/export.ts
+ create mode 100644 tools/square-history/package-lock.json
+ create mode 100644 tools/square-history/package.json
+ create mode 100644 tools/square-history/tsconfig.json
+
+diff --git a/.gitignore b/.gitignore
+index 9039e0f..6447960 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -18,6 +18,7 @@ android
+ # secrets and local env
+ .env
+ .env.*
++!.env.example
+ .dev.vars
+ .npmrc
+ 
+@@ -41,3 +42,8 @@ npm-debug.log*
+ *.zip
+ * [0-9]
+ * [0-9].*
++
++# Square history export script: token, downloaded data and its own node_modules
++tools/square-history/.env
++tools/square-history/out/
++tools/square-history/node_modules/
+diff --git a/app.json b/app.json
+index 5df4755..7ce7e76 100644
+--- a/app.json
++++ b/app.json
+@@ -14,7 +14,9 @@
+         "UIFileSharingEnabled": true,
+         "LSSupportsOpeningDocumentsInPlace": true,
+         "ITSAppUsesNonExemptEncryption": false,
+-        "UIRequiresFullScreen": false
++        "UIRequiresFullScreen": false,
++        "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
++        "NSLocalNetworkUsageDescription": "Used once to copy your old Square sales history from your PC on the same Wi-Fi."
+       },
+       "appleTeamId": "HD264P8365"
+     },
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index fa536ea..f33eb3b 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -14,6 +14,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0005 | 2026-10-10 | Progress doc only: your notes organised, A12 corrected to Shopify discounts, new A16 (price adjustments) | docs |
+ | 0006 | 2026-10-10 | Several Shopify automatic discounts now combine in one order (5x + 3x Tadlings, Tadlings + cows) | A12.4-A12.6 |
+ | 0007 | 2026-10-10 | Progress doc only: your answers recorded, scanner finding, "Needed from You" and "Deferred" sections | docs |
++| 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
+ 
+ ---
+ 
+@@ -66,9 +67,16 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ - [x] A6.3 **You:** follow `docs/POS_ORDER_EMAILS.md`, ring up a test sale, and tell me if the `[POS]` marker shows up. If not I will switch the marker to a custom attribute.
+ 
+ ### A7. Import previous sales from Square
+-- [ ] A7.1 Square "Transactions/Items detail" CSV importer (CSV first: no API keys needed).
+-- [ ] A7.2 Optional Square Orders API importer (token in Keychain), idempotent by Square order id.
+-- [ ] A7.3 Imported sales appear in Reports/Transactions, marked "Square", never touching Shopify stock.
++Done through the Square API/SDK instead of CSV (your call), as a one-off PC script. Read-only: it never touches stock, items, customers or Shopify.
++- [-] A7.1 CSV importer: dropped, the API gives exact fields so no CSV headers are guessed.
++- [x] A7.2 `tools/square-history/export.ts` (official `square` SDK v46, typechecked against it): pulls completed orders (30-day windows, every location), the catalogue (SKU, item, variation, category), and customers (names only). Converts in `src/lib/squareConvert.ts` (pure, tested): sales, itemised refunds (counted once even though Square lists them on two orders), amount-only refunds, tips, cash tendered/change, Square's real card fees, discount names, gift card sales. Writes one gzip file per month + `manifest.json` to `tools/square-history/out/`.
++- [x] A7.3 Delivery: the script prints a QR code for `http://<PC LAN IP>:8787/<random key>/manifest.json` and serves only `out/` while it runs. App: Settings ▸ Square history ▸ Scan QR from PC (or type the address, or Pick files copied across from the PC). Install once per device.
++- [x] A7.4 Storage: stays gzip-compressed in `Documents/square-history/` (monthly files, read one month at a time) plus a small `rollups.json.gz` for Reports. Test: 400 sales pack to under 1/8 of their JSON size. Needs the new `fflate` dependency.
++- [x] A7.5 Linking: Square variation → SKU → Shopify variant, read from the catalogue already on the device (no Shopify call), then barcode/UPC as a second try. A match gives the Shopify item name, Shopify cost (for profit) and Shopify collection (for category reports). No match → custom line titled `Item - Variation - Notes` (Square's default "Regular" is left out), grouped under its Square category. **Re-match** button redoes this after a catalogue refresh.
++- [x] A7.6 Reports: imported days appear under register "Square (old)" and add to every report; nothing is written to Shopify metaobjects. Transactions: new **Square history** chip loads them (read-only, no return button).
++- [~] A7.7 **Not run against a real Square account** (I have no token). The converter is tested on hand-made orders shaped like the SDK's types. First run: compare one day's Net sales in Reports with Square's own report for that day and tell me any difference.
++- Assumptions to check: Square "Other" tenders show as "Exchange credit" in the tender breakdown; GST is treated as included in prices (tax ignored, matching the app's `tax = 0`); Square service charges become a custom "Service charge" line; modifiers are folded into the line note; customers are not imported as records.
++- Needs a native rebuild: `app.json` gained `NSAllowsLocalNetworking` + a Local Network message (so the app may talk to the PC over plain http on your LAN). Run `npm install` then `npm run ios:reset`. The Pick-files route works without the QR/Wi-Fi part.
+ 
+ ### A8. GUI bundle builder
+ - [ ] A8.1 Bundle list + create/edit form (pick items, quantity, deal price or $/% off, dates, on/off) writing the same JSON the engine already reads.
+@@ -164,7 +172,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [ ] B8 Extra ideas
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (113 after patch 0006). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (121 after patch 0008, with `qrcode-generator` installed). `npm test` on your machine runs the same files.
+ - Type-checking: I can't run `tsc` here (no full `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.
+ 
+ ---
+@@ -177,7 +185,8 @@ Ordered by priority, highest first.
+ - [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. Run `npm run zeller:pack` once A11.3 exists and send me the zip. The script strips credentials first.
+ 
+ ### Priority 2
+-- [ ] N2 **Non-blocking (A7):** a small sample of your Square exports, with customer names and card details removed: the Transactions CSV and the Items detail CSV. I am building the importer from Square's documented columns, and a real file lets me match yours exactly.
++- [-] N2 No longer needed (A7 uses the Square API, not CSV).
++- [ ] N8 **Non-blocking (A7):** run `tools/square-history` (README there), import on the iPad, and check one day's Net sales against Square's report. Tell me the matched-lines count shown after import and anything that looks off.
+ - [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I cannot run `tsc` here.
+ - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
+ - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
+@@ -197,7 +206,7 @@ Set aside by agreement. Ordered by priority, highest first.
+ 
+ ### Low
+ - [ ] D3 A2.7: talking to the scanner directly over BLE. Not needed while the double-click keyboard toggle works, and POS-mate publishes no protocol details (we would have to ask them).
+-- [ ] D4 A7.2: Square Orders API importer. The CSV importer comes first and may be enough.
++- [x] D4 A7.2: Square Orders API importer: done in 0008 (CSV dropped).
+ - [ ] D5 B1g: tender machine adapter stays an empty stub, off by default, until you have built the hardware.
+ - [ ] D6 B2: Wallet pass, until the certificate in N6 is set up.
+ - [ ] D7 B8: extra ideas, saved for last.
+diff --git a/package-lock.json b/package-lock.json
+index 7f4cf45..6aa4f20 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -30,6 +30,7 @@
+         "expo-secure-store": "~15.0.8",
+         "expo-sharing": "~14.0.8",
+         "expo-status-bar": "~3.0.9",
++        "fflate": "^0.8.3",
+         "qrcode-generator": "^2.0.4",
+         "react": "19.1.0",
+         "react-native": "0.81.5",
+@@ -4960,6 +4961,12 @@
+         "bser": "2.1.2"
+       }
+     },
++    "node_modules/fflate": {
++      "version": "0.8.3",
++      "resolved": "https://registry.npmjs.org/fflate/-/fflate-0.8.3.tgz",
++      "integrity": "sha512-tbZNuJrLwGUp3zshBtdy4W+ORxZuIh8a5ilyIEQDC5rY1f3U20JMry0Ll3WBzU58EZKsEuJFXhb5gwv8CsPvgA==",
++      "license": "MIT"
++    },
+     "node_modules/fill-range": {
+       "version": "7.1.1",
+       "resolved": "https://registry.npmjs.org/fill-range/-/fill-range-7.1.1.tgz",
+diff --git a/package.json b/package.json
+index 4c65703..d2cb0aa 100644
+--- a/package.json
++++ b/package.json
+@@ -37,6 +37,7 @@
+     "expo-secure-store": "~15.0.8",
+     "expo-sharing": "~14.0.8",
+     "expo-status-bar": "~3.0.9",
++    "fflate": "^0.8.3",
+     "qrcode-generator": "^2.0.4",
+     "react": "19.1.0",
+     "react-native": "0.81.5",
+diff --git a/src/lib/squareConvert.ts b/src/lib/squareConvert.ts
+new file mode 100644
+index 0000000..957d8f6
+--- /dev/null
++++ b/src/lib/squareConvert.ts
+@@ -0,0 +1,142 @@
++// Location: src/lib/squareConvert.ts
++// Pure: turns Square Orders API objects (as returned by the `square` Node SDK, BigInts already converted to numbers)
++// into this app's SaleRecord shape. Runs on the PC export script and in tests - never inside the app, never touches Shopify.
++// Money is integer cents (AUD). Square's own ids are kept in `sq` so the app can link lines to Shopify later.
++import type { SaleLine, SaleRecord, Tender, TenderKind, AppliedDiscount } from './types';
++
++type Num = number | string | bigint | null | undefined;
++type Money = { amount?: Num } | null | undefined;
++type SqDiscount = { uid?: string | null; name?: string | null; appliedMoney?: Money };
++type SqApplied = { discountUid?: string | null; appliedMoney?: Money };
++export type SqLine = {
++  uid?: string | null; name?: string | null; variationName?: string | null; quantity: Num; note?: string | null; catalogObjectId?: string | null; itemType?: string;
++  basePriceMoney?: Money; grossSalesMoney?: Money; totalDiscountMoney?: Money; totalMoney?: Money; appliedDiscounts?: SqApplied[] | null; modifiers?: { name?: string | null }[] | null;
++};
++export type SqReturnLine = Omit<SqLine, 'grossSalesMoney'> & { grossReturnMoney?: Money };
++export type SqTender = {
++  id?: string; type?: string; createdAt?: string; amountMoney?: Money; tipMoney?: Money; processingFeeMoney?: Money; paymentId?: string | null;
++  cardDetails?: { card?: { cardBrand?: string | null; last4?: string | null } | null; entryMethod?: string | null } | null;
++  cashDetails?: { buyerTenderedMoney?: Money; changeBackMoney?: Money } | null;
++};
++export type SqRefund = { id: string; tenderId?: string | null; createdAt?: string; reason?: string; amountMoney?: Money; status?: string };
++export type SqOrder = {
++  id: string; locationId: string; customerId?: string | null; state?: string; createdAt?: string; closedAt?: string; ticketName?: string | null; referenceId?: string | null;
++  lineItems?: SqLine[] | null; discounts?: SqDiscount[] | null; serviceCharges?: { name?: string | null; totalMoney?: Money; appliedMoney?: Money; totalTaxMoney?: Money }[] | null;
++  tenders?: SqTender[] | null; refunds?: SqRefund[] | null; roundingAdjustment?: { amountMoney?: Money } | null; totalTipMoney?: Money;
++  returns?: { sourceOrderId?: string | null; returnLineItems?: SqReturnLine[] | null }[] | null;
++};
++
++/** What the export script learns from the Square catalogue, keyed by ITEM_VARIATION id. */
++export type CatalogIndex = { variations: Record<string, { sku?: string; upc?: string; item: string; variation: string; category?: string }> };
++export type SqContext = { catalogue: CatalogIndex; customers: Record<string, { name: string; email?: string; phone?: string }>; locations: Record<string, string> };
++
++/** Link info kept on each historical line so the app can map it to Shopify without asking Square again. */
++export type SqRef = { variationId?: string; sku?: string; upc?: string; item: string; variation: string; note?: string; category?: string };
++export type HistLine = SaleLine & { sq?: SqRef };
++export type HistSale = Omit<SaleRecord, 'lines'> & { lines: HistLine[]; source: 'square'; squareOrderId: string };
++
++export const SQUARE_REGISTER_ID = 'square';
++const cents = (m: Money): number => (m?.amount === undefined || m.amount === null ? 0 : Math.round(Number(m.amount)));
++const isDefaultVariation = (v: string) => !v.trim() || /^regular$/i.test(v.trim());
++
++/** `Item Name - Variant Name - Item Notes` (parts left out when empty; Square's default "Regular" variation is not repeated). */
++export function customTitle(item: string, variation: string, note?: string): string {
++  return [item.trim() || 'Item', isDefaultVariation(variation) ? '' : variation.trim(), note?.trim() ?? ''].filter(Boolean).join(' - ');
++}
++
++function tenderKind(type?: string): TenderKind {
++  if (type === 'CASH') return 'cash';
++  if (type === 'SQUARE_GIFT_CARD') return 'gift_card';
++  if (type === 'CARD' || type === 'WALLET' || type === 'BUY_NOW_PAY_LATER' || type === 'SQUARE_ACCOUNT' || type === 'BANK_ACCOUNT') return 'card';
++  return 'exchange_credit'; // OTHER / unknown: shown as "Exchange credit" in Reports
++}
++const MEDIA: Record<string, string> = { SWIPED: 'SWIPE', KEYED: 'MANUAL', EMV: 'CHIP', CONTACTLESS: 'NFC', ON_FILE: 'MANUAL' };
++
++function convertTender(t: SqTender): Tender {
++  const kind = tenderKind(t.type); const tip = cents(t.tipMoney); const total = cents(t.amountMoney);
++  const out: Tender = { id: t.id ?? `sqt-${total}`, kind, amountCents: total - tip, at: t.createdAt ?? '' };
++  const fee = cents(t.processingFeeMoney); if (fee) out.feeCents = fee;
++  if (kind === 'card') out.card = { transactionUuid: t.paymentId ?? t.id, scheme: t.cardDetails?.card?.cardBrand ?? undefined, panMasked: t.cardDetails?.card?.last4 ?? undefined, cardMedia: MEDIA[t.cardDetails?.entryMethod ?? ''] };
++  if (kind === 'cash') { out.tenderedCents = cents(t.cashDetails?.buyerTenderedMoney) || undefined; out.changeCents = cents(t.cashDetails?.changeBackMoney) || undefined; }
++  return out;
++}
++
++function lineKind(l: SqLine | SqReturnLine): 'custom' | 'gift_card' { return l.itemType === 'GIFT_CARD' ? 'gift_card' : 'custom'; }
++
++function convertLine(l: SqLine | SqReturnLine, ctx: SqContext, discounts: Map<string, string>, returned: boolean): HistLine {
++  const qty = Number(l.quantity) || 1;
++  const gross = returned ? cents((l as SqReturnLine).grossReturnMoney) || cents(l.basePriceMoney) * qty : cents((l as SqLine).grossSalesMoney) || cents(l.basePriceMoney) * qty;
++  const disc = cents(l.totalDiscountMoney);
++  const cat = l.catalogObjectId ? ctx.catalogue.variations[l.catalogObjectId] : undefined;
++  const item = cat?.item || l.name || 'Custom amount'; const variation = cat?.variation ?? l.variationName ?? '';
++  const mods = (l.modifiers ?? []).map(m => m.name).filter(Boolean).join(', ');
++  const note = [l.note, mods].filter(Boolean).join(' · ') || undefined;
++  const labels = (l.appliedDiscounts ?? []).map(a => (a.discountUid ? discounts.get(a.discountUid) : undefined)).filter((x): x is string => !!x);
++  return {
++    title: customTitle(item, variation, note), qty, baseUnitCents: Math.round(gross / qty), grossCents: gross, discountCents: disc, netCents: gross - disc, costCents: 0,
++    discountLabels: labels, note, kind: lineKind(l),
++    sq: { variationId: l.catalogObjectId ?? undefined, sku: cat?.sku || undefined, upc: cat?.upc || undefined, item, variation, note, category: cat?.category },
++  };
++}
++
++const person = (ctx: SqContext, id?: string | null) => { const c = id ? ctx.customers[id] : undefined; return c ? { id: `square:${id}`, name: c.name, email: c.email, phone: c.phone } : undefined; };
++const orderName = (id: string) => `Sq ${id.slice(-6).toUpperCase()}`;
++
++function base(o: SqOrder, ctx: SqContext, uuid: string, type: 'sale' | 'refund', ts: string): Omit<HistSale, 'lines' | 'tenders'> {
++  return {
++    uuid, type, ts, registerId: SQUARE_REGISTER_ID, registerName: `Square${ctx.locations[o.locationId] ? ' – ' + ctx.locations[o.locationId] : ''}`, customer: person(ctx, o.customerId),
++    itemsCents: 0, discountCents: 0, netCents: 0, tipCents: 0, totalCents: 0, cogsCents: 0, feesCents: 0, roundingCents: 0, deals: [], orderName: orderName(o.id),
++    note: [o.ticketName, o.referenceId].filter(Boolean).join(' | ') || undefined, source: 'square', squareOrderId: o.id,
++  };
++}
++const totals = (lines: HistLine[]) => lines.reduce((a, l) => ({ items: a.items + l.grossCents, disc: a.disc + l.discountCents }), { items: 0, disc: 0 });
++
++/** The sale half of an order (orders that only contain a return have no line items, so return nothing). */
++export function convertSale(o: SqOrder, ctx: SqContext): HistSale | null {
++  if (!o.lineItems?.length) return null;
++  const discounts = new Map((o.discounts ?? []).filter(d => d.uid).map(d => [d.uid as string, d.name ?? 'Discount']));
++  const lines = o.lineItems.map(l => convertLine(l, ctx, discounts, false));
++  for (const sc of o.serviceCharges ?? []) { const c = cents(sc.appliedMoney) || cents(sc.totalMoney) - cents(sc.totalTaxMoney); if (c) lines.push({ title: sc.name ?? 'Service charge', qty: 1, baseUnitCents: c, grossCents: c, discountCents: 0, netCents: c, costCents: 0, discountLabels: [], kind: 'custom' }); }
++  const tenders = (o.tenders ?? []).map(convertTender); const t = totals(lines);
++  const tip = cents(o.totalTipMoney) || (o.tenders ?? []).reduce((s, x) => s + cents(x.tipMoney), 0); const net = t.items - t.disc;
++  const deals: AppliedDiscount[] = (o.discounts ?? []).map(d => ({ type: 'manual' as const, label: d.name ?? 'Discount', cents: cents(d.appliedMoney), id: d.uid ?? undefined })).filter(d => d.cents);
++  return { ...base(o, ctx, `sq:${o.id}`, 'sale', o.closedAt ?? o.createdAt ?? ''), lines, tenders, itemsCents: t.items, discountCents: t.disc, netCents: net, tipCents: tip, totalCents: net + tip,
++    feesCents: tenders.reduce((s, x) => s + (x.feeCents ?? 0), 0), roundingCents: cents(o.roundingAdjustment?.amountMoney), deals };
++}
++
++/**
++ * Every sale and refund in a set of orders. Square records an itemised refund as its own order (with `returns`), and lists the same
++ * refund on the original order too, so refund ids claimed by an itemised return are not counted a second time.
++ */
++export function convertAll(orders: SqOrder[], ctx: SqContext): HistSale[] {
++  const out: HistSale[] = [];
++  const tenderKinds = new Map<string, TenderKind>();
++  for (const o of orders) for (const t of o.tenders ?? []) if (t.id) tenderKinds.set(t.id, tenderKind(t.type));
++  const claimed = new Set<string>();
++  for (const o of orders) if (o.returns?.length) for (const r of o.refunds ?? []) claimed.add(r.id);
++
++  const refundTenders = (o: SqOrder, only?: SqRefund[]): Tender[] => (only ?? o.refunds ?? []).filter(r => !r.status || r.status === 'COMPLETED' || r.status === 'APPROVED').map(r => (
++    { id: r.id, kind: (r.tenderId && tenderKinds.get(r.tenderId)) || 'card', amountCents: cents(r.amountMoney), at: r.createdAt ?? '' } as Tender));
++
++  for (const o of orders) {
++    if (o.state && o.state !== 'COMPLETED') continue;
++    const sale = convertSale(o, ctx); if (sale) out.push(sale);
++    if (o.returns?.length) {
++      const discounts = new Map<string, string>(); const lines: HistLine[] = [];
++      for (const r of o.returns) for (const l of r.returnLineItems ?? []) lines.push(convertLine(l, ctx, discounts, true));
++      if (lines.length) {
++        const t = totals(lines); const src = o.returns[0].sourceOrderId;
++        out.push({ ...base(o, ctx, `sq:${o.id}:return`, 'refund', o.closedAt ?? o.createdAt ?? ''), refundOf: src ? `sq:${src}` : undefined, lines, tenders: refundTenders(o),
++          itemsCents: t.items, discountCents: t.disc, netCents: t.items - t.disc, totalCents: t.items - t.disc });
++      }
++    }
++    for (const r of o.refunds ?? []) {   // amount-only refunds (no items chosen) that no itemised return accounts for
++      if (claimed.has(r.id) || (r.status && r.status !== 'COMPLETED' && r.status !== 'APPROVED')) continue;
++      const amt = cents(r.amountMoney); if (!amt) continue;
++      out.push({ ...base(o, ctx, `sq:${o.id}:refund:${r.id}`, 'refund', r.createdAt ?? o.closedAt ?? o.createdAt ?? ''), refundOf: `sq:${o.id}`, reason: r.reason || undefined,
++        lines: [{ title: 'Refund (amount only)', qty: 1, baseUnitCents: amt, grossCents: amt, discountCents: 0, netCents: amt, costCents: 0, discountLabels: [], kind: 'custom' }],
++        tenders: refundTenders(o, [r]), itemsCents: amt, netCents: amt, totalCents: amt });
++    }
++  }
++  return out.filter(s => s.ts).sort((a, b) => a.ts.localeCompare(b.ts));
++}
+diff --git a/src/lib/squareHistory.ts b/src/lib/squareHistory.ts
+new file mode 100644
+index 0000000..16ec169
+--- /dev/null
++++ b/src/lib/squareHistory.ts
+@@ -0,0 +1,79 @@
++// Location: src/lib/squareHistory.ts
++// Pure logic for imported Square history: link lines to Shopify variants (read-only lookup), build report rollups,
++// and pack / unpack the compressed files. No file or network access here (see squareHistoryIO.ts).
++import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
++import { applyRecord, emptyTotals, rollupKey, type Totals } from './rollup';
++import type { Collection, SaleRecord, Variant } from './types';
++import type { HistLine, HistSale } from './squareConvert';
++
++export type SquareManifest = {
++  v: 1; createdAt: string; from?: string; to?: string; sales: number; refunds: number; locations: string[];
++  files: { name: string; bytes: number; sales: number; month: string }[];
++};
++
++// ── compression ──────────────────────────────────────────────────────────────
++export const packJson = (v: unknown): Uint8Array => gzipSync(strToU8(JSON.stringify(v)), { level: 9 });
++export const unpackJson = <T,>(b: Uint8Array): T => JSON.parse(strFromU8(gunzipSync(b))) as T;
++export const monthOf = (ts: string) => ts.slice(0, 7);
++
++/** One gzip file per month (`sales-2025-03.json.gz`) so the app can read just the months it needs. */
++export function packMonths(sales: HistSale[]): { files: { name: string; data: Uint8Array; sales: number; month: string }[] } {
++  const by = new Map<string, HistSale[]>();
++  for (const s of sales) { const m = monthOf(s.ts); (by.get(m) ?? by.set(m, []).get(m)!).push(s); }
++  return { files: [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, list]) => ({ name: `sales-${month}.json.gz`, data: packJson(list), sales: list.length, month })) };
++}
++export function buildManifest(sales: HistSale[], files: { name: string; data: Uint8Array; sales: number; month: string }[], locations: string[], now = new Date()): SquareManifest {
++  return { v: 1, createdAt: now.toISOString(), from: sales[0]?.ts, to: sales[sales.length - 1]?.ts, sales: sales.filter(s => s.type === 'sale').length, refunds: sales.filter(s => s.type === 'refund').length,
++    locations, files: files.map(f => ({ name: f.name, bytes: f.data.length, sales: f.sales, month: f.month })) };
++}
++/** File names are checked before anything touches disk. */
++export const safeName = (n: string) => /^[A-Za-z0-9._-]{1,80}$/.test(n) && !n.includes('..');
++/** Files.app may rename a duplicate ("sales-2025-03 2.json.gz"); this puts the proper name back. */
++export function canonicalName(picked: string): string | null {
++  const s = /^sales-(\d{4}-\d{2})\b.*\.gz$/i.exec(picked); if (s) return `sales-${s[1]}.json.gz`;
++  return /^manifest\b.*\.json$/i.test(picked) ? 'manifest.json' : null;
++}
++export function parseManifest(text: string): SquareManifest {
++  const m = JSON.parse(text) as SquareManifest;
++  if (!m || m.v !== 1 || !Array.isArray(m.files)) throw new Error('This is not a Square history manifest.');
++  for (const f of m.files) if (!safeName(f.name)) throw new Error(`Unsafe file name in manifest: ${f.name}`);
++  return m;
++}
++/** The address a QR code from the PC script carries. */
++export const isManifestUrl = (s: string) => /^http:\/\/[\w.\-:]+\/[a-f0-9]{8,}\/manifest\.json$/i.test(s.trim());
++
++// ── linking to Shopify (reads the catalogue already on the device; never writes to it) ──────────
++export type LinkIndex = { bySku: Map<string, Variant>; byBarcode: Map<string, Variant>; collectionOf: Map<string, string> };
++const norm = (s?: string) => (s ?? '').trim().toLowerCase();
++export function buildLinkIndex(variants: Record<string, Variant>, collections: Collection[]): LinkIndex {
++  const bySku = new Map<string, Variant>(); const byBarcode = new Map<string, Variant>(); const collectionOf = new Map<string, string>();
++  for (const v of Object.values(variants)) { if (norm(v.sku) && !bySku.has(norm(v.sku))) bySku.set(norm(v.sku), v); if (norm(v.barcode) && !byBarcode.has(norm(v.barcode))) byBarcode.set(norm(v.barcode), v); }
++  for (const c of collections) for (const p of c.productIds) if (!collectionOf.has(p)) collectionOf.set(p, c.title);
++  return { bySku, byBarcode, collectionOf };
++}
++
++/**
++ * Square variation → SKU → Shopify variant. A matched line becomes a normal catalogue line (with the Shopify cost, for profit reports);
++ * anything else stays a custom line titled `Item - Variation - Notes`, with Square's category for the category report.
++ */
++export function linkLine(l: HistLine, idx: LinkIndex): HistLine {
++  if (l.kind === 'gift_card') return l;
++  const v = (l.sq?.sku && idx.bySku.get(norm(l.sq.sku))) || (l.sq?.upc && idx.byBarcode.get(norm(l.sq.upc))) || undefined;
++  if (!v) return { ...l, collectionTitles: l.sq?.category ? [l.sq.category] : undefined };
++  const col = idx.collectionOf.get(v.productId);
++  return { ...l, kind: 'item', variantId: v.id, title: v.productTitle, variantTitle: v.variantTitle || undefined, costCents: Math.round((v.costCents ?? 0) * l.qty), collectionTitles: col ? [col] : l.sq?.category ? [l.sq.category] : undefined };
++}
++export function linkSale(s: HistSale, idx: LinkIndex): HistSale {
++  const lines = s.lines.map(l => linkLine(l, idx));
++  return { ...s, lines, cogsCents: lines.reduce((a, l) => a + l.costCents, 0) };
++}
++export const linkedStats = (sales: HistSale[]) => { let linked = 0, total = 0; for (const s of sales) for (const l of s.lines) { if (l.kind === 'gift_card') continue; total++; if (l.variantId) linked++; } return { linked, total }; };
++
++// ── report rollups ───────────────────────────────────────────────────────────
++/** Daily rollups in the same shape the Reports screen already reads, under register "square". */
++export function addToRollups(into: Record<string, Totals>, sales: SaleRecord[]): Record<string, Totals> {
++  for (const s of sales) { const k = rollupKey(s.registerId, s.ts); into[k] = applyRecord(into[k] ?? emptyTotals(), s); }
++  return into;
++}
++/** The `applied` id lists are only for de-duplicating live sales, so they are dropped from imported history to keep it small. */
++export function finishRollups(r: Record<string, Totals>): Record<string, Totals> { for (const t of Object.values(r)) t.applied = []; return r; }
+diff --git a/src/lib/squareHistoryIO.ts b/src/lib/squareHistoryIO.ts
+new file mode 100644
+index 0000000..a150354
+--- /dev/null
++++ b/src/lib/squareHistoryIO.ts
+@@ -0,0 +1,103 @@
++// Location: src/lib/squareHistoryIO.ts
++// Device side of the one-off Square history import. Files land in Documents/square-history/ (visible in Files.app),
++// stay gzip-compressed on disk, and are only decompressed one month at a time. Never talks to Square or Shopify.
++import * as FS from 'expo-file-system/legacy';
++import { useApp } from '../state/store';
++import { kvDel, kvGet, kvSet } from './kv';
++import { emptyTotals, type RollupRow, type Totals } from './rollup';
++import type { SaleRecord } from './types';
++import type { HistSale } from './squareConvert';
++import { addToRollups, buildLinkIndex, canonicalName, finishRollups, linkSale, linkedStats, packJson, parseManifest, safeName, unpackJson, type SquareManifest } from './squareHistory';
++
++const dir = () => `${FS.documentDirectory ?? ''}square-history/`;
++const META_KEY = 'squareHistoryMeta';
++export type SquareMeta = { installedAt: string; relinkedAt: string; sales: number; refunds: number; from?: string; to?: string; lines: number; linkedLines: number; days: number };
++let cache: { rows?: RollupRow[] } = {};
++
++const A = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
++const LOOK = (() => { const m = new Uint8Array(128); for (let i = 0; i < A.length; i++) m[A.charCodeAt(i)] = i; return m; })();
++export function b64ToBytes(b64: string): Uint8Array {
++  const s = b64.replace(/[^A-Za-z0-9+/]/g, ''); const out = new Uint8Array(Math.floor((s.length * 3) / 4));
++  let o = 0; for (let i = 0; i < s.length; i += 4) { const a = LOOK[s.charCodeAt(i)], b = LOOK[s.charCodeAt(i + 1)], c = LOOK[s.charCodeAt(i + 2)] || 0, d = LOOK[s.charCodeAt(i + 3)] || 0;
++    out[o++] = (a << 2) | (b >> 4); if (i + 2 < s.length) out[o++] = ((b & 15) << 4) | (c >> 2); if (i + 3 < s.length) out[o++] = ((c & 3) << 6) | d; }
++  return out.subarray(0, o);
++}
++export function bytesToB64(b: Uint8Array): string {
++  let s = ''; for (let i = 0; i < b.length; i += 3) { const n = (b[i] << 16) | ((b[i + 1] ?? 0) << 8) | (b[i + 2] ?? 0);
++    s += A[(n >> 18) & 63] + A[(n >> 12) & 63] + (i + 1 < b.length ? A[(n >> 6) & 63] : '=') + (i + 2 < b.length ? A[n & 63] : '='); }
++  return s;
++}
++const readBytes = async (name: string) => b64ToBytes(await FS.readAsStringAsync(dir() + name, { encoding: FS.EncodingType.Base64 }));
++const exists = async (name: string) => (await FS.getInfoAsync(dir() + name)).exists;
++
++export const squareMeta = () => kvGet<SquareMeta | null>(META_KEY, null);
++
++/** Fetches the manifest from the PC script's address, downloads every file next to it, then links and builds rollups. */
++export async function installFromUrl(manifestUrl: string, progress: (m: string) => void): Promise<SquareMeta> {
++  const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
++  let text: string;
++  try { const res = await fetch(manifestUrl, { signal: ctl.signal }); if (!res.ok) throw new Error(`The PC said ${res.status}.`); text = await res.text(); }
++  catch (e: any) { throw new Error(`Could not reach the PC (${e.name === 'AbortError' ? 'timed out' : e.message}). Check it is on the same Wi-Fi, the script is still running, and Local Network is allowed for this app in iOS Settings.`); }
++  finally { clearTimeout(timer); }
++  const m = parseManifest(text); const base = manifestUrl.replace(/manifest\.json$/, '');
++  await FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(() => {});
++  let n = 0;
++  for (const f of m.files) { progress(`Downloading ${++n} of ${m.files.length}…`); const r = await FS.downloadAsync(base + encodeURIComponent(f.name), dir() + f.name); if (r.status !== 200) throw new Error(`Download of ${f.name} failed (${r.status}).`); }
++  await FS.writeAsStringAsync(dir() + 'manifest.json', text);
++  return rebuild(progress);
++}
++
++/** Fallback: files picked from Files.app (AirDrop / iCloud / USB from the PC's `out` folder). */
++export async function installFromPicked(files: { name: string; uri: string }[], progress: (m: string) => void): Promise<SquareMeta> {
++  await FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(() => {});
++  let got = 0, hasManifest = false;
++  for (const f of files) { const name = canonicalName(f.name); if (!name) continue; progress(`Copying ${name}…`); await FS.deleteAsync(dir() + name, { idempotent: true }); await FS.copyAsync({ from: f.uri, to: dir() + name }); got++; if (name === 'manifest.json') hasManifest = true; }
++  if (!got) throw new Error('None of those files looked like Square history (expected manifest.json and sales-YYYY-MM.json.gz).');
++  if (!hasManifest) await FS.writeAsStringAsync(dir() + 'manifest.json', JSON.stringify(await inferManifest()));
++  return rebuild(progress);
++}
++async function inferManifest(): Promise<SquareManifest> {
++  const names = (await FS.readDirectoryAsync(dir())).filter(n => /^sales-\d{4}-\d{2}\.json\.gz$/.test(n)).sort();
++  return { v: 1, createdAt: new Date().toISOString(), sales: 0, refunds: 0, locations: [], files: names.map(name => ({ name, bytes: 0, sales: 0, month: name.slice(6, 13) })) };
++}
++
++/** Re-reads every stored month, links lines to the current Shopify catalogue, and rewrites the daily rollups. Safe to run again after "Import from Shopify". */
++export async function rebuild(progress: (m: string) => void): Promise<SquareMeta> {
++  const m = parseManifest(await FS.readAsStringAsync(dir() + 'manifest.json'));
++  const st = useApp.getState(); const idx = buildLinkIndex(st.data.variants, st.data.collections);
++  const roll: Record<string, Totals> = {}; let sales = 0, refunds = 0, lines = 0, linked = 0, from: string | undefined, to: string | undefined; let i = 0;
++  for (const f of m.files) {
++    if (!safeName(f.name) || !(await exists(f.name))) throw new Error(`Missing file ${f.name}. Copy it across and try again.`);
++    progress(`Reading ${f.month} (${++i} of ${m.files.length})…`);
++    const list = unpackJson<HistSale[]>(await readBytes(f.name)).map(s => linkSale(s, idx));
++    addToRollups(roll, list); const ls = linkedStats(list); lines += ls.total; linked += ls.linked;
++    for (const s of list) { s.type === 'sale' ? sales++ : refunds++; if (!from || s.ts < from) from = s.ts; if (!to || s.ts > to) to = s.ts; }
++  }
++  finishRollups(roll);
++  await FS.writeAsStringAsync(dir() + 'rollups.json.gz', bytesToB64(packJson(roll)), { encoding: FS.EncodingType.Base64 });
++  const old = await squareMeta(); const now = new Date().toISOString();
++  const meta: SquareMeta = { installedAt: old?.installedAt ?? now, relinkedAt: now, sales, refunds, from, to, lines, linkedLines: linked, days: Object.keys(roll).length };
++  await kvSet(META_KEY, meta); cache = {};
++  return meta;
++}
++
++/** Daily rollups for Reports (a few hundred KB at most; cached after the first read). */
++export async function loadSquareRollups(): Promise<RollupRow[]> {
++  if (cache.rows) return cache.rows;
++  try {
++    if (!(await exists('rollups.json.gz'))) return (cache.rows = []);
++    const r = unpackJson<Record<string, Totals>>(await readBytes('rollups.json.gz'));
++    return (cache.rows = Object.entries(r).map(([k, t]) => { const [registerId, date] = k.split('|'); return { registerId, date, totals: { ...emptyTotals(), ...t } }; }));
++  } catch { return (cache.rows = []); }
++}
++
++/** Every imported sale and refund, linked to the current catalogue, for the Transactions list (read-only). */
++export async function loadSquareSales(): Promise<SaleRecord[]> {
++  if (!(await exists('manifest.json'))) return [];
++  const m = parseManifest(await FS.readAsStringAsync(dir() + 'manifest.json'));
++  const st = useApp.getState(); const idx = buildLinkIndex(st.data.variants, st.data.collections); const out: SaleRecord[] = [];
++  for (const f of m.files) { if (!safeName(f.name) || !(await exists(f.name))) continue; for (const s of unpackJson<HistSale[]>(await readBytes(f.name))) out.push(linkSale(s, idx)); }
++  return out;
++}
++
++export async function removeSquareHistory() { await FS.deleteAsync(dir(), { idempotent: true }); await kvDel(META_KEY); cache = {}; }
+diff --git a/src/screens/Reports.tsx b/src/screens/Reports.tsx
+index 77299b9..d744299 100644
+--- a/src/screens/Reports.tsx
++++ b/src/screens/Reports.tsx
+@@ -9,12 +9,14 @@ import { hasCreds } from '../lib/shopify/client';
+ import { outstandingBalance } from '../lib/shopify/giftcards';
+ import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, sumRange, type Period, type Range, type RollupRow, type Totals } from '../lib/rollup';
+ import { fmt } from '../lib/money';
++import { loadSquareRollups } from '../lib/squareHistoryIO';
+ 
+ const PERIODS: Period[] = ['1D', '1W', '1M', '3M', '1Y'];
+ const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseDay(s).getTime());
+ 
+ export function useRollups() {
+-  const [remote, setRemote] = useState<RollupRow[]>([]); const [busy, setBusy] = useState(false); const outbox = useApp(s => s.pos.outbox); const local = useApp(s => s.pos.rollups);
++  const [remote, setRemote] = useState<RollupRow[]>([]); const [busy, setBusy] = useState(false); const outbox = useApp(s => s.pos.outbox); const local = useApp(s => s.pos.rollups); const [square, setSquare] = useState<RollupRow[]>([]);
++  useEffect(() => { void loadSquareRollups().then(setSquare); }, []);
+   const load = useCallback(async () => {
+     if (!hasCreds()) return; setBusy(true);
+     try { const rows: RollupRow[] = []; let after: string | null = null;
+@@ -25,10 +27,11 @@ export function useRollups() {
+   useEffect(() => { void load(); }, []);
+   const rows = useMemo(() => {
+     const m = new Map<string, RollupRow>(remote.map(r => [`${r.registerId}|${r.date}`, r]));
++    for (const r of square) m.set(`${r.registerId}|${r.date}`, r);
+     for (const [k, t] of Object.entries(local)) if (!m.has(k)) { const [registerId, date] = k.split('|'); m.set(k, { registerId, date, totals: t }); }
+     for (const o of outbox.filter(x => !x.done.rollup)) { const k = rollupKey(o.sale.registerId, o.sale.ts); const cur = m.get(k); const [registerId, date] = k.split('|'); m.set(k, { registerId, date, totals: applyRecord(cur?.totals ?? emptyTotals(), o.sale) }); }
+     return [...m.values()];
+-  }, [remote, local, outbox]);
++  }, [remote, local, outbox, square]);
+   return { rows, busy, load };
+ }
+ 
+@@ -76,7 +79,7 @@ export default function Reports() {
+           <View style={{ padding: 16 }}><Btn title="Gift cards" kind="secondary" onPress={() => nav.push('giftcards')} /></View></View>)}
+       <Sheet visible={filter} onClose={() => setFilter(false)} title="Customise">
+         <Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Device</Txt>
+-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label="All devices" active={!dev} onPress={() => setDev(undefined)} />{devices.map(id => <Chip key={id} label={id === myId ? `${myName} (this)` : id} active={dev === id} onPress={() => setDev(id)} />)}</View>
++        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label="All devices" active={!dev} onPress={() => setDev(undefined)} />{devices.map(id => <Chip key={id} label={id === myId ? `${myName} (this)` : id === 'square' ? 'Square (old)' : id} active={dev === id} onPress={() => setDev(id)} />)}</View>
+         <Btn title="Done" onPress={() => setFilter(false)} style={{ marginTop: 16 }} />
+       </Sheet>
+       <RefreshControl refreshing={false} />
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index 41f9fed..b62c60e 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -19,10 +19,11 @@ import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normali
+ import { parseGrid, serialiseGrid } from '../lib/grid';
+ import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
+ import { HidScanner } from './Scanner';
++import { SquareHistorySettings } from './SquareHistory';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
+ 
+-type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
++type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
+ const SAMPLE_BUNDLES = JSON.stringify({ version: 1, items: { set_a: ['gid://shopify/Product/1'], set_b: ['gid://shopify/Product/2'] }, discounts: [{ id: 'combo', label: 'Combo deal', sets: ['set_a', 'set_b'], price_delta_cents: -500, apply_to: 'set_b', max_per_cart: 5 }] }, null, 2);
+ 
+ export default function Settings() {
+@@ -38,6 +39,7 @@ export default function Settings() {
+           <Row icon="pricetags-outline" title="Discounts & bundles" onPress={() => setSub('discounts')} />
+           <Row icon="barcode-outline" title="Hardware" sub="Scanner test" onPress={() => setSub('hardware')} />
+           <Row icon="document-text-outline" title="Data" sub="Export CSV · delete local history" onPress={() => setSub('data')} />
++          <Row icon="archive-outline" title="Square history" sub="Import old Square sales for reports" onPress={() => setSub('square')} />
+           <Row icon="grid-outline" title="Grid import / export" onPress={() => setSub('grid')} />
+           <Row icon="gift-outline" title="Gift cards" onPress={() => setSub('gift')} />
+           <Row icon="receipt-outline" title="Receipts" sub={s.receipt.serverUrl ? (s.receipt.gstRegistered ? 'Tax invoices · QR link' : 'Receipts · QR link') : 'Not set up'} onPress={() => setSub('receipts')} />
+@@ -59,6 +61,7 @@ export default function Settings() {
+       {sub === 'discounts' ? <BundlesEditor /> : null}
+       {sub === 'hardware' ? <HardwareTest /> : null}
+       {sub === 'data' ? <DataSettings /> : null}
++      {sub === 'square' ? <SquareHistorySettings /> : null}
+       {sub === 'grid' ? <GridSettings /> : null}
+       {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
+       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
+diff --git a/src/screens/SquareHistory.tsx b/src/screens/SquareHistory.tsx
+new file mode 100644
+index 0000000..596f87a
+--- /dev/null
++++ b/src/screens/SquareHistory.tsx
+@@ -0,0 +1,47 @@
++// Location: src/screens/SquareHistory.tsx
++// Settings ▸ Square history. One-off import of old Square sales/refunds from the PC script (tools/square-history).
++// Read-only history: never touches stock, items, customers or Shopify.
++import React, { useEffect, useState } from 'react';
++import * as DocPicker from 'expo-document-picker';
++import { View } from 'react-native';
++import { Btn, Field, Row, Section, Txt, alertMsg, confirm } from '../ui/kit';
++import { CameraScanner } from './Scanner';
++import { isManifestUrl } from '../lib/squareHistory';
++import { installFromPicked, installFromUrl, rebuild, removeSquareHistory, squareMeta, type SquareMeta } from '../lib/squareHistoryIO';
++
++const day = (s?: string) => (s ? new Date(s).toLocaleDateString() : '—');
++
++export function SquareHistorySettings() {
++  const [meta, setMeta] = useState<SquareMeta | null>(null); const [busy, setBusy] = useState(''); const [scan, setScan] = useState(false); const [url, setUrl] = useState('');
++  useEffect(() => { void squareMeta().then(setMeta); }, []);
++  const run = async (fn: () => Promise<SquareMeta>) => {
++    setBusy('Starting…'); try { const m = await fn(); setMeta(m); alertMsg('Square history ready', `${m.sales} sales and ${m.refunds} refunds (${day(m.from)} – ${day(m.to)}). ${m.linkedLines} of ${m.lines} item lines matched a Shopify variant by SKU; the rest show as custom items.`); }
++    catch (e: any) { alertMsg('Import failed', e.message); } setBusy('');
++  };
++  const fromUrl = (u: string) => run(() => installFromUrl(u.trim(), setBusy));
++  const pick = async () => {
++    const r = await DocPicker.getDocumentAsync({ multiple: true, copyToCacheDirectory: true, type: '*/*' }); if (r.canceled) return;
++    await run(() => installFromPicked(r.assets.map(a => ({ name: a.name, uri: a.uri })), setBusy));
++  };
++  return (
++    <>
++      <Section title="Imported history" footer="Old Square sales and refunds, kept compressed on this device. They add to Reports (as register “square”) and show in Transactions when you turn on Square history there. Nothing here changes stock, items, customers or Shopify.">
++        <Row icon="archive-outline" title={meta ? `${meta.sales} sales · ${meta.refunds} refunds` : 'Nothing imported yet'} sub={meta ? `${day(meta.from)} – ${day(meta.to)} · ${meta.linkedLines}/${meta.lines} lines matched to Shopify by SKU` : 'Run the script on your PC first (tools/square-history/README.md)'} last />
++      </Section>
++      <Section title="Import" footer={busy || 'On the PC: run the script, then scan the QR code it shows (same Wi-Fi). No luck with Wi-Fi? Copy the files from the script’s out folder to this iPad and use Pick files.'}>
++        <Row icon="qr-code-outline" title="Scan QR from PC" onPress={() => !busy && setScan(true)} />
++        <Row icon="folder-open-outline" title="Pick files (manifest.json + sales-*.json.gz)" onPress={() => !busy && void pick()} last />
++      </Section>
++      <View style={{ paddingHorizontal: 16, gap: 8 }}>
++        <Field kind="url" label="…or type the address the script printed" value={url} onChangeText={setUrl} placeholder="http://192.168.1.20:8787/…/manifest.json" />
++        <Btn title="Import from address" kind="secondary" disabled={!!busy || !isManifestUrl(url)} onPress={() => void fromUrl(url)} />
++        {busy ? <Txt sub>{busy}</Txt> : null}
++      </View>
++      {meta ? <Section title="Maintenance" footer="Re-match after you refresh the catalogue from Shopify, so new SKUs link up. This only re-reads the files already on this device.">
++        <Row icon="refresh-outline" title="Re-match to Shopify catalogue" onPress={() => !busy && void run(() => rebuild(setBusy))} />
++        <Row icon="trash-outline" title="Delete imported Square history" danger last onPress={async () => { if (await confirm('Delete Square history?', 'Removes the imported files from this iPad. You can import again from the PC.', 'Delete', true)) { await removeSquareHistory(); setMeta(null); } }} />
++      </Section> : null}
++      <CameraScanner visible={scan} title="Scan the QR code on your PC" onClose={() => setScan(false)} onScan={code => { if (!isManifestUrl(code)) return null; setScan(false); void fromUrl(code); return 'Found it'; }} />
++    </>
++  );
++}
+diff --git a/src/screens/Transactions.tsx b/src/screens/Transactions.tsx
+index b2440c8..a0399ce 100644
+--- a/src/screens/Transactions.tsx
++++ b/src/screens/Transactions.tsx
+@@ -11,6 +11,7 @@ import { ReceiptPrompt, receiptText } from './Receipt';
+ import RefundScreen from './Refund';
+ import type { SaleRecord } from '../lib/types';
+ import { Share } from 'react-native';
++import { loadSquareSales } from '../lib/squareHistoryIO';
+ 
+ type Entry = { key: string; ts: string; name: string; totalCents: number; customer?: string; kind: 'sale' | 'refund'; summary: string; order?: PosOrder; sale?: SaleRecord; pending: boolean; haystack: string };
+ 
+@@ -20,6 +21,8 @@ const dayLabel = (ts: string) => { const d = new Date(ts); const t = new Date();
+ export default function Transactions() {
+   const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const outbox = useApp(s => s.pos.outbox);
+   const [orders, setOrders] = useState<PosOrder[]>([]); const [next, setNext] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [q, setQ] = useState(''); const [remoteQ, setRemoteQ] = useState<PosOrder[] | null>(null);
++  const [showSq, setShowSq] = useState(false); const [sqSales, setSqSales] = useState<SaleRecord[]>([]); const [sqBusy, setSqBusy] = useState(false);
++  const toggleSq = async () => { if (showSq) { setShowSq(false); return; } setShowSq(true); if (!sqSales.length) { setSqBusy(true); try { setSqSales(await loadSquareSales()); } catch (e: any) { alertMsg('Could not load Square history', e.message); } setSqBusy(false); } };
+   const [sel, setSel] = useState<Entry | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
+ 
+   const load = useCallback(async (more = false) => {
+@@ -37,8 +40,10 @@ export default function Transactions() {
+         summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
+     for (const o of [...orders, ...(remoteQ ?? [])]) { const k = o.saleUuid ?? o.id; if (seen.has(k)) continue; seen.add(k);
+       out.push({ key: k, ts: o.createdAt, name: o.name, totalCents: o.totalCents, customer: o.customer?.name, kind: 'sale', order: o, pending: false, summary: o.tenders.map(t => tenderWord(t.kind)).join(' + ') || 'Order', haystack: [o.name, o.customer?.name, o.note, ...o.lines.map(l => l.title)].join(' ').toLowerCase() }); }
++    if (showSq) for (const s of sqSales) out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? 'Square', totalCents: s.netCents, customer: s.customer?.name, kind: s.type, sale: s, pending: false,
++      summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
+     return out.sort((a, b) => b.ts.localeCompare(a.ts));
+-  }, [sales, orders, remoteQ, outbox]);
++  }, [sales, orders, remoteQ, outbox, showSq, sqSales]);
+   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
+   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
+ 
+@@ -49,6 +54,7 @@ export default function Transactions() {
+       <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+         <Txt size={24} weight="700" style={{ marginBottom: 8, marginLeft: 4 }}>Transactions</Txt>
+         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
++        <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
+       </View>
+       <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
+         ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'Press search to look in Shopify.' : 'Completed sales appear here.'} />}
+@@ -87,8 +93,9 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
+       {sale.customer ? <Txt sub>Customer: {sale.customer.name}</Txt> : null}
+       {e.order?.note ? <Txt sub>Note: {e.order.note}</Txt> : null}
+       <Btn title="New receipt" icon="receipt-outline" kind="secondary" onPress={() => onReceipt(sale)} />
+-      {e.kind === 'sale' ? <Btn title="Return or exchange" icon="return-down-back-outline" disabled={!e.order} onPress={() => e.order && onRefund(e.order)} /> : null}
+-      {e.kind === 'sale' && !e.order ? <Txt size={12} sub style={{ textAlign: 'center' }}>Returns unlock once this sale has synced to Shopify.</Txt> : null}
++      {e.kind === 'sale' && sale.registerId !== 'square' ? <Btn title="Return or exchange" icon="return-down-back-outline" disabled={!e.order} onPress={() => e.order && onRefund(e.order)} /> : null}
++      {e.kind === 'sale' && !e.order && sale.registerId !== 'square' ? <Txt size={12} sub style={{ textAlign: 'center' }}>Returns unlock once this sale has synced to Shopify.</Txt> : null}
++      {sale.registerId === 'square' ? <Txt size={12} sub style={{ textAlign: 'center' }}>Imported from Square. Read-only: it can’t be returned or refunded here.</Txt> : null}
+       <Btn title="Share receipt text" kind="ghost" onPress={() => void Share.share({ message: receiptText(sale) })} />
+     </View>
+   );
+diff --git a/tests/squarehistory.test.ts b/tests/squarehistory.test.ts
+new file mode 100644
+index 0000000..f5bf22c
+--- /dev/null
++++ b/tests/squarehistory.test.ts
+@@ -0,0 +1,110 @@
++// Location: tests/squarehistory.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { convertAll, customTitle, type SqContext, type SqOrder } from '../src/lib/squareConvert';
++import { addToRollups, buildLinkIndex, buildManifest, canonicalName, finishRollups, isManifestUrl, linkSale, linkedStats, packMonths, parseManifest, safeName, unpackJson } from '../src/lib/squareHistory';
++import { derived, emptyTotals, sumRange } from '../src/lib/rollup';
++import type { Variant } from '../src/lib/types';
++
++const M = (amount: number) => ({ amount, currency: 'AUD' });
++const ctx: SqContext = {
++  catalogue: { variations: {
++    V1: { sku: 'DRG-S', item: 'Dragon', variation: 'Small', category: 'Dragons' },
++    V2: { sku: 'OLD-1', item: 'Retired Thing', variation: 'Regular', category: 'Misc' },
++    V3: { item: 'No SKU Item', variation: 'Big' },
++  } },
++  customers: { C1: { name: 'Sam Smith', email: 's@x.com' } }, locations: { L1: 'Market' },
++};
++const orders: SqOrder[] = [
++  { id: 'ORDERAAAAAA', locationId: 'L1', state: 'COMPLETED', createdAt: '2025-03-01T01:00:00Z', closedAt: '2025-03-01T01:02:00Z', customerId: 'C1',
++    lineItems: [
++      { uid: 'a', catalogObjectId: 'V1', name: 'Dragon', variationName: 'Small', quantity: '2', basePriceMoney: M(1000), grossSalesMoney: M(2000), totalDiscountMoney: M(200), appliedDiscounts: [{ discountUid: 'd1' }] },
++      { uid: 'b', catalogObjectId: 'V3', name: 'No SKU Item', variationName: 'Big', quantity: '1', note: 'blue', basePriceMoney: M(500), grossSalesMoney: M(500), totalDiscountMoney: M(0) },
++      { uid: 'c', name: 'Custom Amount', quantity: '1', basePriceMoney: M(300), grossSalesMoney: M(300), totalDiscountMoney: M(0) },
++      { uid: 'd', name: 'Gift Card', quantity: '1', itemType: 'GIFT_CARD', basePriceMoney: M(5000), grossSalesMoney: M(5000), totalDiscountMoney: M(0) },
++    ],
++    discounts: [{ uid: 'd1', name: '10% off', appliedMoney: M(200) }],
++    tenders: [{ id: 'T1', type: 'CARD', createdAt: '2025-03-01T01:02:00Z', amountMoney: M(5700), tipMoney: M(200), processingFeeMoney: M(90), cardDetails: { card: { cardBrand: 'VISA', last4: '1234' }, entryMethod: 'CONTACTLESS' } },
++      { id: 'T2', type: 'CASH', amountMoney: M(1000), cashDetails: { buyerTenderedMoney: M(2000), changeBackMoney: M(1000) } }], totalTipMoney: M(200) },
++  // itemised refund order (own order with `returns`) + the same refund listed on the original order
++  { id: 'RETURNBBBBB', locationId: 'L1', state: 'COMPLETED', createdAt: '2025-03-05T01:00:00Z', closedAt: '2025-03-05T01:01:00Z',
++    returns: [{ sourceOrderId: 'ORDERAAAAAA', returnLineItems: [{ catalogObjectId: 'V1', name: 'Dragon', variationName: 'Small', quantity: '1', basePriceMoney: M(1000), grossReturnMoney: M(1000), totalDiscountMoney: M(100) }] }],
++    refunds: [{ id: 'R1', tenderId: 'T1', amountMoney: M(900), status: 'COMPLETED', createdAt: '2025-03-05T01:01:00Z' }] },
++  { id: 'ORDERCCCCCC', locationId: 'L1', state: 'COMPLETED', createdAt: '2025-04-02T01:00:00Z', lineItems: [{ catalogObjectId: 'V2', name: 'Retired Thing', variationName: 'Regular', quantity: '1', basePriceMoney: M(800), grossSalesMoney: M(800), totalDiscountMoney: M(0) }],
++    tenders: [{ id: 'T3', type: 'OTHER', amountMoney: M(800) }],
++    refunds: [{ id: 'R1', tenderId: 'T1', amountMoney: M(900), status: 'COMPLETED' }, { id: 'R2', tenderId: 'T3', amountMoney: M(300), status: 'COMPLETED', reason: 'goodwill' }, { id: 'R3', amountMoney: M(50), status: 'FAILED' }] },
++  { id: 'CANCELLEDDDD', locationId: 'L1', state: 'CANCELED', createdAt: '2025-04-03T01:00:00Z', lineItems: [{ name: 'x', quantity: '1', grossSalesMoney: M(100) }] },
++];
++const all = convertAll(orders, ctx);
++
++test('custom title format: Item - Variation - Notes, default "Regular" not repeated', () => {
++  assert.equal(customTitle('Dragon', 'Small', 'blue'), 'Dragon - Small - blue');
++  assert.equal(customTitle('Dragon', 'Regular'), 'Dragon');
++  assert.equal(customTitle('Dragon', '', 'blue'), 'Dragon - blue');
++});
++
++test('sale conversion: lines, discounts, tip, tenders, fee, customer', () => {
++  const s = all.find(x => x.uuid === 'sq:ORDERAAAAAA')!;
++  assert.equal(s.type, 'sale'); assert.equal(s.itemsCents, 7800); assert.equal(s.discountCents, 200); assert.equal(s.netCents, 7600); assert.equal(s.tipCents, 200); assert.equal(s.totalCents, 7800);
++  assert.deepEqual(s.lines[0].discountLabels, ['10% off']); assert.equal(s.lines[0].sq?.sku, 'DRG-S'); assert.equal(s.lines[0].baseUnitCents, 1000);
++  assert.equal(s.lines[1].title, 'No SKU Item - Big - blue'); assert.equal(s.lines[2].title, 'Custom Amount'); assert.equal(s.lines[3].kind, 'gift_card');
++  assert.equal(s.tenders[0].kind, 'card'); assert.equal(s.tenders[0].amountCents, 5500); assert.equal(s.tenders[0].feeCents, 90); assert.equal(s.tenders[0].card?.scheme, 'VISA'); assert.equal(s.tenders[0].card?.cardMedia, 'NFC');
++  assert.equal(s.tenders[1].kind, 'cash'); assert.equal(s.tenders[1].tenderedCents, 2000); assert.equal(s.tenders[1].changeCents, 1000); assert.equal(s.feesCents, 90);
++  assert.equal(s.customer?.name, 'Sam Smith'); assert.equal(s.registerId, 'square'); assert.equal(s.registerName, 'Square – Market'); assert.equal(s.deals[0].cents, 200);
++});
++
++test('refunds: itemised return counted once; amount-only refund kept; failed + cancelled skipped', () => {
++  const refunds = all.filter(x => x.type === 'refund');
++  assert.equal(refunds.length, 2);
++  const ret = refunds.find(r => r.uuid === 'sq:RETURNBBBBB:return')!; assert.equal(ret.refundOf, 'sq:ORDERAAAAAA'); assert.equal(ret.netCents, 900); assert.equal(ret.tenders[0].kind, 'card'); assert.equal(ret.tenders[0].amountCents, 900);
++  const amt = refunds.find(r => r.uuid.endsWith(':refund:R2'))!; assert.equal(amt.netCents, 300); assert.equal(amt.reason, 'goodwill'); assert.equal(amt.tenders[0].kind, 'exchange_credit');
++  assert.ok(!all.some(x => x.uuid.includes('R1') || x.uuid.includes('R3') || x.uuid.includes('CANCELLED')));
++  assert.deepEqual(all.map(x => x.ts), [...all.map(x => x.ts)].sort());
++});
++
++const v = (id: number, sku: string | undefined, cost: number, productId = id): Variant => ({ id: `gid://shopify/ProductVariant/${id}`, productId: `gid://shopify/Product/${productId}`, productTitle: `Shopify ${id}`, variantTitle: 'Small', sku, priceCents: 1000, costCents: cost, tracked: true, stock: 1, tags: [], active: true });
++const variants = { a: v(1, ' drg-s ', 400), b: v(2, undefined, 0) };
++const collections = [{ id: 'c1', title: 'Dragon Collection', image: undefined, productIds: ['gid://shopify/Product/1'] }];
++
++test('linking: SKU (case/space-insensitive) → Shopify variant with cost + collection; others stay custom with Square category', () => {
++  const s = linkSale(all.find(x => x.uuid === 'sq:ORDERAAAAAA')!, buildLinkIndex(variants, collections));
++  assert.equal(s.lines[0].kind, 'item'); assert.equal(s.lines[0].variantId, 'gid://shopify/ProductVariant/1'); assert.equal(s.lines[0].title, 'Shopify 1'); assert.equal(s.lines[0].variantTitle, 'Small');
++  assert.equal(s.lines[0].costCents, 800); assert.deepEqual(s.lines[0].collectionTitles, ['Dragon Collection']);
++  assert.equal(s.lines[1].kind, 'custom'); assert.equal(s.lines[1].variantId, undefined); assert.equal(s.lines[1].title, 'No SKU Item - Big - blue');
++  assert.equal(s.lines[3].kind, 'gift_card'); assert.equal(s.cogsCents, 800);
++  assert.deepEqual(linkedStats([s]), { linked: 1, total: 3 });
++  const other = linkSale(all.find(x => x.uuid === 'sq:ORDERCCCCCC')!, buildLinkIndex(variants, collections)); assert.deepEqual(other.lines[0].collectionTitles, ['Misc']);
++});
++
++test('linking never changes the Shopify catalogue objects it reads', () => {
++  const before = JSON.stringify([variants, collections]); linkSale(all[0], buildLinkIndex(variants, collections)); assert.equal(JSON.stringify([variants, collections]), before);
++});
++
++test('rollups: reports maths match the imported records (sales, discounts, refunds, gift cards, fees, tips)', () => {
++  const idx = buildLinkIndex(variants, collections); const linked = all.map(s => linkSale(s, idx));
++  const r = finishRollups(addToRollups({}, linked));
++  const days = Object.keys(r).sort(); assert.ok(days.every(k => k.startsWith('square|')));
++  const rows = Object.entries(r).map(([k, t]) => ({ registerId: 'square', date: k.split('|')[1], totals: t }));
++  const t = sumRange(rows, { from: '2025-01-01', to: '2025-12-31' }); const d = derived(t);
++  assert.equal(t.orders, 2); assert.equal(t.refunds, 2); assert.equal(t.giftCardSalesCents, 5000);
++  assert.equal(t.itemsCents, 2000 + 500 + 300 + 800); assert.equal(t.discountsCents, 200); assert.equal(t.returnsCents, 900 + 300);
++  assert.equal(d.netSales, 3600 - 200 - 1200); assert.equal(t.tipsCents, 200); assert.equal(t.feesCents, 90);
++  assert.equal(t.byCategory['Dragon Collection'].count, 2 - 1); assert.deepEqual(t.applied, []);
++  assert.ok(emptyTotals().orders === 0);
++});
++
++test('packing: monthly gzip files round-trip and are much smaller than JSON', () => {
++  const many = Array.from({ length: 400 }, (_, i) => ({ ...all[0], uuid: `sq:${i}`, ts: `2025-0${1 + (i % 3)}-1${i % 9}T01:00:00Z` }));
++  const { files } = packMonths(many); assert.deepEqual(files.map(f => f.name), ['sales-2025-01.json.gz', 'sales-2025-02.json.gz', 'sales-2025-03.json.gz']);
++  assert.equal(files.reduce((s, f) => s + f.sales, 0), 400);
++  assert.equal(unpackJson<typeof many>(files[0].data).length, files[0].sales);
++  assert.ok(files.reduce((s, f) => s + f.data.length, 0) < JSON.stringify(many).length / 8);
++  const m = buildManifest(all, packMonths(all).files, ['Market']); assert.equal(m.sales, 2); assert.equal(m.refunds, 2); assert.equal(parseManifest(JSON.stringify(m)).files.length, 2);
++});
++
++test('file name + url safety', () => {
++  assert.ok(safeName('sales-2025-03.json.gz')); assert.ok(!safeName('../x')); assert.ok(!safeName('a/b')); assert.ok(!safeName('a..b'));
++  assert.throws(() => parseManifest(JSON.stringify({ v: 1, files: [{ name: '../../etc' }] })));
++  assert.equal(canonicalName('sales-2025-03 2.json.gz'), 'sales-2025-03.json.gz'); assert.equal(canonicalName('manifest 3.json'), 'manifest.json'); assert.equal(canonicalName('photo.png'), null);
++  assert.ok(isManifestUrl('http://192.168.1.20:8787/0123456789abcdef/manifest.json')); assert.ok(!isManifestUrl('https://evil.com/x')); assert.ok(!isManifestUrl('http://192.168.1.20:8787/zz/manifest.json'));
++});
+diff --git a/tools/square-history/.env.example b/tools/square-history/.env.example
+new file mode 100644
+index 0000000..9354228
+--- /dev/null
++++ b/tools/square-history/.env.example
+@@ -0,0 +1 @@
++SQUARE_ACCESS_TOKEN=
+diff --git a/tools/square-history/README.md b/tools/square-history/README.md
+new file mode 100644
+index 0000000..de3296d
+--- /dev/null
++++ b/tools/square-history/README.md
+@@ -0,0 +1,25 @@
++# Square history export (one-off)
++
++Copies old Square **sales, refunds and report data** to the POS app. Read-only on Square. It never touches Shopify, stock, or items.
++
++## 1. Get a Square token (once)
++Square Developer Dashboard ▸ your application ▸ **Credentials** ▸ *Production* **Access token**. A personal access token already has the read permissions needed (orders, catalogue/items, customers, locations).
++Copy `.env.example` to `.env` and paste the token in. `.env` is git-ignored and stays on this PC.
++
++## 2. Run it
++```sh
++cd tools/square-history
++npm install
++npx tsx export.ts            # everything
++npx tsx export.ts --from 2023-01-01 --to 2025-06-30   # optional date range
++```
++It prints progress, writes compressed monthly files to `out/`, then shows a **QR code** and keeps a tiny server up on your Wi-Fi. The link contains a random key, works only while the script runs, and serves only the files in `out/`.
++
++## 3. Import on each device
++POS app ▸ **Settings ▸ Square history ▸ Scan QR from PC**. (Or type the printed address, or copy `out/` to the iPad via AirDrop/Files and use **Pick files**.) Do this once per device, then press Ctrl+C on the PC.
++
++## What gets imported
++- Every completed sale and refund, as read-only history (Reports under "Square (old)"; Transactions via the *Square history* chip).
++- Item lines are matched to Shopify **by SKU** (Square variation → SKU → Shopify variant, falling back to barcode/UPC), which gives proper item names, Shopify cost for profit reports, and Shopify collections for category reports. Anything unmatched stays a custom line titled `Item - Variation - Notes`, grouped by its Square category.
++- Square's actual card fees, tips, cash tendered/change, gift card sales, discount names, and customer names.
++- Not imported: stock, items, prices, customers as records. Customer names are only attached to the sales they belong to.
+diff --git a/tools/square-history/export.ts b/tools/square-history/export.ts
+new file mode 100644
+index 0000000..9091ba8
+--- /dev/null
++++ b/tools/square-history/export.ts
+@@ -0,0 +1,97 @@
++// One-off Square history export. Runs on YOUR PC only; the Square token never leaves it.
++//   cd tools/square-history && npm install && npx tsx export.ts
++// Pulls orders (sales + refunds), the catalogue (for SKUs/categories) and customers (for names) through the official
++// `square` SDK, writes compressed files to ./out, then serves them once on your Wi-Fi behind a random link shown as a QR code.
++// It reads from Square only. It never talks to Shopify and never writes to Square.
++import { SquareClient, SquareEnvironment } from 'square';
++import qrcode from 'qrcode-terminal';
++import { createServer } from 'node:http';
++import { networkInterfaces } from 'node:os';
++import { randomBytes } from 'node:crypto';
++import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
++import { dirname, join } from 'node:path';
++import { fileURLToPath } from 'node:url';
++import { convertAll, type CatalogIndex, type SqContext, type SqOrder } from '../../src/lib/squareConvert';
++import { buildManifest, packMonths } from '../../src/lib/squareHistory';
++
++const here = dirname(fileURLToPath(import.meta.url)); const OUT = join(here, 'out');
++const arg = (n: string) => { const i = process.argv.indexOf(`--${n}`); return i > 0 ? process.argv[i + 1] : undefined; };
++const flag = (n: string) => process.argv.includes(`--${n}`);
++
++function loadEnv() { // tiny .env reader so the token never has to be typed on the command line
++  const p = join(here, '.env'); if (!existsSync(p)) return;
++  for (const l of readFileSync(p, 'utf8').split(/\r?\n/)) { const m = /^\s*([A-Z_]+)\s*=\s*(.*?)\s*$/.exec(l); if (m && !process.env[m[1]]) process.env[m[1]] = m[2].replace(/^["']|["']$/g, ''); }
++}
++loadEnv();
++const token = process.env.SQUARE_ACCESS_TOKEN;
++if (!token) { console.error('Set SQUARE_ACCESS_TOKEN in tools/square-history/.env (Square Developer Dashboard ▸ your app ▸ Credentials ▸ Production access token).'); process.exit(1); }
++const client = new SquareClient({ token, environment: arg('env') === 'sandbox' ? SquareEnvironment.Sandbox : SquareEnvironment.Production });
++
++/** The SDK returns BigInt money; the converter wants plain numbers. */
++const plain = <T,>(x: T): T => JSON.parse(JSON.stringify(x, (_k, v) => (typeof v === 'bigint' ? Number(v) : v)));
++const log = (m: string) => console.log(m);
++
++async function main() {
++  const from = arg('from'); const to = arg('to');
++  log('Locations…'); const locRes = await client.locations.list();
++  const locs = (locRes.locations ?? []).filter(l => l.id); const locations: Record<string, string> = {}; for (const l of locs) locations[l.id as string] = l.name ?? l.id as string;
++  log(`  ${locs.map(l => l.name).join(', ')}`);
++
++  log('Catalogue…'); const catalogue: CatalogIndex = { variations: {} }; const cats = new Map<string, string>(); const items = new Map<string, { name: string; cat?: string }>(); const vars: any[] = [];
++  for await (const o of await client.catalog.list({ types: 'ITEM,ITEM_VARIATION,CATEGORY' })) {
++    const x: any = plain(o);
++    if (x.type === 'CATEGORY') cats.set(x.id, x.categoryData?.name ?? '');
++    else if (x.type === 'ITEM') items.set(x.id, { name: x.itemData?.name ?? '', cat: x.itemData?.reportingCategory?.id ?? x.itemData?.categories?.[0]?.id ?? x.itemData?.categoryId });
++    else if (x.type === 'ITEM_VARIATION') vars.push(x);
++  }
++  for (const v of vars) { const it = items.get(v.itemVariationData?.itemId); catalogue.variations[v.id] = { sku: v.itemVariationData?.sku || undefined, upc: v.itemVariationData?.upc || undefined, item: it?.name ?? '', variation: v.itemVariationData?.name ?? '', category: it?.cat ? cats.get(it.cat) : undefined }; }
++  log(`  ${Object.keys(catalogue.variations).length} variations`);
++
++  log('Customers…'); const customers: SqContext['customers'] = {};
++  for await (const c of await client.customers.list({})) { const x: any = plain(c); const name = [x.givenName, x.familyName].filter(Boolean).join(' ') || x.companyName || x.nickname || ''; if (x.id && name) customers[x.id] = { name, email: x.emailAddress || undefined, phone: x.phoneNumber || undefined }; }
++  log(`  ${Object.keys(customers).length} customers`);
++
++  log('Orders (30-day windows, so no single request is too large)…');
++  const orders = new Map<string, SqOrder>(); const start = from ? new Date(from) : new Date('2013-01-01'); const end = to ? new Date(`${to}T23:59:59Z`) : new Date();
++  for (const loc of locs) {
++    for (let a = new Date(start); a < end; a = new Date(a.getTime() + 30 * 86400000)) {
++      const b = new Date(Math.min(a.getTime() + 30 * 86400000, end.getTime() + 1)); let cursor: string | undefined;
++      do {
++        const res = await client.orders.search({ locationIds: [loc.id as string], cursor, limit: 500, query: { filter: { stateFilter: { states: ['COMPLETED'] }, dateTimeFilter: { createdAt: { startAt: a.toISOString(), endAt: b.toISOString() } } }, sort: { sortField: 'CREATED_AT', sortOrder: 'ASC' } } });
++        for (const o of res.orders ?? []) orders.set(o.id as string, plain(o) as unknown as SqOrder);
++        cursor = res.cursor;
++      } while (cursor);
++    }
++    log(`  ${loc.name}: ${orders.size} orders so far`);
++  }
++
++  const sales = convertAll([...orders.values()], { catalogue, customers, locations });
++  const { files } = packMonths(sales); const manifest = buildManifest(sales, files, Object.values(locations));
++  rmSync(OUT, { recursive: true, force: true }); mkdirSync(OUT, { recursive: true });
++  for (const f of files) writeFileSync(join(OUT, f.name), f.data);
++  writeFileSync(join(OUT, 'manifest.json'), JSON.stringify(manifest));
++  const bytes = files.reduce((s, f) => s + f.data.length, 0);
++  log(`\nDone: ${manifest.sales} sales + ${manifest.refunds} refunds in ${files.length} monthly files, ${(bytes / 1048576).toFixed(1)} MB compressed.\nFiles are in ${OUT}`);
++  if (flag('no-serve')) return;
++  serve();
++}
++
++function lanIp(): string {
++  const all = Object.values(networkInterfaces()).flat().filter(i => i && i.family === 'IPv4' && !i.internal).map(i => i!.address);
++  return all.find(a => a.startsWith('192.168.')) ?? all.find(a => /^10\./.test(a)) ?? all.find(a => /^172\.(1[6-9]|2\d|3[01])\./.test(a)) ?? all[0] ?? 'localhost';
++}
++function serve() {
++  const key = randomBytes(8).toString('hex'); const port = Number(arg('port') ?? 8787); const names = new Set(readdirSync(OUT));
++  createServer((req, res) => {
++    const m = /^\/([a-f0-9]+)\/([A-Za-z0-9._-]+)$/.exec(req.url ?? '');
++    if (!m || m[1] !== key || !names.has(m[2])) { res.writeHead(404).end(); return; }
++    res.writeHead(200, { 'content-type': m[2].endsWith('.json') ? 'application/json' : 'application/gzip' }).end(readFileSync(join(OUT, m[2])));
++    console.log(`  sent ${m[2]} to ${req.socket.remoteAddress}`);
++  }).listen(port, '0.0.0.0', () => {
++    const url = `http://${lanIp()}:${port}/${key}/manifest.json`;
++    console.log(`\nIn the POS app: Settings ▸ Data ▸ Square history ▸ Scan QR from PC\n${url}\n`);
++    qrcode.generate(url, { small: true });
++    console.log('\nLeave this running until the app says it is done, then press Ctrl+C.\nNo Wi-Fi route? Copy the files in the out folder to the iPad (AirDrop / Files) and use "Pick files" instead.');
++  });
++}
++main().catch(e => { console.error('\nFailed:', e?.message ?? e); process.exit(1); });
+diff --git a/tools/square-history/package-lock.json b/tools/square-history/package-lock.json
+new file mode 100644
+index 0000000..9e5382c
+--- /dev/null
++++ b/tools/square-history/package-lock.json
+@@ -0,0 +1,1758 @@
++{
++  "name": "square-history-export",
++  "version": "1.0.0",
++  "lockfileVersion": 3,
++  "requires": true,
++  "packages": {
++    "": {
++      "name": "square-history-export",
++      "version": "1.0.0",
++      "dependencies": {
++        "qrcode-terminal": "^0.12.0",
++        "square": "^46.0.0"
++      },
++      "devDependencies": {
++        "@types/node": "^26.6.5",
++        "@types/qrcode-terminal": "^0.12.2",
++        "tsx": "^4.23.15",
++        "typescript": "^7.0.2"
++      }
++    },
++    "node_modules/@apimatic/authentication-adapters": {
++      "version": "0.5.14",
++      "resolved": "https://registry.npmjs.org/@apimatic/authentication-adapters/-/authentication-adapters-0.5.14.tgz",
++      "integrity": "sha512-V7nhHShPrU8LfjKKHoVJNS50SveSL77CexVuS4aeQyXx99HwdQVJwl2MK0KAYM6/b2ufQbJ7Eee2fzQT0TVXSQ==",
++      "license": "MIT",
++      "dependencies": {
++        "@apimatic/core-interfaces": "^0.2.14",
++        "@apimatic/http-headers": "^0.3.8",
++        "@apimatic/http-query": "^0.3.9",
++        "tslib": "^2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/axios-client-adapter": {
++      "version": "0.3.21",
++      "resolved": "https://registry.npmjs.org/@apimatic/axios-client-adapter/-/axios-client-adapter-0.3.21.tgz",
++      "integrity": "sha512-pr/XvAvH9FjbpwM+B7vHQxM7alocOX1kLNtSpXKW3yxTYxksF3ydnUuQ85rRbCoNpyfMOIjnRBCNUBzX5p2Hnw==",
++      "license": "MIT",
++      "dependencies": {
++        "@apimatic/convert-to-stream": "^0.1.9",
++        "@apimatic/core-interfaces": "^0.2.14",
++        "@apimatic/file-wrapper": "^0.3.9",
++        "@apimatic/http-headers": "^0.3.8",
++        "@apimatic/http-query": "^0.3.9",
++        "@apimatic/json-bigint": "^1.2.0",
++        "@apimatic/proxy": "^0.1.4",
++        "axios": "^1.8.4",
++        "detect-browser": "^5.3.0",
++        "detect-node": "^2.1.0",
++        "form-data": "^4.0.1",
++        "lodash.flatmap": "^4.5.0",
++        "tiny-warning": "^1.0.3",
++        "tslib": "^2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/convert-to-stream": {
++      "version": "0.1.9",
++      "resolved": "https://registry.npmjs.org/@apimatic/convert-to-stream/-/convert-to-stream-0.1.9.tgz",
++      "integrity": "sha512-C9NEKnDZoTRBRVeUGXVyAEmy6P5o+8oLwEckTKj0iBlExJLEXNt14nf4wxfzRO1KR8j5Bw8S6yStKCrQzcVERA==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/core": {
++      "version": "0.10.30",
++      "resolved": "https://registry.npmjs.org/@apimatic/core/-/core-0.10.30.tgz",
++      "integrity": "sha512-MqODm1YwuW5yK7gkVtqiRQBgoAfjsTSNYTYJP4cg/JDaF8RokpiupSEDuUW6Xdo3fl/4tGCzphtAlKSeLUWKVA==",
++      "license": "MIT",
++      "dependencies": {
++        "@apimatic/convert-to-stream": "^0.1.9",
++        "@apimatic/core-interfaces": "^0.2.14",
++        "@apimatic/file-wrapper": "^0.3.9",
++        "@apimatic/http-headers": "^0.3.8",
++        "@apimatic/http-query": "^0.3.9",
++        "@apimatic/json-bigint": "^1.2.0",
++        "@apimatic/schema": "^0.7.21",
++        "detect-browser": "^5.3.0",
++        "detect-node": "^2.1.0",
++        "form-data": "^4.0.1",
++        "lodash.defaultsdeep": "^4.6.1",
++        "lodash.flatmap": "^4.5.0",
++        "tiny-warning": "^1.0.3",
++        "tslib": "^2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/core-interfaces": {
++      "version": "0.2.14",
++      "resolved": "https://registry.npmjs.org/@apimatic/core-interfaces/-/core-interfaces-0.2.14.tgz",
++      "integrity": "sha512-PQmSU32ndxtDddMCjbkNY/sVvDwQAsHUGKrdG5aGVE7iw/qvB2Tm2zyCarOB5TlDr4OB+/tuLCVhji0icx6MHg==",
++      "license": "MIT",
++      "dependencies": {
++        "@apimatic/file-wrapper": "^0.3.9",
++        "@apimatic/json-bigint": "^1.2.0",
++        "tslib": "^2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/file-wrapper": {
++      "version": "0.3.9",
++      "resolved": "https://registry.npmjs.org/@apimatic/file-wrapper/-/file-wrapper-0.3.9.tgz",
++      "integrity": "sha512-Fh3UE7UPs2v4wkJdsD+uJFF147+7X0qkQfKBdeLZx6mZ5RmBJOBbS6ApvstQTV279YsHiiedKUZGJ6XLoVU+pQ==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/http-headers": {
++      "version": "0.3.8",
++      "resolved": "https://registry.npmjs.org/@apimatic/http-headers/-/http-headers-0.3.8.tgz",
++      "integrity": "sha512-ShvCuT39hYfBTI+H1I16m5i6XZCyUy2kQJ6Jhfj78TwsW5r6AyCbzW7DEro8GN2nNYRU1+E/hrgH6J85YmriOA==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/http-query": {
++      "version": "0.3.9",
++      "resolved": "https://registry.npmjs.org/@apimatic/http-query/-/http-query-0.3.9.tgz",
++      "integrity": "sha512-D6nqXcCR3P6iWbJ9uFXyyF2z1PEhTbGFbHNNuwF1NQ4tnThQk67DW9ou7/XcWi21zLh9MUchDWw9I0iE+5F2xA==",
++      "license": "MIT",
++      "dependencies": {
++        "@apimatic/core-interfaces": "^0.2.14",
++        "@apimatic/file-wrapper": "^0.3.9",
++        "tslib": "^2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/json-bigint": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/@apimatic/json-bigint/-/json-bigint-1.2.0.tgz",
++      "integrity": "sha512-+bmVzYMdZu0Ya5L+my4FXFUih54OvQA/qlZsFOYdOoostyUuB27UDrVWQs/WVCmS0ADdo5vTU0eeTrrBkHoySw==",
++      "license": "MIT"
++    },
++    "node_modules/@apimatic/proxy": {
++      "version": "0.1.4",
++      "resolved": "https://registry.npmjs.org/@apimatic/proxy/-/proxy-0.1.4.tgz",
++      "integrity": "sha512-Vzgfu7wcA5aEJyj2SjQ00Tb06fhBof8gDo1kSsF6sZBm4QjdFywN5AMbQwhfFOKjHqcsNmJspdeqcdymUQ77jA==",
++      "license": "MIT",
++      "dependencies": {
++        "http-proxy-agent": "^7.0.2",
++        "https-proxy-agent": "^7.0.6"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@apimatic/schema": {
++      "version": "0.7.21",
++      "resolved": "https://registry.npmjs.org/@apimatic/schema/-/schema-0.7.21.tgz",
++      "integrity": "sha512-RCke4toXjA7fBRxQVa1GR+Lj9utVOEJ3voDI26dhk+bZuAac4UXPzkTEaIO3AIe/o8pcKCOkpNIzhzm57Cv2Qg==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "^2.8.1"
++      },
++      "engines": {
++        "node": ">=14.15.0 || >=16.0.0"
++      }
++    },
++    "node_modules/@esbuild/aix-ppc64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/aix-ppc64/-/aix-ppc64-0.28.2.tgz",
++      "integrity": "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "aix"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/android-arm": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm/-/android-arm-0.28.2.tgz",
++      "integrity": "sha512-kXXoiPVVGQcnIYGOeaovwOURpniDBpSq4A03qkQ+BMQqtGG6HYap3xne9C1O1yo4TR3qxlCX5IqqmX6fFo2Lqg==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/android-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-arm64/-/android-arm64-0.28.2.tgz",
++      "integrity": "sha512-5YfKeeI8qWfBZIX+u2xZC3Zlb3Os/gLS2sbEKM+I4ZOcsWmHS2WLysCcQZDAFRslDUU5Oiq44gf6PYN1vGwG5A==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/android-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/android-x64/-/android-x64-0.28.2.tgz",
++      "integrity": "sha512-O387ite7SzUyCcy3JQX4P4bLtEA7bLLkx+esve5JHnyYfNTxcVpXZo9jhdB0lTKN44gztELTdU7nS8Nr16Fs1Q==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "android"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/darwin-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-arm64/-/darwin-arm64-0.28.2.tgz",
++      "integrity": "sha512-n4KqkOQrraxHJcgjM1RvwbigfQKIKJVpM7xp+KsxiyUSrRdIXnt73VhrPAx0fV44hgfmIVKjxMN9J1t5jySVkw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/darwin-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/darwin-x64/-/darwin-x64-0.28.2.tgz",
++      "integrity": "sha512-uq6suIWYP37qzGddBKPw5QEQPi6HiLGsO7UmkpfyaYNQ3D+rN6w6WfwH+nuqcGXWvawGwxOEroO4YGnFh95azw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/freebsd-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-arm64/-/freebsd-arm64-0.28.2.tgz",
++      "integrity": "sha512-n+I0BTSRIoy+d6RPKnEVwql5UwBJolytvY4mAOIEJorKlqgPII8ix6slVVrfZ5Tnj7glIZvloylbB/EJPMWEXw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/freebsd-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/freebsd-x64/-/freebsd-x64-0.28.2.tgz",
++      "integrity": "sha512-78XJTJkvPs0kz2w61301PJjXl4g7q3JqiYMZ/M/yVI73EHBrCRTgkhu9oqG7vPqq+a/yadEW8aD+agKlk5xrmg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-arm": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm/-/linux-arm-0.28.2.tgz",
++      "integrity": "sha512-XlDnu2q5yoqems+xay6wSAcg9DDD7K9RLKZEBOMZm3ckNpJBvOX20tSfby8KfrrhINDyv9V2YVZKY/SpoGJI8w==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-arm64/-/linux-arm64-0.28.2.tgz",
++      "integrity": "sha512-pW4AC0P3it8c7do9MVM4p51FzHzdM/TZrerurgRcHJ2WTa1VQ1CIq18xncfpBJw4ojkiZZrKW2yIBWBP92j6Ug==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-ia32": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ia32/-/linux-ia32-0.28.2.tgz",
++      "integrity": "sha512-CYbnj78HsIeA+DhgUKgFCfvNsTHFhMMrinUrMZpDXJXKN8T3XViTZ/+wtHeVxEWY8ewSzTFN+nRmSwO2tZaLUQ==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-loong64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-loong64/-/linux-loong64-0.28.2.tgz",
++      "integrity": "sha512-buwkd8nsph4R+ajRvw0qM5Hja/TXQow3ptzWO2EbG/cqcIkHloRrdlBtQlshyYGTNFvfkfJ5tpPLVkY4DtsPfQ==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-mips64el": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-mips64el/-/linux-mips64el-0.28.2.tgz",
++      "integrity": "sha512-ZVykbDyk7519VwiNb9Lcj9m8XM6v5V9uKPvrEMkkEedVewf+0itkhahp4HDpgERXhwLRpWFypsGbG/J8s0QjJA==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-ppc64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-ppc64/-/linux-ppc64-0.28.2.tgz",
++      "integrity": "sha512-CAXl+Dtd9UUuJd8pKKdwh6MLm3MUMiqMPmhZ3tTSXPqfyQ3vDl6R5hZdZ/kYojK4ofXtdfSv1tFq8XzWx3heNQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-riscv64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-riscv64/-/linux-riscv64-0.28.2.tgz",
++      "integrity": "sha512-GeXCej4IQtU1B+QlDV8W/RRvbzI3O/Stss+/bCXv4lZls5WGRtu2a+3JkA3i4qIUlMXpcHebWpF8AkJhATowuA==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-s390x": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-s390x/-/linux-s390x-0.28.2.tgz",
++      "integrity": "sha512-3H1weTYZPxt/WOhByszQZybS9w5lKzUn1FDMsgEChbHWQwHYQQRfBxgCcZvPhjHfKyJjIievvMmEUawJrdY9Dg==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/linux-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/linux-x64/-/linux-x64-0.28.2.tgz",
++      "integrity": "sha512-4xTZr1FUmSoQW4XIWmit3tzQrUTZM+N3P0XV8xROKYF50XfI7xeO90+1bZvNwxIufQ9hDQVRJH5YhgPVF8A/HQ==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/netbsd-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-arm64/-/netbsd-arm64-0.28.2.tgz",
++      "integrity": "sha512-sSATRjPeDBg3pdgHoQfoYBob11Kk1FGa9lui5RIHZCoCkJa9QKlvl3/vKz2usCmYYjs7ymJR/2Nnsqe+Hjt5nw==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/netbsd-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/netbsd-x64/-/netbsd-x64-0.28.2.tgz",
++      "integrity": "sha512-lqnzCV+mM0gIADaKihiCg6ifgfU2L3h5E33rNQBN1Y4MaVGnzryzmvvf7UHxprpQdE8hpqLolJ9Rl+SkIRDpyw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/openbsd-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-arm64/-/openbsd-arm64-0.28.2.tgz",
++      "integrity": "sha512-AL2qJILH7lNjrDmCQDvdxMfAUIv8KMNZOvrwAQ8i8//ntL9FflhOyMJ8OZSMBb8/AWXe3/5v5S20y3zCoZWKoQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/openbsd-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/openbsd-x64/-/openbsd-x64-0.28.2.tgz",
++      "integrity": "sha512-QtiuPytchRyC4rwUKhexJdQKvDuZ6hWloi3igqPQNUJCS1/v9EiO3UTOXR6A3FoMo4fnAKbWJdqaIwhOzh8qEw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/openharmony-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/openharmony-arm64/-/openharmony-arm64-0.28.2.tgz",
++      "integrity": "sha512-WkhYDmpTjLvGlScA1rwjRUmhl4k8oXR3cIbtqWmELgU/dFeHHlEllxDvdWcNJV9rbzCexB5vz8gtNewWLgCT7Q==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "openharmony"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/sunos-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/sunos-x64/-/sunos-x64-0.28.2.tgz",
++      "integrity": "sha512-GPMSkTOtMnv2U2F8gxe4Io6qmVs+YKyp832Etqqxr0hFngmXQ3rzwytelm3GIn7T4VviRUlf3sOgBOiTdvaf7g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/win32-arm64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-arm64/-/win32-arm64-0.28.2.tgz",
++      "integrity": "sha512-PIhhEkE9uPBleRBrQEJpUn7MBnibZzbGzYWPmY3x+YoVg/95zbjB4CxPPOQ8l5tYYM4mMaCthF8/1DIfBQQyWQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/win32-ia32": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-ia32/-/win32-ia32-0.28.2.tgz",
++      "integrity": "sha512-YmJbfTlvU7Sdn9BB+4PRES4oB6pxgS37MAONj+hBr/cpXS1aBPKXxNnDbu+QCWPj0o9dgyxeq79g6c5P8KeuYA==",
++      "cpu": [
++        "ia32"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@esbuild/win32-x64": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/@esbuild/win32-x64/-/win32-x64-0.28.2.tgz",
++      "integrity": "sha512-5ebpxr3nWMzrL/rnUI755Jkuee0bHL/Gq0WTF9lvcpv73wAp5eu8MfBUgWK9bhWvZjj7yX8etf/8tI8Ney695g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=18"
++      }
++    },
++    "node_modules/@types/node": {
++      "version": "26.6.5",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-26.6.5.tgz",
++      "integrity": "sha512-uMzsv9stDdofIZBx4UGh4Z9ZgXnGC9seRDscilBcTHAeOFk67MZg/k9bWVfO+bk4qZmG+l52hRnLwUiH2LnJTg==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "undici-types": "~8.9.0"
++      }
++    },
++    "node_modules/@types/qrcode-terminal": {
++      "version": "0.12.2",
++      "resolved": "https://registry.npmjs.org/@types/qrcode-terminal/-/qrcode-terminal-0.12.2.tgz",
++      "integrity": "sha512-v+RcIEJ+Uhd6ygSQ0u5YYY7ZM+la7GgPbs0V/7l/kFs2uO4S8BcIUEMoP7za4DNIqNnUD5npf0A/7kBhrCKG5Q==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/@typescript/typescript-aix-ppc64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-aix-ppc64/-/typescript-aix-ppc64-7.0.2.tgz",
++      "integrity": "sha512-MTKKkWB7p/0E9xi1d1tHtZ5PiLkGEMIq88pK2CubZjOsLtYTLqhgIgi6zepFa+9GHZ6h05NMCkQxGKiPXMxXtQ==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "aix"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-darwin-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-darwin-arm64/-/typescript-darwin-arm64-7.0.2.tgz",
++      "integrity": "sha512-gowzar9MwS/aRWp6f3a4KUqzRjAZjOsmGNCM6LcTgXum+dBfgsBVMN+AgvOCCbguXyick6LJhpBszxMebJ8syA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-darwin-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-darwin-x64/-/typescript-darwin-x64-7.0.2.tgz",
++      "integrity": "sha512-SZ9xZInqApNlNGc9s0W1VSsktYSOe9cFqNOIqmN1Gs8SmkjKZYFt017G4VwPxASInODuAdbTW7sXiFUf893RgA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-freebsd-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-freebsd-arm64/-/typescript-freebsd-arm64-7.0.2.tgz",
++      "integrity": "sha512-W5NH4y/J0plIIS5b2xvTEkU7JFxyqdMAOgf+Ilhl0vHQXKO5dZoxd+C/jEtq56c4F3wk71RB4BMRQ2XdI+bwYQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-freebsd-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-freebsd-x64/-/typescript-freebsd-x64-7.0.2.tgz",
++      "integrity": "sha512-UMGDx5sTpzNw3WiPebH7l90IWfJggEd+egHt/q6p7/Cm3zqoV7VxkGXt+3DxPIw8CcmvAB0j3sVVfbhX+M4Tpw==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "freebsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-arm": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-arm/-/typescript-linux-arm-7.0.2.tgz",
++      "integrity": "sha512-gffT3xPz9sR7j/YJExkyPntrI0P2EP9XbOyWzth2/Gs0RstK+90RBcO0ncXoXy/beYll1SXw846Nf2zdnEz0QQ==",
++      "cpu": [
++        "arm"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-arm64/-/typescript-linux-arm64-7.0.2.tgz",
++      "integrity": "sha512-Qh4eU4/y3yDjnfjjyPYihMj5/ODIlmt+Bzu17OI+fiSRDW57QmU5SiN63exPRNJPKUzcc1INa1NXdrJ+MqHjUQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-loong64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-loong64/-/typescript-linux-loong64-7.0.2.tgz",
++      "integrity": "sha512-uEHck9i8hoAzXPiYRib1O7miOnz23SxIeVl6F4LXox+qov1K35jHcEW6VHKvZI+pyvl7fZEP4MCU5LYvIq1GuQ==",
++      "cpu": [
++        "loong64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-mips64el": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-mips64el/-/typescript-linux-mips64el-7.0.2.tgz",
++      "integrity": "sha512-R4KvAMnE43W5Qeqb0Ly56O3mWMWIAgsMyz36DCaycd5nbg/9kzm0liw3JocfRqyJY0KPmzFjbswozXyW0DnIYA==",
++      "cpu": [
++        "mips64el"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-ppc64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-ppc64/-/typescript-linux-ppc64-7.0.2.tgz",
++      "integrity": "sha512-DORx5b3sd/4S7eayxm4FQv+A7CrkUIGRaHiwI8oiHTAI1fAPWhF4J0vAlkC8biAlHSVVwxMQ3tjZ2/DVbnQiiA==",
++      "cpu": [
++        "ppc64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-riscv64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-riscv64/-/typescript-linux-riscv64-7.0.2.tgz",
++      "integrity": "sha512-wf0jqEDOjrPRnKwYRyyJDRo11KMbvMFrU+q4zqKyChODBzvlkbhNQfKvLxQCcwTpdDaXSHZTVuh0JoCrKCUMHQ==",
++      "cpu": [
++        "riscv64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-s390x": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-s390x/-/typescript-linux-s390x-7.0.2.tgz",
++      "integrity": "sha512-IkwJc3L7yhytWd/ewjyxNDfOmswCm9GWMJT/ue/dU4aZNbwZeYAetq42VyLmsmSjvoX7z74X6ZaYCtzAr0EuGw==",
++      "cpu": [
++        "s390x"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-linux-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-linux-x64/-/typescript-linux-x64-7.0.2.tgz",
++      "integrity": "sha512-EYdf2cNg7rgCWJnxCdJ+F3V39O8ihb37eHAu1LK8oAFizgTQbPOK7zHHXbPt8rX24COqODXeI3sIf0fCXG7H/A==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "linux"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-netbsd-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-netbsd-arm64/-/typescript-netbsd-arm64-7.0.2.tgz",
++      "integrity": "sha512-+polYF4MF04aPpO5FTkHran9yUQDSXqy5GiSDKpsll5jy3l3+g9QLhpf39T+ePtefhXLOGrLl0QIjkQP6VnelA==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-netbsd-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-netbsd-x64/-/typescript-netbsd-x64-7.0.2.tgz",
++      "integrity": "sha512-8YIT0EHM/3dq10ZOVF/A7pc/YSMtbcecct4rWtexrnSCHOPcpC2KTLXfTCR6vDpnSiY12heNb1GiN/wu+T/FyA==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "netbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-openbsd-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-openbsd-arm64/-/typescript-openbsd-arm64-7.0.2.tgz",
++      "integrity": "sha512-APT8+ClYnuYm1u9+kgGXoMj2VzWzcymwh2gNSQVySHfkRDGOTVkoWLjCmOQSaO+PoqQ57B0flRp9SA+7GnnkzQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-openbsd-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-openbsd-x64/-/typescript-openbsd-x64-7.0.2.tgz",
++      "integrity": "sha512-yX7s+Q0Dln0Dt9tEzZsAjXXR/+ytBM7AlglaqyeMPxQszJ1JhlJdZ6jLA+IzldHtflX81em7lDao1xXu+aRRkg==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "openbsd"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-sunos-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-sunos-x64/-/typescript-sunos-x64-7.0.2.tgz",
++      "integrity": "sha512-dLJDGaLZ1D4HPQn62u1n8mBDkJREwMsAkCdkwd4Ieqw+x3TUyTsqY0YiBCtE6H6OzzgGk3iuZ3vFWRS+E8/d1g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "sunos"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-win32-arm64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-win32-arm64/-/typescript-win32-arm64-7.0.2.tgz",
++      "integrity": "sha512-Gyl1Vy6OsWesLzmq+EP0Fb7b4Nid5232AvcA2SFcdYreldpNtYFFofPjnt62y9hQy7VTaZp65ICJjuAQRaVcIQ==",
++      "cpu": [
++        "arm64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/@typescript/typescript-win32-x64": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/@typescript/typescript-win32-x64/-/typescript-win32-x64-7.0.2.tgz",
++      "integrity": "sha512-0BQ3HkAHHlKLSp1qRvf3SUhGpGsDuhB/jgFw75guyqbxJqEaS0Cw/VFO8i2nHglJUzQCRtMMR/IBAKE3ETMC4g==",
++      "cpu": [
++        "x64"
++      ],
++      "dev": true,
++      "license": "Apache-2.0",
++      "optional": true,
++      "os": [
++        "win32"
++      ],
++      "engines": {
++        "node": ">=16.20.0"
++      }
++    },
++    "node_modules/abort-controller": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/abort-controller/-/abort-controller-3.0.0.tgz",
++      "integrity": "sha512-h8lQ8tacZYnR3vNQTgibj+tODHI5/+l06Au2Pcriv/Gmet0eaj4TwWH41sO9wnHDiQsEj19q0drzdWdeAHtweg==",
++      "license": "MIT",
++      "dependencies": {
++        "event-target-shim": "^5.0.0"
++      },
++      "engines": {
++        "node": ">=6.5"
++      }
++    },
++    "node_modules/agent-base": {
++      "version": "7.1.4",
++      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-7.1.4.tgz",
++      "integrity": "sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 14"
++      }
++    },
++    "node_modules/asynckit": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/asynckit/-/asynckit-0.4.0.tgz",
++      "integrity": "sha512-Oei9OH4tRh0YqU3GxhX79dM/mwVgvbZJaSNaRk+bshkj0S5cfHcgYakreBjrHwatXKbz+IoIdYLxrKim2MjW0Q==",
++      "license": "MIT"
++    },
++    "node_modules/axios": {
++      "version": "1.20.0",
++      "resolved": "https://registry.npmjs.org/axios/-/axios-1.20.0.tgz",
++      "integrity": "sha512-r8aOh8j9cGKpgQAqpzrUHnSIc6a59Y3Xf/cv8sy1DrHCkZHzQGEuoq1tARk6qSyDdtQGSDgpb9kFlruzPvrgwg==",
++      "license": "MIT",
++      "dependencies": {
++        "follow-redirects": "^1.16.0",
++        "form-data": "^4.0.6",
++        "https-proxy-agent": "^5.0.1",
++        "proxy-from-env": "^2.1.0"
++      }
++    },
++    "node_modules/axios/node_modules/agent-base": {
++      "version": "6.0.2",
++      "resolved": "https://registry.npmjs.org/agent-base/-/agent-base-6.0.2.tgz",
++      "integrity": "sha512-RZNwNclF7+MS/8bDg70amg32dyeZGZxiDuQmZxKLAlQjr3jGyLx+4Kkk58UO7D2QdgFIQCovuSuZESne6RG6XQ==",
++      "license": "MIT",
++      "dependencies": {
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 6.0.0"
++      }
++    },
++    "node_modules/axios/node_modules/https-proxy-agent": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-5.0.1.tgz",
++      "integrity": "sha512-dFcAjpTQFgoLMzC2VwU+C/CbS7uRL0lWmxDITmqm7C+7F0Odmj6s9l6alZc6AELXhrnggM2CeWSXHGOdX2YtwA==",
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "6",
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/base64-js": {
++      "version": "1.5.1",
++      "resolved": "https://registry.npmjs.org/base64-js/-/base64-js-1.5.1.tgz",
++      "integrity": "sha512-AKpaYlHn8t4SVbOHCy+b5+KKgvR4vrsD8vbvrbiQJps7fKDTkjkDry6ji0rUJjC0kzbNePLwzxq8iypo41qeWA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/buffer": {
++      "version": "6.0.3",
++      "resolved": "https://registry.npmjs.org/buffer/-/buffer-6.0.3.tgz",
++      "integrity": "sha512-FTiCpNxtwiZZHEZbcbTIcZjERVICn9yq/pDFkTl95/AxzD1naBctN7YO68riM/gLSDY7sdrMby8hofADYuuqOA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT",
++      "dependencies": {
++        "base64-js": "^1.3.1",
++        "ieee754": "^1.2.1"
++      }
++    },
++    "node_modules/call-bind-apply-helpers": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/call-bind-apply-helpers/-/call-bind-apply-helpers-1.0.2.tgz",
++      "integrity": "sha512-Sp1ablJ0ivDkSzjcaJdxEunN5/XvksFJ2sMBFfq6x0ryhQV/2b/KwFe21cMpmHtPOSij8K99/wSfoEuTObmuMQ==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "function-bind": "^1.1.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/combined-stream": {
++      "version": "1.0.8",
++      "resolved": "https://registry.npmjs.org/combined-stream/-/combined-stream-1.0.8.tgz",
++      "integrity": "sha512-FQN4MRfuJeHf7cBbBMJFXhKSDq+2kAArBlmRBvcvFE5BB1HZKXtSFASDhdlz9zOYwxh8lDdnvmMOe/+5cdoEdg==",
++      "license": "MIT",
++      "dependencies": {
++        "delayed-stream": "~1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.8"
++      }
++    },
++    "node_modules/debug": {
++      "version": "4.4.3",
++      "resolved": "https://registry.npmjs.org/debug/-/debug-4.4.3.tgz",
++      "integrity": "sha512-RGwwWnwQvkVfavKVt22FGLw+xYSdzARwm0ru6DhTVA3umU5hZc28V3kO4stgYryrTlLpuvgI9GiijltAjNbcqA==",
++      "license": "MIT",
++      "dependencies": {
++        "ms": "^2.1.3"
++      },
++      "engines": {
++        "node": ">=6.0"
++      },
++      "peerDependenciesMeta": {
++        "supports-color": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/delayed-stream": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/delayed-stream/-/delayed-stream-1.0.0.tgz",
++      "integrity": "sha512-ZySD7Nf91aLB0RxL4KGrKHBXl7Eds1DAmEdcoVawXnLD7SDhpNgtuII2aAkg7a7QS41jxPSZ17p4VdGnMHk3MQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.4.0"
++      }
++    },
++    "node_modules/detect-browser": {
++      "version": "5.3.0",
++      "resolved": "https://registry.npmjs.org/detect-browser/-/detect-browser-5.3.0.tgz",
++      "integrity": "sha512-53rsFbGdwMwlF7qvCt0ypLM5V5/Mbl0szB7GPN8y9NCcbknYOeVVXdrXEq+90IwAfrrzt6Hd+u2E2ntakICU8w==",
++      "license": "MIT"
++    },
++    "node_modules/detect-node": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/detect-node/-/detect-node-2.1.0.tgz",
++      "integrity": "sha512-T0NIuQpnTvFDATNuHN5roPwSBG83rFsuO+MXXH9/3N1eFbn4wcPjttvjMLEPWJ0RGUYgQE7cGgS3tNxbqCGM7g==",
++      "license": "MIT"
++    },
++    "node_modules/dunder-proto": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/dunder-proto/-/dunder-proto-1.0.1.tgz",
++      "integrity": "sha512-KIN/nDJBQRcXw0MLVhZE9iQHmG68qAVIBg9CqmUYjmQIhgij9U5MFvrqkUL5FbtyyzZuOeOt0zdeRe4UY7ct+A==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bind-apply-helpers": "^1.0.1",
++        "es-errors": "^1.3.0",
++        "gopd": "^1.2.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/es-define-property": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/es-define-property/-/es-define-property-1.0.1.tgz",
++      "integrity": "sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/es-errors": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/es-errors/-/es-errors-1.3.0.tgz",
++      "integrity": "sha512-Zf5H2Kxt2xjTvbJvP2ZWLEICxA6j+hAmMzIlypy4xcBg1vKVnx89Wy0GbS+kf5cwCVFFzdCFh2XSCFNULS6csw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/es-object-atoms": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/es-object-atoms/-/es-object-atoms-1.1.2.tgz",
++      "integrity": "sha512-HWcBoN6NileqtSydK2FqHbS/LoDd2pqrnQHLyJzBj4kOp/ky2MWMN694xOfkK8/SnUsW2DH7EfyVlydKCsm1Zw==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/es-set-tostringtag": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/es-set-tostringtag/-/es-set-tostringtag-2.1.0.tgz",
++      "integrity": "sha512-j6vWzfrGVfyXxge+O0x5sh6cvxAog0a/4Rdd2K36zCMV5eJ+/+tOAngRO8cODMNWbVRdVlmGZQL2YS3yR8bIUA==",
++      "license": "MIT",
++      "dependencies": {
++        "es-errors": "^1.3.0",
++        "get-intrinsic": "^1.2.6",
++        "has-tostringtag": "^1.0.2",
++        "hasown": "^2.0.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/esbuild": {
++      "version": "0.28.2",
++      "resolved": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
++      "integrity": "sha512-HKVLS8dvII+xoKW9kmqxbRKrnWEXfJJr/FZhhJmiqIB0e053QNYFqOBouTMO/k5sID4MvCiUCvv8b9M4h32wIA==",
++      "dev": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "bin": {
++        "esbuild": "bin/esbuild"
++      },
++      "engines": {
++        "node": ">=18"
++      },
++      "optionalDependencies": {
++        "@esbuild/aix-ppc64": "0.28.2",
++        "@esbuild/android-arm": "0.28.2",
++        "@esbuild/android-arm64": "0.28.2",
++        "@esbuild/android-x64": "0.28.2",
++        "@esbuild/darwin-arm64": "0.28.2",
++        "@esbuild/darwin-x64": "0.28.2",
++        "@esbuild/freebsd-arm64": "0.28.2",
++        "@esbuild/freebsd-x64": "0.28.2",
++        "@esbuild/linux-arm": "0.28.2",
++        "@esbuild/linux-arm64": "0.28.2",
++        "@esbuild/linux-ia32": "0.28.2",
++        "@esbuild/linux-loong64": "0.28.2",
++        "@esbuild/linux-mips64el": "0.28.2",
++        "@esbuild/linux-ppc64": "0.28.2",
++        "@esbuild/linux-riscv64": "0.28.2",
++        "@esbuild/linux-s390x": "0.28.2",
++        "@esbuild/linux-x64": "0.28.2",
++        "@esbuild/netbsd-arm64": "0.28.2",
++        "@esbuild/netbsd-x64": "0.28.2",
++        "@esbuild/openbsd-arm64": "0.28.2",
++        "@esbuild/openbsd-x64": "0.28.2",
++        "@esbuild/openharmony-arm64": "0.28.2",
++        "@esbuild/sunos-x64": "0.28.2",
++        "@esbuild/win32-arm64": "0.28.2",
++        "@esbuild/win32-ia32": "0.28.2",
++        "@esbuild/win32-x64": "0.28.2"
++      }
++    },
++    "node_modules/event-target-shim": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/event-target-shim/-/event-target-shim-5.0.1.tgz",
++      "integrity": "sha512-i/2XbnSz/uxRCU6+NdVJgKWDTM427+MqYbkQzD321DuCQJUqOuJKIA0IM2+W2xtYHdKOmZ4dR6fExsd4SXL+WQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=6"
++      }
++    },
++    "node_modules/events": {
++      "version": "3.3.0",
++      "resolved": "https://registry.npmjs.org/events/-/events-3.3.0.tgz",
++      "integrity": "sha512-mQw+2fkQbALzQ7V0MY0IqdnXNOeTtP4r0lN9z7AAawCXgqea7bDii20AYrIBrFd/Hx0M2Ocz6S111CaFkUcb0Q==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=0.8.x"
++      }
++    },
++    "node_modules/follow-redirects": {
++      "version": "1.16.1",
++      "resolved": "https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.16.1.tgz",
++      "integrity": "sha512-FNvFGzoMLWmE6Yj9spb/zjd7yiNCHiAW9/Tg9CXrQ8wuu32HtlJOwWO11OJafl5FfY3DxTdQ0vj42zU1kvv5jg==",
++      "funding": [
++        {
++          "type": "individual",
++          "url": "https://github.com/sponsors/RubenVerborgh"
++        }
++      ],
++      "license": "MIT",
++      "engines": {
++        "node": ">=4.0"
++      },
++      "peerDependenciesMeta": {
++        "debug": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/form-data": {
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/form-data/-/form-data-4.0.6.tgz",
++      "integrity": "sha512-vKatAh4SlVfgbv+YtmhiRjhEMJsYpsG1Y2rMQtR+SVSbytsSD1YGzDIcrAJmdFec88u/+VoGmxnl+80gL1tRCQ==",
++      "license": "MIT",
++      "dependencies": {
++        "asynckit": "^0.4.0",
++        "combined-stream": "^1.0.8",
++        "es-set-tostringtag": "^2.1.0",
++        "hasown": "^2.0.4",
++        "mime-types": "^2.1.35"
++      },
++      "engines": {
++        "node": ">= 6"
++      }
++    },
++    "node_modules/form-data-encoder": {
++      "version": "4.1.0",
++      "resolved": "https://registry.npmjs.org/form-data-encoder/-/form-data-encoder-4.1.0.tgz",
++      "integrity": "sha512-G6NsmEW15s0Uw9XnCg+33H3ViYRyiM0hMrMhhqQOR8NFc5GhYrI+6I3u7OTw7b91J2g8rtvMBZJDbcGb2YUniw==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 18"
++      }
++    },
++    "node_modules/formdata-node": {
++      "version": "6.0.3",
++      "resolved": "https://registry.npmjs.org/formdata-node/-/formdata-node-6.0.3.tgz",
++      "integrity": "sha512-8e1++BCiTzUno9v5IZ2J6bv4RU+3UKDmqWUQD0MIMVCd9AdhWkO1gw57oo1mNEX1dMq2EGI+FbWz4B92pscSQg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 18"
++      }
++    },
++    "node_modules/fsevents": {
++      "version": "2.3.3",
++      "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.3.3.tgz",
++      "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
++      "dev": true,
++      "hasInstallScript": true,
++      "license": "MIT",
++      "optional": true,
++      "os": [
++        "darwin"
++      ],
++      "engines": {
++        "node": "^8.16.0 || ^10.6.0 || >=11.0.0"
++      }
++    },
++    "node_modules/function-bind": {
++      "version": "1.1.2",
++      "resolved": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.2.tgz",
++      "integrity": "sha512-7XHNxH7qX9xG5mIwxkhumTox/MIRNcOgDrxWsMt2pAr23WHp6MrRlN7FBSFpCpr+oVO0F744iUgR82nJMfG2SA==",
++      "license": "MIT",
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/get-intrinsic": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/get-intrinsic/-/get-intrinsic-1.3.0.tgz",
++      "integrity": "sha512-9fSjSaos/fRIVIp+xSJlE6lfwhES7LNtKaCBIamHsjr2na1BiABJPo0mOjjz8GJDURarmCPGqaiVg5mfjb98CQ==",
++      "license": "MIT",
++      "dependencies": {
++        "call-bind-apply-helpers": "^1.0.2",
++        "es-define-property": "^1.0.1",
++        "es-errors": "^1.3.0",
++        "es-object-atoms": "^1.1.1",
++        "function-bind": "^1.1.2",
++        "get-proto": "^1.0.1",
++        "gopd": "^1.2.0",
++        "has-symbols": "^1.1.0",
++        "hasown": "^2.0.2",
++        "math-intrinsics": "^1.1.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/get-proto": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/get-proto/-/get-proto-1.0.1.tgz",
++      "integrity": "sha512-sTSfBjoXBp89JvIKIefqw7U2CCebsc74kiY6awiGogKtoSGbgjYE/G/+l9sF3MWFPNc9IcoOC4ODfKHfxFmp0g==",
++      "license": "MIT",
++      "dependencies": {
++        "dunder-proto": "^1.0.1",
++        "es-object-atoms": "^1.0.0"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/gopd": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/gopd/-/gopd-1.2.0.tgz",
++      "integrity": "sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/has-symbols": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.1.0.tgz",
++      "integrity": "sha512-1cDNdwJ2Jaohmb3sg4OmKaMBwuC48sYni5HUw2DvsC8LjGTLK9h+eb1X6RyuOHe4hT0ULCW68iomhjUoKUqlPQ==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/has-tostringtag": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/has-tostringtag/-/has-tostringtag-1.0.2.tgz",
++      "integrity": "sha512-NqADB8VjPFLM2V0VvHUewwwsw0ZWBaIdgo+ieHtK3hasLz4qeCRjYcqfB6AQrBggRKppKF8L52/VqdVsO47Dlw==",
++      "license": "MIT",
++      "dependencies": {
++        "has-symbols": "^1.0.3"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      },
++      "funding": {
++        "url": "https://github.com/sponsors/ljharb"
++      }
++    },
++    "node_modules/hasown": {
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/hasown/-/hasown-2.0.4.tgz",
++      "integrity": "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A==",
++      "license": "MIT",
++      "dependencies": {
++        "function-bind": "^1.1.2"
++      },
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/http-proxy-agent": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/http-proxy-agent/-/http-proxy-agent-7.0.2.tgz",
++      "integrity": "sha512-T1gkAiYYDWYx3V5Bmyu7HcfcvL7mUrTWiM6yOfa3PIphViJ/gFPbvidQ+veqSOHci/PxBcDabeUNCzpOODJZig==",
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "^7.1.0",
++        "debug": "^4.3.4"
++      },
++      "engines": {
++        "node": ">= 14"
++      }
++    },
++    "node_modules/https-proxy-agent": {
++      "version": "7.0.6",
++      "resolved": "https://registry.npmjs.org/https-proxy-agent/-/https-proxy-agent-7.0.6.tgz",
++      "integrity": "sha512-vK9P5/iUfdl95AI+JVyUuIcVtd4ofvtrOr3HNtM2yxC9bnMbEdp3x01OhQNnjb8IJYi38VlTE3mBXwcfvywuSw==",
++      "license": "MIT",
++      "dependencies": {
++        "agent-base": "^7.1.2",
++        "debug": "4"
++      },
++      "engines": {
++        "node": ">= 14"
++      }
++    },
++    "node_modules/ieee754": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz",
++      "integrity": "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "BSD-3-Clause"
++    },
++    "node_modules/lodash.defaultsdeep": {
++      "version": "4.6.1",
++      "resolved": "https://registry.npmjs.org/lodash.defaultsdeep/-/lodash.defaultsdeep-4.6.1.tgz",
++      "integrity": "sha512-3j8wdDzYuWO3lM3Reg03MuQR957t287Rpcxp1njpEa8oDrikb+FwGdW3n+FELh/A6qib6yPit0j/pv9G/yeAqA==",
++      "license": "MIT"
++    },
++    "node_modules/lodash.flatmap": {
++      "version": "4.5.0",
++      "resolved": "https://registry.npmjs.org/lodash.flatmap/-/lodash.flatmap-4.5.0.tgz",
++      "integrity": "sha512-/OcpcAGWlrZyoHGeHh3cAoa6nGdX6QYtmzNP84Jqol6UEQQ2gIaU3H+0eICcjcKGl0/XF8LWOujNn9lffsnaOg==",
++      "license": "MIT"
++    },
++    "node_modules/math-intrinsics": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/math-intrinsics/-/math-intrinsics-1.1.0.tgz",
++      "integrity": "sha512-/IXtbwEk5HTPyEwyKX6hGkYXxM9nbj64B+ilVJnC/R6B0pH5G4V3b0pVbL7DBj4tkhBAppbQUlf6F6Xl9LHu1g==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.4"
++      }
++    },
++    "node_modules/mime-db": {
++      "version": "1.52.0",
++      "resolved": "https://registry.npmjs.org/mime-db/-/mime-db-1.52.0.tgz",
++      "integrity": "sha512-sPU4uV7dYlvtWJxwwxHD0PuihVNiE7TyAbQ5SWxDCB9mUYvOgroQOwYQQOKPJ8CIbE+1ETVlOoK1UC2nU3gYvg==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/mime-types": {
++      "version": "2.1.35",
++      "resolved": "https://registry.npmjs.org/mime-types/-/mime-types-2.1.35.tgz",
++      "integrity": "sha512-ZDY+bPm5zTTF+YpCrAU9nK0UgICYPT0QtT1NZWFv4s++TNkcgVaT0g6+4R2uI4MjQjzysHB1zxuWL50hzaeXiw==",
++      "license": "MIT",
++      "dependencies": {
++        "mime-db": "1.52.0"
++      },
++      "engines": {
++        "node": ">= 0.6"
++      }
++    },
++    "node_modules/ms": {
++      "version": "2.1.3",
++      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.3.tgz",
++      "integrity": "sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==",
++      "license": "MIT"
++    },
++    "node_modules/node-fetch": {
++      "version": "2.7.0",
++      "resolved": "https://registry.npmjs.org/node-fetch/-/node-fetch-2.7.0.tgz",
++      "integrity": "sha512-c4FRfUm/dbcWZ7U+1Wq0AwCyFL+3nt2bEw05wfxSz+DWpWsitgmSgYmy2dQdWyKC1694ELPqMs/YzUSNozLt8A==",
++      "license": "MIT",
++      "dependencies": {
++        "whatwg-url": "^5.0.0"
++      },
++      "engines": {
++        "node": "4.x || >=6.0.0"
++      },
++      "peerDependencies": {
++        "encoding": "^0.1.0"
++      },
++      "peerDependenciesMeta": {
++        "encoding": {
++          "optional": true
++        }
++      }
++    },
++    "node_modules/process": {
++      "version": "0.11.10",
++      "resolved": "https://registry.npmjs.org/process/-/process-0.11.10.tgz",
++      "integrity": "sha512-cdGef/drWFoydD1JsMzuFf8100nZl+GT+yacc2bEced5f9Rjk4z+WtFUTBu9PhOi9j/jfmBPu0mMEY4wIdAF8A==",
++      "license": "MIT",
++      "engines": {
++        "node": ">= 0.6.0"
++      }
++    },
++    "node_modules/proxy-from-env": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/proxy-from-env/-/proxy-from-env-2.1.0.tgz",
++      "integrity": "sha512-cJ+oHTW1VAEa8cJslgmUZrc+sjRKgAKl3Zyse6+PV38hZe/V6Z14TbCuXcan9F9ghlz4QrFr2c92TNF82UkYHA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=10"
++      }
++    },
++    "node_modules/qrcode-terminal": {
++      "version": "0.12.0",
++      "resolved": "https://registry.npmjs.org/qrcode-terminal/-/qrcode-terminal-0.12.0.tgz",
++      "integrity": "sha512-EXtzRZmC+YGmGlDFbXKxQiMZNwCLEO6BANKXG4iCtSIM0yqc/pappSx3RIKr4r0uh5JsBckOXeKrB3Iz7mdQpQ==",
++      "bin": {
++        "qrcode-terminal": "bin/qrcode-terminal.js"
++      }
++    },
++    "node_modules/readable-stream": {
++      "version": "4.8.0",
++      "resolved": "https://registry.npmjs.org/readable-stream/-/readable-stream-4.8.0.tgz",
++      "integrity": "sha512-2jhTTU3Eilp/2DMT71gbcoqC35eQHasMJH0RHkYxwlxIv3+FR6Y5xAFZIwEGLxKkjZYEFlsiMNIdwUqjK2lLHQ==",
++      "license": "MIT",
++      "dependencies": {
++        "abort-controller": "^3.0.0",
++        "buffer": "^6.0.3",
++        "events": "^3.3.0",
++        "process": "^0.11.10",
++        "string_decoder": "^1.3.0"
++      },
++      "engines": {
++        "node": "^12.22.0 || ^14.17.0 || >=16.0.0"
++      }
++    },
++    "node_modules/safe-buffer": {
++      "version": "5.2.1",
++      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
++      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
++      "funding": [
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/feross"
++        },
++        {
++          "type": "patreon",
++          "url": "https://www.patreon.com/feross"
++        },
++        {
++          "type": "consulting",
++          "url": "https://feross.org/support"
++        }
++      ],
++      "license": "MIT"
++    },
++    "node_modules/square": {
++      "version": "46.0.0",
++      "resolved": "https://registry.npmjs.org/square/-/square-46.0.0.tgz",
++      "integrity": "sha512-kxjA2w1ttzVPPojuwRnco0zIPBEfXOz7zaNsIy0YD1hmtryz92v1jGtw5VNoWb4H/hw9O0crsWnLFjZlJUUQYA==",
++      "license": "MIT",
++      "dependencies": {
++        "form-data": "^4.0.6",
++        "form-data-encoder": "^4.1.0",
++        "formdata-node": "^6.0.3",
++        "node-fetch": "^2.7.0",
++        "readable-stream": "^4.7.0",
++        "square-legacy": "npm:square@^39.1.1"
++      },
++      "engines": {
++        "node": ">=18.0.0"
++      }
++    },
++    "node_modules/square-legacy": {
++      "name": "square",
++      "version": "39.1.1",
++      "resolved": "https://registry.npmjs.org/square/-/square-39.1.1.tgz",
++      "integrity": "sha512-75b/UWbXl6xk1cG0jEWeWTRHAbDseF78kdPa3N4Cm57KMkDwOS2qGSLfooyqMDmFEKhQAfTA0WSiMkw40hQ/2A==",
++      "license": "MIT",
++      "dependencies": {
++        "@apimatic/authentication-adapters": "^0.5.4",
++        "@apimatic/axios-client-adapter": "^0.3.7",
++        "@apimatic/core": "^0.10.16",
++        "@apimatic/json-bigint": "^1.2.0",
++        "@apimatic/schema": "^0.7.14",
++        "@types/node": "^14.14.30"
++      },
++      "engines": {
++        "node": ">=14.17.0"
++      }
++    },
++    "node_modules/square-legacy/node_modules/@types/node": {
++      "version": "14.18.63",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-14.18.63.tgz",
++      "integrity": "sha512-fAtCfv4jJg+ExtXhvCkCqUKZ+4ok/JQk01qDKhL5BDDoS3AxKXhV5/MAVUZyQnSEd2GT92fkgZl0pz0Q0AzcIQ==",
++      "license": "MIT"
++    },
++    "node_modules/string_decoder": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/string_decoder/-/string_decoder-1.3.0.tgz",
++      "integrity": "sha512-hkRX8U1WjJFd8LsDJ2yQ/wWWxaopEsABU1XfkM8A+j0+85JAGppt16cr1Whg6KIbb4okU6Mql6BOj+uup/wKeA==",
++      "license": "MIT",
++      "dependencies": {
++        "safe-buffer": "~5.2.0"
++      }
++    },
++    "node_modules/tiny-warning": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/tiny-warning/-/tiny-warning-1.0.3.tgz",
++      "integrity": "sha512-lBN9zLN/oAf68o3zNXYrdCt1kP8WsiGW8Oo2ka41b2IM5JL/S1CTyX1rW0mb/zSuJun0ZUrDxx4sqvYS2FWzPA==",
++      "license": "MIT"
++    },
++    "node_modules/tr46": {
++      "version": "0.0.3",
++      "resolved": "https://registry.npmjs.org/tr46/-/tr46-0.0.3.tgz",
++      "integrity": "sha512-N3WMsuqV66lT30CrXNbEjx4GEwlow3v6rr4mCcv6prnfwhS01rkgyFdjPNBYd9br7LpXV1+Emh01fHnq2Gdgrw==",
++      "license": "MIT"
++    },
++    "node_modules/tslib": {
++      "version": "2.8.1",
++      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
++      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
++      "license": "0BSD"
++    },
++    "node_modules/tsx": {
++      "version": "4.23.15",
++      "resolved": "https://registry.npmjs.org/tsx/-/tsx-4.23.15.tgz",
++      "integrity": "sha512-Yiex1Ovn8z2xPpOWckIiysV1SSyRMY9BkLF++q0yKiDxCqRhosKfMg3janKkiLBwZ5c/YryloKwGZcrEmtwxKw==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "esbuild": "~0.28.0"
++      },
++      "bin": {
++        "tsx": "dist/cli.mjs"
++      },
++      "engines": {
++        "node": ">=18.0.0"
++      },
++      "optionalDependencies": {
++        "fsevents": "~2.3.3"
++      }
++    },
++    "node_modules/typescript": {
++      "version": "7.0.2",
++      "resolved": "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz",
++      "integrity": "sha512-8FYau96o3NKOhbjKi/qNvG/W5jhzxkbdm5sj9AbZ/5T5sWqn3hJgLfGx27sRKZWTvyzCP8dLRBTf5tBTSRVUNA==",
++      "dev": true,
++      "license": "Apache-2.0",
++      "bin": {
++        "tsc": "bin/tsc"
++      },
++      "engines": {
++        "node": ">=16.20.0"
++      },
++      "optionalDependencies": {
++        "@typescript/typescript-aix-ppc64": "7.0.2",
++        "@typescript/typescript-darwin-arm64": "7.0.2",
++        "@typescript/typescript-darwin-x64": "7.0.2",
++        "@typescript/typescript-freebsd-arm64": "7.0.2",
++        "@typescript/typescript-freebsd-x64": "7.0.2",
++        "@typescript/typescript-linux-arm": "7.0.2",
++        "@typescript/typescript-linux-arm64": "7.0.2",
++        "@typescript/typescript-linux-loong64": "7.0.2",
++        "@typescript/typescript-linux-mips64el": "7.0.2",
++        "@typescript/typescript-linux-ppc64": "7.0.2",
++        "@typescript/typescript-linux-riscv64": "7.0.2",
++        "@typescript/typescript-linux-s390x": "7.0.2",
++        "@typescript/typescript-linux-x64": "7.0.2",
++        "@typescript/typescript-netbsd-arm64": "7.0.2",
++        "@typescript/typescript-netbsd-x64": "7.0.2",
++        "@typescript/typescript-openbsd-arm64": "7.0.2",
++        "@typescript/typescript-openbsd-x64": "7.0.2",
++        "@typescript/typescript-sunos-x64": "7.0.2",
++        "@typescript/typescript-win32-arm64": "7.0.2",
++        "@typescript/typescript-win32-x64": "7.0.2"
++      }
++    },
++    "node_modules/undici-types": {
++      "version": "8.9.0",
++      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-8.9.0.tgz",
++      "integrity": "sha512-KTDyRTYX8sWmKXAikPHHSyc63CRPETMctyjKFupcC6OBLXT3xsN0e9aF7m+mIXutFWpUXuedtowG7iLOzp0kQg==",
++      "dev": true,
++      "license": "MIT"
++    },
++    "node_modules/webidl-conversions": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmjs.org/webidl-conversions/-/webidl-conversions-3.0.1.tgz",
++      "integrity": "sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==",
++      "license": "BSD-2-Clause"
++    },
++    "node_modules/whatwg-url": {
++      "version": "5.0.0",
++      "resolved": "https://registry.npmjs.org/whatwg-url/-/whatwg-url-5.0.0.tgz",
++      "integrity": "sha512-saE57nupxk6v3HY35+jzBwYa0rKSy0XR8JSxZPwgLr7ys0IBzhGviA1/TUGJLmSVqs8pb9AnvICXEuOHLprYTw==",
++      "license": "MIT",
++      "dependencies": {
++        "tr46": "~0.0.3",
++        "webidl-conversions": "^3.0.0"
++      }
++    }
++  }
++}
+diff --git a/tools/square-history/package.json b/tools/square-history/package.json
+new file mode 100644
+index 0000000..154d777
+--- /dev/null
++++ b/tools/square-history/package.json
+@@ -0,0 +1 @@
++{"name":"square-history-export","private":true,"type":"module","version":"1.0.0","dependencies":{"qrcode-terminal":"^0.12.0","square":"^46.0.0"},"devDependencies":{"@types/node":"^26.6.5","@types/qrcode-terminal":"^0.12.2","tsx":"^4.23.15","typescript":"^7.0.2"}}
+\ No newline at end of file
+diff --git a/tools/square-history/tsconfig.json b/tools/square-history/tsconfig.json
+new file mode 100644
+index 0000000..89b4f8c
+--- /dev/null
++++ b/tools/square-history/tsconfig.json
+@@ -0,0 +1 @@
++{ "compilerOptions": { "strict": true, "noEmit": true, "skipLibCheck": true, "target": "es2022", "module": "esnext", "moduleResolution": "bundler", "types": ["node"] }, "include": ["export.ts"] }
+-- 
+2.43.0
+
