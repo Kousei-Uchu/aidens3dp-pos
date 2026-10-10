@@ -4,7 +4,8 @@
 //  2. A deal matches when the cart can supply one unit from EACH listed set (`sets` may repeat a set).
 //     Units are consumed by a match and cannot be reused.
 //  3. Competing deals/units: choose the assignment that MAXIMISES total discount (exhaustive search with a
-//     node cap, greedy fallback). Ties → lowest priority number, then config order.
+//     node cap, greedy fallback). Ties → fewest deal applications (so 6 units of a 3-for-$5 / 5-for-$10 pair
+//     use one 5-unit deal, not two 3-unit deals), then lowest priority number, then config order.
 //  4. Delta is applied to current unit prices (after any price override), never below $0.
 //  5. `apply_to`: whole delta comes off the unit(s) matched from THAT set; otherwise spread proportionally.
 import { allocate } from './money';
@@ -152,7 +153,8 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null, 
   let nodes = 0;
   const chosen: Assignment[] = [];
   const dfs = (start: number, total: number) => {
-    if (total > best.total) best = { total, chosen: [...chosen] };
+    // strictly better saving wins; on an equal saving prefer fewer deal applications (bigger lots)
+    if (total > best.total || (total === best.total && chosen.length > 0 && chosen.length < best.chosen.length)) best = { total, chosen: [...chosen] };
     if (++nodes > maxNodes) return;
     for (let k = start; k < all.length; k++) {
       const a = all[k];
