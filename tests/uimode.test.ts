@@ -18,7 +18,7 @@ test('Simple keeps every tab and every row, with bigger text and explanations', 
 test('Minimal: three tabs, essentials only, biggest text', () => {
   const p = resolveUi({ mode: 'minimal' });
   assert.deepEqual(p.tabs, ['checkout', 'transactions', 'more']);
-  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'lock', 'orders', 'saved']);
+  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'help', 'lock', 'orders', 'saved']);
   assert.ok(p.textScale > resolveUi({ mode: 'simple' }).textScale);
 });
 test('a mode never widens what a role allows', () => {

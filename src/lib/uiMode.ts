@@ -8,7 +8,7 @@ export type TextSize = 'normal' | 'large' | 'xlarge';
 export type TabLevel = 'all' | 'core' | 'basic';
 export type MoreLevel = 'all' | 'everyday' | 'essential';
 export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
-export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'lock';
+export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'help' | 'lock';
 
 /** The four dials a Custom mode exposes. */
 export type CustomUi = { textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel; guided: boolean };
@@ -26,10 +26,10 @@ export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
 /** Rows in the More screen, in three groups (the screen draws a card per group). */
 export const MORE_GROUPS: MoreRowId[][] = [
   ['orders', 'items', 'customers', 'saved', 'giftcards'],
-  ['reports', 'drawer', 'staff', 'settings', 'diagnostics'],
+  ['reports', 'drawer', 'staff', 'settings', 'diagnostics', 'help'],
   ['lock'],
 ];
-const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'lock'];
+const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'help', 'lock'];
 const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
 export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
 const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
@@ -101,6 +101,7 @@ export const MORE_EXPLAIN: Record<MoreRowId, string> = {
   staff: 'Who can use the till, their PINs and passes.',
   settings: 'Payments, receipts and everything else.',
   diagnostics: 'Check the card reader and fix problems.',
+  help: 'How every part of the till works, in as much detail as you like.',
   lock: 'Lock the till so nobody else can use it. Your cart stays as it is.',
 };
 
