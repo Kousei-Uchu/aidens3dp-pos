@@ -1,5 +1,6 @@
 // Location: src/lib/saleBuilder.ts
 // Pure helpers that turn a priced cart + tenders into the SaleRecord every other module consumes.
+import { saleAdjustments } from './adjustReview';
 import { roundCash } from './money';
 import { feeFor, type FeeSettings } from './fees';
 import { txnToCard, type ZellerTxn } from './zeller';
@@ -25,12 +26,13 @@ export function buildSale(a: {
       collectionTitles: v ? a.titles[v.productId] : undefined,
     };
   });
+  const adjustments = saleAdjustments(a.cart, a.priced);
   const feesCents = a.tenders.reduce((s, t) => s + (t.feeCents ?? 0), 0);
   return {
     uuid: a.uuid, type: 'sale', ts: a.ts ?? new Date().toISOString(), registerId: a.registerId, registerName: a.registerName, staff: a.staff,
     customer: a.cart.customer, lines, itemsCents: a.priced.itemsCents, discountCents: a.priced.discountCents, netCents: a.priced.netCents, tipCents: 0,
     totalCents: a.priced.netCents, cogsCents: lines.reduce((s, l) => s + l.costCents, 0), feesCents,
-    roundingCents: a.tenders.reduce((s, t) => s + (t.roundingCents ?? 0), 0), tenders: a.tenders, deals: a.priced.deals, note: a.cart.note, reason: a.reason,
+    roundingCents: a.tenders.reduce((s, t) => s + (t.roundingCents ?? 0), 0), tenders: a.tenders, deals: a.priced.deals, ...(adjustments.length ? { adjustments } : {}), note: a.cart.note, reason: a.reason,
     receiptLink: a.tenders.find(t => t.card?.receiptLink)?.card?.receiptLink,
   };
 }

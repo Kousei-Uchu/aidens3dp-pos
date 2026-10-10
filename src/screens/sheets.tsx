@@ -1,12 +1,15 @@
 // Location: src/screens/sheets.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
-import { useCatalogue } from '../state/selectors';
+import { useCatalogue, usePriced, usePricer } from '../state/selectors';
 import { digitsToCents, fmt } from '../lib/money';
 import * as ops from '../lib/cartOps';
+import { hasItemPrice, itemReviewReasons } from '../lib/itemAdjust';
+import { keepOrderAdjust, makeOrderAdjust, orderAdjustProblem, orderReviewReasons, stripAdjustments } from '../lib/orderAdjust';
+import { adjustProblem, beforeAdjustCents, canAdjustLine, keepAdjust, makeAdjust, reviewReasons } from '../lib/lineAdjust';
 import { saveCartLocal } from '../lib/sync';
 import { uid } from '../lib/ids';
 import { searchRemote, createCustomer } from '../lib/shopify/customers';
@@ -46,14 +49,15 @@ export function CustomAmountSheet({ visible, onClose }: { visible: boolean; onCl
 }
 
 export function SaveCartSheet({ visible, onClose, onSaved }: { visible: boolean; onClose: () => void; onSaved?: () => void }) {
-  const cart = useApp(s => s.pos.cart); const [name, setName] = useState(''); const [note, setNote] = useState('');
+  const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const [name, setName] = useState(''); const [note, setNote] = useState('');
   const staff = useApp(s => s.settings.staff.find(x => x.id === s.staffId)?.name);
   const save = () => {
-    saveCartLocal({ id: uid(), name: name.trim() || cart.customer?.name || `Cart ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, note: note.trim() || undefined, cart: { ...cart, name: undefined }, ts: new Date().toISOString(), employee: staff });
+    saveCartLocal({ id: uid(), name: name.trim() || cart.customer?.name || `Cart ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, note: note.trim() || undefined, cart: { ...cart, name: undefined, orderAdjust: undefined }, ts: new Date().toISOString(), employee: staff });
     setName(''); setNote(''); onClose(); onSaved?.();
   };
   return (
     <Sheet visible={visible} onClose={onClose} title="Save cart">
+      {cart.orderAdjust ? <Txt size={13} color={c.warn} style={{ marginBottom: 8 }}>This cart's whole order price ({fmt(cart.orderAdjust.finalCents)}) is not kept in a saved cart. It will come back at its normal total.</Txt> : null}
       <Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam – holding for Friday'} value={name} onChangeText={setName} autoFocus />
       <Field kind="text" label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
       <Btn title="Save to Saved carts" onPress={save} />
@@ -97,15 +101,66 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
   );
 }
 
+/** A16.4: set what the whole order costs. Also the review sheet (Keep / Adjust / Remove) when the cart changed under an existing order price. */
+export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+  const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const price = usePricer();
+  const [digits, setDigits] = useState(''); const [reason, setReason] = useState('');
+  useEffect(() => { if (visible) setReason(cart.orderAdjust?.reason ?? ''); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+  const base = useMemo(() => price(stripAdjustments(cart)), [cart, price]);
+  const reasons = orderReviewReasons(cart, priced); const cents = digitsToCents(digits);
+  const problem = digits ? orderAdjustProblem(cents, base) : null; const lineCount = cart.lines.filter(l => l.adjust).length;
+  const close = () => { setDigits(''); onClose(); };
+  const set = async () => {
+    const p = orderAdjustProblem(cents, base); if (p) return alertMsg('Cannot use that total', p);
+    // A16.7: a whole-order price and line prices are never both active.
+    if (lineCount && !(await confirm('Remove the line prices?', `A whole order price and line prices can't both be used. Setting the order total removes the ${lineCount} line price adjustment${lineCount === 1 ? '' : 's'} on this order.`, 'Replace', true))) return;
+    setCart(cc => ops.setOrderAdjust(ops.clearLineAdjusts(cc), makeOrderAdjust(cents, cc, base, reason))); close();
+  };
+  return (
+    <Sheet visible={visible} onClose={close} title="Whole order price">
+      {reasons.length && cart.orderAdjust ? (
+        <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginBottom: 10 }}>
+          <Txt weight="700" color={c.warn}>Check the order price</Txt>
+          {reasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
+          <Txt size={13} sub>The order still costs {fmt(priced.netCents)}. Keep it, set a new total, or take the adjustment off.</Txt>
+          <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+            <Btn title="Keep" small onPress={() => { setCart(cc => ops.setOrderAdjust(cc, keepOrderAdjust(cc.orderAdjust!, cc, priced))); close(); }} style={{ flex: 1 }} />
+            <Btn title="Remove" small kind="danger" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ flex: 1 }} />
+          </View>
+        </View>
+      ) : null}
+      <Txt size={13} sub style={{ textAlign: 'center' }}>What should the whole order cost? It costs {fmt(base.netCents)} now, after deals and discounts. The difference is shared over the items (gift cards are never reduced).</Txt>
+      <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(cents)}</Txt>
+      {problem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{problem}</Txt> : null}
+      <Field kind="text" label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="e.g. Damaged box, price match" />
+      <Keypad value={digits} onChange={setDigits} onSubmit={set} submitLabel="Set order total" />
+      {cart.orderAdjust ? <Btn title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ marginTop: 6 }} /> : null}
+    </Sheet>
+  );
+}
+
 export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: () => void }) {
   const setCart = useApp(s => s.setCart); const cat = useCatalogue(); const { c } = useTheme();
   const [disc, setDisc] = useState(false); const [price, setPrice] = useState(false); const [digits, setDigits] = useState(''); const [noteDraft, setNoteDraft] = useState<string | null>(null);
+  const [adj, setAdj] = useState(false); const [adjDigits, setAdjDigits] = useState(''); const [adjReason, setAdjReason] = useState(''); const [itemReason, setItemReason] = useState(''); const priced = usePriced(); const orderAdj = useApp(s => s.pos.cart.orderAdjust);
+  const [scope, setScope] = useState<'qty' | 'all'>('qty'); const [scopeQty, setScopeQty] = useState(1);
   if (!line) return null;
+  const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
+  const canAll = line.kind === 'item' && !!line.variantId;
+  const openPrice = () => { setDigits(''); setItemReason(line.overrideReason ?? ''); setScope(line.overrideAll && canAll ? 'all' : 'qty'); setScopeQty(Math.max(1, Math.min(line.qty, line.overrideSeenQty ?? line.qty))); setPrice(true); };
+  const setItemPrice = () => { const how = scope === 'all' && canAll ? { scope: 'all' as const } : { scope: 'qty' as const, qty: scopeQty }; const split = how.scope === 'qty' && how.qty < line.qty; setCart(cc => ops.setItemPrice(cc, line.id, digitsToCents(digits), how, itemReason)); setPrice(false); if (split) onClose(); };
+  const adjProblem = pl && adjDigits ? adjustProblem(digitsToCents(adjDigits), pl) : null;
+  const setAdjustment = async () => {
+    if (!pl) return; const cents = digitsToCents(adjDigits); const p = adjustProblem(cents, pl); if (p) return alertMsg('Cannot use that price', p);
+    // A16.7: a whole-order price and line prices are never both active.
+    if (orderAdj && !(await confirm('Remove the whole order price?', `This order has its total set to ${fmt(orderAdj.finalCents)}. A whole order price and line prices can't both be used, so setting this line's price removes the order price.`, 'Replace', true))) return;
+    setCart(cc => ops.setLineAdjust(ops.setOrderAdjust(cc, undefined), line.id, makeAdjust(cents, pl, adjReason))); setAdj(false);
+  };
   const v = line.variantId ? cat.variants[line.variantId] : undefined; const siblings = v ? (cat.byProduct[v.productId] ?? []) : [];
   const note = noteDraft ?? line.note ?? '';
   return (
     <>
-      <Sheet visible={!disc && !price} onClose={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} title={line.title}>
+      <Sheet visible={!disc && !price && !adj} onClose={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} title={line.title}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22, marginBottom: 12 }}>
           <Btn title="−" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty - 1))} style={{ width: 64 }} />
           <Txt size={30} weight="700">{line.qty}</Txt>
@@ -114,17 +169,66 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         {siblings.length > 1 ? <View style={{ marginBottom: 12 }}><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Variation</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {siblings.map(s => <Chip key={s.id} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
         <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
-        <Row title="Price adjustment" sub={line.overrideCents !== undefined ? `${fmt(line.overrideCents)} (was ${fmt(line.unitCents)})` : fmt(line.unitCents)} icon="create-outline" onPress={() => { setDigits(''); setPrice(true); }} />
+        <Row title="Item price adjustment" icon="create-outline"
+          sub={line.kind === 'gift_card' ? 'Not available for gift cards' : hasItemPrice(line) ? `${fmt(line.overrideCents!)} (was ${fmt(line.unitCents)}) · ${line.overrideAll ? 'all in cart' : line.overrideSeenQty !== undefined ? `for ${line.overrideSeenQty} unit${line.overrideSeenQty === 1 ? '' : 's'}` : 'this line'}` : fmt(line.unitCents)}
+          onPress={line.kind === 'gift_card' ? undefined : openPrice} />
+        {itemReasons.length ? (
+          <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
+            <Txt weight="700" color={c.warn}>Check this item's adjusted price</Txt>
+            {itemReasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
+            <Txt size={13} sub>The adjusted price of {fmt(line.overrideCents ?? 0)} now applies to all {line.qty}. Keep it, change it, or take it off.</Txt>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <Btn title="Keep" small onPress={() => setCart(cc => ops.keepItemPrice(cc, line.id))} style={{ flex: 1 }} />
+              <Btn title="Adjust" small kind="secondary" onPress={openPrice} style={{ flex: 1 }} />
+              <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.clearItemPrice(cc, line.id))} style={{ flex: 1 }} />
+            </View>
+          </View>
+        ) : null}
+        <Row title="Line price adjustment" icon="cut-outline" sub={line.adjust ? `${fmt(line.adjust.finalCents)} for the whole line` : canAdjustLine(line) ? 'Set what the whole line costs' : 'Not available for gift cards'}
+          onPress={canAdjustLine(line) ? () => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); } : undefined} />
+        {reasons.length ? (
+          <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
+            <Txt weight="700" color={c.warn}>Check this line's price adjustment</Txt>
+            {reasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
+            <Txt size={13} sub>The line still costs {fmt(pl?.netCents ?? 0)}. Keep it, change it, or take the adjustment off.</Txt>
+            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+              <Btn title="Keep" small onPress={() => pl && line.adjust && setCart(cc => ops.setLineAdjust(cc, line.id, keepAdjust(line.adjust!, pl)))} style={{ flex: 1 }} />
+              <Btn title="Adjust" small kind="secondary" onPress={() => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); }} style={{ flex: 1 }} />
+              <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.setLineAdjust(cc, line.id, undefined))} style={{ flex: 1 }} />
+            </View>
+          </View>
+        ) : null}
         <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
         <Btn title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
       </Sheet>
       <DiscountSheet visible={disc} onClose={() => setDisc(false)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
-      <Sheet visible={price} onClose={() => setPrice(false)} title="Price adjustment">
+      <Sheet visible={price} onClose={() => setPrice(false)} title="Item price adjustment">
         <Txt size={13} sub style={{ textAlign: 'center' }}>New unit price for this sale only</Txt>
         <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(digitsToCents(digits))}</Txt>
-        <Keypad value={digits} onChange={setDigits} onSubmit={() => { setCart(cc => ops.patchLine(cc, line.id, { overrideCents: digitsToCents(digits) })); setPrice(false); }} submitLabel="Set price" />
-        {line.overrideCents !== undefined ? <Btn title="Reset to catalogue price" kind="ghost" onPress={() => { setCart(cc => ops.patchLine(cc, line.id, { overrideCents: undefined })); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
+        {canAll ? <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
+          <Chip label="Fixed quantity" active={scope === 'qty'} onPress={() => setScope('qty')} />
+          <Chip label="All in cart" active={scope === 'all'} onPress={() => setScope('all')} />
+        </View> : null}
+        {scope === 'qty' || !canAll ? <>
+          {line.qty > 1 ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 4 }}>
+            <Btn title="−" small kind="secondary" onPress={() => setScopeQty(q => Math.max(1, q - 1))} style={{ width: 52 }} />
+            <Txt weight="700">{scopeQty} of {line.qty}</Txt>
+            <Btn title="+" small kind="secondary" onPress={() => setScopeQty(q => Math.min(line.qty, q + 1))} style={{ width: 52 }} />
+          </View> : null}
+          <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>{scopeQty >= line.qty ? `Applies to the ${line.qty} on this line.` : `Applies to ${scopeQty} of the ${line.qty}. They become their own line; the rest stay at the normal price.`}</Txt>
+        </> : <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>Applies to every {line.title} in this order, including any you add later.</Txt>}
+        <Field kind="text" label="Reason (optional)" value={itemReason} onChangeText={setItemReason} placeholder="e.g. Damaged box, price match" />
+        <Keypad value={digits} onChange={setDigits} onSubmit={setItemPrice} submitLabel="Set price" />
+        {hasItemPrice(line) ? <Btn title={line.overrideAll ? 'Reset to catalogue price (all in cart)' : 'Reset to catalogue price'} kind="ghost" onPress={() => { setCart(cc => ops.clearItemPrice(cc, line.id)); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
+      </Sheet>
+      <Sheet visible={adj} onClose={() => setAdj(false)} title="Line price adjustment">
+        <Txt size={13} sub style={{ textAlign: 'center' }}>What should the whole line cost?{pl ? ` It costs ${fmt(beforeAdjustCents(pl))} now, after deals and discounts.` : ''}</Txt>
+        <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(digitsToCents(adjDigits))}</Txt>
+        {adjProblem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{adjProblem}</Txt> : null}
+        <Field kind="text" label="Reason (optional)" value={adjReason} onChangeText={setAdjReason} placeholder="e.g. Damaged box, price match" />
+        <Keypad value={adjDigits} onChange={setAdjDigits} onSubmit={setAdjustment} submitLabel="Set line price" />
+        {line.adjust ? <Btn title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setLineAdjust(cc, line.id, undefined)); setAdj(false); }} style={{ marginTop: 6 }} /> : null}
       </Sheet>
       <View style={{ height: 0, backgroundColor: c.bg }} />
     </>

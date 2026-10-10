@@ -84,17 +84,31 @@ export type CartLine = {
   variantTitle?: string;
   qty: number;
   unitCents: number; // catalogue price when added
-  overrideCents?: number; // "price adjustment" for this sale
+  overrideCents?: number; // A16.3 item (unit) price adjustment for this sale; never on gift cards
+  /** A16.3 "All in cart": the price follows every unit of this item in the order, including ones added later. Without it the price is "Fixed quantity". */
+  overrideAll?: boolean;
+  /** A16.3 "Fixed quantity": how many units the price was set for (or last confirmed for), so a later change to the quantity can be flagged. */
+  overrideSeenQty?: number;
+  /** A16.8: optional reason for the item price. */
+  overrideReason?: string;
   note?: string;
   discount?: ManualDiscount; // manual line discount
   giftCardCode?: string; // for gift_card lines
   giftRecipient?: GiftRecipient; // gift_card lines: email delivery via Shopify
   noDiscount?: boolean; // item tagged no-discount / custom
+  /** A16.1: "this whole line costs $X". Worked out after every discount; see src/lib/lineAdjust.ts. Never on gift cards. */
+  adjust?: LineAdjust;
 };
+/** The final price of a whole line, plus what the line looked like when the cashier set or last confirmed it (for the A16.2 review flag). */
+/** A16.4: "this whole order costs $X". `seenQty` and `seenBeforeCents` are the cart as it was when the cashier set or last confirmed it (for the review flag). */
+export type OrderAdjust = { reason?: string; finalCents: number; seenQty: number; seenBeforeCents: number };
+export type LineAdjust = { reason?: string; finalCents: number; seenQty: number; seenGrossCents: number; seenDiscountCents: number };
 export type Cart = {
   id: string;
   lines: CartLine[];
   discount?: ManualDiscount; // cart-level manual discount
+  /** A16.4: sets the total of the whole cart. Never together with line adjustments (A16.7). Not kept when a cart is saved. */
+  orderAdjust?: OrderAdjust;
   customer?: CustomerRef;
   name?: string;
   note?: string;
@@ -106,7 +120,7 @@ export type Cart = {
 };
 
 export type AppliedDiscount = {
-  type: 'auto' | 'bundle' | 'manual' | 'cart';
+  type: 'auto' | 'bundle' | 'manual' | 'cart' | 'adjust' | 'orderadjust';
   label: string;
   cents: number;
   id?: string;
@@ -120,6 +134,8 @@ export type PricedLine = {
   discountCents: number;
   netCents: number;
   bundleUnits: number;
+  /** A16.1: the line's price adjustment, if it has one. `cents` is what it takes off (0 when it no longer lowers the price). */
+  adjustment?: { finalCents: number; cents: number };
 };
 /** How a matched bundle compares with the deal's recommended pairs. 'none' = the deal defines no recommended pairs. */
 export type BundleStatus = 'recommended' | 'other' | 'none';
@@ -137,6 +153,8 @@ export type PricedCart = {
   itemsCents: number; // Σ gross
   discountCents: number; // Σ all discounts
   netCents: number; // items − discounts  (= "Net sales" before tax/tips)
+  /** A16.4: the whole-order adjustment, if the cart has one. `cents` is what it takes off (0 when it no longer lowers the total). */
+  adjustment?: { finalCents: number; cents: number };
   deals: AppliedDiscount[]; // roll-up by label for the cart footer
 };
 
@@ -168,6 +186,8 @@ export type SaleLine = {
   discountCents: number; netCents: number; costCents: number; // cogs snapshot per line (cost*qty)
   discountLabels: string[]; note?: string; kind: CartLine['kind']; giftCardCode?: string; giftRecipient?: GiftRecipient; collectionTitles?: string[];
 };
+/** A16.5/A16.8: one price adjustment on a sale, with the cashier's optional reason. `detail` is only set on the register that made the sale (it is not stored on the Shopify order). */
+export type SaleAdjustment = { kind: 'item' | 'line' | 'order'; title: string; detail: string; cents: number; reason?: string };
 export type SaleRecord = {
   uuid: string;
   type: 'sale' | 'refund';
@@ -188,6 +208,8 @@ export type SaleRecord = {
   roundingCents: number;
   tenders: Tender[];
   deals: AppliedDiscount[];
+  /** A16.8: price adjustments on the sale (item, line, whole order), each with its reason. Absent when there were none. */
+  adjustments?: SaleAdjustment[];
   note?: string;
   reason?: string;
   orderGid?: string;

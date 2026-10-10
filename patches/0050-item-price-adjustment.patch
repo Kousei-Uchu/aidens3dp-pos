@@ -1,0 +1,453 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7f72cfc..9153c26 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -37,6 +37,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0028 | 2026-10-11 | In-app help, part 1 (B7a): the page format, a checker that refuses broken pages, the build script, the writer's guide, and the first three pages (Help home, Checkout, Cart and prices) | B7a |
+ | 0048 | 2026-10-11 | Price adjustments, part 1 (A16 Line adjustment): set what a whole line costs from the line editor, shown as a "Line price adjustment" row; lines are flagged for review when quantity, unit price or discounts change (Keep / Adjust / Remove); never on gift cards. Item and Whole order adjustments follow in their own patches | A16.1, A16.2, A16.6 (line part) |
+ | 0049 | 2026-10-11 | Price adjustments, part 2 (A16 Whole order adjustment): ••• cart menu ▸ Whole order price sets the total of the whole cart, shared over the items (gift cards never reduced); review flag with Keep / Remove; never together with line adjustments (setting one clears the other after asking) | A16.4, A16.7, A16.6 (whole order part) |
++| 0050 | 2026-10-11 | Price adjustments, part 3 (A16 Item adjustment): the unit price for this sale now has a choice of Fixed quantity (a set number of units; fewer than the line splits it) or All in cart (every unit of that item, including ones added later); fixed quantities are flagged for review when the quantity changes; never on gift cards | A16.3, A16.6 (item part) |
+ 
+ ---
+ 
+@@ -155,10 +156,10 @@ Each discount now sits on its own indented row with its own amount at the right
+ Added from your A12 notes. Replaces today's single per-item price override.
+ - [x] A16.1 (done in 0048) **Line** adjustment: sets the final price of an entire line. Line editor ▸ **Line price adjustment** ▸ key in what the whole line should cost. It is worked out after bundles, Shopify discounts, the line's own discount and the cart discount, stored as the difference (`CartLine.adjust`, `src/lib/lineAdjust.ts`, step 5 of `priceCart`), and shown as a last "Line price adjustment" row under the line. It only ever **lowers** a price: a final price at or above the current one is refused with the current price in the message, and to raise a price use the item (unit) price. The cart discount skips an adjusted line (its price is already fixed) and shares out over the other lines. Receipts, Shopify order lines, refunds and Reports see it as a discount on that line, so Reports' Discounts figure includes it. The old per-unit "Price adjustment" row is now labelled **Item price adjustment** (A16.3 will extend it).
+ - [x] A16.2 (done in 0048) Review flag for Line adjustments. A line is flagged when its quantity changes ("2 more Tadling added", "1 Tadling removed"), its unit price changes, the discounts on it change, or the adjustment stops lowering the price. A flagged line has an amber edge and the reason under it, the cart shows "N lines need a price check" (tap to open the first one), and the line editor shows **Keep / Adjust / Remove**. Keep takes a fresh snapshot of the line and leaves the price as it is. **Difference from the wording above:** adding the same item again does NOT merge into an adjusted line (it starts a new full-price line), because merging would give the extra units away free at the fixed price. So "another unit added" is only flagged when the cashier changes the quantity on the adjusted line itself. Say if you would rather it merge and flag. A flag does not stop Charge yet: the gate is the A16.5 review screen.
+-- [ ] A16.3 **Item** adjustment: works as it does now, with a choice of "Fixed quantity" (a set number of units) or "All in cart" (every unit of that item in the order). The cashier is asked to double-check it at checkout.
++- [x] A16.3 (done in 0050) **Item** adjustment: the unit price for this sale (line editor ▸ **Item price adjustment**, `CartLine.overrideCents`, so pricing, receipts and refunds work as before), now with a choice of scope. **Fixed quantity** sets the price for a number of units (a stepper, default the whole line). Fewer than the line's units splits the line: the adjusted units become their own line (they keep the note, not the line discount or line price adjustment) and the rest stay as they were. A unit added later is a new full-price line. If the quantity of a fixed-quantity line is changed afterwards, the line is flagged ("The adjusted price was set for 2 Tadling, the line now has 5") with **Keep / Adjust / Remove**, the same banner and amber edge as a line adjustment. **All in cart** sets the price on every line of that item (the variation), and a unit added later gets it too and merges into the adjusted line, so nothing needs flagging; merging a saved cart brings the same rule in both directions. Reset takes an All in cart price off every line that follows it; a fixed price only its own line. Setting All in cart replaces a fixed price on the same item; swapping the variation takes the price off. Unlike a line adjustment, an item price can also go **up** (as it could before). Prices set before 0050 have no unit count, so they are not flagged. Not offered for gift cards. **The \"double-check at checkout\" part is the A16.5 review screen**, which will list item prices with the other adjustments; until then the cart banner and amber line are the only prompt, and Charge is not blocked.
+ - [x] A16.4 (done in 0049) **Whole order** adjustment: ••• cart menu ▸ **Whole order price** ▸ key in what the whole cart should cost (`Cart.orderAdjust`, `src/lib/orderAdjust.ts`, step 6 of `priceCart`). It is worked out after everything else, including the cart discount, and the difference is shared over the lines in proportion to what each still costs (largest-remainder rounding, so it adds up exactly). The cart footer and every line show it like a whole-order discount, as "Order price adjustment". **Gift cards are never reduced**: the total can't go below what gift cards in the cart are worth. It only lowers (a total at or above the current one is refused with the current total in the message). The sheet always shows the cart total as it is with no adjustments, so those numbers don't move when you change an existing adjustment. **Review flag:** if items are added or removed, or prices or discounts change, the cart shows "The whole order price needs a check: …" (tap to review) and the sheet offers **Keep** (fresh snapshot, same total) or **Remove**, or key in a new total. Unlike a line adjustment, a new item still merges into a plain line here, and the total stays at the set price until you decide, so the flag is the only thing that stops extra items going out free: a full block at Charge is the A16.5 review screen. **Saved carts do not keep it:** the Save cart sheet says so and the saved cart comes back at its normal total (the saved-cart record has no field for it, and putting it in an existing field would break registers on an older version). Menu row is blocked while a part-paid sale is locked and when the cart is empty.
+ - [ ] A16.5 One checkout review screen listing every adjustment, flagged ones first, each with Keep, Adjust or Remove.
+-- [ ] A16.6 (line part done in 0048 and whole order part in 0049: gift cards untouched, never below $0, splits into Shopify unit prices that add up exactly, refunds use what was paid; the Item part comes with its patch) Edge cases I will handle: gift cards cannot be adjusted, an adjustment cannot take a line below $0, refunds use the price actually paid for the line, and adjusted lines still split correctly into Shopify order lines (`splitLineForOrder`).
++- [x] A16.6 (done in 0048, 0049 and 0050: gift cards untouched by all three types, never below $0, splits into Shopify unit prices that add up exactly, refunds use what was paid) Edge cases I will handle: gift cards cannot be adjusted, an adjustment cannot take a line below $0, refunds use the price actually paid for the line, and adjusted lines still split correctly into Shopify order lines (`splitLineForOrder`).
+ - [x] A16.7 (done in 0049) Agreed by you: a Whole order adjustment and Line adjustments cannot both be active. Setting an order total on a cart that has line adjustments asks first ("Remove the line prices?") and then clears them; setting a line adjustment on a cart with an order total asks first ("Remove the whole order price?") and then removes it. Merging a saved cart that brings line adjustments into a cart with an order total drops the order total (the merged order is a different order). Two overlapping adjustments make receipts hard to read and hard to refund.
+ - [ ] A16.8 Agreed by you: an optional reason for each adjustment, saved on the order and shown in Reports.
+ - [ ] A16.9 Agreed by you: adjustments can be limited by staff role. Every role is allowed by default, so nothing changes until you restrict one.
+@@ -284,7 +285,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028; 0048 adds 14 in `tests/lineadjust.test.ts`, 0049 adds 11 in `tests/orderadjust.test.ts`). In my current sandbox I could not reinstall `@noble/hashes` and `fflate` (no network), so 8 test files that need them did not load, the same 8 with and without 0048; every other file passes. `tsc --noEmit` also could not run there this time, so please run `npm run typecheck` on 0048 and 0049. `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028; 0048 adds 14 in `tests/lineadjust.test.ts`, 0049 adds 11 in `tests/orderadjust.test.ts`, 0050 adds 14 in `tests/itemadjust.test.ts`). In my current sandbox I could not reinstall `@noble/hashes` and `fflate` (no network), so 8 test files that need them did not load, the same 8 with and without 0048; every other file passes. `tsc --noEmit` also could not run there this time, so please run `npm run typecheck` on 0048, 0049 and 0050. `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -323,6 +324,7 @@ Ordered by priority, highest first.
+ - [ ] N21 **Non-blocking (B7):** read `help/start.md`, `help/sales/index.md` and `help/sales/cart-and-prices.md` (plain Markdown for now) and tell me if the tone, the level of detail, or any fact is wrong. Also say if you would rather a chosen depth show **only** that level instead of that level plus the ones above it (the plan assumes cumulative). Changing the page text costs nothing now and a lot after 58 pages.
+ - [ ] N22 **Non-blocking (A16.1, A16.2):** on the iPad, add 13 of a product with a couple of deals, open the line ▸ Line price adjustment, set a final price, and check the row reads right in the cart. Then change the quantity on that line and check it is flagged with the right reason, and try Keep, Adjust and Remove. Try a cart discount alongside it, a gift card (should be unavailable) and a price at or above the current one (should be refused). Tell me if the flag wording or the keypad flow is awkward. Also say whether you want Reports to show line adjustments apart from discounts.
+ - [ ] N23 **Non-blocking (A16.4, A16.7):** on the iPad, ring up a few items (with a gift card in one try), open ••• ▸ Whole order price and set a total. Check the footer and the per-line rows read right and the receipt shows "Order price adjustment". Then add another item and check the order price is flagged and Keep / Remove work. Try setting a line price on that cart and an order total on a cart with line prices (both should ask first), and save the cart (it should say the order price isn't kept). Tell me if the wording is awkward, and whether you would rather the order price spread evenly or by value (it is by value now).
++- [ ] N24 **Non-blocking (A16.3):** on the iPad, add 5 of a product, open the line ▸ Item price adjustment, pick Fixed quantity, step to 2 and set a price: check the line splits into 3 at the normal price and 2 at yours. Then try All in cart on another product, add one more of it (it should join the line at your price), and use Reset. Change the quantity on a fixed-quantity line and check the flag and Keep / Adjust / Remove. Tell me if the sheet is confusing, whether splitting the line is what you expect, and whether an All in cart price should be able to cover different variations of the same product (it only covers the exact variation now).
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/cartOps.ts b/src/lib/cartOps.ts
+index c2ac000..ade1fa1 100644
+--- a/src/lib/cartOps.ts
++++ b/src/lib/cartOps.ts
+@@ -8,7 +8,17 @@ export const emptyCart = (): Cart => ({ id: uid(), lines: [] });
+ export const itemCount = (c: Cart) => c.lines.reduce((s, l) => s + l.qty, 0);
+ 
+ const sameLine = (l: CartLine, v: Variant) =>
+-  l.kind === 'item' && l.variantId === v.id && l.overrideCents === undefined && !l.discount && !l.note && !l.adjust;
++  l.kind === 'item' && l.variantId === v.id && (l.overrideCents === undefined || !!l.overrideAll) && !l.discount && !l.note && !l.adjust;
++
++/** A16.3 "All in cart": variant id -> the unit price set for every unit of that item (the first such line wins). */
++const allInCartPrices = (lines: CartLine[]): Map<string, number> => {
++  const m = new Map<string, number>();
++  for (const l of lines) if (l.kind === 'item' && l.variantId && l.overrideAll && l.overrideCents !== undefined && !m.has(l.variantId)) m.set(l.variantId, l.overrideCents);
++  return m;
++};
++/** Plain lines of an item that has an "All in cart" price take that price too (a line with its own fixed-quantity price keeps it). */
++const withAllInCart = (lines: CartLine[], m: Map<string, number>): CartLine[] =>
++  m.size === 0 ? lines : lines.map(l => (l.kind === 'item' && l.variantId && l.overrideCents === undefined && m.has(l.variantId) ? { ...l, overrideCents: m.get(l.variantId), overrideAll: true } : l));
+ 
+ export function addVariant(c: Cart, v: Variant, qty = 1, consolidate = true): Cart {
+   const idx = consolidate ? c.lines.findIndex(l => sameLine(l, v)) : -1;
+@@ -17,7 +27,7 @@ export function addVariant(c: Cart, v: Variant, qty = 1, consolidate = true): Ca
+     id: uid(), kind: 'item', variantId: v.id, title: v.productTitle, variantTitle: v.variantTitle || undefined, qty, unitCents: v.priceCents,
+     noDiscount: v.tags.some(t => t.toLowerCase() === NO_DISCOUNT_TAG) || undefined,
+   };
+-  return { ...c, lines: [...c.lines, line] };
++  return { ...c, lines: withAllInCart([...c.lines, line], allInCartPrices(c.lines)) };
+ }
+ export const addCustom = (c: Cart, cents: number, title = 'Custom amount', note?: string): Cart =>
+   ({ ...c, lines: [...c.lines, { id: uid(), kind: 'custom', title, qty: 1, unitCents: cents, noDiscount: true, note }] });
+@@ -29,7 +39,37 @@ export const setQty = (c: Cart, id: string, qty: number): Cart =>
+ export const removeLine = (c: Cart, id: string): Cart => ({ ...c, lines: c.lines.filter(l => l.id !== id) });
+ export const patchLine = (c: Cart, id: string, p: Partial<CartLine>): Cart => ({ ...c, lines: c.lines.map(l => (l.id === id ? { ...l, ...p } : l)) });
+ export const swapVariant = (c: Cart, id: string, v: Variant): Cart =>
+-  patchLine(c, id, { variantId: v.id, variantTitle: v.variantTitle || undefined, unitCents: v.priceCents, overrideCents: undefined });
++  patchLine(c, id, { variantId: v.id, variantTitle: v.variantTitle || undefined, unitCents: v.priceCents, overrideCents: undefined, overrideAll: undefined, overrideSeenQty: undefined });
++const noItemPrice = { overrideCents: undefined, overrideAll: undefined, overrideSeenQty: undefined } as const;
++export type ItemPriceScope = { scope: 'qty'; qty: number } | { scope: 'all' };
++/**
++ * A16.3 Item price adjustment: a new unit price for this sale.
++ *  - Fixed quantity: the price is for `qty` units of the line. Fewer than the whole line splits it, the adjusted units becoming their own line
++ *    (the rest stays as it was); `overrideSeenQty` remembers the count so changing it later is flagged.
++ *  - All in cart: every line of this item gets the price, and units added later get it too.
++ * Gift cards are never adjusted; a custom amount has no "item", so it always uses Fixed quantity.
++ */
++export function setItemPrice(c: Cart, id: string, cents: number, how: ItemPriceScope): Cart {
++  const l = c.lines.find(x => x.id === id);
++  if (!l || l.kind === 'gift_card' || !Number.isInteger(cents) || cents < 0) return c;
++  if (how.scope === 'all' && l.kind === 'item' && l.variantId) {
++    return { ...c, lines: c.lines.map(x => (x.kind === 'item' && x.variantId === l.variantId ? { ...x, overrideCents: cents, overrideAll: true, overrideSeenQty: undefined } : x)) };
++  }
++  const n = how.scope === 'qty' ? Math.min(l.qty, Math.max(1, Math.floor(how.qty))) : l.qty;
++  if (n >= l.qty) return patchLine(c, id, { overrideCents: cents, overrideAll: undefined, overrideSeenQty: l.qty });
++  const adjusted: CartLine = { ...l, id: uid(), qty: n, overrideCents: cents, overrideAll: undefined, overrideSeenQty: n, discount: undefined, adjust: undefined };
++  const lines: CartLine[] = [];
++  for (const x of c.lines) { lines.push(x.id === id ? { ...x, qty: x.qty - n } : x); if (x.id === id) lines.push(adjusted); }
++  return { ...c, lines };
++}
++/** A16.3: take the item price off. For an "All in cart" price that means every line that follows it; a fixed-quantity line is on its own. */
++export function clearItemPrice(c: Cart, id: string): Cart {
++  const l = c.lines.find(x => x.id === id);
++  if (!l) return c;
++  return { ...c, lines: c.lines.map(x => (x.id === id || (l.overrideAll && x.kind === 'item' && x.variantId === l.variantId && x.overrideAll) ? { ...x, ...noItemPrice } : x)) };
++}
++/** A16.3 "Keep": the fixed-quantity price stays and now counts as set for the line's current quantity. */
++export const keepItemPrice = (c: Cart, id: string): Cart => ({ ...c, lines: c.lines.map(x => (x.id === id && x.overrideSeenQty !== undefined ? { ...x, overrideSeenQty: x.qty } : x)) });
+ /** A16.1: set (or with undefined, remove) the line's price adjustment. */
+ export const setLineAdjust = (c: Cart, id: string, a?: LineAdjust): Cart => patchLine(c, id, { adjust: a });
+ /** A16.4: set (or with undefined, remove) the whole-order adjustment. A16.7: the caller removes line adjustments first (see `clearLineAdjusts`). */
+@@ -42,10 +82,12 @@ export const setLineDiscount = (c: Cart, id: string, d?: ManualDiscount) => patc
+ 
+ /** "Merge Carts?" – lines of `from` are appended into `into` (identical plain lines consolidate). */
+ export function mergeCarts(into: Cart, from: Cart, consolidate = true): Cart {
+-  let lines = [...into.lines];
+-  for (const l of from.lines) {
++  // A16.3: an "All in cart" price on either side covers that item on both, so the units can consolidate.
++  const allPrices = allInCartPrices([...into.lines, ...from.lines]);
++  let lines = withAllInCart([...into.lines], allPrices);
++  for (const l of withAllInCart(from.lines, allPrices)) {
+     const i = consolidate && l.kind === 'item'
+-      ? lines.findIndex(x => x.kind === 'item' && x.variantId === l.variantId && x.overrideCents === l.overrideCents && !x.discount && !l.discount && !x.note && !l.note && !x.adjust && !l.adjust) : -1;
++      ? lines.findIndex(x => x.kind === 'item' && x.variantId === l.variantId && x.overrideCents === l.overrideCents && !!x.overrideAll === !!l.overrideAll && !x.discount && !l.discount && !x.note && !l.note && !x.adjust && !l.adjust) : -1;
+     if (i >= 0) lines[i] = { ...lines[i], qty: lines[i].qty + l.qty }; else lines.push({ ...l, id: uid() });
+   }
+   // A16.7: merging can bring in line adjustments; the whole-order price no longer applies to the merged order, so it goes.
+diff --git a/src/lib/itemAdjust.ts b/src/lib/itemAdjust.ts
+new file mode 100644
+index 0000000..8ff179a
+--- /dev/null
++++ b/src/lib/itemAdjust.ts
+@@ -0,0 +1,17 @@
++// Location: src/lib/itemAdjust.ts
++// A16.3 (Item price adjustment): review flag for a Fixed quantity price. The price was set for a number of units; if the
++// line's quantity changes afterwards the cashier is asked to look again. An "All in cart" price follows every unit, so it
++// has nothing to flag. Prices set before this existed carry no count and are left alone.
++import type { CartLine, PricedLine } from './types';
++
++export const hasItemPrice = (l: CartLine): boolean => l.overrideCents !== undefined && l.kind !== 'gift_card';
++/** Fixed quantity (a set number of units) rather than All in cart. */
++export const isFixedQtyPrice = (l: CartLine): boolean => hasItemPrice(l) && !l.overrideAll && l.overrideSeenQty !== undefined;
++
++/** Plain-English reasons to look at this line's item price again. Empty = nothing to review. */
++export function itemReviewReasons(pl: PricedLine): string[] {
++  const l = pl.line;
++  if (!isFixedQtyPrice(l)) return [];
++  const seen = l.overrideSeenQty!;
++  return l.qty === seen ? [] : [`The adjusted price was set for ${seen} ${l.title}, the line now has ${l.qty}`];
++}
+diff --git a/src/lib/lineAdjust.ts b/src/lib/lineAdjust.ts
+index 03a61d3..7e8b502 100644
+--- a/src/lib/lineAdjust.ts
++++ b/src/lib/lineAdjust.ts
+@@ -3,6 +3,7 @@
+ // pricing engine (step 5 in pricing.ts) stores the difference as a "Line price adjustment" row. These pure helpers
+ // build the adjustment, check it, and work out when a line needs the cashier to look at it again.
+ import { fmt } from './money';
++import { itemReviewReasons } from './itemAdjust';
+ import type { CartLine, LineAdjust, PricedCart, PricedLine } from './types';
+ 
+ /**
+@@ -51,9 +52,9 @@ export function reviewReasons(pl: PricedLine): string[] {
+ }
+ 
+ export type FlaggedLine = { lineId: string; title: string; reasons: string[] };
+-/** Every line that needs review, in cart order (for the cart header count and the highlighted rows). */
++/** Every line that needs review (a line price adjustment or a fixed-quantity item price), in cart order, for the cart header count and the highlighted rows. */
+ export function flaggedLines(priced: PricedCart): FlaggedLine[] {
+   const out: FlaggedLine[] = [];
+-  for (const pl of priced.lines) { const reasons = reviewReasons(pl); if (reasons.length) out.push({ lineId: pl.line.id, title: pl.line.title, reasons }); }
++  for (const pl of priced.lines) { const reasons = [...reviewReasons(pl), ...itemReviewReasons(pl)]; if (reasons.length) out.push({ lineId: pl.line.id, title: pl.line.title, reasons }); }
+   return out;
+ }
+diff --git a/src/lib/pricing.ts b/src/lib/pricing.ts
+index f42eb65..9ec1967 100644
+--- a/src/lib/pricing.ts
++++ b/src/lib/pricing.ts
+@@ -158,7 +158,7 @@ function chooseAutoDiscounts(ws: Work[], active: AutoDiscount[], lots: boolean,
+ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
+   const now = ctx.now ?? Date.now();
+   const ws: Work[] = cart.lines.map(line => {
+-    const base = line.overrideCents ?? line.unitCents;
++    const base = line.kind === 'gift_card' ? line.unitCents : (line.overrideCents ?? line.unitCents); // a gift card is worth what was paid for it
+     const v = line.variantId ? ctx.variants[line.variantId] : undefined;
+     const tagged = !!v?.tags.some(t => t.toLowerCase() === NO_DISCOUNT_TAG);
+     return {
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index 16d3add..08afa11 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -84,7 +84,11 @@ export type CartLine = {
+   variantTitle?: string;
+   qty: number;
+   unitCents: number; // catalogue price when added
+-  overrideCents?: number; // "price adjustment" for this sale
++  overrideCents?: number; // A16.3 item (unit) price adjustment for this sale; never on gift cards
++  /** A16.3 "All in cart": the price follows every unit of this item in the order, including ones added later. Without it the price is "Fixed quantity". */
++  overrideAll?: boolean;
++  /** A16.3 "Fixed quantity": how many units the price was set for (or last confirmed for), so a later change to the quantity can be flagged. */
++  overrideSeenQty?: number;
+   note?: string;
+   discount?: ManualDiscount; // manual line discount
+   giftCardCode?: string; // for gift_card lines
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index da0e03f..3263165 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -7,6 +7,7 @@ import { useApp } from '../state/store';
+ import { useCatalogue, usePriced, usePricer } from '../state/selectors';
+ import { digitsToCents, fmt } from '../lib/money';
+ import * as ops from '../lib/cartOps';
++import { hasItemPrice, itemReviewReasons } from '../lib/itemAdjust';
+ import { keepOrderAdjust, makeOrderAdjust, orderAdjustProblem, orderReviewReasons, stripAdjustments } from '../lib/orderAdjust';
+ import { adjustProblem, beforeAdjustCents, canAdjustLine, keepAdjust, makeAdjust, reviewReasons } from '../lib/lineAdjust';
+ import { saveCartLocal } from '../lib/sync';
+@@ -140,8 +141,12 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+   const setCart = useApp(s => s.setCart); const cat = useCatalogue(); const { c } = useTheme();
+   const [disc, setDisc] = useState(false); const [price, setPrice] = useState(false); const [digits, setDigits] = useState(''); const [noteDraft, setNoteDraft] = useState<string | null>(null);
+   const [adj, setAdj] = useState(false); const [adjDigits, setAdjDigits] = useState(''); const priced = usePriced(); const orderAdj = useApp(s => s.pos.cart.orderAdjust);
++  const [scope, setScope] = useState<'qty' | 'all'>('qty'); const [scopeQty, setScopeQty] = useState(1);
+   if (!line) return null;
+-  const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : [];
++  const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
++  const canAll = line.kind === 'item' && !!line.variantId;
++  const openPrice = () => { setDigits(''); setScope(line.overrideAll && canAll ? 'all' : 'qty'); setScopeQty(Math.max(1, Math.min(line.qty, line.overrideSeenQty ?? line.qty))); setPrice(true); };
++  const setItemPrice = () => { const how = scope === 'all' && canAll ? { scope: 'all' as const } : { scope: 'qty' as const, qty: scopeQty }; const split = how.scope === 'qty' && how.qty < line.qty; setCart(cc => ops.setItemPrice(cc, line.id, digitsToCents(digits), how)); setPrice(false); if (split) onClose(); };
+   const adjProblem = pl && adjDigits ? adjustProblem(digitsToCents(adjDigits), pl) : null;
+   const setAdjustment = async () => {
+     if (!pl) return; const cents = digitsToCents(adjDigits); const p = adjustProblem(cents, pl); if (p) return alertMsg('Cannot use that price', p);
+@@ -162,7 +167,21 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+         {siblings.length > 1 ? <View style={{ marginBottom: 12 }}><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Variation</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+           {siblings.map(s => <Chip key={s.id} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
+         <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
+-        <Row title="Item price adjustment" sub={line.overrideCents !== undefined ? `${fmt(line.overrideCents)} (was ${fmt(line.unitCents)})` : fmt(line.unitCents)} icon="create-outline" onPress={() => { setDigits(''); setPrice(true); }} />
++        <Row title="Item price adjustment" icon="create-outline"
++          sub={line.kind === 'gift_card' ? 'Not available for gift cards' : hasItemPrice(line) ? `${fmt(line.overrideCents!)} (was ${fmt(line.unitCents)}) · ${line.overrideAll ? 'all in cart' : line.overrideSeenQty !== undefined ? `for ${line.overrideSeenQty} unit${line.overrideSeenQty === 1 ? '' : 's'}` : 'this line'}` : fmt(line.unitCents)}
++          onPress={line.kind === 'gift_card' ? undefined : openPrice} />
++        {itemReasons.length ? (
++          <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
++            <Txt weight="700" color={c.warn}>Check this item's adjusted price</Txt>
++            {itemReasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
++            <Txt size={13} sub>The adjusted price of {fmt(line.overrideCents ?? 0)} now applies to all {line.qty}. Keep it, change it, or take it off.</Txt>
++            <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
++              <Btn title="Keep" small onPress={() => setCart(cc => ops.keepItemPrice(cc, line.id))} style={{ flex: 1 }} />
++              <Btn title="Adjust" small kind="secondary" onPress={openPrice} style={{ flex: 1 }} />
++              <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.clearItemPrice(cc, line.id))} style={{ flex: 1 }} />
++            </View>
++          </View>
++        ) : null}
+         <Row title="Line price adjustment" icon="cut-outline" sub={line.adjust ? `${fmt(line.adjust.finalCents)} for the whole line` : canAdjustLine(line) ? 'Set what the whole line costs' : 'Not available for gift cards'}
+           onPress={canAdjustLine(line) ? () => { setAdjDigits(''); setAdj(true); } : undefined} />
+         {reasons.length ? (
+@@ -182,11 +201,23 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
+       </Sheet>
+       <DiscountSheet visible={disc} onClose={() => setDisc(false)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
+-      <Sheet visible={price} onClose={() => setPrice(false)} title="Price adjustment">
++      <Sheet visible={price} onClose={() => setPrice(false)} title="Item price adjustment">
+         <Txt size={13} sub style={{ textAlign: 'center' }}>New unit price for this sale only</Txt>
+         <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(digitsToCents(digits))}</Txt>
+-        <Keypad value={digits} onChange={setDigits} onSubmit={() => { setCart(cc => ops.patchLine(cc, line.id, { overrideCents: digitsToCents(digits) })); setPrice(false); }} submitLabel="Set price" />
+-        {line.overrideCents !== undefined ? <Btn title="Reset to catalogue price" kind="ghost" onPress={() => { setCart(cc => ops.patchLine(cc, line.id, { overrideCents: undefined })); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
++        {canAll ? <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
++          <Chip label="Fixed quantity" active={scope === 'qty'} onPress={() => setScope('qty')} />
++          <Chip label="All in cart" active={scope === 'all'} onPress={() => setScope('all')} />
++        </View> : null}
++        {scope === 'qty' || !canAll ? <>
++          {line.qty > 1 ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 4 }}>
++            <Btn title="−" small kind="secondary" onPress={() => setScopeQty(q => Math.max(1, q - 1))} style={{ width: 52 }} />
++            <Txt weight="700">{scopeQty} of {line.qty}</Txt>
++            <Btn title="+" small kind="secondary" onPress={() => setScopeQty(q => Math.min(line.qty, q + 1))} style={{ width: 52 }} />
++          </View> : null}
++          <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>{scopeQty >= line.qty ? `Applies to the ${line.qty} on this line.` : `Applies to ${scopeQty} of the ${line.qty}. They become their own line; the rest stay at the normal price.`}</Txt>
++        </> : <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>Applies to every {line.title} in this order, including any you add later.</Txt>}
++        <Keypad value={digits} onChange={setDigits} onSubmit={setItemPrice} submitLabel="Set price" />
++        {hasItemPrice(line) ? <Btn title={line.overrideAll ? 'Reset to catalogue price (all in cart)' : 'Reset to catalogue price'} kind="ghost" onPress={() => { setCart(cc => ops.clearItemPrice(cc, line.id)); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
+       </Sheet>
+       <Sheet visible={adj} onClose={() => setAdj(false)} title="Line price adjustment">
+         <Txt size={13} sub style={{ textAlign: 'center' }}>What should the whole line cost?{pl ? ` It costs ${fmt(beforeAdjustCents(pl))} now, after deals and discounts.` : ''}</Txt>
+diff --git a/tests/itemadjust.test.ts b/tests/itemadjust.test.ts
+new file mode 100644
+index 0000000..987a9a0
+--- /dev/null
++++ b/tests/itemadjust.test.ts
+@@ -0,0 +1,165 @@
++// Location: tests/itemadjust.test.ts
++// A16.3: Item price adjustment, Fixed quantity or All in cart, with the review flag for a fixed quantity.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { priceCart, splitLineForOrder, type PricingContext } from '../src/lib/pricing';
++import { addVariant, clearItemPrice, keepItemPrice, mergeCarts, patchLine, setItemPrice, setQty, swapVariant } from '../src/lib/cartOps';
++import { itemReviewReasons } from '../src/lib/itemAdjust';
++import { flaggedLines } from '../src/lib/lineAdjust';
++import type { Cart, CartLine, Variant } from '../src/lib/types';
++
++const P = (n: number) => `gid://shopify/Product/${n}`;
++const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
++const variant = (id: number, prod: number, cents: number): Variant => ({
++  id: V(id), productId: P(prod), productTitle: `P${prod}`, variantTitle: '', priceCents: cents, tracked: true, stock: 99, tags: [], active: true,
++});
++const tad = variant(2, 2, 400), cow = variant(1, 1, 1500), tadBig = variant(3, 2, 900);
++const ctx = (): PricingContext => ({ variants: { [tad.id]: tad, [cow.id]: cow, [tadBig.id]: tadBig }, collectionsOfProduct: {}, autoDiscounts: [], bundles: null, now: Date.now() });
++const price = (c: Cart) => priceCart(c, ctx());
++const cartWith = (v: Variant, qty: number): Cart => addVariant({ id: 'c', lines: [] }, v, qty);
++/** Item price on the first line of a cart (each cartWith() makes fresh line ids, so build the cart once and adjust that one). */
++const adjFirst = (c: Cart, cents: number, how: Parameters<typeof setItemPrice>[3]) => setItemPrice(c, c.lines[0].id, cents, how);
++const gift: CartLine = { id: 'gift', kind: 'gift_card', title: 'Gift card', qty: 1, unitCents: 5000, noDiscount: true };
++
++test('Fixed quantity for part of a line splits it: the adjusted units become their own line, the rest stay as they were', () => {
++  const c0 = cartWith(tad, 5);
++  const c1 = setItemPrice(c0, c0.lines[0].id, 300, { scope: 'qty', qty: 2 });
++  assert.deepEqual(c1.lines.map(l => [l.qty, l.overrideCents, l.overrideSeenQty]), [[3, undefined, undefined], [2, 300, 2]]);
++  assert.equal(price(c1).netCents, 3 * 400 + 2 * 300);
++  assert.deepEqual(flaggedLines(price(c1)), []);
++});
++
++test('Fixed quantity for the whole line (or more than it has) adjusts the line in place', () => {
++  const c0 = cartWith(tad, 3);
++  for (const n of [3, 9]) {
++    const c1 = setItemPrice(c0, c0.lines[0].id, 250, { scope: 'qty', qty: n });
++    assert.equal(c1.lines.length, 1);
++    assert.deepEqual([c1.lines[0].qty, c1.lines[0].overrideCents, c1.lines[0].overrideSeenQty, c1.lines[0].overrideAll], [3, 250, 3, undefined]);
++    assert.equal(price(c1).netCents, 750);
++  }
++});
++
++test('splitting keeps the note and drops the line discount and line adjustment from the new line only', () => {
++  let c0 = cartWith(tad, 4);
++  c0 = patchLine(c0, c0.lines[0].id, { note: 'for Sam', discount: { kind: 'pct', value: 10, label: '10%' } });
++  const c1 = setItemPrice(c0, c0.lines[0].id, 300, { scope: 'qty', qty: 1 });
++  assert.equal(c1.lines[0].discount?.value, 10);
++  assert.equal(c1.lines[1].discount, undefined);
++  assert.equal(c1.lines[1].note, 'for Sam');
++  assert.equal(c1.lines[0].id === c1.lines[1].id, false);
++});
++
++test('All in cart: every line of that item gets the price, other items are untouched', () => {
++  let c0 = addVariant(cartWith(tad, 2), cow, 1);
++  c0 = addVariant(c0, tadBig, 1);
++  c0 = patchLine(c0, c0.lines[0].id, { note: 'x' });
++  c0 = addVariant(c0, tad, 1); // a second Tadling line (the first has a note)
++  const c1 = setItemPrice(c0, c0.lines[0].id, 100, { scope: 'all' });
++  const byVariant = (id: string) => c1.lines.filter(l => l.variantId === id).map(l => [l.overrideCents, l.overrideAll]);
++  assert.deepEqual(byVariant(tad.id), [[100, true], [100, true]]);
++  assert.deepEqual(byVariant(cow.id), [[undefined, undefined]]);
++  assert.deepEqual(byVariant(tadBig.id), [[undefined, undefined]]);
++  assert.equal(price(c1).netCents, 3 * 100 + 1500 + 900);
++});
++
++test('All in cart: a unit added later gets the price and merges into the adjusted line', () => {
++  const c0 = cartWith(tad, 2);
++  const c1 = setItemPrice(c0, c0.lines[0].id, 100, { scope: 'all' });
++  const c2 = addVariant(c1, tad, 3);
++  assert.equal(c2.lines.length, 1);
++  assert.equal(c2.lines[0].qty, 5);
++  assert.equal(price(c2).netCents, 500);
++  assert.deepEqual(flaggedLines(price(c2)), []); // it follows every unit, so nothing to flag
++  const c3 = addVariant(c1, tad, 1, false); // consolidation off: a new line, still at the price
++  assert.deepEqual(c3.lines.map(l => [l.qty, l.overrideCents, l.overrideAll]), [[2, 100, true], [1, 100, true]]);
++});
++
++test('Fixed quantity: a unit added later is NOT at the adjusted price (new full-price line)', () => {
++  const c0 = cartWith(tad, 2);
++  const c1 = setItemPrice(c0, c0.lines[0].id, 100, { scope: 'qty', qty: 2 });
++  const c2 = addVariant(c1, tad, 1);
++  assert.deepEqual(c2.lines.map(l => [l.qty, l.overrideCents]), [[2, 100], [1, undefined]]);
++  assert.equal(price(c2).netCents, 200 + 400);
++});
++
++test('Fixed quantity review flag: a changed quantity flags the line, Keep clears it, price stays', () => {
++  const c0 = cartWith(tad, 2);
++  const c1 = setItemPrice(c0, c0.lines[0].id, 100, { scope: 'qty', qty: 2 });
++  const more = setQty(c1, c1.lines[0].id, 5);
++  const p = price(more);
++  assert.deepEqual(itemReviewReasons(p.lines[0]), ['The adjusted price was set for 2 P2, the line now has 5']);
++  assert.equal(p.netCents, 500); // the adjusted price now covers all 5 until the cashier decides
++  assert.equal(flaggedLines(p).length, 1);
++  const kept = keepItemPrice(more, more.lines[0].id);
++  assert.deepEqual(flaggedLines(price(kept)), []);
++  assert.equal(price(kept).netCents, 500);
++  const fewer = setQty(c1, c1.lines[0].id, 1);
++  assert.equal(itemReviewReasons(price(fewer).lines[0]).length, 1);
++});
++
++test('a price set before this existed (no unit count) is not flagged and prices as before', () => {
++  const base = cartWith(tad, 3);
++  const c = { ...base, lines: base.lines.map(l => ({ ...l, overrideCents: 250 })) };
++  assert.equal(price(c).netCents, 750);
++  assert.deepEqual(flaggedLines(price(setQty(c, c.lines[0].id, 6))), []);
++});
++
++test('Reset: an All in cart price comes off every line that follows it, a fixed one only its own line', () => {
++  let c0 = cartWith(tad, 4);
++  c0 = setItemPrice(c0, c0.lines[0].id, 300, { scope: 'qty', qty: 1 }); // fixed on its own line
++  const fixedId = c0.lines[1].id, restId = c0.lines[0].id;
++  const all = setItemPrice(c0, restId, 100, { scope: 'all' }); // replaces the fixed price too (same item)
++  assert.deepEqual(all.lines.map(l => [l.overrideCents, l.overrideAll]), [[100, true], [100, true]]);
++  const cleared = clearItemPrice(all, restId);
++  assert.deepEqual(cleared.lines.map(l => l.overrideCents), [undefined, undefined]);
++  const justOne = clearItemPrice(c0, fixedId);
++  assert.deepEqual(justOne.lines.map(l => l.overrideCents), [undefined, undefined]);
++  const keepFixed = clearItemPrice(setItemPrice(addVariant(c0, tad, 1, false), c0.lines[0].id, 100, { scope: 'all' }), c0.lines[0].id);
++  assert.equal(keepFixed.lines.length, 3);
++  assert.equal(keepFixed.lines.every(l => l.overrideCents === undefined && l.overrideAll === undefined && l.overrideSeenQty === undefined), true);
++});
++
++test('swapping the variation takes the item price off', () => {
++  const c0 = adjFirst(cartWith(tad, 2), 100, { scope: 'all' });
++  assert.equal(c0.lines[0].overrideAll, true);
++  const c1 = swapVariant(c0, c0.lines[0].id, tadBig);
++  assert.deepEqual([c1.lines[0].overrideCents, c1.lines[0].overrideAll, c1.lines[0].overrideSeenQty], [undefined, undefined, undefined]);
++  assert.equal(price(c1).netCents, 1800);
++});
++
++test('merging carts: an All in cart price covers the same item on both sides and the units consolidate', () => {
++  const a = adjFirst(cartWith(tad, 2), 100, { scope: 'all' });
++  const plain = cartWith(tad, 3);
++  const m1 = mergeCarts(a, plain, true);
++  assert.deepEqual(m1.lines.map(l => [l.qty, l.overrideCents, l.overrideAll]), [[5, 100, true]]);
++  const m2 = mergeCarts(plain, a, true);
++  assert.deepEqual(m2.lines.map(l => [l.qty, l.overrideCents, l.overrideAll]), [[5, 100, true]]);
++  const fixed = adjFirst(cartWith(tad, 3), 300, { scope: 'qty', qty: 3 });
++  assert.equal(mergeCarts(a, fixed, true).lines.length, 2); // a line with its own fixed price keeps it and stays separate
++});
++
++test('gift cards cannot have an item price, and the engine ignores one on a gift card', () => {
++  const c: Cart = { id: 'c', lines: [gift] };
++  assert.equal(setItemPrice(c, 'gift', 100, { scope: 'qty', qty: 1 }), c);
++  const forced = price({ ...c, lines: [{ ...gift, overrideCents: 100, overrideAll: true }] });
++  assert.equal(forced.netCents, 5000);
++});
++
++test('a custom amount takes a fixed price; "All in cart" falls back to fixed for it; bad prices are refused', () => {
++  const custom: CartLine = { id: 'cu', kind: 'custom', title: 'Custom amount', qty: 2, unitCents: 1000, noDiscount: true };
++  const c: Cart = { id: 'c', lines: [custom] };
++  const c1 = setItemPrice(c, 'cu', 800, { scope: 'all' });
++  assert.deepEqual([c1.lines[0].overrideCents, c1.lines[0].overrideAll, c1.lines[0].overrideSeenQty], [800, undefined, 2]);
++  assert.equal(setItemPrice(c, 'cu', -1, { scope: 'qty', qty: 1 }), c);
++  assert.equal(setItemPrice(c, 'cu', 1.5, { scope: 'qty', qty: 1 }), c);
++  assert.equal(setItemPrice(c, 'nope', 100, { scope: 'qty', qty: 1 }), c);
++});
++
++test('an item price can also go up, and totals and Shopify order lines stay exact', () => {
++  const c0 = cartWith(tad, 3);
++  const c1 = setItemPrice(c0, c0.lines[0].id, 433, { scope: 'qty', qty: 3 });
++  const p = price(c1);
++  assert.equal(p.netCents, 1299);
++  assert.equal(p.itemsCents - p.discountCents, p.netCents);
++  assert.equal(splitLineForOrder(p.lines[0].netCents, 3).reduce((a, x) => a + x.qty * x.unitCents, 0), 1299);
++});
