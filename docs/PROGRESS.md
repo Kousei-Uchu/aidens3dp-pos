@@ -21,6 +21,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0012 | 2026-10-10 | Gift card claim page (own Worker) + Claim QR and gift card QR on the receipt step | A10 |
 | 0013 | 2026-10-10 | Zeller: no more sheet of ours over the terminal popup (slim "waiting on terminal" strip instead); answer on where Zeller's popup lives | A11 |
 | 0014 | 2026-10-10 | Invoice-style cart rows (one row per discount, repeats shown as (x2)) and swipe-to-delete on cart lines and saved carts | A12.8, A13 |
+| 0015 | 2026-10-10 | Progress doc only: your manual ticks recorded, cash drawer answer (N7), new queue item E1 (worker styling and subdomains) | docs |
 
 ---
 
@@ -39,7 +40,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 - [x] A2.4 `HidScanner` only grabs focus when not typing and `Keyboard.isVisible()` is false; removed its `autoFocus` (replaced by a guarded focus on mount).
 - [x] A2.5 Tests: `tests/focusguard.test.ts`.
 - [x] A2.6 **You:** open "All products" filter and a cart sheet with the scanner enabled; keyboard should stay up. Trade-off: a Bluetooth scan within ~2.5 s of finishing typing in a field is ignored until the grace ends.
-- [~] A2.7 Scanner model: POS-mate Wireless Barcode Scanner (PM-BCBT2D-W). Its manual (v1.1, "iOS / iPadOS Virtual Keyboard Control") says a **double click of the scanner button shows the on-screen keyboard, and another double click hides it**. This is on by default, and a setup barcode can disable or re-enable it. So the keyboard can be brought back without any app change. The scanner also has BLE and SPP modes, but the manual gives no protocol details, so talking to it directly is deferred (see Deferred). The focus guard from A2 stays. **You:** test the double click with the scanner paired and the scanner screen open.
+- [x] A2.7 Scanner model: POS-mate Wireless Barcode Scanner (PM-BCBT2D-W). Its manual (v1.1, "iOS / iPadOS Virtual Keyboard Control") says a **double click of the scanner button shows the on-screen keyboard, and another double click hides it**. This is on by default, and a setup barcode can disable or re-enable it. So the keyboard can be brought back without any app change. The scanner also has BLE and SPP modes, but the manual gives no protocol details, so talking to it directly is deferred (see Deferred). The focus guard from A2 stays. **You:** test the double click with the scanner paired and the scanner screen open. Confirmed by you (N4): it works, so no app change is needed.
 
 ### A3. View doesn't move for the keyboard (field hidden behind it)
 - [x] A3.1 `src/lib/keyboardMath.ts` (pure, tested): keyboard overlap, "how far to scroll to reveal a field", sheet max height.
@@ -80,7 +81,7 @@ Done through the Square API/SDK instead of CSV (your call), as a one-off PC scri
 - [x] A7.4 Storage: stays gzip-compressed in `Documents/square-history/` (monthly files, read one month at a time) plus a small `rollups.json.gz` for Reports. Test: 400 sales pack to under 1/8 of their JSON size. Needs the new `fflate` dependency.
 - [x] A7.5 Linking: Square variation → SKU → Shopify variant, read from the catalogue already on the device (no Shopify call), then barcode/UPC as a second try. A match gives the Shopify item name, Shopify cost (for profit) and Shopify collection (for category reports). No match → custom line titled `Item - Variation - Notes` (Square's default "Regular" is left out), grouped under its Square category. **Re-match** button redoes this after a catalogue refresh.
 - [x] A7.6 Reports: imported days appear under register "Square (old)" and add to every report; nothing is written to Shopify metaobjects. Transactions: new **Square history** chip loads them (read-only, no return button).
-- [~] A7.7 **Not run against a real Square account** (I have no token). The converter is tested on hand-made orders shaped like the SDK's types. First run: compare one day's Net sales in Reports with Square's own report for that day and tell me any difference.
+- [x] A7.7 Run against your real Square account by you (N8 ticked: imported on the iPad and checked a day's Net sales against Square). I never had a token, so the converter itself is only tested on hand-made orders shaped like the SDK's types. If a later day ever disagrees with Square, tell me which day and the difference.
 - Assumptions to check: Square "Other" tenders show as "Exchange credit" in the tender breakdown; GST is treated as included in prices (tax ignored, matching the app's `tax = 0`); Square service charges become a custom "Service charge" line; modifiers are folded into the line note; customers are not imported as records.
 - Needs a native rebuild: `app.json` gained `NSAllowsLocalNetworking` + a Local Network message (so the app may talk to the PC over plain http on your LAN). Run `npm install` then `npm run ios:reset`. The Pick-files route works without the QR/Wi-Fi part.
 
@@ -92,7 +93,7 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
 - [x] A8.4 Before payment (Charge in the cart): if a bundle is applied with variations that aren't a recommended pair, a sheet lists the items in it and offers **Edit cart** or **Continue to payment**. It asks once per cart state: it returns only if the not-recommended bundles change.
 - [x] A8.5 Matcher: biggest total saving first (the customer is never short-changed for a tidy pairing), then **more recommended pairs**, then fewer deal applications, then priority/config order. A mutation check confirmed the new test fails without the preference. Receipts are unchanged: they list the deal names and savings, but "recommended" markers are staff-facing so they're cart-only.
 - [x] A8.6 Cart: a "Bundle deals" block under the lines with one card per bundle application, naming each item and variation, the saving, and "Recommended pair" / "Not a recommended pair". The underlying item lines stay as they are, because stock, refunds and Shopify order lines work per variant. So the bundle is shown as a single card, not merged into one line.
-- [x] A8.7 **You:** open Settings ▸ Discounts & bundles, rebuild one of your real deals in the GUI, and ring up a cart that triggers it. Check the item picker is quick enough with your full catalogue. It shows the first 80 matches and relies on search. Also try the "Not a recommended pair" prompt.
+- [x] A8.7 Tried by you on a device (N9 ticked). Original steps: open Settings ▸ Discounts & bundles, rebuild one of your real deals in the GUI, and ring up a cart that triggers it. Check the item picker is quick enough with your full catalogue. It shows the first 80 matches and relies on search. Also try the "Not a recommended pair" prompt.
 - Tests: `tests/bundleform.test.ts` (25 tests: percent, dates, recommended status and preference, form ↔ JSON round trip, hand-written JSON loading, prune/remove/toggle, form problems, checkout-check behaviour).
 - Fixed while here: Settings had no page title for "Square history" (type error from 0008).
 
@@ -108,10 +109,10 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
 - [-] A10.1 Not possible: Shopify's Admin API has no field for a gift card's customer web page. That link only exists inside Shopify's own email, so the app cannot print it as a QR. Replaced by A10.2 (our own page) and the card QR below.
 - [x] A10.2 New Worker `gift-claim-server/` (own Shopify app, own secrets; README inside). After you sell a gift card with no email, the receipt step shows **Claim QR: customer adds their email**. The customer scans it, enters name, email and an optional message, and Shopify emails the card. Details: signed link `/c/<CODE>.<SIG>` (HMAC with `CLAIM_SECRET`, made by the POS), card found by last characters + the POS checksum note, only enabled cards with no recipient yet, one claim per card (locked first, unlocked if Shopify fails), per-IP rate limit, page shows only the last 4 characters. App side: `src/lib/giftClaim.ts`, Settings ▸ Gift cards ▸ Gift card claim page (URL + secret in the Keychain, included in backups). Tests: `tests/giftclaim.test.ts` (7), including that the app and the Worker agree on signatures.
 - [x] A10.3 Manual recipient entry ("Email it" when adding the card) is unchanged and still the first choice. The receipt step also has **Gift card QR (for scanning at a register)**, which holds `shopify-giftcard-v1-CODE` (the A9.5 format) and works with the redeem and check scanners.
-- [~] A10.4 **You:** set the Worker up (README), sell a test card with no email, scan the Claim QR with your phone, and enter your email. Tell me how many emails arrive. Not run against a real store: the update + notify calls are written from Shopify's docs. This patch needs no native rebuild and no `npm install`.
+- [x] A10.4 Confirmed by you (N11 ticked): the Worker is set up and a test claim was done. Original steps: set the Worker up (README), sell a test card with no email, scan the Claim QR with your phone, and enter your email.
 
 ### A11. Zeller terminal shouldn't show our own sheet
-- [x] A11.1 The card "waiting" sheet is gone. Root cause: our `Sheet` is a native `Modal`, and a native Modal always draws above everything in the app, including Zeller's popup, so it hid it. Now, while the terminal is working, Pay shows only a slim strip inside the page ("Waiting on terminal", the live status line, and Cancel) and locks the Card, Cash, Gift card and Split buttons so a second charge cannot start. Declined, unknown and reader-problem results still use our sheet, because Zeller's popup has finished by then. The rule lives in `src/lib/payUi.ts` with `tests/payui.test.ts` (4 tests). Refund and Diagnostics never showed a sheet during a terminal call, so they are unchanged.
+- [x] A11.1 The card "waiting" sheet is gone. Root cause: our `Sheet` is a native `Modal`, and a native Modal always draws above everything in the app, including Zeller's popup, so it hid it. Now, while the terminal is working, Pay shows only a slim strip inside the page ("Waiting on terminal", the live status line, and Cancel) and locks the Card, Cash, Gift card and Split buttons so a second charge cannot start. Declined, unknown and reader-problem results still use our sheet, because Zeller's popup has finished by then. The rule lives in `src/lib/payUi.ts` with `tests/payui.test.ts` (4 tests). Confirmed on a real card payment by you (N12 ticked). Refund and Diagnostics never showed a sheet during a terminal call, so they are unchanged.
 - [x] A11.2 Answer: **no, Zeller's popup cannot be placed inside a sheet of ours.** From the SDK source (`@zeller-public/payments-sdk-react-native` 0.2.5): `Zeller.Provider` (mounted at the app root in `zellerBridge.tsx`) draws the popup itself as a full-window absolute overlay with a blurred backdrop, holding a WebView. The window is up to 800 x 680, or full screen. It hides itself when idle. There is no prop to hand it a container, and the only look options are `fullscreen` and `theme` (both already accepted by `purchase`). So the way to avoid a double sheet is the one A11.1 uses: never draw a modal of ours while it is up.
 - [x] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
 
@@ -121,10 +122,10 @@ Clarified: this is about the imported Shopify automatic discounts, not custom bu
 - [x] A12.2 `tests/compound.test.ts` (9 tests) covering that for bundles, including 6 Tadlings = one 5-deal.
 - [x] A12.3 Tie-break for bundles: on an equal saving, fewer deal applications win.
 - [x] A12.4 Root cause for Shopify discounts (fixed in 0006): step 2 of `priceCart` in `src/lib/pricing.ts` applies only the single best automatic discount. Today 8 Tadlings get the 5x deal but not the extra 3x, and 5 Tadlings + 2 cows get only the Tadling deal. A discount repeating on itself already works, so the fix is allowing several different automatic discounts in one order.
-- [x] A12.5 New behaviour (`chooseAutoDiscounts` in `src/lib/pricing.ts`): each unit can receive only one automatic discount, several different discounts can apply to one order, and the combination with the biggest total saving wins. Examples that must pass: 8 Tadlings = 5x + 3x, 6 Tadlings = one 5x, 5 Tadlings + 2 cows = both deals.
+- [x] A12.5 New behaviour (`chooseAutoDiscounts` in `src/lib/pricing.ts`): each unit can receive only one automatic discount, several different discounts can apply to one order, and the combination with the biggest total saving wins. Examples that must pass: 8 Tadlings = 5x + 3x, 6 Tadlings = one 5x, 5 Tadlings + 2 cows = both deals. Confirmed with your real discounts (N5 ticked).
 - [x] A12.6 `tests/autocombine.test.ts` (11 tests): the examples above, 10 and 13 Tadlings (repeats, with a `times` count on the line for the A12.8 display), 7 units where two small lots beat one big one, two variants of one product, percentage and buy X get Y deals, expired discounts.
-- [?] A12.6a (deferred by you, see Deferred) Assumption to confirm: a Shopify discount of the type "fixed amount off, minimum quantity N" now works as lots of N units that repeat (10 Tadlings = two 5x deals). Percentage deals and "each item" amounts keep their old meaning (every eligible unit, once). `lotDiscounts: false` in the pricing context restores Shopify's once-per-order amount. **You:** in Shopify, are your Tadling and cow deals "Amount off products" with a minimum quantity, or "Buy X get Y"? Both combine now, but I want to test your real setup.
-- [~] A12.7 Multi-buy logic reworked in 0006 as one application at a time (respects the per-order use limit across deals, never discounts a unit twice, caps each line at its remaining value). Still to review: display, and behaviour with price adjustments once A16 exists. Original note: review the multi-buy (buy X get Y) logic and how it displays. Cover price-adjusted lines, and any case where one discount spreads across two cart or order lines.
+- [-] A12.6a (dropped by you, see D1; no answer needed) Assumption that was open: a Shopify discount of the type "fixed amount off, minimum quantity N" now works as lots of N units that repeat (10 Tadlings = two 5x deals). Percentage deals and "each item" amounts keep their old meaning (every eligible unit, once). `lotDiscounts: false` in the pricing context restores Shopify's once-per-order amount. **You:** in Shopify, are your Tadling and cow deals "Amount off products" with a minimum quantity, or "Buy X get Y"? Both combine now, but I want to test your real setup.
+- [-] A12.7 (you set this aside, see D2; reopen it if the multi-buy rows ever look wrong once A16 exists) Multi-buy logic reworked in 0006 as one application at a time (respects the per-order use limit across deals, never discounts a unit twice, caps each line at its remaining value). Still to review: display, and behaviour with price adjustments once A16 exists. Original note: review the multi-buy (buy X get Y) logic and how it displays. Cover price-adjusted lines, and any case where one discount spreads across two cart or order lines.
 - [x] A12.8 (done in 0014, `src/lib/invoiceRows.ts`; the top row, struck-through price and final price were already how the cart showed it, so the change is the discount rows) Invoice-style cart rows: a small change to the current item row, not a redesign. The line shows the original price struck through with the final price beside it, then the unit maths, then one indented row per discount or adjustment. Example, 13 Tadlings with a Line price adjustment (I assumed `$40.00` is the final line total, since 52 - 8 - 2 - 2 = 40):
 ```
 Tadling - Small            ~~$52.00~~  $40.00
@@ -133,7 +134,7 @@ Tadling - Small            ~~$52.00~~  $40.00
   3x Tadlings                          -$2.00
   Line price adjustment                -$2.00
 ```
-Each discount now sits on its own indented row with its own amount at the right edge, and a deal that applied twice shows `(x2)` after its name. The "Line price adjustment" row in the example arrives with A16. Tests are in `tests/swipe.test.ts`.
+Each discount now sits on its own indented row with its own amount at the right edge, and a deal that applied twice shows `(x2)` after its name. The "Line price adjustment" row in the example arrives with A16. Tests are in `tests/swipe.test.ts`. Confirmed on a device by you (N13 ticked).
 
 ### A16. Price adjustments (Line, Item, Whole order)
 Added from your A12 notes. Replaces today's single per-item price override.
@@ -150,7 +151,7 @@ Added from your A12 notes. Replaces today's single per-item price override.
 ### A13. Swipe actions (cart lines, saved carts; not customers)
 - [x] A13.1 `src/ui/SwipeRow.tsx`, built on React Native's own `Animated` and `PanResponder`, so there is **no new package and no native rebuild**. Swipe a row left: let go past halfway and a red button stays open (tap it to delete, tap the row to close it); drag most of the way across, or flick hard, and it deletes straight away. VoiceOver gets a "Delete" action, so swiping is never the only way. The sliding maths is pure and tested (`src/lib/swipe.ts`, `tests/swipe.test.ts`).
 - [x] A13.2 Used on **cart lines** ("Remove", disabled while a part-paid sale is locked) and **saved carts** (these are the held carts). Saved carts ask "Delete saved cart?" first, the same as the Delete button, and slide back if you cancel. Customers are left alone, as you asked. The Notifications list has no per-row delete today, so it was not changed.
-- [x] A13.3 **You:** try it on an iPad with a finger and with scrolling: swipe a cart line, flick one, and scroll a long cart up and down. Tell me if a swipe ever fights the scrolling.
+- [x] A13.3 Confirmed by you (ticked): swiping a cart line, flicking one and scrolling a long cart were tried on the iPad. Original check: tell me if a swipe ever fights the scrolling.
 
 ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
 - [ ] A14.1 Collection image on tiles + lists.
@@ -176,18 +177,24 @@ Batched with A14 and A15 into one grid patch (planned next after A7 to A11).
 
 ## B. Round 2 list ("fun little bitsies")
 Status as found in the zip you sent (I only inspected files; not run).
-- [ ] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **I found no denomination/ledger code in this zip (`Drawer.tsx` is still the keypad version).** Confirm whether that part was meant to be included; I'll build it as its own run of patches.
-  - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: empty stub, off by default (as you asked)
-- [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip; Wallet pass needs your certificate.
+- [ ] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Still not built: no denomination/ledger code exists yet (`Drawer.tsx` is still the keypad version).** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
+  - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
+- [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
 - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
 - [x] B4 Bundle GUI (same as A8, done in 0009)
 - [ ] B5 Simple / Minimal / Custom staff modes
 - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
 - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
-- [ ] B8 Extra ideas
+- [ ] B8 Extra ideas (saved for last, after E1 below)
+
+---
+
+## E. Late queue item (added by you)
+Placed after every part it touches is built (the gift card claim page is done, the docs Worker is B7) and before B8, the extra ideas.
+- [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (170 after patch 0014). `npm test` on your machine runs the same files.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (170 after patch 0015, which changes no code). `npm test` on your machine runs the same files.
 - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
@@ -215,9 +222,11 @@ Ordered by priority, highest first.
 
 - [x] N13 **Non-blocking (A13, A12.8):** swipe and scroll test on a device (see A13.3), and look at a cart with two discounts on one line to check the new rows read well.
 
+- [ ] N14 **Non-blocking (E1, not needed until the end of the queue):** the address of your main Shopify site (so I can match its logo, colours and fonts), the domain you want the subdomains on, and where its DNS is managed (for example Cloudflare). I will carry on without it and ask again when E1 comes up.
+
 ### Priority 3
 - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
-- [ ] N7 **Non-blocking (B1):** confirm the cash drawer ledger and denomination entry were meant to be part of the project. I am building it as its own run of patches either way.
+- [x] N7 Answered: yes, all of B1 is meant to be built. The automatic drawer connector is only a minimal, almost empty porting point for you to fill in later, controlled by a greyed-out setting stuck on Off with the reason "Under Construction" (see B1g and D5).
 
 ---
 
@@ -225,12 +234,12 @@ Ordered by priority, highest first.
 Set aside by agreement. Ordered by priority, highest first.
 
 ### Medium
-- [-] D1 A12.6a: which Shopify discount type your Tadling and cow deals use ("Amount off products" with a minimum quantity, or "Buy X get Y"). Both combine now. Deferred by you, to be answered later.
-- [-] D2 A12.7: review the display of multi-buy discounts with price adjustments. Waiting on A12.8 and A16.
+- [-] D1 (dropped by you) A12.6a: which Shopify discount type your Tadling and cow deals use ("Amount off products" with a minimum quantity, or "Buy X get Y"). Both combine now. Deferred by you, to be answered later.
+- [-] D2 (dropped by you) A12.7: review the display of multi-buy discounts with price adjustments. Waiting on A12.8 and A16.
 
 ### Low
-- [-] D3 A2.7: talking to the scanner directly over BLE. Not needed while the double-click keyboard toggle works, and POS-mate publishes no protocol details (we would have to ask them).
+- [-] D3 (dropped by you) A2.7: talking to the scanner directly over BLE. Not needed while the double-click keyboard toggle works, and POS-mate publishes no protocol details (we would have to ask them).
 - [x] D4 A7.2: Square Orders API importer: done in 0008 (CSV dropped).
-- [ ] D5 B1g: tender machine adapter stays an empty stub, off by default, until you have built the hardware.
-- [x] D6 B2: Wallet pass, until the certificate in N6 is set up.
-- [ ] D7 B8: extra ideas, saved for last.
+- [ ] D5 B1g: the tender machine adapter is built as one empty function plus a greyed-out, locked-Off setting ("Under Construction"). Filling it in waits until you have built the hardware.
+- [x] D6 B2: Wallet pass, until the certificate in N6 is set up. Done (ticked by you).
+- [ ] D7 B8: extra ideas, saved for last (after E1).
