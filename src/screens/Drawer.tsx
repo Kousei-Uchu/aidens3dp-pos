@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Share, View } from 'react-native';
 import { Btn, Card, Field, Money, Page, Row, Section, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { DenomPad } from '../ui/DenomPad';
+import { FloatReportSheet } from './FloatReport';
 import { useNav } from '../ui/nav';
 import { useApp, currentStaff } from '../state/store';
 import { csv } from '../lib/csvStore';
@@ -14,7 +15,7 @@ export const cashSince = (sinceISO: string, registerId: string, sales = useApp.g
 
 export default function Drawer() {
   const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const reg = useApp(s => s.settings.registerId); const patchPos = useApp(s => s.patchPos); const ledger = useApp(s => s.pos.ledger);
-  const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close' | 'fix'>('none'); const [draft, setDraft] = useState<Draft>([]); const [note, setNote] = useState('');
+  const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close' | 'fix'>('none'); const [floatOpen, setFloatOpen] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [note, setNote] = useState('');
   const staff = currentStaff()?.name; const cash = shift.open && shift.openedAt ? cashSince(shift.openedAt, reg, sales) : 0;
   const expected = shift.floatCents + cash + shift.paidInCents - shift.paidOutCents;
   // open and "fix contents" start from what the drawer holds (adjust it); in, out and the closing count start empty (a blind count)
@@ -61,11 +62,12 @@ export default function Drawer() {
         <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}
 
-      <Section title="Notes and coins in the drawer" footer="This is the ledger: what the drawer should hold. Counting at close resets it to what you actually counted. Cash sales will add to it from the Cash screen in a later update.">
+      <Section title="Notes and coins in the drawer" footer="This is the ledger: what the drawer should hold. Counting at close resets it to what you actually counted. Cash sales at the Cash screen add to it as you tap the notes and coins.">
         {DENOMS.map(d => <Row key={d.cents} title={d.label} sub={d.kind === 'note' ? 'Note' : 'Coin'} right={<View style={{ alignItems: 'flex-end' }}><Txt weight="700">× {ledger.counts[String(d.cents)] ?? 0}</Txt><Txt size={12} sub>{fmt(d.cents * (ledger.counts[String(d.cents)] ?? 0))}</Txt></View>} />)}
         <Row title="Total in the drawer" right={<Money cents={totalOf(ledger.counts)} weight="700" size={18} />} last />
       </Section>
-      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><Btn title="Correct contents" kind="secondary" icon="create-outline" onPress={() => setSheet('fix')} /></View>
+      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><Btn title="Correct contents" kind="secondary" icon="create-outline" onPress={() => setSheet('fix')} /><Btn title="Daily float report" kind="secondary" icon="stats-chart-outline" onPress={() => setFloatOpen(true)} style={{ marginTop: 8 }} /></View>
+      <FloatReportSheet visible={floatOpen} onClose={() => setFloatOpen(false)} since={shift.open ? shift.openedAt : undefined} cashTakings={since => cashSince(since, reg, sales)} />
 
       <Section title="Cash history">
         {recent.length ? recent.map((e, i) => { const t = entryTotal(e); return <Row key={e.id} last={i === recent.length - 1} icon={t < 0 ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'} title={`${LEDGER_LABEL[e.kind]}${e.staff ? ` · ${e.staff}` : ''}`}

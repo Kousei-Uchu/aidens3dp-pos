@@ -3,6 +3,7 @@
 // or should we ask for card? Pure, tested in tests/checkchange.test.ts. Uses the drawer ledger and your change finder (via planChange).
 import { addCounts, cleanCounts, denomLabel, diffCounts, summariseCounts, totalOf, type Counts } from './cashLedger';
 import { partCashOption, piecesOf, planChange, type PartCash } from './cashSale';
+import { planChangeSmart, profileUsable, smartTightness, type CashProfile } from './changeScore';
 
 export type CheckChangeResult =
   | { verdict: 'short'; shortBy: number; part: PartCash | null }
@@ -25,8 +26,10 @@ export function tightness(drawer: Counts, take: Counts, change: Counts): string[
 /**
  * `offered` is everything the customer says they have. Looks at every part of it (up to `maxSubsets`) that covers the bill:
  * an exact payment wins (fewest pieces); otherwise the smallest handover whose change the drawer can make (so they keep the most).
+ * With a usable `profile` (smart change on) the notes and coins of the change, and the "worth it?" warning, are judged against what the next
+ * sales are likely to need (0022); without one the plain rules above apply, exactly as before.
  */
-export function checkChange(drawer: Counts, offered: Counts, due: number, maxSubsets = 2000): CheckChangeResult {
+export function checkChange(drawer: Counts, offered: Counts, due: number, maxSubsets = 2000, profile?: CashProfile | null): CheckChangeResult {
   const have = totalOf(offered);
   if (have < due) return { verdict: 'short', shortBy: due - have, part: null };
   const items = Object.entries(cleanCounts(offered)).filter(([, n]) => n > 0).sort((a, b) => Number(b[0]) - Number(a[0]));
@@ -49,8 +52,10 @@ export function checkChange(drawer: Counts, offered: Counts, due: number, maxSub
   walk(0, 0);
   const b = best as { take: Counts; total: number; pieces: number; change: Counts } | null;
   if (!b) return { verdict: 'card', part: partCashOption(drawer, offered, due) };
-  const handBack = diffCounts(offered, b.take);
-  return b.total === due ? { verdict: 'exact', take: b.take, handBack } : { verdict: 'change', take: b.take, handBack, change: b.change, tight: tightness(drawer, b.take, b.change) };
+  const handBack = diffCounts(offered, b.take); if (b.total === due) return { verdict: 'exact', take: b.take, handBack };
+  const pool = addCounts(drawer, b.take); const smart = profileUsable(profile) ? planChangeSmart(pool, b.total - due, profile, 20000) : null;
+  const change = smart && smart.kind === 'exact' ? smart.counts : b.change;
+  return { verdict: 'change', take: b.take, handBack, change, tight: profileUsable(profile) ? smartTightness(pool, change, profile) : tightness(drawer, b.take, change) };
 }
 
 /** One-line advice for the cashier. */

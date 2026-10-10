@@ -95,8 +95,10 @@ export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputPr
     <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
     {doneBar ? <InputAccessoryView nativeID={accId}><View style={{ flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 8 }}><Btn title="Done" kind="ghost" small onPress={() => Keyboard.dismiss()} /></View></InputAccessoryView> : null}</View>;
 }
-export function Toggle({ label, sub, value, onChange }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void }) {
-  return <Row title={label} sub={sub} right={<NativeSwitch value={value} onChange={v => { tap(); onChange(v); }} label={label} />} />;
+/** `disabled` greys the switch out and ignores taps (used for features that are not available yet). */
+export function Toggle({ label, sub, value, onChange, disabled }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
+  const sw = <NativeSwitch value={value} onChange={v => { if (!disabled) { tap(); onChange(v); } }} label={label} />;
+  return <Row title={label} sub={sub} right={disabled ? <View pointerEvents="none" accessibilityState={{ disabled: true }} style={{ opacity: 0.4 }}>{sw}</View> : sw} />;
 }
 export const Empty = ({ icon = 'file-tray-outline', title, sub }: { icon?: IconName; title: string; sub?: string }) => {
   const { c } = useTheme();

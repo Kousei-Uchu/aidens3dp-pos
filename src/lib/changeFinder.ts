@@ -10,7 +10,8 @@ export type ChangeResult = {
   exact: boolean;
 };
 
-export type FindOptions = { maxNodes?: number };
+/** `all`: when exact matches exist, still return the near ones too (the float report wants to weigh closeness against stock). */
+export type FindOptions = { maxNodes?: number; all?: boolean };
 export type FindOutcome = { results: ChangeResult[]; truncated: boolean };
 
 /** Same behaviour as findCombinations, but says whether the search was cut short by `maxNodes` (results are then incomplete). */
@@ -55,7 +56,7 @@ export function findCombinationsLimited(available: Record<string, number>, targe
   }
   search(0, 0);
   const exactResults = results.filter(r => r.exact);
-  return { results: exactResults.length > 0 ? exactResults : results, truncated };
+  return { results: exactResults.length > 0 && !opts.all ? exactResults : results, truncated };
 }
 
 /**

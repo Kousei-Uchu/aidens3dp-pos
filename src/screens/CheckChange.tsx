@@ -11,17 +11,19 @@ import { usePriced } from '../state/selectors';
 import { draftCounts, totalOf, type Draft } from '../lib/cashLedger';
 import { cashDue, ledgerEmpty } from '../lib/cashSale';
 import { adviceFor, checkChange } from '../lib/checkChange';
+import { profileNote } from '../lib/changeScore';
+import { useCashProfile } from '../state/cashProfile';
 import { paidTotal } from '../lib/saleBuilder';
 import { digitsToCents, fmt } from '../lib/money';
 
 export function CheckChangeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
-  const { c } = useTheme(); const priced = usePriced(); const cart = useApp(s => s.pos.cart); const rounding = useApp(s => s.settings.cashRounding); const drawer = useApp(s => s.pos.ledger.counts);
+  const { c } = useTheme(); const priced = usePriced(); const cart = useApp(s => s.pos.cart); const rounding = useApp(s => s.settings.cashRounding); const drawer = useApp(s => s.pos.ledger.counts); const profile = useCashProfile();
   const [draft, setDraft] = useState<Draft>([]); const [custom, setCustom] = useState<string | null>(null);
   const remaining = Math.max(0, priced.netCents - paidTotal(cart.tenders ?? []));
   useEffect(() => { if (visible) { setDraft([]); setCustom(remaining > 0 ? null : ''); } }, [visible]);
   const due = custom !== null ? digitsToCents(custom) : cashDue(remaining, remaining, rounding);
   const offered = useMemo(() => draftCounts(draft), [draft]);
-  const res = useMemo(() => (due > 0 && totalOf(offered) > 0 ? checkChange(drawer, offered, due) : null), [drawer, offered, due]);
+  const res = useMemo(() => (due > 0 && totalOf(offered) > 0 ? checkChange(drawer, offered, due, undefined, profile) : null), [drawer, offered, due, profile]);
   const adv = res ? adviceFor(res, fmt) : null; const tone = adv ? (adv.tone === 'good' ? c.good : adv.tone === 'bad' ? c.bad : '#B45309') : c.sub;
   return (
     <Sheet visible={visible} onClose={onClose} title="Check change">
@@ -39,6 +41,7 @@ export function CheckChangeSheet({ visible, onClose }: { visible: boolean; onClo
             <Txt weight="700" size={17} color={tone}>{adv.title}</Txt><Txt size={14}>{adv.detail}</Txt>
           </View>
         ) : <Txt size={13} sub style={{ textAlign: 'center' }}>{due > 0 ? 'Tap their notes and coins to see what we can do.' : 'Enter an amount to check.'}</Txt>}
+        {profile ? <Txt size={12} sub style={{ textAlign: 'center' }}>{profileNote(profile)}</Txt> : null}
         <Btn title="Close" kind="secondary" onPress={onClose} />
       </View>
     </Sheet>

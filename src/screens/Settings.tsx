@@ -20,6 +20,9 @@ import { parseGrid, serialiseGrid } from '../lib/grid';
 import { BundlesEditor } from './BundleBuilder';
 import { HidScanner } from './Scanner';
 import { SquareHistorySettings } from './SquareHistory';
+import { useCashProfile } from '../state/cashProfile';
+import { profileNote } from '../lib/changeScore';
+import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
 import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
 
@@ -54,6 +57,9 @@ export default function Settings() {
       {sub === 'display' ? <DisplaySettings /> : null}
       {sub === 'payments' ? <Section footer="Fees are estimated from these rates – the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
+        <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
+        {s.smartChange ? <SmartChangeNote /> : null}
+        <Toggle label="Automatic cash tender machine" sub="Under Construction. Notes and coins are entered and given by hand for now." value={false} disabled={!TENDER_MACHINE_READY} onChange={() => {}} />
         <View style={{ padding: 16 }}><Field kind="decimal" label="Card-present fee %" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
           <Field kind="decimal" label="Keyed / card-not-present fee %" defaultValue={String(s.fees.keyedRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, keyedRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} /></View>
         <Row title="Reader & pairing" sub="More ▸ Support ▸ Zeller" last onPress={() => nav.push('diagnostics')} /></Section> : null}
@@ -148,6 +154,9 @@ function ClaimSecret() {
   const [v, setV] = useState(''); useEffect(() => { void getClaimSecret().then(setV); }, []);
   return <Field kind="secret" label="Claim page secret (CLAIM_SECRET)" value={v} onChangeText={t => { setV(t); void setClaimSecret(t); }} placeholder="Same value as the claim Worker's CLAIM_SECRET" />;
 }
+
+/** Says what the smart-change numbers are based on (so it is clear it is learning from the ledger, or guessing from item prices). */
+function SmartChangeNote() { const p = useCashProfile(); return <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}><Txt size={13} sub>{profileNote(p)}</Txt></View>; }
 
 function PassSecret() {
   const [v, setV] = useState(''); useEffect(() => { void getPassSecret().then(setV); }, []);
