@@ -122,7 +122,7 @@ test('isLockScreen: only when staff exist and nobody is signed in (works without
 
 // ── layout ──
 test('grid: the three new actions load from grid.json, have labels, and an older layout still loads untouched', () => {
-  for (const a of ['lock_pos', 'price_check', 'stock_check'] as const) { assert.ok(ACTIONS.includes(a)); assert.ok(ACTION_LABEL[a]); }
+  for (const a of ['lock_pos', 'price_check', 'stock_check', 'check_change'] as const) { assert.ok(ACTIONS.includes(a)); assert.ok(ACTION_LABEL[a]); }
   const g = parseGrid({ version: 1, pages: [{ id: 'p', name: 'Home', tiles: [{ type: 'action', action: 'lock_pos' }, { type: 'action', action: 'price_check', label: 'Price?' }, { type: 'action', action: 'stock_check' }, { type: 'action', action: 'nope' }] }] });
   assert.equal(g.grid.pages[0].tiles.length, 3); assert.equal(g.dropped, 1);
   assert.equal(parseGrid({ version: 1, pages: [{ id: 'p', name: 'Home', tiles: [{ type: 'action', action: 'clear_cart' }] }] }).dropped, 0);

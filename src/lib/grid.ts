@@ -1,12 +1,12 @@
 // grid.json  {version:1, pages:[{id,name,tiles:[…]}]}  (research doc §Grid) – stored in the pos_layout metaobject.
 import { uid } from './ids';
 
-export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff', 'lock_pos', 'price_check', 'stock_check'] as const;
+export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff', 'lock_pos', 'price_check', 'stock_check', 'check_change'] as const;
 export type ActionId = (typeof ACTIONS)[number];
 export const ACTION_LABEL: Record<ActionId, string> = {
   custom_amount: 'Custom amount', add_gift_card: 'Sell gift card', clear_cart: 'Clear cart', create_item: 'Create item',
   customers: 'Customers', discounts: 'Discounts', discount: 'Cart discount', saved_carts: 'Saved carts', switch_staff: 'Switch staff',
-  lock_pos: 'Lock POS', price_check: 'Price check', stock_check: 'Stock check',
+  lock_pos: 'Lock POS', price_check: 'Price check', stock_check: 'Stock check', check_change: 'Check change',
 };
 export type Tile =
   | { type: 'action'; action: ActionId; label?: string; color?: string }

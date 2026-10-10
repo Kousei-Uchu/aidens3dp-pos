@@ -1,0 +1,373 @@
+From d726aa8c7de92f29b5af1679a243f3a5006232fa Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 08:45:07 +0000
+Subject: [PATCH] 0021: Check Change tile and cart menu entry
+
+---
+ docs/PROGRESS.md            | 13 ++++++--
+ src/lib/checkChange.ts      | 66 +++++++++++++++++++++++++++++++++++++
+ src/lib/grid.ts             |  4 +--
+ src/screens/CartPane.tsx    |  7 ++--
+ src/screens/CheckChange.tsx | 46 ++++++++++++++++++++++++++
+ src/screens/Checkout.tsx    |  5 ++-
+ src/screens/Tiles.tsx       |  2 +-
+ tests/checkchange.test.ts   | 52 +++++++++++++++++++++++++++++
+ tests/lookup.test.ts        |  2 +-
+ 9 files changed, 187 insertions(+), 10 deletions(-)
+ create mode 100644 src/lib/checkChange.ts
+ create mode 100644 src/screens/CheckChange.tsx
+ create mode 100644 tests/checkchange.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 5a91c8e..7c418f5 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -27,6 +27,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0018 | 2026-10-10 | Cash drawer: tap-the-notes-and-coins entry with undo, a ledger of what is in the drawer, drawer screens rebuilt on it, and your change finder (checked against your original) | B1a (drawer side), B1b |
+ | 0019 | 2026-10-10 | Cash screen core (first piece of the old "0019", which is now split into 0019-0024): tap the notes and coins handed over, change to give from the drawer ledger, sale written to the ledger | B1a (cash screen) |
+ | 0020 | 2026-10-10 | Cash prompts: change the drawer can't make (ask for less / part cash + card / card), short payments, empty ledger; cash refunds come out of the ledger | B1e |
++| 0021 | 2026-10-10 | Check Change: new grid tile and cart-menu entry. Tap the notes a customer says they have and see if we can make the change for this cart, whether it is worth it, or whether to ask for card | B1d |
+ 
+ ---
+ 
+@@ -186,7 +187,7 @@ Done in 0016 together with A14.1, because they share the grid screens. A14.2 and
+ ## B. Round 2 list ("fun little bitsies")
+ Status as found in the zip you sent (I only inspected files; not run).
+ - [~] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Started in 0018 (ledger, denomination entry on the drawer screens, change finder). The Cash screen, scoring, Check Change and reports are still to come.** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
+-  - [x] B1a ledger + denomination entry (0018: drawer screens; 0019: the Cash screen at checkout writes sales to the ledger) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle (0022) · [ ] B1d Check Change (0021) · [x] B1e cash screen prompts + split suggestion + cash refunds into the ledger (0020) · [ ] B1f daily float report (0023) · [ ] B1g tender-machine adapter (0024): one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
++  - [x] B1a ledger + denomination entry (0018: drawer screens; 0019: the Cash screen at checkout writes sales to the ledger) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle (0022) · [x] B1d Check Change (0021) · [x] B1e cash screen prompts + split suggestion + cash refunds into the ledger (0020) · [ ] B1f daily float report (0023) · [ ] B1g tender-machine adapter (0024): one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
+   - **0018 details.** Notes and coins are Australian ($100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c). `src/lib/cashLedger.ts` holds the pure rules; `src/ui/DenomPad.tsx` is the tap pad; `src/screens/Drawer.tsx` uses them. The ledger (`pos.ledger`, saved with the rest of the till data) is the counts now in the drawer plus a history (newest first, last 1,000) of who put in or took out what, and when.
+     - **Tap pad:** tap a note or coin to add one; Add / Remove switch; ×1 ×5 ×10 per tap (for rolls of coins); **Undo** takes back the last tap and says what it removed ("Undid: Added $20 ($20.00) · total now $85.00"); Start over. Removing from zero does nothing and says so.
+     - **Open drawer:** starts from what the ledger says is already in the drawer (carried over from the last close), so you only adjust it. The float is the total. **Paid in / Paid out:** tap the notes and coins; paid out warns if you take more than the ledger holds (it may not know about cash sales yet) and lets you carry on. **Count & close:** a blind count from zero; it tells you over/short against expected, writes the notes and coins into the Z-report, and what you counted becomes the new ledger. **Correct contents:** adjust the ledger by hand with an optional reason.
+@@ -200,10 +201,16 @@ Status as found in the zip you sent (I only inspected files; not run).
+       - **Empty ledger** (drawer never opened or counted): says so, instead of a vague "can't make change".
+       - **Cash refunds:** after a refund that pays out cash, a sheet shows which notes and coins to hand over (same suggestion or tap-what-you-gave) and writes a "Cash refund given" ledger entry. "Done, but don't track it" skips the entry.
+       - Logic: `handBackOptions`, `partCashOption` (checked against the change finder on 60 random drawers), `reachableSums`, `postCashRefund` in `src/lib/cashSale.ts`; `GiveCash` and `GiveCashSheet` in `src/screens/CashSheet.tsx`. Tests are in `tests/cashsale.test.ts`.
++    - **0021 details (Check Change).** New grid action tile **Check change** (Edit grid ▸ Add tile ▸ Actions; new layouts get it automatically, existing ones do not, and a register on an older app version drops the tile type, as with the 0017 tiles) and a **Check change** row in the cart ••• menu. It opens a sheet with the cart total (what is still owing, rounded to 5c when cash rounding is on, or any amount you key in), the same tap pad for "what the customer says they have", and a verdict (`src/lib/checkChange.ts`, `tests/checkchange.test.ts`):
++      - **Cash works, no change needed:** some part of what they hold pays the bill exactly (fewest notes); it says what to ask for and what they keep.
++      - **Cash works, with change:** the smallest handover whose change the drawer can make, so they keep the most; says what to take and what to give back.
++      - **Worth it?** Warns (amber) when the change would use up the last of a denomination of $20 or smaller, or take more than half the cash in the drawer. This is a plain rule for now; the weighted scoring is 0022 and will replace it.
++      - **Can't make change:** red, asks for card, or suggests part cash + card when some part works. **Short:** says by how much.
++      - Nothing is recorded and the cart is not touched. If the ledger is empty it says so.
+     - **Still a gap:** an exchange that also pays cash back while taking you to Pay does not show the cash refund sheet (that path never told the cashier about the cash either). Tell me if you use it. The ledger lives on each iPad separately.
+     - **Planned order:** 0020 cash prompts, split suggestion and refunds into the ledger · 0021 Check Change (grid tile and cart menu) · 0022 weighted change scoring and its toggle · 0023 daily float report · 0024 tender-machine porting point (empty function, greyed-out "Under Construction" toggle).
+   - [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
+-  - [ ] B1i **You:** on the iPad, ring up a cash sale: tap the notes handed over, check the change suggestion against what is really in the drawer, confirm it, then look at Drawer ▸ the ledger (Cash received / Change given entries and the new counts). Also try: part payment, different notes for change, an amount where the drawer has no exact change (the sheet should say so), the untracked options, and cancelling a part-paid cash sale. Tell me if tapping notes is too slow at a busy counter. Then (0020) hand over a note for a small bill when the drawer is nearly empty, and check the red box offers sensible options; do a cash refund and check the drawer ledger afterwards.
++  - [ ] B1i **You:** on the iPad, ring up a cash sale: tap the notes handed over, check the change suggestion against what is really in the drawer, confirm it, then look at Drawer ▸ the ledger (Cash received / Change given entries and the new counts). Also try: part payment, different notes for change, an amount where the drawer has no exact change (the sheet should say so), the untracked options, and cancelling a part-paid cash sale. Tell me if tapping notes is too slow at a busy counter. Then (0020) hand over a note for a small bill when the drawer is nearly empty, and check the red box offers sensible options; do a cash refund and check the drawer ledger afterwards. Then (0021) add the Check change tile and try it with a real cart and a few combinations of notes; tell me if the amber "not worth it" warning fires too often or too rarely.
+ 
+ - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
+ - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
+@@ -220,7 +227,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (228 after patch 0020). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (235 after patch 0021). `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+diff --git a/src/lib/checkChange.ts b/src/lib/checkChange.ts
+new file mode 100644
+index 0000000..4aaa714
+--- /dev/null
++++ b/src/lib/checkChange.ts
+@@ -0,0 +1,66 @@
++// Location: src/lib/checkChange.ts
++// B1d: "Check Change". The customer says what notes and coins they have; can the drawer make the change for this bill, is it worth it,
++// or should we ask for card? Pure, tested in tests/checkchange.test.ts. Uses the drawer ledger and your change finder (via planChange).
++import { addCounts, cleanCounts, denomLabel, diffCounts, summariseCounts, totalOf, type Counts } from './cashLedger';
++import { partCashOption, piecesOf, planChange, type PartCash } from './cashSale';
++
++export type CheckChangeResult =
++  | { verdict: 'short'; shortBy: number; part: PartCash | null }
++  /** They can pay the bill exactly with `take`; no change needed. */
++  | { verdict: 'exact'; take: Counts; handBack: Counts }
++  /** They pay with `take` (the rest stays with them) and we give `change` from the drawer. `tight` lists reasons it may not be worth it. */
++  | { verdict: 'change'; take: Counts; handBack: Counts; change: Counts; tight: string[] }
++  /** No part of what they hold lets us make the change: ask for card (or part cash + card). */
++  | { verdict: 'card'; part: PartCash | null };
++
++/** Why making this change might not be a good idea, given what is in the drawer. Empty = no concerns. */
++export function tightness(drawer: Counts, take: Counts, change: Counts): string[] {
++  const out: string[] = []; const before = cleanCounts(drawer); const after = diffCounts(addCounts(before, take), change);
++  const lastOnes = Object.keys(change).map(Number).filter(v => v <= 2000 && (before[String(v)] ?? 0) + (take[String(v)] ?? 0) > 0 && (after[String(v)] ?? 0) <= 0).sort((a, b) => b - a);
++  if (lastOnes.length) out.push(`uses up the last ${lastOnes.map(denomLabel).join(', ')}`);
++  const drawerTotal = totalOf(before); if (drawerTotal > 0 && totalOf(change) * 2 > drawerTotal + totalOf(take)) out.push('takes more than half the cash in the drawer');
++  return out;
++}
++
++/**
++ * `offered` is everything the customer says they have. Looks at every part of it (up to `maxSubsets`) that covers the bill:
++ * an exact payment wins (fewest pieces); otherwise the smallest handover whose change the drawer can make (so they keep the most).
++ */
++export function checkChange(drawer: Counts, offered: Counts, due: number, maxSubsets = 2000): CheckChangeResult {
++  const have = totalOf(offered);
++  if (have < due) return { verdict: 'short', shortBy: due - have, part: null };
++  const items = Object.entries(cleanCounts(offered)).filter(([, n]) => n > 0).sort((a, b) => Number(b[0]) - Number(a[0]));
++  let best: { take: Counts; total: number; pieces: number; change: Counts } | null = null; let seen = 0; const take: Counts = {};
++  const walk = (i: number, total: number) => {
++    if (++seen > maxSubsets) return;
++    if (i === items.length) {
++      if (total < due) return;
++      const owed = total - due; const plan = owed === 0 ? { kind: 'none' as const } : planChange(addCounts(drawer, take), owed, 20000);
++      if (plan.kind === 'impossible') return;
++      const pieces = piecesOf(take); const change = plan.kind === 'exact' ? plan.counts : {};
++      const rank = (t: number, p: number) => (t === due ? 0 : 1) * 1e9 + t * 100 + p; // exact first, then least change, then fewest pieces
++      if (!best || rank(total, pieces) < rank(best.total, best.pieces)) best = { take: cleanCounts({ ...take }), total, pieces, change };
++      return;
++    }
++    const [v, n] = items[i];
++    for (let q = 0; q <= n; q++) { if (q) take[v] = q; else delete take[v]; walk(i + 1, total + Number(v) * q); }
++    delete take[v];
++  };
++  walk(0, 0);
++  const b = best as { take: Counts; total: number; pieces: number; change: Counts } | null;
++  if (!b) return { verdict: 'card', part: partCashOption(drawer, offered, due) };
++  const handBack = diffCounts(offered, b.take);
++  return b.total === due ? { verdict: 'exact', take: b.take, handBack } : { verdict: 'change', take: b.take, handBack, change: b.change, tight: tightness(drawer, b.take, b.change) };
++}
++
++/** One-line advice for the cashier. */
++export function adviceFor(r: CheckChangeResult, fmt: (c: number) => string): { tone: 'good' | 'warn' | 'bad'; title: string; detail: string } {
++  switch (r.verdict) {
++    case 'short': return { tone: 'bad', title: `They're ${fmt(r.shortBy)} short in cash`, detail: 'Ask for card, or take what they have as a part payment and put the rest on card.' };
++    case 'exact': return { tone: 'good', title: 'Cash works: no change needed', detail: `Ask for ${summariseCounts(r.take)}${totalOf(r.handBack) ? ` (they keep ${summariseCounts(r.handBack)})` : ''}.` };
++    case 'change': return r.tight.length
++      ? { tone: 'warn', title: `We can make ${fmt(totalOf(r.change))} change, but it may not be worth it`, detail: `Ask for ${summariseCounts(r.take)} and give ${summariseCounts(r.change)}. That ${r.tight.join(' and ')}. Card is the safer choice.` }
++      : { tone: 'good', title: `Cash works: ${fmt(totalOf(r.change))} change`, detail: `Ask for ${summariseCounts(r.take)}${totalOf(r.handBack) ? ` (they keep ${summariseCounts(r.handBack)})` : ''} and give ${summariseCounts(r.change)}.` };
++    case 'card': return { tone: 'bad', title: "We can't make the change", detail: r.part ? `Ask for card, or take ${fmt(r.part.cashCents)} in cash and put the other ${fmt(r.part.restCents)} on card.` : 'Ask for card.' };
++  }
++}
+diff --git a/src/lib/grid.ts b/src/lib/grid.ts
+index 6c8e791..c0ef4ca 100644
+--- a/src/lib/grid.ts
++++ b/src/lib/grid.ts
+@@ -1,12 +1,12 @@
+ // grid.json  {version:1, pages:[{id,name,tiles:[…]}]}  (research doc §Grid) – stored in the pos_layout metaobject.
+ import { uid } from './ids';
+ 
+-export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff', 'lock_pos', 'price_check', 'stock_check'] as const;
++export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff', 'lock_pos', 'price_check', 'stock_check', 'check_change'] as const;
+ export type ActionId = (typeof ACTIONS)[number];
+ export const ACTION_LABEL: Record<ActionId, string> = {
+   custom_amount: 'Custom amount', add_gift_card: 'Sell gift card', clear_cart: 'Clear cart', create_item: 'Create item',
+   customers: 'Customers', discounts: 'Discounts', discount: 'Cart discount', saved_carts: 'Saved carts', switch_staff: 'Switch staff',
+-  lock_pos: 'Lock POS', price_check: 'Price check', stock_check: 'Stock check',
++  lock_pos: 'Lock POS', price_check: 'Price check', stock_check: 'Stock check', check_change: 'Check change',
+ };
+ export type Tile =
+   | { type: 'action'; action: ActionId; label?: string; color?: string }
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index cdbf15e..bc7eaae 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -12,13 +12,14 @@ import { fmt } from '../lib/money';
+ import { invoiceRows, unitLine } from '../lib/invoiceRows';
+ import SwipeRow from '../ui/SwipeRow';
+ import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
++import { CheckChangeSheet } from './CheckChange';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
+ import type { CartLine } from '../lib/types';
+ 
+ export default function CartPane({ onClose }: { onClose?: () => void }) {
+   const { c } = useTheme(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
+   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
+-  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer'>('none');
++  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change'>('none');
+   const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
+   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
+   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
+@@ -92,7 +93,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
+         <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
+         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
+-        <Row icon="search-outline" title="Check gift card" last onPress={() => open('check')} />
++        <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
++        <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
+       </Sheet>
+       <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles">
+         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
+@@ -107,6 +109,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
+       <GiftCheckSheet visible={sheet === 'check'} onClose={() => setSheet('none')} />
++      <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
+       <SaveCartSheet visible={sheet === 'save'} onClose={() => setSheet('none')} onSaved={() => setCart(ops.emptyCart())} />
+       <CustomerSheet startCreating={sheet === 'newcustomer'} visible={sheet === 'customer' || sheet === 'newcustomer'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
+     </View>
+diff --git a/src/screens/CheckChange.tsx b/src/screens/CheckChange.tsx
+new file mode 100644
+index 0000000..ce04176
+--- /dev/null
++++ b/src/screens/CheckChange.tsx
+@@ -0,0 +1,46 @@
++// Location: src/screens/CheckChange.tsx
++// "Check Change": tap the notes and coins the customer says they have, and see if the drawer can make the change for this cart,
++// whether it is worth it, or whether to ask for card. Nothing is recorded and the cart is not changed.
++import React, { useEffect, useMemo, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Keypad, Money, Sheet, Txt } from '../ui/kit';
++import { DenomPad } from '../ui/DenomPad';
++import { useTheme } from '../ui/theme';
++import { useApp } from '../state/store';
++import { usePriced } from '../state/selectors';
++import { draftCounts, totalOf, type Draft } from '../lib/cashLedger';
++import { cashDue, ledgerEmpty } from '../lib/cashSale';
++import { adviceFor, checkChange } from '../lib/checkChange';
++import { paidTotal } from '../lib/saleBuilder';
++import { digitsToCents, fmt } from '../lib/money';
++
++export function CheckChangeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
++  const { c } = useTheme(); const priced = usePriced(); const cart = useApp(s => s.pos.cart); const rounding = useApp(s => s.settings.cashRounding); const drawer = useApp(s => s.pos.ledger.counts);
++  const [draft, setDraft] = useState<Draft>([]); const [custom, setCustom] = useState<string | null>(null);
++  const remaining = Math.max(0, priced.netCents - paidTotal(cart.tenders ?? []));
++  useEffect(() => { if (visible) { setDraft([]); setCustom(remaining > 0 ? null : ''); } }, [visible]);
++  const due = custom !== null ? digitsToCents(custom) : cashDue(remaining, remaining, rounding);
++  const offered = useMemo(() => draftCounts(draft), [draft]);
++  const res = useMemo(() => (due > 0 && totalOf(offered) > 0 ? checkChange(drawer, offered, due) : null), [drawer, offered, due]);
++  const adv = res ? adviceFor(res, fmt) : null; const tone = adv ? (adv.tone === 'good' ? c.good : adv.tone === 'bad' ? c.bad : '#B45309') : c.sub;
++  return (
++    <Sheet visible={visible} onClose={onClose} title="Check change">
++      <View style={{ gap: 14 }}>
++        <View style={{ alignItems: 'center', gap: 2 }}>
++          <Txt sub>{custom !== null ? 'Amount to check' : 'Cart total'}</Txt><Money cents={due} size={32} weight="700" />
++          {custom !== null && remaining > 0 ? <Btn title="Use the cart total" kind="ghost" small onPress={() => setCustom(null)} /> : custom === null ? <Btn title="Check a different amount" kind="ghost" small onPress={() => setCustom('')} /> : null}
++        </View>
++        {custom !== null ? <Keypad value={custom} onChange={setCustom} /> : null}
++        {ledgerEmpty(drawer) ? <Txt size={13} color={c.bad} style={{ textAlign: 'center' }}>The drawer ledger is empty, so this can't know what change you have. Open the drawer or correct its contents first.</Txt> : null}
++        <Txt size={13} sub weight="600">What the customer says they have</Txt>
++        <DenomPad draft={draft} onChange={setDraft} totalLabel="Customer has" />
++        {adv ? (
++          <View style={{ backgroundColor: tone + '18', borderRadius: 14, padding: 14, gap: 4, borderWidth: 1.5, borderColor: tone }}>
++            <Txt weight="700" size={17} color={tone}>{adv.title}</Txt><Txt size={14}>{adv.detail}</Txt>
++          </View>
++        ) : <Txt size={13} sub style={{ textAlign: 'center' }}>{due > 0 ? 'Tap their notes and coins to see what we can do.' : 'Enter an amount to check.'}</Txt>}
++        <Btn title="Close" kind="secondary" onPress={onClose} />
++      </View>
++    </Sheet>
++  );
++}
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index 403fc14..c346e49 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -9,6 +9,7 @@ import { useApp } from '../state/store';
+ import { useCatalogue, usePriced, stockTone } from '../state/selectors';
+ import * as ops from '../lib/cartOps';
+ import { digitsToCents, fmt } from '../lib/money';
++import { CheckChangeSheet } from './CheckChange';
+ import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
+ import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+ import { LookupSheet } from './Lookup';
+@@ -53,7 +54,7 @@ export default function Checkout() {
+   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
+   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
+   const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
+-  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock'>('none'); const [cam, setCam] = useState(false);
++  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
+   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
+   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
+   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
+@@ -88,6 +89,7 @@ export default function Checkout() {
+         case 'lock_pos': { const d = lockNow(); if (!d.ok) alertMsg(d.title, d.message); return; } // success: the app shows the sign-in screen, the cart stays
+         case 'price_check': return setSheet('price');
+         case 'stock_check': return setSheet('stock');
++        case 'check_change': return setSheet('change');
+       }
+     },
+   };
+@@ -216,6 +218,7 @@ export default function Checkout() {
+ 
+       <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
+       <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />
++      <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
+       <Sheet visible={sheet === 'pages'} onClose={() => setSheet('none')} title="Pages">
+         {grid.pages.map((p, i) => <Row key={p.id} title={p.name} sub={`${p.tiles.length} tiles`} last={false}
+           right={<View style={{ flexDirection: 'row' }}><IconBtn icon="arrow-up" label="Move earlier" onPress={() => edit(g => ({ ...g, pages: i > 0 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i - 1, 0, x); return a; })() : g.pages }))} /><IconBtn icon="arrow-down" label="Move later" onPress={() => edit(g => ({ ...g, pages: i < g.pages.length - 1 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i + 1, 0, x); return a; })() : g.pages }))} />
+diff --git a/src/screens/Tiles.tsx b/src/screens/Tiles.tsx
+index 935c3a6..8e60db8 100644
+--- a/src/screens/Tiles.tsx
++++ b/src/screens/Tiles.tsx
+@@ -14,7 +14,7 @@ import type { Variant } from '../lib/types';
+ const ACTION_ICON: Record<ActionId, React.ComponentProps<typeof Ionicons>['name']> = {
+   custom_amount: 'calculator-outline', add_gift_card: 'gift-outline', clear_cart: 'trash-outline', create_item: 'add-circle-outline',
+   customers: 'people-outline', discounts: 'pricetags-outline', discount: 'pricetag-outline', saved_carts: 'bookmarks-outline', switch_staff: 'person-circle-outline',
+-  lock_pos: 'lock-closed-outline', price_check: 'pricetag-outline', stock_check: 'layers-outline',
++  lock_pos: 'lock-closed-outline', price_check: 'pricetag-outline', stock_check: 'layers-outline', check_change: 'cash-outline',
+ };
+ 
+ export type TileHandlers = { onAction: (a: ActionId) => void; onVariants: (vs: Variant[]) => void; onDiscount: (t: Extract<Tile, { type: 'discount' }>) => void };
+diff --git a/tests/checkchange.test.ts b/tests/checkchange.test.ts
+new file mode 100644
+index 0000000..d48c1d6
+--- /dev/null
++++ b/tests/checkchange.test.ts
+@@ -0,0 +1,52 @@
++// Location: tests/checkchange.test.ts
++// 0021: Check Change: can the drawer make change for what the customer holds?
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { adviceFor, checkChange, tightness } from '../src/lib/checkChange';
++import { totalOf } from '../src/lib/cashLedger';
++import { planChange } from '../src/lib/cashSale';
++
++const fmt = (c: number) => `$${(c / 100).toFixed(2)}`;
++
++test('short: they do not hold enough', () => {
++  const r = checkChange({ '500': 5 }, { '2000': 1 }, 3700); assert.equal(r.verdict, 'short'); if (r.verdict === 'short') assert.equal(r.shortBy, 1700);
++});
++test('exact: part of what they hold covers the bill without change; they keep the rest', () => {
++  const r = checkChange({}, { '2000': 2, '1000': 1, '500': 1, '200': 1 }, 4500); assert.equal(r.verdict, 'exact');
++  if (r.verdict === 'exact') { assert.equal(totalOf(r.take), 4500); assert.equal(totalOf(r.handBack), 1200); }
++});
++test('change: smallest handover whose change the drawer can make', () => {
++  const r = checkChange({ '1000': 2, '500': 2, '100': 3 }, { '5000': 1, '2000': 2 }, 3700); // $50 + 2 × $20 for $37; the drawer has $1 coins
++  assert.equal(r.verdict, 'change');
++  if (r.verdict === 'change') { assert.deepEqual(r.take, { '2000': 2 }); assert.equal(totalOf(r.change), 300); }
++  assert.equal(checkChange({ '1000': 2, '500': 2 }, { '5000': 1, '2000': 2 }, 3700).verdict, 'card'); // no coins for the $3
++});
++test('card: nothing they hold lets us make change', () => {
++  const r = checkChange({ '500': 1 }, { '5000': 1 }, 3700); assert.equal(r.verdict, 'card');
++  const r2 = checkChange({ '2000': 1 }, { '5000': 1 }, 3700); assert.equal(r2.verdict, 'card'); if (r2.verdict === 'card') assert.deepEqual(r2.part, { cashCents: 3000, restCents: 700 });
++});
++test('every answer is physically possible: totals add up and the change exists in drawer plus handover', () => {
++  let seed = 5; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const dens = [5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5];
++  for (let i = 0; i < 80; i++) {
++    const drawer: Record<string, number> = {}; const offered: Record<string, number> = {};
++    for (const d of dens) { if (rnd() < 0.6) drawer[String(d)] = Math.floor(rnd() * 4); if (rnd() < 0.3) offered[String(d)] = 1 + Math.floor(rnd() * 2); }
++    const due = 5 * (1 + Math.floor(rnd() * 120)); const r = checkChange(drawer, offered, due);
++    if (r.verdict === 'short') { assert.ok(totalOf(offered) < due); continue; }
++    if (r.verdict === 'card') { assert.ok(totalOf(offered) >= due); continue; }
++    assert.ok(totalOf(r.take) >= due); for (const [v, n] of Object.entries(r.take)) assert.ok(n <= (offered[v] ?? 0));
++    assert.equal(totalOf(r.take) + totalOf(r.handBack), totalOf(offered));
++    if (r.verdict === 'exact') assert.equal(totalOf(r.take), due);
++    else { assert.equal(totalOf(r.take) - totalOf(r.change), due); const pool: Record<string, number> = { ...drawer }; for (const [v, n] of Object.entries(r.take)) pool[v] = (pool[v] ?? 0) + n; for (const [v, n] of Object.entries(r.change)) assert.ok(n <= (pool[v] ?? 0)); assert.notEqual(planChange(pool, totalOf(r.change)).kind, 'impossible'); }
++  }
++});
++test('tightness: last of a denomination, or draining the drawer', () => {
++  assert.deepEqual(tightness({ '500': 1, '2000': 4 }, { '5000': 1 }, { '500': 1 }), ['uses up the last $5']);
++  assert.ok(tightness({ '1000': 2 }, { '5000': 1 }, { '2000': 1, '1000': 2 }).some(x => x.includes('more than half')));
++  assert.deepEqual(tightness({ '500': 3, '2000': 5 }, { '5000': 1 }, { '500': 1 }), []);
++});
++test('advice wording for each verdict', () => {
++  assert.equal(adviceFor(checkChange({ '500': 1 }, { '5000': 1 }, 3700), fmt).tone, 'bad');
++  assert.equal(adviceFor(checkChange({}, { '2000': 1 }, 2000), fmt).title, 'Cash works: no change needed');
++  assert.equal(adviceFor(checkChange({ '500': 1, '2000': 4 }, { '5000': 1 }, 4500), fmt).tone, 'warn');
++  assert.equal(adviceFor(checkChange({ '500': 4 }, { '2000': 1 }, 1000), fmt).title, 'Cash works: $10.00 change');
++});
+diff --git a/tests/lookup.test.ts b/tests/lookup.test.ts
+index 9328422..2f209ed 100644
+--- a/tests/lookup.test.ts
++++ b/tests/lookup.test.ts
+@@ -122,7 +122,7 @@ test('isLockScreen: only when staff exist and nobody is signed in (works without
+ 
+ // ── layout ──
+ test('grid: the three new actions load from grid.json, have labels, and an older layout still loads untouched', () => {
+-  for (const a of ['lock_pos', 'price_check', 'stock_check'] as const) { assert.ok(ACTIONS.includes(a)); assert.ok(ACTION_LABEL[a]); }
++  for (const a of ['lock_pos', 'price_check', 'stock_check', 'check_change'] as const) { assert.ok(ACTIONS.includes(a)); assert.ok(ACTION_LABEL[a]); }
+   const g = parseGrid({ version: 1, pages: [{ id: 'p', name: 'Home', tiles: [{ type: 'action', action: 'lock_pos' }, { type: 'action', action: 'price_check', label: 'Price?' }, { type: 'action', action: 'stock_check' }, { type: 'action', action: 'nope' }] }] });
+   assert.equal(g.grid.pages[0].tiles.length, 3); assert.equal(g.dropped, 1);
+   assert.equal(parseGrid({ version: 1, pages: [{ id: 'p', name: 'Home', tiles: [{ type: 'action', action: 'clear_cart' }] }] }).dropped, 0);
+-- 
+2.43.0
+

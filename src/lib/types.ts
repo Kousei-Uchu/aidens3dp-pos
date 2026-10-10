@@ -152,6 +152,8 @@ export type Tender = {
   amountCents: number; // applied to the bill
   tenderedCents?: number; // cash handed over
   changeCents?: number;
+  cashIn?: Record<string, number>; // notes and coins the customer handed over (cents → count), when tracked
+  cashOut?: Record<string, number>; // notes and coins given back as change, when tracked
   roundingCents?: number; // cash 5c rounding (cashDue − amount), may be negative
   card?: CardInfo;
   giftCardId?: string;

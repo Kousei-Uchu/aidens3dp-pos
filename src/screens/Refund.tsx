@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Card, Chip, Field, Keypad, Money, Page, Row, Segmented, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
-import { useApp } from '../state/store';
+import { useApp, currentStaff } from '../state/store';
 import { useCatalogue } from '../state/selectors';
 import { priceCart } from '../lib/pricing';
 import { bundleConfig } from '../lib/sync';
@@ -10,6 +10,8 @@ import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { exchangeSummary, refundableByGateway, type RefundMethod } from '../lib/returns';
 import { executeRefund, REFUND_REASONS } from '../lib/refundFlow';
+import { GiveCashSheet } from './CashSheet';
+import { postCashRefund } from '../lib/cashSale';
 import { getTerminal } from '../zellerBridge';
 import { uid } from '../lib/ids';
 import type { PosOrder } from '../lib/shopify/orders';
@@ -20,7 +22,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
   const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const setCart = useApp(s => s.setCart);
   const [mode, setMode] = useState<'items' | 'amount'>('items'); const [qty, setQty] = useState<Record<string, number>>({}); const [digits, setDigits] = useState('');
   const [method, setMethod] = useState<RefundMethod>('original'); const [reason, setReason] = useState<string>(REFUND_REASONS[0]); const [restock, setRestock] = useState(true);
-  const [repl, setRepl] = useState<Cart>(ops.emptyCart()); const [pick, setPick] = useState(false); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [result, setResult] = useState<string | null>(null);
+  const [repl, setRepl] = useState<Cart>(ops.emptyCart()); const [pick, setPick] = useState(false); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [result, setResult] = useState<string | null>(null); const [cashGive, setCashGive] = useState<{ amount: number; text: string; uuid?: string } | null>(null);
   const refundable = refundableByGateway(order.transactions); const maxMoney = refundable.card + refundable.cash + refundable.gift_card;
 
   const returnCents = mode === 'items' ? order.lines.reduce((s, l) => s + (qty[l.id] ?? 0) * l.unitCents, 0) : Math.min(digitsToCents(digits), maxMoney);
@@ -45,7 +47,8 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
       setCart({ ...repl, id: uid(), customer: order.customer, saleUuid: uuid, tenders: credit > 0 ? [{ id: uid(), kind: 'exchange_credit', amountCents: credit, at: new Date().toISOString() }] : [] });
       onClose(); onGoPay(); return;
     }
-    setResult([out.cashOwedCents ? `Give the customer ${fmt(out.cashOwedCents)} cash.` : '', out.newGiftCode ? `New gift card code: ${out.newGiftCode}` : '', out.message ?? ''].filter(Boolean).join('\n') || 'Refund complete.');
+    const text = [out.cashOwedCents ? `Give the customer ${fmt(out.cashOwedCents)} cash.` : '', out.newGiftCode ? `New gift card code: ${out.newGiftCode}` : '', out.message ?? ''].filter(Boolean).join('\n') || 'Refund complete.';
+    if (out.cashOwedCents > 0) setCashGive({ amount: out.cashOwedCents, text, uuid: out.record?.uuid }); else setResult(text);
   };
 
   return (
@@ -77,6 +80,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
         <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
         {hits.map((v: Variant) => <Row key={v.id} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
       </Sheet>
+      <GiveCashSheet visible={!!cashGive} amount={cashGive?.amount ?? 0} onDone={given => { const g = cashGive; setCashGive(null); if (!g) return; if (given) useApp.getState().patchPos({ ledger: postCashRefund(useApp.getState().pos.ledger, { saleUuid: g.uuid, given, staff: currentStaff()?.name }) }); setResult(g.text); }} />
       <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
       <View style={{ height: 0, backgroundColor: c.bg }} />
     </Page>
