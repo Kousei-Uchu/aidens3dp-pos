@@ -8,7 +8,7 @@
 import { allocate, pctOf } from './money';
 import { matchBundles } from './bundles';
 import type {
-  AppliedDiscount, AutoDiscount, BundleConfig, Cart, CartLine, PricedCart, PricedLine, Target, Variant,
+  AppliedBundle, AppliedDiscount, AutoDiscount, BundleConfig, Cart, CartLine, PricedCart, PricedLine, Target, Variant,
 } from './types';
 
 export type PricingContext = {
@@ -170,14 +170,21 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
   };
 
   // 1 ── bundles
+  const bundleApps: AppliedBundle[] = [];
   if (ctx.bundles) {
     const idx = new Map<string, number>();
     const sources = ws
       .map((w, i) => ({ w, i }))
       .filter(x => x.w.isItem && x.w.discountable)
       .map(({ w, i }) => { idx.set(w.line.id, i); return { key: w.line.id, variantId: w.variantId!, productId: w.productId!, unitCents: w.base, avail: w.line.qty }; });
-    const matchesFound = matchBundles(sources, ctx.bundles);
+    const matchesFound = matchBundles(sources, ctx.bundles, undefined, now);
     const agg = new Map<string, { w: Work; label: string; cents: number; units: number; dealId: string }>();
+    for (const m of matchesFound) {
+      bundleApps.push({
+        dealId: m.dealId, label: m.label, discountCents: m.discountCents, status: m.status,
+        units: m.picks.map(p => { const w = ws[idx.get(p.sourceKey)!]; return { lineId: w.line.id, variantId: w.variantId!, title: w.line.title, variantTitle: w.line.variantTitle, unitCents: p.unitCents, discountCents: p.discountCents }; }),
+      });
+    }
     for (const m of matchesFound) for (const p of m.picks) {
       const w = ws[idx.get(p.sourceKey)!];
       w.bundleUnits += 1;
@@ -228,7 +235,7 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
     const cur = roll.get(k);
     roll.set(k, cur ? { ...cur, cents: cur.cents + d.cents } : { ...d });
   }
-  return { lines, itemsCents, discountCents, netCents: itemsCents - discountCents, deals: [...roll.values()] };
+  return { lines, itemsCents, discountCents, netCents: itemsCents - discountCents, deals: [...roll.values()], bundles: bundleApps };
 }
 
 /** Per-unit price after discounts, split so Σ equals the line net exactly (Shopify order lines need unit prices). */

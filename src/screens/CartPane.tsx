@@ -2,21 +2,25 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Btn, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced } from '../state/selectors';
 import { useNav } from '../ui/nav';
 import * as ops from '../lib/cartOps';
 import { fmt } from '../lib/money';
+import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
 import type { CartLine } from '../lib/types';
 
 export default function CartPane({ onClose }: { onClose?: () => void }) {
   const { c } = useTheme(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
+  const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer'>('none');
   const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
+  // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
+  const charge = () => { if (needsBundleCheck(priced.bundles, ackKey)) setBundleCheck(true); else nav.push('pay'); };
   const doClear = async () => { setMenu(false); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (empty || await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) setCart(ops.emptyCart()); };
 
   return (
@@ -53,6 +57,10 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
               </Pressable>
             );
           })}
+          {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
+            <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Bundle deals</Txt>
+            {priced.bundles.map((b, i) => <BundleRow key={i} b={b} />)}
+          </View> : null}
         </ScrollView>
       )}
 
@@ -60,7 +68,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {priced.discountCents > 0 ? <><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt sub>Items</Txt><Money cents={priced.itemsCents} /></View>
           {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt color={c.good}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</> : null}
         {cart.discount ? <Txt size={13} sub>{cart.discount.label} applied to the cart</Txt> : null}
-        <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={() => nav.push('pay')} />
+        <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
         {!empty ? <Txt size={12} sub style={{ textAlign: 'center' }}>{qty} item{qty === 1 ? '' : 's'}{!consolidate ? '' : ''}</Txt> : null}
       </View>
 
@@ -73,6 +81,14 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
         <Row icon="search-outline" title="Check gift card" last onPress={() => open('check')} />
       </Sheet>
+      <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles">
+        <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
+        <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
+        <View style={{ gap: 8, marginTop: 16 }}>
+          <Btn title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); setTimeout(() => nav.push('pay'), 250); }} />
+          <Btn title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
+        </View>
+      </Sheet>
       <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
@@ -81,5 +97,22 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
       <SaveCartSheet visible={sheet === 'save'} onClose={() => setSheet('none')} onSaved={() => setCart(ops.emptyCart())} />
       <CustomerSheet startCreating={sheet === 'newcustomer'} visible={sheet === 'customer' || sheet === 'newcustomer'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
     </View>
+  );
+}
+
+/** One bundle application: names the items and variations in it, the saving, and whether it is a recommended pair. */
+function BundleRow({ b }: { b: import('../lib/types').AppliedBundle }) {
+  const { c } = useTheme();
+  return (
+    <Card style={{ padding: 12, gap: 4 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Ionicons name="layers-outline" size={18} color={c.good} />
+        <Txt weight="700" style={{ flex: 1 }} numberOfLines={2}>{b.label}</Txt>
+        <Txt weight="700" color={c.good}>−{fmt(b.discountCents)}</Txt>
+      </View>
+      {b.units.map((u, i) => <Txt key={i} size={13} sub numberOfLines={1}>{bundleUnitName(u)}  ·  {fmt(u.unitCents)}</Txt>)}
+      {b.status === 'recommended' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="checkmark-circle" size={15} color={c.good} /><Txt size={12} color={c.good} weight="600">Recommended pair</Txt></View> : null}
+      {b.status === 'other' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="alert-circle" size={15} color={c.warn} /><Txt size={12} color={c.warn} weight="600">Not a recommended pair</Txt></View> : null}
+    </Card>
   );
 }

@@ -15,6 +15,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0006 | 2026-10-10 | Several Shopify automatic discounts now combine in one order (5x + 3x Tadlings, Tadlings + cows) | A12.4-A12.6 |
 | 0007 | 2026-10-10 | Progress doc only: your answers recorded, scanner finding, "Needed from You" and "Deferred" sections | docs |
 | 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
+| 0009 | 2026-10-10 | Bundle builder GUI: deal list + editor, % off / set price / $ off, dates, recommended pairs, bundle rows in the cart, pre-payment check; fixes a missing "Square history" page title from 0008 | A8, B4 |
 
 ---
 
@@ -79,12 +80,16 @@ Done through the Square API/SDK instead of CSV (your call), as a one-off PC scri
 - Needs a native rebuild: `app.json` gained `NSAllowsLocalNetworking` + a Local Network message (so the app may talk to the PC over plain http on your LAN). Run `npm install` then `npm run ios:reset`. The Pick-files route works without the QR/Wi-Fi part.
 
 ### A8. GUI bundle builder
-- [ ] A8.1 Bundle list + create/edit form (pick items, quantity, deal price or $/% off, dates, on/off) writing the same JSON the engine already reads.
-- [ ] A8.2 Keep the JSON editor as an "Advanced" view.
-- [ ] A8.3 Recommended pairs: when a bundle contains a product with several variants, the builder lets you mark specific variant combinations as recommended pairs. This is separate from putting a single variant in a set. Pairs are optional, so any variant of the product still qualifies for the deal.
-- [ ] A8.4 Checkout prompt for non-recommended pairs: if a bundle deal is applied but the matched units are not a recommended pair, tell the cashier. Show the items that make up the bundle, then offer "Edit cart" or "Continue to payment".
-- [ ] A8.5 When both recommended and non-recommended candidates are in the cart, the matcher prefers recommended pairs for grouping and discounting. This applies to the cart and to receipts.
-- [ ] A8.6 Show each bundle as a single cart line that names the items and variations in it, with a marker for "Recommended pair" or "Not a recommended pair".
+Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`settings.bundlesJson`), so existing JSON bundles keep working and show up in the list.
+- [x] A8.1 `src/screens/BundleBuilder.tsx`: deal list (state badge Live / Scheduled / Ended / Off, quick on/off switch, summary line) and an editor. A deal is one or more **groups** ("N items from this list"). Pick products (every variation) or individual variations with search. Effect is **$ off**, **% off** or **set price**, optionally taken off only one group. Extras: most times per order, start and end date (`YYYY-MM-DD`, the end day is included in full), on/off. Engine additions: `mode: 'percent'` + `percent`, `starts_at` / `ends_at` (`src/lib/bundles.ts`).
+- [x] A8.2 The JSON editor stays under "Advanced: edit as JSON" and also shows an unreadable saved config so you can fix or clear it.
+- [x] A8.3 Recommended pairs: per deal, "Add a recommended pair" picks one variation per item of the deal (for example Red dragon + Red egg). Stored as `recommended` (lists of variant ids, order doesn't matter). Optional. Any variation still gets the deal. A deal with no pairs never shows a marker. Changing a deal's items or quantities offers to clear its pairs, since they'd be out of date.
+- [x] A8.4 Before payment (Charge in the cart): if a bundle is applied with variations that aren't a recommended pair, a sheet lists the items in it and offers **Edit cart** or **Continue to payment**. It asks once per cart state: it returns only if the not-recommended bundles change.
+- [x] A8.5 Matcher: biggest total saving first (the customer is never short-changed for a tidy pairing), then **more recommended pairs**, then fewer deal applications, then priority/config order. A mutation check confirmed the new test fails without the preference. Receipts are unchanged: they list the deal names and savings, but "recommended" markers are staff-facing so they're cart-only.
+- [x] A8.6 Cart: a "Bundle deals" block under the lines with one card per bundle application, naming each item and variation, the saving, and "Recommended pair" / "Not a recommended pair". The underlying item lines stay as they are, because stock, refunds and Shopify order lines work per variant. So the bundle is shown as a single card, not merged into one line.
+- [x] A8.7 **You:** open Settings ▸ Discounts & bundles, rebuild one of your real deals in the GUI, and ring up a cart that triggers it. Check the item picker is quick enough with your full catalogue. It shows the first 80 matches and relies on search. Also try the "Not a recommended pair" prompt.
+- Tests: `tests/bundleform.test.ts` (25 tests: percent, dates, recommended status and preference, form ↔ JSON round trip, hand-written JSON loading, prune/remove/toggle, form problems, checkout-check behaviour).
+- Fixed while here: Settings had no page title for "Square history" (type error from 0008).
 
 ### A9. Gift cards: when they are created, and how codes are read
 - [-] A9.1 Dropped (you changed your mind): adding a gift card to the cart only records the amount.
@@ -165,15 +170,15 @@ Status as found in the zip you sent (I only inspected files; not run).
   - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: empty stub, off by default (as you asked)
 - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip; Wallet pass needs your certificate.
 - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
-- [ ] B4 Bundle GUI (same as A8)
+- [x] B4 Bundle GUI (same as A8, done in 0009)
 - [ ] B5 Simple / Minimal / Custom staff modes
 - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
 - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
 - [ ] B8 Extra ideas
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (121 after patch 0008, with `qrcode-generator` installed). `npm test` on your machine runs the same files.
-- Type-checking: I can't run `tsc` here (no full `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (146 after patch 0009). `npm test` on your machine runs the same files.
+- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0009 (it found one real error left by 0008, now fixed). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
 
@@ -187,7 +192,8 @@ Ordered by priority, highest first.
 ### Priority 2
 - [-] N2 No longer needed (A7 uses the Square API, not CSV).
 - [ ] N8 **Non-blocking (A7):** run `tools/square-history` (README there), import on the iPad, and check one day's Net sales against Square's report. Tell me the matched-lines count shown after import and anything that looks off.
-- [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I cannot run `tsc` here.
+- [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I can type-check everything except the Zeller SDK's own types here.
+- [ ] N9 **Non-blocking (A8):** try the bundle builder on a device (see A8.7) and tell me anything awkward: the item picker, the date fields, the recommended-pair flow, the pre-payment prompt.
 - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
 - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
 
