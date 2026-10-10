@@ -9,12 +9,14 @@ import { hasCreds } from '../lib/shopify/client';
 import { outstandingBalance } from '../lib/shopify/giftcards';
 import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, sumRange, type Period, type Range, type RollupRow, type Totals } from '../lib/rollup';
 import { fmt } from '../lib/money';
+import { loadSquareRollups } from '../lib/squareHistoryIO';
 
 const PERIODS: Period[] = ['1D', '1W', '1M', '3M', '1Y'];
 const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseDay(s).getTime());
 
 export function useRollups() {
-  const [remote, setRemote] = useState<RollupRow[]>([]); const [busy, setBusy] = useState(false); const outbox = useApp(s => s.pos.outbox); const local = useApp(s => s.pos.rollups);
+  const [remote, setRemote] = useState<RollupRow[]>([]); const [busy, setBusy] = useState(false); const outbox = useApp(s => s.pos.outbox); const local = useApp(s => s.pos.rollups); const [square, setSquare] = useState<RollupRow[]>([]);
+  useEffect(() => { void loadSquareRollups().then(setSquare); }, []);
   const load = useCallback(async () => {
     if (!hasCreds()) return; setBusy(true);
     try { const rows: RollupRow[] = []; let after: string | null = null;
@@ -25,10 +27,11 @@ export function useRollups() {
   useEffect(() => { void load(); }, []);
   const rows = useMemo(() => {
     const m = new Map<string, RollupRow>(remote.map(r => [`${r.registerId}|${r.date}`, r]));
+    for (const r of square) m.set(`${r.registerId}|${r.date}`, r);
     for (const [k, t] of Object.entries(local)) if (!m.has(k)) { const [registerId, date] = k.split('|'); m.set(k, { registerId, date, totals: t }); }
     for (const o of outbox.filter(x => !x.done.rollup)) { const k = rollupKey(o.sale.registerId, o.sale.ts); const cur = m.get(k); const [registerId, date] = k.split('|'); m.set(k, { registerId, date, totals: applyRecord(cur?.totals ?? emptyTotals(), o.sale) }); }
     return [...m.values()];
-  }, [remote, local, outbox]);
+  }, [remote, local, outbox, square]);
   return { rows, busy, load };
 }
 
@@ -76,7 +79,7 @@ export default function Reports() {
           <View style={{ padding: 16 }}><Btn title="Gift cards" kind="secondary" onPress={() => nav.push('giftcards')} /></View></View>)}
       <Sheet visible={filter} onClose={() => setFilter(false)} title="Customise">
         <Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Device</Txt>
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label="All devices" active={!dev} onPress={() => setDev(undefined)} />{devices.map(id => <Chip key={id} label={id === myId ? `${myName} (this)` : id} active={dev === id} onPress={() => setDev(id)} />)}</View>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}><Chip label="All devices" active={!dev} onPress={() => setDev(undefined)} />{devices.map(id => <Chip key={id} label={id === myId ? `${myName} (this)` : id === 'square' ? 'Square (old)' : id} active={dev === id} onPress={() => setDev(id)} />)}</View>
         <Btn title="Done" onPress={() => setFilter(false)} style={{ marginTop: 16 }} />
       </Sheet>
       <RefreshControl refreshing={false} />

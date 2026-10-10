@@ -19,10 +19,11 @@ import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normali
 import { parseGrid, serialiseGrid } from '../lib/grid';
 import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
 import { HidScanner } from './Scanner';
+import { SquareHistorySettings } from './SquareHistory';
 import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
 
-type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
+type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
 const SAMPLE_BUNDLES = JSON.stringify({ version: 1, items: { set_a: ['gid://shopify/Product/1'], set_b: ['gid://shopify/Product/2'] }, discounts: [{ id: 'combo', label: 'Combo deal', sets: ['set_a', 'set_b'], price_delta_cents: -500, apply_to: 'set_b', max_per_cart: 5 }] }, null, 2);
 
 export default function Settings() {
@@ -38,6 +39,7 @@ export default function Settings() {
           <Row icon="pricetags-outline" title="Discounts & bundles" onPress={() => setSub('discounts')} />
           <Row icon="barcode-outline" title="Hardware" sub="Scanner test" onPress={() => setSub('hardware')} />
           <Row icon="document-text-outline" title="Data" sub="Export CSV · delete local history" onPress={() => setSub('data')} />
+          <Row icon="archive-outline" title="Square history" sub="Import old Square sales for reports" onPress={() => setSub('square')} />
           <Row icon="grid-outline" title="Grid import / export" onPress={() => setSub('grid')} />
           <Row icon="gift-outline" title="Gift cards" onPress={() => setSub('gift')} />
           <Row icon="receipt-outline" title="Receipts" sub={s.receipt.serverUrl ? (s.receipt.gstRegistered ? 'Tax invoices · QR link' : 'Receipts · QR link') : 'Not set up'} onPress={() => setSub('receipts')} />
@@ -59,6 +61,7 @@ export default function Settings() {
       {sub === 'discounts' ? <BundlesEditor /> : null}
       {sub === 'hardware' ? <HardwareTest /> : null}
       {sub === 'data' ? <DataSettings /> : null}
+      {sub === 'square' ? <SquareHistorySettings /> : null}
       {sub === 'grid' ? <GridSettings /> : null}
       {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />

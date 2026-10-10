@@ -11,6 +11,7 @@ import { ReceiptPrompt, receiptText } from './Receipt';
 import RefundScreen from './Refund';
 import type { SaleRecord } from '../lib/types';
 import { Share } from 'react-native';
+import { loadSquareSales } from '../lib/squareHistoryIO';
 
 type Entry = { key: string; ts: string; name: string; totalCents: number; customer?: string; kind: 'sale' | 'refund'; summary: string; order?: PosOrder; sale?: SaleRecord; pending: boolean; haystack: string };
 
@@ -20,6 +21,8 @@ const dayLabel = (ts: string) => { const d = new Date(ts); const t = new Date();
 export default function Transactions() {
   const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const outbox = useApp(s => s.pos.outbox);
   const [orders, setOrders] = useState<PosOrder[]>([]); const [next, setNext] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [q, setQ] = useState(''); const [remoteQ, setRemoteQ] = useState<PosOrder[] | null>(null);
+  const [showSq, setShowSq] = useState(false); const [sqSales, setSqSales] = useState<SaleRecord[]>([]); const [sqBusy, setSqBusy] = useState(false);
+  const toggleSq = async () => { if (showSq) { setShowSq(false); return; } setShowSq(true); if (!sqSales.length) { setSqBusy(true); try { setSqSales(await loadSquareSales()); } catch (e: any) { alertMsg('Could not load Square history', e.message); } setSqBusy(false); } };
   const [sel, setSel] = useState<Entry | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
 
   const load = useCallback(async (more = false) => {
@@ -37,8 +40,10 @@ export default function Transactions() {
         summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
     for (const o of [...orders, ...(remoteQ ?? [])]) { const k = o.saleUuid ?? o.id; if (seen.has(k)) continue; seen.add(k);
       out.push({ key: k, ts: o.createdAt, name: o.name, totalCents: o.totalCents, customer: o.customer?.name, kind: 'sale', order: o, pending: false, summary: o.tenders.map(t => tenderWord(t.kind)).join(' + ') || 'Order', haystack: [o.name, o.customer?.name, o.note, ...o.lines.map(l => l.title)].join(' ').toLowerCase() }); }
+    if (showSq) for (const s of sqSales) out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? 'Square', totalCents: s.netCents, customer: s.customer?.name, kind: s.type, sale: s, pending: false,
+      summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
     return out.sort((a, b) => b.ts.localeCompare(a.ts));
-  }, [sales, orders, remoteQ, outbox]);
+  }, [sales, orders, remoteQ, outbox, showSq, sqSales]);
   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
 
@@ -49,6 +54,7 @@ export default function Transactions() {
       <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <Txt size={24} weight="700" style={{ marginBottom: 8, marginLeft: 4 }}>Transactions</Txt>
         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
+        <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
       </View>
       <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
         ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'Press search to look in Shopify.' : 'Completed sales appear here.'} />}
@@ -87,8 +93,9 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
       {sale.customer ? <Txt sub>Customer: {sale.customer.name}</Txt> : null}
       {e.order?.note ? <Txt sub>Note: {e.order.note}</Txt> : null}
       <Btn title="New receipt" icon="receipt-outline" kind="secondary" onPress={() => onReceipt(sale)} />
-      {e.kind === 'sale' ? <Btn title="Return or exchange" icon="return-down-back-outline" disabled={!e.order} onPress={() => e.order && onRefund(e.order)} /> : null}
-      {e.kind === 'sale' && !e.order ? <Txt size={12} sub style={{ textAlign: 'center' }}>Returns unlock once this sale has synced to Shopify.</Txt> : null}
+      {e.kind === 'sale' && sale.registerId !== 'square' ? <Btn title="Return or exchange" icon="return-down-back-outline" disabled={!e.order} onPress={() => e.order && onRefund(e.order)} /> : null}
+      {e.kind === 'sale' && !e.order && sale.registerId !== 'square' ? <Txt size={12} sub style={{ textAlign: 'center' }}>Returns unlock once this sale has synced to Shopify.</Txt> : null}
+      {sale.registerId === 'square' ? <Txt size={12} sub style={{ textAlign: 'center' }}>Imported from Square. Read-only: it can’t be returned or refunded here.</Txt> : null}
       <Btn title="Share receipt text" kind="ghost" onPress={() => void Share.share({ message: receiptText(sale) })} />
     </View>
   );
