@@ -22,6 +22,7 @@ Legend: `[x]` done in code Â· `[~]` partly done / needs your device to confirm Â
 | 0013 | 2026-10-10 | Zeller: no more sheet of ours over the terminal popup (slim "waiting on terminal" strip instead); answer on where Zeller's popup lives | A11 |
 | 0014 | 2026-10-10 | Invoice-style cart rows (one row per discount, repeats shown as (x2)) and swipe-to-delete on cart lines and saved carts | A12.8, A13 |
 | 0015 | 2026-10-10 | Progress doc only: your manual ticks recorded, cash drawer answer (N7), new queue item E1 (worker styling and subdomains) | docs |
+| 0016 | 2026-10-10 | Grid: nested categories to any depth, per-tile settings sheet, groups that act like collections, back one level + tappable path, collection pictures on tiles and lists | C1-C6, A14.1 |
 
 ---
 
@@ -154,8 +155,8 @@ Added from your A12 notes. Replaces today's single per-item price override.
 - [x] A13.3 Confirmed by you (ticked): swiping a cart line, flicking one and scrolling a long cart were tried on the iPad. Original check: tell me if a swipe ever fights the scrolling.
 
 ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
-- [ ] A14.1 Collection image on tiles + lists.
-- [ ] A14.2 Variant picker as a grid sub-page instead of a popup.
+- [x] A14.1 (done in 0016) Collection image on tiles + lists. Category tiles and groups that act like a collection show the collection's Shopify picture, and so do the category rows in Add tile and the sub-category picker. The Inventory and Items category filters are chip lists, so they stay text only.
+- [ ] A14.2 Variant picker as a grid sub-page instead of a popup. (next patch, with A15)
 
 ### A15. New grid buttons: Lock POS, Price check, Stock check
 - [ ] A15.1 Lock POS tile.
@@ -165,13 +166,14 @@ Added from your A12 notes. Replaces today's single per-item price override.
 ---
 
 ## C. Grid: nested categories, breadcrumb path, per-tile settings (from the "ADDITION AFTER PATCHES 1-3" section)
-Batched with A14 and A15 into one grid patch (planned next after A7 to A11).
-- [ ] C1 Per-tile settings sheet in the grid editor (colour, label, and for categories/groups: choose sub-categories).
-- [ ] C2 Nested categories: a category or display group tile can contain sub-categories, to any depth.
-- [ ] C3 Display groups can impersonate collections (a group acts like a collection tile).
-- [ ] C4 An item in both a sub-category and its parent shows only in the deepest sub-category, never in the parents.
-- [ ] C5 Grid navigation keeps a path stack: Back goes up one level, not straight to depth 0.
-- [ ] C6 Path header like `Dragons > Extreme Dragons > Rose`, each level tappable to jump there.
+Done in 0016 together with A14.1, because they share the grid screens. A14.2 and A15 follow in the next patch. How it works: `docs/GRID.md`.
+- [x] C1 (done in 0016) Per-tile settings sheet in the grid editor (colour, label, and for categories/groups: choose sub-categories). Tap a tile while editing: label, colour, the collection a category or group shows, add or remove sub-categories and display groups, open it to edit its tiles, remove it (`src/screens/TileSettings.tsx`).
+- [x] C2 (done in 0016) Nested categories: a category or display group tile can contain sub-categories, to any depth. Stored as `subs` on a category, so old layouts load unchanged.
+- [x] C3 (done in 0016) Display groups can impersonate collections (a group acts like a collection tile). Pick a collection in the group's settings; it then shows that collection's items after its own tiles, minus anything in a sub-category inside it.
+- [x] C4 (done in 0016) An item in both a sub-category and its parent shows only in the deepest sub-category, never in the parents (`ownProductIds` in `src/lib/gridNav.ts`). Items you pin yourself as tiles are never hidden by this rule.
+- [x] C5 (done in 0016) Grid navigation keeps a path stack: Back goes up one level, not straight to depth 0. Changing page or tab returns to the top, and a layout change from another register steps back to the nearest level that still exists.
+- [x] C6 (done in 0016) Path header like `Dragons > Extreme Dragons > Rose`, each level tappable to jump there. The first entry is the page name (Home), which jumps to depth 0.
+- [ ] C7 **You:** on the iPad, edit the grid: open a category tile's settings, add a sub-category and a display group, open it to add tiles, then leave edit mode and check the path at the top, tapping an earlier name, and the back arrow. Check that an item in a parent and a sub-category shows only in the sub-category. Tell me if the settings sheet is awkward with the keyboard up.
 
 ---
 
@@ -194,7 +196,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
 - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (170 after patch 0015, which changes no code). `npm test` on your machine runs the same files.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (179 after patch 0016). `npm test` on your machine runs the same files.
 - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---

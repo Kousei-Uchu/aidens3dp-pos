@@ -9,10 +9,12 @@ export const ACTION_LABEL: Record<ActionId, string> = {
 };
 export type Tile =
   | { type: 'action'; action: ActionId; label?: string; color?: string }
-  | { type: 'category'; collectionId: string; label?: string; color?: string }
+  // A category shows its Shopify collection's items. `subs` are sub-categories (or groups) inside it, to any depth.
+  | { type: 'category'; collectionId: string; label?: string; color?: string; subs?: Tile[] }
   | { type: 'item'; variantId?: string; productId?: string; label?: string; color?: string }
   | { type: 'discount'; code?: string; pct?: number; amtCents?: number; label?: string; color?: string }
-  | { type: 'group'; name: string; tiles: Tile[]; color?: string };
+  // A display group holds tiles of its own. With `collectionId` it also acts like that collection (shows its items after its tiles).
+  | { type: 'group'; name: string; tiles: Tile[]; color?: string; collectionId?: string };
 export type GridPage = { id: string; name: string; tiles: Tile[] };
 export type Grid = { version: 1; pages: GridPage[] };
 
@@ -25,10 +27,10 @@ const isTile = (t: any): t is Tile => {
   if (!t || typeof t !== 'object') return false;
   switch (t.type) {
     case 'action': return (ACTIONS as readonly string[]).includes(t.action);
-    case 'category': return typeof t.collectionId === 'string';
+    case 'category': return typeof t.collectionId === 'string' && (t.subs === undefined || (Array.isArray(t.subs) && t.subs.every(isTile)));
     case 'item': return typeof t.variantId === 'string' || typeof t.productId === 'string';
     case 'discount': return true;
-    case 'group': return typeof t.name === 'string' && Array.isArray(t.tiles) && t.tiles.every(isTile);
+    case 'group': return typeof t.name === 'string' && Array.isArray(t.tiles) && t.tiles.every(isTile) && (t.collectionId === undefined || typeof t.collectionId === 'string');
     default: return false;
   }
 };
