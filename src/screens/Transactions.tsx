@@ -1,3 +1,4 @@
+import { signedSaving } from '../lib/adjustReview';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
 import { Btn, Card, Chip, Empty, Field, IconBtn, Money, Page, Row, Txt, alertMsg } from '../ui/kit';
@@ -79,7 +80,7 @@ export default function Transactions() {
 
 const orderAsSale = (o: PosOrder): SaleRecord => ({ uuid: o.saleUuid ?? o.id, type: 'sale', ts: o.createdAt, registerId: '', registerName: o.registerName ?? '', customer: o.customer, orderName: o.name, receiptLink: o.receiptLink,
   lines: o.lines.map(l => ({ title: l.title, variantTitle: l.variantTitle, qty: l.qty, baseUnitCents: l.originalUnitCents, grossCents: l.originalUnitCents * l.qty, discountCents: (l.originalUnitCents - l.unitCents) * l.qty, netCents: l.unitCents * l.qty, costCents: 0, discountLabels: [], kind: 'item' as const })),
-  itemsCents: o.totalCents, discountCents: 0, netCents: o.totalCents, tipCents: 0, totalCents: o.totalCents, cogsCents: 0, feesCents: 0, roundingCents: o.roundingCents, tenders: o.tenders, deals: [] });
+  itemsCents: o.totalCents, discountCents: 0, netCents: o.totalCents, tipCents: 0, totalCents: o.totalCents, cogsCents: 0, feesCents: 0, roundingCents: o.roundingCents, tenders: o.tenders, deals: [], adjustments: o.adjustments?.length ? o.adjustments : undefined });
 
 function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClose: () => void; onRefund: (o: PosOrder) => void; onReceipt: (s: SaleRecord) => void; embedded: boolean }) {
   const { c } = useTheme(); const sale = e.sale ?? (e.order ? orderAsSale(e.order) : null); if (!sale) return null;
@@ -88,6 +89,7 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
     <View style={{ padding: 16, gap: 14 }}>
       <View style={{ alignItems: 'center' }}><Money cents={sale.netCents} size={36} weight="700" color={e.kind === 'refund' ? c.bad : undefined} /><Txt sub>{new Date(sale.ts).toLocaleString()}</Txt>{e.pending ? <Txt size={13} color={c.warn}>Waiting to sync to Shopify</Txt> : null}</View>
       <Card>{lines.map((l, i) => <Row key={i} last={i === lines.length - 1} title={`${l.qty} × ${l.title}`} sub={[l.variantTitle, l.discountLabels?.join(', ')].filter(Boolean).join(' · ') || undefined} right={<Money cents={l.netCents} />} />)}</Card>
+      {sale.adjustments?.length ? <Card>{sale.adjustments.map((a, i, all) => <Row key={i} last={i === all.length - 1} icon="cut-outline" title={`${a.kind === 'item' ? 'Item price' : a.kind === 'line' ? 'Line price' : 'Whole order price'} · ${a.title}`} sub={a.reason ? `Reason: ${a.reason}` : 'No reason given'} right={<Txt weight="600">{signedSaving(a.cents)}</Txt>} />)}</Card> : null}
       <Card>{tenders.map((t, i) => <Row key={t.id + i} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'}
         title={t.kind === 'card' ? `Card${t.card?.scheme ? ' · ' + t.card.scheme : ''}${t.card?.panMasked ? ' •••• ' + t.card.panMasked : ''}` : tenderWord(t.kind)} sub={t.card?.approvalCode ? `Approval ${t.card.approvalCode}` : t.roundingCents ? `Rounding ${fmt(t.roundingCents)}` : undefined} right={<Money cents={t.amountCents} />} />)}</Card>
       {sale.customer ? <Txt sub>Customer: {sale.customer.name}</Txt> : null}

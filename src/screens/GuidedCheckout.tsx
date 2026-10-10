@@ -17,14 +17,17 @@ import { STEPS, barState, back, canAdvance, next, progress, settle, stepInfo, ty
 import Checkout from './Checkout';
 import { BundleRow } from './CartPane';
 import { CheckChangeSheet } from './CheckChange';
-import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
+import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
+import AdjustmentReviewSheet from './AdjustmentReview';
+import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import type { CartLine } from '../lib/types';
 
 export default function GuidedCheckout() {
   const { c } = useTheme(); const nav = useNav();
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue();
   const [step, setStep] = useState<StepId>('items');
-  const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change'>('none');
+  const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change' | 'orderadj'>('none');
+  const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
   const [edit, setEdit] = useState<CartLine | null>(null);
   const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
   const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };
@@ -37,6 +40,9 @@ export default function GuidedCheckout() {
   const goBack = () => setStep(back(step, ctx));
   const openMore = (s: typeof sheet) => { setSheet('none'); setTimeout(() => setSheet(s), 250); };
   const odd = oddBundles(priced.bundles);
+  // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
+  const adjRows = adjustmentRows(cart, priced);
+  const takePayment = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else nav.push('pay'); };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -132,7 +138,7 @@ export default function GuidedCheckout() {
         <View style={{ flexDirection: 'row', gap: 10 }}>
           {step !== 'items' && !(locked && step === 'pay') ? <Btn title="Back" kind="secondary" icon="chevron-back" onPress={goBack} style={{ flex: 1 }} /> : null}
           {step === 'pay'
-            ? <Btn title={`Take payment  ${fmt(priced.netCents)}`} icon="card-outline" onPress={() => nav.push('pay')} style={{ flex: 2 }} />
+            ? <Btn title={`Take payment  ${fmt(priced.netCents)}`} icon="card-outline" onPress={takePayment} style={{ flex: 2 }} />
             : <Btn title={step === 'review' ? 'Looks right' : step === 'customer' && !cart.customer ? 'No, carry on' : step === 'discount' && !cart.discount ? 'No, carry on' : 'Next'} disabled={!adv.ok} onPress={goNext} style={{ flex: 2 }} />}
         </View>
       </View>
@@ -140,6 +146,10 @@ export default function GuidedCheckout() {
       {/* The same sheets the normal checkout uses */}
       <CustomerSheet visible={sheet === 'customer'} onClose={() => setSheet('none')} onPick={cu => { setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } })); setSheet('none'); }} />
       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+      <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
+        onContinue={() => { setAdjAck(adjustReviewKey(adjRows)); setAdjReview(false); setTimeout(() => nav.push('pay'), 250); }}
+        onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />
+      <OrderAdjustSheet visible={sheet === 'orderadj'} onClose={() => setSheet('none')} />
       <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />

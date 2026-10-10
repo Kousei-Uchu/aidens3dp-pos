@@ -10,22 +10,30 @@ import { useNav } from '../ui/nav';
 import * as ops from '../lib/cartOps';
 import { fmt } from '../lib/money';
 import { invoiceRows, unitLine } from '../lib/invoiceRows';
+import { flaggedLines } from '../lib/lineAdjust';
+import { orderReviewReasons } from '../lib/orderAdjust';
+import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+import AdjustmentReviewSheet from './AdjustmentReview';
 import SwipeRow from '../ui/SwipeRow';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
 import { CheckChangeSheet } from './CheckChange';
 import { useUi } from '../ui/uiProfile';
 import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels';
-import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
+import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
 import type { CartLine } from '../lib/types';
 
 export default function CartPane({ onClose }: { onClose?: () => void }) {
   const { c } = useTheme(); const ui = useUi(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
-  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change'>('none');
-  const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
+  const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
+  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj'>('none');
+  const flagged = flaggedLines(priced); const orderReasons = orderReviewReasons(cart, priced); const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
-  const charge = () => { if (needsBundleCheck(priced.bundles, ackKey)) setBundleCheck(true); else nav.push('pay'); };
+  const proceed = () => { if (needsBundleCheck(priced.bundles, ackKey)) setBundleCheck(true); else nav.push('pay'); };
+  // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
+  const adjRows = adjustmentRows(cart, priced);
+  const charge = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else proceed(); };
   const doClear = async () => { setMenu(false); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (empty || await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) setCart(ops.emptyCart()); };
 
   return (
@@ -43,13 +51,17 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
       {empty ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}><Ionicons name="cart-outline" size={44} color={c.sub} /><Txt sub style={{ textAlign: 'center', paddingHorizontal: 24 }}>{cartEmptyText(ui.explain)}</Txt></View> : (
         <ScrollView style={{ flex: 1 }}>
           {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale — finish payment to edit</Txt></View> : null}
+          {orderReasons.length ? <Pressable onPress={() => { if (!locked) setSheet('orderadj'); }} accessibilityRole="button" style={{ backgroundColor: c.fill, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <Ionicons name="alert-circle" size={18} color={c.warn} /><Txt size={13} weight="600" color={c.warn} style={{ flex: 1 }}>The whole order price needs a check: {orderReasons.join(' · ')}. Tap to review.</Txt></Pressable> : null}
+          {flagged.length ? <Pressable onPress={() => { const l = cart.lines.find(x => x.id === flagged[0].lineId); if (l && !locked) setEdit(l); }} accessibilityRole="button" style={{ backgroundColor: c.fill, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+            <Ionicons name="alert-circle" size={18} color={c.warn} /><Txt size={13} weight="600" color={c.warn} style={{ flex: 1 }}>{flagged.length === 1 ? '1 line needs a price check' : `${flagged.length} lines need a price check`}. Tap to review.</Txt></Pressable> : null}
           {priced.lines.map(pl => {
-            const l = pl.line; const struck = pl.discountCents > 0; const rows = invoiceRows(pl);
+            const l = pl.line; const struck = pl.discountCents > 0; const rows = invoiceRows(pl); const flag = flagged.find(f => f.lineId === l.id);
             return (
               // A13: swipe left to remove the line. A12.8: invoice-style rows, one per discount with its own amount.
               <SwipeRow key={l.id} disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
                 <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
-                  style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line })}>
+                  style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line, ...(flag ? { borderLeftWidth: 4, borderLeftColor: c.warn } : {}) })}>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={48} /> : null}
                     <View style={{ flex: 1 }}>
@@ -69,6 +81,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
                       <Txt size={13} color={c.good} weight="600">−{fmt(r.cents)}</Txt>
                     </View>
                   ))}
+                  {flag ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', paddingLeft: l.kind === 'item' ? 58 : 0 }}><Ionicons name="alert-circle" size={15} color={c.warn} /><Txt size={12} weight="600" color={c.warn} style={{ flex: 1 }}>{flag.reasons.join(' · ')}</Txt></View> : null}
                 </Pressable>
               </SwipeRow>
             );
@@ -95,6 +108,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
         <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
+        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('orderadj'))} />
         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
@@ -107,9 +121,13 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
           <Btn title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
         </View>
       </Sheet>
+      <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
+        onContinue={() => { setAdjAck(adjustReviewKey(adjRows)); setAdjReview(false); setTimeout(proceed, 250); }}
+        onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />
       <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+      <OrderAdjustSheet visible={sheet === 'orderadj'} onClose={() => setSheet('none')} />
       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
       <GiftCheckSheet visible={sheet === 'check'} onClose={() => setSheet('none')} />
       <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />

@@ -3,6 +3,7 @@
 //   Total Collected= Net Sales + Tips + Gift-card sales − other refunds
 //   Net after fees = Total Collected − Fees                  (separate metric)
 //   Gross profit   = Net Sales − COGS                        (COGS never subtracted from Net Total)
+import { reasonKey } from './adjustReason';
 import type { SaleRecord } from './types';
 
 export type Bucket = { count: number; grossCents: number };
@@ -10,10 +11,12 @@ export type Totals = {
   orders: number; refunds: number; itemsCents: number; discountsCents: number; returnsCents: number; giftCardSalesCents: number; otherRefundsCents: number;
   tipsCents: number; feesCents: number; cogsCents: number; roundingCents: number;
   tenders: Record<string, number>; refundTenders: Record<string, number>; byCategory: Record<string, Bucket>; byItem: Record<string, Bucket>; applied: string[];
+  /** A16.8: price adjustments by reason (key '' = no reason given): how many, and how much they took off (negative = added). Older stored totals don't have it. */
+  byAdjustReason?: Record<string, Bucket>;
 };
 export const emptyTotals = (): Totals => ({
   orders: 0, refunds: 0, itemsCents: 0, discountsCents: 0, returnsCents: 0, giftCardSalesCents: 0, otherRefundsCents: 0, tipsCents: 0, feesCents: 0, cogsCents: 0, roundingCents: 0,
-  tenders: {}, refundTenders: {}, byCategory: {}, byItem: {}, applied: [],
+  tenders: {}, refundTenders: {}, byCategory: {}, byItem: {}, applied: [], byAdjustReason: {},
 });
 
 const bump = (m: Record<string, Bucket>, k: string, count: number, gross: number) => {
@@ -35,6 +38,7 @@ export function contribution(r: SaleRecord): Totals {
     bump(t.byCategory, cat, sign * l.qty, sign * l.grossCents);
     bump(t.byItem, l.variantTitle ? `${l.title} – ${l.variantTitle}` : l.title, sign * l.qty, sign * l.grossCents);
   }
+  if (r.type === 'sale') for (const a of r.adjustments ?? []) bump((t.byAdjustReason ??= {}), reasonKey(a.reason), 1, a.cents);
   if (r.type === 'sale') {
     t.orders = 1; t.tipsCents = r.tipCents; t.feesCents = r.feesCents; t.roundingCents = r.roundingCents;
     for (const x of r.tenders) add(t.tenders, x.kind, x.amountCents);
@@ -56,6 +60,7 @@ export function merge(a: Totals, b: Totals): Totals {
     for (const [k, v] of Object.entries(src.refundTenders)) add(m.refundTenders, k, v);
     for (const [k, v] of Object.entries(src.byCategory)) bump(m.byCategory, k, v.count, v.grossCents);
     for (const [k, v] of Object.entries(src.byItem)) bump(m.byItem, k, v.count, v.grossCents);
+    for (const [k, v] of Object.entries(src.byAdjustReason ?? {})) bump((m.byAdjustReason ??= {}), k, v.count, v.grossCents);
   }
   m.applied = [...a.applied, ...b.applied];
   return m;
@@ -64,6 +69,12 @@ export function merge(a: Totals, b: Totals): Totals {
 /** Idempotent: a record already applied to this rollup is ignored. */
 export function applyRecord(t: Totals, r: SaleRecord): Totals {
   return t.applied.includes(r.uuid) ? t : merge(t, contribution(r));
+}
+
+/** A16.8: price adjustments in a period, by reason (biggest first); `count` and `cents` are the totals. They are already inside Discounts. */
+export function adjustmentSummary(t: Totals) {
+  const rows = Object.entries(t.byAdjustReason ?? {}).map(([key, b]) => ({ key, count: b.count, cents: b.grossCents })).sort((a, b) => Math.abs(b.cents) - Math.abs(a.cents) || b.count - a.count);
+  return { rows, count: rows.reduce((a, r) => a + r.count, 0), cents: rows.reduce((a, r) => a + r.cents, 0) };
 }
 
 export function derived(t: Totals) {

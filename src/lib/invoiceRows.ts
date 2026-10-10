@@ -6,6 +6,7 @@ import type { AppliedDiscount, PricedLine } from './types';
 
 export type InvoiceRow = { label: string; cents: number; kind: AppliedDiscount['type'] };
 
+/** A16.1: the "Line price adjustment" row is always last (it is worked out after every other row). */
 export function invoiceRows(pl: PricedLine): InvoiceRow[] {
   return pl.discounts.filter(d => d.cents !== 0).map(d => ({ label: d.times && d.times > 1 ? `${d.label} (x${d.times})` : d.label, cents: d.cents, kind: d.type }));
 }

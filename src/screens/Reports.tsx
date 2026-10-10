@@ -1,3 +1,5 @@
+import { reasonLabel } from '../lib/adjustReason';
+import { signedSaving } from '../lib/adjustReview';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { RefreshControl, ScrollView, Share, View } from 'react-native';
 import { Btn, Card, Chip, Field, IconBtn, Money, Page, Row, Segmented, Sheet, Txt, alertMsg } from '../ui/kit';
@@ -7,7 +9,7 @@ import { useApp } from '../state/store';
 import * as meta from '../lib/shopify/metaobjects';
 import { hasCreds } from '../lib/shopify/client';
 import { outstandingBalance } from '../lib/shopify/giftcards';
-import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, sumRange, type Period, type Range, type RollupRow, type Totals } from '../lib/rollup';
+import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
 import { fmt } from '../lib/money';
 import { loadSquareRollups } from '../lib/squareHistoryIO';
 
@@ -46,9 +48,10 @@ export default function Reports() {
   const cr = cmp === 'prev' ? previousRange(range) : cmp === 'year' ? lastYearRange(range) : null; const was = cr ? derived(sumRange(rows, cr, dev)) : null;
   const devices = [...new Set(rows.map(r => r.registerId))];
   useEffect(() => { if (tab === 'gift' && hasCreds()) outstandingBalance().then(setGift).catch(() => {}); }, [tab]);
+  const adj = adjustmentSummary(now);
   const cats = Object.entries(now.byCategory).sort((a, b) => b[1].grossCents - a[1].grossCents).slice(0, 12);
 
-  const exportText = () => { const L = [`Sales ${range.from} → ${range.to}${dev ? ' · ' + dev : ''}`, '', `Gross sales,${(d.grossSales / 100).toFixed(2)}`, `Discounts,${(d.discounts / 100).toFixed(2)}`, `Refunds,${(d.refunds / 100).toFixed(2)}`, `Net sales,${(d.netSales / 100).toFixed(2)}`, `Card fees (est.),${(d.fees / 100).toFixed(2)}`, `COGS,${(d.cogs / 100).toFixed(2)}`, `Gross profit,${(d.grossProfit / 100).toFixed(2)}`, `Orders,${now.orders}`, '', 'Category,Count,Gross', ...Object.entries(now.byCategory).map(([k, v]) => `"${k.replace(/"/g, '""')}",${v.count},${(v.grossCents / 100).toFixed(2)}`)]; void Share.share({ message: L.join('\n'), title: 'Sales report' }); };
+  const exportText = () => { const L = [`Sales ${range.from} → ${range.to}${dev ? ' · ' + dev : ''}`, '', `Gross sales,${(d.grossSales / 100).toFixed(2)}`, `Discounts,${(d.discounts / 100).toFixed(2)}`, `Refunds,${(d.refunds / 100).toFixed(2)}`, `Net sales,${(d.netSales / 100).toFixed(2)}`, `Card fees (est.),${(d.fees / 100).toFixed(2)}`, `COGS,${(d.cogs / 100).toFixed(2)}`, `Gross profit,${(d.grossProfit / 100).toFixed(2)}`, `Orders,${now.orders}`, '', 'Category,Count,Gross', ...Object.entries(now.byCategory).map(([k, v]) => `"${k.replace(/"/g, '""')}",${v.count},${(v.grossCents / 100).toFixed(2)}`), ...(adj.count ? ['', 'Price adjustments (already inside Discounts),Count,Amount off', ...adj.rows.map(r => `"${reasonLabel(r.key).replace(/"/g, '""')}",${r.count},${(r.cents / 100).toFixed(2)}`)] : [])]; void Share.share({ message: L.join('\n'), title: 'Sales report' }); };
   const Stat = ({ label, cents, bold, before, sub }: { label: string; cents: number; bold?: boolean; before?: number; sub?: string }) => <Row title={label} sub={sub} last={false} right={<View style={{ alignItems: 'flex-end' }}><Money cents={cents} weight={bold ? '700' : '500'} size={bold ? 18 : 15} /><Trend now={cents} before={before} /></View>} />;
 
   return (
@@ -65,6 +68,13 @@ export default function Reports() {
           <Stat label="Total collected" cents={d.totalCollected} before={was?.totalCollected} sub="Net + gift card sales − other refunds" />
           <Stat label="Card fees (est. 1.4%)" cents={-d.fees} before={was ? -was.fees : undefined} sub="Estimated; not taken off Net sales" /><Stat label="Net after fees" cents={d.netAfterFees} before={was?.netAfterFees} />
         </Card></View>
+        {adj.count ? <>
+          <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Price adjustments</Txt>
+          <Card style={{ marginHorizontal: 16 }}>
+            <Row title={`${adj.count} adjustment${adj.count === 1 ? '' : 's'}`} sub="Already included in Discounts, shown here by the reason given" right={<Txt weight="700">{signedSaving(adj.cents)}</Txt>} />
+            {adj.rows.slice(0, 10).map((r, i, a) => <Row key={r.key || 'none'} last={i === a.length - 1} title={reasonLabel(r.key)} sub={`${r.count} time${r.count === 1 ? '' : 's'}`} right={<Txt>{signedSaving(r.cents)}</Txt>} />)}
+          </Card>
+        </> : null}
         <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Cost of goods</Txt>
         <Card style={{ marginHorizontal: 16 }}><Stat label="COGS" cents={d.cogs} before={was?.cogs} sub="Shown separately — never subtracted from Net sales" /><Stat label="Gross profit" cents={d.grossProfit} bold before={was?.grossProfit} sub="Net sales − COGS" /></Card>
         <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Payment types</Txt>

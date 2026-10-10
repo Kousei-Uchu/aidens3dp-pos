@@ -1,9 +1,9 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useApp } from './store';
 import { priceCart } from '../lib/pricing';
 import { collectionTitlesByProduct } from '../lib/saleBuilder';
 import { bundleConfig } from '../lib/sync';
-import type { Variant } from '../lib/types';
+import type { Cart, Variant } from '../lib/types';
 
 /** Indexes derived from the catalogue (memoised on the catalogue object). */
 export function useCatalogue() {
@@ -22,6 +22,12 @@ export function useCatalogue() {
 export function usePriced() {
   const cart = useApp(s => s.pos.cart); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
   return useMemo(() => priceCart(cart, { variants: cat.variants, collectionsOfProduct: cat.collectionsOfProduct, autoDiscounts: autos, bundles: bundleConfig() }), [cart, cat, autos, bundlesJson]);
+}
+
+/** Prices any cart the way the live cart is priced (for what-if numbers, e.g. the cart with no adjustments). */
+export function usePricer() {
+  const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
+  return useCallback((cart: Cart) => priceCart(cart, { variants: cat.variants, collectionsOfProduct: cat.collectionsOfProduct, autoDiscounts: autos, bundles: bundleConfig() }), [cat, autos, bundlesJson]);
 }
 
 /** Display name for a product with its variants collapsed. */

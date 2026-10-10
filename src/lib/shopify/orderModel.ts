@@ -3,7 +3,8 @@
 import { CURRENCY, toCents, toDecimal } from '../money';
 import { splitLineForOrder } from '../pricing';
 import { decodeTender, encodeTender } from '../saleCodec';
-import type { SaleRecord, Tender } from '../types';
+import { decodeAdjustments, encodeAdjustments } from '../adjustReason';
+import type { SaleAdjustment, SaleRecord, Tender } from '../types';
 
 const money = (c: number) => ({ shopMoney: { amount: toDecimal(c), currencyCode: CURRENCY } });
 export const GATEWAY: Record<Tender['kind'], string> = { card: 'Zeller', cash: 'Cash', gift_card: 'Gift card', exchange_credit: 'Exchange credit' };
@@ -38,6 +39,7 @@ export function buildOrderInput(sale: SaleRecord, ctx: OrderCtx) {
     { key: 'pos_sale_uuid', value: sale.uuid }, { key: 'pos_register', value: sale.registerName }, { key: 'pos_staff', value: sale.staff ?? '' },
     { key: 'pos_rounding_cents', value: String(sale.roundingCents) }, { key: 'pos_cogs_cents', value: String(sale.cogsCents) }, { key: 'pos_fees_cents', value: String(sale.feesCents) },
     { key: 'pos_deals', value: sale.deals.map(d => `${d.label}:${-d.cents}`).join('; ').slice(0, 240) }, { key: 'pos_receipt_link', value: sale.receiptLink ?? '' },
+    ...(sale.adjustments?.length ? [{ key: 'pos_adjustments', value: encodeAdjustments(sale.adjustments) }] : []),
     ...sale.tenders.map((t, i) => ({ key: `pos_tender_${i + 1}`, value: encodeTender(t) })),
   ].filter(a => a.value !== '');
   const order: any = {
@@ -60,6 +62,8 @@ export type PosOrder = {
   attrs: Record<string, string>; lines: PosOrderLine[]; tenders: Tender[]; saleUuid?: string; receiptLink?: string;
   transactions: { id: string; kind: string; status: string; gateway: string; amountCents: number }[];
   registerName?: string; staff?: string; roundingCents: number;
+  /** A16.8: the price adjustments made on the sale, with reasons (read from the pos_adjustments attribute). */
+  adjustments?: SaleAdjustment[];
 };
 
 export function mapOrder(n: any): PosOrder {
@@ -71,7 +75,7 @@ export function mapOrder(n: any): PosOrder {
     totalCents: toCents(n.totalPriceSet.shopMoney.amount), refundedCents: toCents(n.totalRefundedSet.shopMoney.amount),
     note: n.note || undefined, tags: n.tags ?? [], attrs, tenders, saleUuid: attrs.pos_sale_uuid, receiptLink: attrs.pos_receipt_link || tenders.find(t => t.card?.receiptLink)?.card?.receiptLink,
     customer: n.customer ? { id: n.customer.id, name: n.customer.displayName, email: n.customer.email ?? undefined, phone: n.customer.phone ?? undefined } : undefined,
-    registerName: attrs.pos_register, staff: attrs.pos_staff, roundingCents: Number(attrs.pos_rounding_cents ?? 0),
+    registerName: attrs.pos_register, staff: attrs.pos_staff, roundingCents: Number(attrs.pos_rounding_cents ?? 0), adjustments: decodeAdjustments(attrs.pos_adjustments),
     lines: n.lineItems.nodes.map((l: any): PosOrderLine => {
       const props: Record<string, string> = {};
       for (const p of l.customAttributes ?? []) props[p.key] = p.value;

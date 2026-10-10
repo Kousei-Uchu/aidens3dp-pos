@@ -3,7 +3,11 @@
 //   2. Shopify automatic discounts       – several can apply to one order; each unit takes at most one; the combination
 //                                          with the biggest total saving wins (Shopify's own combination rules are not read)
 //   3. manual line discount              – % or $ off the line's remaining value
-//   4. cart discount                     – % or $ spread over remaining value of discountable lines
+//   4. cart discount                     – % or $ spread over remaining value of discountable lines (lines with an active
+//                                          line price adjustment are left out: their price is already fixed)
+//   5. line price adjustment (A16.1)     – sets the final price of the whole line; stored as the difference. Only ever lowers.
+//   6. whole order adjustment (A16.4)    – sets the total of the cart; the difference is shared over the lines by value (gift
+//                                          cards are never reduced). Only ever lowers.
 // Items excluded from discounts: gift cards, tag "no-discount", lines flagged noDiscount.
 import { allocate, pctOf } from './money';
 import { matchBundles } from './bundles';
@@ -22,11 +26,15 @@ export type PricingContext = {
 };
 
 export const NO_DISCOUNT_TAG = 'no-discount';
+/** Label of the discount row a line price adjustment produces (cart, receipts, reports). */
+export const ADJUST_LABEL = 'Line price adjustment';
+/** Label of the discount a whole-order adjustment adds to each line it is shared over. */
+export const ORDER_ADJUST_LABEL = 'Order price adjustment';
 
 type Work = {
   line: CartLine; base: number; gross: number; discountable: boolean; isItem: boolean;
   productId?: string; collections: string[]; variantId?: string;
-  bundleUnits: number; discounts: AppliedDiscount[]; applied: number;
+  bundleUnits: number; discounts: AppliedDiscount[]; applied: number; fixed: boolean;
 };
 
 const remaining = (w: Work) => w.gross - w.applied;
@@ -150,7 +158,7 @@ function chooseAutoDiscounts(ws: Work[], active: AutoDiscount[], lots: boolean, 
 export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
   const now = ctx.now ?? Date.now();
   const ws: Work[] = cart.lines.map(line => {
-    const base = line.overrideCents ?? line.unitCents;
+    const base = line.kind === 'gift_card' ? line.unitCents : (line.overrideCents ?? line.unitCents); // a gift card is worth what was paid for it
     const v = line.variantId ? ctx.variants[line.variantId] : undefined;
     const tagged = !!v?.tags.some(t => t.toLowerCase() === NO_DISCOUNT_TAG);
     return {
@@ -159,7 +167,7 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
       isItem: line.kind === 'item' && !!v,
       productId: v?.productId, variantId: line.variantId,
       collections: v ? ctx.collectionsOfProduct[v.productId] ?? [] : [],
-      bundleUnits: 0, discounts: [], applied: 0,
+      bundleUnits: 0, discounts: [], applied: 0, fixed: false,
     };
   });
   const add = (w: Work, d: AppliedDiscount) => {
@@ -214,18 +222,46 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
     add(w, { type: 'manual', label: md.label, cents: c });
   }
 
+  // 3b ── a line price adjustment fixes the line's price, so the cart discount skips it (it is applied last, step 5)
+  for (const w of ws) if (w.line.adjust && w.line.kind !== 'gift_card' && w.line.adjust.finalCents < remaining(w)) w.fixed = true;
+
   // 4 ── cart discount
   const cd = cart.discount;
   if (cd) {
-    const pool = ws.map(w => (w.discountable ? remaining(w) : 0));
+    const pool = ws.map(w => (w.discountable && !w.fixed ? remaining(w) : 0));
     const sum = pool.reduce((a, b) => a + b, 0);
     const total = cd.kind === 'pct' ? pctOf(sum, cd.value) : Math.min(cd.value, sum);
     allocate(total, pool).forEach((c, i) => c > 0 && add(ws[i], { type: 'cart', label: cd.label, cents: c }));
   }
 
+  // 5 ── line price adjustment (A16.1): worked out after everything else, stored as the difference. Never raises a price.
+  const adjusted = new Map<string, { finalCents: number; cents: number }>();
+  for (const w of ws) {
+    const a = w.line.adjust;
+    if (!a || w.line.kind === 'gift_card') continue;
+    const cents = Math.max(0, remaining(w) - Math.max(0, a.finalCents));
+    if (cents > 0) add(w, { type: 'adjust', label: ADJUST_LABEL, cents });
+    adjusted.set(w.line.id, { finalCents: Math.max(0, a.finalCents), cents });
+  }
+
+  // 6 ── whole order adjustment (A16.4): the cart total becomes finalCents. The difference is shared over every line except
+  //      gift cards in proportion to what each still costs. It never raises the total and never goes below the gift cards.
+  let orderAdjustment: { finalCents: number; cents: number } | undefined;
+  const oa = cart.orderAdjust;
+  if (oa) {
+    const pool = ws.map(w => (w.line.kind === 'gift_card' ? 0 : remaining(w)));
+    const poolSum = pool.reduce((a, b) => a + b, 0);
+    const total = ws.reduce((a, w) => a + remaining(w), 0);
+    const final = Math.max(0, oa.finalCents);
+    const cents = Math.max(0, Math.min(poolSum, total - final));
+    if (cents > 0) allocate(cents, pool).forEach((c, i) => c > 0 && add(ws[i], { type: 'orderadjust', label: ORDER_ADJUST_LABEL, cents: c }));
+    orderAdjustment = { finalCents: final, cents };
+  }
+
   const lines: PricedLine[] = ws.map(w => ({
     line: w.line, baseUnitCents: w.base, grossCents: w.gross, discounts: w.discounts,
     discountCents: w.applied, netCents: w.gross - w.applied, bundleUnits: w.bundleUnits,
+    ...(adjusted.has(w.line.id) ? { adjustment: adjusted.get(w.line.id)! } : {}),
   }));
   const itemsCents = lines.reduce((a, l) => a + l.grossCents, 0);
   const discountCents = lines.reduce((a, l) => a + l.discountCents, 0);
@@ -235,7 +271,7 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
     const cur = roll.get(k);
     roll.set(k, cur ? { ...cur, cents: cur.cents + d.cents } : { ...d });
   }
-  return { lines, itemsCents, discountCents, netCents: itemsCents - discountCents, deals: [...roll.values()], bundles: bundleApps };
+  return { lines, itemsCents, discountCents, netCents: itemsCents - discountCents, deals: [...roll.values()], bundles: bundleApps, ...(orderAdjustment ? { adjustment: orderAdjustment } : {}) };
 }
 
 /** Per-unit price after discounts, split so Σ equals the line net exactly (Shopify order lines need unit prices). */
