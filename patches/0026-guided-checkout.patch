@@ -1,0 +1,531 @@
+From 78612cddd26c4fd0e5b846aa535b0200f80490f5 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 15:42:38 +0000
+Subject: [PATCH] 0026: display modes part 2 (guided checkout)
+
+---
+ App.tsx                        |   3 +-
+ docs/MODES.md                  |  16 +++-
+ docs/PROGRESS.md               |   5 +-
+ src/lib/guidedFlow.ts          |  40 +++++++++
+ src/lib/uiMode.ts              |  17 ++--
+ src/screens/CartPane.tsx       |   2 +-
+ src/screens/Checkout.tsx       |  19 ++--
+ src/screens/GuidedCheckout.tsx | 160 +++++++++++++++++++++++++++++++++
+ src/screens/Staff.tsx          |   3 +
+ tests/guidedflow.test.ts       |  33 +++++++
+ tests/uimode.test.ts           |  11 ++-
+ 11 files changed, 283 insertions(+), 26 deletions(-)
+ create mode 100644 src/lib/guidedFlow.ts
+ create mode 100644 src/screens/GuidedCheckout.tsx
+ create mode 100644 tests/guidedflow.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index 1614de2..a6af42a 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -10,6 +10,7 @@ import { useApp } from './src/state/store';
+ import { loadCreds } from './src/lib/shopify/client';
+ import { pollShared, processOutbox, pushSaved } from './src/lib/sync';
+ import Checkout from './src/screens/Checkout';
++import GuidedCheckout from './src/screens/GuidedCheckout';
+ import CartPane from './src/screens/CartPane';
+ import Pay from './src/screens/Pay';
+ import Inventory from './src/screens/Inventory';
+@@ -79,7 +80,7 @@ function Shell() {
+       <StatusBar style={c.bg === '#0B0B0C' ? 'light' : 'dark'} />
+       <View style={{ flex: 1 }}>
+         <View style={{ flex: 1, display: hasPage ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
+-          <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}><Checkout /></View>
++          <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
+           {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
+         </View>
+         {hasPage ? <Routes /> : null}
+diff --git a/docs/MODES.md b/docs/MODES.md
+index f10dd23..32403f8 100644
+--- a/docs/MODES.md
++++ b/docs/MODES.md
+@@ -9,7 +9,9 @@ Set per person: More ▸ Staff ▸ their name ▸ **Display mode**. It follows t
+ | Minimal | 30% bigger | Checkout, Transactions, More | Orders, Saved carts, Gift cards, Cash drawer, Support, Lock register | on |
+ | Custom | your choice | your choice | your choice | your choice |
+ 
+-Custom dials: text size (normal, large, extra large), plain-English lines (off, on), tabs (all, no Notifications, Checkout/Transactions/More), More menu (all, everyday, essentials). Choosing Custom starts from whatever mode the person already had.
++Minimal also turns on the **guided checkout** (below). Custom has its own on/off dial for it.
++
++Custom dials: text size (normal, large, extra large), plain-English lines (off, on), tabs (all, no Notifications, Checkout/Transactions/More), More menu (all, everyday, essentials), checkout (normal, guided steps). Choosing Custom starts from whatever mode the person already had.
+ 
+ ## Rules
+ - A mode only narrows or enlarges. A cashier on any mode still never sees Reports, Staff or Settings.
+@@ -20,5 +22,15 @@ Custom dials: text size (normal, large, extra large), plain-English lines (off,
+ ## Code
+ `src/lib/uiMode.ts` holds every rule and is tested without the app (`tests/uimode.test.ts`). `src/ui/uiProfile.tsx` gives the current person's profile to the screens. Text scaling is applied in `Txt`, `Btn`, `Chip` and `Segmented` (`src/ui/kit.tsx`). Registers on an older app version ignore the mode and show Standard.
+ 
++## Guided checkout (Minimal, or Custom with Guided steps)
++One question per screen, with a step bar and Back / Next in the same place:
++1. **Items** - the normal item picker (Quick Menu and All products, scanning, search). No keypad, grid editing or staff chip. Next stays disabled until something is in the cart.
++2. **Customer** - optional. Find or add a customer, or "No, carry on".
++3. **Discount** - shows the deals already applied automatically; optionally add a cart discount.
++4. **Check** - every line with Change and Remove, the total, and bundle deals. A bundle that is not a recommended pair is called out here (this is the guided flow's version of the pre-payment bundle check).
++5. **Pay** - the total and "Take payment", which opens the normal Pay screen. Card, cash (with the drawer ledger and change prompts), gift card and split payments all work exactly as in the standard checkout.
++
++After a sale finishes, the flow starts again at step 1. A part-paid sale goes straight to Pay and cannot be walked back into editing. **More options** (top right of every step) keeps the full checkout reachable: custom amount, sell a gift card, check change, save cart, open a saved cart, start again. Code: `src/lib/guidedFlow.ts` (rules, tested) and `src/screens/GuidedCheckout.tsx`.
++
+ ## Still to come
+-Minimal's guided checkout flow (B5b) and Simple-mode polish inside Checkout, Pay and Cash (B5c).
++Simple-mode polish inside Checkout, Pay and Cash (B5c).
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 710bf72..2c031b4 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -32,6 +32,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0023 | 2026-10-10 | Daily float report (Cash drawer ▸ Daily float report): the day's cash takings, which notes and coins to bank to match them, the float that leaves (judged by the learned profile), top-up and big-note banking hints, and a button to record the banking in the ledger | B1f |
+ | 0024 | 2026-10-10 | Tender machine porting point: one empty function (`src/lib/tenderMachine.ts`) and a greyed-out, locked-Off "Under Construction" switch in Settings ▸ Payments. Finishes B1 | B1g |
+ | 0025 | 2026-10-11 | Display modes, part 1 (B5a): Standard / Simple / Minimal / Custom per staff member, big-text and plain-English More menu, tab sets, Custom dials in Staff. The guided checkout flow is the next patch | B5a |
++| 0026 | 2026-10-11 | Display modes, part 2 (B5b): Minimal's guided checkout, one question per screen (Items, Customer, Discount, Check, Pay), with a More options button for everything else; new "Guided steps" dial for Custom | B5b |
+ 
+ ---
+ 
+@@ -237,9 +238,9 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [x] B4 Bundle GUI (same as A8, done in 0009)
+ - [~] B5 Simple / Minimal / Custom staff modes. Split into three patches. Details: `docs/MODES.md`.
+   - [x] B5a (0025) Mode per staff member (Staff ▸ their name ▸ Display mode), shared to every register with the staff list. **Simple**: everything stays, text 15% bigger, a plain-English line under every More entry. **Minimal**: text 30% bigger, only Checkout / Transactions / More tabs, only the essential More entries (Orders, Saved carts, Gift cards, Cash drawer, Support, Lock). **Custom**: four dials (text size, explanations, tabs, More menu), starting from what the person already had. A mode only narrows or enlarges: it never gives anyone more than their role allows. The only manager or owner always keeps Staff and Settings, so nobody can lock themselves out. Code: `src/lib/uiMode.ts` (pure), `src/ui/uiProfile.tsx`, `src/screens/More.tsx`, `src/screens/Staff.tsx`. Tests: `tests/uimode.test.ts` (10).
+-  - [ ] B5b Minimal's guided, step-by-step checkout (question and answer flow, full checkout still available). Not started.
++  - [x] B5b (0026) Guided checkout for Minimal (and Custom with the new "Guided steps" dial). Five screens, each with one question, a plain help line, a step bar and Back / Next buttons in the same place: **Items** (the normal item picker without the cart pane, keypad, staff chip or grid editing; scanning still works; Next is disabled until something is added) → **Customer** ("Is this sale for a customer we know?") → **Discount** (shows the deals already applied for you, optional extra discount) → **Check** (every line with Change / Remove, bundle deals, and any "not a recommended pair" bundle called out, which replaces the pre-payment bundle sheet in this flow) → **Pay** (big total, "Take payment" opens the normal Pay screen, so card, cash, gift card, split, change prompts and the cash ledger all work as before). A finished sale or an emptied cart starts again at step 1; a part-paid sale goes straight to Pay and cannot be walked back into editing. **More options** (top right) keeps the rest of the checkout reachable: custom amount, sell a gift card, check change, save cart, open a saved cart, start again. Code: `src/lib/guidedFlow.ts` (pure), `src/screens/GuidedCheckout.tsx`; `Checkout` gained `guided` / `active` props. Tests: `tests/guidedflow.test.ts` (7) and 1 more in `tests/uimode.test.ts`.
+   - [ ] B5c Simple mode polish inside the screens themselves (clearer labels, hide secondary buttons, bigger tap targets in Checkout, Pay and Cash). Not started: I want your B5d feedback on 0025 first.
+-  - [ ] B5d **You:** in Staff, open a cashier and try each mode, then sign in as them: check the text size, the tab bar, the More menu, and that Custom's four dials do what they say. Tell me if the text is too big or too small at Simple and Minimal, if anything overflows or gets cut off at 30% bigger, and if the More descriptions read well.
++  - [ ] B5d **You (deferred by you for now):** in Staff, open a cashier and try each mode, and for Minimal ring up a whole sale through the guided steps (card, cash, and a part-paid one, plus backing out with Back and More options), then sign in as them: check the text size, the tab bar, the More menu, and that Custom's four dials do what they say. Tell me if the text is too big or too small at Simple and Minimal, if anything overflows or gets cut off at 30% bigger, and if the More descriptions read well.
+ - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
+ - [ ] B8 Extra ideas (saved for last, after E1 below)
+diff --git a/src/lib/guidedFlow.ts b/src/lib/guidedFlow.ts
+new file mode 100644
+index 0000000..339b834
+--- /dev/null
++++ b/src/lib/guidedFlow.ts
+@@ -0,0 +1,40 @@
++// Location: src/lib/guidedFlow.ts
++// The guided checkout (Minimal mode, B5b): one question per screen. Pure rules, no React.
++export type StepId = 'items' | 'customer' | 'discount' | 'review' | 'pay';
++export type Step = { id: StepId; label: string; question: string; help: string };
++
++export const STEPS: Step[] = [
++  { id: 'items', label: 'Items', question: 'What is the customer buying?', help: 'Tap an item to add it, or scan it. Tap again to add another. When you have everything, press Next.' },
++  { id: 'customer', label: 'Customer', question: 'Is this sale for a customer we know?', help: 'Adding a customer is optional. It lets you send them a receipt and keeps their history.' },
++  { id: 'discount', label: 'Discount', question: 'Does the customer have a discount?', help: 'Deals that apply to the items are added for you. Only add one here if the customer has a voucher or you are giving a special price.' },
++  { id: 'review', label: 'Check', question: 'Does this look right?', help: 'Check the items and the total with the customer. Tap an item to change how many, or remove it.' },
++  { id: 'pay', label: 'Pay', question: 'Ready to take payment?', help: 'You will choose how they are paying on the next screen: card, cash, gift card or a mix.' },
++];
++export const STEP_IDS: StepId[] = STEPS.map(s => s.id);
++export const stepInfo = (id: StepId): Step => STEPS.find(s => s.id === id) ?? STEPS[0];
++
++export type FlowCtx = { itemCount: number; payStarted: boolean };
++export const index = (id: StepId) => STEP_IDS.indexOf(id);
++export const progress = (id: StepId) => ({ n: index(id) + 1, total: STEPS.length });
++
++/** Can the person press Next on this step? The reason is shown in plain words when they cannot. */
++export function canAdvance(id: StepId, ctx: FlowCtx): { ok: boolean; why?: string } {
++  if (id === 'items' && ctx.itemCount === 0) return { ok: false, why: 'Add at least one item to carry on.' };
++  if (id === 'pay') return { ok: false };
++  return { ok: true };
++}
++export function next(id: StepId): StepId { return STEP_IDS[Math.min(index(id) + 1, STEP_IDS.length - 1)]; }
++export function back(id: StepId, ctx: FlowCtx): StepId {
++  if (ctx.payStarted && index(id) <= index('pay')) return id === 'pay' ? 'review' : id; // a part-paid sale cannot be edited, so Back from Pay stays near the end
++  return STEP_IDS[Math.max(index(id) - 1, 0)];
++}
++/** Where the flow should be, given the cart. An empty cart (new sale, or the sale just finished) starts again at Items. A part-paid sale goes straight to Pay. */
++export function settle(id: StepId, ctx: FlowCtx): StepId {
++  if (ctx.payStarted) return 'pay';
++  if (ctx.itemCount === 0) return 'items';
++  return id;
++}
++/** Plain labels for the step bar: done, current, still to come. */
++export function barState(id: StepId): ('done' | 'current' | 'todo')[] {
++  const cur = index(id); return STEP_IDS.map((_, i) => (i < cur ? 'done' : i === cur ? 'current' : 'todo'));
++}
+diff --git a/src/lib/uiMode.ts b/src/lib/uiMode.ts
+index 43ebe74..72306ba 100644
+--- a/src/lib/uiMode.ts
++++ b/src/lib/uiMode.ts
+@@ -11,7 +11,7 @@ export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications'
+ export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'lock';
+ 
+ /** The four dials a Custom mode exposes. */
+-export type CustomUi = { textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel };
++export type CustomUi = { textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel; guided: boolean };
+ /** Stored on the staff member (so it travels with the staff list to every register). */
+ export type StaffUi = { mode: UiMode; custom?: CustomUi };
+ 
+@@ -34,14 +34,14 @@ const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
+ export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
+ const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
+ 
+-export const DEFAULT_CUSTOM: CustomUi = { textSize: 'normal', explain: false, tabs: 'all', more: 'all' };
++export const DEFAULT_CUSTOM: CustomUi = { textSize: 'normal', explain: false, tabs: 'all', more: 'all', guided: false };
+ const PRESETS: Record<'standard' | 'simple' | 'minimal', CustomUi> = {
+   standard: DEFAULT_CUSTOM,
+-  simple: { textSize: 'large', explain: true, tabs: 'all', more: 'all' },
+-  minimal: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential' },
++  simple: { textSize: 'large', explain: true, tabs: 'all', more: 'all', guided: false },
++  minimal: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential', guided: true },
+ };
+ 
+-export type UiProfile = { mode: UiMode; textScale: number; explain: boolean; tabs: TabId[]; moreLevel: MoreLevel };
++export type UiProfile = { mode: UiMode; textScale: number; explain: boolean; tabs: TabId[]; moreLevel: MoreLevel; /** Checkout is the one-question-at-a-time flow. */ guided: boolean };
+ 
+ const isOne = <T extends string>(v: unknown, all: readonly T[]): v is T => typeof v === 'string' && (all as readonly string[]).includes(v);
+ /** Anything read from storage or from another register is treated as untrusted: unknown values fall back to the standard ones. */
+@@ -52,6 +52,7 @@ export function readCustom(raw: unknown): CustomUi {
+     explain: typeof r.explain === 'boolean' ? r.explain : DEFAULT_CUSTOM.explain,
+     tabs: isOne(r.tabs, ['all', 'core', 'basic'] as const) ? r.tabs : DEFAULT_CUSTOM.tabs,
+     more: isOne(r.more, ['all', 'everyday', 'essential'] as const) ? r.more : DEFAULT_CUSTOM.more,
++    guided: typeof r.guided === 'boolean' ? r.guided : DEFAULT_CUSTOM.guided,
+   };
+ }
+ export function readUi(raw: unknown): StaffUi {
+@@ -73,7 +74,7 @@ export function resolveUi(ui: unknown, ctx: ResolveCtx = {}): UiProfile {
+   const tabs = TABS_BY_LEVEL[d.tabs].slice();
+   let moreLevel = d.more;
+   if (ctx.soleAdmin && moreLevel !== 'all') moreLevel = 'all';
+-  return { mode: s.mode, textScale: TEXT_SCALE[d.textSize], explain: d.explain, tabs, moreLevel };
++  return { mode: s.mode, textScale: TEXT_SCALE[d.textSize], explain: d.explain, tabs, moreLevel, guided: d.guided };
+ }
+ export const STANDARD_PROFILE: UiProfile = resolveUi({ mode: 'standard' });
+ 
+@@ -107,8 +108,8 @@ export const MODE_LABEL: Record<UiMode, string> = { standard: 'Standard', simple
+ export const MODE_BLURB: Record<UiMode, string> = {
+   standard: 'The full app as it is today.',
+   simple: 'Everything is still there. Bigger text and a plain-English line under each menu entry.',
+-  minimal: 'Biggest text, only the everyday menus (Checkout, Transactions, More) and no setup screens. The guided checkout arrives in a later update.',
+-  custom: 'Pick text size, explanations, which tabs and which More entries.',
++  minimal: 'Biggest text, only the everyday menus, and a guided checkout that asks one question at a time (items, customer, discount, check, pay). Everything in the full checkout is still reachable from its More options button.',
++  custom: 'Pick text size, explanations, which tabs, which More entries, and whether checkout is guided.',
+ };
+ export const TEXT_LABEL: Record<TextSize, string> = { normal: 'Normal', large: 'Large', xlarge: 'Extra large' };
+ export const TAB_LABEL: Record<TabLevel, string> = { all: 'All five', core: 'No Notifications', basic: 'Checkout, Transactions, More' };
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index bc7eaae..1b46c90 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -117,7 +117,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+ }
+ 
+ /** One bundle application: names the items and variations in it, the saving, and whether it is a recommended pair. */
+-function BundleRow({ b }: { b: import('../lib/types').AppliedBundle }) {
++export function BundleRow({ b }: { b: import('../lib/types').AppliedBundle }) {
+   const { c } = useTheme();
+   return (
+     <Card style={{ padding: 12, gap: 4 }}>
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index c346e49..e4ebf84 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -46,7 +46,8 @@ export function StatusStrip() {
+ const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicons>['name']; text: string; color: string }) =>
+   <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: color + '22' }}><Ionicons name={icon} size={13} color={color} /><Txt size={12} weight="600" color={color}>{text}</Txt></View>;
+ 
+-export default function Checkout() {
++/** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
++export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
+   const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast();
+   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
+   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
+@@ -132,16 +133,16 @@ export default function Checkout() {
+ 
+   const left = (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+-      <View style={{ paddingTop: 54, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
++      <View style={{ paddingTop: guided ? 8 : 54, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
+           <Pressable onPress={() => setSheet('search')} accessibilityRole="search" accessibilityLabel="Search" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 12, height: 40 }}>
+             <Ionicons name="search" size={18} color={c.sub} /><Txt sub>Search items, customers, discounts</Txt></Pressable>
+-          {staffList.length ? <Pressable onPress={() => setSheet('staff')} accessibilityRole="button" accessibilityLabel={curStaff ? `Signed in as ${curStaff.name}. Switch staff` : 'Sign in'} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 140 }}>
++          {staffList.length && !guided ? <Pressable onPress={() => setSheet('staff')} accessibilityRole="button" accessibilityLabel={curStaff ? `Signed in as ${curStaff.name}. Switch staff` : 'Sign in'} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 140 }}>
+             <Ionicons name="person-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>{curStaff?.name ?? 'Sign in'}</Txt></Pressable> : null}
+           <IconBtn icon="barcode-outline" label="Scan with camera" onPress={() => setCam(true)} />
+-          {tab === 'quick' ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
++          {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
+         </View>
+-        <View style={{ padding: 12, paddingBottom: 8 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={[{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
++        <View style={{ padding: 12, paddingBottom: 8 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
+         <StatusStrip />
+       </View>
+ 
+@@ -195,18 +196,18 @@ export default function Checkout() {
+ 
+   return (
+     <View style={{ flex: 1, flexDirection: 'row' }}>
+-      <View style={{ flex: tablet ? 6 : 1 }}>
++      <View style={{ flex: tablet && !guided ? 6 : 1 }}>
+         {left}
+-        {!tablet && n > 0 ? (
++        {!tablet && !guided && n > 0 ? (
+           <Pressable onPress={() => nav.push('cart')} accessibilityRole="button" accessibilityLabel={`Cart, ${n} items, ${fmt(priced.netCents)}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, padding: 12, paddingHorizontal: 16, gap: 12 }}>
+             <Ionicons name="cart" size={22} color={c.text} /><Txt weight="700" style={{ flex: 1 }}>{n} item{n === 1 ? '' : 's'} · {fmt(priced.netCents)}</Txt>
+             <View style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Txt weight="700" color={c.onAccent}>Charge</Txt></View>
+           </Pressable>
+         ) : null}
+       </View>
+-      {tablet ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane /></View> : null}
++      {tablet && !guided ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane /></View> : null}
+ 
+-      <HidScanner enabled={nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0} onScan={code => void onScan(code)} />
++      <HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0} onScan={code => void onScan(code)} />
+       <CameraScanner visible={cam} onClose={() => setCam(false)} onScan={onScan} />
+       <SwitchStaffSheet visible={sheet === 'staff'} onClose={() => setSheet('none')} onSwitched={m => toast.show(m)} />
+       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
+diff --git a/src/screens/GuidedCheckout.tsx b/src/screens/GuidedCheckout.tsx
+new file mode 100644
+index 0000000..5d1d457
+--- /dev/null
++++ b/src/screens/GuidedCheckout.tsx
+@@ -0,0 +1,160 @@
++// Location: src/screens/GuidedCheckout.tsx
++// Minimal mode's checkout (B5b): one question per screen - Items, Customer, Discount, Check, Pay.
++// It reuses the normal cart, pricing, sheets and Pay screen, so nothing about how a sale is recorded changes.
++import React, { useEffect, useState } from 'react';
++import { Pressable, ScrollView, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useNav } from '../ui/nav';
++import { useApp } from '../state/store';
++import { useCatalogue, usePriced } from '../state/selectors';
++import * as ops from '../lib/cartOps';
++import { fmt } from '../lib/money';
++import { invoiceRows, unitLine } from '../lib/invoiceRows';
++import { oddBundles } from '../lib/bundles';
++import { STEPS, barState, back, canAdvance, next, progress, settle, stepInfo, type FlowCtx, type StepId } from '../lib/guidedFlow';
++import Checkout from './Checkout';
++import { BundleRow } from './CartPane';
++import { CheckChangeSheet } from './CheckChange';
++import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
++import type { CartLine } from '../lib/types';
++
++export default function GuidedCheckout() {
++  const { c } = useTheme(); const nav = useNav();
++  const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue();
++  const [step, setStep] = useState<StepId>('items');
++  const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change'>('none');
++  const [edit, setEdit] = useState<CartLine | null>(null);
++  const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
++  const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };
++
++  // An empty cart (a new sale, or the sale just finished) starts again at Items; a part-paid sale goes to Pay.
++  useEffect(() => { const s = settle(step, ctx); if (s !== step) setStep(s); }); // eslint-disable-line react-hooks/exhaustive-deps
++
++  const info = stepInfo(step); const pr = progress(step); const bar = barState(step); const adv = canAdvance(step, ctx);
++  const goNext = () => { if (!adv.ok) { if (adv.why) alertMsg('Not yet', adv.why); return; } setStep(next(step)); };
++  const goBack = () => setStep(back(step, ctx));
++  const openMore = (s: typeof sheet) => { setSheet('none'); setTimeout(() => setSheet(s), 250); };
++  const odd = oddBundles(priced.bundles);
++
++  return (
++    <View style={{ flex: 1, backgroundColor: c.bg }}>
++      {/* Where we are */}
++      <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
++        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
++          <Txt size={13} sub weight="600" style={{ flex: 1 }}>Step {pr.n} of {pr.total}</Txt>
++          <Pressable onPress={() => setSheet('more')} accessibilityRole="button" accessibilityLabel="More options" hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
++            <Ionicons name="ellipsis-horizontal-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600">More options</Txt></Pressable>
++        </View>
++        <View style={{ flexDirection: 'row', gap: 4 }} accessibilityRole="progressbar" accessibilityLabel={`Step ${pr.n} of ${pr.total}: ${info.label}`}>
++          {STEPS.map((st, i) => <View key={st.id} style={{ flex: 1, gap: 4 }}>
++            <View style={{ height: 6, borderRadius: 3, backgroundColor: bar[i] === 'todo' ? c.line : bar[i] === 'done' ? c.good : c.accent }} />
++            <Txt size={11} weight={bar[i] === 'current' ? '700' : '500'} color={bar[i] === 'current' ? c.text : c.sub} numberOfLines={1}>{st.label}</Txt></View>)}
++        </View>
++        <Txt size={22} weight="700">{info.question}</Txt>
++        <Txt size={14} sub>{info.help}</Txt>
++      </View>
++
++      {/* The step. The item picker stays mounted (hidden) so the grid keeps its place while you are on other steps. */}
++      <View style={{ flex: 1, display: step === 'items' ? 'flex' : 'none' }}><Checkout guided active={step === 'items'} /></View>
++
++      {step === 'customer' ? (
++        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
++          {cart.customer ? <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
++            <Ionicons name="person-circle" size={32} color={c.text} />
++            <View style={{ flex: 1 }}><Txt weight="700">{cart.customer.name || 'Customer'}</Txt>{cart.customer.email ? <Txt size={13} sub>{cart.customer.email}</Txt> : null}</View>
++            <IconBtn icon="close-circle" label="Remove customer" color={c.sub} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} /></Card> : null}
++          <Btn title={cart.customer ? 'Choose a different customer' : 'Yes, find or add the customer'} kind={cart.customer ? 'secondary' : 'primary'} icon="person-add-outline" onPress={() => setSheet('customer')} />
++        </ScrollView>
++      ) : null}
++
++      {step === 'discount' ? (
++        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
++          {priced.deals.length ? <Card style={{ padding: 14, gap: 6 }}>
++            <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Already applied for you</Txt>
++            {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><Txt color={c.good} style={{ flex: 1 }}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</Card>
++            : <Txt sub>No automatic deals apply to this cart.</Txt>}
++          {cart.discount ? <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
++            <Ionicons name="pricetag" size={22} color={c.good} /><Txt weight="700" style={{ flex: 1 }}>{cart.discount.label}</Txt>
++            <IconBtn icon="close-circle" label="Remove discount" color={c.sub} onPress={() => setCart(cc => ops.setCartDiscount(cc, undefined))} /></Card> : null}
++          <Btn title={cart.discount ? 'Change the discount' : 'Yes, add a discount'} kind={cart.discount ? 'secondary' : 'primary'} icon="pricetag-outline" onPress={() => setSheet('discount')} />
++        </ScrollView>
++      ) : null}
++
++      {step === 'review' ? (
++        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
++          {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale. Finish the payment to change it.</Txt></View> : null}
++          {priced.lines.map(pl => {
++            const l = pl.line; const rows = invoiceRows(pl);
++            return (
++              <View key={l.id} style={{ backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, padding: 14, gap: 6 }}>
++                <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}. Tap to change`} style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>
++                  {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={52} /> : null}
++                  <View style={{ flex: 1 }}>
++                    <Txt weight="700" numberOfLines={2}>{l.title}</Txt>
++                    {l.variantTitle ? <Txt size={13} sub>{l.variantTitle}</Txt> : null}
++                    <Txt size={13} sub>{unitLine(pl)}</Txt>
++                  </View>
++                  <Money cents={pl.netCents} weight="700" />
++                </Pressable>
++                {rows.map((r, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><Txt size={13} color={c.good} weight="600" style={{ flex: 1 }}>{r.label}</Txt><Txt size={13} color={c.good} weight="600">−{fmt(r.cents)}</Txt></View>)}
++                {!locked ? <View style={{ flexDirection: 'row', gap: 8 }}>
++                  <Btn title="Change" kind="secondary" small onPress={() => setEdit(l)} style={{ flex: 1 }} />
++                  <Btn title="Remove" kind="secondary" small onPress={async () => { if (await confirm('Remove this item?', l.title, 'Remove', true)) setCart(cc => ops.removeLine(cc, l.id)); }} style={{ flex: 1 }} /></View> : null}
++              </View>
++            );
++          })}
++          {odd.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
++            <Txt size={14} weight="700">Check these deals with the customer</Txt>
++            <Txt size={13} sub>{odd.length === 1 ? 'This deal is' : 'These deals are'} applied, but the items are not a recommended pair. The customer still gets the deal.</Txt>
++            {odd.map((b, i) => <BundleRow key={i} b={b} />)}</View> : null}
++          {priced.bundles.length > odd.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
++            <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Bundle deals</Txt>
++            {priced.bundles.filter(b => b.status !== 'other').map((b, i) => <BundleRow key={i} b={b} />)}</View> : null}
++          {cart.customer ? <Row icon="person-circle-outline" title={cart.customer.name || 'Customer'} sub="Customer on this sale" /> : null}
++          {cart.discount ? <Row icon="pricetag-outline" title={cart.discount.label} sub="Discount on the whole cart" last /> : null}
++        </ScrollView>
++      ) : null}
++
++      {step === 'pay' ? (
++        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 }}>
++          <Txt size={15} sub>{count} item{count === 1 ? '' : 's'}{cart.customer ? ` · ${cart.customer.name || 'customer'}` : ''}</Txt>
++          <Money cents={priced.netCents} size={54} weight="700" />
++          {locked ? <Txt sub style={{ textAlign: 'center' }}>Part of this sale is already paid. Carry on with the rest.</Txt> : null}
++        </View>
++      ) : null}
++
++      {/* Back / Next, always in the same place */}
++      <View style={{ padding: 16, paddingBottom: 16, gap: 10, backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
++        {step === 'items' ? <Txt weight="700" style={{ textAlign: 'center' }}>{count ? `${count} item${count === 1 ? '' : 's'} · ${fmt(priced.netCents)}` : 'Nothing added yet'}</Txt> : null}
++        {step !== 'items' && step !== 'pay' ? <Txt weight="700" style={{ textAlign: 'center' }}>Total {fmt(priced.netCents)}</Txt> : null}
++        <View style={{ flexDirection: 'row', gap: 10 }}>
++          {step !== 'items' && !(locked && step === 'pay') ? <Btn title="Back" kind="secondary" icon="chevron-back" onPress={goBack} style={{ flex: 1 }} /> : null}
++          {step === 'pay'
++            ? <Btn title={`Take payment  ${fmt(priced.netCents)}`} icon="card-outline" onPress={() => nav.push('pay')} style={{ flex: 2 }} />
++            : <Btn title={step === 'review' ? 'Looks right' : step === 'customer' && !cart.customer ? 'No, carry on' : step === 'discount' && !cart.discount ? 'No, carry on' : 'Next'} disabled={!adv.ok} onPress={goNext} style={{ flex: 2 }} />}
++        </View>
++      </View>
++
++      {/* The same sheets the normal checkout uses */}
++      <CustomerSheet visible={sheet === 'customer'} onClose={() => setSheet('none')} onPick={cu => { setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } })); setSheet('none'); }} />
++      <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
++      <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
++      <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
++      <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
++      <SaveCartSheet visible={sheet === 'save'} onClose={() => setSheet('none')} onSaved={() => setCart(ops.emptyCart())} />
++      <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
++
++      {/* Everything the full checkout can do is still here */}
++      <Sheet visible={sheet === 'more'} onClose={() => setSheet('none')} title="More options">
++        <Row icon="calculator-outline" title="Add a custom amount" sub="For something that is not in the item list." onPress={() => openMore('custom')} />
++        <Row icon="gift-outline" title="Sell a gift card" onPress={() => openMore('gift')} />
++        <Row icon="cash-outline" title="Check change" sub="Can we make change for this sale?" onPress={() => openMore('change')} />
++        <Row icon="bookmark-outline" title="Save this cart for later" onPress={() => (!cart.lines.length || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : openMore('save'))} />
++        <Row icon="bookmarks-outline" title="Open a saved cart" onPress={() => { setSheet('none'); setTimeout(() => nav.push('saved'), 250); }} />
++        <Row icon="trash-outline" title="Start again" sub="Clear the cart and go back to step 1." danger last onPress={async () => { setSheet('none'); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (!cart.lines.length || await confirm('Start again?', 'All items will be removed.', 'Clear', true)) { setCart(ops.emptyCart()); setStep('items'); } }} />
++      </Sheet>
++    </View>
++  );
++}
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index b096d56..e3c1ac2 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -64,6 +64,9 @@ function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p:
+       {label('Tabs along the bottom')}
+       <Segmented<CustomUi['tabs']> value={value.tabs} onChange={tabs => onChange({ tabs })} options={(['all', 'core', 'basic'] as const).map(v => ({ v, label: v === 'all' ? 'All' : v === 'core' ? 'No alerts' : 'Basic' }))} />
+       <Txt size={12} sub>{TAB_LABEL[value.tabs]}</Txt>
++      {label('Checkout')}
++      <Segmented<'on' | 'off'> value={value.guided ? 'on' : 'off'} onChange={v => onChange({ guided: v === 'on' })} options={[{ v: 'off', label: 'Normal' }, { v: 'on', label: 'Guided steps' }]} />
++      <Txt size={12} sub>Guided steps ask one question at a time: items, customer, discount, check, pay.</Txt>
+       {label('More menu')}
+       <Segmented<CustomUi['more']> value={value.more} onChange={more => onChange({ more })} options={(['all', 'everyday', 'essential'] as const).map(v => ({ v, label: v === 'all' ? 'All' : v === 'everyday' ? 'Everyday' : 'Essentials' }))} />
+       <Txt size={12} sub>{MORE_LABEL[value.more]}</Txt>
+diff --git a/tests/guidedflow.test.ts b/tests/guidedflow.test.ts
+new file mode 100644
+index 0000000..bc1e550
+--- /dev/null
++++ b/tests/guidedflow.test.ts
+@@ -0,0 +1,33 @@
++// Location: tests/guidedflow.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { STEPS, STEP_IDS, back, barState, canAdvance, next, progress, settle, stepInfo } from '../src/lib/guidedFlow';
++
++const empty = { itemCount: 0, payStarted: false }; const some = { itemCount: 2, payStarted: false }; const part = { itemCount: 2, payStarted: true };
++
++test('five steps in the order a sale goes', () => {
++  assert.deepEqual(STEP_IDS, ['items', 'customer', 'discount', 'review', 'pay']);
++  for (const s of STEPS) { assert.ok(s.question.endsWith('?')); assert.ok(s.help.length > 20); }
++  assert.equal(stepInfo('review').label, 'Check'); assert.deepEqual(progress('discount'), { n: 3, total: 5 });
++});
++test('Next walks forward and stops at Pay', () => {
++  let s = STEP_IDS[0]; const seen = [s]; for (let i = 0; i < 8; i++) { s = next(s); seen.push(s); }
++  assert.deepEqual(seen.slice(0, 5), STEP_IDS); assert.equal(s, 'pay');
++});
++test('cannot leave Items with an empty cart, and says why in plain words', () => {
++  const r = canAdvance('items', empty); assert.equal(r.ok, false); assert.match(r.why ?? '', /Add at least one item/);
++  assert.equal(canAdvance('items', some).ok, true); assert.equal(canAdvance('customer', empty).ok, true); assert.equal(canAdvance('review', some).ok, true);
++});
++test('Back goes one step; from Pay it returns to the check', () => {
++  assert.equal(back('review', some), 'discount'); assert.equal(back('pay', some), 'review'); assert.equal(back('items', some), 'items');
++});
++test('a part-paid sale cannot be walked back into editing', () => {
++  assert.equal(settle('items', part), 'pay'); assert.equal(settle('review', part), 'pay'); assert.equal(back('pay', part), 'review');
++});
++test('an empty cart (new sale, or the sale just finished) restarts at Items; otherwise the step is kept', () => {
++  for (const s of STEP_IDS) assert.equal(settle(s, empty), 'items');
++  for (const s of STEP_IDS) assert.equal(settle(s, some), s);
++});
++test('step bar marks done, current and to come', () => {
++  assert.deepEqual(barState('discount'), ['done', 'done', 'current', 'todo', 'todo']); assert.deepEqual(barState('items'), ['current', 'todo', 'todo', 'todo', 'todo']);
++});
+diff --git a/tests/uimode.test.ts b/tests/uimode.test.ts
+index 2ac5265..6a0ad76 100644
+--- a/tests/uimode.test.ts
++++ b/tests/uimode.test.ts
+@@ -31,7 +31,7 @@ test('a mode never widens what a role allows', () => {
+ test('Custom uses its own dials and falls back per dial when a value is bad', () => {
+   const p = resolveUi({ mode: 'custom', custom: { textSize: 'large', explain: true, tabs: 'core', more: 'everyday' } });
+   assert.deepEqual(p.tabs, ['checkout', 'inventory', 'transactions', 'more']); assert.equal(p.moreLevel, 'everyday');
+-  assert.deepEqual(readCustom({ textSize: 'huge', explain: 'yes', tabs: 'none', more: 3 }), { textSize: 'normal', explain: false, tabs: 'all', more: 'all' });
++  assert.deepEqual(readCustom({ textSize: 'huge', explain: 'yes', tabs: 'none', more: 3, guided: 'yes' }), { textSize: 'normal', explain: false, tabs: 'all', more: 'all', guided: false });
+   assert.deepEqual(readUi({ mode: 'custom' }), { mode: 'custom', custom: readCustom(undefined) });
+   assert.deepEqual(readUi({ mode: 'simple', custom: { more: 'essential' } }), { mode: 'simple' });
+ });
+@@ -49,8 +49,8 @@ test('the only manager or owner can never hide Staff and Settings from themselve
+ });
+ test('switching mode starts Custom from what the person was using', () => {
+   assert.deepEqual(withMode(undefined, 'simple'), { mode: 'simple' });
+-  assert.deepEqual(withMode({ mode: 'minimal' }, 'custom'), { mode: 'custom', custom: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential' } });
+-  assert.deepEqual(withCustom({ mode: 'simple' }, { tabs: 'core' }), { mode: 'custom', custom: { textSize: 'large', explain: true, tabs: 'core', more: 'all' } });
++  assert.deepEqual(withMode({ mode: 'minimal' }, 'custom'), { mode: 'custom', custom: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential', guided: true } });
++  assert.deepEqual(withCustom({ mode: 'simple' }, { tabs: 'core' }), { mode: 'custom', custom: { textSize: 'large', explain: true, tabs: 'core', more: 'all', guided: false } });
+   assert.deepEqual(withMode({ mode: 'custom', custom: { tabs: 'core' } }, 'standard'), { mode: 'standard' });
+ });
+ test('a hidden tab falls back to Checkout; a shown one stays', () => {
+@@ -62,3 +62,8 @@ test('every More row has an explanation and nothing is listed twice', () => {
+   const all = MORE_GROUPS.flat(); assert.equal(new Set(all).size, all.length);
+   for (const id of all) assert.ok(MORE_EXPLAIN[id].length > 10, id);
+ });
++test('only Minimal (and Custom with the dial on) gets the guided checkout', () => {
++  assert.equal(resolveUi({ mode: 'standard' }).guided, false); assert.equal(resolveUi({ mode: 'simple' }).guided, false); assert.equal(resolveUi({ mode: 'minimal' }).guided, true);
++  assert.equal(resolveUi({ mode: 'custom', custom: { guided: true } }).guided, true); assert.equal(resolveUi({ mode: 'custom', custom: {} }).guided, false);
++  assert.equal(resolveUi(withCustom({ mode: 'minimal' }, { guided: false })).guided, false);
++});
+-- 
+2.43.0
+
