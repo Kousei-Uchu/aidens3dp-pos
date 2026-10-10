@@ -28,6 +28,7 @@ import Staff, { PinLock } from './src/screens/Staff';
 import Diagnostics from './src/screens/Diagnostics';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { noteActivity } from './src/lib/idle';
+import { isLockScreen } from './src/lib/posLock';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
@@ -57,7 +58,7 @@ function Routes() {
 }
 
 function Shell() {
-  const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const requirePin = useApp(s => s.settings.requirePin && s.settings.staff.length > 0);
+  const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length);
   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
   useEffect(() => {
@@ -67,7 +68,7 @@ function Shell() {
     return () => { clearInterval(t); sub.remove(); };
   }, [ready]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
-  if (requirePin && !unlocked) return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
+  if (isLockScreen({ staffCount, unlocked })) return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
   const hasPage = nav.stack.length > 0;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
