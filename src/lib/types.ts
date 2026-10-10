@@ -58,11 +58,17 @@ export type BundleDeal = {
   sets: string[]; // one unit from each listed set (may repeat a set)
   price_delta_cents: number; // negative = discount (delta mode) | final price (fixed_price mode)
   apply_to?: string | null; // set id: delta comes off the unit(s) matched from THAT set
-  mode?: 'delta' | 'fixed_price';
+  mode?: 'delta' | 'fixed_price' | 'percent'; // percent: `percent` % off the matched units (price_delta_cents unused)
+  percent?: number; // 0-100, mode 'percent' only
   max_per_cart?: number | null;
   stackable?: boolean;
   enabled?: boolean;
   priority?: number;
+  starts_at?: string | null; // ISO date-time; the deal is ignored before this
+  ends_at?: string | null; // ISO date-time; the deal is ignored after this
+  /** Recommended variant combinations (A8.3). Each entry lists variant GIDs, one per unit of the deal, in any order.
+   *  Optional: any variant of the sets still qualifies, a deal without this list never shows a marker. */
+  recommended?: string[][];
 };
 export type BundleConfig = { version: 1; items: Record<string, string[]>; discounts: BundleDeal[] };
 
@@ -114,7 +120,18 @@ export type PricedLine = {
   netCents: number;
   bundleUnits: number;
 };
+/** How a matched bundle compares with the deal's recommended pairs. 'none' = the deal defines no recommended pairs. */
+export type BundleStatus = 'recommended' | 'other' | 'none';
+/** One application of a bundle deal in the cart (shown as a single row naming the items in it). */
+export type AppliedBundle = {
+  dealId: string;
+  label: string;
+  discountCents: number;
+  status: BundleStatus;
+  units: { lineId: string; variantId: string; title: string; variantTitle?: string; unitCents: number; discountCents: number }[];
+};
 export type PricedCart = {
+  bundles: AppliedBundle[]; // one entry per bundle application, in the order they were matched
   lines: PricedLine[];
   itemsCents: number; // Σ gross
   discountCents: number; // Σ all discounts

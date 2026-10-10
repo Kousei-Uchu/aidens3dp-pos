@@ -17,19 +17,18 @@ import { backupFileName, decryptBackup, detectBackup, encryptBackup, MIN_PASSPHR
 import { applyBackup, collectBackup } from '../lib/backupIO';
 import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normaliseHex, type ScreensaverSettings } from '../lib/screensaver';
 import { parseGrid, serialiseGrid } from '../lib/grid';
-import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
+import { BundlesEditor } from './BundleBuilder';
 import { HidScanner } from './Scanner';
 import { SquareHistorySettings } from './SquareHistory';
 import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
 
 type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
-const SAMPLE_BUNDLES = JSON.stringify({ version: 1, items: { set_a: ['gid://shopify/Product/1'], set_b: ['gid://shopify/Product/2'] }, discounts: [{ id: 'combo', label: 'Combo deal', sets: ['set_a', 'set_b'], price_delta_cents: -500, apply_to: 'set_b', max_per_cart: 5 }] }, null, 2);
 
 export default function Settings() {
   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
-  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
+  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
   return (
     <Page title={titles[sub]} onBack={back}>
       {sub === 'menu' ? <>
@@ -99,25 +98,6 @@ function ShopifySettings() {
       <Btn title="Disconnect" kind="ghost" onPress={async () => { if (await confirm('Disconnect Shopify?', 'Credentials are removed from this device. Catalogue stays until re-import.', 'Disconnect', true)) { await clearCreds(); setF({ domain: '', id: '', secret: '' }); } }} />
       {msg ? <Txt size={13} sub style={{ marginTop: 8 }}>{msg}</Txt> : null}
       <Txt size={12} sub style={{ marginTop: 10 }}>{Object.keys(data.variants).length} variants · {data.collections.length} collections · {data.customers.length} customers{data.catalogueAt ? ` · imported ${new Date(data.catalogueAt).toLocaleString()}` : ''}</Txt>
-    </View>
-  );
-}
-
-function BundlesEditor() {
-  const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const variants = useApp(st => st.data.variants);
-  const [text, setText] = useState(s.bundlesJson || ''); const [msg, setMsg] = useState<string[]>([]);
-  const save = () => {
-    if (!text.trim()) { patch({ bundlesJson: '' }); setMsg(['Bundles cleared.']); void pushSharedSettings().catch(() => {}); return; }
-    const r = parseBundleConfig(text); if (!r.cfg) return setMsg([`Not saved: ${r.error}`]);
-    const known = new Set(Object.values(variants).flatMap(v => [v.id, v.productId])); const warn = validateBundleConfig(r.cfg, known);
-    patch({ bundlesJson: text }); void pushSharedSettings().catch(() => {}); setMsg([`Saved ${r.cfg.discounts.length} deal(s).`, ...warn]);
-  };
-  return (
-    <View style={{ padding: 16, gap: 8 }}>
-      <Txt size={13} sub>Automatic discounts from Shopify apply by themselves. Bundle deals (one unit from each set → price change) are configured here as JSON and applied before Shopify discounts. Items tagged no-discount are excluded.</Txt>
-      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
-      <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save" onPress={save} style={{ flex: 1 }} /><Btn title="Insert example" kind="secondary" onPress={() => setText(SAMPLE_BUNDLES)} style={{ flex: 1 }} /></View>
-      {msg.map((m, i) => <Txt key={i} size={13} sub>{m}</Txt>)}
     </View>
   );
 }

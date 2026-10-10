@@ -1,0 +1,1221 @@
+From cd66c06ea2d7936ceb870f6c0ceb498af9a220c1 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 14:54:30 +1100
+Subject: [PATCH] 0009: Bundle builder GUI, recommended pairs, bundle rows in
+ cart (A8)
+
+- Settings > Discounts & bundles: deal list + editor (groups, $ off / % off / set price, dates, per-order cap), JSON kept as Advanced
+- Engine: percent mode, starts_at/ends_at, recommended variant pairs (status + matcher preference after saving)
+- Cart: one card per bundle naming its items/variations, recommended marker, pre-payment check for non-recommended pairs
+- Fix missing 'Square history' title in Settings (type error from 0008)
+- Tests: bundleform.test.ts (25); progress doc updated
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01JidfbtR6s9eqtYi9qyd9TL
+---
+ docs/PROGRESS.md              |  26 ++--
+ src/lib/bundleForm.ts         | 167 ++++++++++++++++++++++
+ src/lib/bundles.ts            | 105 +++++++++++---
+ src/lib/pricing.ts            |  13 +-
+ src/lib/types.ts              |  19 ++-
+ src/screens/BundleBuilder.tsx | 255 ++++++++++++++++++++++++++++++++++
+ src/screens/CartPane.tsx      |  37 ++++-
+ src/screens/Settings.tsx      |  24 +---
+ tests/bundleform.test.ts      | 253 +++++++++++++++++++++++++++++++++
+ 9 files changed, 838 insertions(+), 61 deletions(-)
+ create mode 100644 src/lib/bundleForm.ts
+ create mode 100644 src/screens/BundleBuilder.tsx
+ create mode 100644 tests/bundleform.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index f33eb3b..51e4f5a 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -15,6 +15,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0006 | 2026-10-10 | Several Shopify automatic discounts now combine in one order (5x + 3x Tadlings, Tadlings + cows) | A12.4-A12.6 |
+ | 0007 | 2026-10-10 | Progress doc only: your answers recorded, scanner finding, "Needed from You" and "Deferred" sections | docs |
+ | 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
++| 0009 | 2026-10-10 | Bundle builder GUI: deal list + editor, % off / set price / $ off, dates, recommended pairs, bundle rows in the cart, pre-payment check; fixes a missing "Square history" page title from 0008 | A8, B4 |
+ 
+ ---
+ 
+@@ -79,12 +80,16 @@ Done through the Square API/SDK instead of CSV (your call), as a one-off PC scri
+ - Needs a native rebuild: `app.json` gained `NSAllowsLocalNetworking` + a Local Network message (so the app may talk to the PC over plain http on your LAN). Run `npm install` then `npm run ios:reset`. The Pick-files route works without the QR/Wi-Fi part.
+ 
+ ### A8. GUI bundle builder
+-- [ ] A8.1 Bundle list + create/edit form (pick items, quantity, deal price or $/% off, dates, on/off) writing the same JSON the engine already reads.
+-- [ ] A8.2 Keep the JSON editor as an "Advanced" view.
+-- [ ] A8.3 Recommended pairs: when a bundle contains a product with several variants, the builder lets you mark specific variant combinations as recommended pairs. This is separate from putting a single variant in a set. Pairs are optional, so any variant of the product still qualifies for the deal.
+-- [ ] A8.4 Checkout prompt for non-recommended pairs: if a bundle deal is applied but the matched units are not a recommended pair, tell the cashier. Show the items that make up the bundle, then offer "Edit cart" or "Continue to payment".
+-- [ ] A8.5 When both recommended and non-recommended candidates are in the cart, the matcher prefers recommended pairs for grouping and discounting. This applies to the cart and to receipts.
+-- [ ] A8.6 Show each bundle as a single cart line that names the items and variations in it, with a marker for "Recommended pair" or "Not a recommended pair".
++Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`settings.bundlesJson`), so existing JSON bundles keep working and show up in the list.
++- [x] A8.1 `src/screens/BundleBuilder.tsx`: deal list (state badge Live / Scheduled / Ended / Off, quick on/off switch, summary line) and an editor. A deal is one or more **groups** ("N items from this list"). Pick products (every variation) or individual variations with search. Effect is **$ off**, **% off** or **set price**, optionally taken off only one group. Extras: most times per order, start and end date (`YYYY-MM-DD`, the end day is included in full), on/off. Engine additions: `mode: 'percent'` + `percent`, `starts_at` / `ends_at` (`src/lib/bundles.ts`).
++- [x] A8.2 The JSON editor stays under "Advanced: edit as JSON" and also shows an unreadable saved config so you can fix or clear it.
++- [x] A8.3 Recommended pairs: per deal, "Add a recommended pair" picks one variation per item of the deal (for example Red dragon + Red egg). Stored as `recommended` (lists of variant ids, order doesn't matter). Optional. Any variation still gets the deal. A deal with no pairs never shows a marker. Changing a deal's items or quantities offers to clear its pairs, since they'd be out of date.
++- [x] A8.4 Before payment (Charge in the cart): if a bundle is applied with variations that aren't a recommended pair, a sheet lists the items in it and offers **Edit cart** or **Continue to payment**. It asks once per cart state: it returns only if the not-recommended bundles change.
++- [x] A8.5 Matcher: biggest total saving first (the customer is never short-changed for a tidy pairing), then **more recommended pairs**, then fewer deal applications, then priority/config order. A mutation check confirmed the new test fails without the preference. Receipts are unchanged: they list the deal names and savings, but "recommended" markers are staff-facing so they're cart-only.
++- [x] A8.6 Cart: a "Bundle deals" block under the lines with one card per bundle application, naming each item and variation, the saving, and "Recommended pair" / "Not a recommended pair". The underlying item lines stay as they are, because stock, refunds and Shopify order lines work per variant. So the bundle is shown as a single card, not merged into one line.
++- [x] A8.7 **You:** open Settings ▸ Discounts & bundles, rebuild one of your real deals in the GUI, and ring up a cart that triggers it. Check the item picker is quick enough with your full catalogue. It shows the first 80 matches and relies on search. Also try the "Not a recommended pair" prompt.
++- Tests: `tests/bundleform.test.ts` (25 tests: percent, dates, recommended status and preference, form ↔ JSON round trip, hand-written JSON loading, prune/remove/toggle, form problems, checkout-check behaviour).
++- Fixed while here: Settings had no page title for "Square history" (type error from 0008).
+ 
+ ### A9. Gift cards: when they are created, and how codes are read
+ - [-] A9.1 Dropped (you changed your mind): adding a gift card to the cart only records the amount.
+@@ -165,15 +170,15 @@ Status as found in the zip you sent (I only inspected files; not run).
+   - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: empty stub, off by default (as you asked)
+ - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip; Wallet pass needs your certificate.
+ - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
+-- [ ] B4 Bundle GUI (same as A8)
++- [x] B4 Bundle GUI (same as A8, done in 0009)
+ - [ ] B5 Simple / Minimal / Custom staff modes
+ - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
+ - [ ] B8 Extra ideas
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (121 after patch 0008, with `qrcode-generator` installed). `npm test` on your machine runs the same files.
+-- Type-checking: I can't run `tsc` here (no full `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (146 after patch 0009). `npm test` on your machine runs the same files.
++- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0009 (it found one real error left by 0008, now fixed). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+ 
+@@ -187,7 +192,8 @@ Ordered by priority, highest first.
+ ### Priority 2
+ - [-] N2 No longer needed (A7 uses the Square API, not CSV).
+ - [ ] N8 **Non-blocking (A7):** run `tools/square-history` (README there), import on the iPad, and check one day's Net sales against Square's report. Tell me the matched-lines count shown after import and anything that looks off.
+-- [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I cannot run `tsc` here.
++- [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I can type-check everything except the Zeller SDK's own types here.
++- [ ] N9 **Non-blocking (A8):** try the bundle builder on a device (see A8.7) and tell me anything awkward: the item picker, the date fields, the recommended-pair flow, the pre-payment prompt.
+ - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
+ - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
+ 
+diff --git a/src/lib/bundleForm.ts b/src/lib/bundleForm.ts
+new file mode 100644
+index 0000000..5b41080
+--- /dev/null
++++ b/src/lib/bundleForm.ts
+@@ -0,0 +1,167 @@
++// Location: src/lib/bundleForm.ts
++// Pure helpers behind the bundle builder screen (A8). The app stores bundles as the same JSON the engine reads
++// (`settings.bundlesJson`); this module turns one deal into an editable form and back, so the GUI and the Advanced
++// JSON view always describe the same data.
++//
++// Form model: a deal is a list of SLOTS. A slot is "N units from this group of products/variants". On save each slot
++// becomes a named set (`<dealId>_1`, `<dealId>_2`, …) and the deal's `sets` repeats that set N times.
++import type { BundleConfig, BundleDeal, Variant } from './types';
++
++export type SlotForm = { ids: string[]; qty: number };
++export type DealMode = 'delta' | 'fixed_price' | 'percent';
++export type DealForm = {
++  id: string;
++  label: string;
++  enabled: boolean;
++  slots: SlotForm[];
++  mode: DealMode;
++  amountCents: number; // delta: dollars off (positive here); fixed_price: the price the matched units cost together
++  percent: number; // percent mode
++  applyToSlot: number | null; // index into slots; null = spread over every unit
++  maxPerCart: number | null;
++  startsOn: string; // '' or YYYY-MM-DD (local date, first day the deal is live)
++  endsOn: string; // '' or YYYY-MM-DD (local date, last day the deal is live)
++  recommended: string[][]; // variant GIDs, one per unit of the deal (slot order, qty expanded)
++};
++
++export const emptyBundleConfig = (): BundleConfig => ({ version: 1, items: {}, discounts: [] });
++
++/** `Dragons 2 for $5!` → `dragons_2_for_5`, made unique against `taken`. */
++export function makeDealId(label: string, taken: Iterable<string>): string {
++  const used = new Set(taken);
++  const base = label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 40) || 'deal';
++  if (!used.has(base)) return base;
++  for (let n = 2; ; n++) if (!used.has(`${base}_${n}`)) return `${base}_${n}`;
++}
++
++export function emptyDealForm(cfg: BundleConfig): DealForm {
++  return {
++    id: makeDealId('new deal', cfg.discounts.map(d => d.id)), label: '', enabled: true, slots: [{ ids: [], qty: 1 }],
++    mode: 'delta', amountCents: 0, percent: 10, applyToSlot: null, maxPerCart: null, startsOn: '', endsOn: '', recommended: [],
++  };
++}
++
++// ── dates ────────────────────────────────────────────────────────────────────
++const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
++export const isDateText = (t: string) => {
++  const m = DATE_RE.exec(t.trim()); if (!m) return false;
++  const d = new Date(+m[1], +m[2] - 1, +m[3]);
++  return d.getFullYear() === +m[1] && d.getMonth() === +m[2] - 1 && d.getDate() === +m[3];
++};
++/** Start of that local day. */
++export const startOfDayIso = (t: string): string | null => { const m = DATE_RE.exec(t.trim()); return m && isDateText(t) ? new Date(+m[1], +m[2] - 1, +m[3], 0, 0, 0, 0).toISOString() : null; };
++/** Last millisecond of that local day, so "ends on 1 Dec" includes all of 1 Dec. */
++export const endOfDayIso = (t: string): string | null => { const m = DATE_RE.exec(t.trim()); return m && isDateText(t) ? new Date(+m[1], +m[2] - 1, +m[3], 23, 59, 59, 999).toISOString() : null; };
++export const isoToDateText = (iso?: string | null): string => {
++  if (!iso) return ''; const d = new Date(iso); if (Number.isNaN(d.getTime())) return '';
++  const p = (n: number) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
++};
++
++// ── config → form ────────────────────────────────────────────────────────────
++export function dealToForm(cfg: BundleConfig, deal: BundleDeal): DealForm {
++  // Group every use of a set into one slot (order of first appearance). The engine doesn't care about set order.
++  const order: string[] = []; const qty = new Map<string, number>();
++  for (const s of deal.sets) { if (!qty.has(s)) order.push(s); qty.set(s, (qty.get(s) ?? 0) + 1); }
++  const mode: DealMode = deal.mode === 'fixed_price' ? 'fixed_price' : deal.mode === 'percent' ? 'percent' : 'delta';
++  const apply = deal.apply_to ? order.indexOf(deal.apply_to) : -1;
++  return {
++    id: deal.id, label: deal.label, enabled: deal.enabled !== false,
++    slots: order.map(s => ({ ids: [...(cfg.items[s] ?? [])], qty: qty.get(s)! })),
++    mode, amountCents: mode === 'delta' ? Math.max(0, -deal.price_delta_cents) : mode === 'fixed_price' ? deal.price_delta_cents : 0,
++    percent: deal.percent ?? 10, applyToSlot: apply >= 0 ? apply : null, maxPerCart: deal.max_per_cart ?? null,
++    startsOn: isoToDateText(deal.starts_at), endsOn: isoToDateText(deal.ends_at), recommended: (deal.recommended ?? []).map(r => [...r]),
++  };
++}
++
++// ── form → config ────────────────────────────────────────────────────────────
++export const totalUnits = (f: Pick<DealForm, 'slots'>) => f.slots.reduce((a, s) => a + s.qty, 0);
++
++/** Slot index for each unit position of the deal (qty expanded), used by the recommended-pair picker. */
++export const unitSlots = (f: Pick<DealForm, 'slots'>): number[] => f.slots.flatMap((s, i) => Array(s.qty).fill(i));
++
++export function formToDeal(f: DealForm): { deal: BundleDeal; items: Record<string, string[]> } {
++  const items: Record<string, string[]> = {}; const sets: string[] = []; const setIdOf: string[] = [];
++  f.slots.forEach((s, i) => { const sid = `${f.id}_${i + 1}`; setIdOf.push(sid); items[sid] = [...s.ids]; for (let n = 0; n < s.qty; n++) sets.push(sid); });
++  const deal: BundleDeal = {
++    id: f.id, label: f.label.trim() || f.id, sets, mode: f.mode,
++    price_delta_cents: f.mode === 'delta' ? -Math.abs(Math.round(f.amountCents)) : f.mode === 'fixed_price' ? Math.round(f.amountCents) : 0,
++    ...(f.mode === 'percent' ? { percent: f.percent } : {}),
++    apply_to: f.applyToSlot != null && setIdOf[f.applyToSlot] ? setIdOf[f.applyToSlot] : null,
++    max_per_cart: f.maxPerCart && f.maxPerCart > 0 ? Math.round(f.maxPerCart) : null,
++    stackable: false, enabled: f.enabled, priority: 0,
++    starts_at: f.startsOn.trim() ? startOfDayIso(f.startsOn) : null, ends_at: f.endsOn.trim() ? endOfDayIso(f.endsOn) : null,
++    ...(f.recommended.length ? { recommended: f.recommended.map(r => [...r]) } : {}),
++  };
++  return { deal, items };
++}
++
++/** Sets that no deal uses any more are dropped, so deleting or reshaping a deal doesn't leave clutter in the JSON. */
++export function pruneSets(cfg: BundleConfig): BundleConfig {
++  const used = new Set(cfg.discounts.flatMap(d => d.sets));
++  return { ...cfg, items: Object.fromEntries(Object.entries(cfg.items).filter(([k]) => used.has(k))) };
++}
++
++/** Insert or replace a deal (matched by id). Keeps the position of an existing deal and the priority it already had. */
++export function upsertDeal(cfg: BundleConfig, f: DealForm): BundleConfig {
++  const { deal, items } = formToDeal(f);
++  const at = cfg.discounts.findIndex(d => d.id === f.id);
++  const prev = at >= 0 ? cfg.discounts[at] : null;
++  const next: BundleDeal = prev ? { ...deal, priority: prev.priority ?? 0, stackable: prev.stackable ?? false } : deal;
++  const discounts = at >= 0 ? cfg.discounts.map((d, i) => (i === at ? next : d)) : [...cfg.discounts, next];
++  return pruneSets({ ...cfg, items: { ...cfg.items, ...items }, discounts });
++}
++export const removeDeal = (cfg: BundleConfig, id: string): BundleConfig => pruneSets({ ...cfg, discounts: cfg.discounts.filter(d => d.id !== id) });
++export const setDealEnabled = (cfg: BundleConfig, id: string, enabled: boolean): BundleConfig => ({ ...cfg, discounts: cfg.discounts.map(d => (d.id === id ? { ...d, enabled } : d)) });
++export const stringifyBundleConfig = (cfg: BundleConfig): string => (cfg.discounts.length ? JSON.stringify(cfg, null, 2) : '');
++
++// ── checks ───────────────────────────────────────────────────────────────────
++/** Reasons the form can't be saved yet (empty = fine). */
++export function formProblems(f: DealForm): string[] {
++  const p: string[] = [];
++  if (!f.label.trim()) p.push('Give the deal a name.');
++  if (!f.slots.length) p.push('Add at least one item group.');
++  f.slots.forEach((s, i) => { if (!s.ids.length) p.push(`Group ${i + 1} has no items. Pick at least one.`); if (!(s.qty >= 1)) p.push(`Group ${i + 1} needs a quantity of 1 or more.`); });
++  if (f.mode === 'delta' && !(f.amountCents > 0)) p.push('Enter how much the deal takes off.');
++  if (f.mode === 'fixed_price' && !(f.amountCents >= 0)) p.push('Enter the deal price.');
++  if (f.mode === 'percent' && !(f.percent > 0 && f.percent <= 100)) p.push('Percent off must be between 0 and 100.');
++  if (f.startsOn.trim() && !isDateText(f.startsOn)) p.push('Start date should look like 2026-12-01.');
++  if (f.endsOn.trim() && !isDateText(f.endsOn)) p.push('End date should look like 2026-12-24.');
++  if (isDateText(f.startsOn) && isDateText(f.endsOn) && f.startsOn > f.endsOn) p.push('The deal ends before it starts.');
++  const units = totalUnits(f);
++  for (const r of f.recommended) if (r.length !== units) p.push(`A recommended pair needs ${units} item(s).`);
++  return [...new Set(p)];
++}
++
++/** Variants that can fill a slot: every variant of a listed product, plus listed variants. Sorted by name. */
++export function slotVariants(slot: SlotForm, variants: Record<string, Variant>): Variant[] {
++  const ids = new Set(slot.ids);
++  return Object.values(variants).filter(v => ids.has(v.id) || ids.has(v.productId))
++    .sort((a, b) => a.productTitle.localeCompare(b.productTitle) || a.variantTitle.localeCompare(b.variantTitle));
++}
++
++export const variantName = (v: Pick<Variant, 'productTitle' | 'variantTitle'>) => (v.variantTitle && v.variantTitle !== 'Default Title' ? `${v.productTitle} - ${v.variantTitle}` : v.productTitle);
++
++/** Readable name for a product or variant GID (falls back to the id when it's no longer in the catalogue). */
++export function idName(id: string, variants: Record<string, Variant>): string {
++  const v = variants[id]; if (v) return variantName(v);
++  const p = Object.values(variants).find(x => x.productId === id); return p ? `${p.productTitle} (all variations)` : id;
++}
++
++export const slotLabel = (s: SlotForm, variants: Record<string, Variant>): string => {
++  const names = s.ids.map(i => idName(i, variants));
++  const shown = names.length > 2 ? `${names.slice(0, 2).join(', ')} +${names.length - 2} more` : names.join(', ') || 'nothing picked';
++  return `${s.qty} × ${shown}`;
++};
++
++export function dealEffect(f: Pick<DealForm, 'mode' | 'amountCents' | 'percent'>, money: (c: number) => string): string {
++  return f.mode === 'percent' ? `${f.percent}% off` : f.mode === 'fixed_price' ? `for ${money(f.amountCents)}` : `${money(f.amountCents)} off`;
++}
++export const dealSummary = (f: DealForm, variants: Record<string, Variant>, money: (c: number) => string): string =>
++  `${f.slots.map(s => slotLabel(s, variants)).join(' + ')} → ${dealEffect(f, money)}`;
++
++/** Which window a deal is in right now, for the list badge. */
++export function dealWindow(d: Pick<BundleDeal, 'starts_at' | 'ends_at'>, now: number): 'live' | 'scheduled' | 'ended' {
++  if (d.starts_at && Date.parse(d.starts_at) > now) return 'scheduled';
++  if (d.ends_at && Date.parse(d.ends_at) < now) return 'ended';
++  return 'live';
++}
+diff --git a/src/lib/bundles.ts b/src/lib/bundles.ts
+index 36b8d80..6dc9f0e 100644
+--- a/src/lib/bundles.ts
++++ b/src/lib/bundles.ts
+@@ -4,16 +4,21 @@
+ //  2. A deal matches when the cart can supply one unit from EACH listed set (`sets` may repeat a set).
+ //     Units are consumed by a match and cannot be reused.
+ //  3. Competing deals/units: choose the assignment that MAXIMISES total discount (exhaustive search with a
+-//     node cap, greedy fallback). Ties → fewest deal applications (so 6 units of a 3-for-$5 / 5-for-$10 pair
+-//     use one 5-unit deal, not two 3-unit deals), then lowest priority number, then config order.
++//     node cap, greedy fallback). Ties → most RECOMMENDED pairs (deals that list `recommended` variant combinations),
++//     then fewest deal applications (so 6 units of a 3-for-$5 / 5-for-$10 pair use one 5-unit deal, not two 3-unit
++//     deals), then lowest priority number, then config order.
+ //  4. Delta is applied to current unit prices (after any price override), never below $0.
+ //  5. `apply_to`: whole delta comes off the unit(s) matched from THAT set; otherwise spread proportionally.
+-import { allocate } from './money';
+-import type { BundleConfig, BundleDeal } from './types';
++//  6. Modes: 'delta' (price_delta_cents off), 'fixed_price' (matched units cost price_delta_cents together),
++//     'percent' (`percent` % off the matched units). `starts_at` / `ends_at` limit when a deal is live.
++//  7. `recommended`: optional list of variant combinations. Any variant still qualifies; a match whose variants equal
++//     one of the combinations (any order) is 'recommended', otherwise 'other'. Deals without the list report 'none'.
++import { allocate, pctOf } from './money';
++import type { AppliedBundle, BundleConfig, BundleDeal, BundleStatus } from './types';
+ 
+ export type BundleSource = { key: string; variantId: string; productId: string; unitCents: number; avail: number };
+ export type BundlePick = { sourceKey: string; setId: string; unitCents: number; discountCents: number };
+-export type BundleMatch = { dealId: string; label: string; picks: BundlePick[]; discountCents: number };
++export type BundleMatch = { dealId: string; label: string; picks: BundlePick[]; discountCents: number; status: BundleStatus };
+ 
+ export function parseBundleConfig(text: string): { cfg?: BundleConfig; error?: string } {
+   let raw: any;
+@@ -29,15 +34,32 @@ export function parseBundleConfig(text: string): { cfg?: BundleConfig; error?: s
+     if (!d?.id) return { error: 'Every deal needs an id' };
+     const sets: string[] = Array.isArray(d.sets) ? d.sets.map(String) : [];
+     if (!sets.length) return { error: `Deal ${d.id}: sets is empty` };
+-    let cents: number;
+-    if (typeof d.price_delta_cents === 'number') cents = Math.round(d.price_delta_cents);
++    const mode: BundleDeal['mode'] = d.mode === 'fixed_price' ? 'fixed_price' : d.mode === 'percent' ? 'percent' : 'delta';
++    let cents = 0; let percent: number | undefined;
++    if (mode === 'percent') {
++      if (typeof d.percent !== 'number' || !(d.percent > 0 && d.percent <= 100)) return { error: `Deal ${d.id}: percent must be between 0 and 100` };
++      percent = d.percent;
++    } else if (typeof d.price_delta_cents === 'number') cents = Math.round(d.price_delta_cents);
+     else if (typeof d.price_delta === 'number') cents = Math.round(d.price_delta * 100); // editor convenience
+     else return { error: `Deal ${d.id}: needs price_delta_cents` };
++    const stamp = (v: unknown, name: string): { v: string | null } | { error: string } => {
++      if (v == null || v === '') return { v: null };
++      if (Number.isNaN(Date.parse(String(v)))) return { error: `Deal ${d.id}: ${name} is not a valid date` };
++      return { v: String(v) };
++    };
++    const sa = stamp(d.starts_at, 'starts_at'); if ('error' in sa) return { error: sa.error };
++    const ea = stamp(d.ends_at, 'ends_at'); if ('error' in ea) return { error: ea.error };
++    let recommended: string[][] | undefined;
++    if (d.recommended != null) {
++      if (!Array.isArray(d.recommended) || d.recommended.some((r: unknown) => !Array.isArray(r))) return { error: `Deal ${d.id}: recommended must be a list of variant lists` };
++      recommended = d.recommended.map((r: unknown[]) => r.map(String));
++    }
+     discounts.push({
+-      id: String(d.id), label: String(d.label ?? d.id), sets, price_delta_cents: cents,
+-      apply_to: d.apply_to ?? null, mode: d.mode === 'fixed_price' ? 'fixed_price' : 'delta',
++      id: String(d.id), label: String(d.label ?? d.id), sets, price_delta_cents: cents, ...(percent !== undefined ? { percent } : {}),
++      apply_to: d.apply_to ?? null, mode,
+       max_per_cart: d.max_per_cart ?? null, stackable: !!d.stackable, enabled: d.enabled !== false,
+       priority: typeof d.priority === 'number' ? d.priority : 0,
++      starts_at: sa.v, ends_at: ea.v, ...(recommended?.length ? { recommended } : {}),
+     });
+   }
+   return { cfg: { version: 1, items, discounts } };
+@@ -52,7 +74,12 @@ export function validateBundleConfig(cfg: BundleConfig, knownIds: Set<string>):
+   for (const d of cfg.discounts) {
+     for (const s of d.sets) if (!cfg.items[s]) w.push(`Deal "${d.id}" references unknown set "${s}"`);
+     if (d.apply_to && !d.sets.includes(d.apply_to)) w.push(`Deal "${d.id}": apply_to "${d.apply_to}" is not one of its sets`);
+-    if (d.mode !== 'fixed_price' && d.price_delta_cents >= 0) w.push(`Deal "${d.id}": price_delta_cents should be negative for a discount`);
++    if ((d.mode ?? 'delta') === 'delta' && d.price_delta_cents >= 0) w.push(`Deal "${d.id}": price_delta_cents should be negative for a discount`);
++    if (d.starts_at && d.ends_at && Date.parse(d.starts_at) > Date.parse(d.ends_at)) w.push(`Deal "${d.id}": starts after it ends`);
++    for (const r of d.recommended ?? []) {
++      if (r.length !== d.sets.length) w.push(`Deal "${d.id}": a recommended pair has ${r.length} item(s) but the deal takes ${d.sets.length}`);
++      for (const id of r) if (knownIds.size && !knownIds.has(id)) w.push(`Deal "${d.id}": recommended item ${id} is not in the synced catalogue`);
++    }
+   }
+   const seen = new Map<string, string>();
+   for (const d of cfg.discounts) {
+@@ -64,20 +91,37 @@ export function validateBundleConfig(cfg: BundleConfig, knownIds: Set<string>):
+ }
+ 
+ type Assignment = {
+-  dealIdx: number; deal: BundleDeal; src: number[]; setIds: string[]; discount: number; perUnit: number[]; needs: Map<number, number>;
++  dealIdx: number; deal: BundleDeal; src: number[]; setIds: string[]; discount: number; perUnit: number[]; needs: Map<number, number>; status: BundleStatus;
+ };
+ 
++const comboKey = (ids: string[]) => [...ids].sort().join('|');
++/** 'none' when the deal lists no recommended pairs; otherwise whether these exact variants (any order) are one of them. */
++export function bundleStatus(deal: BundleDeal, variantIds: string[]): BundleStatus {
++  if (!deal.recommended?.length) return 'none';
++  const k = comboKey(variantIds);
++  return deal.recommended.some(r => comboKey(r) === k) ? 'recommended' : 'other';
++}
++
++/** Is the deal live at `now`? (enabled flag and the optional start/end dates) */
++export function dealLive(d: BundleDeal, now: number): boolean {
++  if (d.enabled === false) return false;
++  if (d.starts_at && Date.parse(d.starts_at) > now) return false;
++  if (d.ends_at && Date.parse(d.ends_at) < now) return false;
++  return true;
++}
++
+ function dealValue(deal: BundleDeal, prices: number[], setIds: string[]): { total: number; perUnit: number[] } {
+   const sum = prices.reduce((a, b) => a + b, 0);
+-  let D: number;
+-  if (deal.mode === 'fixed_price') D = Math.max(0, sum - deal.price_delta_cents);
+-  else D = deal.price_delta_cents < 0 ? -deal.price_delta_cents : 0;
+   let targets = prices.map((_, i) => i);
+   if (deal.apply_to) {
+     const t = setIds.map((s, i) => (s === deal.apply_to ? i : -1)).filter(i => i >= 0);
+     if (t.length) targets = t;
+   }
+   const cap = targets.reduce((a, i) => a + prices[i], 0);
++  let D: number;
++  if (deal.mode === 'fixed_price') D = Math.max(0, sum - deal.price_delta_cents);
++  else if (deal.mode === 'percent') D = pctOf(cap, deal.percent ?? 0);
++  else D = deal.price_delta_cents < 0 ? -deal.price_delta_cents : 0;
+   D = Math.min(D, cap);
+   const parts = allocate(D, targets.map(i => prices[i]));
+   const perUnit = prices.map(() => 0);
+@@ -85,7 +129,7 @@ function dealValue(deal: BundleDeal, prices: number[], setIds: string[]): { tota
+   return { total: D, perUnit };
+ }
+ 
+-export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null, maxNodes = 20000): BundleMatch[] {
++export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null, maxNodes = 20000, now: number = Date.now()): BundleMatch[] {
+   if (!cfg || !cfg.discounts.length || !sources.length) return [];
+   // reverse index: id → sets
+   const toSets = new Map<string, string[]>();
+@@ -95,7 +139,7 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null,
+   const srcSets = sources.map(s => new Set([...(toSets.get(s.variantId) ?? []), ...(toSets.get(s.productId) ?? [])]));
+   const deals = cfg.discounts
+     .map((d, i) => ({ d, i }))
+-    .filter(x => x.d.enabled !== false)
++    .filter(x => dealLive(x.d, now))
+     .sort((a, b) => (a.d.priority ?? 0) - (b.d.priority ?? 0) || a.i - b.i);
+ 
+   // static enumeration of every possible assignment (independent of availability)
+@@ -111,7 +155,7 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null,
+         const prices = cur.map(i => sources[i].unitCents);
+         const v = dealValue(d, prices, d.sets);
+         if (v.total <= 0) return;
+-        all.push({ dealIdx, deal: d, src: [...cur], setIds: d.sets, discount: v.total, perUnit: v.perUnit, needs });
++        all.push({ dealIdx, deal: d, src: [...cur], setIds: d.sets, discount: v.total, perUnit: v.perUnit, needs, status: bundleStatus(d, cur.map(i => sources[i].variantId)) });
+         return;
+       }
+       for (const i of cand[pos]) {
+@@ -139,7 +183,8 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null,
+   let best = { total: 0, chosen: [] as Assignment[] };
+   {
+     const chosen: Assignment[] = []; let total = 0;
+-    const byValue = [...all].sort((a, b) => b.discount - a.discount || a.dealIdx - b.dealIdx);
++    const rank = (a: Assignment) => (a.status === 'recommended' ? 0 : 1);
++    const byValue = [...all].sort((a, b) => b.discount - a.discount || rank(a) - rank(b) || a.dealIdx - b.dealIdx);
+     for (;;) {
+       const a = byValue.find(fits);
+       if (!a) break;
+@@ -152,25 +197,39 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null,
+   // exhaustive improvement (capped)
+   let nodes = 0;
+   const chosen: Assignment[] = [];
+-  const dfs = (start: number, total: number) => {
+-    // strictly better saving wins; on an equal saving prefer fewer deal applications (bigger lots)
+-    if (total > best.total || (total === best.total && chosen.length > 0 && chosen.length < best.chosen.length)) best = { total, chosen: [...chosen] };
++  const recCount = (l: Assignment[]) => l.filter(a => a.status === 'recommended').length;
++  const dfs = (start: number, total: number, rec: number) => {
++    // strictly better saving wins; on an equal saving prefer more recommended pairs, then fewer deal applications (bigger lots)
++    const bestRec = recCount(best.chosen);
++    if (total > best.total || (total === best.total && chosen.length > 0 && (rec > bestRec || (rec === bestRec && chosen.length < best.chosen.length)))) best = { total, chosen: [...chosen] };
+     if (++nodes > maxNodes) return;
+     for (let k = start; k < all.length; k++) {
+       const a = all[k];
+       if (!fits(a)) continue;
+       take(a, 1); chosen.push(a);
+-      dfs(k, total + a.discount);
++      dfs(k, total + a.discount, rec + (a.status === 'recommended' ? 1 : 0));
+       chosen.pop(); take(a, -1);
+       if (nodes > maxNodes) return;
+     }
+   };
+-  dfs(0, 0);
++  dfs(0, 0, 0);
+ 
+   return best.chosen.map(a => ({
+     dealId: a.deal.id,
+     label: a.deal.label,
+     discountCents: a.discount,
++    status: a.status,
+     picks: a.src.map((i, p) => ({ sourceKey: sources[i].key, setId: a.setIds[p], unitCents: sources[i].unitCents, discountCents: a.perUnit[p] })),
+   }));
+ }
++
++// ── cart review helpers (A8.4 / A8.6) ────────────────────────────────────────
++/** Bundles applied with variations that aren't one of the deal's recommended pairs. */
++export const oddBundles = (bs: AppliedBundle[]): AppliedBundle[] => bs.filter(b => b.status === 'other');
++/** Stable fingerprint of the not-recommended bundles; the checkout prompt only returns when this changes. '' = nothing to check. */
++export const bundleReviewKey = (bs: AppliedBundle[]): string =>
++  oddBundles(bs).map(b => `${b.dealId}:${b.units.map(u => u.variantId).sort().join(',')}`).sort().join('|');
++export const needsBundleCheck = (bs: AppliedBundle[], acknowledged: string): boolean => { const k = bundleReviewKey(bs); return k !== '' && k !== acknowledged; };
++/** "Dragon - Red" (variation left out when the product has a single default variant). */
++export const bundleUnitName = (u: { title: string; variantTitle?: string }): string =>
++  (u.variantTitle && u.variantTitle !== 'Default Title' ? `${u.title} - ${u.variantTitle}` : u.title);
+diff --git a/src/lib/pricing.ts b/src/lib/pricing.ts
+index baa9f65..6367cc9 100644
+--- a/src/lib/pricing.ts
++++ b/src/lib/pricing.ts
+@@ -8,7 +8,7 @@
+ import { allocate, pctOf } from './money';
+ import { matchBundles } from './bundles';
+ import type {
+-  AppliedDiscount, AutoDiscount, BundleConfig, Cart, CartLine, PricedCart, PricedLine, Target, Variant,
++  AppliedBundle, AppliedDiscount, AutoDiscount, BundleConfig, Cart, CartLine, PricedCart, PricedLine, Target, Variant,
+ } from './types';
+ 
+ export type PricingContext = {
+@@ -170,14 +170,21 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
+   };
+ 
+   // 1 ── bundles
++  const bundleApps: AppliedBundle[] = [];
+   if (ctx.bundles) {
+     const idx = new Map<string, number>();
+     const sources = ws
+       .map((w, i) => ({ w, i }))
+       .filter(x => x.w.isItem && x.w.discountable)
+       .map(({ w, i }) => { idx.set(w.line.id, i); return { key: w.line.id, variantId: w.variantId!, productId: w.productId!, unitCents: w.base, avail: w.line.qty }; });
+-    const matchesFound = matchBundles(sources, ctx.bundles);
++    const matchesFound = matchBundles(sources, ctx.bundles, undefined, now);
+     const agg = new Map<string, { w: Work; label: string; cents: number; units: number; dealId: string }>();
++    for (const m of matchesFound) {
++      bundleApps.push({
++        dealId: m.dealId, label: m.label, discountCents: m.discountCents, status: m.status,
++        units: m.picks.map(p => { const w = ws[idx.get(p.sourceKey)!]; return { lineId: w.line.id, variantId: w.variantId!, title: w.line.title, variantTitle: w.line.variantTitle, unitCents: p.unitCents, discountCents: p.discountCents }; }),
++      });
++    }
+     for (const m of matchesFound) for (const p of m.picks) {
+       const w = ws[idx.get(p.sourceKey)!];
+       w.bundleUnits += 1;
+@@ -228,7 +235,7 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
+     const cur = roll.get(k);
+     roll.set(k, cur ? { ...cur, cents: cur.cents + d.cents } : { ...d });
+   }
+-  return { lines, itemsCents, discountCents, netCents: itemsCents - discountCents, deals: [...roll.values()] };
++  return { lines, itemsCents, discountCents, netCents: itemsCents - discountCents, deals: [...roll.values()], bundles: bundleApps };
+ }
+ 
+ /** Per-unit price after discounts, split so Σ equals the line net exactly (Shopify order lines need unit prices). */
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index fce4d27..0c230b0 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -58,11 +58,17 @@ export type BundleDeal = {
+   sets: string[]; // one unit from each listed set (may repeat a set)
+   price_delta_cents: number; // negative = discount (delta mode) | final price (fixed_price mode)
+   apply_to?: string | null; // set id: delta comes off the unit(s) matched from THAT set
+-  mode?: 'delta' | 'fixed_price';
++  mode?: 'delta' | 'fixed_price' | 'percent'; // percent: `percent` % off the matched units (price_delta_cents unused)
++  percent?: number; // 0-100, mode 'percent' only
+   max_per_cart?: number | null;
+   stackable?: boolean;
+   enabled?: boolean;
+   priority?: number;
++  starts_at?: string | null; // ISO date-time; the deal is ignored before this
++  ends_at?: string | null; // ISO date-time; the deal is ignored after this
++  /** Recommended variant combinations (A8.3). Each entry lists variant GIDs, one per unit of the deal, in any order.
++   *  Optional: any variant of the sets still qualifies, a deal without this list never shows a marker. */
++  recommended?: string[][];
+ };
+ export type BundleConfig = { version: 1; items: Record<string, string[]>; discounts: BundleDeal[] };
+ 
+@@ -114,7 +120,18 @@ export type PricedLine = {
+   netCents: number;
+   bundleUnits: number;
+ };
++/** How a matched bundle compares with the deal's recommended pairs. 'none' = the deal defines no recommended pairs. */
++export type BundleStatus = 'recommended' | 'other' | 'none';
++/** One application of a bundle deal in the cart (shown as a single row naming the items in it). */
++export type AppliedBundle = {
++  dealId: string;
++  label: string;
++  discountCents: number;
++  status: BundleStatus;
++  units: { lineId: string; variantId: string; title: string; variantTitle?: string; unitCents: number; discountCents: number }[];
++};
+ export type PricedCart = {
++  bundles: AppliedBundle[]; // one entry per bundle application, in the order they were matched
+   lines: PricedLine[];
+   itemsCents: number; // Σ gross
+   discountCents: number; // Σ all discounts
+diff --git a/src/screens/BundleBuilder.tsx b/src/screens/BundleBuilder.tsx
+new file mode 100644
+index 0000000..f6cc831
+--- /dev/null
++++ b/src/screens/BundleBuilder.tsx
+@@ -0,0 +1,255 @@
++// Location: src/screens/BundleBuilder.tsx
++// A8: GUI for bundle deals (Settings ▸ Discounts & bundles). Writes the same JSON the pricing engine reads
++// (`settings.bundlesJson`); the old JSON editor stays as the "Advanced" view.
++import React, { useMemo, useState } from 'react';
++import { Pressable, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { Btn, Card, Chip, Empty, Field, Row, Section, Segmented, Sheet, Toggle, Txt, confirm } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useApp } from '../state/store';
++import { pushSharedSettings } from '../lib/sync';
++import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
++import { fmt, toCents, toDecimal } from '../lib/money';
++import {
++  dealSummary, dealToForm, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, idName, makeDealId, removeDeal, setDealEnabled,
++  slotLabel, slotVariants, stringifyBundleConfig, totalUnits, unitSlots, upsertDeal, variantName, type DealForm, type DealMode, type SlotForm,
++} from '../lib/bundleForm';
++import type { BundleConfig, Variant } from '../lib/types';
++
++const SAMPLE_BUNDLES = JSON.stringify({ version: 1, items: { set_a: ['gid://shopify/Product/1'], set_b: ['gid://shopify/Product/2'] }, discounts: [{ id: 'combo', label: 'Combo deal', sets: ['set_a', 'set_b'], price_delta_cents: -500, apply_to: 'set_b', max_per_cart: 5 }] }, null, 2);
++
++function useBundleConfig() {
++  const text = useApp(s => s.settings.bundlesJson); const patch = useApp(s => s.patchSettings);
++  const parsed = useMemo(() => (text.trim() ? parseBundleConfig(text) : { cfg: emptyBundleConfig() }), [text]);
++  const save = (cfg: BundleConfig) => { patch({ bundlesJson: stringifyBundleConfig(cfg) }); void pushSharedSettings().catch(() => {}); };
++  return { text, cfg: parsed.cfg ?? null, error: parsed.error, save };
++}
++
++export function BundlesEditor() {
++  const { text, cfg, error, save } = useBundleConfig(); const variants = useApp(s => s.data.variants);
++  const [view, setView] = useState<'list' | 'edit' | 'json'>('list'); const [form, setForm] = useState<DealForm | null>(null); const [isNew, setIsNew] = useState(false);
++  const { c } = useTheme();
++  if (view === 'json' || !cfg) return <JsonEditor initial={text} reason={!cfg ? error : undefined} onDone={() => setView('list')} />;
++
++  if (view === 'edit' && form) {
++    return <DealEditor key={form.id} initial={form} isNew={isNew} cfg={cfg} variants={variants}
++      onCancel={() => setView('list')}
++      onSave={f => { save(upsertDeal(cfg, f)); setView('list'); }}
++      onDelete={async () => { if (await confirm('Delete this bundle?', 'It stops applying at checkout straight away.', 'Delete', true)) { save(removeDeal(cfg, form.id)); setView('list'); } }} />;
++  }
++
++  const now = Date.now();
++  const open = (f: DealForm, fresh: boolean) => { setForm(f); setIsNew(fresh); setView('edit'); };
++  return (
++    <View style={{ paddingTop: 4 }}>
++      <View style={{ paddingHorizontal: 20, paddingTop: 8 }}><Txt size={13} sub>Bundle deals take a set number of items (any variations you allow) and change their price. Several can apply to one order, and every item only counts towards one deal. Shopify automatic discounts apply afterwards. Items tagged no-discount are left out.</Txt></View>
++      {cfg.discounts.length === 0 ? <Empty icon="pricetags-outline" title="No bundle deals yet" sub="Create one, for example “2 Highland Cows for $2 off”." /> : (
++        <Section>
++          {cfg.discounts.map((d, i) => {
++            const f = dealToForm(cfg, d); const win = dealWindow(d, now);
++            const state = d.enabled === false ? 'Off' : win === 'scheduled' ? 'Scheduled' : win === 'ended' ? 'Ended' : 'Live';
++            return <Row key={d.id} title={d.label} sub={`${state} · ${dealSummary(f, variants, fmt)}${d.recommended?.length ? ` · ${d.recommended.length} recommended pair${d.recommended.length === 1 ? '' : 's'}` : ''}`}
++              right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
++                <Pressable hitSlop={10} accessibilityRole="switch" accessibilityLabel={`${d.label} on or off`} accessibilityState={{ checked: d.enabled !== false }} onPress={() => save(setDealEnabled(cfg, d.id, d.enabled === false))}>
++                  <Ionicons name={d.enabled === false ? 'toggle-outline' : 'toggle'} size={34} color={d.enabled === false ? c.sub : c.good} /></Pressable>
++                <Ionicons name="chevron-forward" size={18} color={c.sub} /></View>}
++              last={i === cfg.discounts.length - 1} onPress={() => open(f, false)} />;
++          })}
++        </Section>
++      )}
++      <View style={{ padding: 16, gap: 8 }}>
++        <Btn title="New bundle deal" icon="add" onPress={() => open(emptyDealForm(cfg), true)} />
++        <Btn title="Advanced: edit as JSON" kind="ghost" onPress={() => setView('json')} />
++      </View>
++    </View>
++  );
++}
++
++// ── one deal ─────────────────────────────────────────────────────────────────
++function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete }: { initial: DealForm; isNew: boolean; cfg: BundleConfig; variants: Record<string, Variant>; onSave: (f: DealForm) => void; onCancel: () => void; onDelete: () => void }) {
++  const { c } = useTheme();
++  const [f, setF] = useState<DealForm>(initial);
++  const [amountText, setAmountText] = useState(initial.mode === 'percent' ? String(initial.percent) : initial.amountCents ? toDecimal(initial.amountCents) : '');
++  const [picking, setPicking] = useState<number | null>(null); const [pairing, setPairing] = useState(false); const [tried, setTried] = useState(false);
++  const set = (p: Partial<DealForm>) => setF(cur => ({ ...cur, ...p }));
++  const units = totalUnits(f); const problems = formProblems(f);
++  const setMode = (mode: DealMode) => { set({ mode }); setAmountText(''); };
++  const setAmount = (t: string) => { setAmountText(t); if (f.mode === 'percent') set({ percent: parseFloat(t) || 0 }); else set({ amountCents: toCents(t) }); };
++  // Changing the shape of the deal makes old recommended pairs meaningless, so they are cleared (after asking).
++  const reshape = async (next: Partial<DealForm>) => {
++    if (f.recommended.length && !(await confirm('Clear recommended pairs?', 'Changing the items or quantities makes the recommended pairs out of date, so they will be removed.', 'Clear pairs', true))) return;
++    set({ ...next, recommended: [] });
++  };
++  const updateSlot = (i: number, p: Partial<SlotForm>) => reshape({ slots: f.slots.map((s, k) => (k === i ? { ...s, ...p } : s)) });
++  const addSlot = () => reshape({ slots: [...f.slots, { ids: [], qty: 1 }] });
++  const removeSlot = (i: number) => reshape({ slots: f.slots.filter((_, k) => k !== i), applyToSlot: f.applyToSlot == null || f.applyToSlot === i ? null : f.applyToSlot > i ? f.applyToSlot - 1 : f.applyToSlot });
++  const submit = () => {
++    setTried(true); if (problems.length) return;
++    const id = isNew ? makeDealId(f.label, cfg.discounts.map(d => d.id)) : f.id;
++    onSave({ ...f, id });
++  };
++  // Soft warnings about THIS deal only (unknown items, overlapping deals, odd dates). They don't block saving.
++  const warnings = useMemo(() => {
++    const known = new Set(Object.values(variants).flatMap(v => [v.id, v.productId]));
++    return validateBundleConfig(upsertDeal(cfg, f), known).filter(x => x.includes(`"${f.id}"`) || x.includes(`"${f.id}_`));
++  }, [f, cfg, variants]);
++
++  return (
++    <View style={{ padding: 16, gap: 4 }}>
++      <Pressable onPress={onCancel} accessibilityRole="button" accessibilityLabel="Back to bundle list" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 }}>
++        <Ionicons name="chevron-back" size={18} color={c.sub} /><Txt sub>All bundle deals</Txt></Pressable>
++
++      <Field kind="name" label="Deal name (shown on the cart and receipt)" value={f.label} onChangeText={t => set({ label: t })} placeholder="e.g. Dragon + Egg combo" />
++      <Card><Toggle label="Deal is on" sub="Switch off to keep it saved but stop it applying" value={f.enabled} onChange={v => set({ enabled: v })} /></Card>
++
++      <Txt weight="700" size={16} style={{ marginTop: 16, marginBottom: 6 }}>What the customer buys</Txt>
++      {f.slots.map((s, i) => (
++        <Card key={i} style={{ marginBottom: 10, padding: 14, gap: 10 }}>
++          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
++            <Txt weight="600" style={{ flex: 1 }}>Group {i + 1}</Txt>
++            {f.slots.length > 1 ? <Pressable hitSlop={10} onPress={() => removeSlot(i)} accessibilityRole="button" accessibilityLabel={`Remove group ${i + 1}`}><Ionicons name="trash-outline" size={20} color={c.bad} /></Pressable> : null}
++          </View>
++          <Txt size={14} sub>{s.ids.length ? s.ids.map(id => idName(id, variants)).join(' · ') : 'No items picked yet'}</Txt>
++          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
++            <Btn title="Pick items" kind="secondary" small icon="search-outline" onPress={() => setPicking(i)} />
++            <View style={{ flex: 1 }} />
++            <Pressable hitSlop={8} disabled={s.qty <= 1} onPress={() => updateSlot(i, { qty: s.qty - 1 })} accessibilityRole="button" accessibilityLabel="Fewer"><Ionicons name="remove-circle-outline" size={30} color={s.qty <= 1 ? c.line : c.text} /></Pressable>
++            <Txt weight="700" size={18} style={{ minWidth: 40, textAlign: 'center' }}>{s.qty} ×</Txt>
++            <Pressable hitSlop={8} onPress={() => updateSlot(i, { qty: s.qty + 1 })} accessibilityRole="button" accessibilityLabel="More"><Ionicons name="add-circle-outline" size={30} color={c.text} /></Pressable>
++          </View>
++        </Card>
++      ))}
++      <Btn title="Add another group of items" kind="ghost" icon="add" onPress={() => void addSlot()} />
++      <Txt size={12} sub>A group is “this many items from this list”. Product picks cover every variation. Choose individual variations to be stricter. Total items in the deal: {units}.</Txt>
++
++      <Txt weight="700" size={16} style={{ marginTop: 18, marginBottom: 6 }}>The deal</Txt>
++      <Segmented value={f.mode} onChange={setMode} options={[{ v: 'delta', label: '$ off' }, { v: 'percent', label: '% off' }, { v: 'fixed_price', label: 'Set price' }]} />
++      <View style={{ marginTop: 12 }}>
++        <Field kind={f.mode === 'percent' ? 'decimal' : 'money'} label={f.mode === 'percent' ? 'Percent off' : f.mode === 'fixed_price' ? 'Price for all the items together ($)' : 'Dollars taken off ($)'} value={amountText} onChangeText={setAmount} placeholder={f.mode === 'percent' ? '10' : '0.00'} />
++      </View>
++      {f.slots.length > 1 || f.slots.some(s => s.qty > 1) ? <>
++        <Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Take it off</Txt>
++        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 }}>
++          <Chip label="Spread over all items" active={f.applyToSlot == null} onPress={() => set({ applyToSlot: null })} />
++          {f.slots.map((s, i) => <Chip key={i} label={`Only group ${i + 1}`} active={f.applyToSlot === i} onPress={() => set({ applyToSlot: i })} />)}
++        </View></> : null}
++
++      <Txt weight="700" size={16} style={{ marginTop: 10, marginBottom: 6 }}>Limits (optional)</Txt>
++      <Field kind="integer" label="Most times per order" value={f.maxPerCart ? String(f.maxPerCart) : ''} onChangeText={t => set({ maxPerCart: parseInt(t, 10) || null })} placeholder="No limit" />
++      <View style={{ flexDirection: 'row', gap: 10 }}>
++        <View style={{ flex: 1 }}><Field kind="date" label="Starts (YYYY-MM-DD)" value={f.startsOn} onChangeText={t => set({ startsOn: t.trim() })} placeholder="Any time" /></View>
++        <View style={{ flex: 1 }}><Field kind="date" label="Ends (YYYY-MM-DD)" value={f.endsOn} onChangeText={t => set({ endsOn: t.trim() })} placeholder="Never" /></View>
++      </View>
++
++      <Txt weight="700" size={16} style={{ marginTop: 10, marginBottom: 2 }}>Recommended pairs (optional)</Txt>
++      <Txt size={13} sub style={{ marginBottom: 8 }}>Mark the variation combinations you’d like customers to buy together, like matching colours. Any variation still gets the deal. If the cashier rings up a different combination they’re asked to check it before payment, and recommended pairs are matched first when the saving is the same.</Txt>
++      {f.recommended.length ? <Section>{f.recommended.map((r, i) => (
++        <Row key={i} title={r.map(id => idName(id, variants)).join('  +  ')} last={i === f.recommended.length - 1}
++          right={<Pressable hitSlop={10} onPress={() => set({ recommended: f.recommended.filter((_, k) => k !== i) })} accessibilityRole="button" accessibilityLabel="Remove this pair"><Ionicons name="close-circle" size={22} color={c.sub} /></Pressable>} />))}</Section> : null}
++      <Btn title="Add a recommended pair" kind="secondary" icon="heart-outline" style={{ marginTop: 8 }} disabled={f.slots.some(s => !s.ids.length)} onPress={() => setPairing(true)} />
++
++      {warnings.length ? <View style={{ marginTop: 14, gap: 4 }}>{warnings.map((x, i) => <Txt key={i} size={13} color={c.warn}>⚠ {x}</Txt>)}</View> : null}
++      {tried && problems.length ? <View style={{ marginTop: 14, gap: 4 }}>{problems.map((x, i) => <Txt key={i} size={13} color={c.bad}>• {x}</Txt>)}</View> : null}
++      <Card style={{ marginTop: 16, padding: 14 }}><Txt size={13} sub weight="600">Summary</Txt><Txt>{f.label.trim() || 'Untitled deal'}</Txt><Txt sub size={14}>{dealSummary(f, variants, fmt)}</Txt></Card>
++      <View style={{ gap: 8, marginTop: 16 }}>
++        <Btn title={isNew ? 'Create deal' : 'Save changes'} onPress={submit} />
++        <Btn title="Cancel" kind="ghost" onPress={onCancel} />
++        {!isNew ? <Btn title="Delete deal" kind="danger" onPress={onDelete} /> : null}
++      </View>
++
++      <ItemPicker visible={picking != null} variants={variants} initial={picking != null ? f.slots[picking]?.ids ?? [] : []} onClose={() => setPicking(null)}
++        onDone={ids => { const i = picking!; setPicking(null); void updateSlot(i, { ids }); }} />
++      <PairPicker visible={pairing} form={f} variants={variants} onClose={() => setPairing(false)}
++        onAdd={pair => { setPairing(false); set({ recommended: [...f.recommended, pair] }); }} />
++    </View>
++  );
++}
++
++// ── pick products / variations for one group ─────────────────────────────────
++function ItemPicker({ visible, variants, initial, onClose, onDone }: { visible: boolean; variants: Record<string, Variant>; initial: string[]; onClose: () => void; onDone: (ids: string[]) => void }) {
++  const { c } = useTheme();
++  const [sel, setSel] = useState<string[]>(initial); const [q, setQ] = useState(''); const [open, setOpen] = useState<string | null>(null);
++  React.useEffect(() => { if (visible) { setSel(initial); setQ(''); setOpen(null); } }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
++  const products = useMemo(() => {
++    const by = new Map<string, Variant[]>();
++    for (const v of Object.values(variants)) { const a = by.get(v.productId) ?? []; a.push(v); by.set(v.productId, a); }
++    const words = q.toLowerCase().split(/\s+/).filter(Boolean);
++    return [...by.entries()].map(([id, vs]) => ({ id, title: vs[0].productTitle, vs: vs.sort((a, b) => a.variantTitle.localeCompare(b.variantTitle)) }))
++      .filter(p => !words.length || words.every(w => p.vs.some(v => `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(w))))
++      .sort((a, b) => a.title.localeCompare(b.title));
++  }, [variants, q]);
++  const toggle = (id: string) => setSel(s => (s.includes(id) ? s.filter(x => x !== id) : [...s, id]));
++  const toggleProduct = (p: { id: string; vs: Variant[] }) => setSel(s => (s.includes(p.id) ? s.filter(x => x !== p.id) : [...s.filter(x => !p.vs.some(v => v.id === x)), p.id]));
++  const shown = products.slice(0, 80);
++  return (
++    <Sheet visible={visible} onClose={onClose} title="Pick items" full>
++      <Field kind="search" value={q} onChangeText={setQ} placeholder="Search items, variations, SKUs" />
++      <Txt size={12} sub style={{ marginBottom: 8 }}>Tap an item to include every variation. Use “Choose variations” to pick specific ones. {sel.length} picked.</Txt>
++      {products.length === 0 ? <Empty title="Nothing found" sub={Object.keys(variants).length ? 'Try another search.' : 'Import your catalogue from Shopify first.'} /> : (
++        <Card>{shown.map((p, i) => {
++          const whole = sel.includes(p.id); const some = p.vs.filter(v => sel.includes(v.id)).length; const multi = p.vs.length > 1; const expanded = open === p.id;
++          return (
++            <View key={p.id} style={{ borderBottomWidth: i === shown.length - 1 ? 0 : 1, borderBottomColor: c.line }}>
++              <Row title={p.title} sub={whole ? 'All variations' : some ? `${some} of ${p.vs.length} variations` : multi ? `${p.vs.length} variations` : undefined} last
++                right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
++                  {multi ? <Pressable hitSlop={8} onPress={() => setOpen(expanded ? null : p.id)} accessibilityRole="button" accessibilityLabel={`Choose variations of ${p.title}`}><Ionicons name={expanded ? 'chevron-up' : 'options-outline'} size={22} color={c.sub} /></Pressable> : null}
++                  <Ionicons name={whole || some ? 'checkmark-circle' : 'ellipse-outline'} size={26} color={whole ? c.good : some ? c.sub : c.line} /></View>}
++                onPress={() => toggleProduct(p)} />
++              {expanded ? <View style={{ paddingLeft: 24, backgroundColor: c.fill }}>{p.vs.map((v, k) => (
++                <Row key={v.id} title={variantName(v).replace(`${p.title} - `, '')} sub={fmt(v.priceCents)} last={k === p.vs.length - 1}
++                  right={<Ionicons name={sel.includes(v.id) ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={sel.includes(v.id) ? c.good : c.line} />}
++                  onPress={() => { if (whole) setSel(s => [...s.filter(x => x !== p.id), ...p.vs.filter(x => x.id !== v.id).map(x => x.id)]); else toggle(v.id); }} />))}</View> : null}
++            </View>
++          );
++        })}</Card>
++      )}
++      {products.length > shown.length ? <Txt size={12} sub style={{ marginTop: 8 }}>Showing the first {shown.length} of {products.length}. Search to narrow down.</Txt> : null}
++      <View style={{ gap: 8, marginTop: 14 }}><Btn title={`Use ${sel.length} pick${sel.length === 1 ? '' : 's'}`} disabled={!sel.length} onPress={() => onDone(sel)} /></View>
++    </Sheet>
++  );
++}
++
++// ── recommended pair: one variation per unit of the deal ─────────────────────
++function PairPicker({ visible, form, variants, onClose, onAdd }: { visible: boolean; form: DealForm; variants: Record<string, Variant>; onClose: () => void; onAdd: (pair: string[]) => void }) {
++  const positions = unitSlots(form); const [pick, setPick] = useState<(string | null)[]>([]);
++  React.useEffect(() => { if (visible) setPick(positions.map(() => null)); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
++  const done = pick.length === positions.length && pick.every(Boolean);
++  return (
++    <Sheet visible={visible} onClose={onClose} title="Recommended pair" full>
++      <Txt size={13} sub style={{ marginBottom: 10 }}>Choose the variation for each item in the deal.</Txt>
++      {positions.map((si, p) => {
++        const cands = slotVariants(form.slots[si], variants);
++        return (
++          <View key={p} style={{ marginBottom: 14 }}>
++            <Txt weight="600" style={{ marginBottom: 6 }}>Item {p + 1} · {slotLabel(form.slots[si], variants).replace(/^\d+ × /, '')}</Txt>
++            {cands.length === 0 ? <Txt size={13} sub>Nothing from this group is in the catalogue on this device.</Txt> :
++              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{cands.slice(0, 60).map(v => <Chip key={v.id} label={variantName(v)} active={pick[p] === v.id} onPress={() => setPick(cur => cur.map((x, k) => (k === p ? v.id : x)))} />)}</View>}
++          </View>
++        );
++      })}
++      <Btn title="Add pair" disabled={!done} onPress={() => onAdd(pick as string[])} />
++    </Sheet>
++  );
++}
++
++// ── Advanced: raw JSON ───────────────────────────────────────────────────────
++function JsonEditor({ initial, reason, onDone }: { initial: string; reason?: string; onDone: () => void }) {
++  const { save } = useBundleConfig(); const variants = useApp(s => s.data.variants); const { c } = useTheme();
++  const [text, setText] = useState(initial); const [msg, setMsg] = useState<string[]>(reason ? [`The saved bundle JSON can't be read (${reason}). Fix it here, or clear it to start again.`] : []);
++  const apply = () => {
++    if (!text.trim()) { save(emptyBundleConfig()); setMsg(['Bundles cleared.']); return; }
++    const r = parseBundleConfig(text); if (!r.cfg) return setMsg([`Not saved: ${r.error}`]);
++    const known = new Set(Object.values(variants).flatMap(v => [v.id, v.productId]));
++    save(r.cfg); setMsg([`Saved ${r.cfg.discounts.length} deal(s).`, ...validateBundleConfig(r.cfg, known)]);
++  };
++  return (
++    <View style={{ padding: 16, gap: 8 }}>
++      <Pressable onPress={onDone} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="chevron-back" size={18} color={c.sub} /><Txt sub>Back to the bundle list</Txt></Pressable>
++      <Txt size={13} sub>Advanced view of the same data. Saving rewrites the deals above. Each deal can set `mode` (delta, fixed_price or percent), `starts_at`, `ends_at` and `recommended` (lists of variant ids).</Txt>
++      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
++      <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save" onPress={apply} style={{ flex: 1 }} /><Btn title="Insert example" kind="secondary" onPress={() => setText(SAMPLE_BUNDLES)} style={{ flex: 1 }} /></View>
++      {msg.map((m, i) => <Txt key={i} size={13} sub>{m}</Txt>)}
++    </View>
++  );
++}
++
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 9729f92..23efe87 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -2,21 +2,25 @@
+ import React, { useState } from 'react';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Btn, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+ import { useCatalogue, usePriced } from '../state/selectors';
+ import { useNav } from '../ui/nav';
+ import * as ops from '../lib/cartOps';
+ import { fmt } from '../lib/money';
++import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
+ import type { CartLine } from '../lib/types';
+ 
+ export default function CartPane({ onClose }: { onClose?: () => void }) {
+   const { c } = useTheme(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
++  const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
+   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer'>('none');
+   const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
+   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
++  // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
++  const charge = () => { if (needsBundleCheck(priced.bundles, ackKey)) setBundleCheck(true); else nav.push('pay'); };
+   const doClear = async () => { setMenu(false); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (empty || await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) setCart(ops.emptyCart()); };
+ 
+   return (
+@@ -53,6 +57,10 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+               </Pressable>
+             );
+           })}
++          {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
++            <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Bundle deals</Txt>
++            {priced.bundles.map((b, i) => <BundleRow key={i} b={b} />)}
++          </View> : null}
+         </ScrollView>
+       )}
+ 
+@@ -60,7 +68,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         {priced.discountCents > 0 ? <><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt sub>Items</Txt><Money cents={priced.itemsCents} /></View>
+           {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt color={c.good}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</> : null}
+         {cart.discount ? <Txt size={13} sub>{cart.discount.label} applied to the cart</Txt> : null}
+-        <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={() => nav.push('pay')} />
++        <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
+         {!empty ? <Txt size={12} sub style={{ textAlign: 'center' }}>{qty} item{qty === 1 ? '' : 's'}{!consolidate ? '' : ''}</Txt> : null}
+       </View>
+ 
+@@ -73,6 +81,14 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
+         <Row icon="search-outline" title="Check gift card" last onPress={() => open('check')} />
+       </Sheet>
++      <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles">
++        <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
++        <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
++        <View style={{ gap: 8, marginTop: 16 }}>
++          <Btn title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); setTimeout(() => nav.push('pay'), 250); }} />
++          <Btn title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
++        </View>
++      </Sheet>
+       <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
+       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
+       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+@@ -83,3 +99,20 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+     </View>
+   );
+ }
++
++/** One bundle application: names the items and variations in it, the saving, and whether it is a recommended pair. */
++function BundleRow({ b }: { b: import('../lib/types').AppliedBundle }) {
++  const { c } = useTheme();
++  return (
++    <Card style={{ padding: 12, gap: 4 }}>
++      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
++        <Ionicons name="layers-outline" size={18} color={c.good} />
++        <Txt weight="700" style={{ flex: 1 }} numberOfLines={2}>{b.label}</Txt>
++        <Txt weight="700" color={c.good}>−{fmt(b.discountCents)}</Txt>
++      </View>
++      {b.units.map((u, i) => <Txt key={i} size={13} sub numberOfLines={1}>{bundleUnitName(u)}  ·  {fmt(u.unitCents)}</Txt>)}
++      {b.status === 'recommended' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="checkmark-circle" size={15} color={c.good} /><Txt size={12} color={c.good} weight="600">Recommended pair</Txt></View> : null}
++      {b.status === 'other' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name="alert-circle" size={15} color={c.warn} /><Txt size={12} color={c.warn} weight="600">Not a recommended pair</Txt></View> : null}
++    </Card>
++  );
++}
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index b62c60e..fbe20bf 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -17,19 +17,18 @@ import { backupFileName, decryptBackup, detectBackup, encryptBackup, MIN_PASSPHR
+ import { applyBackup, collectBackup } from '../lib/backupIO';
+ import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normaliseHex, type ScreensaverSettings } from '../lib/screensaver';
+ import { parseGrid, serialiseGrid } from '../lib/grid';
+-import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
++import { BundlesEditor } from './BundleBuilder';
+ import { HidScanner } from './Scanner';
+ import { SquareHistorySettings } from './SquareHistory';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
+ 
+ type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
+-const SAMPLE_BUNDLES = JSON.stringify({ version: 1, items: { set_a: ['gid://shopify/Product/1'], set_b: ['gid://shopify/Product/2'] }, discounts: [{ id: 'combo', label: 'Combo deal', sets: ['set_a', 'set_b'], price_delta_cents: -500, apply_to: 'set_b', max_per_cart: 5 }] }, null, 2);
+ 
+ export default function Settings() {
+   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
+   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
+-  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
++  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
+   return (
+     <Page title={titles[sub]} onBack={back}>
+       {sub === 'menu' ? <>
+@@ -103,25 +102,6 @@ function ShopifySettings() {
+   );
+ }
+ 
+-function BundlesEditor() {
+-  const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const variants = useApp(st => st.data.variants);
+-  const [text, setText] = useState(s.bundlesJson || ''); const [msg, setMsg] = useState<string[]>([]);
+-  const save = () => {
+-    if (!text.trim()) { patch({ bundlesJson: '' }); setMsg(['Bundles cleared.']); void pushSharedSettings().catch(() => {}); return; }
+-    const r = parseBundleConfig(text); if (!r.cfg) return setMsg([`Not saved: ${r.error}`]);
+-    const known = new Set(Object.values(variants).flatMap(v => [v.id, v.productId])); const warn = validateBundleConfig(r.cfg, known);
+-    patch({ bundlesJson: text }); void pushSharedSettings().catch(() => {}); setMsg([`Saved ${r.cfg.discounts.length} deal(s).`, ...warn]);
+-  };
+-  return (
+-    <View style={{ padding: 16, gap: 8 }}>
+-      <Txt size={13} sub>Automatic discounts from Shopify apply by themselves. Bundle deals (one unit from each set → price change) are configured here as JSON and applied before Shopify discounts. Items tagged no-discount are excluded.</Txt>
+-      <Field kind="json" value={text} onChangeText={setText} style={{ minHeight: 260, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste bundle config JSON" />
+-      <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Save" onPress={save} style={{ flex: 1 }} /><Btn title="Insert example" kind="secondary" onPress={() => setText(SAMPLE_BUNDLES)} style={{ flex: 1 }} /></View>
+-      {msg.map((m, i) => <Txt key={i} size={13} sub>{m}</Txt>)}
+-    </View>
+-  );
+-}
+-
+ function HardwareTest() {
+   const [last, setLast] = useState<string[]>([]);
+   return (
+diff --git a/tests/bundleform.test.ts b/tests/bundleform.test.ts
+new file mode 100644
+index 0000000..d023188
+--- /dev/null
++++ b/tests/bundleform.test.ts
+@@ -0,0 +1,253 @@
++// Location: tests/bundleform.test.ts
++// A8: bundle builder. Percent / dated deals, recommended pairs (status + matcher preference), the single-row
++// bundle summary in priceCart, and the form <-> JSON round trip used by the GUI.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { priceCart, type PricingContext } from '../src/lib/pricing';
++import { bundleReviewKey, bundleStatus, bundleUnitName, matchBundles, needsBundleCheck, oddBundles, parseBundleConfig, validateBundleConfig, type BundleSource } from '../src/lib/bundles';
++import {
++  dealToForm, dealSummary, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, formToDeal, isoToDateText, makeDealId,
++  removeDeal, setDealEnabled, slotVariants, stringifyBundleConfig, unitSlots, upsertDeal, type DealForm,
++} from '../src/lib/bundleForm';
++import type { BundleConfig, Cart, CartLine, Variant } from '../src/lib/types';
++
++const P = (n: number) => `gid://shopify/Product/${n}`;
++const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
++const variant = (id: number, prod: number, cents: number, vt = ''): Variant => ({
++  id: V(id), productId: P(prod), productTitle: `P${prod}`, variantTitle: vt, priceCents: cents, tracked: true, stock: 50, tags: [], active: true,
++});
++const line = (v: Variant, qty = 1): CartLine => ({ id: `l-${v.id}`, kind: 'item', variantId: v.id, title: v.productTitle, variantTitle: v.variantTitle, qty, unitCents: v.priceCents });
++const cart = (lines: CartLine[]): Cart => ({ id: 'c', lines });
++const ctxFor = (vs: Variant[], cfg: BundleConfig | null, now = Date.now()): PricingContext => ({
++  variants: Object.fromEntries(vs.map(v => [v.id, v])), collectionsOfProduct: {}, autoDiscounts: [], bundles: cfg, now,
++});
++const cfgOf = (items: Record<string, string[]>, discounts: unknown[]) => parseBundleConfig(JSON.stringify({ version: 1, items, discounts })).cfg!;
++const src = (key: string, v: Variant, avail = 1): BundleSource => ({ key, variantId: v.id, productId: v.productId, unitCents: v.priceCents, avail });
++
++// ── percent + dates ──────────────────────────────────────────────────────────
++test('percent mode takes a percentage off the matched units', () => {
++  const a = variant(1, 1, 1000), b = variant(2, 2, 3000);
++  const cfg = cfgOf({ x: [P(1)], y: [P(2)] }, [{ id: 'p', label: '10% off pair', sets: ['x', 'y'], mode: 'percent', percent: 10 }]);
++  const p = priceCart(cart([line(a), line(b)]), ctxFor([a, b], cfg));
++  assert.equal(p.discountCents, 400); // 10% of 4000
++  assert.equal(p.bundles.length, 1);
++});
++
++test('percent mode with apply_to only discounts that group', () => {
++  const a = variant(1, 1, 1000), b = variant(2, 2, 3000);
++  const cfg = cfgOf({ x: [P(1)], y: [P(2)] }, [{ id: 'p', label: '50% off the cheap one', sets: ['x', 'y'], mode: 'percent', percent: 50, apply_to: 'x' }]);
++  assert.equal(priceCart(cart([line(a), line(b)]), ctxFor([a, b], cfg)).discountCents, 500);
++});
++
++test('parse rejects a bad percent and a bad date', () => {
++  const bad = (d: object) => parseBundleConfig(JSON.stringify({ items: { x: [P(1)] }, discounts: [{ id: 'd', sets: ['x'], ...d }] })).error;
++  assert.match(bad({ mode: 'percent', percent: 0 })!, /percent/);
++  assert.match(bad({ mode: 'percent', percent: 150 })!, /percent/);
++  assert.match(bad({ price_delta_cents: -100, starts_at: 'not a date' })!, /starts_at/);
++  assert.match(bad({ price_delta_cents: -100, recommended: 'x' })!, /recommended/);
++});
++
++test('deals outside their dates are ignored, inside they apply', () => {
++  const a = variant(1, 1, 1000);
++  const cfg = cfgOf({ x: [P(1)] }, [{ id: 'd', label: 'Summer', sets: ['x', 'x'], price_delta_cents: -300, starts_at: '2026-12-01T00:00:00.000Z', ends_at: '2026-12-31T00:00:00.000Z' }]);
++  const c = cart([line(a, 2)]);
++  assert.equal(priceCart(c, ctxFor([a], cfg, Date.parse('2026-11-30T00:00:00Z'))).discountCents, 0);
++  assert.equal(priceCart(c, ctxFor([a], cfg, Date.parse('2026-12-15T00:00:00Z'))).discountCents, 300);
++  assert.equal(priceCart(c, ctxFor([a], cfg, Date.parse('2027-01-02T00:00:00Z'))).discountCents, 0);
++});
++
++test('dealWindow labels scheduled / live / ended', () => {
++  const d = { starts_at: '2026-12-01T00:00:00.000Z', ends_at: '2026-12-31T00:00:00.000Z' };
++  assert.equal(dealWindow(d, Date.parse('2026-11-01T00:00:00Z')), 'scheduled');
++  assert.equal(dealWindow(d, Date.parse('2026-12-10T00:00:00Z')), 'live');
++  assert.equal(dealWindow(d, Date.parse('2027-02-01T00:00:00Z')), 'ended');
++  assert.equal(dealWindow({}, Date.now()), 'live');
++});
++
++// ── recommended pairs ────────────────────────────────────────────────────────
++// Product 1 = "Dragon" with Red / Blue variants, product 2 = "Egg" with Red / Blue. Recommended: matching colours.
++const dragonRed = variant(1, 1, 2000, 'Red'), dragonBlue = variant(2, 1, 2000, 'Blue');
++const eggRed = variant(3, 2, 1000, 'Red'), eggBlue = variant(4, 2, 1000, 'Blue');
++const PAIR_CFG = () => cfgOf({ d: [P(1)], e: [P(2)] }, [{ id: 'combo', label: 'Dragon + Egg', sets: ['d', 'e'], price_delta_cents: -500, recommended: [[V(1), V(3)], [V(2), V(4)]] }]);
++
++test('bundleStatus: recommended / other / none', () => {
++  const deal = PAIR_CFG().discounts[0];
++  assert.equal(bundleStatus(deal, [V(3), V(1)]), 'recommended'); // order does not matter
++  assert.equal(bundleStatus(deal, [V(1), V(4)]), 'other');
++  assert.equal(bundleStatus({ ...deal, recommended: undefined }, [V(1), V(4)]), 'none');
++});
++
++test('any variant still qualifies for the deal, and a non-recommended pair is flagged', () => {
++  const cfg = PAIR_CFG();
++  const p = priceCart(cart([line(dragonRed), line(eggBlue)]), ctxFor([dragonRed, dragonBlue, eggRed, eggBlue], cfg));
++  assert.equal(p.discountCents, 500);
++  assert.equal(p.bundles[0].status, 'other');
++  assert.deepEqual(p.bundles[0].units.map(u => u.variantTitle).sort(), ['Blue', 'Red']);
++});
++
++test('a recommended pair is flagged recommended', () => {
++  const p = priceCart(cart([line(dragonBlue), line(eggBlue)]), ctxFor([dragonRed, dragonBlue, eggRed, eggBlue], PAIR_CFG()));
++  assert.equal(p.bundles[0].status, 'recommended');
++});
++
++test('the matcher prefers recommended pairs when the saving is the same', () => {
++  // Red dragon, Blue dragon, Blue egg, Red egg (eggs deliberately in the "wrong" order so a first-come pairing would
++  // cross the colours). Pairing Red+Red and Blue+Blue saves the same $10 as crossing them, so the preference decides.
++  const sources = [src('dr', dragonRed), src('db', dragonBlue), src('eb', eggBlue), src('er', eggRed)];
++  const m = matchBundles(sources, PAIR_CFG());
++  assert.equal(m.length, 2);
++  assert.ok(m.every(x => x.status === 'recommended'), JSON.stringify(m.map(x => x.status)));
++  const keys = m.map(x => x.picks.map(p => p.sourceKey).sort().join('+')).sort();
++  assert.deepEqual(keys, ['db+eb', 'dr+er']);
++});
++
++test('the preference never costs the customer money: a bigger saving beats a recommended pair', () => {
++  // Dragon (Red $20) + Egg Red ($10) is recommended but the deal is 10% off, so pairing the dearer cross-colour units saves more.
++  const dragonPricey = variant(1, 1, 5000, 'Red');
++  const cfg = cfgOf({ d: [P(1)], e: [P(2)] }, [{ id: 'c', label: 'C', sets: ['d', 'e'], mode: 'percent', percent: 10, recommended: [[V(1), V(3)]] }]);
++  const m = matchBundles([src('d', dragonPricey), src('eRed', eggRed), src('eBlue', { ...eggBlue, priceCents: 4000 })], cfg);
++  assert.equal(m.length, 1);
++  assert.equal(m[0].discountCents, 900); // 10% of ($50 + $40), the non-recommended pairing
++  assert.equal(m[0].status, 'other');
++});
++
++test('deals without recommended pairs behave exactly as before (status none)', () => {
++  const cfg = cfgOf({ d: [P(1)], e: [P(2)] }, [{ id: 'c', label: 'C', sets: ['d', 'e'], price_delta_cents: -500 }]);
++  const m = matchBundles([src('d', dragonRed), src('e', eggBlue)], cfg);
++  assert.equal(m[0].status, 'none');
++});
++
++test('compound example still holds with the new fields (2 cows + 8 Tadlings)', () => {
++  const cow = variant(1, 1, 1500), tad = variant(2, 2, 700);
++  const cfg = cfgOf({ cow: [P(1)], tad: [P(2)] }, [
++    { id: 'c2', label: '2 cows', sets: ['cow', 'cow'], price_delta_cents: -200 },
++    { id: 't3', label: '3 Tadlings', sets: ['tad', 'tad', 'tad'], price_delta_cents: -500 },
++    { id: 't5', label: '5 Tadlings', sets: ['tad', 'tad', 'tad', 'tad', 'tad'], price_delta_cents: -1000 },
++  ]);
++  const p = priceCart(cart([line(cow, 2), line(tad, 8)]), ctxFor([cow, tad], cfg));
++  assert.equal(p.discountCents, 1700);
++  assert.equal(p.bundles.length, 3);
++  assert.deepEqual(p.bundles.map(b => b.label).sort(), ['2 cows', '3 Tadlings', '5 Tadlings']);
++  assert.equal(p.bundles.reduce((a, b) => a + b.discountCents, 0), 1700);
++});
++
++test('validate: wrong-sized recommended pair and reversed dates are reported', () => {
++  const cfg = cfgOf({ d: [P(1)], e: [P(2)] }, [{ id: 'c', label: 'C', sets: ['d', 'e'], price_delta_cents: -500, recommended: [[V(1)]], starts_at: '2026-12-31T00:00:00Z', ends_at: '2026-12-01T00:00:00Z' }]);
++  const w = validateBundleConfig(cfg, new Set());
++  assert.ok(w.some(x => /recommended pair has 1/.test(x)));
++  assert.ok(w.some(x => /starts after it ends/.test(x)));
++});
++
++// ── form <-> JSON ────────────────────────────────────────────────────────────
++const formOf = (over: Partial<DealForm> = {}): DealForm => ({ ...emptyDealForm(emptyBundleConfig()), id: 'dragon_egg', label: 'Dragon + Egg', slots: [{ ids: [P(1)], qty: 1 }, { ids: [P(2), V(9)], qty: 2 }], mode: 'delta', amountCents: 500, ...over });
++
++test('form → deal: slots become sets, qty repeats the set, delta is stored negative', () => {
++  const { deal, items } = formToDeal(formOf());
++  assert.deepEqual(deal.sets, ['dragon_egg_1', 'dragon_egg_2', 'dragon_egg_2']);
++  assert.deepEqual(items, { dragon_egg_1: [P(1)], dragon_egg_2: [P(2), V(9)] });
++  assert.equal(deal.price_delta_cents, -500);
++  assert.equal(deal.apply_to, null);
++});
++
++test('form → deal: apply-to-group, fixed price, percent, cap', () => {
++  assert.equal(formToDeal(formOf({ applyToSlot: 1 })).deal.apply_to, 'dragon_egg_2');
++  const fx = formToDeal(formOf({ mode: 'fixed_price', amountCents: 2500 })).deal; assert.equal(fx.price_delta_cents, 2500); assert.equal(fx.mode, 'fixed_price');
++  const pc = formToDeal(formOf({ mode: 'percent', percent: 15 })).deal; assert.equal(pc.percent, 15); assert.equal(pc.mode, 'percent');
++  assert.equal(formToDeal(formOf({ maxPerCart: 3 })).deal.max_per_cart, 3);
++  assert.equal(formToDeal(formOf({ maxPerCart: 0 })).deal.max_per_cart, null);
++});
++
++test('round trip: form → config → JSON text → parse → form gives the same form', () => {
++  const f = formOf({ applyToSlot: 1, maxPerCart: 4, startsOn: '2026-12-01', endsOn: '2026-12-24', recommended: [[P(1), V(9), V(9)]] });
++  const cfg = upsertDeal(emptyBundleConfig(), f);
++  const text = stringifyBundleConfig(cfg);
++  const back = parseBundleConfig(text).cfg!;
++  const f2 = dealToForm(back, back.discounts[0]);
++  assert.deepEqual(f2, f);
++});
++
++test('a deal built in the GUI is what the pricing engine runs', () => {
++  const dragon = variant(1, 1, 2000, 'Red'), egg = variant(3, 2, 1000, 'Blue');
++  const f = formOf({ slots: [{ ids: [P(1)], qty: 1 }, { ids: [P(2)], qty: 1 }], amountCents: 700 });
++  const cfg = parseBundleConfig(stringifyBundleConfig(upsertDeal(emptyBundleConfig(), f))).cfg!;
++  assert.equal(priceCart(cart([line(dragon), line(egg)]), ctxFor([dragon, egg], cfg)).discountCents, 700);
++});
++
++test('hand-written JSON with a repeated, shared set loads as one slot with a quantity', () => {
++  const cfg = cfgOf({ cow: [P(1)], tad: [P(2)] }, [{ id: 'mix', label: 'Mix', sets: ['cow', 'tad', 'cow'], price_delta_cents: -300, apply_to: 'tad' }]);
++  const f = dealToForm(cfg, cfg.discounts[0]);
++  assert.deepEqual(f.slots, [{ ids: [P(1)], qty: 2 }, { ids: [P(2)], qty: 1 }]);
++  assert.equal(f.applyToSlot, 1);
++  assert.equal(f.amountCents, 300);
++});
++
++test('upsert replaces by id (keeps position), prunes unused sets, remove and toggle work', () => {
++  let cfg = upsertDeal(emptyBundleConfig(), formOf({ id: 'a', label: 'A' }));
++  cfg = upsertDeal(cfg, formOf({ id: 'b', label: 'B', slots: [{ ids: [P(5)], qty: 1 }] }));
++  assert.deepEqual(cfg.discounts.map(d => d.id), ['a', 'b']);
++  cfg = upsertDeal(cfg, formOf({ id: 'a', label: 'A2', slots: [{ ids: [P(7)], qty: 1 }] })); // shrinks from 2 slots to 1
++  assert.deepEqual(cfg.discounts.map(d => d.id), ['a', 'b']);
++  assert.deepEqual(Object.keys(cfg.items).sort(), ['a_1', 'b_1']); // a_2 pruned
++  cfg = setDealEnabled(cfg, 'a', false); assert.equal(cfg.discounts[0].enabled, false);
++  cfg = removeDeal(cfg, 'a'); assert.deepEqual(Object.keys(cfg.items), ['b_1']);
++  assert.equal(stringifyBundleConfig(removeDeal(cfg, 'b')), '');
++});
++
++test('formProblems: the things that stop a save', () => {
++  assert.deepEqual(formProblems(formOf()), []);
++  assert.ok(formProblems(formOf({ label: ' ' })).some(x => /name/.test(x)));
++  assert.ok(formProblems(formOf({ slots: [{ ids: [], qty: 1 }] })).some(x => /no items/.test(x)));
++  assert.ok(formProblems(formOf({ amountCents: 0 })).some(x => /takes off/.test(x)));
++  assert.ok(formProblems(formOf({ mode: 'percent', percent: 120 })).some(x => /Percent/.test(x)));
++  assert.ok(formProblems(formOf({ startsOn: '2026-13-40' })).some(x => /Start date/.test(x)));
++  assert.ok(formProblems(formOf({ startsOn: '2026-12-24', endsOn: '2026-12-01' })).some(x => /ends before/.test(x)));
++  assert.ok(formProblems(formOf({ recommended: [[V(1)]] })).some(x => /needs 3/.test(x)));
++});
++
++test('dates: end date is inclusive of the whole day and round-trips to the same text', () => {
++  const f = formOf({ startsOn: '2026-12-01', endsOn: '2026-12-24' });
++  const { deal } = formToDeal(f);
++  assert.equal(isoToDateText(deal.starts_at), '2026-12-01');
++  assert.equal(isoToDateText(deal.ends_at), '2026-12-24');
++  const lateOnLastDay = new Date(2026, 11, 24, 23, 30).getTime();
++  assert.equal(dealWindow(deal, lateOnLastDay), 'live');
++  assert.equal(dealWindow(deal, new Date(2026, 11, 25, 0, 1).getTime()), 'ended');
++});
++
++test('helpers: unit positions, ids, slot variants, summary text', () => {
++  assert.deepEqual(unitSlots(formOf()), [0, 1, 1]);
++  assert.equal(makeDealId('Dragon 2 for $5!', []), 'dragon_2_for_5');
++  assert.equal(makeDealId('Dragon 2 for $5!', ['dragon_2_for_5', 'dragon_2_for_5_2']), 'dragon_2_for_5_3');
++  assert.equal(makeDealId('!!!', []), 'deal');
++  const vs = Object.fromEntries([dragonRed, dragonBlue, eggRed].map(v => [v.id, v]));
++  assert.deepEqual(slotVariants({ ids: [P(1)], qty: 1 }, vs).map(v => v.variantTitle), ['Blue', 'Red']);
++  assert.deepEqual(slotVariants({ ids: [V(3)], qty: 1 }, vs).map(v => v.id), [V(3)]);
++  const money = (c: number) => `$${(c / 100).toFixed(2)}`;
++  assert.equal(dealSummary(formOf({ slots: [{ ids: [P(1)], qty: 2 }], amountCents: 200 }), vs, money), '2 × P1 (all variations) → $2.00 off');
++});
++
++// ── checkout check (A8.4) ────────────────────────────────────────────────────
++test('checkout check: asks once for a non-recommended pair, again only when the cart changes', () => {
++  const all = [dragonRed, dragonBlue, eggRed, eggBlue];
++  const odd = priceCart(cart([line(dragonRed), line(eggBlue)]), ctxFor(all, PAIR_CFG())).bundles;
++  assert.equal(oddBundles(odd).length, 1);
++  assert.equal(needsBundleCheck(odd, ''), true);
++  const key = bundleReviewKey(odd);
++  assert.equal(needsBundleCheck(odd, key), false); // cashier chose "Continue to payment"
++  const changed = priceCart(cart([line(dragonBlue), line(eggRed)]), ctxFor(all, PAIR_CFG())).bundles; // still not recommended, different items
++  assert.equal(needsBundleCheck(changed, key), true);
++});
++
++test('checkout check: nothing to ask for recommended pairs, deals with no pairs, or an empty cart', () => {
++  const all = [dragonRed, dragonBlue, eggRed, eggBlue];
++  assert.equal(needsBundleCheck(priceCart(cart([line(dragonRed), line(eggRed)]), ctxFor(all, PAIR_CFG())).bundles, ''), false);
++  const plain = cfgOf({ d: [P(1)], e: [P(2)] }, [{ id: 'c', label: 'C', sets: ['d', 'e'], price_delta_cents: -500 }]);
++  assert.equal(needsBundleCheck(priceCart(cart([line(dragonRed), line(eggBlue)]), ctxFor(all, plain)).bundles, ''), false);
++  assert.equal(needsBundleCheck(priceCart(cart([]), ctxFor(all, PAIR_CFG())).bundles, ''), false);
++});
++
++test('bundleUnitName leaves out a default variation title', () => {
++  assert.equal(bundleUnitName({ title: 'Dragon', variantTitle: 'Red' }), 'Dragon - Red');
++  assert.equal(bundleUnitName({ title: 'Dragon', variantTitle: '' }), 'Dragon');
++  assert.equal(bundleUnitName({ title: 'Dragon', variantTitle: 'Default Title' }), 'Dragon');
++});
+-- 
+2.43.0
+
