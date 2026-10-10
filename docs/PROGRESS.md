@@ -19,6 +19,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0010 | 2026-10-10 | Gift cards: QR prefix stripped everywhere a code is read, one email per card sent only after the card exists, safe retries; `npm run zeller:pack` script | A9.3-A9.5, A11.3 |
 | 0011 | 2026-10-10 | Remove the app's own gift card email (Shopify already sends one on creation) | A9.3, A9.6 |
 | 0012 | 2026-10-10 | Gift card claim page (own Worker) + Claim QR and gift card QR on the receipt step | A10 |
+| 0013 | 2026-10-10 | Zeller: no more sheet of ours over the terminal popup (slim "waiting on terminal" strip instead); answer on where Zeller's popup lives | A11 |
 
 ---
 
@@ -109,8 +110,8 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
 - [~] A10.4 **You:** set the Worker up (README), sell a test card with no email, scan the Claim QR with your phone, and enter your email. Tell me how many emails arrive. Not run against a real store: the update + notify calls are written from Shopify's docs. This patch needs no native rebuild and no `npm install`.
 
 ### A11. Zeller terminal shouldn't show our own sheet
-- [ ] A11.1 Remove our payment sheet for terminal calls; show only a slim in-app "waiting on terminal" state while Zeller's UI is up.
-- [ ] A11.2 Answer to "can Zeller's popup live inside a custom sheet?" (needs a look at the SDK's WebView API in `zellerBridge.tsx`).
+- [x] A11.1 The card "waiting" sheet is gone. Root cause: our `Sheet` is a native `Modal`, and a native Modal always draws above everything in the app, including Zeller's popup, so it hid it. Now, while the terminal is working, Pay shows only a slim strip inside the page ("Waiting on terminal", the live status line, and Cancel) and locks the Card, Cash, Gift card and Split buttons so a second charge cannot start. Declined, unknown and reader-problem results still use our sheet, because Zeller's popup has finished by then. The rule lives in `src/lib/payUi.ts` with `tests/payui.test.ts` (4 tests). Refund and Diagnostics never showed a sheet during a terminal call, so they are unchanged.
+- [x] A11.2 Answer: **no, Zeller's popup cannot be placed inside a sheet of ours.** From the SDK source (`@zeller-public/payments-sdk-react-native` 0.2.5): `Zeller.Provider` (mounted at the app root in `zellerBridge.tsx`) draws the popup itself as a full-window absolute overlay with a blurred backdrop, holding a WebView. The window is up to 800 x 680, or full screen. It hides itself when idle. There is no prop to hand it a container, and the only look options are `fullscreen` and `theme` (both already accepted by `purchase`). So the way to avoid a double sheet is the one A11.1 uses: never draw a modal of ours while it is up.
 - [x] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
 
 ### A12. Discounts that combine (Shopify automatic discounts)
@@ -182,8 +183,8 @@ Status as found in the zip you sent (I only inspected files; not run).
 - [ ] B8 Extra ideas
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (158 after patch 0012). `npm test` on your machine runs the same files.
-- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (162 after patch 0013). `npm test` on your machine runs the same files.
+- Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0013. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
 
@@ -192,7 +193,7 @@ Status as found in the zip you sent (I only inspected files; not run).
 Ordered by priority, highest first.
 
 ### Priority 1
-- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. The first zip you sent held only `zellerBridge.tsx`, `zeller.ts` and `zeller.d.ts`: the SDK package itself was missing. Please run `ls node_modules/@zeller-public` and `ls node_modules/@zeller-public/*` in the project folder and tell me what prints, then re-run `npm run zeller:pack` and send the new zip. It is tested here against a fake SDK: it deletes `.npmrc`/key files, redacts key-like text, and refuses to write the zip if anything key-shaped is left. It uses `perl` and `zip`, which a Mac has. Look at the printed file list before you send it. The script strips credentials first.
+- [x] N1 Received: the Zeller SDK zip arrived and was enough to answer A11.2. Thank you.
 
 ### Priority 2
 - [-] N2 No longer needed (A7 uses the Square API, not CSV).
@@ -205,6 +206,8 @@ Ordered by priority, highest first.
 - [x] N10 Answered: two emails arrived with 0010. Fixed in 0011 (the app no longer sends its own).
 
 - [ ] N11 **Non-blocking (A10.4):** set up `gift-claim-server` (its README) and test one claim. Skip it if you don't want the claim page; the app hides the Claim QR until the URL and secret are filled in.
+
+- [ ] N12 **Non-blocking (A11.1):** take a real card payment (even $1) and check that only Zeller's own popup shows, with no extra sheet of ours on top. Also press Cancel on the slim strip once and tell me what happens.
 
 ### Priority 3
 - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 

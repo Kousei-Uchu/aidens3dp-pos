@@ -15,6 +15,7 @@ import { emptyCart } from '../lib/cartOps';
 import { lookupGiftCard, debitGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
 import { normaliseCode } from '../lib/giftCode';
 import { GiftCheckSheet } from './sheets';
+import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
 import { ReceiptPrompt } from './Receipt';
 import type { SaleRecord, Tender } from '../lib/types';
 
@@ -59,6 +60,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const blockedByUnknown = () => attempts().find(a => a.saleUuid === cart.saleUuid && a.status === 'unknown');
 
   const runCard = async () => {
+    if (lockPayButtons(card.phase)) return; // a charge is already running
     const u = blockedByUnknown(); if (u) { setCard({ phase: 'unknown', ref: u.ref, amount: u.amountCents, text: 'A previous card payment has no result yet. Resolve it before charging again.', checking: false }); return; }
     const term = getTerminal(); if (!term || !zeller.ready) { const ok = await checkReader(); if (!ok || !getTerminal()) { setCard({ phase: 'notready', text: useApp.getState().zeller.message ?? 'Reader issue' }); return; } }
     const t = getTerminal()!; const uuid = saleUuid(); const amount = target; if (amount <= 0) return;
@@ -134,20 +136,26 @@ export default function Pay({ onBack }: { onBack: () => void }) {
         {tenders.length ? <Txt sub size={13}>of {fmt(total)}</Txt> : null}
         {chunk !== null || equalLeft > 1 ? <Txt size={14} weight="600" style={{ marginTop: 6 }}>Next payment: {fmt(target)}</Txt> : null}
       </View>
+      {showsWaitingStrip(card.phase) && card.phase === 'waiting' ? (
+        <View style={{ marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 14, backgroundColor: c.fill, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <ActivityIndicator />
+          <View style={{ flex: 1 }}><Txt weight="600">Waiting on terminal · {fmt(card.amount)}</Txt><Txt sub size={13}>{card.text}</Txt></View>
+          <Btn title="Cancel" kind="secondary" small onPress={() => cancelRef.current?.()} />
+        </View>
+      ) : null}
       {tenders.length ? <View style={{ marginHorizontal: 16, marginBottom: 12 }}><Card>{tenders.map((t, i) => <Row key={t.id} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'} title={t.kind === 'card' ? `Card ${t.card?.panMasked ? '•••• ' + t.card.panMasked : ''}` : t.kind === 'cash' ? 'Cash' : 'Gift card'} right={<Money cents={t.amountCents} />} />)}</Card></View> : null}
       {remaining > 0 ? (
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
-          <Btn title={`Card — ${fmt(target)}`} icon="card-outline" onPress={() => void runCard()} />
-          <Btn title="Cash" icon="cash-outline" kind="secondary" onPress={() => { setCashDigits(''); setCashOpen(true); }} />
-          <Btn title="Gift card" icon="gift-outline" kind="secondary" onPress={() => setGift(true)} />
-          <Btn title="Split amount" icon="git-branch-outline" kind="secondary" onPress={() => { setSplitDigits(''); setSplitOpen(true); }} />
+          <Btn title={`Card — ${fmt(target)}`} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} />
+          <Btn title="Cash" icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setCashDigits(''); setCashOpen(true); }} />
+          <Btn title="Gift card" icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} />
+          <Btn title="Split amount" icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} />
           {chunk !== null || equalLeft > 1 ? <Btn title="Cancel split" kind="ghost" onPress={() => { setChunk(null); setEqualLeft(0); }} /> : null}
         </View>
       ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash(0)} /></View> : null}
 
       {/* card status */}
-      <Sheet visible={card.phase !== 'idle'} dismissable={false} title={card.phase === 'waiting' ? 'Card payment' : card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
-        {card.phase === 'waiting' ? <View style={{ alignItems: 'center', gap: 14 }}><Money cents={card.amount} size={38} weight="700" /><ActivityIndicator size="large" /><Txt size={17} style={{ textAlign: 'center' }}>{card.text}</Txt><Btn title="Cancel payment" kind="secondary" onPress={() => cancelRef.current?.()} /></View> : null}
+      <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
         {card.phase === 'declined' ? <View style={{ gap: 12 }}><Txt size={17}>{card.text}</Txt>{card.code ? <Txt sub size={13}>Code {card.code}. The cart is kept.</Txt> : <Txt sub size={13}>The cart is kept.</Txt>}
           <Btn title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
         {card.phase === 'unknown' ? <View style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>{card.checking ? <ActivityIndicator /> : null}<Txt size={16} style={{ flex: 1 }}>{card.text}</Txt></View>
