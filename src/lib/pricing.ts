@@ -1,6 +1,7 @@
 // Local pricing engine (instant totals). Order of application:
 //   1. bundle deals (in-app config)      – consume units, block manual line discount on those lines
-//   2. Shopify automatic discounts       – best single discount wins (combination rules are not read)
+//   2. Shopify automatic discounts       – several can apply to one order; each unit takes at most one; the combination
+//                                          with the biggest total saving wins (Shopify's own combination rules are not read)
 //   3. manual line discount              – % or $ off the line's remaining value
 //   4. cart discount                     – % or $ spread over remaining value of discountable lines
 // Items excluded from discounts: gift cards, tag "no-discount", lines flagged noDiscount.
@@ -16,6 +17,8 @@ export type PricingContext = {
   autoDiscounts: AutoDiscount[];
   bundles: BundleConfig | null;
   now?: number;
+  /** "Amount off when you buy N" discounts work as lots (N units per application, repeating). Default true. */
+  lotDiscounts?: boolean;
 };
 
 export const NO_DISCOUNT_TAG = 'no-discount';
@@ -27,7 +30,6 @@ type Work = {
 };
 
 const remaining = (w: Work) => w.gross - w.applied;
-const eligibleQty = (w: Work) => Math.max(0, w.line.qty - w.bundleUnits);
 
 function matches(t: Target | undefined, w: Work): boolean {
   if (!t) return false;
@@ -43,71 +45,106 @@ function activeNow(d: AutoDiscount, now: number) {
   return true;
 }
 
-/** Evaluate one automatic discount → cents per work-line (0 where it doesn't apply). */
-function evalAuto(d: AutoDiscount, ws: Work[]): number[] {
-  const out = ws.map(() => 0);
+/** State of the automatic-discount search: units already taken by a discount, cents already applied, uses per discount. */
+type AutoState = { used: number[]; applied: number[]; uses: Map<string, number> };
+/** One application of one automatic discount: cents and units taken per cart line. */
+type Move = { d: AutoDiscount; cents: number[]; units: number[]; total: number };
+
+/** A basic "fixed amount off, minimum quantity N" discount is applied per lot of N units (and can repeat). */
+const isLot = (d: AutoDiscount, lots: boolean) => lots && d.kind === 'basic' && !!d.minQty && !!d.amtCents && !d.eachItem;
+
+/**
+ * Build ONE application of discount `d` against the units still free in `st`, or null if it doesn't apply.
+ * - basic, lot type: takes minQty units (dearest first), amount off once for the lot.
+ * - basic, other: takes every eligible unit once (same maths as before).
+ * - buy X get Y: one buy set + one get set (cheapest units are the ones discounted).
+ */
+function autoMove(d: AutoDiscount, ws: Work[], st: AutoState, lots: boolean): Move | null {
+  const free = (i: number) => Math.max(0, ws[i].line.qty - ws[i].bundleUnits - st.used[i]);
+  const room = (i: number) => Math.max(0, ws[i].gross - ws[i].applied - st.applied[i]);
+  const cents = ws.map(() => 0), units = ws.map(() => 0);
   const cand = ws.map(w => w.isItem && w.discountable);
   if (d.kind === 'basic') {
-    const el = ws.map((w, i) => (cand[i] && matches(d.target, w) ? eligibleQty(w) : 0));
-    const value = ws.reduce((a, w, i) => a + el[i] * w.base, 0);
+    const el = ws.map((w, i) => (cand[i] && matches(d.target, w) ? free(i) : 0));
     const qty = el.reduce((a, b) => a + b, 0);
-    if (!qty) return out;
-    if (d.minSubtotalCents && value < d.minSubtotalCents) return out;
-    if (d.minQty && qty < d.minQty) return out;
-    if (d.pct) ws.forEach((w, i) => { if (el[i]) out[i] = Math.min(remaining(w), pctOf(el[i] * w.base, d.pct!)); });
-    else if (d.amtCents) {
-      if (d.eachItem) ws.forEach((w, i) => { if (el[i]) out[i] = Math.min(remaining(w), el[i] * Math.min(d.amtCents!, w.base)); });
-      else {
-        const total = Math.min(d.amtCents, value);
-        const parts = allocate(total, ws.map((w, i) => el[i] * w.base));
-        parts.forEach((p, i) => (out[i] = Math.min(remaining(ws[i]), p)));
-      }
+    if (!qty) return null;
+    if (d.minQty && qty < d.minQty) return null;
+    if (d.minSubtotalCents && ws.reduce((a, w, i) => a + el[i] * w.base, 0) < d.minSubtotalCents) return null;
+    let take = el;
+    if (isLot(d, lots)) { // pick the minQty dearest free units
+      take = ws.map(() => 0);
+      let need = d.minQty!;
+      for (const i of ws.map((_, k) => k).sort((x, y) => ws[y].base - ws[x].base)) { const n = Math.min(el[i], need); take[i] = n; need -= n; if (!need) break; }
     }
-    return out;
+    const value = ws.reduce((a, w, i) => a + take[i] * w.base, 0);
+    if (d.pct) ws.forEach((w, i) => { if (take[i]) cents[i] = Math.min(room(i), pctOf(take[i] * w.base, d.pct!)); });
+    else if (d.amtCents) {
+      if (d.eachItem) ws.forEach((w, i) => { if (take[i]) cents[i] = Math.min(room(i), take[i] * Math.min(d.amtCents!, w.base)); });
+      else allocate(Math.min(d.amtCents, value), ws.map((w, i) => take[i] * w.base)).forEach((p, i) => (cents[i] = Math.min(room(i), p)));
+    }
+    take.forEach((n, i) => (units[i] = n));
+  } else {
+    if (!d.buys || !d.gets) return null;
+    if (d.usesPerOrderLimit && (st.uses.get(d.id) ?? 0) >= d.usesPerOrderLimit) return null;
+    const pool = (t: Target) => {
+      const r: { li: number; price: number; k: number }[] = [];
+      ws.forEach((w, li) => { if (cand[li] && matches(t, w)) for (let k = 0; k < free(li); k++) r.push({ li, price: w.base, k }); });
+      return r;
+    };
+    const taken = new Set<string>(); const key = (u: { li: number; k: number }) => `${u.li}:${u.k}`;
+    const buys: ReturnType<typeof pool> = [];
+    const buyPool = pool(d.buys.target).sort((a, b) => b.price - a.price);
+    if (d.buys.qty) { for (const u of buyPool) { buys.push(u); if (buys.length === d.buys.qty) break; } if (buys.length < d.buys.qty) return null; }
+    else if (d.buys.amountCents) { let sum = 0; for (const u of buyPool) { buys.push(u); sum += u.price; if (sum >= d.buys.amountCents) break; } if (sum < d.buys.amountCents) return null; }
+    else return null;
+    buys.forEach(u => taken.add(key(u)));
+    const gets: ReturnType<typeof pool> = [];
+    for (const u of pool(d.gets.target).sort((a, b) => a.price - b.price)) { if (!taken.has(key(u))) { gets.push(u); if (gets.length === d.gets.qty) break; } }
+    if (gets.length < d.gets.qty) return null;
+    buys.forEach(u => units[u.li]++);
+    gets.forEach(u => { units[u.li]++; cents[u.li] += d.gets!.pct ? pctOf(u.price, d.gets!.pct) : Math.min(d.gets!.amtCents ?? 0, u.price); });
+    ws.forEach((_, i) => (cents[i] = Math.min(cents[i], room(i))));
   }
-  // buy X get Y
-  if (!d.buys || !d.gets) return out;
-  type U = { li: number; price: number; used: boolean };
-  const units = (t: Target): U[] => {
-    const u: U[] = [];
-    ws.forEach((w, li) => { if (cand[li] && matches(t, w)) for (let k = 0; k < eligibleQty(w); k++) u.push({ li, price: w.base, used: false }); });
-    return u;
-  };
-  // separate unit objects per role, but a physical unit can only be used once → share via key
-  const keyOf = (li: number, k: number) => `${li}:${k}`;
-  const mk = (t: Target) => {
-    const res: (U & { key: string })[] = [];
-    ws.forEach((w, li) => { if (cand[li] && matches(t, w)) for (let k = 0; k < eligibleQty(w); k++) res.push({ li, price: w.base, used: false, key: keyOf(li, k) }); });
-    return res;
-  };
-  void units;
-  const buyPool = mk(d.buys.target).sort((a, b) => b.price - a.price);
-  const getPool = mk(d.gets.target).sort((a, b) => a.price - b.price);
-  const used = new Set<string>();
-  let apps = 0;
-  for (;;) {
-    if (d.usesPerOrderLimit && apps >= d.usesPerOrderLimit) break;
-    const buys: typeof buyPool = [];
-    if (d.buys.qty) {
-      for (const u of buyPool) { if (!used.has(u.key)) { buys.push(u); if (buys.length === d.buys.qty) break; } }
-      if (buys.length < d.buys.qty) break;
-    } else if (d.buys.amountCents) {
-      let s = 0;
-      for (const u of buyPool) { if (!used.has(u.key)) { buys.push(u); s += u.price; if (s >= d.buys.amountCents) break; } }
-      if (s < d.buys.amountCents) break;
-    } else break;
-    buys.forEach(b => used.add(b.key));
-    const gets: typeof getPool = [];
-    for (const u of getPool) { if (!used.has(u.key)) { gets.push(u); if (gets.length === d.gets.qty) break; } }
-    if (gets.length < d.gets.qty) { buys.forEach(b => used.delete(b.key)); break; }
-    gets.forEach(g => {
-      used.add(g.key);
-      const off = d.gets!.pct ? pctOf(g.price, d.gets!.pct) : Math.min(d.gets!.amtCents ?? 0, g.price);
-      out[g.li] += off;
-    });
-    apps++;
+  const total = cents.reduce((a, b) => a + b, 0);
+  return total > 0 ? { d, cents, units, total } : null;
+}
+
+/**
+ * Choose which automatic discounts to apply: any number of different discounts, each repeating as often as the cart
+ * allows, no unit used twice, biggest total saving wins (ties: fewest applications, so bigger lots beat many small ones).
+ * Greedy gives the baseline, then a capped depth-first search looks for something better.
+ */
+function chooseAutoDiscounts(ws: Work[], active: AutoDiscount[], lots: boolean, maxNodes = 4000): Move[] {
+  const fresh = (): AutoState => ({ used: ws.map(() => 0), applied: ws.map(() => 0), uses: new Map() });
+  const commit = (st: AutoState, m: Move) => { m.units.forEach((n, i) => (st.used[i] += n)); m.cents.forEach((c, i) => (st.applied[i] += c)); st.uses.set(m.d.id, (st.uses.get(m.d.id) ?? 0) + 1); };
+  const undo = (st: AutoState, m: Move) => { m.units.forEach((n, i) => (st.used[i] -= n)); m.cents.forEach((c, i) => (st.applied[i] -= c)); st.uses.set(m.d.id, (st.uses.get(m.d.id) ?? 0) - 1); };
+
+  let best: { total: number; moves: Move[] } = { total: 0, moves: [] };
+  { // greedy baseline: always take the single biggest saving available
+    const st = fresh(); const moves: Move[] = []; let total = 0;
+    for (let guard = 0; guard < 500; guard++) {
+      let pick: Move | null = null;
+      for (const d of active) { const m = autoMove(d, ws, st, lots); if (m && (!pick || m.total > pick.total)) pick = m; }
+      if (!pick) break;
+      commit(st, pick); moves.push(pick); total += pick.total;
+    }
+    best = { total, moves };
   }
-  return out.map((c, i) => Math.min(c, remaining(ws[i])));
+  let nodes = 0; const st = fresh(); const path: Move[] = [];
+  const dfs = (start: number, total: number) => {
+    if (total > best.total || (total === best.total && path.length > 0 && path.length < best.moves.length)) best = { total, moves: [...path] };
+    if (++nodes > maxNodes || path.length >= 60) return;
+    for (let k = start; k < active.length; k++) {
+      const m = autoMove(active[k], ws, st, lots);
+      if (!m) continue;
+      commit(st, m); path.push(m);
+      dfs(k, total + m.total); // k again: the same discount may repeat
+      path.pop(); undo(st, m);
+      if (nodes > maxNodes) return;
+    }
+  };
+  dfs(0, 0);
+  return best.moves;
 }
 
 export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
@@ -151,15 +188,15 @@ export function priceCart(cart: Cart, ctx: PricingContext): PricedCart {
     for (const a of agg.values()) if (a.cents > 0) add(a.w, { type: 'bundle', label: a.label, cents: a.cents, id: a.dealId });
   }
 
-  // 2 ── automatic discounts (best single)
-  let best: { d: AutoDiscount; per: number[]; total: number } | null = null;
-  for (const d of ctx.autoDiscounts) {
-    if (!activeNow(d, now)) continue;
-    const per = evalAuto(d, ws);
-    const total = per.reduce((a, b) => a + b, 0);
-    if (total > (best?.total ?? 0)) best = { d, per, total };
-  }
-  if (best) best.per.forEach((c, i) => c > 0 && add(ws[i], { type: 'auto', label: best!.d.title, cents: c, id: best!.d.id }));
+  // 2 ── automatic discounts (several can combine; each unit takes at most one)
+  const moves = chooseAutoDiscounts(ws, ctx.autoDiscounts.filter(d => activeNow(d, now)), ctx.lotDiscounts !== false);
+  const perLine = new Map<string, { w: Work; d: AutoDiscount; cents: number; times: number }>();
+  for (const m of moves) m.cents.forEach((c, i) => {
+    if (c <= 0) return;
+    const k = `${i}|${m.d.id}`; const cur = perLine.get(k) ?? { w: ws[i], d: m.d, cents: 0, times: 0 };
+    cur.cents += c; cur.times += 1; perLine.set(k, cur);
+  });
+  for (const a of perLine.values()) add(a.w, { type: 'auto', label: a.d.title, cents: a.cents, id: a.d.id, ...(a.times > 1 ? { times: a.times } : {}) });
 
   // 3 ── manual line discount (blocked on lines that received a bundle discount)
   for (const w of ws) {

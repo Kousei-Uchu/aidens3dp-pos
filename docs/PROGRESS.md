@@ -1,8 +1,8 @@
 # Build checklist & progress log
 
 Master list for everything in `DEV_NOTES.md`. Updated inside every patch, so each patch shows what changed and what's left.
-Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm · `[ ]` not started · `[?]` needs your answer.
-**Nothing here has been run on a device by me** — I can only run the pure-logic tests (`npm test`) in my sandbox. Every UI item is "code-complete, untested on hardware" until you say it works.
+Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm · `[ ]` not started · `[?]` needs your answer · `[-]` dropped.
+**Nothing here has been run on a device by me** - I can only run the pure-logic tests (`npm test`) in my sandbox. Every UI item is "code-complete, untested on hardware" until you say it works.
 
 ## Patch log (apply in order: `git apply patches/000N-*.patch`)
 | # | Date | What | Items |
@@ -11,10 +11,12 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0002 | 2026-10-10 | Keyboard avoidance (field always visible) + consistent keyboard types on all 67 fields | A3, A4 |
 | 0003 | 2026-10-10 | Inventory: no row cap, draft/archived products, category/stock/status filters, sort, nest variants | A5 |
 | 0004 | 2026-10-10 | Compound-discount proof + fewest-lots tie-break, POS email fix guide, checklist for the grid nesting addition | A6, A12, C1-C6 (listed) |
+| 0005 | 2026-10-10 | Progress doc only: your notes organised, A12 corrected to Shopify discounts, new A16 (price adjustments) | docs |
+| 0006 | 2026-10-10 | Several Shopify automatic discounts now combine in one order (5x + 3x Tadlings, Tadlings + cows) | A12.4-A12.6 |
 
 ---
 
-## A. Round 3 list (the 15 issues) — NOT yet addressed before this session
+## A. Round 3 list (the 15 issues) - NOT yet addressed before this session
 
 ### A1. `npm run ios` hangs / device timeout / two `.xcodeproj` files
 - [x] A1.1 `scripts/reset-ios.sh` (`npm run ios:reset`): deletes `ios/` + this app's DerivedData, `expo prebuild --platform ios --clean`, verifies exactly one `.xcodeproj`, lists devices.
@@ -28,7 +30,8 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 - [x] A2.3 `Field` reports focus/blur to the guard (and releases it if unmounted while focused).
 - [x] A2.4 `HidScanner` only grabs focus when not typing and `Keyboard.isVisible()` is false; removed its `autoFocus` (replaced by a guarded focus on mount).
 - [x] A2.5 Tests: `tests/focusguard.test.ts`.
-- [x] A2.6 **You:** open "All products" filter and a cart sheet with the scanner enabled; keyboard should stay up. Trade-off: a Bluetooth scan within ~2.5 s of finishing typing in a field is ignored until the grace ends. **User Note:** Not too happy with this solution, is there another? can we have it talk to the bluetooth scanner directly? It's a HID Bluetooth Scanner, so it ends up hiding my kayboard. I would like to prevent this from happening, so if there is a way to directly communicate with the HID Scanner and prevent the device from detecting it as a keyboard, that would be of great help.
+- [x] A2.6 **You:** open "All products" filter and a cart sheet with the scanner enabled; keyboard should stay up. Trade-off: a Bluetooth scan within ~2.5 s of finishing typing in a field is ignored until the grace ends.
+- [?] A2.7 You are not happy with the focus guard as a fix, and want the Bluetooth HID scanner to stop hiding the on-screen keyboard at all. iOS hides the on-screen keyboard whenever it sees a hardware keyboard, and a HID scanner announces itself as one. An app cannot change how iOS classifies a Bluetooth device, so this has to be solved on the scanner side. Options to check for your model: (a) a keyboard-toggle trigger or setup barcode that shows the on-screen keyboard while connected, (b) a BLE (not HID) mode that the app talks to directly with a Bluetooth library, (c) keeping the camera scanner as the fallback. **You:** tell me the scanner's make and model so I can check what it supports. Until then the focus guard stays.
 
 ### A3. View doesn't move for the keyboard (field hidden behind it)
 - [x] A3.1 `src/lib/keyboardMath.ts` (pure, tested): keyboard overlap, "how far to scroll to reveal a field", sheet max height.
@@ -38,11 +41,11 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 - [x] A3.5 Screens with their own non-scrolling layout (Checkout filter, Inventory/Transactions search) have the field at the top, so nothing to reveal. Confirm on device, particularly iPad with the floating keyboard and landscape.
 
 ### A4. Inconsistent keyboard types
-- [x] A4.1 `src/lib/fieldKinds.ts`: `kind` presets — `text name email phone url integer decimal money pin secret code search date json` (tested).
+- [x] A4.1 `src/lib/fieldKinds.ts`: `kind` presets - `text name email phone url integer decimal money pin secret code search date json` (tested).
 - [x] A4.2 `Field` takes `kind="…"`; explicit props still override it.
 - [x] A4.3 All 67 `<Field>`s audited and given a kind. Redundant props removed.
 - [x] A4.4 iOS number/decimal/phone pads have no Return key, so those fields get a **Done** bar above the keyboard.
-- Choices you may want to change: **Barcode** = number pad (EAN/UPC; alphanumeric Code128 barcodes can't be typed — say if you have any). **ABN** = number pad (no spaces). **Reports dates** = numbers-and-punctuation. **Gift card code** stays all-caps. Names/titles = capitalise words, no autocorrect.
+- Choices you may want to change: **Barcode** = number pad (EAN/UPC; alphanumeric Code128 barcodes can't be typed - say if you have any). **ABN** = number pad (no spaces). **Reports dates** = numbers-and-punctuation. **Gift card code** stays all-caps. Names/titles = capitalise words, no autocorrect.
 - [x] A4.5 **You:** try one of each kind (customer email/phone, item price, PIN, search) and tell me any that feel wrong.
 
 ### A5. Inventory screen: all products/variants, category filter, nesting, sort/filter
@@ -69,41 +72,58 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 ### A8. GUI bundle builder
 - [ ] A8.1 Bundle list + create/edit form (pick items, quantity, deal price or $/% off, dates, on/off) writing the same JSON the engine already reads.
 - [ ] A8.2 Keep the JSON editor as an "Advanced" view.
-- [ ] A8.3 Include support for choosing specifc variant pairings within bundles containing at least one product with multiple variants. This is not the same as specifying a variant as a set item. This shouldn't be mandatory pairings, however at checkout, prompt the cashier, informing them that a bundle deal was applied, but no matching pair was found, and display the qualifying items in the order that are being considered for this bundle. The cashier can select to go back and modify the cart, or continue to payment.
-- [ ] A8.4 As an elaboration on A8.3: In the cart and on reciepts, bundle items of matching pairs should be favoured to be grouped and have the discount applied, over non-matching.
+- [ ] A8.3 Recommended pairs: when a bundle contains a product with several variants, the builder lets you mark specific variant combinations as recommended pairs. This is separate from putting a single variant in a set. Pairs are optional, so any variant of the product still qualifies for the deal.
+- [ ] A8.4 Checkout prompt for non-recommended pairs: if a bundle deal is applied but the matched units are not a recommended pair, tell the cashier. Show the items that make up the bundle, then offer "Edit cart" or "Continue to payment".
+- [ ] A8.5 When both recommended and non-recommended candidates are in the cart, the matcher prefers recommended pairs for grouping and discounting. This applies to the cart and to receipts.
+- [ ] A8.6 Show each bundle as a single cart line that names the items and variations in it, with a marker for "Recommended pair" or "Not a recommended pair".
 
-### A9. Gift card details at checkout, not when added (IGNORE POINTS 1 AND 2, CHANGED MY MIND)
-- [~] A9.1 Adding a gift card to the cart just records amount.
-- [~] A9.2 At charge time: prompt for recipient name/email/message/print-or-QR once, for all gift cards in the cart.
-- [ ] A9.3 The recipient gets two emails with their gift card. Is it possible to only send the gift card email once transaction is complete? Or better still, dont even create the gift card in shopify at all until the transaction has succeeded, so abandoned sales dont leave stray gift cards and customers with a free gift card code.
-- [ ] A9.4 The QR codes present on Gift Cards contain a prefix. When code uses or interacts with the entered Gift Card Code, strip the prefix `shopify-giftcard-v1-{the code we want to actually use}` if present, and also support that `v1` segment being `v[0-9 with however many digits are present before the -]`. In theory, you could just use the regex match filter `(?:.*-)?(.*)`.
+### A9. Gift cards: when they are created, and how codes are read
+- [-] A9.1 Dropped (you changed your mind): adding a gift card to the cart only records the amount.
+- [-] A9.2 Dropped (you changed your mind): prompt for recipient details once at charge time. Recipient details stay where they are today.
+- [ ] A9.3 Send the recipient one gift card email, and only after the transaction has completed.
+- [ ] A9.4 Do not create the gift card in Shopify until payment has succeeded, so abandoned or declined sales never leave a stray card or a free code. If creation fails after payment, queue it and retry (same idempotent approach as orders) so the sale is never lost.
+- [ ] A9.5 Gift card QR codes carry a prefix like `shopify-giftcard-v1-CODE`. Wherever a code is typed, pasted or scanned (redeem, balance check, lookup), strip the prefix and use the code. The version part can be any number (`v1`, `v2`, `v10`). I will anchor the match to the known prefix, `^shopify-giftcard-v\d+-`, instead of your looser `(?:.*-)?(.*)`, because the loose one would cut any code that happens to contain a hyphen. Say if you want the loose one anyway. Pure helper plus tests.
 
 ### A10. Gift card web page / QR / recipient form
 - [ ] A10.1 QR to the card's Shopify gift-card page where available.
 - [ ] A10.2 Fallback Cloudflare Worker "claim your gift card" page (recipient name + email).
-- [ ] A10.3 Still support the old method of entering email and things like you do currently.
+- [ ] A10.3 Keep manual recipient entry (email and details typed in the app) as a fallback alongside the QR and web page.
 
 ### A11. Zeller terminal shouldn't show our own sheet
 - [ ] A11.1 Remove our payment sheet for terminal calls; show only a slim in-app "waiting on terminal" state while Zeller's UI is up.
-- [ ] A11.2 Answer to "can Zeller's popup live inside a custom sheet?" (needs a look at the SDK's WebView API in `zellerBridge.tsx`). Provide a method for me to package and send the Zeller SDK source from my local machine, as it is gated access (ensure keys are removed from code automatically before packaging).
+- [ ] A11.2 Answer to "can Zeller's popup live inside a custom sheet?" (needs a look at the SDK's WebView API in `zellerBridge.tsx`).
+- [ ] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
 
-### A12. Compound per-unit discounts
-- [x] A12.1 Found the existing bundle matcher (`matchBundles` in `src/lib/bundles.ts`) already does this: each unit joins at most one deal, several deals apply in one order, and the assignment with the biggest total saving wins. No rewrite needed.
-- [x] A12.2 `tests/compound.test.ts` (9 tests): your cows x2 + Tadlings x8 example ($2 + $10 + $5), 6 Tadlings = one 5-deal, 7, 9 and 10 Tadlings, units spread over two cart lines, manual discount blocked on dealt lines.
-- [x] A12.3 Added an explicit tie-break: on an equal saving, fewer deal applications win (bigger lots), so the 6-Tadling case can never flip to two 3-deals.
-- [ ] A12.4 **You:** build your real cow/Tadling deals as three bundle entries that repeat the set (`"sets": ["tad","tad","tad"]`). The upcoming bundle builder (A8) will make this a form. **User Note:** I did not mean those as bundles. While I do want bundles to stack and compound, the discussion is about the Shopify imported discounts. With those dicounts, the current behaviour is: 6 tadlings gives the correct 5x discount, however 8 tadlings only gives the 5x instead of both a 5x and a 3x. It stacks the same discount type on itself several times, thats a-ok, but it seems it refuses to combine any two or more types of automatic Shopify discounts onto one order. The same issue is present for if i add 5x tadlings and 2x cows, where i should get both the 5x tadling deal and the 2x cow deal. Instead, i get just the tadling deal. Also a side note, in the cart viewer could we treat discounts and price adjusts like an invoice list? For example have the following (entered into a code block, but relates to this section). By that i mean like a modification of the current item row format, not a redesign.
-- [ ] A12.5 Price Adjustments should have multiple types to select from: Line (Adjusts that entire line's price. Calculates after discounts and bundles, exactly how much that line's final price should be, and applies a Line Price Adjustment. If another item, of the same type that this adjustment is applied to, is added to the cart, or if that line's discounts change, prompt the cashier, asking them to review that adjustment, and choose to either preserve, adjust, or remove that Line Price Adjust in particular. Ensure it's easy to tell which line needs reviewing, and why it was flagged for review (what item(s) added and/or discount(s) changed), even in a large order), Item (Two sub-options for this one; Fixed Quantity, or All in Cart. This one works exactly the same as it does now, except you can just choose if you want to adjust the per-item price for a specific number, or for every instance of that item in the entire order. Prompt the cashier at checkout to double check the price adjustment is right.), and Whole Order (This one is applied to the cart via the thee dot meatballs menu, rather than to an item. It sets the total price for the entire cart. Any display of this adjustment in the cart or on receipts should be like a whole order discount. The same prompt logic as Line should be applied here.). If you believe any are missing, go ahead and propose them, or just add them if you really think theyre needed. You can change bits of this too if you would like, just notify me, or ask about really large changes. There are a lot of gaps here, and the display of these and multi-line handling can get a tad difficult, so you have freedom to think through how this would all be displayed, how it would be managed, possible issues or situations out of the ordinary, and how to interact with these. Just make sure its straight forward and easy to understand for non-technically-minded people as well please. :3
-- [ ] A12.6 Just another smaller note, double check the logic for multi buy shopify discounts, and how theyre displayed. Especially in relation to adjusted prices, and other reasons why a discount would spread across two cart/order lines. Use your CPU brain on this one.
-- [ ] A12.7 Display our custom bundles as one line, but make it clear that it's a bundle of two items, and what two items/variations those are. Include an indicator for if the bundle is a reccomended pair (defined in A8) or not.
+### A12. Discounts that combine (Shopify automatic discounts)
+Clarified: this is about the imported Shopify automatic discounts, not custom bundles. Bundles should also stack, which they already do.
+- [x] A12.1 Custom bundles (`matchBundles` in `src/lib/bundles.ts`): each unit joins at most one deal, several deals apply in one order, the biggest total saving wins. Checked, no rewrite needed.
+- [x] A12.2 `tests/compound.test.ts` (9 tests) covering that for bundles, including 6 Tadlings = one 5-deal.
+- [x] A12.3 Tie-break for bundles: on an equal saving, fewer deal applications win.
+- [x] A12.4 Root cause for Shopify discounts (fixed in 0006): step 2 of `priceCart` in `src/lib/pricing.ts` applies only the single best automatic discount. Today 8 Tadlings get the 5x deal but not the extra 3x, and 5 Tadlings + 2 cows get only the Tadling deal. A discount repeating on itself already works, so the fix is allowing several different automatic discounts in one order.
+- [x] A12.5 New behaviour (`chooseAutoDiscounts` in `src/lib/pricing.ts`): each unit can receive only one automatic discount, several different discounts can apply to one order, and the combination with the biggest total saving wins. Examples that must pass: 8 Tadlings = 5x + 3x, 6 Tadlings = one 5x, 5 Tadlings + 2 cows = both deals.
+- [x] A12.6 `tests/autocombine.test.ts` (11 tests): the examples above, 10 and 13 Tadlings (repeats, with a `times` count on the line for the A12.8 display), 7 units where two small lots beat one big one, two variants of one product, percentage and buy X get Y deals, expired discounts.
+- [?] A12.6a Assumption to confirm: a Shopify discount of the type "fixed amount off, minimum quantity N" now works as lots of N units that repeat (10 Tadlings = two 5x deals). Percentage deals and "each item" amounts keep their old meaning (every eligible unit, once). `lotDiscounts: false` in the pricing context restores Shopify's once-per-order amount. **You:** in Shopify, are your Tadling and cow deals "Amount off products" with a minimum quantity, or "Buy X get Y"? Both combine now, but I want to test your real setup.
+- [~] A12.7 Multi-buy logic reworked in 0006 as one application at a time (respects the per-order use limit across deals, never discounts a unit twice, caps each line at its remaining value). Still to review: display, and behaviour with price adjustments once A16 exists. Original note: review the multi-buy (buy X get Y) logic and how it displays. Cover price-adjusted lines, and any case where one discount spreads across two cart or order lines.
+- [ ] A12.8 Invoice-style cart rows: a small change to the current item row, not a redesign. The line shows the original price struck through with the final price beside it, then the unit maths, then one indented row per discount or adjustment. Example, 13 Tadlings with a Line price adjustment (I assumed `$40.00` is the final line total, since 52 - 8 - 2 - 2 = 40):
+```
+Tadling - Small            ~~$52.00~~  $40.00
+13 x $4.00
+  5x Tadlings (x2)                     -$8.00
+  3x Tadlings                          -$2.00
+  Line price adjustment                -$2.00
+```
 
-Say I added 13 Tadlings to the cart, and then did a `Line` type price adjustment on that line. That item's line should show rougly this:
-```
-Tadling - Small       ~~$52.00~~
-13 x $4                 $40.00
-5x Tadlings (x2)  -$8.00
-3x Tadlings   -$2.00
-Line Price Adjustment  -$2.00
-```
+### A16. Price adjustments (Line, Item, Whole order)
+Added from your A12 notes. Replaces today's single per-item price override.
+- [ ] A16.1 **Line** adjustment: sets the final price of an entire line. It is worked out after bundles and discounts, stored as the difference, and shown as a "Line price adjustment" row under the line.
+- [ ] A16.2 Review flag for Line adjustments: if another unit of the same item is added, or the discounts on that line change, flag the line and ask the cashier to Keep, Adjust or Remove the adjustment. A flagged line is highlighted with the reason (for example "2 more Tadling added" or "5x Tadlings discount changed"), and the cart header shows how many lines need review, so it stays clear in a large order.
+- [ ] A16.3 **Item** adjustment: works as it does now, with a choice of "Fixed quantity" (a set number of units) or "All in cart" (every unit of that item in the order). The cashier is asked to double-check it at checkout.
+- [ ] A16.4 **Whole order** adjustment: set from the ••• cart menu, sets the total for the entire cart. Cart and receipts show it like a whole-order discount. Same review prompt as A16.2 when lines or discounts change.
+- [ ] A16.5 One checkout review screen listing every adjustment, flagged ones first, each with Keep, Adjust or Remove.
+- [ ] A16.6 Edge cases I will handle: gift cards cannot be adjusted, an adjustment cannot take a line below $0, refunds use the price actually paid for the line, and adjusted lines still split correctly into Shopify order lines (`splitLineForOrder`).
+- [?] A16.7 Proposed change, veto if you like: a Whole order adjustment and Line adjustments cannot both be active. Adding one asks to remove the other. Two overlapping adjustments make receipts hard to read and hard to refund.
+- [?] A16.8 Proposed extra: an optional reason for each adjustment, saved on the order and shown in Reports.
+- [?] A16.9 Proposed extra: limit adjustments to chosen staff roles. **You:** yes or no on A16.7 to A16.9.
 
 ### A13. Swipe actions (cart lines, saved carts; not customers)
 - [ ] A13.1 Swipe-to-delete row component; apply to cart lines, saved carts, held/other quick-delete lists.
@@ -134,8 +154,8 @@ Batched with A14 and A15 into one grid patch (planned next after A7 to A11).
 Status as found in the zip you sent (I only inspected files; not run).
 - [ ] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **I found no denomination/ledger code in this zip (`Drawer.tsx` is still the keypad version).** Confirm whether that part was meant to be included; I'll build it as its own run of patches.
   - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: empty stub, off by default (as you asked)
-- [~] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) — present in zip; Wallet pass needs your certificate.
-- [~] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) — present in zip.
+- [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip; Wallet pass needs your certificate.
+- [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
 - [ ] B4 Bundle GUI (same as A8)
 - [ ] B5 Simple / Minimal / Custom staff modes
 - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
@@ -143,5 +163,5 @@ Status as found in the zip you sent (I only inspected files; not run).
 - [ ] B8 Extra ideas
 
 ## Notes
-- Baseline tests: 25/30 pass in my sandbox. The 5 failing files need `@noble/hashes`, which isn't installed here (no network) — they should pass after your `npm install`.
-- Type-checking: I can't run `tsc` here (no `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I run the pure-logic tests with the other dependencies only. Latest run: all pass (102 after patch 0004). `npm test` on your machine runs the same files.
+- Type-checking: I can't run `tsc` here (no full `node_modules`). Please run `npm run typecheck` after applying each patch and tell me about any error; I'll fix it in the next patch.

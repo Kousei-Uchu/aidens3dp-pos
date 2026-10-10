@@ -103,6 +103,7 @@ export type AppliedDiscount = {
   label: string;
   cents: number;
   id?: string;
+  times?: number; // how many times this discount applied on the line (e.g. a 5x deal used twice)
 };
 export type PricedLine = {
   line: CartLine;
