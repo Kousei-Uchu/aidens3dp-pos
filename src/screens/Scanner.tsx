@@ -36,7 +36,7 @@ export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode'
  * Mounted only on screens where scanning should add to the cart.
  */
 export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) => void; enabled?: boolean }) {
-  const ref = useRef<TextInput>(null); const value = useRef('');
+  const ref = useRef<TextInput>(null); const value = useRef(''); const [inputKey, setInputKey] = useState(0);
   // Never grab focus while someone is typing in a real field (that is what made the keyboard vanish): the guard
   // knows about every <Field>, and Keyboard.isVisible() covers any raw TextInput we don't own.
   const canGrab = () => !isUserTyping() && !Keyboard.isVisible();
@@ -46,12 +46,15 @@ export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) 
     const t = setInterval(() => { if (ref.current && !ref.current.isFocused() && canGrab()) ref.current.focus(); }, 1500);
     return () => clearInterval(t);
   }, [enabled]);
+  useEffect(() => {
+    if (enabled && canGrab()) ref.current?.focus();
+  }, [enabled, inputKey]);
   if (!enabled) return null;
-  return <TextInput ref={ref} onChangeText={t => { noteActivity(); value.current = t; }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
+  return <TextInput key={inputKey} ref={ref} onChangeText={t => { noteActivity(); value.current = t; }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
     onSubmitEditing={({ nativeEvent }) => {
       const code = (nativeEvent.text || value.current).trim();
       value.current = '';
-      ref.current?.clear();
+      setInputKey(key => key + 1);
       if (code) onScan(code);
     }} style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01, top: 0, left: 0 }} accessibilityElementsHidden importantForAccessibility="no" />;
 }
