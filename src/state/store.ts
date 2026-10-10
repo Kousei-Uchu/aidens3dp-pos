@@ -16,7 +16,7 @@ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
   registerId: string; registerName: string;
-  cashRounding: boolean; consolidate: boolean; fees: FeeSettings;
+  cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), per device like the drawer ledger
   theme: 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L';
   staff: StaffMember[]; requirePin: boolean; passServerUrl: string; giftClaimUrl: string; autoReceipt: 'ask' | 'none';
   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
@@ -26,7 +26,7 @@ export type Settings = {
   sharedVersion: number;
 };
 export const defaultSettings = (): Settings => ({
-  shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, consolidate: true, fees: DEFAULT_FEES,
+  shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
   theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
 });
 

@@ -10,6 +10,8 @@ import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { addCounts, draftCounts, summariseCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
 import { cashStatus, countsToDraft, handBackOptions, ledgerEmpty, partCashOption, planChange } from '../lib/cashSale';
+import { planChangeSmart } from '../lib/changeScore';
+import { useCashProfile } from '../state/cashProfile';
 import { fmt } from '../lib/money';
 
 /** What the sheet hands back. `received` / `given` are null when the cashier chose not to track notes and coins for this sale.
@@ -18,20 +20,24 @@ export type CashResult = { tendered: number; received: Counts | null; given: Cou
 
 /** Notes and coins to hand to the customer: the suggestion from `pool`, or tap what is really given. */
 export function GiveCash({ pool, owed, headline = 'Give the customer', detail, onConfirm }: { pool: Counts; owed: number; headline?: string; detail?: string; onConfirm: (given: Counts | null) => void }) {
-  const { c } = useTheme(); const [manual, setManual] = useState(false); const [draft, setDraft] = useState<Draft>([]);
-  const plan = useMemo(() => planChange(pool, owed), [pool, owed]); const none = ledgerEmpty(pool);
+  const { c } = useTheme(); const [manual, setManual] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [alt, setAlt] = useState(0);
+  const profile = useCashProfile(); const plan = useMemo(() => planChangeSmart(pool, owed, profile), [pool, owed, profile]); const none = ledgerEmpty(pool);
+  useEffect(() => { setAlt(0); }, [pool, owed]);
   const giving = draftCounts(draft); const gave = totalOf(giving); const manualMode = manual || plan.kind === 'impossible';
+  const options = plan.kind === 'exact' ? [plan.counts, ...plan.alternatives] : []; const shown = options[Math.min(alt, Math.max(0, options.length - 1))];
   return (
     <View style={{ gap: 14 }}>
       <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>{headline}</Txt><Money cents={owed} size={38} weight="700" />{detail ? <Txt size={13} sub>{detail}</Txt> : null}</View>
-      {!manualMode && plan.kind === 'exact' ? (
+      {!manualMode && plan.kind === 'exact' && shown ? (
         <>
           <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, alignItems: 'center' }}>
             <Txt size={13} sub weight="600">Take from the drawer</Txt>
-            <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{summariseCounts(plan.counts)}</Txt>
+            <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{summariseCounts(shown)}</Txt>
+            {plan.smart ? <Txt size={12} sub style={{ textAlign: 'center' }}>{alt === 0 ? plan.why : 'Another way to make the same change.'}</Txt> : null}
             {plan.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
           </View>
-          <Btn title="Gave this" onPress={() => onConfirm(plan.counts)} />
+          <Btn title="Gave this" onPress={() => onConfirm(shown)} />
+          {options.length > 1 ? <Btn title={alt === 0 ? 'Show another way' : alt < options.length - 1 ? 'Show the next way' : 'Back to the suggested way'} kind="secondary" onPress={() => setAlt(a => (a + 1) % options.length)} /> : null}
           <Btn title="I'll give different notes and coins" kind="secondary" onPress={() => { setManual(true); setDraft([]); }} />
         </>
       ) : (

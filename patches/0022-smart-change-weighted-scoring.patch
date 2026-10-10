@@ -1,0 +1,615 @@
+From 7b967a8f8e9c13ee1f600c69594aa2780b86ce82 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 09:05:39 +0000
+Subject: [PATCH] 0022: smart change (weighted change choice) and its toggle
+
+---
+ docs/CASH.md                |   5 +-
+ docs/PROGRESS.md            |  18 +++-
+ src/lib/changeScore.ts      | 205 ++++++++++++++++++++++++++++++++++++
+ src/lib/checkChange.ts      |  11 +-
+ src/screens/CashSheet.tsx   |  16 ++-
+ src/screens/CheckChange.tsx |   7 +-
+ src/screens/Settings.tsx    |   7 ++
+ src/state/cashProfile.ts    |  11 ++
+ src/state/store.ts          |   4 +-
+ tests/changescore.test.ts   | 117 ++++++++++++++++++++
+ 10 files changed, 383 insertions(+), 18 deletions(-)
+ create mode 100644 src/lib/changeScore.ts
+ create mode 100644 src/state/cashProfile.ts
+ create mode 100644 tests/changescore.test.ts
+
+diff --git a/docs/CASH.md b/docs/CASH.md
+index de27807..02d9587 100644
+--- a/docs/CASH.md
++++ b/docs/CASH.md
+@@ -15,5 +15,8 @@ Tap the note or coin. Each tap adds one (use ×5 or ×10 for several). Switch to
+ ## Change finder
+ `src/lib/changeFinder.ts` finds every way to make an amount from the notes and coins available (never using more than exist). Exact matches only if any exist; otherwise everything within ±$5.00 by default. `findCombinationsLimited` stops at a node cap and reports it, so a very full drawer cannot freeze the app.
+ 
++## Smart change (Settings ▸ Payments)
++Off by default. When on, the change step still gives exact change, but chooses the notes and coins that leave the drawer best stocked for the next few sales (not just the fewest pieces). It learns from the drawer ledger (what change you really give, newest sales weigh most) and uses your item prices until there is enough history. The change screen shows the pick with a short reason, and **Show another way** steps through the next best options. Check change uses it too, for the change it suggests and for the "may not be worth it" warning. Code: `src/lib/changeScore.ts` (`buildProfile`, `planChangeSmart`, `SCORE_WEIGHTS`), `src/state/cashProfile.ts`.
++
+ ## Coming next
+-Cash sales adding to the ledger from the Cash screen (you enter what the customer hands over, the screen shows which notes and coins to give back), the weighted "best change" choice, Check Change, the daily float report, and the locked-off tender machine hook.
++The daily float report, and the locked-off tender machine hook.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7c418f5..5692837 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -28,6 +28,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0019 | 2026-10-10 | Cash screen core (first piece of the old "0019", which is now split into 0019-0024): tap the notes and coins handed over, change to give from the drawer ledger, sale written to the ledger | B1a (cash screen) |
+ | 0020 | 2026-10-10 | Cash prompts: change the drawer can't make (ask for less / part cash + card / card), short payments, empty ledger; cash refunds come out of the ledger | B1e |
+ | 0021 | 2026-10-10 | Check Change: new grid tile and cart-menu entry. Tap the notes a customer says they have and see if we can make the change for this cart, whether it is worth it, or whether to ask for card | B1d |
++| 0022 | 2026-10-10 | Smart change (weighted change choice): learns from your drawer history and item prices, picks the notes and coins that keep the drawer stocked for the next sales, "another way" button, smarter "worth it?" warning in Check Change; Settings ▸ Payments toggle (off by default) | B1c |
+ 
+ ---
+ 
+@@ -186,8 +187,8 @@ Done in 0016 together with A14.1, because they share the grid screens. A14.2 and
+ 
+ ## B. Round 2 list ("fun little bitsies")
+ Status as found in the zip you sent (I only inspected files; not run).
+-- [~] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Started in 0018 (ledger, denomination entry on the drawer screens, change finder). The Cash screen, scoring, Check Change and reports are still to come.** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
+-  - [x] B1a ledger + denomination entry (0018: drawer screens; 0019: the Cash screen at checkout writes sales to the ledger) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle (0022) · [x] B1d Check Change (0021) · [x] B1e cash screen prompts + split suggestion + cash refunds into the ledger (0020) · [ ] B1f daily float report (0023) · [ ] B1g tender-machine adapter (0024): one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
++- [~] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Done so far: 0018 (ledger, denomination entry, change finder), 0019-0021 (Cash screen, prompts, Check Change), 0022 (smart change scoring). Still to come: the daily float report (0023) and the tender-machine porting point (0024).** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
++  - [x] B1a ledger + denomination entry (0018: drawer screens; 0019: the Cash screen at checkout writes sales to the ledger) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [x] B1c scoring + toggle (0022) · [x] B1d Check Change (0021) · [x] B1e cash screen prompts + split suggestion + cash refunds into the ledger (0020) · [ ] B1f daily float report (0023) · [ ] B1g tender-machine adapter (0024): one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
+   - **0018 details.** Notes and coins are Australian ($100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c). `src/lib/cashLedger.ts` holds the pure rules; `src/ui/DenomPad.tsx` is the tap pad; `src/screens/Drawer.tsx` uses them. The ledger (`pos.ledger`, saved with the rest of the till data) is the counts now in the drawer plus a history (newest first, last 1,000) of who put in or took out what, and when.
+     - **Tap pad:** tap a note or coin to add one; Add / Remove switch; ×1 ×5 ×10 per tap (for rolls of coins); **Undo** takes back the last tap and says what it removed ("Undid: Added $20 ($20.00) · total now $85.00"); Start over. Removing from zero does nothing and says so.
+     - **Open drawer:** starts from what the ledger says is already in the drawer (carried over from the last close), so you only adjust it. The float is the total. **Paid in / Paid out:** tap the notes and coins; paid out warns if you take more than the ledger holds (it may not know about cash sales yet) and lets you carry on. **Count & close:** a blind count from zero; it tells you over/short against expected, writes the notes and coins into the Z-report, and what you counted becomes the new ledger. **Correct contents:** adjust the ledger by hand with an optional reason.
+@@ -207,9 +208,15 @@ Status as found in the zip you sent (I only inspected files; not run).
+       - **Worth it?** Warns (amber) when the change would use up the last of a denomination of $20 or smaller, or take more than half the cash in the drawer. This is a plain rule for now; the weighted scoring is 0022 and will replace it.
+       - **Can't make change:** red, asks for card, or suggests part cash + card when some part works. **Short:** says by how much.
+       - Nothing is recorded and the cart is not touched. If the ledger is empty it says so.
++    - **0022 details (smart change, B1c).** Settings ▸ Payments ▸ **Smart change** (off by default, this register only, like the ledger). Off = nothing changes: the fewest pieces, and the plain "worth it?" rule. On:
++      - **What it learns** (`buildProfile` in `src/lib/changeScore.ts`): from the drawer ledger, which change amounts come up and how many of each note and coin that used per sale, and what customers hand over. Newest sales weigh most (a sale 14 days old counts half). Only tracked cash sales count; cancelled sales, cash refunds and "don't track it" sales are ignored. With few cash sales it leans on the item library (a $12 item is usually paid with a $20, so $8 back), and that lean fades as real sales build up (equal weight at about 8 sales). The number of upcoming sales it plans for (4 to 12) is half an average cash-sale day from your sales list. It is a small readable statistical model, not a neural network, and the line under the toggle says what it is based on.
++      - **How it chooses** (`planChangeSmart`): of every exact way to make the change, the best score of the drawer left behind: **100 × coverage** (share of your usual change amounts the drawer could still make exactly) **− 40 × depth** (how far each note and coin is below what the next few sales will use; half of what customers usually hand over counts as on hand) **− 0.5 × pieces** (a nudge to fewer pieces, only decides near-ties). It never changes whether change can be made, only which notes and coins. The weights are in `SCORE_WEIGHTS` if you want to tune them.
++      - **On screen:** the change step (cash sales and cash refunds) shows the pick with a one-line reason ("4 more pieces to count, but keeps 1 more $5 in the drawer for upcoming change.") and a **Show another way** button that steps through the next best options. Giving different notes and coins by hand still works. In **Check change** the same profile picks the change and replaces the plain warning with specifics ("drops the share of usual change you could still make from 100% to 40%", "leaves you short of $5 for the next few sales").
++      - Tests: `tests/changescore.test.ts` (16 tests, including 60 random drawers where the smart plan is exact exactly when plain `planChange` is, and a mutation check that the stock-keeping test fails if the depth weight is removed).
+     - **Still a gap:** an exchange that also pays cash back while taking you to Pay does not show the cash refund sheet (that path never told the cashier about the cash either). Tell me if you use it. The ledger lives on each iPad separately.
+-    - **Planned order:** 0020 cash prompts, split suggestion and refunds into the ledger · 0021 Check Change (grid tile and cart menu) · 0022 weighted change scoring and its toggle · 0023 daily float report · 0024 tender-machine porting point (empty function, greyed-out "Under Construction" toggle).
+-  - [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
++    - **Planned order:** 0020 cash prompts, split suggestion and refunds into the ledger · 0021 Check Change (grid tile and cart menu) · 0022 weighted change scoring and its toggle (done) · 0023 daily float report · 0024 tender-machine porting point (empty function, greyed-out "Under Construction" toggle).
++  - [ ] B1j **You:** (0022) turn on Settings ▸ Payments ▸ Smart change, ring up a few tracked cash sales, then look at the change suggestion and its reason line, try **Show another way**, and open Check change with a few note combinations. Tell me if a suggestion ever feels wrong (for example it keeps something you never run out of), or if the "may not be worth it" warning fires too often or too rarely. With almost no sales it guesses from item prices, so give it a few days.
++- [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
+   - [ ] B1i **You:** on the iPad, ring up a cash sale: tap the notes handed over, check the change suggestion against what is really in the drawer, confirm it, then look at Drawer ▸ the ledger (Cash received / Change given entries and the new counts). Also try: part payment, different notes for change, an amount where the drawer has no exact change (the sheet should say so), the untracked options, and cancelling a part-paid cash sale. Tell me if tapping notes is too slow at a busy counter. Then (0020) hand over a note for a small bill when the drawer is nearly empty, and check the red box offers sensible options; do a cash refund and check the drawer ledger afterwards. Then (0021) add the Check change tile and try it with a real cart and a few combinations of notes; tell me if the amber "not worth it" warning fires too often or too rarely.
+ 
+ - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
+@@ -227,7 +234,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (235 after patch 0021). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (251 after patch 0022). `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -260,6 +267,7 @@ Ordered by priority, highest first.
+ - [ ] N15 **Non-blocking (A14.2, A15):** the device test in A15.4.
+ - [ ] N16 **Non-blocking (B1):** the drawer device test in B1h.
+ - [ ] N17 **Non-blocking (B1):** the cash sale test in B1i.
++- [ ] N18 **Non-blocking (B1c):** the smart change test in B1j.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/changeScore.ts b/src/lib/changeScore.ts
+new file mode 100644
+index 0000000..c0d7879
+--- /dev/null
++++ b/src/lib/changeScore.ts
+@@ -0,0 +1,205 @@
++// Location: src/lib/changeScore.ts
++// B1c: weighted ("smart") change. Of all the exact ways to make some change, pick the one that leaves the drawer best placed for the NEXT sales,
++// instead of only the one with the fewest pieces. Pure (no React, no store), tested in tests/changescore.test.ts.
++//
++// This is a small, transparent statistical model, not a neural network. It learns from your own data and you can read every number:
++//  1. CashProfile: from the drawer ledger (what change you actually gave, and what customers actually handed over, newest weighted most)
++//     it works out which change amounts come up and how many of each note and coin that uses per sale. With few cash sales so far it leans
++//     on the item library instead (a customer buying a $12 item usually pays with a $20), and the lean fades as real sales build up.
++//  2. Score of a candidate (higher is better), looking at the drawer AFTER the change is given:
++//        100 × coverage      share of the usual change amounts the drawer could still make exactly
++//      −  40 × depth         how far each note/coin is below what the next few sales are expected to use (0 = well stocked, 1 = out)
++//      − 0.5 × pieces        a small nudge towards fewer pieces (quicker to count out); only decides near-ties
++//  3. planChangeSmart picks the best-scoring exact combination and keeps the next best as alternatives.
++// All amounts are integer cents.
++import { DENOMS, cleanCounts, denomLabel, diffCounts, totalOf, type Counts, type LedgerEntry } from './cashLedger';
++import { findCombinationsLimited } from './changeFinder';
++import { piecesOf, planChange, reachableSums } from './cashSale';
++import { roundCash } from './money';
++
++export type CashProfile = {
++  /** Usual change amounts (cents) with how likely each is, most likely first, adding up to 1. Empty = nothing to go on. */
++  amounts: { cents: number; p: number }[];
++  /** Average number of each note/coin given as change per sale that needed change. */
++  needPerSale: Record<string, number>;
++  /** Average number of each note/coin customers hand over per cash sale. */
++  inPerSale: Record<string, number>;
++  /** How many upcoming sales to plan for. */
++  horizon: number;
++  /** 0 = only item prices (or nothing), 1 = plenty of real cash sales. */
++  confidence: number;
++  /** Where the numbers came from. */
++  source: 'none' | 'prices' | 'history' | 'blend';
++  /** Decayed count of the real cash sales with change that the history side is built from. */
++  samples: number;
++};
++
++export const SCORE_WEIGHTS = { coverage: 100, depth: 40, piece: 0.5 } as const;
++const HALF_LIFE_DAYS = 14; // a sale this old counts half as much as one today
++const CONFIDENCE_SAMPLES = 8; // at this many (decayed) sales, history and the item-price prior count equally
++const NOTES_PAID = [500, 1000, 2000, 5000, 10000];
++const CHANGE_DENOMS = DENOMS.map(d => d.cents).filter(c => c <= 2000); // change is never made from $50/$100 notes in this prior
++const MAX_AMOUNTS = 60;
++const DAY = 86400000;
++
++export const emptyProfile = (): CashProfile => ({ amounts: [], needPerSale: {}, inPerSale: {}, horizon: 6, confidence: 0, source: 'none', samples: 0 });
++export const profileUsable = (p: CashProfile | null | undefined): p is CashProfile => !!p && p.amounts.length > 0;
++
++type Hist = { amounts: Map<number, number>; need: Record<string, number>; inn: Record<string, number>; nChange: number; nIn: number };
++
++function fromLedger(entries: LedgerEntry[], now: number): Hist {
++  const h: Hist = { amounts: new Map(), need: {}, inn: {}, nChange: 0, nIn: 0 };
++  for (const e of entries) {
++    if (!e.saleUuid) continue; // only tracked cash sales say anything about demand
++    const age = Math.max(0, (now - new Date(e.ts).getTime()) / DAY); const w = Math.pow(0.5, age / HALF_LIFE_DAYS);
++    if (!Number.isFinite(w)) continue;
++    if (e.kind === 'sale_change') {
++      const vals = Object.entries(e.delta);
++      if ((e.note ?? '').startsWith('Sale cancelled') || vals.some(([, n]) => n > 0)) continue; // a cancelled sale handing money back is not demand
++      const cents = -totalOf(e.delta); if (cents <= 0) continue;
++      h.nChange += w; h.amounts.set(cents, (h.amounts.get(cents) ?? 0) + w);
++      for (const [v, n] of vals) h.need[v] = (h.need[v] ?? 0) + w * -n;
++    } else if (e.kind === 'sale_in') {
++      h.nIn += w; for (const [v, n] of Object.entries(e.delta)) if (n > 0) h.inn[v] = (h.inn[v] ?? 0) + w * n;
++    }
++  }
++  return h;
++}
++
++/** What a customer buying things from the item library probably hands over, and the change that makes. Used until there is real history. */
++function fromPrices(prices: number[]): { amounts: Map<number, number>; need: Record<string, number>; total: number } {
++  const amounts = new Map<number, number>(); const need: Record<string, number> = {}; let total = 0;
++  for (const price of prices) {
++    const p = roundCash(price); if (p <= 0 || p > 10000) continue;
++    const i = NOTES_PAID.findIndex(n => n >= p); if (i < 0) continue;
++    const next = NOTES_PAID[i + 1]; const picks: [number, number][] = next !== undefined && next <= 5000 ? [[NOTES_PAID[i], 0.7], [next, 0.3]] : [[NOTES_PAID[i], 1]];
++    for (const [note, w] of picks) {
++      const chg = note - p; if (chg <= 0) continue;
++      total += w; amounts.set(chg, (amounts.get(chg) ?? 0) + w);
++      let left = chg; for (const d of CHANGE_DENOMS) { const n = Math.floor(left / d); if (n > 0) { need[String(d)] = (need[String(d)] ?? 0) + w * n; left -= n * d; } }
++    }
++  }
++  return { amounts, need, total };
++}
++
++type SaleLike = { ts: string; type: string; tenders?: { kind: string }[] };
++/** About how many cash sales happen between visits to the safe: half the average cash-sale day, kept between 4 and 12. */
++export function horizonFrom(sales: SaleLike[], now: number): number {
++  const days = new Map<string, number>();
++  for (const s of sales) {
++    if (s.type !== 'sale' || !s.tenders?.some(t => t.kind === 'cash')) continue;
++    const t = new Date(s.ts).getTime(); if (!Number.isFinite(t) || now - t > 28 * DAY) continue;
++    const key = s.ts.slice(0, 10); days.set(key, (days.get(key) ?? 0) + 1);
++  }
++  if (!days.size) return 6;
++  const avg = [...days.values()].reduce((a, b) => a + b, 0) / days.size;
++  return Math.max(4, Math.min(12, Math.round(avg / 2)));
++}
++
++function normalise(m: Map<number, number>): { cents: number; p: number }[] {
++  const total = [...m.values()].reduce((a, b) => a + b, 0); if (total <= 0) return [];
++  const list = [...m.entries()].map(([cents, w]) => ({ cents, p: w / total })).sort((a, b) => b.p - a.p || a.cents - b.cents).slice(0, MAX_AMOUNTS);
++  const kept = list.reduce((a, b) => a + b.p, 0); return list.map(x => ({ cents: x.cents, p: x.p / kept }));
++}
++
++/**
++ * Builds the profile from the ledger history (`entries`, as in `ledger.entries`), the sales list (only used to size the horizon) and
++ * the item library prices. `now` is passed in so tests are exact.
++ */
++export function buildProfile(o: { entries: LedgerEntry[]; sales?: SaleLike[]; prices?: number[]; now?: number }): CashProfile {
++  const now = o.now ?? Date.now(); const h = fromLedger(o.entries, now); const prior = fromPrices(o.prices ?? []);
++  const horizon = horizonFrom(o.sales ?? [], now);
++  const haveHist = h.nChange > 0; const havePrior = prior.total > 0;
++  if (!haveHist && !havePrior) return { ...emptyProfile(), horizon };
++  const conf = haveHist ? h.nChange / (h.nChange + CONFIDENCE_SAMPLES) : 0; const amounts = new Map<number, number>(); const need: Record<string, number> = {};
++  if (haveHist) { for (const [c, w] of h.amounts) amounts.set(c, (amounts.get(c) ?? 0) + (havePrior ? conf : 1) * (w / h.nChange)); for (const [v, n] of Object.entries(h.need)) need[v] = (need[v] ?? 0) + (havePrior ? conf : 1) * (n / h.nChange); }
++  if (havePrior) { const pw = haveHist ? 1 - conf : 1; for (const [c, w] of prior.amounts) amounts.set(c, (amounts.get(c) ?? 0) + pw * (w / prior.total)); for (const [v, n] of Object.entries(prior.need)) need[v] = (need[v] ?? 0) + pw * (n / prior.total); }
++  const inPer: Record<string, number> = {}; if (h.nIn > 0) for (const [v, n] of Object.entries(h.inn)) inPer[v] = n / h.nIn;
++  return { amounts: normalise(amounts), needPerSale: need, inPerSale: inPer, horizon, confidence: conf, source: haveHist ? (havePrior ? 'blend' : 'history') : 'prices', samples: h.nChange };
++}
++
++/** Share (0 to 1) of the usual change amounts the drawer `after` could still make exactly. */
++export function coverage(after: Counts, profile: CashProfile): number {
++  if (!profile.amounts.length) return 1;
++  const reach = reachableSums(after, Math.max(...profile.amounts.map(a => a.cents)));
++  return profile.amounts.reduce((s, a) => s + (reach.has(a.cents) ? a.p : 0), 0);
++}
++/** Half of what customers are expected to hand over in the next few sales can be given back again, so it counts towards what is on hand. */
++const IN_CREDIT = 0.5;
++/** 0 = every note and coin is stocked for the next `horizon` sales, 1 = all are out. Notes and coins used more count more. */
++export function depth(after: Counts, profile: CashProfile): number {
++  const need = Object.entries(profile.needPerSale).map(([v, n]) => [v, n * profile.horizon] as const).filter(([, n]) => n >= 0.5);
++  const sum = need.reduce((s, [, n]) => s + n, 0); if (sum <= 0) return 0;
++  let out = 0;
++  for (const [v, n] of need) { const have = (after[v] ?? 0) + IN_CREDIT * (profile.inPerSale[v] ?? 0) * profile.horizon; out += (n / sum) * Math.max(0, n - have) / n; }
++  return out;
++}
++/** The number the planner maximises. */
++export function scoreAfter(after: Counts, pieces: number, profile: CashProfile): number {
++  return SCORE_WEIGHTS.coverage * coverage(after, profile) - SCORE_WEIGHTS.depth * depth(after, profile) - SCORE_WEIGHTS.piece * pieces;
++}
++
++/** Notes and coins the drawer is expected to run short of over the next few sales. */
++export function lowOn(after: Counts, profile: CashProfile): number[] {
++  return Object.entries(profile.needPerSale).map(([v, n]) => ({ v: Number(v), want: n * profile.horizon })).filter(x => x.want >= 1 && (after[String(x.v)] ?? 0) + IN_CREDIT * (profile.inPerSale[String(x.v)] ?? 0) * profile.horizon < x.want * 0.5).map(x => x.v).sort((a, b) => b - a);
++}
++const pct = (x: number) => `${Math.round(x * 100)}%`;
++/**
++ * Replacement for the plain "is this change worth giving" rule when smart change is on. Empty = no concerns.
++ * `pool` is the drawer plus what the customer hands over; `change` is what would go back.
++ */
++export function smartTightness(pool: Counts, change: Counts, profile: CashProfile): string[] {
++  if (!profileUsable(profile)) return [];
++  const after = cleanCounts(diffCounts(pool, change)); const before = coverage(pool, profile); const now = coverage(after, profile); const out: string[] = [];
++  if (now < 0.5) out.push(`leaves the drawer able to make change for only ${pct(now)} of your usual sales`);
++  else if (before - now >= 0.15) out.push(`drops the share of usual change you could still make from ${pct(before)} to ${pct(now)}`);
++  const low = lowOn(after, profile).filter(v => v <= 2000); if (low.length) out.push(`leaves you short of ${low.map(denomLabel).join(', ')} for the next few sales`);
++  return out;
++}
++
++export type SmartPlan =
++  | { kind: 'none' }
++  | { kind: 'impossible'; truncated: boolean }
++  | { kind: 'exact'; counts: Counts; truncated: boolean; alternatives: Counts[]; why: string; smart: boolean };
++
++const MAX_CANDIDATES = 400;
++/**
++ * Same job as `planChange` (exact change from `pool`, which is the drawer plus what was just handed over), but picks the best-scoring exact
++ * combination for the profile. It never changes WHETHER change can be made, only which notes and coins. With no usable profile it returns
++ * the same answer as planChange (fewest pieces). `alternatives` are the next best, for a "show me another way" button.
++ */
++export function planChangeSmart(pool: Counts, owed: number, profile: CashProfile | null | undefined, maxNodes = 150000, keep = 3): SmartPlan {
++  const quick = planChange(pool, owed, maxNodes);
++  if (quick.kind !== 'exact') return quick;
++  if (!profileUsable(profile)) return { ...quick, alternatives: [], why: '', smart: false };
++  const avail = cleanCounts(Object.fromEntries(Object.entries(pool).filter(([, n]) => n > 0)));
++  const { results, truncated } = findCombinationsLimited(avail, owed, 0, { maxNodes });
++  const cands: { counts: Counts; pieces: number }[] = [];
++  for (const r of results) {
++    if (!r.exact) continue; const counts: Counts = {}; let pieces = 0;
++    for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { counts[v] = q.qty_used; pieces += q.qty_used; }
++    cands.push({ counts, pieces });
++  }
++  if (!cands.length) return { ...quick, alternatives: [], why: '', smart: false }; // search was cut short: keep the plain answer
++  cands.sort((a, b) => a.pieces - b.pieces); const pool2 = cands.slice(0, MAX_CANDIDATES);
++  const scored = pool2.map(c => ({ ...c, score: scoreAfter(cleanCounts(diffCounts(avail, c.counts)), c.pieces, profile) })).sort((a, b) => b.score - a.score || a.pieces - b.pieces);
++  const best = scored[0]; const fewest = quick.counts;
++  return { kind: 'exact', counts: best.counts, truncated: quick.truncated || truncated, alternatives: scored.slice(1, 1 + keep).map(s => s.counts), why: explainChoice(avail, best.counts, fewest), smart: true };
++}
++
++/** Plain-words reason for the choice, compared with the quickest way. */
++export function explainChoice(pool: Counts, chosen: Counts, fewest: Counts): string {
++  const same = Object.keys({ ...chosen, ...fewest }).every(v => (chosen[v] ?? 0) === (fewest[v] ?? 0));
++  if (same) return 'Quickest way, and it keeps the drawer well stocked.';
++  const keeps = Object.entries(diffCounts(diffCounts(pool, chosen), diffCounts(pool, fewest))).filter(([, n]) => n > 0).sort((a, b) => Number(b[0]) - Number(a[0])).slice(0, 2).map(([v, n]) => `${n} more ${denomLabel(Number(v))}`);
++  const extra = piecesOf(chosen) - piecesOf(fewest);
++  return `${extra > 0 ? `${extra} more piece${extra === 1 ? '' : 's'} to count, but keeps` : 'Keeps'} ${keeps.length ? keeps.join(' and ') : 'a better mix'} in the drawer for upcoming change.`;
++}
++
++/** One line saying what the smart-change numbers are based on (shown under the toggle and on Check change). */
++export function profileNote(p: CashProfile | null | undefined): string {
++  if (!profileUsable(p)) return 'Smart change is on, but there is no history or item prices to learn from yet, so it picks the fewest pieces.';
++  if (p.source === 'prices') return 'Smart change is on. No tracked cash sales yet, so it is guessing from your item prices.';
++  const n = Math.round(p.samples);
++  return p.source === 'history' ? `Smart change is on, learned from your recent cash sales (about ${n} counted, newest weigh most).` : `Smart change is on, learned from about ${n} recent cash sales plus your item prices (history takes over as sales build up).`;
++}
+diff --git a/src/lib/checkChange.ts b/src/lib/checkChange.ts
+index 4aaa714..471459f 100644
+--- a/src/lib/checkChange.ts
++++ b/src/lib/checkChange.ts
+@@ -3,6 +3,7 @@
+ // or should we ask for card? Pure, tested in tests/checkchange.test.ts. Uses the drawer ledger and your change finder (via planChange).
+ import { addCounts, cleanCounts, denomLabel, diffCounts, summariseCounts, totalOf, type Counts } from './cashLedger';
+ import { partCashOption, piecesOf, planChange, type PartCash } from './cashSale';
++import { planChangeSmart, profileUsable, smartTightness, type CashProfile } from './changeScore';
+ 
+ export type CheckChangeResult =
+   | { verdict: 'short'; shortBy: number; part: PartCash | null }
+@@ -25,8 +26,10 @@ export function tightness(drawer: Counts, take: Counts, change: Counts): string[
+ /**
+  * `offered` is everything the customer says they have. Looks at every part of it (up to `maxSubsets`) that covers the bill:
+  * an exact payment wins (fewest pieces); otherwise the smallest handover whose change the drawer can make (so they keep the most).
++ * With a usable `profile` (smart change on) the notes and coins of the change, and the "worth it?" warning, are judged against what the next
++ * sales are likely to need (0022); without one the plain rules above apply, exactly as before.
+  */
+-export function checkChange(drawer: Counts, offered: Counts, due: number, maxSubsets = 2000): CheckChangeResult {
++export function checkChange(drawer: Counts, offered: Counts, due: number, maxSubsets = 2000, profile?: CashProfile | null): CheckChangeResult {
+   const have = totalOf(offered);
+   if (have < due) return { verdict: 'short', shortBy: due - have, part: null };
+   const items = Object.entries(cleanCounts(offered)).filter(([, n]) => n > 0).sort((a, b) => Number(b[0]) - Number(a[0]));
+@@ -49,8 +52,10 @@ export function checkChange(drawer: Counts, offered: Counts, due: number, maxSub
+   walk(0, 0);
+   const b = best as { take: Counts; total: number; pieces: number; change: Counts } | null;
+   if (!b) return { verdict: 'card', part: partCashOption(drawer, offered, due) };
+-  const handBack = diffCounts(offered, b.take);
+-  return b.total === due ? { verdict: 'exact', take: b.take, handBack } : { verdict: 'change', take: b.take, handBack, change: b.change, tight: tightness(drawer, b.take, b.change) };
++  const handBack = diffCounts(offered, b.take); if (b.total === due) return { verdict: 'exact', take: b.take, handBack };
++  const pool = addCounts(drawer, b.take); const smart = profileUsable(profile) ? planChangeSmart(pool, b.total - due, profile, 20000) : null;
++  const change = smart && smart.kind === 'exact' ? smart.counts : b.change;
++  return { verdict: 'change', take: b.take, handBack, change, tight: profileUsable(profile) ? smartTightness(pool, change, profile) : tightness(drawer, b.take, change) };
+ }
+ 
+ /** One-line advice for the cashier. */
+diff --git a/src/screens/CashSheet.tsx b/src/screens/CashSheet.tsx
+index 4f7732e..cff9b21 100644
+--- a/src/screens/CashSheet.tsx
++++ b/src/screens/CashSheet.tsx
+@@ -10,6 +10,8 @@ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+ import { addCounts, draftCounts, summariseCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
+ import { cashStatus, countsToDraft, handBackOptions, ledgerEmpty, partCashOption, planChange } from '../lib/cashSale';
++import { planChangeSmart } from '../lib/changeScore';
++import { useCashProfile } from '../state/cashProfile';
+ import { fmt } from '../lib/money';
+ 
+ /** What the sheet hands back. `received` / `given` are null when the cashier chose not to track notes and coins for this sale.
+@@ -18,20 +20,24 @@ export type CashResult = { tendered: number; received: Counts | null; given: Cou
+ 
+ /** Notes and coins to hand to the customer: the suggestion from `pool`, or tap what is really given. */
+ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, onConfirm }: { pool: Counts; owed: number; headline?: string; detail?: string; onConfirm: (given: Counts | null) => void }) {
+-  const { c } = useTheme(); const [manual, setManual] = useState(false); const [draft, setDraft] = useState<Draft>([]);
+-  const plan = useMemo(() => planChange(pool, owed), [pool, owed]); const none = ledgerEmpty(pool);
++  const { c } = useTheme(); const [manual, setManual] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [alt, setAlt] = useState(0);
++  const profile = useCashProfile(); const plan = useMemo(() => planChangeSmart(pool, owed, profile), [pool, owed, profile]); const none = ledgerEmpty(pool);
++  useEffect(() => { setAlt(0); }, [pool, owed]);
+   const giving = draftCounts(draft); const gave = totalOf(giving); const manualMode = manual || plan.kind === 'impossible';
++  const options = plan.kind === 'exact' ? [plan.counts, ...plan.alternatives] : []; const shown = options[Math.min(alt, Math.max(0, options.length - 1))];
+   return (
+     <View style={{ gap: 14 }}>
+       <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>{headline}</Txt><Money cents={owed} size={38} weight="700" />{detail ? <Txt size={13} sub>{detail}</Txt> : null}</View>
+-      {!manualMode && plan.kind === 'exact' ? (
++      {!manualMode && plan.kind === 'exact' && shown ? (
+         <>
+           <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, alignItems: 'center' }}>
+             <Txt size={13} sub weight="600">Take from the drawer</Txt>
+-            <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{summariseCounts(plan.counts)}</Txt>
++            <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{summariseCounts(shown)}</Txt>
++            {plan.smart ? <Txt size={12} sub style={{ textAlign: 'center' }}>{alt === 0 ? plan.why : 'Another way to make the same change.'}</Txt> : null}
+             {plan.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
+           </View>
+-          <Btn title="Gave this" onPress={() => onConfirm(plan.counts)} />
++          <Btn title="Gave this" onPress={() => onConfirm(shown)} />
++          {options.length > 1 ? <Btn title={alt === 0 ? 'Show another way' : alt < options.length - 1 ? 'Show the next way' : 'Back to the suggested way'} kind="secondary" onPress={() => setAlt(a => (a + 1) % options.length)} /> : null}
+           <Btn title="I'll give different notes and coins" kind="secondary" onPress={() => { setManual(true); setDraft([]); }} />
+         </>
+       ) : (
+diff --git a/src/screens/CheckChange.tsx b/src/screens/CheckChange.tsx
+index ce04176..ca3c01c 100644
+--- a/src/screens/CheckChange.tsx
++++ b/src/screens/CheckChange.tsx
+@@ -11,17 +11,19 @@ import { usePriced } from '../state/selectors';
+ import { draftCounts, totalOf, type Draft } from '../lib/cashLedger';
+ import { cashDue, ledgerEmpty } from '../lib/cashSale';
+ import { adviceFor, checkChange } from '../lib/checkChange';
++import { profileNote } from '../lib/changeScore';
++import { useCashProfile } from '../state/cashProfile';
+ import { paidTotal } from '../lib/saleBuilder';
+ import { digitsToCents, fmt } from '../lib/money';
+ 
+ export function CheckChangeSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+-  const { c } = useTheme(); const priced = usePriced(); const cart = useApp(s => s.pos.cart); const rounding = useApp(s => s.settings.cashRounding); const drawer = useApp(s => s.pos.ledger.counts);
++  const { c } = useTheme(); const priced = usePriced(); const cart = useApp(s => s.pos.cart); const rounding = useApp(s => s.settings.cashRounding); const drawer = useApp(s => s.pos.ledger.counts); const profile = useCashProfile();
+   const [draft, setDraft] = useState<Draft>([]); const [custom, setCustom] = useState<string | null>(null);
+   const remaining = Math.max(0, priced.netCents - paidTotal(cart.tenders ?? []));
+   useEffect(() => { if (visible) { setDraft([]); setCustom(remaining > 0 ? null : ''); } }, [visible]);
+   const due = custom !== null ? digitsToCents(custom) : cashDue(remaining, remaining, rounding);
+   const offered = useMemo(() => draftCounts(draft), [draft]);
+-  const res = useMemo(() => (due > 0 && totalOf(offered) > 0 ? checkChange(drawer, offered, due) : null), [drawer, offered, due]);
++  const res = useMemo(() => (due > 0 && totalOf(offered) > 0 ? checkChange(drawer, offered, due, undefined, profile) : null), [drawer, offered, due, profile]);
+   const adv = res ? adviceFor(res, fmt) : null; const tone = adv ? (adv.tone === 'good' ? c.good : adv.tone === 'bad' ? c.bad : '#B45309') : c.sub;
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Check change">
+@@ -39,6 +41,7 @@ export function CheckChangeSheet({ visible, onClose }: { visible: boolean; onClo
+             <Txt weight="700" size={17} color={tone}>{adv.title}</Txt><Txt size={14}>{adv.detail}</Txt>
+           </View>
+         ) : <Txt size={13} sub style={{ textAlign: 'center' }}>{due > 0 ? 'Tap their notes and coins to see what we can do.' : 'Enter an amount to check.'}</Txt>}
++        {profile ? <Txt size={12} sub style={{ textAlign: 'center' }}>{profileNote(profile)}</Txt> : null}
+         <Btn title="Close" kind="secondary" onPress={onClose} />
+       </View>
+     </Sheet>
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index d4afd78..eb6532a 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -20,6 +20,8 @@ import { parseGrid, serialiseGrid } from '../lib/grid';
+ import { BundlesEditor } from './BundleBuilder';
+ import { HidScanner } from './Scanner';
+ import { SquareHistorySettings } from './SquareHistory';
++import { useCashProfile } from '../state/cashProfile';
++import { profileNote } from '../lib/changeScore';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
+ 
+@@ -54,6 +56,8 @@ export default function Settings() {
+       {sub === 'display' ? <DisplaySettings /> : null}
+       {sub === 'payments' ? <Section footer="Fees are estimated from these rates – the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
+         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
++        <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
++        {s.smartChange ? <SmartChangeNote /> : null}
+         <View style={{ padding: 16 }}><Field kind="decimal" label="Card-present fee %" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
+           <Field kind="decimal" label="Keyed / card-not-present fee %" defaultValue={String(s.fees.keyedRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, keyedRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} /></View>
+         <Row title="Reader & pairing" sub="More ▸ Support ▸ Zeller" last onPress={() => nav.push('diagnostics')} /></Section> : null}
+@@ -149,6 +153,9 @@ function ClaimSecret() {
+   return <Field kind="secret" label="Claim page secret (CLAIM_SECRET)" value={v} onChangeText={t => { setV(t); void setClaimSecret(t); }} placeholder="Same value as the claim Worker's CLAIM_SECRET" />;
+ }
+ 
++/** Says what the smart-change numbers are based on (so it is clear it is learning from the ledger, or guessing from item prices). */
++function SmartChangeNote() { const p = useCashProfile(); return <View style={{ paddingHorizontal: 16, paddingBottom: 12 }}><Txt size={13} sub>{profileNote(p)}</Txt></View>; }
++
+ function PassSecret() {
+   const [v, setV] = useState(''); useEffect(() => { void getPassSecret().then(setV); }, []);
+   return <Field kind="secret" label="Pass server secret (POS_SECRET)" value={v} onChangeText={t => { setV(t); void setPassSecret(t); }} placeholder="Same value as the Worker's POS_SECRET" />;
+diff --git a/src/state/cashProfile.ts b/src/state/cashProfile.ts
+new file mode 100644
+index 0000000..055a604
+--- /dev/null
++++ b/src/state/cashProfile.ts
+@@ -0,0 +1,11 @@
++// Location: src/state/cashProfile.ts
++// 0022: the smart-change profile for this register, rebuilt only when the ledger, the sales list or the item library change.
++// Returns null when Settings ▸ Payments ▸ Smart change is off, so every caller falls back to the plain rules.
++import { useMemo } from 'react';
++import { useApp } from './store';
++import { buildProfile, type CashProfile } from '../lib/changeScore';
++
++export function useCashProfile(): CashProfile | null {
++  const on = useApp(s => s.settings.smartChange); const entries = useApp(s => s.pos.ledger.entries); const sales = useApp(s => s.pos.sales); const variants = useApp(s => s.data.variants);
++  return useMemo(() => (on ? buildProfile({ entries, sales, prices: Object.values(variants).map(v => v.priceCents) }) : null), [on, entries, sales, variants]);
++}
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 16769d2..7acdceb 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -16,7 +16,7 @@ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+   registerId: string; registerName: string;
+-  cashRounding: boolean; consolidate: boolean; fees: FeeSettings;
++  cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), per device like the drawer ledger
+   theme: 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L';
+   staff: StaffMember[]; requirePin: boolean; passServerUrl: string; giftClaimUrl: string; autoReceipt: 'ask' | 'none';
+   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
+@@ -26,7 +26,7 @@ export type Settings = {
+   sharedVersion: number;
+ };
+ export const defaultSettings = (): Settings => ({
+-  shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, consolidate: true, fees: DEFAULT_FEES,
++  shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
+   theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
+ });
+ 
+diff --git a/tests/changescore.test.ts b/tests/changescore.test.ts
+new file mode 100644
+index 0000000..8bcc57a
+--- /dev/null
++++ b/tests/changescore.test.ts
+@@ -0,0 +1,117 @@
++// Location: tests/changescore.test.ts
++// 0022: weighted ("smart") change: the profile learned from the ledger, the score, and the planner.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, smartTightness, type CashProfile } from '../src/lib/changeScore';
++import { newEntry, totalOf, type Counts, type LedgerEntry } from '../src/lib/cashLedger';
++import { planChange } from '../src/lib/cashSale';
++import { checkChange } from '../src/lib/checkChange';
++
++const NOW = Date.parse('2026-10-10T00:00:00Z'); const DAY = 86400000;
++const at = (daysAgo: number) => new Date(NOW - daysAgo * DAY).toISOString();
++const change = (id: string, given: Counts, daysAgo = 0, note?: string): LedgerEntry => newEntry('sale_change', Object.fromEntries(Object.entries(given).map(([v, n]) => [v, -n])), { saleUuid: id, ts: at(daysAgo), note });
++const received = (id: string, got: Counts, daysAgo = 0): LedgerEntry => newEntry('sale_in', got, { saleUuid: id, ts: at(daysAgo) });
++const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(), ...o });
++
++test('buildProfile: nothing to go on gives an unusable profile; the horizon still has a default', () => {
++  const p = buildProfile({ entries: [], now: NOW }); assert.equal(profileUsable(p), false); assert.equal(p.source, 'none'); assert.equal(p.horizon, 6);
++});
++test('buildProfile: change amounts and notes used per sale come from the ledger', () => {
++  const entries = [change('A', { '500': 1, '200': 1 }), change('B', { '500': 1, '200': 1 }), change('C', { '1000': 1 }), received('A', { '2000': 1 })];
++  const p = buildProfile({ entries, now: NOW }); assert.equal(p.source, 'history'); assert.equal(p.confidence > 0 && p.confidence < 1, true);
++  assert.deepEqual(p.amounts.map(a => a.cents), [700, 1000]); assert.ok(Math.abs(p.amounts[0].p - 2 / 3) < 1e-9);
++  assert.ok(Math.abs(p.needPerSale['500'] - 2 / 3) < 1e-9); assert.ok(Math.abs(p.needPerSale['1000'] - 1 / 3) < 1e-9); assert.equal(p.inPerSale['2000'], 1);
++  assert.ok(Math.abs(p.amounts.reduce((s, a) => s + a.p, 0) - 1) < 1e-9);
++});
++test('buildProfile: newer sales weigh more than old ones (14 day half-life)', () => {
++  const entries = [change('NEW', { '500': 1 }, 0), change('OLD', { '1000': 1 }, 14)];
++  const p = buildProfile({ entries, now: NOW }); const get = (c: number) => p.amounts.find(a => a.cents === c)!.p;
++  assert.ok(Math.abs(get(500) - 2 / 3) < 1e-9); assert.ok(Math.abs(get(1000) - 1 / 3) < 1e-9);
++});
++test('buildProfile: cancelled sales, untracked entries and refunds are not demand', () => {
++  const cancelled = newEntry('sale_change', { '500': 1 }, { saleUuid: 'X', ts: at(0), note: 'Sale cancelled: cash handed back' });
++  const untracked = newEntry('sale_change', { '500': -1 }, { ts: at(0) }); const refund = newEntry('refund_out', { '500': -1 }, { saleUuid: 'R', ts: at(0) });
++  assert.equal(profileUsable(buildProfile({ entries: [cancelled, untracked, refund], now: NOW })), false);
++});
++test('buildProfile: item prices stand in until there is history, then history takes over', () => {
++  const prices = [1200, 1200, 450]; const p0 = buildProfile({ entries: [], prices, now: NOW });
++  assert.equal(p0.source, 'prices'); assert.equal(p0.confidence, 0); assert.ok(p0.amounts.some(a => a.cents === 800)); // $12 paid with $20 = $8 back
++  assert.ok((p0.needPerSale['500'] ?? 0) > 0);
++  const many = Array.from({ length: 200 }, (_, i) => change('S' + i, { '1000': 1 }));
++  const p1 = buildProfile({ entries: many, prices, now: NOW }); assert.equal(p1.source, 'blend'); assert.ok(p1.confidence > 0.9);
++  assert.equal(p1.amounts[0].cents, 1000); assert.ok(p1.amounts[0].p > 0.9);
++  assert.equal(buildProfile({ entries: [], prices: [0, -5, 99999], now: NOW }).source, 'none');
++});
++test('horizonFrom: half an average cash-sale day, kept between 4 and 12', () => {
++  const day = (d: string, n: number) => Array.from({ length: n }, () => ({ ts: `${d}T10:00:00Z`, type: 'sale', tenders: [{ kind: 'cash' }] }));
++  assert.equal(horizonFrom([...day('2026-10-09', 20), ...day('2026-10-08', 20)], NOW), 10);
++  assert.equal(horizonFrom(day('2026-10-09', 2), NOW), 4); assert.equal(horizonFrom(day('2026-10-09', 90), NOW), 12);
++  assert.equal(horizonFrom([{ ts: '2026-10-09T10:00:00Z', type: 'sale', tenders: [{ kind: 'card' }] }, { ts: '2026-10-09T10:00:00Z', type: 'refund', tenders: [{ kind: 'cash' }] }], NOW), 6);
++  assert.equal(horizonFrom(day('2026-08-01', 30), NOW), 6); // too old to count
++});
++test('coverage: share of the usual change amounts the drawer could still make', () => {
++  const p = profile({ amounts: [{ cents: 100, p: 0.5 }, { cents: 300, p: 0.5 }] });
++  assert.equal(coverage({ '200': 1, '100': 3 }, p), 1); assert.equal(coverage({ '500': 1 }, p), 0); assert.equal(coverage({ '100': 1 }, p), 0.5); assert.equal(coverage({}, emptyProfile()), 1);
++});
++test('depth: 0 when stocked for the next sales, towards 1 as notes run out; only used notes count', () => {
++  const p = profile({ horizon: 4, needPerSale: { '500': 1 }, inPerSale: {} });
++  assert.equal(depth({ '500': 4 }, p), 0); assert.equal(depth({ '500': 2 }, p), 0.5); assert.equal(depth({}, p), 1); assert.equal(depth({ '1000': 9 }, p), 1);
++  assert.equal(depth({ '500': 2 }, profile({ horizon: 4, needPerSale: { '500': 1 }, inPerSale: { '500': 1 } })), 0); // half of 4 expected in-flow covers the gap
++});
++test('planChangeSmart: with no usable profile it is exactly planChange', () => {
++  const pool = { '1000': 1, '500': 1, '200': 2, '100': 3 };
++  const quick = planChange(pool, 700); const s = planChangeSmart(pool, 700, null); const e = planChangeSmart(pool, 700, emptyProfile());
++  for (const x of [s, e]) { assert.equal(x.kind, 'exact'); if (x.kind === 'exact' && quick.kind === 'exact') { assert.deepEqual(x.counts, quick.counts); assert.equal(x.smart, false); assert.deepEqual(x.alternatives, []); } }
++  assert.equal(planChangeSmart({ '2000': 3 }, 500, emptyProfile()).kind, 'impossible'); assert.equal(planChangeSmart({ '500': 1 }, 0, null).kind, 'none');
++});
++test('planChangeSmart: keeps the notes the next sales will need, even if that is a few more pieces', () => {
++  const pool = { '500': 1, '100': 5, '2000': 1 }; // $5 owed: a $5 note (1 piece) or five $1 coins
++  const wantsFives = profile({ amounts: [{ cents: 500, p: 1 }], needPerSale: { '500': 2 }, horizon: 6, confidence: 1, source: 'history', samples: 20 });
++  const wantsCoins = profile({ amounts: [{ cents: 100, p: 0.5 }, { cents: 300, p: 0.5 }], needPerSale: { '100': 2 }, horizon: 6, confidence: 1, source: 'history', samples: 20 });
++  const a = planChangeSmart(pool, 500, wantsFives); const b = planChangeSmart(pool, 500, wantsCoins);
++  assert.equal(a.kind, 'exact'); assert.equal(b.kind, 'exact');
++  if (a.kind === 'exact') { assert.deepEqual(a.counts, { '100': 5 }); assert.equal(a.smart, true); assert.match(a.why, /more \$5/); assert.deepEqual(a.alternatives[0], { '500': 1 }); }
++  if (b.kind === 'exact') { assert.deepEqual(b.counts, { '500': 1 }); assert.match(b.why, /Quickest way/); }
++});
++test('planChangeSmart: always exact, never uses more than exists, alternatives are other exact answers (random drawers)', () => {
++  let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const dens = [2000, 1000, 500, 200, 100, 50, 20, 10, 5];
++  const prof = profile({ amounts: [{ cents: 800, p: 0.4 }, { cents: 1500, p: 0.3 }, { cents: 250, p: 0.3 }], needPerSale: { '500': 0.8, '1000': 0.3, '200': 1, '100': 1.5 }, horizon: 6, confidence: 0.8, source: 'blend', samples: 12 });
++  for (let i = 0; i < 60; i++) {
++    const pool: Counts = {}; for (const d of dens) if (rnd() < 0.7) pool[String(d)] = Math.floor(rnd() * 5); const owed = 5 * (1 + Math.floor(rnd() * 300));
++    const quick = planChange(pool, owed); const smart = planChangeSmart(pool, owed, prof);
++    assert.equal(smart.kind, quick.kind, `pool ${JSON.stringify(pool)} owed ${owed}`);
++    if (smart.kind === 'exact') for (const c of [smart.counts, ...smart.alternatives]) { assert.equal(totalOf(c), owed); for (const [v, n] of Object.entries(c)) assert.ok(n <= (pool[v] ?? 0)); }
++  }
++});
++test('planChangeSmart: the chosen way never scores worse than the quickest way', () => {
++  const pool = { '1000': 2, '500': 3, '200': 4, '100': 6, '50': 4, '20': 5, '10': 5, '5': 5 };
++  const prof = profile({ amounts: [{ cents: 700, p: 0.5 }, { cents: 1300, p: 0.5 }], needPerSale: { '500': 1, '200': 1, '100': 1 }, horizon: 8, confidence: 1, source: 'history', samples: 30 });
++  const quick = planChange(pool, 1350); const smart = planChangeSmart(pool, 1350, prof);
++  assert.ok(quick.kind === 'exact' && smart.kind === 'exact');
++  if (quick.kind === 'exact' && smart.kind === 'exact') {
++    const after = (c: Counts) => Object.fromEntries(Object.entries(pool).map(([v, n]) => [v, n - (c[v] ?? 0)]));
++    const pieces = (c: Counts) => Object.values(c).reduce((s, n) => s + n, 0);
++    assert.ok(scoreAfter(after(smart.counts), pieces(smart.counts), prof) >= scoreAfter(after(quick.counts), pieces(quick.counts), prof) - 1e-9);
++  }
++});
++test('explainChoice: says what is kept, or that it is the quickest way', () => {
++  assert.match(explainChoice({ '500': 1, '100': 5 }, { '100': 5 }, { '500': 1 }), /4 more pieces to count, but keeps 1 more \$5/);
++  assert.match(explainChoice({ '500': 1 }, { '500': 1 }, { '500': 1 }), /Quickest/);
++});
++test('smartTightness: warns when the change would leave the drawer unable to cover usual sales, quiet otherwise', () => {
++  const prof = profile({ amounts: [{ cents: 500, p: 0.6 }, { cents: 1000, p: 0.4 }], needPerSale: { '500': 1 }, horizon: 4, confidence: 1, source: 'history', samples: 20 });
++  const tight = smartTightness({ '500': 2, '1000': 1 }, { '500': 2 }, prof); assert.ok(tight.length >= 1); assert.match(tight.join(' '), /usual|short of \$5/);
++  assert.deepEqual(smartTightness({ '500': 6, '1000': 3 }, { '500': 1 }, prof), []); assert.deepEqual(smartTightness({ '500': 1 }, { '500': 1 }, emptyProfile()), []);
++});
++test('checkChange: with a profile the warning comes from the profile; without one it is the plain rule, unchanged', () => {
++  const drawer = { '500': 2, '1000': 1 }; const offered = { '2000': 1 }; // $15 due, $20 handed over: $5 change
++  const prof = profile({ amounts: [{ cents: 500, p: 1 }], needPerSale: { '500': 1 }, horizon: 4, confidence: 1, source: 'history', samples: 20 });
++  const plain = checkChange(drawer, offered, 1500); const smart = checkChange(drawer, offered, 1500, undefined, prof);
++  assert.equal(plain.verdict, 'change'); assert.equal(smart.verdict, 'change');
++  if (plain.verdict === 'change' && smart.verdict === 'change') { assert.deepEqual(plain.take, smart.take); assert.equal(totalOf(plain.change), totalOf(smart.change)); assert.ok(smart.tight.length >= 1); assert.match(smart.tight.join(' '), /usual|short of \$5/); }
++  assert.deepEqual(checkChange(drawer, offered, 1500, undefined, null), plain);
++});
++test('profileNote: says where the numbers came from', () => {
++  assert.match(profileNote(emptyProfile()), /no history/); assert.match(profileNote(profile({ amounts: [{ cents: 100, p: 1 }], source: 'prices' })), /item prices/);
++  assert.match(profileNote(profile({ amounts: [{ cents: 100, p: 1 }], source: 'history', samples: 12.4 })), /about 12/); assert.match(profileNote(profile({ amounts: [{ cents: 100, p: 1 }], source: 'blend', samples: 3 })), /item prices/);
++});
+-- 
+2.43.0
+
