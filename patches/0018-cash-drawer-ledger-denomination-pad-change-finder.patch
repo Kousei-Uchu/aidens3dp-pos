@@ -1,0 +1,623 @@
+From 59cfd00a6662cb8b63b93991f1a64b7c0ead5a81 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 07:48:26 +0000
+Subject: [PATCH] 0018
+
+---
+ docs/CASH.md              |  19 +++++++
+ docs/PROGRESS.md          |  16 +++++-
+ docs/patches/0018-plan.md |  16 ++++++
+ src/lib/cashLedger.ts     | 103 ++++++++++++++++++++++++++++++++++
+ src/lib/changeFinder.ts   |  69 +++++++++++++++++++++++
+ src/screens/Drawer.tsx    |  74 +++++++++++++++++++------
+ src/state/store.ts        |   7 ++-
+ src/ui/DenomPad.tsx       |  50 +++++++++++++++++
+ tests/cashledger.test.ts  | 113 ++++++++++++++++++++++++++++++++++++++
+ 9 files changed, 445 insertions(+), 22 deletions(-)
+ create mode 100644 docs/CASH.md
+ create mode 100644 docs/patches/0018-plan.md
+ create mode 100644 src/lib/cashLedger.ts
+ create mode 100644 src/lib/changeFinder.ts
+ create mode 100644 src/ui/DenomPad.tsx
+ create mode 100644 tests/cashledger.test.ts
+
+diff --git a/docs/CASH.md b/docs/CASH.md
+new file mode 100644
+index 0000000..de27807
+--- /dev/null
++++ b/docs/CASH.md
+@@ -0,0 +1,19 @@
++# Cash drawer: notes and coins
++
++## What it tracks
++The drawer screen (More ▸ Cash drawer) keeps a ledger of which notes and coins are in the drawer, and a history of what went in and out, when, and who was signed in. Money is Australian: $100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c.
++
++## Entering money
++Tap the note or coin. Each tap adds one (use ×5 or ×10 for several). Switch to **Remove** to take some off. **Undo** reverses the last tap and tells you what it took off and the new total. **Start over** clears the entry.
++
++## Screens
++- **Open drawer:** starts from what the ledger already holds, so you only add or remove. The total is the float.
++- **Paid in / Paid out:** tap what went in or came out, add a reason.
++- **Count & close:** count everything from zero. Shows over or short against the expected amount, and the notes and coins appear in the Z-report. What you counted becomes the ledger.
++- **Correct contents:** fix the ledger by hand if it drifted.
++
++## Change finder
++`src/lib/changeFinder.ts` finds every way to make an amount from the notes and coins available (never using more than exist). Exact matches only if any exist; otherwise everything within ±$5.00 by default. `findCombinationsLimited` stops at a node cap and reports it, so a very full drawer cannot freeze the app.
++
++## Coming next
++Cash sales adding to the ledger from the Cash screen (you enter what the customer hands over, the screen shows which notes and coins to give back), the weighted "best change" choice, Check Change, the daily float report, and the locked-off tender machine hook.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index bbf06ed..75212e4 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -24,6 +24,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0015 | 2026-10-10 | Progress doc only: your manual ticks recorded, cash drawer answer (N7), new queue item E1 (worker styling and subdomains) | docs |
+ | 0016 | 2026-10-10 | Grid: nested categories to any depth, per-tile settings sheet, groups that act like collections, back one level + tappable path, collection pictures on tiles and lists | C1-C6, A14.1 |
+ | 0017 | 2026-10-10 | Grid: variation picker is now a sub-page of the grid (not a popup), plus new Lock POS, Price check and Stock check tiles | A14.2, A15 |
++| 0018 | 2026-10-10 | Cash drawer: tap-the-notes-and-coins entry with undo, a ledger of what is in the drawer, drawer screens rebuilt on it, and your change finder (checked against your original) | B1a (drawer side), B1b |
+ 
+ ---
+ 
+@@ -182,8 +183,16 @@ Done in 0016 together with A14.1, because they share the grid screens. A14.2 and
+ 
+ ## B. Round 2 list ("fun little bitsies")
+ Status as found in the zip you sent (I only inspected files; not run).
+-- [ ] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Still not built: no denomination/ledger code exists yet (`Drawer.tsx` is still the keypad version).** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
+-  - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
++- [~] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Started in 0018 (ledger, denomination entry on the drawer screens, change finder). The Cash screen, scoring, Check Change and reports are still to come.** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
++  - [~] B1a ledger + denomination entry (done in 0018 for the drawer: open, paid in/out, correct contents, close count. The Cash screen at checkout, which adds sales to the ledger, is 0019) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
++  - **0018 details.** Notes and coins are Australian ($100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c). `src/lib/cashLedger.ts` holds the pure rules; `src/ui/DenomPad.tsx` is the tap pad; `src/screens/Drawer.tsx` uses them. The ledger (`pos.ledger`, saved with the rest of the till data) is the counts now in the drawer plus a history (newest first, last 1,000) of who put in or took out what, and when.
++    - **Tap pad:** tap a note or coin to add one; Add / Remove switch; ×1 ×5 ×10 per tap (for rolls of coins); **Undo** takes back the last tap and says what it removed ("Undid: Added $20 ($20.00) · total now $85.00"); Start over. Removing from zero does nothing and says so.
++    - **Open drawer:** starts from what the ledger says is already in the drawer (carried over from the last close), so you only adjust it. The float is the total. **Paid in / Paid out:** tap the notes and coins; paid out warns if you take more than the ledger holds (it may not know about cash sales yet) and lets you carry on. **Count & close:** a blind count from zero; it tells you over/short against expected, writes the notes and coins into the Z-report, and what you counted becomes the new ledger. **Correct contents:** adjust the ledger by hand with an optional reason.
++    - Counts never show below zero. The history entry keeps exactly what was entered.
++    - **Change finder** (`findCombinations`, your function): same answers as yours. I added only (1) skipping branches that cannot reach the target and (2) an optional node cap (`findCombinationsLimited`) that says when it stopped early, so a very full drawer cannot freeze the iPad. Tested against a copy of your original on 200 random drawers (same results, same order). Note it returns combinations above and below the target within the tolerance, exactly as you wrote it; the Cash screen will only offer ones that give the customer at least what they are owed.
++    - **Not yet connected:** cash sales do not touch the ledger until the Cash screen is rebuilt in 0019 (you enter the notes and coins the customer hands over, and the screen shows which to give back). Until then the ledger only knows about the drawer screens.
++  - [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
++
+ - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
+ - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
+ - [x] B4 Bundle GUI (same as A8, done in 0009)
+@@ -199,7 +208,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (195 after patch 0017). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (212 after patch 0018). `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -230,6 +239,7 @@ Ordered by priority, highest first.
+ - [ ] N14 **Non-blocking (E1, not needed until the end of the queue):** the address of your main Shopify site (so I can match its logo, colours and fonts), the domain you want the subdomains on, and where its DNS is managed (for example Cloudflare). I will carry on without it and ask again when E1 comes up.
+ 
+ - [ ] N15 **Non-blocking (A14.2, A15):** the device test in A15.4.
++- [ ] N16 **Non-blocking (B1):** the drawer device test in B1h.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/patches/0018-plan.md b/docs/patches/0018-plan.md
+new file mode 100644
+index 0000000..25eea1d
+--- /dev/null
++++ b/docs/patches/0018-plan.md
+@@ -0,0 +1,16 @@
++# Patch 0018: cash drawer ledger, denomination pad, change finder
++
++Items: B1a (drawer side), B1b. Status: `[x]` done and tested in my sandbox (pure logic + `tsc`), `[ ]` needs your iPad.
++
++1. [x] Read `Drawer.tsx`, `Pay.tsx` cash code, `types.ts`, store. Baseline 195 tests pass (after 0017).
++2. [x] `src/lib/cashLedger.ts`: denominations, `Counts` arithmetic, tap draft (add/remove/undo with base), ledger entries and `applyEntry` (never below zero, history capped at 1,000), `readLedger` for old/bad saved data.
++3. [x] `src/lib/changeFinder.ts`: your function ported as written, plus pruning and an optional node cap. Verified identical to your original on 200 random drawers.
++4. [x] Store: `pos.ledger`, defaulted and sanitised on load (older saved state still loads).
++5. [x] `src/ui/DenomPad.tsx`: tap pad with Add/Remove, ×1/×5/×10, Undo that reports what it removed, Start over.
++6. [x] `src/screens/Drawer.tsx`: open (carry-over), paid in/out (warns if more than the ledger holds), blind count and close (denominations in the Z-report), correct contents, ledger list, cash history.
++7. [x] Tests `tests/cashledger.test.ts` (17). Total 212 pass; `tsc` clean.
++8. [x] Docs: `PROGRESS.md`, `docs/CASH.md`.
++9. [ ] You: device test (B1h).
++
++## Deliberately not in this patch
++Cash sales adding to the ledger (needs the denomination entry on the Cash screen, B1e/0019). Until then the ledger only knows about the drawer screens, which the drawer page says.
+diff --git a/src/lib/cashLedger.ts b/src/lib/cashLedger.ts
+new file mode 100644
+index 0000000..c43ee2f
+--- /dev/null
++++ b/src/lib/cashLedger.ts
+@@ -0,0 +1,103 @@
++// Location: src/lib/cashLedger.ts
++// B1a: what notes and coins are physically in the drawer, and the tap-to-enter / undo logic used by the denomination pad.
++// All amounts are integer cents. A `Counts` map is {"2000": 3} = three $20 notes; the same shape findCombinations() takes.
++// Pure (no React, no store), unit-tested in tests/cashledger.test.ts.
++import { uid } from './ids';
++
++export type Denom = { cents: number; label: string; kind: 'note' | 'coin' };
++/** Australian notes and coins, largest first. There is no 1c or 2c coin; 5c is the smallest (cash is rounded to 5c). */
++export const DENOMS: readonly Denom[] = [
++  { cents: 10000, label: '$100', kind: 'note' }, { cents: 5000, label: '$50', kind: 'note' }, { cents: 2000, label: '$20', kind: 'note' },
++  { cents: 1000, label: '$10', kind: 'note' }, { cents: 500, label: '$5', kind: 'note' },
++  { cents: 200, label: '$2', kind: 'coin' }, { cents: 100, label: '$1', kind: 'coin' }, { cents: 50, label: '50c', kind: 'coin' },
++  { cents: 20, label: '20c', kind: 'coin' }, { cents: 10, label: '10c', kind: 'coin' }, { cents: 5, label: '5c', kind: 'coin' },
++];
++export const denomLabel = (cents: number): string => DENOMS.find(d => d.cents === cents)?.label ?? `${cents}c`;
++
++export type Counts = Record<string, number>;
++const k = (cents: number) => String(cents);
++
++export const totalOf = (c: Counts): number => Object.entries(c).reduce((s, [v, n]) => s + Number(v) * n, 0);
++export const countOf = (c: Counts, cents: number): number => c[k(cents)] ?? 0;
++/** Drops zeros and anything that is not a whole number of a positive denomination. */
++export function cleanCounts(c: Counts): Counts {
++  const out: Counts = {};
++  for (const [v, n] of Object.entries(c)) if (Number(v) > 0 && Number.isInteger(n) && n !== 0) out[v] = n;
++  return out;
++}
++export function addCounts(a: Counts, b: Counts): Counts {
++  const out: Counts = { ...a }; for (const [v, n] of Object.entries(b)) out[v] = (out[v] ?? 0) + n; return cleanCounts(out);
++}
++/** to − from, per denomination (can be negative). */
++export function diffCounts(to: Counts, from: Counts): Counts {
++  const out: Counts = { ...to }; for (const v of new Set([...Object.keys(to), ...Object.keys(from)])) out[v] = (to[v] ?? 0) - (from[v] ?? 0); return cleanCounts(out);
++}
++/** "2 × $20, 1 × $5" largest first. Negative counts print as "-2 × $20". Empty → "nothing". */
++export function summariseCounts(c: Counts): string {
++  const parts = Object.entries(cleanCounts(c)).sort((a, b) => Number(b[0]) - Number(a[0])).map(([v, n]) => `${n} × ${denomLabel(Number(v))}`);
++  return parts.length ? parts.join(', ') : 'nothing';
++}
++/** Denominations where `take` asks for more than `have` holds. */
++export function shortfall(have: Counts, take: Counts): { cents: number; have: number; need: number }[] {
++  return Object.entries(cleanCounts(take)).filter(([v, n]) => n > 0 && n > (have[v] ?? 0)).map(([v, n]) => ({ cents: Number(v), have: have[v] ?? 0, need: n })).sort((a, b) => b.cents - a.cents);
++}
++
++// ── tap entry with undo ──────────────────────────────────────────────────────
++/** One tap on the pad: n > 0 adds, n < 0 removes. A draft is the list of taps so far, so every step can be undone. */
++export type Tap = { cents: number; n: number };
++export type Draft = Tap[];
++/** The counts shown while entering: `base` (what was already there, for open/adjust) plus every tap. Never below zero. */
++export function draftCounts(d: Draft, base: Counts = {}): Counts {
++  const out: Counts = { ...base };
++  for (const t of d) out[k(t.cents)] = Math.max(0, (out[k(t.cents)] ?? 0) + t.n);
++  return cleanCounts(out);
++}
++/** Add (n > 0) or remove (n < 0) notes or coins. Removing more than are there removes what is there; removing from zero changes nothing (returns the same draft). */
++export function tapDenom(d: Draft, base: Counts, cents: number, n: number): Draft {
++  if (!Number.isInteger(n) || n === 0) return d;
++  const have = countOf(draftCounts(d, base), cents);
++  const eff = n < 0 ? -Math.min(have, -n) : n;
++  return eff === 0 ? d : [...d, { cents, n: eff }];
++}
++/** Takes back the most recent tap. `undone` says what was reversed, so the screen can tell the cashier what changed. */
++export function undoLast(d: Draft): { draft: Draft; undone?: Tap } {
++  return d.length ? { draft: d.slice(0, -1), undone: d[d.length - 1] } : { draft: d };
++}
++/** "Added 2 × $20 ($40.00)" / "Removed $5 ($5.00)". Pass `undo` to word it as the reverse. */
++export function describeTap(t: Tap, undo = false): string {
++  const added = (t.n > 0) !== undo; const n = Math.abs(t.n); const cents = t.cents * n;
++  const money = `$${Math.floor(cents / 100)}.${String(cents % 100).padStart(2, '0')}`;
++  return `${added ? 'Added' : 'Removed'} ${n > 1 ? `${n} × ` : ''}${denomLabel(t.cents)} (${money})`;
++}
++
++// ── the ledger ───────────────────────────────────────────────────────────────
++export type LedgerKind = 'open' | 'paid_in' | 'paid_out' | 'adjust' | 'close' | 'sale_in' | 'sale_change';
++export const LEDGER_LABEL: Record<LedgerKind, string> = { open: 'Opened drawer', paid_in: 'Paid in', paid_out: 'Paid out', adjust: 'Contents corrected', close: 'Counted at close', sale_in: 'Cash received', sale_change: 'Change given' };
++/** delta: what changed in the drawer (positive = went in, negative = came out). */
++export type LedgerEntry = { id: string; ts: string; kind: LedgerKind; delta: Counts; staff?: string; note?: string; saleUuid?: string };
++/** `counts` is what the drawer holds now; `entries` is the history, newest first. */
++export type CashLedger = { counts: Counts; entries: LedgerEntry[] };
++export const MAX_ENTRIES = 1000;
++export const emptyLedger = (): CashLedger => ({ counts: {}, entries: [] });
++
++export function newEntry(kind: LedgerKind, delta: Counts, o: { staff?: string; note?: string; saleUuid?: string; ts?: string } = {}): LedgerEntry {
++  const e: LedgerEntry = { id: uid(), ts: o.ts ?? new Date().toISOString(), kind, delta: cleanCounts(delta) };
++  if (o.staff) e.staff = o.staff; if (o.note) e.note = o.note; if (o.saleUuid) e.saleUuid = o.saleUuid; // no undefined keys, so a saved copy equals the original
++  return e;
++}
++/**
++ * Records an entry and moves the counts by its delta. The counts never go below zero: if the ledger did not know about
++ * a note that came out, the count stops at 0 rather than showing "-1 × $5" (the entry itself keeps what was entered).
++ */
++export function applyEntry(l: CashLedger, e: LedgerEntry): CashLedger {
++  const counts: Counts = { ...l.counts };
++  for (const [v, n] of Object.entries(e.delta)) counts[v] = Math.max(0, (counts[v] ?? 0) + n);
++  return { counts: cleanCounts(counts), entries: [e, ...l.entries].slice(0, MAX_ENTRIES) };
++}
++export const entryTotal = (e: LedgerEntry): number => totalOf(e.delta);
++/** Older saved state, or something unreadable, becomes an empty ledger. */
++export function readLedger(raw: unknown): CashLedger {
++  const r = raw as any;
++  if (!r || typeof r !== 'object' || typeof r.counts !== 'object' || !Array.isArray(r.entries)) return emptyLedger();
++  return { counts: cleanCounts(r.counts), entries: r.entries.filter((e: any) => e && typeof e.id === 'string' && typeof e.ts === 'string' && e.delta && typeof e.delta === 'object' && e.kind in LEDGER_LABEL).slice(0, MAX_ENTRIES) };
++}
+diff --git a/src/lib/changeFinder.ts b/src/lib/changeFinder.ts
+new file mode 100644
+index 0000000..8454efb
+--- /dev/null
++++ b/src/lib/changeFinder.ts
+@@ -0,0 +1,69 @@
++// Location: src/lib/changeFinder.ts
++// B1b: your Bounded Change Combination Finder (DEV_NOTES "MY RESPONSE"), kept as you wrote it, plus two things that do not change its answers:
++//  - dead-branch pruning (stop when even all the remaining notes and coins could not reach the target), so the same results come back faster;
++//  - an optional node cap, so a huge drawer cannot freeze the iPad. Hitting the cap is reported, never hidden.
++// Amounts and denomination keys are integer cents.
++
++export type ChangeResult = {
++  values: Record<string, { qty_used: number; qty_remaining: number }>;
++  total: number;
++  exact: boolean;
++};
++
++export type FindOptions = { maxNodes?: number };
++export type FindOutcome = { results: ChangeResult[]; truncated: boolean };
++
++/** Same behaviour as findCombinations, but says whether the search was cut short by `maxNodes` (results are then incomplete). */
++export function findCombinationsLimited(available: Record<string, number>, target: number, delta = 500, opts: FindOptions = {}): FindOutcome {
++  const entries = Object.entries(available)
++    .map(([value, quantity]) => [Number(value), quantity] as const)
++    .filter(([value, quantity]) => value > 0 && Number.isFinite(value) && Number.isInteger(quantity) && quantity >= 0)
++    .sort(([a], [b]) => b - a);
++
++  // most each suffix of the denomination list could still add, for pruning
++  const reach = new Array(entries.length + 1).fill(0);
++  for (let i = entries.length - 1; i >= 0; i--) reach[i] = reach[i + 1] + entries[i][0] * entries[i][1];
++
++  const results: ChangeResult[] = [];
++  const used = new Array(entries.length).fill(0);
++  const maxNodes = opts.maxNodes ?? Infinity; let nodes = 0; let truncated = false;
++
++  function buildResult(total: number, exact: boolean): ChangeResult {
++    const values: ChangeResult['values'] = {};
++    entries.forEach(([value, quantity], index) => { values[String(value)] = { qty_used: used[index], qty_remaining: quantity - used[index] }; });
++    return { values, total, exact };
++  }
++  function search(index: number, total: number): void {
++    if (truncated) return;
++    if (++nodes > maxNodes) { truncated = true; return; }
++    if (total + reach[index] < target - delta - 1e-9) return; // cannot get close enough from here
++    if (index === entries.length) {
++      const difference = Math.abs(total - target);
++      if (difference <= 1e-9) results.push(buildResult(total, true));
++      else if (difference <= delta + 1e-9) results.push(buildResult(total, false));
++      return;
++    }
++    const [value, quantity] = entries[index];
++    for (let qty = 0; qty <= quantity; qty++) {
++      const nextTotal = total + value * qty;
++      if (nextTotal > target + delta + 1e-9) break;
++      used[index] = qty;
++      search(index + 1, nextTotal);
++      if (truncated) break;
++    }
++    used[index] = 0;
++  }
++  search(0, 0);
++  const exactResults = results.filter(r => r.exact);
++  return { results: exactResults.length > 0 ? exactResults : results, truncated };
++}
++
++/**
++ * Every combination of the available denominations that adds up to `target`, without using more of any denomination than exists.
++ * - If any exact matches exist, only those are returned.
++ * - Otherwise every combination within ±delta cents (default 500) is returned, with exact: false.
++ * - An empty array means nothing was found in range. Invalid entries are ignored.
++ */
++export function findCombinations(available: Record<string, number>, target: number, delta = 500): ChangeResult[] {
++  return findCombinationsLimited(available, target, delta).results;
++}
+diff --git a/src/screens/Drawer.tsx b/src/screens/Drawer.tsx
+index a8da401..32823e0 100644
+--- a/src/screens/Drawer.tsx
++++ b/src/screens/Drawer.tsx
+@@ -1,41 +1,83 @@
+ import React, { useState } from 'react';
+ import { Share, View } from 'react-native';
+-import { Btn, Card, Field, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, Field, Money, Page, Row, Section, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
++import { DenomPad } from '../ui/DenomPad';
+ import { useNav } from '../ui/nav';
+ import { useApp, currentStaff } from '../state/store';
+ import { csv } from '../lib/csvStore';
+-import { digitsToCents, fmt } from '../lib/money';
++import { fmt } from '../lib/money';
++import { DENOMS, LEDGER_LABEL, applyEntry, diffCounts, draftCounts, entryTotal, newEntry, shortfall, summariseCounts, totalOf, type Draft, type LedgerKind } from '../lib/cashLedger';
+ 
+ /** Current cash drawer: float, paid in/out, count vs expected, Z-report (simplified, per register). */
+ export const cashSince = (sinceISO: string, registerId: string, sales = useApp.getState().pos.sales) =>
+   sales.filter(s => s.registerId === registerId && s.ts >= sinceISO).reduce((sum, s) => sum + s.tenders.filter(t => t.kind === 'cash').reduce((x, t) => x + (s.type === 'sale' ? t.amountCents + (t.roundingCents ?? 0) : -t.amountCents), 0), 0);
+ 
+ export default function Drawer() {
+-  const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const reg = useApp(s => s.settings.registerId); const patchPos = useApp(s => s.patchPos);
+-  const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close'>('none'); const [digits, setDigits] = useState(''); const [note, setNote] = useState('');
++  const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const reg = useApp(s => s.settings.registerId); const patchPos = useApp(s => s.patchPos); const ledger = useApp(s => s.pos.ledger);
++  const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close' | 'fix'>('none'); const [draft, setDraft] = useState<Draft>([]); const [note, setNote] = useState('');
+   const staff = currentStaff()?.name; const cash = shift.open && shift.openedAt ? cashSince(shift.openedAt, reg, sales) : 0;
+-  const expected = shift.floatCents + cash + shift.paidInCents - shift.paidOutCents; const amt = digitsToCents(digits);
+-  const done = () => { setSheet('none'); setDigits(''); setNote(''); };
++  const expected = shift.floatCents + cash + shift.paidInCents - shift.paidOutCents;
++  // open and "fix contents" start from what the drawer holds (adjust it); in, out and the closing count start empty (a blind count)
++  const base = sheet === 'open' || sheet === 'fix' ? ledger.counts : {};
++  const entered = draftCounts(draft, base); const amt = totalOf(entered);
++  const done = () => { setSheet('none'); setDraft([]); setNote(''); };
++  const record = (kind: LedgerKind, delta: Record<string, number>, n?: string) => applyEntry(useApp.getState().pos.ledger, newEntry(kind, delta, { staff, note: n }));
++
+   const submit = async () => {
+-    if (sheet === 'open') { patchPos({ shift: { open: true, openedAt: new Date().toISOString(), floatCents: amt, paidInCents: 0, paidOutCents: 0, staff } }); void csv.event({ kind: 'shift_open', amountCents: amt, staff }); }
+-    if (sheet === 'in') { patchPos({ shift: { ...shift, paidInCents: shift.paidInCents + amt } }); void csv.event({ kind: 'paid_in', amountCents: amt, message: note, staff }); }
+-    if (sheet === 'out') { patchPos({ shift: { ...shift, paidOutCents: shift.paidOutCents + amt } }); void csv.event({ kind: 'paid_out', amountCents: amt, message: note, staff }); }
++    if (sheet === 'open') {
++      const l = record('open', diffCounts(entered, ledger.counts), 'Float ' + fmt(amt));
++      patchPos({ shift: { open: true, openedAt: new Date().toISOString(), floatCents: amt, paidInCents: 0, paidOutCents: 0, staff }, ledger: l }); void csv.event({ kind: 'shift_open', amountCents: amt, staff, message: summariseCounts(entered) });
++    }
++    if (sheet === 'in') {
++      if (!amt) return alertMsg('Nothing entered', 'Tap the notes and coins that went in.');
++      patchPos({ shift: { ...shift, paidInCents: shift.paidInCents + amt }, ledger: record('paid_in', entered, note) }); void csv.event({ kind: 'paid_in', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
++    }
++    if (sheet === 'out') {
++      if (!amt) return alertMsg('Nothing entered', 'Tap the notes and coins that came out.');
++      const short = shortfall(ledger.counts, entered);
++      if (short.length && !(await confirm('More than the drawer should hold', `You are taking ${short.map(x => `${x.need} × ${DENOMS.find(d => d.cents === x.cents)?.label} (ledger has ${x.have})`).join(', ')}. The ledger may not know about recent cash sales yet. Take it out anyway?`, 'Take out'))) return;
++      patchPos({ shift: { ...shift, paidOutCents: shift.paidOutCents + amt }, ledger: record('paid_out', Object.fromEntries(Object.entries(entered).map(([v, n]) => [v, -n])), note) }); void csv.event({ kind: 'paid_out', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
++    }
++    if (sheet === 'fix') {
++      const delta = diffCounts(entered, ledger.counts); if (!Object.keys(delta).length) return done();
++      patchPos({ ledger: record('adjust', delta, note || 'Corrected by hand') });
++    }
+     if (sheet === 'close') {
+-      const diff = amt - expected; const z = [`Z-report · ${new Date().toLocaleString()}`, `Opened ${shift.openedAt ? new Date(shift.openedAt).toLocaleString() : ''}`, `Float ${fmt(shift.floatCents)}`, `Cash sales (net of refunds) ${fmt(cash)}`, `Paid in ${fmt(shift.paidInCents)}`, `Paid out ${fmt(shift.paidOutCents)}`, `Expected ${fmt(expected)}`, `Counted ${fmt(amt)}`, `Difference ${fmt(diff)}`].join('\n');
+-      void csv.event({ kind: 'shift_close', amountCents: amt, message: `expected ${expected} diff ${diff}`, staff }); patchPos({ shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 } }); done(); await Share.share({ message: z }); return;
++      const diff = amt - expected; const byDenom = diffCounts(entered, ledger.counts);
++      const z = [`Z-report · ${new Date().toLocaleString()}`, `Opened ${shift.openedAt ? new Date(shift.openedAt).toLocaleString() : ''}`, `Float ${fmt(shift.floatCents)}`, `Cash sales (net of refunds) ${fmt(cash)}`, `Paid in ${fmt(shift.paidInCents)}`, `Paid out ${fmt(shift.paidOutCents)}`, `Expected ${fmt(expected)}`, `Counted ${fmt(amt)}`, `Difference ${fmt(diff)}`, `In the drawer: ${summariseCounts(entered)}`].join('\n');
++      void csv.event({ kind: 'shift_close', amountCents: amt, message: `expected ${expected} diff ${diff}; ${summariseCounts(entered)}`, staff });
++      // what was counted becomes what the ledger says is in the drawer; the next opening starts from it
++      patchPos({ shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, ledger: record('close', byDenom, `Counted ${fmt(amt)}`) }); done(); await Share.share({ message: z }); return;
+     }
+     done();
+   };
++  const title = sheet === 'open' ? 'Opening float' : sheet === 'in' ? 'Paid in' : sheet === 'out' ? 'Paid out' : sheet === 'fix' ? 'Correct drawer contents' : 'Count the drawer';
++  const hint = sheet === 'open' ? `Carried over from last time: ${fmt(totalOf(ledger.counts))}. Tap to add or remove until it matches what you are putting in.` : sheet === 'fix' ? 'Starts from what the ledger thinks is there. Add or remove until it matches the drawer.'
++    : sheet === 'close' ? `Count everything in the drawer. Expected ${fmt(expected)}.` : sheet === 'in' ? 'Tap the notes and coins you are putting in.' : 'Tap the notes and coins you are taking out.';
++  const recent = ledger.entries.slice(0, 15);
+   return (
+     <Page title="Cash drawer" onBack={nav.pop}>
+       {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open on this register.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} /></View> : <>
+         <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
+         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}
+-      <Sheet visible={sheet !== 'none'} onClose={done} title={sheet === 'open' ? 'Opening float' : sheet === 'in' ? 'Paid in' : sheet === 'out' ? 'Paid out' : 'Counted cash'}>
+-        <Txt size={38} weight="700" style={{ textAlign: 'center', marginBottom: 8 }}>{fmt(amt)}</Txt>
+-        {sheet === 'in' || sheet === 'out' ? <Field kind="text" placeholder="Reason" value={note} onChangeText={setNote} /> : null}
+-        {sheet === 'close' ? <Txt sub style={{ textAlign: 'center', marginBottom: 8 }}>Expected {fmt(expected)}</Txt> : null}
+-        <Keypad value={digits} onChange={setDigits} onSubmit={() => void submit()} submitLabel="Confirm" />
++
++      <Section title="Notes and coins in the drawer" footer="This is the ledger: what the drawer should hold. Counting at close resets it to what you actually counted. Cash sales will add to it from the Cash screen in a later update.">
++        {DENOMS.map(d => <Row key={d.cents} title={d.label} sub={d.kind === 'note' ? 'Note' : 'Coin'} right={<View style={{ alignItems: 'flex-end' }}><Txt weight="700">× {ledger.counts[String(d.cents)] ?? 0}</Txt><Txt size={12} sub>{fmt(d.cents * (ledger.counts[String(d.cents)] ?? 0))}</Txt></View>} />)}
++        <Row title="Total in the drawer" right={<Money cents={totalOf(ledger.counts)} weight="700" size={18} />} last />
++      </Section>
++      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><Btn title="Correct contents" kind="secondary" icon="create-outline" onPress={() => setSheet('fix')} /></View>
++
++      <Section title="Cash history">
++        {recent.length ? recent.map((e, i) => { const t = entryTotal(e); return <Row key={e.id} last={i === recent.length - 1} icon={t < 0 ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'} title={`${LEDGER_LABEL[e.kind]}${e.staff ? ` · ${e.staff}` : ''}`}
++          sub={`${new Date(e.ts).toLocaleString([], { day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit' })} · ${summariseCounts(e.delta)}${e.note ? ` · ${e.note}` : ''}`} right={<Money cents={t} weight="600" />} />; }) : <Row title="Nothing yet" sub="Opening the drawer, paid in/out and counts show up here." last />}
++      </Section>
++
++      <Sheet visible={sheet !== 'none'} onClose={done} title={title} full>
++        <Txt size={13} sub style={{ textAlign: 'center', marginBottom: 8 }}>{hint}</Txt>
++        {sheet === 'in' || sheet === 'out' || sheet === 'fix' ? <Field kind="text" placeholder={sheet === 'fix' ? 'Reason (optional)' : 'Reason'} value={note} onChangeText={setNote} /> : null}
++        <DenomPad draft={draft} onChange={setDraft} base={base} />
++        {sheet === 'close' ? <Txt size={13} style={{ textAlign: 'center', marginTop: 10 }} color={amt === expected ? '#16A34A' : '#B45309'}>{amt === expected ? 'Matches the expected amount.' : `${amt > expected ? 'Over' : 'Short'} by ${fmt(Math.abs(amt - expected))}`}</Txt> : null}
++        <Btn title="Confirm" onPress={() => void submit()} style={{ marginTop: 14 }} />
+       </Sheet>
+     </Page>
+   );
+diff --git a/src/state/store.ts b/src/state/store.ts
+index d61ef00..16769d2 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -11,6 +11,7 @@ import type { Totals } from '../lib/rollup';
+ import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
+ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
+ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
++import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+ 
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+@@ -45,7 +46,7 @@ type Data = {
+   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
+   catalogueAt?: string; stockSince?: string;
+ };
+-type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart };
++type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger };
+ 
+ export type App = {
+   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
+@@ -61,7 +62,7 @@ export type App = {
+ };
+ 
+ const emptyData = (): Data => ({ variants: {}, collections: [], customers: [], autos: [], presets: [] });
+-const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart() });
++const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: emptyLedger() });
+ 
+ const timers: Record<string, any> = {};
+ const persist = (key: string, get: () => unknown) => { clearTimeout(timers[key]); timers[key] = setTimeout(() => kvSet(key, get()), 400); };
+@@ -87,7 +88,7 @@ export const useApp = create<App>((set, get) => ({
+     ]);
+     set({
+       settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
+-      grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}) }, ready: true,
++      grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
+     });
+     if (!settings) persist('settings', () => get().settings); // keep the generated registerId
+   },
+diff --git a/src/ui/DenomPad.tsx b/src/ui/DenomPad.tsx
+new file mode 100644
+index 0000000..dfb343e
+--- /dev/null
++++ b/src/ui/DenomPad.tsx
+@@ -0,0 +1,50 @@
++// Location: src/ui/DenomPad.tsx
++// Tap-to-enter notes and coins (B1a). Tap $50, $20, 50c … instead of typing amounts. Every tap can be undone, and the pad
++// tells the cashier exactly what an undo took off. `base` is what was already in the drawer (open / correct contents);
++// leave it empty for a blind count or for money going in or out.
++import React, { useState } from 'react';
++import { Pressable, View } from 'react-native';
++import { Btn, Chip, Segmented, Txt, tap as haptic } from './kit';
++import { useTheme } from './theme';
++import { DENOMS, countOf, describeTap, draftCounts, tapDenom, totalOf, undoLast, type Counts, type Draft } from '../lib/cashLedger';
++import { fmt } from '../lib/money';
++
++const MULTS = [1, 5, 10] as const;
++
++export function DenomPad({ draft, onChange, base = {}, totalLabel }: { draft: Draft; onChange: (d: Draft) => void; base?: Counts; totalLabel?: string }) {
++  const { c } = useTheme(); const [mode, setMode] = useState<'add' | 'remove'>('add'); const [mult, setMult] = useState<number>(1); const [msg, setMsg] = useState('');
++  const counts = draftCounts(draft, base); const total = totalOf(counts);
++  const press = (cents: number) => {
++    const next = tapDenom(draft, base, cents, mode === 'add' ? mult : -mult);
++    if (next === draft) { setMsg('None of that to remove.'); return; }
++    const last = next[next.length - 1]; setMsg(describeTap(last)); onChange(next);
++  };
++  const undo = () => { const u = undoLast(draft); if (!u.undone) return; setMsg(`Undid: ${describeTap(u.undone)} · total now ${fmt(totalOf(draftCounts(u.draft, base)))}`); onChange(u.draft); };
++  const lastTap = draft[draft.length - 1];
++  const group = (kind: 'note' | 'coin') => (
++    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
++      {DENOMS.filter(d => d.kind === kind).map(d => { const n = countOf(counts, d.cents); return (
++        <Pressable key={d.cents} onPress={() => { haptic(); press(d.cents); }} accessibilityRole="button" accessibilityLabel={`${mode === 'add' ? 'Add' : 'Remove'} ${d.label}, ${n} now`}
++          style={({ pressed }) => ({ width: '31.5%', height: 64, borderRadius: 14, backgroundColor: mode === 'remove' ? c.bad + '22' : kind === 'note' ? c.accent + '18' : c.fill, opacity: pressed ? 0.6 : 1, alignItems: 'center', justifyContent: 'center', borderWidth: n ? 1.5 : 0, borderColor: mode === 'remove' ? c.bad : c.accent })}>
++          <Txt size={20} weight="700">{d.label}</Txt>
++          <Txt size={12} sub weight="600">{n ? `× ${n}` : '–'}</Txt>
++        </Pressable>); })}
++    </View>);
++  return (
++    <View style={{ gap: 12 }}>
++      <View style={{ alignItems: 'center' }}>
++        {totalLabel ? <Txt size={13} sub>{totalLabel}</Txt> : null}
++        <Txt size={38} weight="700">{fmt(total)}</Txt>
++        <Txt size={13} sub style={{ textAlign: 'center', minHeight: 18 }}>{msg}</Txt>
++      </View>
++      <Segmented value={mode} onChange={m => { setMode(m); setMsg(''); }} options={[{ v: 'add', label: 'Add' }, { v: 'remove', label: 'Remove' }]} />
++      <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><Txt size={13} sub weight="600">Each tap</Txt>{MULTS.map(m => <Chip key={m} label={`×${m}`} active={mult === m} onPress={() => setMult(m)} />)}</View>
++      <Txt size={13} sub weight="600">Notes</Txt>{group('note')}
++      <Txt size={13} sub weight="600">Coins</Txt>{group('coin')}
++      <View style={{ flexDirection: 'row', gap: 8 }}>
++        <Btn title={lastTap ? `Undo ${describeTap(lastTap).replace(/ \(.*\)$/, '')}` : 'Undo'} kind="secondary" small disabled={!draft.length} onPress={undo} style={{ flex: 2 }} />
++        <Btn title="Start over" kind="secondary" small disabled={!draft.length} onPress={() => { onChange([]); setMsg('Back to the start.'); }} style={{ flex: 1 }} />
++      </View>
++    </View>
++  );
++}
+diff --git a/tests/cashledger.test.ts b/tests/cashledger.test.ts
+new file mode 100644
+index 0000000..0766454
+--- /dev/null
++++ b/tests/cashledger.test.ts
+@@ -0,0 +1,113 @@
++// Location: tests/cashledger.test.ts
++// 0018: the drawer ledger, tap entry with undo, and the change finder.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { DENOMS, addCounts, applyEntry, cleanCounts, describeTap, diffCounts, draftCounts, emptyLedger, entryTotal, newEntry, readLedger, shortfall, summariseCounts, tapDenom, totalOf, undoLast, MAX_ENTRIES, type Draft } from '../src/lib/cashLedger';
++import { findCombinations, findCombinationsLimited, type ChangeResult } from '../src/lib/changeFinder';
++
++// ── ledger arithmetic ──
++test('denominations: Australian set, largest first, no 1c or 2c', () => {
++  assert.deepEqual(DENOMS.map(d => d.cents), [10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5]);
++  assert.equal(DENOMS.filter(d => d.kind === 'note').length, 5);
++});
++test('totalOf, addCounts, diffCounts, cleanCounts', () => {
++  assert.equal(totalOf({ '2000': 2, '50': 3, '5': 1 }), 4155);
++  assert.deepEqual(addCounts({ '2000': 1 }, { '2000': 2, '500': 1 }), { '2000': 3, '500': 1 });
++  assert.deepEqual(addCounts({ '2000': 1 }, { '2000': -1 }), {}); // a zero count disappears
++  assert.deepEqual(diffCounts({ '2000': 3, '500': 1 }, { '2000': 1, '100': 4 }), { '2000': 2, '500': 1, '100': -4 });
++  assert.deepEqual(cleanCounts({ '2000': 0, '1000': 1.5, '0': 3, '500': 2 }), { '500': 2 });
++});
++test('summariseCounts reads largest first', () => {
++  assert.equal(summariseCounts({ '500': 1, '2000': 2, '5': 3 }), '2 × $20, 1 × $5, 3 × 5c'); assert.equal(summariseCounts({}), 'nothing');
++});
++test('shortfall: only denominations where more is asked than held', () => {
++  assert.deepEqual(shortfall({ '500': 2, '1000': 1 }, { '500': 3, '1000': 1, '2000': 1 }), [{ cents: 2000, have: 0, need: 1 }, { cents: 500, have: 2, need: 3 }]);
++  assert.deepEqual(shortfall({ '500': 2 }, { '500': 2 }), []);
++});
++
++// ── tap entry and undo ──
++test('tapping adds one at a time and counts what is on screen', () => {
++  let d: Draft = []; d = tapDenom(d, {}, 2000, 1); d = tapDenom(d, {}, 2000, 1); d = tapDenom(d, {}, 5, 3);
++  assert.deepEqual(draftCounts(d), { '2000': 2, '5': 3 }); assert.equal(totalOf(draftCounts(d)), 4015);
++});
++test('removing: only what is there; from zero it changes nothing; extra is clamped', () => {
++  let d: Draft = []; assert.equal(tapDenom(d, {}, 500, -1), d, 'nothing to remove');
++  d = tapDenom(d, {}, 500, 2); d = tapDenom(d, {}, 500, -5); assert.deepEqual(draftCounts(d), {}); // removed the 2 that existed
++  assert.deepEqual(d.at(-1), { cents: 500, n: -2 });
++});
++test('with a base (open / correct contents): you can remove what was already there', () => {
++  const base = { '2000': 3 }; let d: Draft = []; d = tapDenom(d, base, 2000, -1); d = tapDenom(d, base, 1000, 2);
++  assert.deepEqual(draftCounts(d, base), { '2000': 2, '1000': 2 }); assert.deepEqual(diffCounts(draftCounts(d, base), base), { '2000': -1, '1000': 2 });
++  assert.equal(tapDenom([], base, 1000, -1).length, 0, 'none of that in the base');
++});
++test('undo reverses the last tap and says what it was; undo on empty is a no-op', () => {
++  let d: Draft = []; d = tapDenom(d, {}, 2000, 1); d = tapDenom(d, {}, 500, 4);
++  const u = undoLast(d); assert.deepEqual(u.undone, { cents: 500, n: 4 }); assert.deepEqual(draftCounts(u.draft), { '2000': 1 });
++  assert.equal(describeTap(u.undone!, true), 'Removed 4 × $5 ($20.00)');
++  assert.equal(undoLast([]).undone, undefined);
++  // undo a removal puts it back
++  const base = { '2000': 1 }; let e: Draft = tapDenom([], base, 2000, -1); const r = undoLast(e); assert.deepEqual(draftCounts(r.draft, base), { '2000': 1 }); assert.equal(describeTap(r.undone!, true), 'Added $20 ($20.00)');
++});
++test('describeTap wording', () => {
++  assert.equal(describeTap({ cents: 2000, n: 1 }), 'Added $20 ($20.00)'); assert.equal(describeTap({ cents: 50, n: -3 }), 'Removed 3 × 50c ($1.50)');
++});
++
++// ── ledger entries ──
++test('applyEntry: moves counts, records history newest first, never goes below zero', () => {
++  let l = emptyLedger();
++  l = applyEntry(l, newEntry('open', { '2000': 2, '100': 5 }, { staff: 'Aiden' }));
++  l = applyEntry(l, newEntry('paid_out', { '2000': -1, '500': -1 }, { note: 'milk' })); // the ledger never knew about a $5
++  assert.deepEqual(l.counts, { '2000': 1, '100': 5 }); assert.equal(l.entries[0].kind, 'paid_out'); assert.equal(l.entries[1].staff, 'Aiden');
++  assert.equal(entryTotal(l.entries[0]), -2500, 'the entry keeps what was entered');
++});
++test('history is capped, newest kept', () => {
++  let l = emptyLedger(); for (let i = 0; i < MAX_ENTRIES + 20; i++) l = applyEntry(l, newEntry('adjust', { '5': 1 }, { note: String(i) }));
++  assert.equal(l.entries.length, MAX_ENTRIES); assert.equal(l.entries[0].note, String(MAX_ENTRIES + 19)); assert.equal(l.counts['5'], MAX_ENTRIES + 20);
++});
++test('readLedger: bad or old saved data becomes an empty ledger; good data survives', () => {
++  assert.deepEqual(readLedger(undefined), emptyLedger()); assert.deepEqual(readLedger({ counts: 3 }), emptyLedger());
++  const l = applyEntry(emptyLedger(), newEntry('open', { '1000': 2 })); assert.deepEqual(readLedger(JSON.parse(JSON.stringify(l))), l);
++  assert.equal(readLedger({ counts: {}, entries: [{ id: 'x', ts: 't', kind: 'bogus', delta: {} }] }).entries.length, 0);
++});
++
++// ── change finder: your function, checked against the original unpruned version ──
++function reference(available: Record<string, number>, target: number, delta = 500): ChangeResult[] {
++  const entries = Object.entries(available).map(([v, q]) => [Number(v), q] as const).filter(([v, q]) => v > 0 && Number.isFinite(v) && Number.isInteger(q) && q >= 0).sort(([a], [b]) => b - a);
++  const results: ChangeResult[] = []; const used = new Array(entries.length).fill(0);
++  const build = (total: number, exact: boolean): ChangeResult => { const values: ChangeResult['values'] = {}; entries.forEach(([v, q], i) => { values[String(v)] = { qty_used: used[i], qty_remaining: q - used[i] }; }); return { values, total, exact }; };
++  const search = (i: number, total: number): void => {
++    if (i === entries.length) { const d = Math.abs(total - target); if (d <= 1e-9) results.push(build(total, true)); else if (d <= delta + 1e-9) results.push(build(total, false)); return; }
++    const [v, q] = entries[i];
++    for (let qty = 0; qty <= q; qty++) { const nt = total + v * qty; if (nt > target + delta + 1e-9) break; used[i] = qty; search(i + 1, nt); }
++    used[i] = 0;
++  };
++  search(0, 0); const ex = results.filter(r => r.exact); return ex.length ? ex : results;
++}
++const drawer = { '2000': 2, '1000': 3, '500': 4, '200': 5, '100': 5 };
++test('finder: exact matches only when any exist (your $37.00 example)', () => {
++  const r = findCombinations(drawer, 3700); assert.ok(r.length > 0 && r.every(x => x.exact && x.total === 3700));
++  for (const c of r) for (const [v, q] of Object.entries(c.values)) assert.equal(q.qty_used + q.qty_remaining, (drawer as any)[v]);
++});
++test('finder: no exact match returns everything within ±delta, flagged exact:false, and the delta can be tightened', () => {
++  const d = { '2000': 2, '1000': 1 }; // can make 0,10,20,30,40,50 dollars
++  const r = findCombinations(d, 2500); assert.ok(r.length && r.every(x => !x.exact)); assert.deepEqual([...new Set(r.map(x => x.total))].sort((a, b) => a - b), [2000, 3000]);
++  assert.deepEqual([...new Set(findCombinations(d, 2500, 100).map(x => x.total))], []);
++  assert.deepEqual(findCombinations({}, 100, 0), []);
++});
++test('finder: invalid entries are ignored, zero-quantity denominations are fine', () => {
++  const r = findCombinations({ '100': 3, '0': 5, '-50': 2, '200': 1.5, '500': 0 }, 300); assert.equal(r.length, 1); assert.equal(r[0].values['100'].qty_used, 3); assert.equal(r[0].values['500'].qty_used, 0);
++});
++test('finder: pruned search returns exactly what the original returns, in the same order (200 random drawers)', () => {
++  let seed = 12345; const rnd = (n: number) => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed % n; };
++  const dens = [10000, 5000, 2000, 1000, 500, 200, 100, 50, 20, 10, 5];
++  for (let t = 0; t < 200; t++) {
++    const av: Record<string, number> = {}; for (const d of dens) if (rnd(3)) av[String(d)] = rnd(4);
++    const target = rnd(60) * 5 + (rnd(2) ? 0 : 5); const delta = [0, 100, 500][rnd(3)];
++    assert.deepEqual(findCombinations(av, target, delta), reference(av, target, delta), JSON.stringify({ av, target, delta }));
++  }
++});
++test('finder: the node cap stops a huge drawer and says so', () => {
++  const big = Object.fromEntries(DENOMS.map(d => [String(d.cents), 30]));
++  const o = findCombinationsLimited(big, 7355, 500, { maxNodes: 5000 }); assert.equal(o.truncated, true);
++  const small = findCombinationsLimited(drawer, 3700, 500, { maxNodes: 1_000_000 }); assert.equal(small.truncated, false); assert.deepEqual(small.results, findCombinations(drawer, 3700));
++});
+-- 
+2.43.0
+

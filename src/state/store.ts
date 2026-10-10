@@ -11,6 +11,7 @@ import type { Totals } from '../lib/rollup';
 import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
 import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
 import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
@@ -45,7 +46,7 @@ type Data = {
   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
   catalogueAt?: string; stockSince?: string;
 };
-type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart };
+type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger };
 
 export type App = {
   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
@@ -61,7 +62,7 @@ export type App = {
 };
 
 const emptyData = (): Data => ({ variants: {}, collections: [], customers: [], autos: [], presets: [] });
-const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart() });
+const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: emptyLedger() });
 
 const timers: Record<string, any> = {};
 const persist = (key: string, get: () => unknown) => { clearTimeout(timers[key]); timers[key] = setTimeout(() => kvSet(key, get()), 400); };
@@ -87,7 +88,7 @@ export const useApp = create<App>((set, get) => ({
     ]);
     set({
       settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
-      grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}) }, ready: true,
+      grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
     });
     if (!settings) persist('settings', () => get().settings); // keep the generated registerId
   },
