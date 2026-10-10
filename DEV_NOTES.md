@@ -236,7 +236,7 @@ Batch this together with the other bits mentioning the grid and thingsies :3
 
 # IMPORTANT FILE LOCATIONS
 
-The current progress on this list's implementation is found in `docs/PROGRESS.md` from the project root. Some of the above sections were only specified after that list's last update, and need to have checklist entries added in said file for the tasks those entail. These new bits are marked with `(NEW)` in their header. In the same patch that adds that section's tasks to the progress checklist, remove the 'new' tag from that section in this document (found at `DEV_NOTES.md` at the project root).
+The current progress on this list's implementation is found in `docs/PROGRESS.md` from the project root. Some of the above sections may have only specified after that list's last update, and need to have checklist entries added in said file for the tasks those entail. Any new bits are marked with `(NEW)` in their header. In the same patch that adds that section's tasks to the progress checklist, remove the 'new' tag from that section in this document (found at `DEV_NOTES.md` at the project root).
 
 # INSTRUCTIONS FOR CLAUDE
 
@@ -248,12 +248,9 @@ Present Git Patch file (numbered of the order to apply them in)
 v
 Repeat
 
-and break that loop only when you are either finished this whole doc, or need clarification.
+and break that loop only when you are either finished the whole progress checklist doc, or need clarification.
 
-You are welcome to group the points in this document into steps in the name of tidiness and common sense.
-
-Please check, then implement/fix all of the points listed above if not already done.
-
-Along with (inside) each patch, include a deeply detailed MD document with a checklist of everything you plan to do, how you plan to do it, in numbered order, to track what was done, when, and what is left to do.
+### IMPORTANT NOTE:
+This document is no longer being updated. this should be used only when more context is needed than is provided in the new doc, present at `docs/PROGRESS.md` from the project root. Read the IMPORTANT FILE LOCATIONS section of this doc. Your current, most updated prompt, is to continue work from where was left off, as shown in the progress checklist doc. Continue working on the progress doc's points in batch patches, and present the patches as you go, and keep moving forward until you need to stop for one reason or another. In each patch, please include the relevant updates for the Progress document, as to keep it up to date. The bottom two sections of that document are for you to dump the things you need into, so use them as needed.
 
 Go now my child. Frolic!
