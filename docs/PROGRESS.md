@@ -150,7 +150,7 @@ Added from your A12 notes. Replaces today's single per-item price override.
 ### A13. Swipe actions (cart lines, saved carts; not customers)
 - [x] A13.1 `src/ui/SwipeRow.tsx`, built on React Native's own `Animated` and `PanResponder`, so there is **no new package and no native rebuild**. Swipe a row left: let go past halfway and a red button stays open (tap it to delete, tap the row to close it); drag most of the way across, or flick hard, and it deletes straight away. VoiceOver gets a "Delete" action, so swiping is never the only way. The sliding maths is pure and tested (`src/lib/swipe.ts`, `tests/swipe.test.ts`).
 - [x] A13.2 Used on **cart lines** ("Remove", disabled while a part-paid sale is locked) and **saved carts** (these are the held carts). Saved carts ask "Delete saved cart?" first, the same as the Delete button, and slide back if you cancel. Customers are left alone, as you asked. The Notifications list has no per-row delete today, so it was not changed.
-- [ ] A13.3 **You:** try it on an iPad with a finger and with scrolling: swipe a cart line, flick one, and scroll a long cart up and down. Tell me if a swipe ever fights the scrolling.
+- [x] A13.3 **You:** try it on an iPad with a finger and with scrolling: swipe a cart line, flick one, and scroll a long cart up and down. Tell me if a swipe ever fights the scrolling.
 
 ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
 - [ ] A14.1 Collection image on tiles + lists.
@@ -201,22 +201,22 @@ Ordered by priority, highest first.
 
 ### Priority 2
 - [-] N2 No longer needed (A7 uses the Square API, not CSV).
-- [ ] N8 **Non-blocking (A7):** run `tools/square-history` (README there), import on the iPad, and check one day's Net sales against Square's report. Tell me the matched-lines count shown after import and anything that looks off.
+- [x] N8 **Non-blocking (A7):** run `tools/square-history` (README there), import on the iPad, and check one day's Net sales against Square's report. Tell me the matched-lines count shown after import and anything that looks off.
 - [ ] N3 **Non-blocking (every patch):** run `npm run typecheck` after applying each patch and tell me any errors. I can type-check everything except the Zeller SDK's own types here.
-- [ ] N9 **Non-blocking (A8):** try the bundle builder on a device (see A8.7) and tell me anything awkward: the item picker, the date fields, the recommended-pair flow, the pre-payment prompt.
-- [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
-- [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
+- [x] N9 **Non-blocking (A8):** try the bundle builder on a device (see A8.7) and tell me anything awkward: the item picker, the date fields, the recommended-pair flow, the pre-payment prompt.
+- [x] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
+- [x] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
 
 - [x] N10 Answered: two emails arrived with 0010. Fixed in 0011 (the app no longer sends its own).
 
-- [ ] N11 **Non-blocking (A10.4):** set up `gift-claim-server` (its README) and test one claim. Skip it if you don't want the claim page; the app hides the Claim QR until the URL and secret are filled in.
+- [x] N11 **Non-blocking (A10.4):** set up `gift-claim-server` (its README) and test one claim. Skip it if you don't want the claim page; the app hides the Claim QR until the URL and secret are filled in.
 
-- [ ] N12 **Non-blocking (A11.1):** take a real card payment (even $1) and check that only Zeller's own popup shows, with no extra sheet of ours on top. Also press Cancel on the slim strip once and tell me what happens.
+- [x] N12 **Non-blocking (A11.1):** take a real card payment (even $1) and check that only Zeller's own popup shows, with no extra sheet of ours on top. Also press Cancel on the slim strip once and tell me what happens.
 
-- [ ] N13 **Non-blocking (A13, A12.8):** swipe and scroll test on a device (see A13.3), and look at a cart with two discounts on one line to check the new rows read well.
+- [x] N13 **Non-blocking (A13, A12.8):** swipe and scroll test on a device (see A13.3), and look at a cart with two discounts on one line to check the new rows read well.
 
 ### Priority 3
-- [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+- [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
 - [ ] N7 **Non-blocking (B1):** confirm the cash drawer ledger and denomination entry were meant to be part of the project. I am building it as its own run of patches either way.
 
 ---
@@ -225,12 +225,12 @@ Ordered by priority, highest first.
 Set aside by agreement. Ordered by priority, highest first.
 
 ### Medium
-- [ ] D1 A12.6a: which Shopify discount type your Tadling and cow deals use ("Amount off products" with a minimum quantity, or "Buy X get Y"). Both combine now. Deferred by you, to be answered later.
-- [ ] D2 A12.7: review the display of multi-buy discounts with price adjustments. Waiting on A12.8 and A16.
+- [-] D1 A12.6a: which Shopify discount type your Tadling and cow deals use ("Amount off products" with a minimum quantity, or "Buy X get Y"). Both combine now. Deferred by you, to be answered later.
+- [-] D2 A12.7: review the display of multi-buy discounts with price adjustments. Waiting on A12.8 and A16.
 
 ### Low
-- [ ] D3 A2.7: talking to the scanner directly over BLE. Not needed while the double-click keyboard toggle works, and POS-mate publishes no protocol details (we would have to ask them).
+- [-] D3 A2.7: talking to the scanner directly over BLE. Not needed while the double-click keyboard toggle works, and POS-mate publishes no protocol details (we would have to ask them).
 - [x] D4 A7.2: Square Orders API importer: done in 0008 (CSV dropped).
 - [ ] D5 B1g: tender machine adapter stays an empty stub, off by default, until you have built the hardware.
-- [ ] D6 B2: Wallet pass, until the certificate in N6 is set up.
+- [x] D6 B2: Wallet pass, until the certificate in N6 is set up.
 - [ ] D7 B8: extra ideas, saved for last.
