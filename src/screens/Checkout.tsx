@@ -9,6 +9,7 @@ import { useApp } from '../state/store';
 import { useCatalogue, usePriced, stockTone } from '../state/selectors';
 import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
+import { CheckChangeSheet } from './CheckChange';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
 import { LookupSheet } from './Lookup';
@@ -53,7 +54,7 @@ export default function Checkout() {
   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
   const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
-  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock'>('none'); const [cam, setCam] = useState(false);
+  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
@@ -88,6 +89,7 @@ export default function Checkout() {
         case 'lock_pos': { const d = lockNow(); if (!d.ok) alertMsg(d.title, d.message); return; } // success: the app shows the sign-in screen, the cart stays
         case 'price_check': return setSheet('price');
         case 'stock_check': return setSheet('stock');
+        case 'check_change': return setSheet('change');
       }
     },
   };
@@ -216,6 +218,7 @@ export default function Checkout() {
 
       <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
       <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />
+      <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
       <Sheet visible={sheet === 'pages'} onClose={() => setSheet('none')} title="Pages">
         {grid.pages.map((p, i) => <Row key={p.id} title={p.name} sub={`${p.tiles.length} tiles`} last={false}
           right={<View style={{ flexDirection: 'row' }}><IconBtn icon="arrow-up" label="Move earlier" onPress={() => edit(g => ({ ...g, pages: i > 0 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i - 1, 0, x); return a; })() : g.pages }))} /><IconBtn icon="arrow-down" label="Move later" onPress={() => edit(g => ({ ...g, pages: i < g.pages.length - 1 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i + 1, 0, x); return a; })() : g.pages }))} />

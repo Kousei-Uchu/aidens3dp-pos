@@ -12,13 +12,14 @@ import { fmt } from '../lib/money';
 import { invoiceRows, unitLine } from '../lib/invoiceRows';
 import SwipeRow from '../ui/SwipeRow';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
+import { CheckChangeSheet } from './CheckChange';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
 import type { CartLine } from '../lib/types';
 
 export default function CartPane({ onClose }: { onClose?: () => void }) {
   const { c } = useTheme(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
-  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer'>('none');
+  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change'>('none');
   const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
@@ -92,7 +93,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
         <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
-        <Row icon="search-outline" title="Check gift card" last onPress={() => open('check')} />
+        <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
+        <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
       </Sheet>
       <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles">
         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
@@ -107,6 +109,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
       <GiftCheckSheet visible={sheet === 'check'} onClose={() => setSheet('none')} />
+      <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
       <SaveCartSheet visible={sheet === 'save'} onClose={() => setSheet('none')} onSaved={() => setCart(ops.emptyCart())} />
       <CustomerSheet startCreating={sheet === 'newcustomer'} visible={sheet === 'customer' || sheet === 'newcustomer'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
     </View>

@@ -4,17 +4,19 @@ import { Btn, Card, Chip, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confir
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff, type Attempt } from '../state/store';
 import { usePriced, useCatalogue } from '../state/selectors';
-import { buildSale, cardTender, cashChips, cashTender, paidTotal } from '../lib/saleBuilder';
+import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder';
 import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult } from '../lib/zeller';
 import { getTerminal, checkReader } from '../zellerBridge';
 import { csv } from '../lib/csvStore';
 import { applyLocalStock, recordSale, updateSaved } from '../lib/sync';
-import { digitsToCents, fmt, allocate, roundCash } from '../lib/money';
+import { digitsToCents, fmt, allocate } from '../lib/money';
 import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
 import { lookupGiftCard, debitGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
 import { normaliseCode } from '../lib/giftCode';
 import { GiftCheckSheet } from './sheets';
+import { CashSheet, type CashResult } from './CashSheet';
+import { cashDue, postCashSale, reverseCashTender } from '../lib/cashSale';
 import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
 import { ReceiptPrompt } from './Receipt';
 import type { SaleRecord, Tender } from '../lib/types';
@@ -28,7 +30,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const tenders = cart.tenders ?? []; const total = priced.netCents; const paid = paidTotal(tenders); const remaining = Math.max(0, total - paid);
   const [equalLeft, setEqualLeft] = useState(0); const [chunk, setChunk] = useState<number | null>(null);
   const [splitOpen, setSplitOpen] = useState(false); const [splitDigits, setSplitDigits] = useState(''); const [cashOpen, setCashOpen] = useState(false);
-  const [cashDigits, setCashDigits] = useState(''); const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
+  const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
   const [done, setDone] = useState<SaleRecord | null>(null); const [change, setChange] = useState<number | null>(null); const cancelRef = useRef<(() => void) | null>(null);
   const unknownRef = useRef<string | null>(null);
 
@@ -103,10 +105,13 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   };
 
   // ── cash ──
-  const takeCash = (tendered: number) => {
-    const isFinal = target === remaining; const { tender, settles } = cashTender(target, tendered, settings.cashRounding && isFinal);
-    if (!settles) { if (tendered <= 0) return; addTender(tender, saleUuid()); setCashOpen(false); setCashDigits(''); return; }
-    addTender(tender, saleUuid()); setCashOpen(false); setCashDigits('');
+  /** Cash taken on the Cash sheet. `received` / `given` (the notes and coins) are null when the cashier chose not to track them. */
+  const takeCash = (r: CashResult) => {
+    const isFinal = target === remaining && r.applyCents === undefined; const { tender, settles } = cashTender(r.applyCents ?? target, r.tendered, settings.cashRounding && isFinal);
+    if (!settles && r.tendered <= 0) return;
+    const uuid = saleUuid(); const t: Tender = { ...tender, ...(r.received ? { cashIn: r.received } : {}), ...(r.given ? { cashOut: r.given } : {}) };
+    if (r.received || r.given) useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) });
+    addTender(t, uuid); setCashOpen(false);
   };
 
   // ── gift card ──
@@ -118,12 +123,13 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
   const abandon = async () => {
     const cards = tenders.filter(t => t.kind === 'card'); if (!tenders.length) { onBack(); return; }
-    if (!(await confirm('Cancel this sale?', `Card payments (${cards.length}) will be refunded to the customer's card. Cash and gift card payments must be returned by hand.`, 'Refund & cancel', true))) return;
+    if (!(await confirm('Cancel this sale?', `Card payments (${cards.length}) will be refunded to the customer's card. Cash and gift card payments must be returned by hand${tenders.some(t => t.cashIn || t.cashOut) ? ' (the drawer ledger will be put back too)' : ''}.`, 'Refund & cancel', true))) return;
     const t = getTerminal(); if (cards.length && !t) return alertMsg('Reader not ready', 'Cannot refund cards right now.');
     for (const tn of cards) {
       const ref = tn.card?.externalReference ?? tn.id; const r = await startRefund(t!, { purchaseRef: ref, amountCents: tn.amountCents, reference: `${ref}-void` }).promise;
       if (r.kind !== 'APPROVED') { void csv.event({ kind: 'refund_failed', saleUuid: cart.saleUuid, reference: ref, amountCents: tn.amountCents, message: JSON.stringify(r), staff: staffName }); return alertMsg('Refund did not complete', 'kind' in r && r.kind === 'FAILED' ? r.text : 'Check the terminal, then try again.'); }
     }
+    let ledger = useApp.getState().pos.ledger; for (const tn of tenders) ledger = reverseCashTender(ledger, tn, { saleUuid: cart.saleUuid, staff: staffName }); if (ledger !== useApp.getState().pos.ledger) useApp.getState().patchPos({ ledger });
     void csv.event({ kind: 'void', saleUuid: cart.saleUuid, amountCents: paid, staff: staffName, message: 'Partial sale cancelled' });
     setCart(c0 => ({ ...c0, tenders: undefined, saleUuid: undefined })); onBack();
   };
@@ -147,12 +153,12 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       {remaining > 0 ? (
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
           <Btn title={`Card — ${fmt(target)}`} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} />
-          <Btn title="Cash" icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setCashDigits(''); setCashOpen(true); }} />
+          <Btn title="Cash" icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} />
           <Btn title="Gift card" icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} />
           <Btn title="Split amount" icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} />
           {chunk !== null || equalLeft > 1 ? <Btn title="Cancel split" kind="ghost" onPress={() => { setChunk(null); setEqualLeft(0); }} /> : null}
         </View>
-      ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash(0)} /></View> : null}
+      ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: null, given: null })} /></View> : null}
 
       {/* card status */}
       <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
@@ -167,17 +173,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       </Sheet>
 
       {/* cash */}
-      <Sheet visible={cashOpen} onClose={() => setCashOpen(false)} title="Cash">
-        <Txt sub style={{ textAlign: 'center' }}>Due{settings.cashRounding && target === remaining ? ' (rounded to 5c)' : ''}</Txt>
-        <Money cents={settings.cashRounding && target === remaining ? roundDue(target) : target} size={34} weight="700" style={{ textAlign: 'center' }} />
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 14 }}>
-          <Chip label="Exact" onPress={() => takeCash(settings.cashRounding && target === remaining ? roundDue(target) : target)} />
-          {cashChips(settings.cashRounding && target === remaining ? roundDue(target) : target).map(v => <Chip key={v} label={fmt(v)} onPress={() => takeCash(v)} />)}
-        </View>
-        <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>Custom</Txt>
-        <Txt size={30} weight="700" style={{ textAlign: 'center', marginBottom: 8 }}>{fmt(digitsToCents(cashDigits))}</Txt>
-        <Keypad value={cashDigits} onChange={setCashDigits} onSubmit={() => takeCash(digitsToCents(cashDigits))} submitLabel="Take cash" />
-      </Sheet>
+      <CashSheet visible={cashOpen} onClose={() => setCashOpen(false)} due={cashDue(target, remaining, settings.cashRounding)} onTake={takeCash} />
 
       {/* split */}
       <Sheet visible={splitOpen} onClose={() => setSplitOpen(false)} title="Split amount">
@@ -192,5 +188,4 @@ export default function Pay({ onBack }: { onBack: () => void }) {
     </Page>
   );
 }
-const roundDue = roundCash;
 void lookupGiftCard;

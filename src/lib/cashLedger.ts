@@ -71,8 +71,8 @@ export function describeTap(t: Tap, undo = false): string {
 }
 
 // ── the ledger ───────────────────────────────────────────────────────────────
-export type LedgerKind = 'open' | 'paid_in' | 'paid_out' | 'adjust' | 'close' | 'sale_in' | 'sale_change';
-export const LEDGER_LABEL: Record<LedgerKind, string> = { open: 'Opened drawer', paid_in: 'Paid in', paid_out: 'Paid out', adjust: 'Contents corrected', close: 'Counted at close', sale_in: 'Cash received', sale_change: 'Change given' };
+export type LedgerKind = 'open' | 'paid_in' | 'paid_out' | 'adjust' | 'close' | 'sale_in' | 'sale_change' | 'refund_out';
+export const LEDGER_LABEL: Record<LedgerKind, string> = { open: 'Opened drawer', paid_in: 'Paid in', paid_out: 'Paid out', adjust: 'Contents corrected', close: 'Counted at close', sale_in: 'Cash received', sale_change: 'Change given', refund_out: 'Cash refund given' };
 /** delta: what changed in the drawer (positive = went in, negative = came out). */
 export type LedgerEntry = { id: string; ts: string; kind: LedgerKind; delta: Counts; staff?: string; note?: string; saleUuid?: string };
 /** `counts` is what the drawer holds now; `entries` is the history, newest first. */

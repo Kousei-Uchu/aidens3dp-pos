@@ -1,0 +1,424 @@
+From f00ccbc9a8a8796792a897fbfb5a4bb850509d21 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 08:40:17 +0000
+Subject: [PATCH] 0019: cash screen core: tap notes and coins handed over,
+ change from the drawer ledger, sale written to the ledger
+
+---
+ docs/PROGRESS.md          | 12 +++++--
+ src/lib/cashSale.ts       | 68 +++++++++++++++++++++++++++++++++++
+ src/lib/types.ts          |  2 ++
+ src/screens/CashSheet.tsx | 76 +++++++++++++++++++++++++++++++++++++++
+ src/screens/Pay.tsx       | 39 +++++++++-----------
+ tests/cashsale.test.ts    | 70 ++++++++++++++++++++++++++++++++++++
+ 6 files changed, 242 insertions(+), 25 deletions(-)
+ create mode 100644 src/lib/cashSale.ts
+ create mode 100644 src/screens/CashSheet.tsx
+ create mode 100644 tests/cashsale.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 75212e4..f6f534f 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -25,6 +25,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0016 | 2026-10-10 | Grid: nested categories to any depth, per-tile settings sheet, groups that act like collections, back one level + tappable path, collection pictures on tiles and lists | C1-C6, A14.1 |
+ | 0017 | 2026-10-10 | Grid: variation picker is now a sub-page of the grid (not a popup), plus new Lock POS, Price check and Stock check tiles | A14.2, A15 |
+ | 0018 | 2026-10-10 | Cash drawer: tap-the-notes-and-coins entry with undo, a ledger of what is in the drawer, drawer screens rebuilt on it, and your change finder (checked against your original) | B1a (drawer side), B1b |
++| 0019 | 2026-10-10 | Cash screen core (first piece of the old "0019", which is now split into 0019-0024): tap the notes and coins handed over, change to give from the drawer ledger, sale written to the ledger | B1a (cash screen) |
+ 
+ ---
+ 
+@@ -184,14 +185,18 @@ Done in 0016 together with A14.1, because they share the grid screens. A14.2 and
+ ## B. Round 2 list ("fun little bitsies")
+ Status as found in the zip you sent (I only inspected files; not run).
+ - [~] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Started in 0018 (ledger, denomination entry on the drawer screens, change finder). The Cash screen, scoring, Check Change and reports are still to come.** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
+-  - [~] B1a ledger + denomination entry (done in 0018 for the drawer: open, paid in/out, correct contents, close count. The Cash screen at checkout, which adds sales to the ledger, is 0019) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
++  - [x] B1a ledger + denomination entry (0018: drawer screens; 0019: the Cash screen at checkout writes sales to the ledger) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle (0022) · [ ] B1d Check Change (0021) · [ ] B1e cash screen prompts + split suggestion + cash refunds into the ledger (0020) · [ ] B1f daily float report (0023) · [ ] B1g tender-machine adapter (0024): one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
+   - **0018 details.** Notes and coins are Australian ($100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c). `src/lib/cashLedger.ts` holds the pure rules; `src/ui/DenomPad.tsx` is the tap pad; `src/screens/Drawer.tsx` uses them. The ledger (`pos.ledger`, saved with the rest of the till data) is the counts now in the drawer plus a history (newest first, last 1,000) of who put in or took out what, and when.
+     - **Tap pad:** tap a note or coin to add one; Add / Remove switch; ×1 ×5 ×10 per tap (for rolls of coins); **Undo** takes back the last tap and says what it removed ("Undid: Added $20 ($20.00) · total now $85.00"); Start over. Removing from zero does nothing and says so.
+     - **Open drawer:** starts from what the ledger says is already in the drawer (carried over from the last close), so you only adjust it. The float is the total. **Paid in / Paid out:** tap the notes and coins; paid out warns if you take more than the ledger holds (it may not know about cash sales yet) and lets you carry on. **Count & close:** a blind count from zero; it tells you over/short against expected, writes the notes and coins into the Z-report, and what you counted becomes the new ledger. **Correct contents:** adjust the ledger by hand with an optional reason.
+     - Counts never show below zero. The history entry keeps exactly what was entered.
+     - **Change finder** (`findCombinations`, your function): same answers as yours. I added only (1) skipping branches that cannot reach the target and (2) an optional node cap (`findCombinationsLimited`) that says when it stopped early, so a very full drawer cannot freeze the iPad. Tested against a copy of your original on 200 random drawers (same results, same order). Note it returns combinations above and below the target within the tolerance, exactly as you wrote it; the Cash screen will only offer ones that give the customer at least what they are owed.
+-    - **Not yet connected:** cash sales do not touch the ledger until the Cash screen is rebuilt in 0019 (you enter the notes and coins the customer hands over, and the screen shows which to give back). Until then the ledger only knows about the drawer screens.
++    - **0019 details (Cash screen core).** Pay ▸ Cash now opens `src/screens/CashSheet.tsx`: tap the notes and coins the customer hands over (the same pad, with Undo and Remove). It shows Due, Received, and either "Short by", "Exact" or "Change to give". Short: **Take as part payment** (as before). Enough with change: **Next: give change** shows which notes and coins to take from the drawer, found with your finder (`planChange` in `src/lib/cashSale.ts`) over the drawer ledger **plus what the customer just handed over**, choosing the fewest pieces. **Gave this change** confirms it, or tap different notes and coins (the total must match the change owed). The sale then writes two ledger entries ("Cash received", "Change given") tagged with the sale, and the tender stores `cashIn` / `cashOut`. Cancelling a part-paid sale puts the ledger back.
++    - **Skipping the counting:** **Exact amount (don't track notes)** and **Give change but don't track it** record the sale without touching the ledger, for a rush. The ledger then drifts until the next count; the Correct contents / Count & close screens fix that. The old Exact / $20 / $50 shortcut chips and the number keypad are gone from the Cash sheet (the pad replaces them; Split amount still uses the keypad).
++    - **Not in 0019, on purpose:** the prompts for too little cash and for "the drawer can't make this change" beyond the basic message, suggesting a split or card, and cash refunds (Refund screen) writing to the ledger are 0020. Until then a cash refund leaves the ledger out of date. The ledger lives on each iPad separately (it is not synced between registers).
++    - **Planned order:** 0020 cash prompts, split suggestion and refunds into the ledger · 0021 Check Change (grid tile and cart menu) · 0022 weighted change scoring and its toggle · 0023 daily float report · 0024 tender-machine porting point (empty function, greyed-out "Under Construction" toggle).
+   - [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
++  - [ ] B1i **You:** on the iPad, ring up a cash sale: tap the notes handed over, check the change suggestion against what is really in the drawer, confirm it, then look at Drawer ▸ the ledger (Cash received / Change given entries and the new counts). Also try: part payment, different notes for change, an amount where the drawer has no exact change (the sheet should say so), the untracked options, and cancelling a part-paid cash sale. Tell me if tapping notes is too slow at a busy counter.
+ 
+ - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
+ - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
+@@ -208,7 +213,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (212 after patch 0018). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (222 after patch 0019). `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -240,6 +245,7 @@ Ordered by priority, highest first.
+ 
+ - [ ] N15 **Non-blocking (A14.2, A15):** the device test in A15.4.
+ - [ ] N16 **Non-blocking (B1):** the drawer device test in B1h.
++- [ ] N17 **Non-blocking (B1):** the cash sale test in B1i.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/cashSale.ts b/src/lib/cashSale.ts
+new file mode 100644
+index 0000000..ca80e5a
+--- /dev/null
++++ b/src/lib/cashSale.ts
+@@ -0,0 +1,68 @@
++// Location: src/lib/cashSale.ts
++// B1: the maths behind taking cash with the denomination pad (0019). Pure, tested in tests/cashsale.test.ts.
++//  - what the customer has handed over vs what is due,
++//  - which notes and coins to give back, found from the drawer ledger plus what was just received (your findCombinations),
++//  - the ledger entries a cash sale (or a cancelled one) writes.
++import { addCounts, applyEntry, cleanCounts, newEntry, totalOf, type CashLedger, type Counts } from './cashLedger';
++import { findCombinationsLimited } from './changeFinder';
++import { roundCash } from './money';
++import type { Tender } from './types';
++
++/** What the customer owes in cash: the last payment on a sale is rounded to 5c when cash rounding is on. */
++export const cashDue = (target: number, remaining: number, rounding: boolean): number => (rounding && target === remaining ? roundCash(target) : target);
++
++export type CashStatus = { state: 'empty' } | { state: 'short'; shortBy: number } | { state: 'exact' } | { state: 'change'; change: number };
++export function cashStatus(due: number, received: number): CashStatus {
++  if (received <= 0) return due <= 0 ? { state: 'exact' } : { state: 'empty' };
++  if (received < due) return { state: 'short', shortBy: due - received };
++  return received === due ? { state: 'exact' } : { state: 'change', change: received - due };
++}
++
++export const piecesOf = (c: Counts): number => Object.values(c).reduce((s, n) => s + Math.max(0, n), 0);
++const positive = (c: Counts): Counts => cleanCounts(Object.fromEntries(Object.entries(c).filter(([, n]) => n > 0)));
++
++/** Largest-first fallback for when the exhaustive search is cut short. Returns null if it does not land exactly. */
++export function greedyChange(pool: Counts, owed: number): Counts | null {
++  const out: Counts = {}; let left = owed;
++  for (const v of Object.keys(pool).map(Number).sort((a, b) => b - a)) {
++    const n = Math.min(pool[String(v)] ?? 0, Math.floor(left / v)); if (n > 0) { out[String(v)] = n; left -= n * v; }
++  }
++  return left === 0 ? out : null;
++}
++
++export type ChangePlan = { kind: 'none' } | { kind: 'exact'; counts: Counts; truncated: boolean } | { kind: 'impossible'; truncated: boolean };
++/**
++ * The notes and coins to give back for `owed` cents. `pool` is what is physically available: the drawer plus what the customer just handed over.
++ * Picks, of all exact combinations, the one using the fewest pieces (quickest to count out). "impossible" means no exact combination exists.
++ */
++export function planChange(pool: Counts, owed: number, maxNodes = 150000): ChangePlan {
++  if (owed <= 0) return { kind: 'none' };
++  const avail = positive(pool);
++  const { results, truncated } = findCombinationsLimited(avail, owed, 0, { maxNodes });
++  let best: Counts | null = null; let bestPieces = Infinity;
++  for (const r of results) {
++    if (!r.exact) continue;
++    const counts: Counts = {}; let pieces = 0;
++    for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { counts[v] = q.qty_used; pieces += q.qty_used; }
++    if (pieces < bestPieces) { best = counts; bestPieces = pieces; }
++  }
++  if (!best && truncated) best = greedyChange(avail, owed);
++  return best ? { kind: 'exact', counts: best, truncated } : { kind: 'impossible', truncated };
++}
++
++/** Writes a cash sale into the ledger: what came in, then what went back out as change. Untracked sides are simply skipped. */
++export function postCashSale(l: CashLedger, o: { saleUuid: string; received?: Counts | null; given?: Counts | null; staff?: string }): CashLedger {
++  let out = l;
++  const inn = cleanCounts(o.received ?? {}); const giv = cleanCounts(o.given ?? {});
++  if (totalOf(inn)) out = applyEntry(out, newEntry('sale_in', inn, { saleUuid: o.saleUuid, staff: o.staff }));
++  if (totalOf(giv)) out = applyEntry(out, newEntry('sale_change', Object.fromEntries(Object.entries(giv).map(([v, n]) => [v, -n])), { saleUuid: o.saleUuid, staff: o.staff }));
++  return out;
++}
++/** A cancelled sale hands the cash back by hand: take out what came in, put back what went out as change. */
++export function reverseCashTender(l: CashLedger, t: Tender, o: { saleUuid?: string; staff?: string } = {}): CashLedger {
++  if (t.kind !== 'cash' || (!t.cashIn && !t.cashOut)) return l;
++  const delta: Counts = {};
++  for (const [v, n] of Object.entries(t.cashIn ?? {})) delta[v] = (delta[v] ?? 0) - n;
++  for (const [v, n] of Object.entries(t.cashOut ?? {})) delta[v] = (delta[v] ?? 0) + n;
++  return totalOf(cleanCounts(delta)) || Object.keys(cleanCounts(delta)).length ? applyEntry(l, newEntry('sale_change', delta, { saleUuid: o.saleUuid, staff: o.staff, note: 'Sale cancelled: cash handed back' })) : l;
++}
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index 0c230b0..dd53739 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -152,6 +152,8 @@ export type Tender = {
+   amountCents: number; // applied to the bill
+   tenderedCents?: number; // cash handed over
+   changeCents?: number;
++  cashIn?: Record<string, number>; // notes and coins the customer handed over (cents → count), when tracked
++  cashOut?: Record<string, number>; // notes and coins given back as change, when tracked
+   roundingCents?: number; // cash 5c rounding (cashDue − amount), may be negative
+   card?: CardInfo;
+   giftCardId?: string;
+diff --git a/src/screens/CashSheet.tsx b/src/screens/CashSheet.tsx
+new file mode 100644
+index 0000000..a912241
+--- /dev/null
++++ b/src/screens/CashSheet.tsx
+@@ -0,0 +1,76 @@
++// Location: src/screens/CashSheet.tsx
++// Taking cash by tapping the notes and coins handed over (0019), then showing which notes and coins to give back from the drawer ledger.
++// Everything is confirmed by hand: the cashier taps what they received and confirms what they gave. No hardware is involved.
++import React, { useEffect, useMemo, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Money, Sheet, Txt } from '../ui/kit';
++import { DenomPad } from '../ui/DenomPad';
++import { useTheme } from '../ui/theme';
++import { useApp } from '../state/store';
++import { addCounts, draftCounts, summariseCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
++import { cashStatus, planChange } from '../lib/cashSale';
++import { fmt } from '../lib/money';
++
++/** What the sheet hands back. `received` / `given` are null when the cashier chose not to track notes and coins for this sale. */
++export type CashResult = { tendered: number; received: Counts | null; given: Counts | null };
++
++export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void }) {
++  const { c } = useTheme(); const drawer = useApp(s => s.pos.ledger.counts);
++  const [step, setStep] = useState<'receive' | 'change'>('receive'); const [draft, setDraft] = useState<Draft>([]); const [giveDraft, setGiveDraft] = useState<Draft>([]); const [manual, setManual] = useState(false);
++  useEffect(() => { if (visible) { setStep('receive'); setDraft([]); setGiveDraft([]); setManual(false); } }, [visible]);
++
++  const received = useMemo(() => draftCounts(draft), [draft]); const got = totalOf(received); const st = cashStatus(due, got);
++  const change = st.state === 'change' ? st.change : 0;
++  const plan = useMemo(() => (step === 'change' ? planChange(addCounts(drawer, received), change) : { kind: 'none' as const }), [step, drawer, received, change]);
++  const giving = draftCounts(giveDraft); const gave = totalOf(giving);
++  const manualMode = manual || (step === 'change' && plan.kind === 'impossible');
++
++  const finish = (given: Counts | null) => onTake({ tendered: got, received, given });
++  const finishPart = () => onTake({ tendered: got, received, given: null });
++
++  const header = (
++    <View style={{ alignItems: 'center', gap: 2 }}>
++      <Txt sub>Due</Txt><Money cents={due} size={30} weight="700" />
++      {step === 'receive' ? (st.state === 'short' ? <Txt weight="600" color={c.bad}>Short by {fmt(st.shortBy)}</Txt> : st.state === 'change' ? <Txt weight="600" color={c.good}>Change to give: {fmt(st.change)}</Txt> : st.state === 'exact' ? <Txt weight="600" color={c.good}>Exact</Txt> : <Txt sub>Tap what the customer hands over</Txt>) : null}
++    </View>
++  );
++
++  return (
++    <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'}>
++      {step === 'receive' ? (
++        <View style={{ gap: 14 }}>
++          {header}
++          <DenomPad draft={draft} onChange={setDraft} totalLabel="Received" />
++          {st.state === 'short' ? <Btn title={`Take ${fmt(got)} as part payment`} onPress={finishPart} /> : null}
++          {st.state === 'exact' && got > 0 ? <Btn title="Take cash" onPress={() => finish(null)} /> : null}
++          {st.state === 'change' ? <Btn title={`Next: give ${fmt(change)} change`} onPress={() => setStep('change')} /> : null}
++          {due > 0 && got === 0 ? <Btn title="Exact amount (don't track notes)" kind="secondary" onPress={() => onTake({ tendered: due, received: null, given: null })} /> : null}
++        </View>
++      ) : (
++        <View style={{ gap: 14 }}>
++          <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>Give the customer</Txt><Money cents={change} size={38} weight="700" /><Txt size={13} sub>from {fmt(got)} received for {fmt(due)} due</Txt></View>
++          {!manualMode && plan.kind === 'exact' ? (
++            <>
++              <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, alignItems: 'center' }}>
++                <Txt size={13} sub weight="600">Take from the drawer</Txt>
++                <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{summariseCounts(plan.counts)}</Txt>
++                {plan.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
++              </View>
++              <Btn title="Gave this change" onPress={() => finish(plan.counts)} />
++              <Btn title="I'll give different notes and coins" kind="secondary" onPress={() => { setManual(true); setGiveDraft([]); }} />
++            </>
++          ) : (
++            <>
++              {plan.kind === 'impossible' ? <Txt size={14} color={c.bad} style={{ textAlign: 'center' }}>The drawer can't make exactly {fmt(change)} from what it holds. Tap what you actually give.</Txt> : <Txt size={14} sub style={{ textAlign: 'center' }}>Tap the notes and coins you give back.</Txt>}
++              <DenomPad draft={giveDraft} onChange={setGiveDraft} totalLabel="Given" />
++              {gave !== change ? <Txt weight="600" color={gave > change ? c.bad : c.sub} style={{ textAlign: 'center' }}>{gave > change ? `${fmt(gave - change)} too much` : `${fmt(change - gave)} still to give`}</Txt> : null}
++              <Btn title="Gave this change" disabled={gave !== change} onPress={() => finish(giving)} />
++            </>
++          )}
++          <Btn title="Give change but don't track it" kind="ghost" onPress={() => finish(null)} />
++          <Btn title="Back" kind="ghost" onPress={() => { setStep('receive'); setManual(false); }} />
++        </View>
++      )}
++    </Sheet>
++  );
++}
+diff --git a/src/screens/Pay.tsx b/src/screens/Pay.tsx
+index aaa38a4..0fede3e 100644
+--- a/src/screens/Pay.tsx
++++ b/src/screens/Pay.tsx
+@@ -4,17 +4,19 @@ import { Btn, Card, Chip, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confir
+ import { useTheme } from '../ui/theme';
+ import { useApp, currentStaff, type Attempt } from '../state/store';
+ import { usePriced, useCatalogue } from '../state/selectors';
+-import { buildSale, cardTender, cashChips, cashTender, paidTotal } from '../lib/saleBuilder';
++import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder';
+ import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult } from '../lib/zeller';
+ import { getTerminal, checkReader } from '../zellerBridge';
+ import { csv } from '../lib/csvStore';
+ import { applyLocalStock, recordSale, updateSaved } from '../lib/sync';
+-import { digitsToCents, fmt, allocate, roundCash } from '../lib/money';
++import { digitsToCents, fmt, allocate } from '../lib/money';
+ import { uid } from '../lib/ids';
+ import { emptyCart } from '../lib/cartOps';
+ import { lookupGiftCard, debitGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
+ import { normaliseCode } from '../lib/giftCode';
+ import { GiftCheckSheet } from './sheets';
++import { CashSheet, type CashResult } from './CashSheet';
++import { cashDue, postCashSale, reverseCashTender } from '../lib/cashSale';
+ import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
+ import { ReceiptPrompt } from './Receipt';
+ import type { SaleRecord, Tender } from '../lib/types';
+@@ -28,7 +30,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   const tenders = cart.tenders ?? []; const total = priced.netCents; const paid = paidTotal(tenders); const remaining = Math.max(0, total - paid);
+   const [equalLeft, setEqualLeft] = useState(0); const [chunk, setChunk] = useState<number | null>(null);
+   const [splitOpen, setSplitOpen] = useState(false); const [splitDigits, setSplitDigits] = useState(''); const [cashOpen, setCashOpen] = useState(false);
+-  const [cashDigits, setCashDigits] = useState(''); const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
++  const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
+   const [done, setDone] = useState<SaleRecord | null>(null); const [change, setChange] = useState<number | null>(null); const cancelRef = useRef<(() => void) | null>(null);
+   const unknownRef = useRef<string | null>(null);
+ 
+@@ -103,10 +105,13 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   };
+ 
+   // ── cash ──
+-  const takeCash = (tendered: number) => {
+-    const isFinal = target === remaining; const { tender, settles } = cashTender(target, tendered, settings.cashRounding && isFinal);
+-    if (!settles) { if (tendered <= 0) return; addTender(tender, saleUuid()); setCashOpen(false); setCashDigits(''); return; }
+-    addTender(tender, saleUuid()); setCashOpen(false); setCashDigits('');
++  /** Cash taken on the Cash sheet. `received` / `given` (the notes and coins) are null when the cashier chose not to track them. */
++  const takeCash = (r: CashResult) => {
++    const isFinal = target === remaining; const { tender, settles } = cashTender(target, r.tendered, settings.cashRounding && isFinal);
++    if (!settles && r.tendered <= 0) return;
++    const uuid = saleUuid(); const t: Tender = { ...tender, ...(r.received ? { cashIn: r.received } : {}), ...(r.given ? { cashOut: r.given } : {}) };
++    if (r.received || r.given) useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) });
++    addTender(t, uuid); setCashOpen(false);
+   };
+ 
+   // ── gift card ──
+@@ -118,12 +123,13 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+ 
+   const abandon = async () => {
+     const cards = tenders.filter(t => t.kind === 'card'); if (!tenders.length) { onBack(); return; }
+-    if (!(await confirm('Cancel this sale?', `Card payments (${cards.length}) will be refunded to the customer's card. Cash and gift card payments must be returned by hand.`, 'Refund & cancel', true))) return;
++    if (!(await confirm('Cancel this sale?', `Card payments (${cards.length}) will be refunded to the customer's card. Cash and gift card payments must be returned by hand${tenders.some(t => t.cashIn || t.cashOut) ? ' (the drawer ledger will be put back too)' : ''}.`, 'Refund & cancel', true))) return;
+     const t = getTerminal(); if (cards.length && !t) return alertMsg('Reader not ready', 'Cannot refund cards right now.');
+     for (const tn of cards) {
+       const ref = tn.card?.externalReference ?? tn.id; const r = await startRefund(t!, { purchaseRef: ref, amountCents: tn.amountCents, reference: `${ref}-void` }).promise;
+       if (r.kind !== 'APPROVED') { void csv.event({ kind: 'refund_failed', saleUuid: cart.saleUuid, reference: ref, amountCents: tn.amountCents, message: JSON.stringify(r), staff: staffName }); return alertMsg('Refund did not complete', 'kind' in r && r.kind === 'FAILED' ? r.text : 'Check the terminal, then try again.'); }
+     }
++    let ledger = useApp.getState().pos.ledger; for (const tn of tenders) ledger = reverseCashTender(ledger, tn, { saleUuid: cart.saleUuid, staff: staffName }); if (ledger !== useApp.getState().pos.ledger) useApp.getState().patchPos({ ledger });
+     void csv.event({ kind: 'void', saleUuid: cart.saleUuid, amountCents: paid, staff: staffName, message: 'Partial sale cancelled' });
+     setCart(c0 => ({ ...c0, tenders: undefined, saleUuid: undefined })); onBack();
+   };
+@@ -147,12 +153,12 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+       {remaining > 0 ? (
+         <View style={{ paddingHorizontal: 16, gap: 10 }}>
+           <Btn title={`Card — ${fmt(target)}`} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} />
+-          <Btn title="Cash" icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setCashDigits(''); setCashOpen(true); }} />
++          <Btn title="Cash" icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} />
+           <Btn title="Gift card" icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} />
+           <Btn title="Split amount" icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} />
+           {chunk !== null || equalLeft > 1 ? <Btn title="Cancel split" kind="ghost" onPress={() => { setChunk(null); setEqualLeft(0); }} /> : null}
+         </View>
+-      ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash(0)} /></View> : null}
++      ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: null, given: null })} /></View> : null}
+ 
+       {/* card status */}
+       <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
+@@ -167,17 +173,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+       </Sheet>
+ 
+       {/* cash */}
+-      <Sheet visible={cashOpen} onClose={() => setCashOpen(false)} title="Cash">
+-        <Txt sub style={{ textAlign: 'center' }}>Due{settings.cashRounding && target === remaining ? ' (rounded to 5c)' : ''}</Txt>
+-        <Money cents={settings.cashRounding && target === remaining ? roundDue(target) : target} size={34} weight="700" style={{ textAlign: 'center' }} />
+-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginVertical: 14 }}>
+-          <Chip label="Exact" onPress={() => takeCash(settings.cashRounding && target === remaining ? roundDue(target) : target)} />
+-          {cashChips(settings.cashRounding && target === remaining ? roundDue(target) : target).map(v => <Chip key={v} label={fmt(v)} onPress={() => takeCash(v)} />)}
+-        </View>
+-        <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>Custom</Txt>
+-        <Txt size={30} weight="700" style={{ textAlign: 'center', marginBottom: 8 }}>{fmt(digitsToCents(cashDigits))}</Txt>
+-        <Keypad value={cashDigits} onChange={setCashDigits} onSubmit={() => takeCash(digitsToCents(cashDigits))} submitLabel="Take cash" />
+-      </Sheet>
++      <CashSheet visible={cashOpen} onClose={() => setCashOpen(false)} due={cashDue(target, remaining, settings.cashRounding)} onTake={takeCash} />
+ 
+       {/* split */}
+       <Sheet visible={splitOpen} onClose={() => setSplitOpen(false)} title="Split amount">
+@@ -192,5 +188,4 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+     </Page>
+   );
+ }
+-const roundDue = roundCash;
+ void lookupGiftCard;
+diff --git a/tests/cashsale.test.ts b/tests/cashsale.test.ts
+new file mode 100644
+index 0000000..4797cbf
+--- /dev/null
++++ b/tests/cashsale.test.ts
+@@ -0,0 +1,70 @@
++// Location: tests/cashsale.test.ts
++// 0019: taking cash with the denomination pad: status, change plan from the ledger, ledger postings.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { cashDue, cashStatus, greedyChange, piecesOf, planChange, postCashSale, reverseCashTender } from '../src/lib/cashSale';
++import { emptyLedger, applyEntry, newEntry, totalOf } from '../src/lib/cashLedger';
++import { cashTender } from '../src/lib/saleBuilder';
++import { findCombinations } from '../src/lib/changeFinder';
++import type { Tender } from '../src/lib/types';
++
++test('cashDue rounds only the final payment, and only when rounding is on', () => {
++  assert.equal(cashDue(1233, 1233, true), 1235); assert.equal(cashDue(1233, 1233, false), 1233); assert.equal(cashDue(1233, 2000, true), 1233);
++});
++test('cashStatus: empty, short, exact, change', () => {
++  assert.deepEqual(cashStatus(1235, 0), { state: 'empty' }); assert.deepEqual(cashStatus(1235, 1000), { state: 'short', shortBy: 235 });
++  assert.deepEqual(cashStatus(1235, 1235), { state: 'exact' }); assert.deepEqual(cashStatus(1235, 2000), { state: 'change', change: 765 }); assert.deepEqual(cashStatus(0, 0), { state: 'exact' });
++});
++test('planChange: fewest pieces among exact combinations', () => {
++  const p = planChange({ '1000': 1, '500': 1, '200': 2, '100': 3 }, 700);
++  assert.equal(p.kind, 'exact'); if (p.kind === 'exact') assert.deepEqual(p.counts, { '500': 1, '200': 1 });
++});
++test('planChange: the notes the customer just handed over can go back as change', () => {
++  const drawer = { '1000': 1, '500': 1 }; const received = { '2000': 1 };
++  const p = planChange({ '1000': 1, '500': 1, '2000': 1 }, 1500); assert.equal(p.kind, 'exact'); if (p.kind === 'exact') assert.deepEqual(p.counts, { '1000': 1, '500': 1 });
++  void drawer; void received;
++  assert.equal(planChange({ '2000': 1, '500': 1 }, 1500).kind, 'impossible');
++});
++test('planChange: none owed, impossible, only counts what exists', () => {
++  assert.equal(planChange({ '500': 3 }, 0).kind, 'none');
++  assert.equal(planChange({ '2000': 3 }, 500).kind, 'impossible');
++  assert.equal(planChange({ '500': 2, '100': 1 }, 1200).kind, 'impossible'); assert.equal(planChange({ '500': 2, '100': 1 }, 1100).kind, 'exact');
++  assert.equal(planChange({ '500': -2, '100': 5 }, 500).kind, 'exact'); // a negative count is ignored, 5 × $1 found
++});
++test('planChange matches the plain change finder: it is exact exactly when findCombinations has an exact answer', () => {
++  let seed = 7; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
++  const dens = [2000, 1000, 500, 200, 100, 50, 20, 10, 5];
++  for (let i = 0; i < 80; i++) {
++    const pool: Record<string, number> = {}; for (const d of dens) if (rnd() < 0.7) pool[String(d)] = Math.floor(rnd() * 4);
++    const owed = 5 * Math.floor(rnd() * 400);
++    const exactExists = owed > 0 && findCombinations(pool, owed, 0).some(r => r.exact);
++    const plan = planChange(pool, owed);
++    if (owed === 0) { assert.equal(plan.kind, 'none'); continue; }
++    assert.equal(plan.kind === 'exact', exactExists, `pool ${JSON.stringify(pool)} owed ${owed}`);
++    if (plan.kind === 'exact') { assert.equal(totalOf(plan.counts), owed); for (const [v, n] of Object.entries(plan.counts)) assert.ok(n <= (pool[v] ?? 0)); }
++  }
++});
++test('planChange: a node cap falls back to greedy and says so', () => {
++  const pool = { '2000': 5, '1000': 5, '500': 5, '200': 5, '100': 5, '50': 5, '20': 5, '10': 5, '5': 5 };
++  const p = planChange(pool, 4735, 50); assert.equal(p.kind, 'exact'); if (p.kind === 'exact') { assert.equal(p.truncated, true); assert.equal(totalOf(p.counts), 4735); }
++  assert.deepEqual(greedyChange({ '1000': 1, '500': 1 }, 700), null);
++});
++test('postCashSale: received goes in, change comes out; untracked sides are skipped', () => {
++  const l0 = applyEntry(emptyLedger(), newEntry('open', { '500': 2, '100': 3 }));
++  const l1 = postCashSale(l0, { saleUuid: 'S1', received: { '2000': 1 }, given: { '500': 1, '100': 3 }, staff: 'Sam' });
++  assert.deepEqual(l1.counts, { '2000': 1, '500': 1 }); assert.deepEqual(l1.entries.slice(0, 2).map(e => e.kind), ['sale_change', 'sale_in']); assert.equal(l1.entries[0].saleUuid, 'S1');
++  assert.equal(postCashSale(l0, { saleUuid: 'S2' }), l0); assert.equal(postCashSale(l0, { saleUuid: 'S2', received: {}, given: null }).entries.length, l0.entries.length);
++  assert.deepEqual(postCashSale(l0, { saleUuid: 'S3', received: { '1000': 1 } }).counts, { '1000': 1, '500': 2, '100': 3 });
++});
++test('reverseCashTender: cancelling hands the cash back; tenders without tracking change nothing', () => {
++  const l0 = applyEntry(emptyLedger(), newEntry('open', { '500': 2, '100': 3 }));
++  const sold = postCashSale(l0, { saleUuid: 'S1', received: { '2000': 1 }, given: { '500': 1, '100': 3 } });
++  const t: Tender = { id: 't', kind: 'cash', amountCents: 1000, at: '', cashIn: { '2000': 1 }, cashOut: { '500': 1, '100': 3 } };
++  assert.deepEqual(reverseCashTender(sold, t, { saleUuid: 'S1' }).counts, l0.counts);
++  assert.equal(reverseCashTender(sold, { id: 'u', kind: 'cash', amountCents: 5, at: '' }), sold); assert.equal(reverseCashTender(sold, { ...t, kind: 'card' }), sold);
++});
++test('a tendered amount from the pad still goes through cashTender: change, settling, part payments', () => {
++  const full = cashTender(1235, 2000, true); assert.equal(full.settles, true); assert.equal(full.tender.changeCents, 765);
++  const part = cashTender(1235, 1000, true); assert.equal(part.settles, false); assert.equal(part.tender.amountCents, 1000);
++  assert.equal(piecesOf({ '500': 2, '5': 3 }), 5);
++});
+-- 
+2.43.0
+
