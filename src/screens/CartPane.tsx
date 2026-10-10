@@ -9,6 +9,8 @@ import { useCatalogue, usePriced } from '../state/selectors';
 import { useNav } from '../ui/nav';
 import * as ops from '../lib/cartOps';
 import { fmt } from '../lib/money';
+import { invoiceRows, unitLine } from '../lib/invoiceRows';
+import SwipeRow from '../ui/SwipeRow';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
 import type { CartLine } from '../lib/types';
@@ -39,22 +41,33 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <ScrollView style={{ flex: 1 }}>
           {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale — finish payment to edit</Txt></View> : null}
           {priced.lines.map(pl => {
-            const l = pl.line; const struck = pl.discountCents > 0;
+            const l = pl.line; const struck = pl.discountCents > 0; const rows = invoiceRows(pl);
             return (
-              <Pressable key={l.id} disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`} style={({ pressed }) => ({ flexDirection: 'row', padding: 14, gap: 10, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line })}>
-                {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={48} /> : null}
-                <View style={{ flex: 1 }}>
-                  <Txt weight="600" numberOfLines={2}>{l.title}</Txt>
-                  {l.variantTitle ? <Txt size={13} sub>{l.variantTitle}</Txt> : null}
-                  <Txt size={13} sub>{l.qty} × {fmt(pl.baseUnitCents)}{l.overrideCents !== undefined ? ' (adjusted)' : ''}</Txt>
-                  {pl.discounts.map((d, i) => <Txt key={i} size={13} color={c.good} weight="600">{d.label}  −{fmt(d.cents)}</Txt>)}
-                  {l.note ? <Txt size={12} sub numberOfLines={1}>“{l.note}”</Txt> : null}
-                </View>
-                <View style={{ alignItems: 'flex-end' }}>
-                  {struck ? <Txt size={13} sub style={{ textDecorationLine: 'line-through' }}>{fmt(pl.grossCents)}</Txt> : null}
-                  <Money cents={pl.netCents} weight="600" />
-                </View>
-              </Pressable>
+              // A13: swipe left to remove the line. A12.8: invoice-style rows, one per discount with its own amount.
+              <SwipeRow key={l.id} disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
+                <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
+                  style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line })}>
+                  <View style={{ flexDirection: 'row', gap: 10 }}>
+                    {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={48} /> : null}
+                    <View style={{ flex: 1 }}>
+                      <Txt weight="600" numberOfLines={2}>{l.title}</Txt>
+                      {l.variantTitle ? <Txt size={13} sub>{l.variantTitle}</Txt> : null}
+                      <Txt size={13} sub>{unitLine(pl)}</Txt>
+                      {l.note ? <Txt size={12} sub numberOfLines={1}>“{l.note}”</Txt> : null}
+                    </View>
+                    <View style={{ alignItems: 'flex-end' }}>
+                      {struck ? <Txt size={13} sub style={{ textDecorationLine: 'line-through' }}>{fmt(pl.grossCents)}</Txt> : null}
+                      <Money cents={pl.netCents} weight="600" />
+                    </View>
+                  </View>
+                  {rows.map((r, i) => (
+                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingLeft: l.kind === 'item' ? 58 : 0 }}>
+                      <Txt size={13} color={c.good} weight="600" style={{ flex: 1 }}>{r.label}</Txt>
+                      <Txt size={13} color={c.good} weight="600">−{fmt(r.cents)}</Txt>
+                    </View>
+                  ))}
+                </Pressable>
+              </SwipeRow>
             );
           })}
           {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>

@@ -20,6 +20,7 @@ Legend: `[x]` done in code Â· `[~]` partly done / needs your device to confirm Â
 | 0011 | 2026-10-10 | Remove the app's own gift card email (Shopify already sends one on creation) | A9.3, A9.6 |
 | 0012 | 2026-10-10 | Gift card claim page (own Worker) + Claim QR and gift card QR on the receipt step | A10 |
 | 0013 | 2026-10-10 | Zeller: no more sheet of ours over the terminal popup (slim "waiting on terminal" strip instead); answer on where Zeller's popup lives | A11 |
+| 0014 | 2026-10-10 | Invoice-style cart rows (one row per discount, repeats shown as (x2)) and swipe-to-delete on cart lines and saved carts | A12.8, A13 |
 
 ---
 
@@ -124,7 +125,7 @@ Clarified: this is about the imported Shopify automatic discounts, not custom bu
 - [x] A12.6 `tests/autocombine.test.ts` (11 tests): the examples above, 10 and 13 Tadlings (repeats, with a `times` count on the line for the A12.8 display), 7 units where two small lots beat one big one, two variants of one product, percentage and buy X get Y deals, expired discounts.
 - [?] A12.6a (deferred by you, see Deferred) Assumption to confirm: a Shopify discount of the type "fixed amount off, minimum quantity N" now works as lots of N units that repeat (10 Tadlings = two 5x deals). Percentage deals and "each item" amounts keep their old meaning (every eligible unit, once). `lotDiscounts: false` in the pricing context restores Shopify's once-per-order amount. **You:** in Shopify, are your Tadling and cow deals "Amount off products" with a minimum quantity, or "Buy X get Y"? Both combine now, but I want to test your real setup.
 - [~] A12.7 Multi-buy logic reworked in 0006 as one application at a time (respects the per-order use limit across deals, never discounts a unit twice, caps each line at its remaining value). Still to review: display, and behaviour with price adjustments once A16 exists. Original note: review the multi-buy (buy X get Y) logic and how it displays. Cover price-adjusted lines, and any case where one discount spreads across two cart or order lines.
-- [ ] A12.8 Invoice-style cart rows: a small change to the current item row, not a redesign. The line shows the original price struck through with the final price beside it, then the unit maths, then one indented row per discount or adjustment. Example, 13 Tadlings with a Line price adjustment (I assumed `$40.00` is the final line total, since 52 - 8 - 2 - 2 = 40):
+- [x] A12.8 (done in 0014, `src/lib/invoiceRows.ts`; the top row, struck-through price and final price were already how the cart showed it, so the change is the discount rows) Invoice-style cart rows: a small change to the current item row, not a redesign. The line shows the original price struck through with the final price beside it, then the unit maths, then one indented row per discount or adjustment. Example, 13 Tadlings with a Line price adjustment (I assumed `$40.00` is the final line total, since 52 - 8 - 2 - 2 = 40):
 ```
 Tadling - Small            ~~$52.00~~  $40.00
 13 x $4.00
@@ -132,6 +133,7 @@ Tadling - Small            ~~$52.00~~  $40.00
   3x Tadlings                          -$2.00
   Line price adjustment                -$2.00
 ```
+Each discount now sits on its own indented row with its own amount at the right edge, and a deal that applied twice shows `(x2)` after its name. The "Line price adjustment" row in the example arrives with A16. Tests are in `tests/swipe.test.ts`.
 
 ### A16. Price adjustments (Line, Item, Whole order)
 Added from your A12 notes. Replaces today's single per-item price override.
@@ -146,7 +148,9 @@ Added from your A12 notes. Replaces today's single per-item price override.
 - [ ] A16.9 Agreed by you: adjustments can be limited by staff role. Every role is allowed by default, so nothing changes until you restrict one.
 
 ### A13. Swipe actions (cart lines, saved carts; not customers)
-- [ ] A13.1 Swipe-to-delete row component; apply to cart lines, saved carts, held/other quick-delete lists.
+- [x] A13.1 `src/ui/SwipeRow.tsx`, built on React Native's own `Animated` and `PanResponder`, so there is **no new package and no native rebuild**. Swipe a row left: let go past halfway and a red button stays open (tap it to delete, tap the row to close it); drag most of the way across, or flick hard, and it deletes straight away. VoiceOver gets a "Delete" action, so swiping is never the only way. The sliding maths is pure and tested (`src/lib/swipe.ts`, `tests/swipe.test.ts`).
+- [x] A13.2 Used on **cart lines** ("Remove", disabled while a part-paid sale is locked) and **saved carts** (these are the held carts). Saved carts ask "Delete saved cart?" first, the same as the Delete button, and slide back if you cancel. Customers are left alone, as you asked. The Notifications list has no per-row delete today, so it was not changed.
+- [ ] A13.3 **You:** try it on an iPad with a finger and with scrolling: swipe a cart line, flick one, and scroll a long cart up and down. Tell me if a swipe ever fights the scrolling.
 
 ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
 - [ ] A14.1 Collection image on tiles + lists.
@@ -183,8 +187,8 @@ Status as found in the zip you sent (I only inspected files; not run).
 - [ ] B8 Extra ideas
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (162 after patch 0013). `npm test` on your machine runs the same files.
-- Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0013. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (170 after patch 0014). `npm test` on your machine runs the same files.
+- Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
 
@@ -208,6 +212,8 @@ Ordered by priority, highest first.
 - [ ] N11 **Non-blocking (A10.4):** set up `gift-claim-server` (its README) and test one claim. Skip it if you don't want the claim page; the app hides the Claim QR until the URL and secret are filled in.
 
 - [ ] N12 **Non-blocking (A11.1):** take a real card payment (even $1) and check that only Zeller's own popup shows, with no extra sheet of ours on top. Also press Cancel on the slim strip once and tell me what happens.
+
+- [ ] N13 **Non-blocking (A13, A12.8):** swipe and scroll test on a device (see A13.3), and look at a cart with two discounts on one line to check the new rows read well.
 
 ### Priority 3
 - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 

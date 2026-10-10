@@ -1,0 +1,372 @@
+From d49ae0b22f38410707ffab1014279d1f4d028f53 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 05:54:39 +0000
+Subject: [PATCH] 0014: invoice-style cart rows + swipe-to-delete (cart lines,
+ saved carts)
+
+---
+ docs/PROGRESS.md           | 14 +++++--
+ src/lib/invoiceRows.ts     | 14 +++++++
+ src/lib/swipe.ts           | 21 +++++++++++
+ src/screens/CartPane.tsx   | 43 +++++++++++++--------
+ src/screens/SavedCarts.tsx |  8 +++-
+ src/ui/SwipeRow.tsx        | 76 ++++++++++++++++++++++++++++++++++++++
+ tests/swipe.test.ts        | 65 ++++++++++++++++++++++++++++++++
+ 7 files changed, 220 insertions(+), 21 deletions(-)
+ create mode 100644 src/lib/invoiceRows.ts
+ create mode 100644 src/lib/swipe.ts
+ create mode 100644 src/ui/SwipeRow.tsx
+ create mode 100644 tests/swipe.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index f54bfe8..44d9536 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -20,6 +20,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0011 | 2026-10-10 | Remove the app's own gift card email (Shopify already sends one on creation) | A9.3, A9.6 |
+ | 0012 | 2026-10-10 | Gift card claim page (own Worker) + Claim QR and gift card QR on the receipt step | A10 |
+ | 0013 | 2026-10-10 | Zeller: no more sheet of ours over the terminal popup (slim "waiting on terminal" strip instead); answer on where Zeller's popup lives | A11 |
++| 0014 | 2026-10-10 | Invoice-style cart rows (one row per discount, repeats shown as (x2)) and swipe-to-delete on cart lines and saved carts | A12.8, A13 |
+ 
+ ---
+ 
+@@ -124,7 +125,7 @@ Clarified: this is about the imported Shopify automatic discounts, not custom bu
+ - [x] A12.6 `tests/autocombine.test.ts` (11 tests): the examples above, 10 and 13 Tadlings (repeats, with a `times` count on the line for the A12.8 display), 7 units where two small lots beat one big one, two variants of one product, percentage and buy X get Y deals, expired discounts.
+ - [?] A12.6a (deferred by you, see Deferred) Assumption to confirm: a Shopify discount of the type "fixed amount off, minimum quantity N" now works as lots of N units that repeat (10 Tadlings = two 5x deals). Percentage deals and "each item" amounts keep their old meaning (every eligible unit, once). `lotDiscounts: false` in the pricing context restores Shopify's once-per-order amount. **You:** in Shopify, are your Tadling and cow deals "Amount off products" with a minimum quantity, or "Buy X get Y"? Both combine now, but I want to test your real setup.
+ - [~] A12.7 Multi-buy logic reworked in 0006 as one application at a time (respects the per-order use limit across deals, never discounts a unit twice, caps each line at its remaining value). Still to review: display, and behaviour with price adjustments once A16 exists. Original note: review the multi-buy (buy X get Y) logic and how it displays. Cover price-adjusted lines, and any case where one discount spreads across two cart or order lines.
+-- [ ] A12.8 Invoice-style cart rows: a small change to the current item row, not a redesign. The line shows the original price struck through with the final price beside it, then the unit maths, then one indented row per discount or adjustment. Example, 13 Tadlings with a Line price adjustment (I assumed `$40.00` is the final line total, since 52 - 8 - 2 - 2 = 40):
++- [x] A12.8 (done in 0014, `src/lib/invoiceRows.ts`; the top row, struck-through price and final price were already how the cart showed it, so the change is the discount rows) Invoice-style cart rows: a small change to the current item row, not a redesign. The line shows the original price struck through with the final price beside it, then the unit maths, then one indented row per discount or adjustment. Example, 13 Tadlings with a Line price adjustment (I assumed `$40.00` is the final line total, since 52 - 8 - 2 - 2 = 40):
+ ```
+ Tadling - Small            ~~$52.00~~  $40.00
+ 13 x $4.00
+@@ -132,6 +133,7 @@ Tadling - Small            ~~$52.00~~  $40.00
+   3x Tadlings                          -$2.00
+   Line price adjustment                -$2.00
+ ```
++Each discount now sits on its own indented row with its own amount at the right edge, and a deal that applied twice shows `(x2)` after its name. The "Line price adjustment" row in the example arrives with A16. Tests are in `tests/swipe.test.ts`.
+ 
+ ### A16. Price adjustments (Line, Item, Whole order)
+ Added from your A12 notes. Replaces today's single per-item price override.
+@@ -146,7 +148,9 @@ Added from your A12 notes. Replaces today's single per-item price override.
+ - [ ] A16.9 Agreed by you: adjustments can be limited by staff role. Every role is allowed by default, so nothing changes until you restrict one.
+ 
+ ### A13. Swipe actions (cart lines, saved carts; not customers)
+-- [ ] A13.1 Swipe-to-delete row component; apply to cart lines, saved carts, held/other quick-delete lists.
++- [x] A13.1 `src/ui/SwipeRow.tsx`, built on React Native's own `Animated` and `PanResponder`, so there is **no new package and no native rebuild**. Swipe a row left: let go past halfway and a red button stays open (tap it to delete, tap the row to close it); drag most of the way across, or flick hard, and it deletes straight away. VoiceOver gets a "Delete" action, so swiping is never the only way. The sliding maths is pure and tested (`src/lib/swipe.ts`, `tests/swipe.test.ts`).
++- [x] A13.2 Used on **cart lines** ("Remove", disabled while a part-paid sale is locked) and **saved carts** (these are the held carts). Saved carts ask "Delete saved cart?" first, the same as the Delete button, and slide back if you cancel. Customers are left alone, as you asked. The Notifications list has no per-row delete today, so it was not changed.
++- [ ] A13.3 **You:** try it on an iPad with a finger and with scrolling: swipe a cart line, flick one, and scroll a long cart up and down. Tell me if a swipe ever fights the scrolling.
+ 
+ ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
+ - [ ] A14.1 Collection image on tiles + lists.
+@@ -183,8 +187,8 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [ ] B8 Extra ideas
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (162 after patch 0013). `npm test` on your machine runs the same files.
+-- Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0013. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (170 after patch 0014). `npm test` on your machine runs the same files.
++- Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+ 
+@@ -209,6 +213,8 @@ Ordered by priority, highest first.
+ 
+ - [ ] N12 **Non-blocking (A11.1):** take a real card payment (even $1) and check that only Zeller's own popup shows, with no extra sheet of ours on top. Also press Cancel on the slim strip once and tell me what happens.
+ 
++- [ ] N13 **Non-blocking (A13, A12.8):** swipe and scroll test on a device (see A13.3), and look at a cart with two discounts on one line to check the new rows read well.
++
+ ### Priority 3
+ - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+ - [ ] N7 **Non-blocking (B1):** confirm the cash drawer ledger and denomination entry were meant to be part of the project. I am building it as its own run of patches either way.
+diff --git a/src/lib/invoiceRows.ts b/src/lib/invoiceRows.ts
+new file mode 100644
+index 0000000..d939d5c
+--- /dev/null
++++ b/src/lib/invoiceRows.ts
+@@ -0,0 +1,14 @@
++// Location: src/lib/invoiceRows.ts
++// A12.8: a cart line reads like an invoice. Top row: name and price. Then the unit maths. Then one indented row per
++// discount, each with its own amount on the right. A deal that applied several times on the line shows "(x2)".
++import { fmt } from './money';
++import type { AppliedDiscount, PricedLine } from './types';
++
++export type InvoiceRow = { label: string; cents: number; kind: AppliedDiscount['type'] };
++
++export function invoiceRows(pl: PricedLine): InvoiceRow[] {
++  return pl.discounts.filter(d => d.cents !== 0).map(d => ({ label: d.times && d.times > 1 ? `${d.label} (x${d.times})` : d.label, cents: d.cents, kind: d.type }));
++}
++
++/** "13 × $4.00", with "(adjusted)" when the cashier changed the unit price. */
++export const unitLine = (pl: PricedLine): string => `${pl.line.qty} × ${fmt(pl.baseUnitCents)}${pl.line.overrideCents !== undefined ? ' (adjusted)' : ''}`;
+diff --git a/src/lib/swipe.ts b/src/lib/swipe.ts
+new file mode 100644
+index 0000000..05d6a06
+--- /dev/null
++++ b/src/lib/swipe.ts
+@@ -0,0 +1,21 @@
++// Location: src/lib/swipe.ts
++// Pure maths for the swipe-to-delete row (A13). `x` is how far the row has slid: 0 = closed, negative = to the left.
++export type SwipeOutcome = 'delete' | 'open' | 'close';
++
++/** Keeps the row between "closed" and "slid fully off to the left". It never slides to the right. */
++export const clampSwipe = (x: number, openWidth: number, width: number): number => Math.min(0, Math.max(x, -(width > 0 ? width : openWidth * 4)));
++
++/**
++ * What to do when the finger lifts.
++ *  - dragged most of the way across (or a hard fast flick past the button): delete (only when fullSwipe is on)
++ *  - a flick left: open, a flick right: close
++ *  - otherwise: whichever side of halfway the row is on
++ * `vx` is the finger speed in px/ms, negative when moving left.
++ */
++export function swipeDecision(o: { x: number; vx: number; width: number; openWidth: number; fullSwipe?: boolean }): SwipeOutcome {
++  const dist = -o.x; const full = o.fullSwipe !== false;
++  if (full && o.width > 0 && (dist >= o.width * 0.6 || (o.vx < -1.2 && dist > o.openWidth * 1.2))) return 'delete';
++  if (o.vx < -0.5 && dist > 8) return 'open';
++  if (o.vx > 0.5) return 'close';
++  return dist >= o.openWidth / 2 ? 'open' : 'close';
++}
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 23efe87..cdbf15e 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -9,6 +9,8 @@ import { useCatalogue, usePriced } from '../state/selectors';
+ import { useNav } from '../ui/nav';
+ import * as ops from '../lib/cartOps';
+ import { fmt } from '../lib/money';
++import { invoiceRows, unitLine } from '../lib/invoiceRows';
++import SwipeRow from '../ui/SwipeRow';
+ import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
+ import type { CartLine } from '../lib/types';
+@@ -39,22 +41,33 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <ScrollView style={{ flex: 1 }}>
+           {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale — finish payment to edit</Txt></View> : null}
+           {priced.lines.map(pl => {
+-            const l = pl.line; const struck = pl.discountCents > 0;
++            const l = pl.line; const struck = pl.discountCents > 0; const rows = invoiceRows(pl);
+             return (
+-              <Pressable key={l.id} disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`} style={({ pressed }) => ({ flexDirection: 'row', padding: 14, gap: 10, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line })}>
+-                {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={48} /> : null}
+-                <View style={{ flex: 1 }}>
+-                  <Txt weight="600" numberOfLines={2}>{l.title}</Txt>
+-                  {l.variantTitle ? <Txt size={13} sub>{l.variantTitle}</Txt> : null}
+-                  <Txt size={13} sub>{l.qty} × {fmt(pl.baseUnitCents)}{l.overrideCents !== undefined ? ' (adjusted)' : ''}</Txt>
+-                  {pl.discounts.map((d, i) => <Txt key={i} size={13} color={c.good} weight="600">{d.label}  −{fmt(d.cents)}</Txt>)}
+-                  {l.note ? <Txt size={12} sub numberOfLines={1}>“{l.note}”</Txt> : null}
+-                </View>
+-                <View style={{ alignItems: 'flex-end' }}>
+-                  {struck ? <Txt size={13} sub style={{ textDecorationLine: 'line-through' }}>{fmt(pl.grossCents)}</Txt> : null}
+-                  <Money cents={pl.netCents} weight="600" />
+-                </View>
+-              </Pressable>
++              // A13: swipe left to remove the line. A12.8: invoice-style rows, one per discount with its own amount.
++              <SwipeRow key={l.id} disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
++                <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
++                  style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line })}>
++                  <View style={{ flexDirection: 'row', gap: 10 }}>
++                    {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={48} /> : null}
++                    <View style={{ flex: 1 }}>
++                      <Txt weight="600" numberOfLines={2}>{l.title}</Txt>
++                      {l.variantTitle ? <Txt size={13} sub>{l.variantTitle}</Txt> : null}
++                      <Txt size={13} sub>{unitLine(pl)}</Txt>
++                      {l.note ? <Txt size={12} sub numberOfLines={1}>“{l.note}”</Txt> : null}
++                    </View>
++                    <View style={{ alignItems: 'flex-end' }}>
++                      {struck ? <Txt size={13} sub style={{ textDecorationLine: 'line-through' }}>{fmt(pl.grossCents)}</Txt> : null}
++                      <Money cents={pl.netCents} weight="600" />
++                    </View>
++                  </View>
++                  {rows.map((r, i) => (
++                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingLeft: l.kind === 'item' ? 58 : 0 }}>
++                      <Txt size={13} color={c.good} weight="600" style={{ flex: 1 }}>{r.label}</Txt>
++                      <Txt size={13} color={c.good} weight="600">−{fmt(r.cents)}</Txt>
++                    </View>
++                  ))}
++                </Pressable>
++              </SwipeRow>
+             );
+           })}
+           {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
+diff --git a/src/screens/SavedCarts.tsx b/src/screens/SavedCarts.tsx
+index 4772924..a53dadd 100644
+--- a/src/screens/SavedCarts.tsx
++++ b/src/screens/SavedCarts.tsx
+@@ -8,16 +8,20 @@ import { itemCount } from '../lib/cartOps';
+ import { assignSavedCart, deleteSavedCart, openSavedCart } from '../lib/savedOps';
+ import { fmt } from '../lib/money';
+ import { usePriced } from '../state/selectors';
++import SwipeRow from '../ui/SwipeRow';
++import { useTheme } from '../ui/theme';
+ 
+ /** Saved carts: Open (merge prompt when the cart isn't empty), Delete (void), Assign to a staff member. Shared across registers. */
+ export default function SavedCarts() {
+   const nav = useNav(); const saved = useApp(s => s.pos.saved).filter(s => s.status === 'open'); const staff = useApp(s => s.settings.staff); const [sel, setSel] = useState<string | null>(null);
+-  const cur = saved.find(s => s.id === sel); void usePriced;
++  const { c } = useTheme(); const cur = saved.find(s => s.id === sel); void usePriced;
++  /** Swipe-to-delete asks first, the same as the Delete button. Returns false when cancelled so the row slides back. */
++  const removeSaved = async (id: string) => { if (!(await confirm('Delete saved cart?', 'This removes it from all registers.', 'Delete', true))) return false; deleteSavedCart(id); return true; };
+   const open = async () => { if (cur && await openSavedCart(cur)) { setSel(null); nav.reset(); nav.setTab('checkout'); } };
+   return (
+     <Page title="Saved carts" onBack={nav.pop}>
+       {saved.length === 0 ? <Empty icon="bookmarks-outline" title="No saved carts" sub="Use ⋯ ▸ Save cart on the checkout screen. Saved carts appear on your other registers too." /> :
+-        saved.map(s => <Row key={s.id} icon="bookmark-outline" title={s.name} sub={`${itemCount(s.cart)} items · ${fmt(s.cart.lines.reduce((t, l) => t + (l.overrideCents ?? l.unitCents) * l.qty, 0))}${s.cart.customer ? ' · ' + s.cart.customer.name : ''}${s.assignedTo ? ' · → ' + (staff.find(x => x.id === s.assignedTo)?.name ?? 'staff') : ''}${s.dirty ? ' · not synced' : ''}${s.note ? '\n' + s.note : ''}`} onPress={() => setSel(s.id)} />)}
++        saved.map(s => <SwipeRow key={s.id} background={c.card} onDelete={() => removeSaved(s.id)}><Row icon="bookmark-outline" title={s.name} sub={`${itemCount(s.cart)} items · ${fmt(s.cart.lines.reduce((t, l) => t + (l.overrideCents ?? l.unitCents) * l.qty, 0))}${s.cart.customer ? ' · ' + s.cart.customer.name : ''}${s.assignedTo ? ' · → ' + (staff.find(x => x.id === s.assignedTo)?.name ?? 'staff') : ''}${s.dirty ? ' · not synced' : ''}${s.note ? '\n' + s.note : ''}`} onPress={() => setSel(s.id)} /></SwipeRow>)}
+       <Sheet visible={!!cur} onClose={() => setSel(null)} title={cur?.name}>
+         {cur?.cart.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title}</Txt>)}
+         <View style={{ gap: 8, marginTop: 14 }}>
+diff --git a/src/ui/SwipeRow.tsx b/src/ui/SwipeRow.tsx
+new file mode 100644
+index 0000000..e2db03f
+--- /dev/null
++++ b/src/ui/SwipeRow.tsx
+@@ -0,0 +1,76 @@
++// Location: src/ui/SwipeRow.tsx
++// Swipe a row left to reveal a red delete button (A13). Uses only React Native's own Animated + PanResponder,
++// so it needs no new package and no native rebuild.
++//  - Drag left and let go past halfway: the button stays open. Tap it to delete.
++//  - Drag most of the way across: deletes straight away.
++//  - Tap the row while it is open: it closes again.
++//  - `onDelete` may return false (or a promise of false) to say "cancelled", and the row slides back.
++//  - VoiceOver: the row offers a "Delete" action, so swiping is never the only way.
++import React, { useEffect, useRef, useState } from 'react';
++import { Animated, PanResponder, Pressable, Text, View } from 'react-native';
++import { useTheme } from './theme';
++import { clampSwipe, swipeDecision } from '../lib/swipe';
++
++type Props = {
++  children: React.ReactNode;
++  onDelete: () => void | boolean | Promise<void | boolean>;
++  disabled?: boolean;
++  label?: string;
++  /** Width of the revealed button. */
++  openWidth?: number;
++  /** Background of the row itself (it must be opaque so the red button stays hidden until you swipe). */
++  background?: string;
++  fullSwipe?: boolean;
++};
++
++export default function SwipeRow({ children, onDelete, disabled, label = 'Delete', openWidth = 96, background, fullSwipe = true }: Props) {
++  const { c } = useTheme();
++  const x = useRef(new Animated.Value(0)).current;
++  const cur = useRef(0); const start = useRef(0); const width = useRef(0);
++  const [open, setOpen] = useState(false);
++  const openRef = useRef(false);
++
++  useEffect(() => { const id = x.addListener(({ value }) => { cur.current = value; }); return () => x.removeListener(id); }, [x]);
++
++  // Latest props live in a ref so the gesture handler is created once. A re-render in the middle of a drag
++  // (the cart refreshing, say) therefore never drops the finger.
++  const latest = useRef({ disabled, openWidth, fullSwipe, onDelete });
++  latest.current = { disabled, openWidth, fullSwipe, onDelete };
++
++  const slide = (to: number, done?: () => void) => Animated.timing(x, { toValue: to, duration: 160, useNativeDriver: true }).start(done);
++  const close = () => { openRef.current = false; setOpen(false); slide(0); };
++  const openIt = () => { openRef.current = true; setOpen(true); slide(-latest.current.openWidth); };
++  const remove = async () => {
++    slide(-(width.current || latest.current.openWidth * 4));
++    let keep: void | boolean = true;
++    try { keep = await latest.current.onDelete(); } catch { keep = false; }
++    if (keep === false) close(); // cancelled or failed: slide back
++  };
++
++  const pan = useRef(PanResponder.create({
++    onMoveShouldSetPanResponder: (_, g) => !latest.current.disabled && Math.abs(g.dx) > 8 && Math.abs(g.dx) > Math.abs(g.dy) * 1.5,
++    onPanResponderGrant: () => { x.stopAnimation(); start.current = cur.current; },
++    onPanResponderMove: (_, g) => x.setValue(clampSwipe(start.current + g.dx, latest.current.openWidth, width.current)),
++    onPanResponderRelease: (_, g) => {
++      const out = swipeDecision({ x: cur.current, vx: g.vx, width: width.current, openWidth: latest.current.openWidth, fullSwipe: latest.current.fullSwipe });
++      if (out === 'delete') void remove(); else if (out === 'open') openIt(); else close();
++    },
++    onPanResponderTerminate: () => (openRef.current ? openIt() : close()),
++    onPanResponderTerminationRequest: () => false,
++  })).current;
++
++  return (
++    <View style={{ overflow: 'hidden' }} onLayout={e => { width.current = e.nativeEvent.layout.width; }}>
++      <View style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0, backgroundColor: c.bad, alignItems: 'flex-end', justifyContent: 'center' }} pointerEvents={open ? 'auto' : 'none'}>
++        <Pressable onPress={() => void remove()} accessibilityRole="button" accessibilityLabel={label} style={{ width: openWidth, height: '100%', alignItems: 'center', justifyContent: 'center' }}>
++          <Text style={{ color: '#FFFFFF', fontWeight: '700', fontSize: 16 }}>{label}</Text>
++        </Pressable>
++      </View>
++      <Animated.View {...pan.panHandlers} style={{ backgroundColor: background ?? c.card, transform: [{ translateX: x }] }}
++        accessibilityActions={disabled ? undefined : [{ name: 'delete', label }]} onAccessibilityAction={e => { if (e.nativeEvent.actionName === 'delete') void remove(); }}>
++        {children}
++        {open ? <Pressable onPress={close} accessibilityLabel="Close" style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} /> : null}
++      </Animated.View>
++    </View>
++  );
++}
+diff --git a/tests/swipe.test.ts b/tests/swipe.test.ts
+new file mode 100644
+index 0000000..57cbd31
+--- /dev/null
++++ b/tests/swipe.test.ts
+@@ -0,0 +1,65 @@
++// Location: tests/swipe.test.ts
++// A13 swipe maths + A12.8 invoice rows.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { clampSwipe, swipeDecision } from '../src/lib/swipe';
++import { invoiceRows, unitLine } from '../src/lib/invoiceRows';
++import type { PricedLine } from '../src/lib/types';
++
++const W = 400, OPEN = 96;
++const decide = (x: number, vx = 0, fullSwipe?: boolean) => swipeDecision({ x, vx, width: W, openWidth: OPEN, fullSwipe });
++
++test('clamp: never to the right, never past the row width', () => {
++  assert.equal(clampSwipe(30, OPEN, W), 0);
++  assert.equal(clampSwipe(-50, OPEN, W), -50);
++  assert.equal(clampSwipe(-999, OPEN, W), -W);
++  assert.equal(clampSwipe(-999, OPEN, 0), -OPEN * 4); // width not measured yet
++});
++
++test('a small slow drag springs back, a drag past half the button stays open', () => {
++  assert.equal(decide(-20), 'close');
++  assert.equal(decide(-47), 'close');
++  assert.equal(decide(-48), 'open');
++  assert.equal(decide(-90), 'open');
++});
++
++test('dragging most of the way across deletes', () => {
++  assert.equal(decide(-239), 'open');
++  assert.equal(decide(-240), 'delete');
++  assert.equal(decide(-399), 'delete');
++});
++
++test('a hard fast flick past the button deletes, a gentle flick just opens', () => {
++  assert.equal(decide(-130, -1.5), 'delete');
++  assert.equal(decide(-130, -0.8), 'open');
++  assert.equal(decide(-30, -0.8), 'open');
++  assert.equal(decide(-4, -0.8), 'close'); // barely moved
++});
++
++test('flicking right closes even from open', () => {
++  assert.equal(decide(-90, 0.9), 'close');
++});
++
++test('with full swipe off, the far end only opens the button', () => {
++  assert.equal(decide(-390, 0, false), 'open');
++  assert.equal(decide(-130, -1.5, false), 'open');
++});
++
++const line = (over: Partial<PricedLine> = {}): PricedLine => ({
++  line: { id: 'l', kind: 'item', title: 'Tadling', qty: 13, unitCents: 400 }, baseUnitCents: 400, grossCents: 5200, discounts: [], discountCents: 0, netCents: 5200, bundleUnits: 0, ...over,
++});
++
++test('invoice rows: one row per discount, repeats shown as (xN), zero rows hidden', () => {
++  const rows = invoiceRows(line({ discounts: [
++    { type: 'auto', label: '5x Tadlings', cents: 800, id: 'a', times: 2 },
++    { type: 'auto', label: '3x Tadlings', cents: 200, id: 'b' },
++    { type: 'manual', label: 'Nothing', cents: 0 },
++  ] }));
++  assert.deepEqual(rows.map(r => [r.label, r.cents]), [['5x Tadlings (x2)', 800], ['3x Tadlings', 200]]);
++});
++
++test('invoice rows: a line with no discounts has no rows; unit line shows qty x price', () => {
++  assert.deepEqual(invoiceRows(line()), []);
++  assert.equal(unitLine(line()), '13 × $4.00');
++  assert.equal(unitLine(line({ line: { id: 'l', kind: 'item', title: 'T', qty: 2, unitCents: 400, overrideCents: 300 }, baseUnitCents: 300 })), '2 × $3.00 (adjusted)');
++});
+-- 
+2.43.0
+
