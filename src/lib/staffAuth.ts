@@ -5,6 +5,7 @@ import { csv } from './csvStore';
 import { findByBadge } from './badge';
 import { verifyPin } from './pin';
 import { paymentActive } from './screensaver';
+import { lockDecision, type LockDecision } from './posLock';
 import type { StaffMember } from './types';
 
 export type SignInResult = { ok: boolean; message: string; staff?: StaffMember };
@@ -34,3 +35,10 @@ export async function signInWithPass(raw: string): Promise<SignInResult> {
   return m ? apply(m, 'pass') : { ok: false, message: 'That pass is not recognised. It may have been cancelled or replaced.' };
 }
 export function lockRegister() { useApp.getState().set({ unlocked: false, staffId: undefined }); }
+/** The grid's Lock POS tile. Checks first (staff exist, no card payment waiting), then locks. The cart is left exactly as it is. */
+export function lockNow(): LockDecision {
+  const st = useApp.getState();
+  const d = lockDecision({ staffCount: st.settings.staff.length, unlocked: st.unlocked, paymentActive: paymentActive(st.pos.attempts, Date.now()) });
+  if (d.ok) { lockRegister(); void csv.event({ kind: 'staff_switch', staff: st.settings.staff.find(x => x.id === st.staffId)?.name ?? '', detail: 'locked from the grid' }).catch(() => {}); }
+  return d;
+}

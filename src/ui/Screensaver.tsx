@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useApp } from '../state/store';
 import { idleMs, noteActivity } from '../lib/idle';
+import { isLockScreen } from '../lib/posLock';
 import { contrastOn, logoSource, normaliseHex, paymentActive, shouldShowScreensaver } from '../lib/screensaver';
 
 const KEEP_TAG = 'pos-keep-awake';
@@ -45,7 +46,7 @@ export function ScreensaverLayer() {
   useEffect(() => {
     const tick = () => {
       const st = useApp.getState(); const cfg = st.settings.screensaver;
-      const locked = st.settings.requirePin && st.settings.staff.length > 0 && !st.unlocked;
+      const locked = isLockScreen({ staffCount: st.settings.staff.length, unlocked: st.unlocked });
       setIdle(shouldShowScreensaver({ enabled: cfg.enabled, showWhenLoggedOut: cfg.showWhenLoggedOut, locked, idleMs: idleMs(), idleMinutes: cfg.idleMinutes, lockedSeconds: cfg.lockedSeconds, paymentActive: paymentActive(st.pos.attempts, Date.now()) }));
     };
     const i = setInterval(tick, 1000); return () => clearInterval(i);

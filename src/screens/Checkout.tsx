@@ -10,14 +10,16 @@ import { useCatalogue, usePriced, stockTone } from '../state/selectors';
 import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
-import { AddTileSheet, TileGrid, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+import { LookupSheet } from './Lookup';
+import { pickerCrumbs, pickerTitle } from '../lib/lookup';
 import { TileSettingsSheet } from './TileSettings';
 import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
 import { CameraScanner, HidScanner } from './Scanner';
 import { isGiftQr } from '../lib/giftCode';
 import { SwitchStaffSheet } from './StaffLogin';
 import { isBadgeCode } from '../lib/badge';
-import { signInWithPass } from '../lib/staffAuth';
+import { lockNow, signInWithPass } from '../lib/staffAuth';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from './sheets';
 import CartPane from './CartPane';
 import { openSavedCart } from '../lib/savedOps';
@@ -51,7 +53,7 @@ export default function Checkout() {
   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
   const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
-  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff'>('none'); const [cam, setCam] = useState(false);
+  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
@@ -62,6 +64,7 @@ export default function Checkout() {
     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
   };
   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
+  const pick = (v: Variant) => { add(v); setVariants(null); }; // a tap in the variation picker adds it and goes back to where you were
   const onScan = (code: string): string | null => {
     if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
     const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);
@@ -82,6 +85,9 @@ export default function Checkout() {
         case 'discounts': case 'discount': return setSheet('discount');
         case 'saved_carts': return nav.push('saved');
         case 'switch_staff': return setSheet('staff');
+        case 'lock_pos': { const d = lockNow(); if (!d.ok) alertMsg(d.title, d.message); return; } // success: the app shows the sign-in screen, the cart stays
+        case 'price_check': return setSheet('price');
+        case 'stock_check': return setSheet('stock');
       }
     },
   };
@@ -90,10 +96,12 @@ export default function Checkout() {
   const { nodes, valid } = useMemo(() => resolvePath(page?.tiles ?? [], path), [page, path]);
   useEffect(() => { if (valid.length !== path.length) setPath(valid); }, [valid, path.length]); // a synced layout change removed a level we were in
   const node = nodes[nodes.length - 1];
+  useEffect(() => { setVariants(null); }, [tab, pageIdx, editing, valid.join('.')]); // the picker is a level of the grid: leaving this spot (tab, page, path, edit mode) closes it
   const nodeLabel = (t: (typeof nodes)[number]) => (t.type === 'category' ? t.label ?? cat.collections.find(x => x.id === t.collectionId)?.title ?? 'Category' : t.name);
   // editing shows only the tiles stored in the container (its collection's items are filled in when not editing)
   const tiles = !node ? page?.tiles ?? [] : editing ? childTiles(node) : viewTiles(node, cat.collections, pid => !!cat.byProduct[pid]);
   const crumbs = breadcrumbs(page?.name ?? 'Home', nodes, valid, nodeLabel);
+  const trail = variants ? pickerCrumbs(crumbs, variants) : crumbs; // while choosing a variation the product is the last step of the path
 
   const edit = (f: (g: typeof grid) => typeof grid) => commitGrid(f);
   const editPage = (fn: (t: Tile[]) => Tile[]) => edit(g => ({ ...g, pages: g.pages.map(p => (p.id === page.id ? { ...p, tiles: fn(p.tiles) } : p)) }));
@@ -147,25 +155,31 @@ export default function Checkout() {
 
       {tab === 'quick' ? (
         <ScrollView>
-          {node ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
-            <IconBtn icon="chevron-back" label="Back one level" onPress={() => setPath(valid.slice(0, -1))} />
+          {node || variants ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
+            <IconBtn icon="chevron-back" label={variants ? 'Back to the grid' : 'Back one level'} onPress={() => (variants ? setVariants(null) : setPath(valid.slice(0, -1)))} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 16 }} accessibilityRole="menu">
-              {crumbs.map((cr, i) => i === crumbs.length - 1
+              {trail.map((cr, i) => i === trail.length - 1
                 ? <Txt key={i} size={18} weight="700">{cr.label}</Txt>
-                : <React.Fragment key={i}><Pressable onPress={() => setPath(cr.path)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Go to ${cr.label}`}><Txt size={16} color={c.accent}>{cr.label}</Txt></Pressable><Txt size={16} sub>{'>'}</Txt></React.Fragment>)}
+                : <React.Fragment key={i}><Pressable onPress={() => { setVariants(null); setPath((cr as { path: Path }).path); }} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Go to ${cr.label}`}><Txt size={16} color={c.accent}>{cr.label}</Txt></Pressable><Txt size={16} sub>{'>'}</Txt></React.Fragment>)}
             </ScrollView></View>
             : grid.pages.length > 1 || editing ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 12 }}>
               {grid.pages.map((p, i) => <Chip key={p.id} label={p.name} active={i === pageIdx} onPress={() => (editing && i === pageIdx ? setSheet('pages') : (setPageIdx(i), setPath([])))} />)}
               {editing ? <Chip label="Pages" icon="settings-outline" onPress={() => setSheet('pages')} /> : null}</ScrollView> : null}
-          <TileGrid tiles={tiles} editing={editing} handlers={handlers} onOpen={onOpen} onEdit={i => setEditIdx(i)}
-            onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} emptyHint={node ? 'This one has no tiles or items yet. Tap the pencil to add some.' : undefined} />
-          {editing && node ? <Txt size={12} sub style={{ textAlign: 'center', paddingHorizontal: 16 }}>{node.type === 'category' || node.collectionId ? 'The items in its collection show after these tiles when you are not editing.' : 'Tap a tile to change its label, colour or contents.'}</Txt> : null}
-          {editing ? <Txt size={12} sub style={{ textAlign: 'center', padding: 12 }}>Changes save automatically and sync to your other registers.</Txt> : null}
+          {variants ? <VariantPicker variants={variants} onPick={pick} /> : <TileGrid tiles={tiles} editing={editing} handlers={handlers} onOpen={onOpen} onEdit={i => setEditIdx(i)}
+            onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} emptyHint={node ? 'This one has no tiles or items yet. Tap the pencil to add some.' : undefined} />}
+          {editing && node && !variants ? <Txt size={12} sub style={{ textAlign: 'center', paddingHorizontal: 16 }}>{node.type === 'category' || node.collectionId ? 'The items in its collection show after these tiles when you are not editing.' : 'Tap a tile to change its label, colour or contents.'}</Txt> : null}
+          {editing && !variants ? <Txt size={12} sub style={{ textAlign: 'center', padding: 12 }}>Changes save automatically and sync to your other registers.</Txt> : null}
         </ScrollView>
       ) : null}
 
       {tab === 'all' ? (
-        <View style={{ flex: 1 }}>
+        variants ? <ScrollView>
+          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
+            <IconBtn icon="chevron-back" label="Back to all products" onPress={() => setVariants(null)} />
+            <Txt size={16} sub>All products {'>'}</Txt><Txt size={18} weight="700" numberOfLines={1} style={{ flexShrink: 1 }}>{pickerTitle(variants)}</Txt>
+          </View>
+          <VariantPicker variants={variants} onPick={pick} />
+        </ScrollView> : <View style={{ flex: 1 }}>
           <View style={{ paddingHorizontal: 12 }}><Field kind="search" placeholder="Filter products" value={allQ} onChangeText={setAllQ} style={{ marginBottom: 0 }} /></View>
           <FlatList data={allList} keyExtractor={v => v.productId} style={{ marginTop: 8 }} ListEmptyComponent={<Empty title="No products" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
             renderItem={({ item: v }) => { const many = (cat.byProduct[v.productId]?.length ?? 1) > 1; const tone = stockTone(v); return (
@@ -190,7 +204,7 @@ export default function Checkout() {
       </View>
       {tablet ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane /></View> : null}
 
-      <HidScanner enabled={nav.tab === 'checkout' && sheet === 'none' && !cam && !variants && nav.stack.length === 0} onScan={code => void onScan(code)} />
+      <HidScanner enabled={nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0} onScan={code => void onScan(code)} />
       <CameraScanner visible={cam} onClose={() => setCam(false)} onScan={onScan} />
       <SwitchStaffSheet visible={sheet === 'staff'} onClose={() => setSheet('none')} onSwitched={m => toast.show(m)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
@@ -200,10 +214,8 @@ export default function Checkout() {
       <AddTileSheet visible={sheet === 'add'} onClose={() => setSheet('none')} onPick={onAddTile} />
       <TileSettingsSheet tile={editing_} onClose={() => setEditIdx(null)} onChange={t => editPage(l => updateTileAt(l, valid, editIdx!, () => t))} onRemove={() => { if (editIdx !== null) onRemove(editIdx); setEditIdx(null); }} onOpen={() => { if (editIdx !== null) setPath([...valid, editIdx]); }} />
 
-      <Sheet visible={!!variants} onClose={() => setVariants(null)} title={variants?.[0]?.productTitle ?? 'Choose variation'}>
-        {variants?.map((v, i) => <Row key={v.id} image={v.image ?? null} last={i === variants.length - 1} title={v.variantTitle || 'Default'} sub={v.stock === null ? undefined : `${v.stock} in stock`} right={<Money cents={v.priceCents} weight="600" color={stockTone(v) === 'neg' ? c.bad : undefined} />} onPress={() => { add(v); setVariants(null); }} />)}
-      </Sheet>
-
+      <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
+      <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />
       <Sheet visible={sheet === 'pages'} onClose={() => setSheet('none')} title="Pages">
         {grid.pages.map((p, i) => <Row key={p.id} title={p.name} sub={`${p.tiles.length} tiles`} last={false}
           right={<View style={{ flexDirection: 'row' }}><IconBtn icon="arrow-up" label="Move earlier" onPress={() => edit(g => ({ ...g, pages: i > 0 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i - 1, 0, x); return a; })() : g.pages }))} /><IconBtn icon="arrow-down" label="Move later" onPress={() => edit(g => ({ ...g, pages: i < g.pages.length - 1 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i + 1, 0, x); return a; })() : g.pages }))} />

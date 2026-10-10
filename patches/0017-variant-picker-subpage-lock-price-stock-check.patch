@@ -1,0 +1,839 @@
+From 81087fecf4054ac5eb3aaf06532a0be5e2a233a8 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 07:38:23 +0000
+Subject: [PATCH] 0017: variation picker as grid sub-page, Lock POS, Price
+ check, Stock check
+
+---
+ App.tsx                   |   5 +-
+ docs/GRID.md              |  16 ++++-
+ docs/PROGRESS.md          |  19 +++---
+ docs/patches/0017-plan.md |  29 +++++++++
+ src/lib/grid.ts           |   3 +-
+ src/lib/lookup.ts         | 113 +++++++++++++++++++++++++++++++++
+ src/lib/posLock.ts        |  20 ++++++
+ src/lib/staffAuth.ts      |   8 +++
+ src/screens/Checkout.tsx  |  46 +++++++++-----
+ src/screens/Lookup.tsx    | 111 ++++++++++++++++++++++++++++++++
+ src/screens/Tiles.tsx     |  39 +++++++++++-
+ src/ui/Screensaver.tsx    |   3 +-
+ tests/lookup.test.ts      | 129 ++++++++++++++++++++++++++++++++++++++
+ 13 files changed, 510 insertions(+), 31 deletions(-)
+ create mode 100644 docs/patches/0017-plan.md
+ create mode 100644 src/lib/lookup.ts
+ create mode 100644 src/lib/posLock.ts
+ create mode 100644 src/screens/Lookup.tsx
+ create mode 100644 tests/lookup.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index ad59b10..54469c1 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -28,6 +28,7 @@ import Staff, { PinLock } from './src/screens/Staff';
+ import Diagnostics from './src/screens/Diagnostics';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
++import { isLockScreen } from './src/lib/posLock';
+ 
+ const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+   { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
+@@ -57,7 +58,7 @@ function Routes() {
+ }
+ 
+ function Shell() {
+-  const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const requirePin = useApp(s => s.settings.requirePin && s.settings.staff.length > 0);
++  const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length);
+   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+   useEffect(() => {
+@@ -67,7 +68,7 @@ function Shell() {
+     return () => { clearInterval(t); sub.remove(); };
+   }, [ready]);
+   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+-  if (requirePin && !unlocked) return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
++  if (isLockScreen({ staffCount, unlocked })) return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
+   const hasPage = nav.stack.length > 0;
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+diff --git a/docs/GRID.md b/docs/GRID.md
+index c82c73c..bcdac3f 100644
+--- a/docs/GRID.md
++++ b/docs/GRID.md
+@@ -21,6 +21,18 @@ The top of an opened category shows the full path, for example `Home > Dragons >
+ 
+ If a layout change from another register removes the level you are standing in, the screen steps back to the nearest level that still exists.
+ 
++## Choosing a variation (sub-page of the grid)
++
++Tapping a product that has more than one variation opens a sub-page inside the grid: one tile per variation with its photo, name, price and stock. The path shows where you are, for example `Home > Dragons > Highland cow`. The back arrow returns to the grid level you came from, and tapping an earlier name jumps there. Tapping a variation adds it and goes back. The quantity chips above stay, so choose ×3 first to add three. The same page replaces the old popup on the All products tab. Leaving the spot (switching tab, page, level or edit mode) closes it. The Bluetooth scanner keeps adding items while it is open.
++
++## Lock POS, Price check and Stock check tiles
++
++Add them from Edit grid > Add tile > Actions (a brand-new layout includes them).
++
++- **Lock POS** locks the register to the sign-in screen. The cart stays as it is. Needs at least one staff member; it will not lock during a card payment.
++- **Price check** opens a sheet. Scan an item (Bluetooth scanner, or the camera button) or search, and it shows the price, any "was" price, stock, and the automatic discounts and bundle deals the item can be part of. The cart is not touched.
++- **Stock check** works the same way and shows the scanned variation's stock plus the other variations of the same product.
++
+ ## Collection pictures
+ 
+ Category tiles and display groups that act like a collection show the collection's picture from Shopify. The Add tile list of categories and the sub-category picker show it too. Refresh the catalogue from Shopify if a picture was added recently.
+@@ -33,4 +45,6 @@ The layout is the same `grid.json` as before. Nested tiles are stored inside the
+ 
+ - `src/lib/gridNav.ts`: walking and editing a path of tiles, the one-item-one-place rule, and the breadcrumb. Pure and tested in `tests/gridnav.test.ts`.
+ - `src/screens/TileSettings.tsx`: the settings sheet.
+-- `src/screens/Checkout.tsx` and `src/screens/Tiles.tsx`: navigation, breadcrumb and tile drawing.
++- `src/screens/Checkout.tsx` and `src/screens/Tiles.tsx`: navigation, breadcrumb, tile drawing and `VariantPicker`.
++- `src/screens/Lookup.tsx`: the Price check and Stock check sheet.
++- `src/lib/lookup.ts`, `src/lib/posLock.ts`: the pure rules, tested in `tests/lookup.test.ts`.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7d3b944..bbf06ed 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -23,6 +23,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0014 | 2026-10-10 | Invoice-style cart rows (one row per discount, repeats shown as (x2)) and swipe-to-delete on cart lines and saved carts | A12.8, A13 |
+ | 0015 | 2026-10-10 | Progress doc only: your manual ticks recorded, cash drawer answer (N7), new queue item E1 (worker styling and subdomains) | docs |
+ | 0016 | 2026-10-10 | Grid: nested categories to any depth, per-tile settings sheet, groups that act like collections, back one level + tappable path, collection pictures on tiles and lists | C1-C6, A14.1 |
++| 0017 | 2026-10-10 | Grid: variation picker is now a sub-page of the grid (not a popup), plus new Lock POS, Price check and Stock check tiles | A14.2, A15 |
+ 
+ ---
+ 
+@@ -156,24 +157,26 @@ Added from your A12 notes. Replaces today's single per-item price override.
+ 
+ ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
+ - [x] A14.1 (done in 0016) Collection image on tiles + lists. Category tiles and groups that act like a collection show the collection's Shopify picture, and so do the category rows in Add tile and the sub-category picker. The Inventory and Items category filters are chip lists, so they stay text only.
+-- [ ] A14.2 Variant picker as a grid sub-page instead of a popup. (next patch, with A15)
++- [x] A14.2 (done in 0017) Variant picker as a grid sub-page instead of a popup. Tapping a product with several variations replaces the grid with one tile per variation (photo, name, price, stock line). The path above reads `Home > Dragons > Highland cow`; the back arrow, or tapping any earlier name, returns to where you were. Picking a variation adds it and goes back. The quantity chips stay on screen, so ×3 still works. It also replaces the popup on the **All products** tab (`All products > Highland cow`). Out of stock and oversold variations stay tappable (stock may go negative by design). Changing tab, page, level or edit mode closes it. The Bluetooth scanner keeps working while it is open, because it is no longer a modal. Code: `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts`.
+ 
+ ### A15. New grid buttons: Lock POS, Price check, Stock check
+-- [ ] A15.1 Lock POS tile.
+-- [ ] A15.2 Price check (scan → price, no cart change).
+-- [ ] A15.3 Stock check (scan variant → stock of its siblings; scan item → its own (variants') stock).
++- [x] A15.1 (done in 0017) **Lock POS** tile. Locks to the sign-in screen (PIN or cashier pass) and leaves the cart exactly as it is, a part-paid cart included. It works whenever staff exist, whether or not "Require PIN" is on (the lock screen now shows when staff exist and nobody is signed in). It refuses with a message when there are no staff (nothing could unlock it) or while a card payment waits on the reader (same rule as switching staff). The screensaver follows the same rule. Logged to the events CSV as a staff change. Code: `lockNow()` in `src/lib/staffAuth.ts`, rules in `src/lib/posLock.ts`.
++- [x] A15.2 (done in 0017) **Price check** tile: scan (Bluetooth or camera) or search, shows the price big, the "was" price when compare-at is higher, SKU/barcode, stock, and the live Shopify automatic discounts and bundle deals the item can be part of. Nothing is added to the cart. A new scan replaces the result, so a stack of items can be checked quickly. Cashier passes and gift card QRs get their own message instead of "No item". Deals are a hint (minimum quantities still apply); the cart shows the final price. Code: `src/screens/Lookup.tsx`, `priceCheck`/`dealsFor` in `src/lib/lookup.ts`.
++- [x] A15.3 (done in 0017) **Stock check** tile: scan or search a variation and see its stock first, then the stock of the other variations of the same product, with a total of the tracked ones. A product with a single variation (a plain item) shows only itself.
++- [ ] A15.4 **You:** on the iPad, add the three tiles (Edit grid > Add tile > Actions; **new** layouts get them automatically, **existing** layouts do not). Then: tap a multi-variation product in a category and in All products, use the path and back arrow, change the quantity first; scan an item in Price check and Stock check (Bluetooth and camera); lock with the tile and unlock with a PIN and with a pass; try Lock POS with no staff and during a card payment. Tell me anything awkward, especially the picker with 20+ variations and the keyboard with the search field in the lookup sheets.
++- Notes: a register still on an older app version drops the three new tile types from a synced layout (it counts them as unknown), so update every register before adding them. Lock POS drops you back to the Checkout screen state fresh after unlocking (the open category path is not remembered); the cart is untouched.
+ 
+ ---
+ 
+ ## C. Grid: nested categories, breadcrumb path, per-tile settings (from the "ADDITION AFTER PATCHES 1-3" section)
+-Done in 0016 together with A14.1, because they share the grid screens. A14.2 and A15 follow in the next patch. How it works: `docs/GRID.md`.
++Done in 0016 together with A14.1, because they share the grid screens. A14.2 and A15 followed in 0017. How it works: `docs/GRID.md`.
+ - [x] C1 (done in 0016) Per-tile settings sheet in the grid editor (colour, label, and for categories/groups: choose sub-categories). Tap a tile while editing: label, colour, the collection a category or group shows, add or remove sub-categories and display groups, open it to edit its tiles, remove it (`src/screens/TileSettings.tsx`).
+ - [x] C2 (done in 0016) Nested categories: a category or display group tile can contain sub-categories, to any depth. Stored as `subs` on a category, so old layouts load unchanged.
+ - [x] C3 (done in 0016) Display groups can impersonate collections (a group acts like a collection tile). Pick a collection in the group's settings; it then shows that collection's items after its own tiles, minus anything in a sub-category inside it.
+ - [x] C4 (done in 0016) An item in both a sub-category and its parent shows only in the deepest sub-category, never in the parents (`ownProductIds` in `src/lib/gridNav.ts`). Items you pin yourself as tiles are never hidden by this rule.
+ - [x] C5 (done in 0016) Grid navigation keeps a path stack: Back goes up one level, not straight to depth 0. Changing page or tab returns to the top, and a layout change from another register steps back to the nearest level that still exists.
+ - [x] C6 (done in 0016) Path header like `Dragons > Extreme Dragons > Rose`, each level tappable to jump there. The first entry is the page name (Home), which jumps to depth 0.
+-- [ ] C7 **You:** on the iPad, edit the grid: open a category tile's settings, add a sub-category and a display group, open it to add tiles, then leave edit mode and check the path at the top, tapping an earlier name, and the back arrow. Check that an item in a parent and a sub-category shows only in the sub-category. Tell me if the settings sheet is awkward with the keyboard up.
++- [ ] C7 **You:** (try this together with A15.4) on the iPad, edit the grid: open a category tile's settings, add a sub-category and a display group, open it to add tiles, then leave edit mode and check the path at the top, tapping an earlier name, and the back arrow. Check that an item in a parent and a sub-category shows only in the sub-category. Tell me if the settings sheet is awkward with the keyboard up.
+ 
+ ---
+ 
+@@ -196,7 +199,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (179 after patch 0016). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (195 after patch 0017). `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -226,6 +229,8 @@ Ordered by priority, highest first.
+ 
+ - [ ] N14 **Non-blocking (E1, not needed until the end of the queue):** the address of your main Shopify site (so I can match its logo, colours and fonts), the domain you want the subdomains on, and where its DNS is managed (for example Cloudflare). I will carry on without it and ask again when E1 comes up.
+ 
++- [ ] N15 **Non-blocking (A14.2, A15):** the device test in A15.4.
++
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+ - [x] N7 Answered: yes, all of B1 is meant to be built. The automatic drawer connector is only a minimal, almost empty porting point for you to fill in later, controlled by a greyed-out setting stuck on Off with the reason "Under Construction" (see B1g and D5).
+diff --git a/docs/patches/0017-plan.md b/docs/patches/0017-plan.md
+new file mode 100644
+index 0000000..a90e827
+--- /dev/null
++++ b/docs/patches/0017-plan.md
+@@ -0,0 +1,29 @@
++# Patch 0017: variation picker as a grid sub-page, Lock POS, Price check, Stock check
++
++Items: A14.2, A15.1, A15.2, A15.3. Status key: `[x]` code-complete and tested in my sandbox (pure logic + `tsc`), `[ ]` needs your iPad.
++
++## Plan, in the order it was done
++
++1. [x] **Read the current state.** Cloned `main` (head `c08023f`, patches up to 0016). `PROGRESS.md` and `DEV_NOTES.md` re-read. Baseline: `npm test` 179 pass, `tsc --noEmit` clean (Zeller SDK stubbed out, as before).
++2. [x] **Pure rules first** (`src/lib/lookup.ts`, `src/lib/posLock.ts`), so they are testable without React Native:
++   - `resolveScan` / `scanProblem`: a barcode or SKU wins; otherwise a cashier pass or gift QR gets a specific message; otherwise "No item".
++   - `stockCheck`: scanned variation first, siblings after, no duplicates, other products ignored, total of tracked stock (negatives count as 0), untracked count, `single` for plain items.
++   - `dealsFor` / `priceCheck`: live automatic discounts (date window, basic and buy-X-get-Y targets incl. collections) and live bundle deals (product id in a set matches all its variations, variant id only that one, same rule as `matchBundles`); `no-discount` items get none; "was" price only when compare-at is higher.
++   - `searchVariants`: every word must match, one row per product, capped at 30.
++   - `pickerCrumbs` / `pickerTitle` / `pickerVariants` for the picker.
++   - `lockDecision` / `isLockScreen`: needs staff, not mid card payment, not already locked.
++3. [x] **Grid model** (`src/lib/grid.ts`): added actions `lock_pos`, `price_check`, `stock_check` (labels, and they are in `ACTIONS` so Add tile lists them and new default layouts get them). Old layouts load unchanged.
++4. [x] **Variation picker** (`src/screens/Tiles.tsx`, `src/screens/Checkout.tsx`):
++   - `useTileSize()` extracted so grid and picker tiles line up; `VariantPicker` draws one tile per variation.
++   - Checkout: the old `Sheet` popup removed. In Quick Menu the picker replaces the grid and the breadcrumb ends with the product; in All products it replaces the list. Back arrow / crumbs close it. Tab, page, path or edit-mode change closes it. The Bluetooth scanner stays enabled (no modal any more).
++5. [x] **Lock POS**: `lockNow()` in `staffAuth.ts` (checks, locks, logs). `App.tsx` and the screensaver now use `isLockScreen` (staff exist + nobody signed in) instead of "Require PIN", so the tile works either way.
++6. [x] **Price / Stock check** (`src/screens/Lookup.tsx`): one sheet, two modes; Bluetooth scanner active while open, camera button, search box; result card; latest scan replaces the result.
++7. [x] **Tests** `tests/lookup.test.ts` (16). Mutation-checked: removing scanned-first ordering, the payment rule, or the no-discount rule each makes a test fail.
++8. [x] **Docs**: `docs/PROGRESS.md` (patch log, A14.2, A15, N15, notes), `docs/GRID.md`, this file.
++9. [ ] **You:** device test, see A15.4 in `PROGRESS.md`.
++
++## Decisions I made (tell me if you want any changed)
++
++- Lock POS works without "Require PIN". Before, the lock screen only existed when that setting was on, so the tile would have done nothing for you otherwise. Startup behaviour is unchanged (it only starts locked when Require PIN is on).
++- Price check shows deals as a hint list rather than a computed price, because the real price depends on what else is in the cart.
++- Existing grid layouts do not get the new tiles automatically (I would be rewriting a layout you edited). Add them from Add tile > Actions.
+diff --git a/src/lib/grid.ts b/src/lib/grid.ts
+index a9e280e..6c8e791 100644
+--- a/src/lib/grid.ts
++++ b/src/lib/grid.ts
+@@ -1,11 +1,12 @@
+ // grid.json  {version:1, pages:[{id,name,tiles:[…]}]}  (research doc §Grid) – stored in the pos_layout metaobject.
+ import { uid } from './ids';
+ 
+-export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff'] as const;
++export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff', 'lock_pos', 'price_check', 'stock_check'] as const;
+ export type ActionId = (typeof ACTIONS)[number];
+ export const ACTION_LABEL: Record<ActionId, string> = {
+   custom_amount: 'Custom amount', add_gift_card: 'Sell gift card', clear_cart: 'Clear cart', create_item: 'Create item',
+   customers: 'Customers', discounts: 'Discounts', discount: 'Cart discount', saved_carts: 'Saved carts', switch_staff: 'Switch staff',
++  lock_pos: 'Lock POS', price_check: 'Price check', stock_check: 'Stock check',
+ };
+ export type Tile =
+   | { type: 'action'; action: ActionId; label?: string; color?: string }
+diff --git a/src/lib/lookup.ts b/src/lib/lookup.ts
+new file mode 100644
+index 0000000..cf876c5
+--- /dev/null
++++ b/src/lib/lookup.ts
+@@ -0,0 +1,113 @@
++// Location: src/lib/lookup.ts
++// Pure helpers for the grid's Price check and Stock check tiles, and for the in-grid variation picker.
++// Nothing here touches the cart. No React, no Shopify: unit-tested in tests/lookup.test.ts.
++import { findByBarcode } from './cartOps';
++import { dealLive } from './bundles';
++import { isGiftQr } from './giftCode';
++import { isBadgeCode } from './badge';
++import { NO_DISCOUNT_TAG } from './pricing';
++import type { AutoDiscount, BundleConfig, Target, Variant } from './types';
++
++// ── What a scan or a typed code is ───────────────────────────────────────────
++export type ScanResolution = { kind: 'variant'; variant: Variant } | { kind: 'gift' } | { kind: 'pass' } | { kind: 'none' };
++/** Order matters: a cashier pass or a gift card QR must never be mistaken for an item, and a real barcode wins over both. */
++export function resolveScan(code: string, variants: Iterable<Variant>): ScanResolution {
++  const v = findByBarcode(variants, code);
++  if (v) return { kind: 'variant', variant: v };
++  if (isBadgeCode(code)) return { kind: 'pass' };
++  if (isGiftQr(code)) return { kind: 'gift' };
++  return { kind: 'none' };
++}
++export function scanProblem(r: ScanResolution, code: string): string | null {
++  switch (r.kind) {
++    case 'variant': return null;
++    case 'pass': return 'That is a cashier pass, not an item.';
++    case 'gift': return 'That is a gift card. Check its balance from Charge ▸ Gift card.';
++    case 'none': return `No item for ${code.trim()}`;
++  }
++}
++
++// ── Stock check ──────────────────────────────────────────────────────────────
++export type StockTone = 'none' | 'ok' | 'low' | 'out' | 'neg';
++/** Same thresholds as the stock dot on grid tiles (≤2 is low), with 0 split out as "out". */
++export const stockToneOf = (stock: number | null): StockTone => (stock === null ? 'none' : stock < 0 ? 'neg' : stock === 0 ? 'out' : stock <= 2 ? 'low' : 'ok');
++export const stockText = (stock: number | null): string =>
++  stock === null ? 'Not tracked' : stock < 0 ? `${Math.abs(stock)} oversold` : stock === 0 ? 'Out of stock' : `${stock} in stock`;
++
++export type StockRow = { variant: Variant; stock: number | null; isScanned: boolean };
++export type StockCheck = {
++  productId: string; title: string;
++  rows: StockRow[];            // the scanned variation first, then the others in catalogue order
++  single: boolean;             // the product has only this one variation (a plain item)
++  totalTracked: number | null; // sum of tracked, non-negative stock across the rows; null when none are tracked
++  untracked: number;           // how many rows have no stock tracking
++};
++/**
++ * Stock of a scanned variation and its siblings (the other variations of the same product).
++ * `siblings` is whatever the catalogue holds for that product; the scanned one is always included, once.
++ * A variation with no sibling is a plain item, so only its own stock is shown (`single`).
++ */
++export function stockCheck(scanned: Variant, siblings: Variant[]): StockCheck {
++  const others = siblings.filter(v => v.id !== scanned.id && v.productId === scanned.productId);
++  const rows: StockRow[] = [scanned, ...others].map((v, i) => ({ variant: v, stock: v.stock, isScanned: i === 0 }));
++  const tracked = rows.filter(r => r.stock !== null);
++  return {
++    productId: scanned.productId, title: scanned.productTitle, rows, single: rows.length === 1,
++    totalTracked: tracked.length ? tracked.reduce((a, r) => a + Math.max(0, r.stock as number), 0) : null,
++    untracked: rows.length - tracked.length,
++  };
++}
++
++// ── Price check ──────────────────────────────────────────────────────────────
++export type DealNote = { kind: 'auto' | 'bundle'; label: string };
++export type PriceCheck = { priceCents: number; compareAtCents?: number; wasCents?: number; deals: DealNote[]; excluded: boolean };
++
++const targetHit = (t: Target | undefined, v: Variant, collectionIds: string[]): boolean =>
++  !!t && (!!t.all || !!t.variantIds?.includes(v.id) || !!t.productIds?.includes(v.productId) || !!t.collectionIds?.some(c => collectionIds.includes(c)));
++
++/** Live Shopify automatic discounts and bundle deals that this variation can take part in. A hint for the cashier, not a promise: minimum quantities still apply. */
++export function dealsFor(v: Variant, ctx: { autos: AutoDiscount[]; bundles: BundleConfig | null; collectionIds: string[]; now?: number }): DealNote[] {
++  const now = ctx.now ?? Date.now(); const out: DealNote[] = [];
++  if (v.tags.includes(NO_DISCOUNT_TAG)) return out;
++  for (const d of ctx.autos) {
++    if (d.startsAt && Date.parse(d.startsAt) > now) continue;
++    if (d.endsAt && Date.parse(d.endsAt) < now) continue;
++    const hit = d.kind === 'bxgy' ? targetHit(d.buys?.target, v, ctx.collectionIds) || targetHit(d.gets?.target, v, ctx.collectionIds) : targetHit(d.target, v, ctx.collectionIds);
++    if (hit) out.push({ kind: 'auto', label: d.title });
++  }
++  if (ctx.bundles) for (const d of ctx.bundles.discounts) {
++    if (!dealLive(d, now)) continue;
++    // a product id in a set matches all of its variations, a variant id only that one (same rule as matchBundles)
++    if (d.sets.some(sid => (ctx.bundles!.items[sid] ?? []).some(id => id === v.id || id === v.productId))) out.push({ kind: 'bundle', label: d.label });
++  }
++  return out;
++}
++
++export function priceCheck(v: Variant, ctx: { autos: AutoDiscount[]; bundles: BundleConfig | null; collectionIds: string[]; now?: number }): PriceCheck {
++  const was = v.compareAtCents && v.compareAtCents > v.priceCents ? v.compareAtCents : undefined;
++  return { priceCents: v.priceCents, compareAtCents: v.compareAtCents, wasCents: was, deals: dealsFor(v, ctx), excluded: v.tags.includes(NO_DISCOUNT_TAG) };
++}
++
++// ── Search (typed lookups) ───────────────────────────────────────────────────
++/** One row per product (first matching variation), every word must match title, variation, SKU or barcode. Capped, because it is a search box. */
++export function searchVariants(list: Variant[], query: string, limit = 30): Variant[] {
++  const words = query.trim().toLowerCase().split(/\s+/).filter(Boolean); if (!words.length) return [];
++  const out: Variant[] = []; const seen = new Set<string>();
++  for (const v of list) {
++    if (seen.has(v.productId)) continue;
++    const hay = `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase();
++    if (!words.every(w => hay.includes(w))) continue;
++    seen.add(v.productId); out.push(v); if (out.length >= limit) break;
++  }
++  return out;
++}
++
++// ── Variation picker (the in-grid sub-page) ──────────────────────────────────
++/** Title for the last breadcrumb and header of the picker. */
++export const pickerTitle = (vs: Variant[]): string => vs[0]?.productTitle ?? 'Choose variation';
++/** Variations as shown on the picker: catalogue order, but never a duplicate id. */
++export const pickerVariants = (vs: Variant[]): Variant[] => { const seen = new Set<string>(); return vs.filter(v => !seen.has(v.id) && (seen.add(v.id), true)); };
++/** The path shown above the grid while the picker is open: the normal crumbs, then the product (not tappable, it is where you are). */
++export function pickerCrumbs<C extends { label: string }>(crumbs: C[], vs: Variant[]): (C | { label: string; here: true })[] {
++  return [...crumbs, { label: pickerTitle(vs), here: true as const }];
++}
+diff --git a/src/lib/posLock.ts b/src/lib/posLock.ts
+new file mode 100644
+index 0000000..1f8bef9
+--- /dev/null
++++ b/src/lib/posLock.ts
+@@ -0,0 +1,20 @@
++// Location: src/lib/posLock.ts
++// Rules for the grid's "Lock POS" tile. Pure; the store-touching part is lockNow() in staffAuth.ts.
++
++/** Lock screen is up when someone has set up staff and nobody is signed in (a lock needs a PIN or pass to come back from). */
++export const isLockScreen = (i: { staffCount: number; unlocked: boolean }): boolean => i.staffCount > 0 && !i.unlocked;
++
++export type LockDecision = { ok: true } | { ok: false; title: string; message: string };
++/**
++ * Can the register be locked right now?
++ * - No staff: there would be no way back in, so refuse and say how to set it up.
++ * - A card payment waiting on the reader: locking would hide the till mid-payment (same rule as switching staff).
++ * - Already locked: nothing to do.
++ * The cart is never cleared by locking, a part-paid cart included.
++ */
++export function lockDecision(i: { staffCount: number; unlocked: boolean; paymentActive: boolean }): LockDecision {
++  if (i.staffCount === 0) return { ok: false, title: 'No staff set up', message: 'Add a staff member with a PIN in More ▸ Staff first, so there is a way to unlock.' };
++  if (!i.unlocked) return { ok: false, title: 'Already locked', message: 'The register is already locked.' };
++  if (i.paymentActive) return { ok: false, title: 'Payment in progress', message: 'A card payment is waiting on the reader. Finish or cancel it before locking.' };
++  return { ok: true };
++}
+diff --git a/src/lib/staffAuth.ts b/src/lib/staffAuth.ts
+index 2e6108b..27efefb 100644
+--- a/src/lib/staffAuth.ts
++++ b/src/lib/staffAuth.ts
+@@ -5,6 +5,7 @@ import { csv } from './csvStore';
+ import { findByBadge } from './badge';
+ import { verifyPin } from './pin';
+ import { paymentActive } from './screensaver';
++import { lockDecision, type LockDecision } from './posLock';
+ import type { StaffMember } from './types';
+ 
+ export type SignInResult = { ok: boolean; message: string; staff?: StaffMember };
+@@ -34,3 +35,10 @@ export async function signInWithPass(raw: string): Promise<SignInResult> {
+   return m ? apply(m, 'pass') : { ok: false, message: 'That pass is not recognised. It may have been cancelled or replaced.' };
+ }
+ export function lockRegister() { useApp.getState().set({ unlocked: false, staffId: undefined }); }
++/** The grid's Lock POS tile. Checks first (staff exist, no card payment waiting), then locks. The cart is left exactly as it is. */
++export function lockNow(): LockDecision {
++  const st = useApp.getState();
++  const d = lockDecision({ staffCount: st.settings.staff.length, unlocked: st.unlocked, paymentActive: paymentActive(st.pos.attempts, Date.now()) });
++  if (d.ok) { lockRegister(); void csv.event({ kind: 'staff_switch', staff: st.settings.staff.find(x => x.id === st.staffId)?.name ?? '', detail: 'locked from the grid' }).catch(() => {}); }
++  return d;
++}
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index d142574..403fc14 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -10,14 +10,16 @@ import { useCatalogue, usePriced, stockTone } from '../state/selectors';
+ import * as ops from '../lib/cartOps';
+ import { digitsToCents, fmt } from '../lib/money';
+ import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
+-import { AddTileSheet, TileGrid, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
++import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
++import { LookupSheet } from './Lookup';
++import { pickerCrumbs, pickerTitle } from '../lib/lookup';
+ import { TileSettingsSheet } from './TileSettings';
+ import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
+ import { CameraScanner, HidScanner } from './Scanner';
+ import { isGiftQr } from '../lib/giftCode';
+ import { SwitchStaffSheet } from './StaffLogin';
+ import { isBadgeCode } from '../lib/badge';
+-import { signInWithPass } from '../lib/staffAuth';
++import { lockNow, signInWithPass } from '../lib/staffAuth';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from './sheets';
+ import CartPane from './CartPane';
+ import { openSavedCart } from '../lib/savedOps';
+@@ -51,7 +53,7 @@ export default function Checkout() {
+   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
+   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
+   const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
+-  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff'>('none'); const [cam, setCam] = useState(false);
++  const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock'>('none'); const [cam, setCam] = useState(false);
+   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
+   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
+   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
+@@ -62,6 +64,7 @@ export default function Checkout() {
+     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
+   };
+   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
++  const pick = (v: Variant) => { add(v); setVariants(null); }; // a tap in the variation picker adds it and goes back to where you were
+   const onScan = (code: string): string | null => {
+     if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
+     const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);
+@@ -82,6 +85,9 @@ export default function Checkout() {
+         case 'discounts': case 'discount': return setSheet('discount');
+         case 'saved_carts': return nav.push('saved');
+         case 'switch_staff': return setSheet('staff');
++        case 'lock_pos': { const d = lockNow(); if (!d.ok) alertMsg(d.title, d.message); return; } // success: the app shows the sign-in screen, the cart stays
++        case 'price_check': return setSheet('price');
++        case 'stock_check': return setSheet('stock');
+       }
+     },
+   };
+@@ -90,10 +96,12 @@ export default function Checkout() {
+   const { nodes, valid } = useMemo(() => resolvePath(page?.tiles ?? [], path), [page, path]);
+   useEffect(() => { if (valid.length !== path.length) setPath(valid); }, [valid, path.length]); // a synced layout change removed a level we were in
+   const node = nodes[nodes.length - 1];
++  useEffect(() => { setVariants(null); }, [tab, pageIdx, editing, valid.join('.')]); // the picker is a level of the grid: leaving this spot (tab, page, path, edit mode) closes it
+   const nodeLabel = (t: (typeof nodes)[number]) => (t.type === 'category' ? t.label ?? cat.collections.find(x => x.id === t.collectionId)?.title ?? 'Category' : t.name);
+   // editing shows only the tiles stored in the container (its collection's items are filled in when not editing)
+   const tiles = !node ? page?.tiles ?? [] : editing ? childTiles(node) : viewTiles(node, cat.collections, pid => !!cat.byProduct[pid]);
+   const crumbs = breadcrumbs(page?.name ?? 'Home', nodes, valid, nodeLabel);
++  const trail = variants ? pickerCrumbs(crumbs, variants) : crumbs; // while choosing a variation the product is the last step of the path
+ 
+   const edit = (f: (g: typeof grid) => typeof grid) => commitGrid(f);
+   const editPage = (fn: (t: Tile[]) => Tile[]) => edit(g => ({ ...g, pages: g.pages.map(p => (p.id === page.id ? { ...p, tiles: fn(p.tiles) } : p)) }));
+@@ -147,25 +155,31 @@ export default function Checkout() {
+ 
+       {tab === 'quick' ? (
+         <ScrollView>
+-          {node ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
+-            <IconBtn icon="chevron-back" label="Back one level" onPress={() => setPath(valid.slice(0, -1))} />
++          {node || variants ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
++            <IconBtn icon="chevron-back" label={variants ? 'Back to the grid' : 'Back one level'} onPress={() => (variants ? setVariants(null) : setPath(valid.slice(0, -1)))} />
+             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 16 }} accessibilityRole="menu">
+-              {crumbs.map((cr, i) => i === crumbs.length - 1
++              {trail.map((cr, i) => i === trail.length - 1
+                 ? <Txt key={i} size={18} weight="700">{cr.label}</Txt>
+-                : <React.Fragment key={i}><Pressable onPress={() => setPath(cr.path)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Go to ${cr.label}`}><Txt size={16} color={c.accent}>{cr.label}</Txt></Pressable><Txt size={16} sub>{'>'}</Txt></React.Fragment>)}
++                : <React.Fragment key={i}><Pressable onPress={() => { setVariants(null); setPath((cr as { path: Path }).path); }} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Go to ${cr.label}`}><Txt size={16} color={c.accent}>{cr.label}</Txt></Pressable><Txt size={16} sub>{'>'}</Txt></React.Fragment>)}
+             </ScrollView></View>
+             : grid.pages.length > 1 || editing ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 12 }}>
+               {grid.pages.map((p, i) => <Chip key={p.id} label={p.name} active={i === pageIdx} onPress={() => (editing && i === pageIdx ? setSheet('pages') : (setPageIdx(i), setPath([])))} />)}
+               {editing ? <Chip label="Pages" icon="settings-outline" onPress={() => setSheet('pages')} /> : null}</ScrollView> : null}
+-          <TileGrid tiles={tiles} editing={editing} handlers={handlers} onOpen={onOpen} onEdit={i => setEditIdx(i)}
+-            onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} emptyHint={node ? 'This one has no tiles or items yet. Tap the pencil to add some.' : undefined} />
+-          {editing && node ? <Txt size={12} sub style={{ textAlign: 'center', paddingHorizontal: 16 }}>{node.type === 'category' || node.collectionId ? 'The items in its collection show after these tiles when you are not editing.' : 'Tap a tile to change its label, colour or contents.'}</Txt> : null}
+-          {editing ? <Txt size={12} sub style={{ textAlign: 'center', padding: 12 }}>Changes save automatically and sync to your other registers.</Txt> : null}
++          {variants ? <VariantPicker variants={variants} onPick={pick} /> : <TileGrid tiles={tiles} editing={editing} handlers={handlers} onOpen={onOpen} onEdit={i => setEditIdx(i)}
++            onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} emptyHint={node ? 'This one has no tiles or items yet. Tap the pencil to add some.' : undefined} />}
++          {editing && node && !variants ? <Txt size={12} sub style={{ textAlign: 'center', paddingHorizontal: 16 }}>{node.type === 'category' || node.collectionId ? 'The items in its collection show after these tiles when you are not editing.' : 'Tap a tile to change its label, colour or contents.'}</Txt> : null}
++          {editing && !variants ? <Txt size={12} sub style={{ textAlign: 'center', padding: 12 }}>Changes save automatically and sync to your other registers.</Txt> : null}
+         </ScrollView>
+       ) : null}
+ 
+       {tab === 'all' ? (
+-        <View style={{ flex: 1 }}>
++        variants ? <ScrollView>
++          <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
++            <IconBtn icon="chevron-back" label="Back to all products" onPress={() => setVariants(null)} />
++            <Txt size={16} sub>All products {'>'}</Txt><Txt size={18} weight="700" numberOfLines={1} style={{ flexShrink: 1 }}>{pickerTitle(variants)}</Txt>
++          </View>
++          <VariantPicker variants={variants} onPick={pick} />
++        </ScrollView> : <View style={{ flex: 1 }}>
+           <View style={{ paddingHorizontal: 12 }}><Field kind="search" placeholder="Filter products" value={allQ} onChangeText={setAllQ} style={{ marginBottom: 0 }} /></View>
+           <FlatList data={allList} keyExtractor={v => v.productId} style={{ marginTop: 8 }} ListEmptyComponent={<Empty title="No products" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
+             renderItem={({ item: v }) => { const many = (cat.byProduct[v.productId]?.length ?? 1) > 1; const tone = stockTone(v); return (
+@@ -190,7 +204,7 @@ export default function Checkout() {
+       </View>
+       {tablet ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane /></View> : null}
+ 
+-      <HidScanner enabled={nav.tab === 'checkout' && sheet === 'none' && !cam && !variants && nav.stack.length === 0} onScan={code => void onScan(code)} />
++      <HidScanner enabled={nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0} onScan={code => void onScan(code)} />
+       <CameraScanner visible={cam} onClose={() => setCam(false)} onScan={onScan} />
+       <SwitchStaffSheet visible={sheet === 'staff'} onClose={() => setSheet('none')} onSwitched={m => toast.show(m)} />
+       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
+@@ -200,10 +214,8 @@ export default function Checkout() {
+       <AddTileSheet visible={sheet === 'add'} onClose={() => setSheet('none')} onPick={onAddTile} />
+       <TileSettingsSheet tile={editing_} onClose={() => setEditIdx(null)} onChange={t => editPage(l => updateTileAt(l, valid, editIdx!, () => t))} onRemove={() => { if (editIdx !== null) onRemove(editIdx); setEditIdx(null); }} onOpen={() => { if (editIdx !== null) setPath([...valid, editIdx]); }} />
+ 
+-      <Sheet visible={!!variants} onClose={() => setVariants(null)} title={variants?.[0]?.productTitle ?? 'Choose variation'}>
+-        {variants?.map((v, i) => <Row key={v.id} image={v.image ?? null} last={i === variants.length - 1} title={v.variantTitle || 'Default'} sub={v.stock === null ? undefined : `${v.stock} in stock`} right={<Money cents={v.priceCents} weight="600" color={stockTone(v) === 'neg' ? c.bad : undefined} />} onPress={() => { add(v); setVariants(null); }} />)}
+-      </Sheet>
+-
++      <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
++      <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />
+       <Sheet visible={sheet === 'pages'} onClose={() => setSheet('none')} title="Pages">
+         {grid.pages.map((p, i) => <Row key={p.id} title={p.name} sub={`${p.tiles.length} tiles`} last={false}
+           right={<View style={{ flexDirection: 'row' }}><IconBtn icon="arrow-up" label="Move earlier" onPress={() => edit(g => ({ ...g, pages: i > 0 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i - 1, 0, x); return a; })() : g.pages }))} /><IconBtn icon="arrow-down" label="Move later" onPress={() => edit(g => ({ ...g, pages: i < g.pages.length - 1 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i + 1, 0, x); return a; })() : g.pages }))} />
+diff --git a/src/screens/Lookup.tsx b/src/screens/Lookup.tsx
+new file mode 100644
+index 0000000..a60ee05
+--- /dev/null
++++ b/src/screens/Lookup.tsx
+@@ -0,0 +1,111 @@
++// Location: src/screens/Lookup.tsx
++// The grid's Price check and Stock check tiles. Scan (Bluetooth scanner or camera) or search; the cart is never touched.
++import React, { useEffect, useMemo, useState } from 'react';
++import { View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { Btn, Card, Empty, Field, Money, Row, Sheet, Thumb, Txt } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useApp } from '../state/store';
++import { useCatalogue } from '../state/selectors';
++import { bundleConfig } from '../lib/sync';
++import { priceCheck, resolveScan, scanProblem, searchVariants, stockCheck, stockText, stockToneOf } from '../lib/lookup';
++import { CameraScanner, HidScanner } from './Scanner';
++import type { Variant } from '../lib/types';
++
++export type LookupMode = 'price' | 'stock';
++const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B45309', neg: '#B91C1C' } as const;
++
++export function LookupSheet({ mode, visible, onClose }: { mode: LookupMode; visible: boolean; onClose: () => void }) {
++  const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
++  const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false);
++  useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); } }, [visible]);
++  useEffect(() => { setFound(null); setMsg(''); setQ(''); }, [mode]);
++
++  // scans and picks both go through here; the latest one replaces the result so a stack of items can be checked quickly
++  const lookup = (code: string): string | null => {
++    const r = resolveScan(code, cat.all); const problem = scanProblem(r, code);
++    if (r.kind !== 'variant') { setMsg(problem ?? ''); return null; }
++    setFound(r.variant); setMsg(''); setQ(''); return r.variant.productTitle;
++  };
++  const results = useMemo(() => searchVariants(cat.list, q), [cat.list, q]);
++  const title = mode === 'price' ? 'Price check' : 'Stock check';
++
++  return (
++    <Sheet visible={visible} onClose={onClose} title={title} full>
++      <HidScanner enabled={visible && !cam} onScan={code => void lookup(code)} />
++      <CameraScanner visible={cam} onClose={() => setCam(false)} title={`${title}: scan an item`} onScan={code => { const t = lookup(code); if (t) setCam(false); return t ? `Showing ${t}` : null; }} />
++
++      {found ? (mode === 'price' ? <PriceResult v={found} autos={autos} collectionIds={cat.collectionsOfProduct[found.productId] ?? []} bundlesJson={bundlesJson} />
++        : <StockResult v={found} siblings={cat.byProduct[found.productId] ?? []} />) : (
++        <View style={{ alignItems: 'center', paddingVertical: 14, gap: 6 }}>
++          <Ionicons name={mode === 'price' ? 'pricetag-outline' : 'layers-outline'} size={36} color={c.sub} />
++          <Txt weight="600">Scan an item</Txt>
++          <Txt size={13} sub style={{ textAlign: 'center' }}>{mode === 'price' ? 'Shows the price and any deals. Nothing is added to the cart.' : 'Shows how many are in stock, and the other variations of the same product.'}</Txt>
++        </View>)}
++
++      {msg ? <View style={{ backgroundColor: c.bad + '22', borderRadius: 12, padding: 12, marginBottom: 12 }}><Txt color={c.bad} weight="600" style={{ textAlign: 'center' }}>{msg}</Txt></View> : null}
++
++      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
++        <Btn title="Scan with camera" kind="secondary" small icon="barcode-outline" onPress={() => setCam(true)} style={{ flex: 1 }} />
++        {found ? <Btn title="Clear" kind="secondary" small onPress={() => { setFound(null); setMsg(''); }} style={{ flex: 1 }} /> : null}
++      </View>
++      <Field kind="search" placeholder="Or search by name, SKU or barcode" value={q} onChangeText={t => { setQ(t); setMsg(''); }} style={{ marginTop: 8 }} />
++      {q.trim() ? (results.length ? results.map((v, i) => <Row key={v.id} image={v.image ?? null} last={i === results.length - 1} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')}
++        sub={mode === 'stock' && (cat.byProduct[v.productId]?.length ?? 1) > 1 ? `${cat.byProduct[v.productId].length} variations` : [v.sku, v.barcode].filter(Boolean).join(' · ') || undefined}
++        right={mode === 'price' ? <Money cents={v.priceCents} weight="600" /> : <Txt size={13} color={TONE_COLOR[stockToneOf(v.stock)]} weight="600">{stockText(v.stock)}</Txt>}
++        onPress={() => { setFound(v); setMsg(''); setQ(''); }} />) : <Empty title="No matches" />) : null}
++    </Sheet>
++  );
++}
++
++function PriceResult({ v, autos, collectionIds, bundlesJson }: { v: Variant; autos: ReturnType<typeof useApp.getState>['data']['autos']; collectionIds: string[]; bundlesJson: string }) {
++  const { c } = useTheme();
++  // bundlesJson is only here so the result refreshes when the deals are edited
++  const info = useMemo(() => priceCheck(v, { autos, bundles: bundleConfig(), collectionIds }), [v, autos, collectionIds, bundlesJson]);
++  return (
++    <View style={{ marginBottom: 12 }}>
++      <Card style={{ padding: 16, flexDirection: 'row', gap: 14, alignItems: 'center' }}>
++        <Thumb uri={v.image} size={72} radius={14} />
++        <View style={{ flex: 1 }}>
++          <Txt size={16} weight="700" numberOfLines={2}>{v.productTitle}</Txt>
++          {v.variantTitle ? <Txt sub>{v.variantTitle}</Txt> : null}
++          <View style={{ flexDirection: 'row', alignItems: 'baseline', gap: 10, marginTop: 4 }}>
++            <Money cents={info.priceCents} size={34} weight="700" />
++            {info.wasCents ? <Txt sub size={16} style={{ textDecorationLine: 'line-through' }}>{`$${(info.wasCents / 100).toFixed(2)}`}</Txt> : null}
++          </View>
++          {[v.sku, v.barcode].filter(Boolean).length ? <Txt size={12} sub numberOfLines={1}>{[v.sku, v.barcode].filter(Boolean).join(' · ')}</Txt> : null}
++        </View>
++      </Card>
++      <Txt size={13} color={TONE_COLOR[stockToneOf(v.stock)] ?? c.sub} weight="600" style={{ marginTop: 8, marginLeft: 4 }}>{stockText(v.stock)}</Txt>
++      {info.excluded ? <Txt size={13} sub style={{ marginTop: 8, marginLeft: 4 }}>Excluded from discounts.</Txt> : null}
++      {info.deals.length ? <View style={{ marginTop: 10 }}>
++        <Txt size={13} sub weight="600" style={{ marginBottom: 2, marginLeft: 4 }}>Deals this item can be part of</Txt>
++        {info.deals.slice(0, 8).map((d, i, a) => <Row key={`${d.kind}${i}`} icon={d.kind === 'bundle' ? 'gift-outline' : 'pricetag-outline'} title={d.label} sub={d.kind === 'bundle' ? 'Bundle deal' : 'Automatic discount'} last={i === a.length - 1} />)}
++        <Txt size={12} sub style={{ marginLeft: 4, marginTop: 4 }}>Minimum quantities and combinations still apply. The cart shows the final price.</Txt>
++      </View> : null}
++    </View>
++  );
++}
++
++function StockResult({ v, siblings }: { v: Variant; siblings: Variant[] }) {
++  const { c } = useTheme(); const r = useMemo(() => stockCheck(v, siblings), [v, siblings]);
++  const me = r.rows[0]; const others = r.rows.slice(1);
++  return (
++    <View style={{ marginBottom: 12 }}>
++      <Card style={{ padding: 16, flexDirection: 'row', gap: 14, alignItems: 'center' }}>
++        <Thumb uri={v.image} size={72} radius={14} />
++        <View style={{ flex: 1 }}>
++          <Txt size={16} weight="700" numberOfLines={2}>{r.title}</Txt>
++          {v.variantTitle ? <Txt sub>{v.variantTitle}</Txt> : null}
++          <Txt size={22} weight="700" color={TONE_COLOR[stockToneOf(me.stock)]} style={{ marginTop: 2 }}>{stockText(me.stock)}</Txt>
++        </View>
++      </Card>
++      {r.single ? <Txt size={13} sub style={{ marginTop: 8, marginLeft: 4 }}>This product has no other variations.</Txt> : <View style={{ marginTop: 12 }}>
++        <Txt size={13} sub weight="600" style={{ marginBottom: 2, marginLeft: 4 }}>Other variations ({others.length})</Txt>
++        {others.map((o, i) => <Row key={o.variant.id} image={o.variant.image ?? null} last={i === others.length - 1} title={o.variant.variantTitle || 'Default'}
++          sub={`$${(o.variant.priceCents / 100).toFixed(2)}`} right={<Txt weight="700" color={TONE_COLOR[stockToneOf(o.stock)] ?? c.sub}>{stockText(o.stock)}</Txt>} />)}
++        {r.totalTracked !== null ? <Txt size={13} sub style={{ marginTop: 6, marginLeft: 4 }}>{`${r.totalTracked} in stock across all ${r.rows.length} variations${r.untracked ? ` (${r.untracked} not tracked)` : ''}.`}</Txt> : null}
++      </View>}
++    </View>
++  );
++}
+diff --git a/src/screens/Tiles.tsx b/src/screens/Tiles.tsx
+index 9885bca..935c3a6 100644
+--- a/src/screens/Tiles.tsx
++++ b/src/screens/Tiles.tsx
+@@ -8,11 +8,13 @@ import { useApp } from '../state/store';
+ import { useCatalogue, stockTone } from '../state/selectors';
+ import { ACTION_LABEL, ACTIONS, addPage, addTile, moveTile, removePage, removeTile, renamePage, type ActionId, type Tile } from '../lib/grid';
+ import { pushLayout } from '../lib/sync';
++import { pickerVariants, stockText, stockToneOf } from '../lib/lookup';
+ import type { Variant } from '../lib/types';
+ 
+ const ACTION_ICON: Record<ActionId, React.ComponentProps<typeof Ionicons>['name']> = {
+   custom_amount: 'calculator-outline', add_gift_card: 'gift-outline', clear_cart: 'trash-outline', create_item: 'add-circle-outline',
+   customers: 'people-outline', discounts: 'pricetags-outline', discount: 'pricetag-outline', saved_carts: 'bookmarks-outline', switch_staff: 'person-circle-outline',
++  lock_pos: 'lock-closed-outline', price_check: 'pricetag-outline', stock_check: 'layers-outline',
+ };
+ 
+ export type TileHandlers = { onAction: (a: ActionId) => void; onVariants: (vs: Variant[]) => void; onDiscount: (t: Extract<Tile, { type: 'discount' }>) => void };
+@@ -62,11 +64,44 @@ export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove
+   );
+ }
+ 
++/** Width of one square-ish tile, from the pane width and the tile size setting. Shared by the grid and the variation picker so they line up. */
++export function useTileSize(): number {
++  const { width, tablet } = useLayout(); const tileSize = useApp(s => s.settings.tileSize);
++  const pane = tablet ? width * 0.6 : width; const target = tileSize === 'S' ? 96 : tileSize === 'L' ? 160 : 124; const cols = Math.max(2, Math.floor((pane - 16) / target));
++  return (pane - 16) / cols;
++}
++
++const TONE_DOT: Record<ReturnType<typeof stockToneOf>, string | null> = { none: null, ok: '#16A34A', low: '#F59E0B', out: '#F59E0B', neg: '#DC2626' };
++/**
++ * The variation picker, drawn inside the grid area (a sub-page of it) instead of as a popup. One tile per variation:
++ * photo, name, price and a stock line. Tapping one calls onPick. Out of stock and oversold stay tappable, because stock may go negative by design.
++ */
++export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPick: (v: Variant) => void }) {
++  const size = useTileSize(); const vs = pickerVariants(variants);
++  return (
++    <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8 }}>
++      {vs.map(v => { const tone = stockToneOf(v.stock); const dot = TONE_DOT[tone]; const name = v.variantTitle || 'Default'; return (
++        <View key={v.id} style={{ width: size, height: size * 0.9, padding: 4 }}>
++          <Pressable onPress={() => { tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
++            style={({ pressed }) => ({ flex: 1, overflow: 'hidden', borderRadius: 14, backgroundColor: TILE_COLORS[3], padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 })}>
++            {v.image ? <Image source={{ uri: v.image }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
++            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', minHeight: 9 }}>{dot ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dot }} /> : null}</View>
++            <View style={v.image ? { backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, margin: -4 } : undefined}>
++              <Txt size={14} weight="700" color="#111" numberOfLines={2}>{name}</Txt>
++              <Money cents={v.priceCents} size={13} color="#374151" />
++              <Txt size={12} color={tone === 'neg' ? '#B91C1C' : tone === 'out' || tone === 'low' ? '#B45309' : '#374151'} numberOfLines={1}>{stockText(v.stock)}</Txt>
++            </View>
++          </Pressable>
++        </View>); })}
++      {!vs.length ? <Empty title="No variations" sub="This product has nothing to choose from." /> : null}
++    </View>
++  );
++}
++
+ export function TileGrid({ tiles, editing, handlers, onRemove, onMove, onOpen, onEdit, onAdd, emptyHint }: {
+   tiles: Tile[]; editing: boolean; handlers: TileHandlers; onRemove?: (i: number) => void; onMove?: (i: number, d: -1 | 1) => void; onOpen: (i: number) => void; onEdit?: (i: number) => void; onAdd?: () => void; emptyHint?: string;
+ }) {
+-  const { width, tablet } = useLayout(); const { c } = useTheme(); const tileSize = useApp(s => s.settings.tileSize); const cat = useCatalogue();
+-  const pane = tablet ? width * 0.6 : width; const target = tileSize === 'S' ? 96 : tileSize === 'L' ? 160 : 124; const cols = Math.max(2, Math.floor((pane - 16) / target)); const size = (pane - 16) / cols;
++  const { c } = useTheme(); const cat = useCatalogue(); const size = useTileSize();
+   const press = (t: Tile, i: number) => {
+     switch (t.type) {
+       case 'action': return handlers.onAction(t.action);
+diff --git a/src/ui/Screensaver.tsx b/src/ui/Screensaver.tsx
+index d87fd41..2d15716 100644
+--- a/src/ui/Screensaver.tsx
++++ b/src/ui/Screensaver.tsx
+@@ -6,6 +6,7 @@ import { StatusBar } from 'expo-status-bar';
+ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+ import { useApp } from '../state/store';
+ import { idleMs, noteActivity } from '../lib/idle';
++import { isLockScreen } from '../lib/posLock';
+ import { contrastOn, logoSource, normaliseHex, paymentActive, shouldShowScreensaver } from '../lib/screensaver';
+ 
+ const KEEP_TAG = 'pos-keep-awake';
+@@ -45,7 +46,7 @@ export function ScreensaverLayer() {
+   useEffect(() => {
+     const tick = () => {
+       const st = useApp.getState(); const cfg = st.settings.screensaver;
+-      const locked = st.settings.requirePin && st.settings.staff.length > 0 && !st.unlocked;
++      const locked = isLockScreen({ staffCount: st.settings.staff.length, unlocked: st.unlocked });
+       setIdle(shouldShowScreensaver({ enabled: cfg.enabled, showWhenLoggedOut: cfg.showWhenLoggedOut, locked, idleMs: idleMs(), idleMinutes: cfg.idleMinutes, lockedSeconds: cfg.lockedSeconds, paymentActive: paymentActive(st.pos.attempts, Date.now()) }));
+     };
+     const i = setInterval(tick, 1000); return () => clearInterval(i);
+diff --git a/tests/lookup.test.ts b/tests/lookup.test.ts
+new file mode 100644
+index 0000000..9328422
+--- /dev/null
++++ b/tests/lookup.test.ts
+@@ -0,0 +1,129 @@
++// Location: tests/lookup.test.ts
++// 0017: Price check, Stock check, the in-grid variation picker and the Lock POS rule.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { dealsFor, pickerCrumbs, pickerTitle, pickerVariants, priceCheck, resolveScan, scanProblem, searchVariants, stockCheck, stockText, stockToneOf } from '../src/lib/lookup';
++import { isLockScreen, lockDecision } from '../src/lib/posLock';
++import { newBadgeCode } from '../src/lib/badge';
++import { ACTIONS, ACTION_LABEL, parseGrid } from '../src/lib/grid';
++import type { AutoDiscount, BundleConfig, Variant } from '../src/lib/types';
++
++let n = 0;
++const V = (o: Partial<Variant> & { productId: string; productTitle: string }): Variant => ({ id: `gid://v${++n}`, variantTitle: '', priceCents: 1000, tracked: true, stock: 5, tags: [], active: true, ...o });
++const cow = (t: string, stock: number | null, extra: Partial<Variant> = {}) => V({ productId: 'p-cow', productTitle: 'Highland cow', variantTitle: t, stock, priceCents: 1500, ...extra });
++const small = cow('Small', 3, { barcode: '9300000000011' }), large = cow('Large', 0, { barcode: '9300000000028' }), giant = cow('Giant', -2), plain = cow('Plain', null);
++const tad = V({ productId: 'p-tad', productTitle: 'Tadling', stock: 12, barcode: '9300000000035', sku: 'TAD-1' });
++const all = [small, large, giant, plain, tad];
++
++// ── scan resolution ──
++test('resolveScan: a barcode finds the variant, with or without leading zeros', () => {
++  const r = resolveScan('9300000000011', all); assert.equal(r.kind === 'variant' && r.variant.id, small.id);
++  const z = resolveScan('009300000000011', all); assert.equal(z.kind === 'variant' && z.variant.id, small.id);
++  const s = resolveScan('tad-1', all); assert.equal(s.kind === 'variant' && s.variant.id, tad.id); // SKU, any case
++});
++test('resolveScan: cashier passes and gift card QRs are named, not "no item"', () => {
++  assert.equal(resolveScan(newBadgeCode(), all).kind, 'pass');
++  assert.equal(resolveScan('shopify-giftcard-v1-ABCD1234', all).kind, 'gift');
++  assert.equal(resolveScan('nothing-like-this', all).kind, 'none');
++  assert.match(scanProblem(resolveScan(newBadgeCode(), all), 'x')!, /cashier pass/);
++  assert.match(scanProblem(resolveScan('shopify-giftcard-v1-AB', all), 'x')!, /gift card/);
++  assert.equal(scanProblem(resolveScan('nothing', all), '  nothing '), 'No item for nothing');
++  assert.equal(scanProblem(resolveScan('9300000000011', all), 'x'), null);
++});
++test('resolveScan: a real item whose barcode looks like a pass is still an item', () => {
++  const odd = V({ productId: 'p-odd', productTitle: 'Odd', barcode: 'P0123456789AB' });
++  assert.equal(resolveScan('P0123456789AB', [odd]).kind, 'variant');
++});
++
++// ── stock check ──
++test('stockCheck: scanned variation first, then its siblings; scanned never repeated', () => {
++  const r = stockCheck(large, [small, large, giant, plain]);
++  assert.deepEqual(r.rows.map(x => x.variant.variantTitle), ['Large', 'Small', 'Giant', 'Plain']);
++  assert.deepEqual(r.rows.map(x => x.isScanned), [true, false, false, false]);
++  assert.equal(r.single, false); assert.equal(r.title, 'Highland cow');
++});
++test('stockCheck: total counts tracked stock only, negatives count as 0, untracked are reported', () => {
++  const r = stockCheck(small, [small, large, giant, plain]);
++  assert.equal(r.totalTracked, 3); // 3 + 0 + max(0,-2); Plain is not tracked
++  assert.equal(r.untracked, 1);
++  assert.equal(stockCheck(plain, [plain]).totalTracked, null);
++});
++test('stockCheck: a plain item with no siblings shows only itself', () => {
++  const r = stockCheck(tad, [tad]); assert.equal(r.single, true); assert.equal(r.rows.length, 1); assert.equal(r.totalTracked, 12);
++});
++test('stockCheck: a scanned draft variation missing from the catalogue list is still included, and other products are ignored', () => {
++  const draft = cow('Draft', 1, { active: false });
++  const r = stockCheck(draft, [small, tad]); // tad belongs to another product
++  assert.deepEqual(r.rows.map(x => x.variant.id), [draft.id, small.id]);
++});
++test('stock wording and tone', () => {
++  assert.equal(stockText(null), 'Not tracked'); assert.equal(stockText(0), 'Out of stock'); assert.equal(stockText(4), '4 in stock'); assert.equal(stockText(-2), '2 oversold');
++  assert.deepEqual([null, -1, 0, 1, 2, 3].map(stockToneOf), ['none', 'neg', 'out', 'low', 'low', 'ok']);
++});
++
++// ── price check ──
++const bxgy: AutoDiscount = { id: 'a1', title: 'Buy 2 cows', kind: 'bxgy', buys: { target: { productIds: ['p-cow'] }, qty: 2 }, gets: { target: { productIds: ['p-cow'] }, qty: 1, pct: 50 } };
++const coll: AutoDiscount = { id: 'a2', title: 'Dragon week', kind: 'basic', pct: 10, target: { collectionIds: ['c-dragon'] } };
++const ended: AutoDiscount = { id: 'a3', title: 'Old sale', kind: 'basic', pct: 20, target: { all: true }, endsAt: '2020-01-01T00:00:00Z' };
++const future: AutoDiscount = { id: 'a4', title: 'Soon', kind: 'basic', pct: 20, target: { all: true }, startsAt: '2999-01-01T00:00:00Z' };
++const bundles: BundleConfig = { version: 1, items: { cows: ['p-cow'], onlyLarge: [large.id], tads: ['p-tad'] },
++  discounts: [{ id: 'b1', label: '2 cows $2 off', sets: ['cows', 'cows'], price_delta_cents: -200 }, { id: 'b2', label: 'Large cow + Tadling', sets: ['onlyLarge', 'tads'], price_delta_cents: -300 }, { id: 'b3', label: 'Off bundle', sets: ['cows'], price_delta_cents: -100, enabled: false }] };
++test('dealsFor: lists live automatic discounts and bundles that include the variation, nothing else', () => {
++  const d = dealsFor(small, { autos: [bxgy, coll, ended, future], bundles, collectionIds: [], now: Date.UTC(2026, 9, 10) });
++  assert.deepEqual(d.map(x => x.label), ['Buy 2 cows', '2 cows $2 off']); // collection deal misses, ended/future skipped, disabled bundle skipped, Large-only bundle skipped
++  const l = dealsFor(large, { autos: [coll], bundles, collectionIds: ['c-dragon'], now: Date.UTC(2026, 9, 10) });
++  assert.deepEqual(l.map(x => x.label), ['Dragon week', '2 cows $2 off', 'Large cow + Tadling']);
++  assert.deepEqual(l.map(x => x.kind), ['auto', 'bundle', 'bundle']);
++});
++test('dealsFor: a no-discount item has no deals, and says so', () => {
++  const nd = cow('NoDisc', 1, { tags: ['no-discount'] });
++  assert.deepEqual(dealsFor(nd, { autos: [bxgy], bundles, collectionIds: [] }), []);
++  assert.equal(priceCheck(nd, { autos: [bxgy], bundles, collectionIds: [] }).excluded, true);
++});
++test('priceCheck: price, and a "was" price only when compare-at is higher', () => {
++  const on = priceCheck(cow('Sale', 1, { priceCents: 1200, compareAtCents: 1800 }), { autos: [], bundles: null, collectionIds: [] });
++  assert.equal(on.priceCents, 1200); assert.equal(on.wasCents, 1800);
++  assert.equal(priceCheck(cow('Same', 1, { priceCents: 1200, compareAtCents: 1200 }), { autos: [], bundles: null, collectionIds: [] }).wasCents, undefined);
++  assert.equal(priceCheck(small, { autos: [], bundles: null, collectionIds: [] }).deals.length, 0);
++});
++
++// ── search ──
++test('searchVariants: every word must match, one row per product, empty query gives nothing', () => {
++  assert.deepEqual(searchVariants(all, 'cow giant').map(v => v.variantTitle), ['Giant']);
++  assert.equal(searchVariants(all, 'cow').length, 1); // one row for the cow product
++  assert.deepEqual(searchVariants(all, 'tad-1').map(v => v.id), [tad.id]);
++  assert.deepEqual(searchVariants(all, '   '), []);
++  assert.equal(searchVariants(Array.from({ length: 100 }, (_, i) => V({ productId: `p${i}`, productTitle: 'Thing' })), 'thing').length, 30);
++});
++
++// ── in-grid variation picker ──
++test('picker: path is the grid path plus the product; title falls back sensibly; duplicate ids are dropped', () => {
++  const crumbs = [{ label: 'Home', path: [] as number[] }, { label: 'Dragons', path: [0] }];
++  const t = pickerCrumbs(crumbs, [small, large]);
++  assert.deepEqual(t.map(x => x.label), ['Home', 'Dragons', 'Highland cow']);
++  assert.equal('here' in t[2], true); assert.equal('here' in t[1], false);
++  assert.equal(pickerTitle([]), 'Choose variation');
++  assert.deepEqual(pickerVariants([small, small, large]).map(v => v.id), [small.id, large.id]);
++});
++
++// ── Lock POS ──
++test('lockDecision: needs staff, refuses mid card payment or when already locked, otherwise ok', () => {
++  assert.deepEqual(lockDecision({ staffCount: 2, unlocked: true, paymentActive: false }), { ok: true });
++  const none = lockDecision({ staffCount: 0, unlocked: true, paymentActive: false }); assert.equal(none.ok, false); assert.match((none as any).message, /More ▸ Staff/);
++  const pay = lockDecision({ staffCount: 2, unlocked: true, paymentActive: true }); assert.equal(pay.ok, false); assert.equal((pay as any).title, 'Payment in progress');
++  assert.equal(lockDecision({ staffCount: 2, unlocked: false, paymentActive: false }).ok, false);
++  assert.equal(lockDecision({ staffCount: 0, unlocked: true, paymentActive: true }).ok, false);
++});
++test('isLockScreen: only when staff exist and nobody is signed in (works without "Require PIN")', () => {
++  assert.equal(isLockScreen({ staffCount: 1, unlocked: false }), true);
++  assert.equal(isLockScreen({ staffCount: 1, unlocked: true }), false);
++  assert.equal(isLockScreen({ staffCount: 0, unlocked: false }), false);
++});
++
++// ── layout ──
++test('grid: the three new actions load from grid.json, have labels, and an older layout still loads untouched', () => {
++  for (const a of ['lock_pos', 'price_check', 'stock_check'] as const) { assert.ok(ACTIONS.includes(a)); assert.ok(ACTION_LABEL[a]); }
++  const g = parseGrid({ version: 1, pages: [{ id: 'p', name: 'Home', tiles: [{ type: 'action', action: 'lock_pos' }, { type: 'action', action: 'price_check', label: 'Price?' }, { type: 'action', action: 'stock_check' }, { type: 'action', action: 'nope' }] }] });
++  assert.equal(g.grid.pages[0].tiles.length, 3); assert.equal(g.dropped, 1);
++  assert.equal(parseGrid({ version: 1, pages: [{ id: 'p', name: 'Home', tiles: [{ type: 'action', action: 'clear_cart' }] }] }).dropped, 0);
++});
+-- 
+2.43.0
+

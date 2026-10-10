@@ -23,6 +23,8 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0014 | 2026-10-10 | Invoice-style cart rows (one row per discount, repeats shown as (x2)) and swipe-to-delete on cart lines and saved carts | A12.8, A13 |
 | 0015 | 2026-10-10 | Progress doc only: your manual ticks recorded, cash drawer answer (N7), new queue item E1 (worker styling and subdomains) | docs |
 | 0016 | 2026-10-10 | Grid: nested categories to any depth, per-tile settings sheet, groups that act like collections, back one level + tappable path, collection pictures on tiles and lists | C1-C6, A14.1 |
+| 0017 | 2026-10-10 | Grid: variation picker is now a sub-page of the grid (not a popup), plus new Lock POS, Price check and Stock check tiles | A14.2, A15 |
+| 0018 | 2026-10-10 | Cash drawer: tap-the-notes-and-coins entry with undo, a ledger of what is in the drawer, drawer screens rebuilt on it, and your change finder (checked against your original) | B1a (drawer side), B1b |
 
 ---
 
@@ -156,31 +158,41 @@ Added from your A12 notes. Replaces today's single per-item price override.
 
 ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
 - [x] A14.1 (done in 0016) Collection image on tiles + lists. Category tiles and groups that act like a collection show the collection's Shopify picture, and so do the category rows in Add tile and the sub-category picker. The Inventory and Items category filters are chip lists, so they stay text only.
-- [ ] A14.2 Variant picker as a grid sub-page instead of a popup. (next patch, with A15)
+- [x] A14.2 (done in 0017) Variant picker as a grid sub-page instead of a popup. Tapping a product with several variations replaces the grid with one tile per variation (photo, name, price, stock line). The path above reads `Home > Dragons > Highland cow`; the back arrow, or tapping any earlier name, returns to where you were. Picking a variation adds it and goes back. The quantity chips stay on screen, so ×3 still works. It also replaces the popup on the **All products** tab (`All products > Highland cow`). Out of stock and oversold variations stay tappable (stock may go negative by design). Changing tab, page, level or edit mode closes it. The Bluetooth scanner keeps working while it is open, because it is no longer a modal. Code: `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts`.
 
 ### A15. New grid buttons: Lock POS, Price check, Stock check
-- [ ] A15.1 Lock POS tile.
-- [ ] A15.2 Price check (scan → price, no cart change).
-- [ ] A15.3 Stock check (scan variant → stock of its siblings; scan item → its own (variants') stock).
+- [x] A15.1 (done in 0017) **Lock POS** tile. Locks to the sign-in screen (PIN or cashier pass) and leaves the cart exactly as it is, a part-paid cart included. It works whenever staff exist, whether or not "Require PIN" is on (the lock screen now shows when staff exist and nobody is signed in). It refuses with a message when there are no staff (nothing could unlock it) or while a card payment waits on the reader (same rule as switching staff). The screensaver follows the same rule. Logged to the events CSV as a staff change. Code: `lockNow()` in `src/lib/staffAuth.ts`, rules in `src/lib/posLock.ts`.
+- [x] A15.2 (done in 0017) **Price check** tile: scan (Bluetooth or camera) or search, shows the price big, the "was" price when compare-at is higher, SKU/barcode, stock, and the live Shopify automatic discounts and bundle deals the item can be part of. Nothing is added to the cart. A new scan replaces the result, so a stack of items can be checked quickly. Cashier passes and gift card QRs get their own message instead of "No item". Deals are a hint (minimum quantities still apply); the cart shows the final price. Code: `src/screens/Lookup.tsx`, `priceCheck`/`dealsFor` in `src/lib/lookup.ts`.
+- [x] A15.3 (done in 0017) **Stock check** tile: scan or search a variation and see its stock first, then the stock of the other variations of the same product, with a total of the tracked ones. A product with a single variation (a plain item) shows only itself.
+- [ ] A15.4 **You:** on the iPad, add the three tiles (Edit grid > Add tile > Actions; **new** layouts get them automatically, **existing** layouts do not). Then: tap a multi-variation product in a category and in All products, use the path and back arrow, change the quantity first; scan an item in Price check and Stock check (Bluetooth and camera); lock with the tile and unlock with a PIN and with a pass; try Lock POS with no staff and during a card payment. Tell me anything awkward, especially the picker with 20+ variations and the keyboard with the search field in the lookup sheets.
+- Notes: a register still on an older app version drops the three new tile types from a synced layout (it counts them as unknown), so update every register before adding them. Lock POS drops you back to the Checkout screen state fresh after unlocking (the open category path is not remembered); the cart is untouched.
 
 ---
 
 ## C. Grid: nested categories, breadcrumb path, per-tile settings (from the "ADDITION AFTER PATCHES 1-3" section)
-Done in 0016 together with A14.1, because they share the grid screens. A14.2 and A15 follow in the next patch. How it works: `docs/GRID.md`.
+Done in 0016 together with A14.1, because they share the grid screens. A14.2 and A15 followed in 0017. How it works: `docs/GRID.md`.
 - [x] C1 (done in 0016) Per-tile settings sheet in the grid editor (colour, label, and for categories/groups: choose sub-categories). Tap a tile while editing: label, colour, the collection a category or group shows, add or remove sub-categories and display groups, open it to edit its tiles, remove it (`src/screens/TileSettings.tsx`).
 - [x] C2 (done in 0016) Nested categories: a category or display group tile can contain sub-categories, to any depth. Stored as `subs` on a category, so old layouts load unchanged.
 - [x] C3 (done in 0016) Display groups can impersonate collections (a group acts like a collection tile). Pick a collection in the group's settings; it then shows that collection's items after its own tiles, minus anything in a sub-category inside it.
 - [x] C4 (done in 0016) An item in both a sub-category and its parent shows only in the deepest sub-category, never in the parents (`ownProductIds` in `src/lib/gridNav.ts`). Items you pin yourself as tiles are never hidden by this rule.
 - [x] C5 (done in 0016) Grid navigation keeps a path stack: Back goes up one level, not straight to depth 0. Changing page or tab returns to the top, and a layout change from another register steps back to the nearest level that still exists.
 - [x] C6 (done in 0016) Path header like `Dragons > Extreme Dragons > Rose`, each level tappable to jump there. The first entry is the page name (Home), which jumps to depth 0.
-- [ ] C7 **You:** on the iPad, edit the grid: open a category tile's settings, add a sub-category and a display group, open it to add tiles, then leave edit mode and check the path at the top, tapping an earlier name, and the back arrow. Check that an item in a parent and a sub-category shows only in the sub-category. Tell me if the settings sheet is awkward with the keyboard up.
+- [ ] C7 **You:** (try this together with A15.4) on the iPad, edit the grid: open a category tile's settings, add a sub-category and a display group, open it to add tiles, then leave edit mode and check the path at the top, tapping an earlier name, and the back arrow. Check that an item in a parent and a sub-category shows only in the sub-category. Tell me if the settings sheet is awkward with the keyboard up.
 
 ---
 
 ## B. Round 2 list ("fun little bitsies")
 Status as found in the zip you sent (I only inspected files; not run).
-- [ ] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Still not built: no denomination/ledger code exists yet (`Drawer.tsx` is still the keypad version).** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
-  - [ ] B1a ledger + denomination entry · [ ] B1b `findCombinations` (your function, integer cents) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
+- [~] B1 Cash: denomination tap entry, drawer ledger, change finder, ML-weighted change, daily float report, Check Change, insufficient-change handling, undo/subtract. **Started in 0018 (ledger, denomination entry on the drawer screens, change finder). The Cash screen, scoring, Check Change and reports are still to come.** Confirmed by you (N7): all of it is meant to be part of the project, so it will be built as its own run of patches, with the tender machine reduced to the porting point in B1g.
+  - [~] B1a ledger + denomination entry (done in 0018 for the drawer: open, paid in/out, correct contents, close count. The Cash screen at checkout, which adds sales to the ledger, is 0019) · [x] B1b `findCombinations` (done in 0018, `src/lib/changeFinder.ts`, see below) · [ ] B1c scoring + toggle · [ ] B1d Check Change · [ ] B1e cash screen prompts + split suggestion · [ ] B1f daily float report · [ ] B1g tender-machine adapter: one empty function (the porting point you will fill in later) and nothing else. Its Settings toggle is greyed out and locked to Off, with the reason "Under Construction". Everything else in B1 is done by hand: the cashier enters and confirms notes and coins, and the screen shows which notes and coins to take out
+  - **0018 details.** Notes and coins are Australian ($100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c). `src/lib/cashLedger.ts` holds the pure rules; `src/ui/DenomPad.tsx` is the tap pad; `src/screens/Drawer.tsx` uses them. The ledger (`pos.ledger`, saved with the rest of the till data) is the counts now in the drawer plus a history (newest first, last 1,000) of who put in or took out what, and when.
+    - **Tap pad:** tap a note or coin to add one; Add / Remove switch; ×1 ×5 ×10 per tap (for rolls of coins); **Undo** takes back the last tap and says what it removed ("Undid: Added $20 ($20.00) · total now $85.00"); Start over. Removing from zero does nothing and says so.
+    - **Open drawer:** starts from what the ledger says is already in the drawer (carried over from the last close), so you only adjust it. The float is the total. **Paid in / Paid out:** tap the notes and coins; paid out warns if you take more than the ledger holds (it may not know about cash sales yet) and lets you carry on. **Count & close:** a blind count from zero; it tells you over/short against expected, writes the notes and coins into the Z-report, and what you counted becomes the new ledger. **Correct contents:** adjust the ledger by hand with an optional reason.
+    - Counts never show below zero. The history entry keeps exactly what was entered.
+    - **Change finder** (`findCombinations`, your function): same answers as yours. I added only (1) skipping branches that cannot reach the target and (2) an optional node cap (`findCombinationsLimited`) that says when it stopped early, so a very full drawer cannot freeze the iPad. Tested against a copy of your original on 200 random drawers (same results, same order). Note it returns combinations above and below the target within the tolerance, exactly as you wrote it; the Cash screen will only offer ones that give the customer at least what they are owed.
+    - **Not yet connected:** cash sales do not touch the ledger until the Cash screen is rebuilt in 0019 (you enter the notes and coins the customer hands over, and the screen shows which to give back). Until then the ledger only knows about the drawer screens.
+  - [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
+
 - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
 - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
 - [x] B4 Bundle GUI (same as A8, done in 0009)
@@ -196,7 +208,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
 - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (179 after patch 0016). `npm test` on your machine runs the same files.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (212 after patch 0018). `npm test` on your machine runs the same files.
 - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
@@ -225,6 +237,9 @@ Ordered by priority, highest first.
 - [x] N13 **Non-blocking (A13, A12.8):** swipe and scroll test on a device (see A13.3), and look at a cart with two discounts on one line to check the new rows read well.
 
 - [ ] N14 **Non-blocking (E1, not needed until the end of the queue):** the address of your main Shopify site (so I can match its logo, colours and fonts), the domain you want the subdomains on, and where its DNS is managed (for example Cloudflare). I will carry on without it and ask again when E1 comes up.
+
+- [ ] N15 **Non-blocking (A14.2, A15):** the device test in A15.4.
+- [ ] N16 **Non-blocking (B1):** the drawer device test in B1h.
 
 ### Priority 3
 - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 

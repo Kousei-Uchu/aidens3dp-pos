@@ -8,11 +8,13 @@ import { useApp } from '../state/store';
 import { useCatalogue, stockTone } from '../state/selectors';
 import { ACTION_LABEL, ACTIONS, addPage, addTile, moveTile, removePage, removeTile, renamePage, type ActionId, type Tile } from '../lib/grid';
 import { pushLayout } from '../lib/sync';
+import { pickerVariants, stockText, stockToneOf } from '../lib/lookup';
 import type { Variant } from '../lib/types';
 
 const ACTION_ICON: Record<ActionId, React.ComponentProps<typeof Ionicons>['name']> = {
   custom_amount: 'calculator-outline', add_gift_card: 'gift-outline', clear_cart: 'trash-outline', create_item: 'add-circle-outline',
   customers: 'people-outline', discounts: 'pricetags-outline', discount: 'pricetag-outline', saved_carts: 'bookmarks-outline', switch_staff: 'person-circle-outline',
+  lock_pos: 'lock-closed-outline', price_check: 'pricetag-outline', stock_check: 'layers-outline',
 };
 
 export type TileHandlers = { onAction: (a: ActionId) => void; onVariants: (vs: Variant[]) => void; onDiscount: (t: Extract<Tile, { type: 'discount' }>) => void };
@@ -62,11 +64,44 @@ export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove
   );
 }
 
+/** Width of one square-ish tile, from the pane width and the tile size setting. Shared by the grid and the variation picker so they line up. */
+export function useTileSize(): number {
+  const { width, tablet } = useLayout(); const tileSize = useApp(s => s.settings.tileSize);
+  const pane = tablet ? width * 0.6 : width; const target = tileSize === 'S' ? 96 : tileSize === 'L' ? 160 : 124; const cols = Math.max(2, Math.floor((pane - 16) / target));
+  return (pane - 16) / cols;
+}
+
+const TONE_DOT: Record<ReturnType<typeof stockToneOf>, string | null> = { none: null, ok: '#16A34A', low: '#F59E0B', out: '#F59E0B', neg: '#DC2626' };
+/**
+ * The variation picker, drawn inside the grid area (a sub-page of it) instead of as a popup. One tile per variation:
+ * photo, name, price and a stock line. Tapping one calls onPick. Out of stock and oversold stay tappable, because stock may go negative by design.
+ */
+export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPick: (v: Variant) => void }) {
+  const size = useTileSize(); const vs = pickerVariants(variants);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8 }}>
+      {vs.map(v => { const tone = stockToneOf(v.stock); const dot = TONE_DOT[tone]; const name = v.variantTitle || 'Default'; return (
+        <View key={v.id} style={{ width: size, height: size * 0.9, padding: 4 }}>
+          <Pressable onPress={() => { tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
+            style={({ pressed }) => ({ flex: 1, overflow: 'hidden', borderRadius: 14, backgroundColor: TILE_COLORS[3], padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 })}>
+            {v.image ? <Image source={{ uri: v.image }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end', minHeight: 9 }}>{dot ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dot }} /> : null}</View>
+            <View style={v.image ? { backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, margin: -4 } : undefined}>
+              <Txt size={14} weight="700" color="#111" numberOfLines={2}>{name}</Txt>
+              <Money cents={v.priceCents} size={13} color="#374151" />
+              <Txt size={12} color={tone === 'neg' ? '#B91C1C' : tone === 'out' || tone === 'low' ? '#B45309' : '#374151'} numberOfLines={1}>{stockText(v.stock)}</Txt>
+            </View>
+          </Pressable>
+        </View>); })}
+      {!vs.length ? <Empty title="No variations" sub="This product has nothing to choose from." /> : null}
+    </View>
+  );
+}
+
 export function TileGrid({ tiles, editing, handlers, onRemove, onMove, onOpen, onEdit, onAdd, emptyHint }: {
   tiles: Tile[]; editing: boolean; handlers: TileHandlers; onRemove?: (i: number) => void; onMove?: (i: number, d: -1 | 1) => void; onOpen: (i: number) => void; onEdit?: (i: number) => void; onAdd?: () => void; emptyHint?: string;
 }) {
-  const { width, tablet } = useLayout(); const { c } = useTheme(); const tileSize = useApp(s => s.settings.tileSize); const cat = useCatalogue();
-  const pane = tablet ? width * 0.6 : width; const target = tileSize === 'S' ? 96 : tileSize === 'L' ? 160 : 124; const cols = Math.max(2, Math.floor((pane - 16) / target)); const size = (pane - 16) / cols;
+  const { c } = useTheme(); const cat = useCatalogue(); const size = useTileSize();
   const press = (t: Tile, i: number) => {
     switch (t.type) {
       case 'action': return handlers.onAction(t.action);
