@@ -42,6 +42,7 @@ Put a Mermaid flowchart in a fenced block marked `mermaid`, in **Advanced** sect
 - Boxes `A[text]`, decisions `A{text}`, rounded `A(text)`
 - Arrows `A --> B` and `A -->|label| B`
 - No `subgraph`, no `style` or `classDef`, no `click`.
+- Keep labels free of `;`, `"`, `(` and `)`, so the website's Mermaid draws them the same way. A test checks this.
 
 Anything the in-app drawing cannot read is shown as plain text, and the website draws the full Mermaid. Every block must start with a diagram type (`flowchart`, `graph`, `sequenceDiagram`, ...); the checker enforces that.
 

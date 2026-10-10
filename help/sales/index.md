@@ -80,7 +80,7 @@ flowchart TD
 flowchart TD
   H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]
   O --> B{isBadgeCode?}
-  B -->|yes| I[signInWithPass; cart unchanged]
+  B -->|yes| I[signInWithPass, cart unchanged]
   B -->|no| F[ops.findByBarcode: barcode, then SKU]
   F -->|found| A[add 1 of the variant]
   F -->|not found| G{isGiftQr?}

@@ -1,0 +1,1342 @@
+From 5aee842314775d7597d2116fc8ab0af390e7c2ee Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 23:48:33 +0000
+Subject: [PATCH] 0029: in-app help part 2 (Help screen, markdown and flowchart
+ drawing, three pages)
+
+---
+ App.tsx                          |   2 +
+ docs/PROGRESS.md                 |  10 ++-
+ docs/patches/0029-plan.md        |  25 ++++++
+ help/README.md                   |   1 +
+ help/help.json                   |  88 ++++++++++++++++++++-
+ help/sales/grid.md               | 113 +++++++++++++++++++++++++++
+ help/sales/index.md              |   2 +-
+ help/sales/scanners.md           |  92 ++++++++++++++++++++++
+ help/sales/variants-and-stock.md |  86 +++++++++++++++++++++
+ src/lib/flowchart.ts             | 121 +++++++++++++++++++++++++++++
+ src/lib/helpBuiltin.ts           |  18 +++++
+ src/lib/mdBlocks.ts              | 117 ++++++++++++++++++++++++++++
+ src/lib/uiMode.ts                |   7 +-
+ src/screens/Help.tsx             |  66 ++++++++++++++++
+ src/screens/More.tsx             |   2 +-
+ src/state/store.ts               |   4 +-
+ src/ui/Flowchart.tsx             |  57 ++++++++++++++
+ src/ui/Markdown.tsx              |  71 +++++++++++++++++
+ tests/helpcitations.test.ts      |  38 +++++++++
+ tests/helpview.test.ts           | 128 +++++++++++++++++++++++++++++++
+ tests/uimode.test.ts             |   2 +-
+ 21 files changed, 1037 insertions(+), 13 deletions(-)
+ create mode 100644 docs/patches/0029-plan.md
+ create mode 100644 help/sales/grid.md
+ create mode 100644 help/sales/scanners.md
+ create mode 100644 help/sales/variants-and-stock.md
+ create mode 100644 src/lib/flowchart.ts
+ create mode 100644 src/lib/helpBuiltin.ts
+ create mode 100644 src/lib/mdBlocks.ts
+ create mode 100644 src/screens/Help.tsx
+ create mode 100644 src/ui/Flowchart.tsx
+ create mode 100644 src/ui/Markdown.tsx
+ create mode 100644 tests/helpcitations.test.ts
+ create mode 100644 tests/helpview.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index a6af42a..12b3879 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -27,6 +27,7 @@ import Drawer from './src/screens/Drawer';
+ import Settings from './src/screens/Settings';
+ import Staff, { PinLock } from './src/screens/Staff';
+ import Diagnostics from './src/screens/Diagnostics';
++import Help from './src/screens/Help';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
+ import { isLockScreen } from './src/lib/posLock';
+@@ -56,6 +57,7 @@ function Routes() {
+     case 'settings': return <Settings />;
+     case 'staff': return <Staff />;
+     case 'diagnostics': return <Diagnostics />;
++    case 'help': return <Help id={p.id} />;
+     default: return null;
+   }
+ }
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 9c546a6..b2a1032 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -35,6 +35,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0026 | 2026-10-11 | Display modes, part 2 (B5b): Minimal's guided checkout, one question per screen (Items, Customer, Discount, Check, Pay), with a More options button for everything else; new "Guided steps" dial for Custom | B5b |
+ | 0027 | 2026-10-11 | Display modes, part 3 (B5c): Simple-mode polish in Checkout, Cart, Pay and Cash: plain-English payment buttons with a line under each, hints, bigger tap targets. Finishes B5 | B5c |
+ | 0028 | 2026-10-11 | In-app help, part 1 (B7a): the page format, a checker that refuses broken pages, the build script, the writer's guide, and the first three pages (Help home, Checkout, Cart and prices) | B7a |
++| 0029 | 2026-10-11 | In-app help, part 2 (B7b): the Help screen (More ▸ Help: search, depth picker, trail, related pages, flowcharts), a Markdown and flowchart drawer, a citation check, and three pages (grid, variations and stock, scanning) | B7b |
+ | 0048 | 2026-10-11 | Price adjustments, part 1 (A16 Line adjustment): set what a whole line costs from the line editor, shown as a "Line price adjustment" row; lines are flagged for review when quantity, unit price or discounts change (Keep / Adjust / Remove); never on gift cards. Item and Whole order adjustments follow in their own patches | A16.1, A16.2, A16.6 (line part) |
+ | 0049 | 2026-10-11 | Price adjustments, part 2 (A16 Whole order adjustment): ••• cart menu ▸ Whole order price sets the total of the whole cart, shared over the items (gift cards never reduced); review flag with Keep / Remove; never together with line adjustments (setting one clears the other after asking) | A16.4, A16.7, A16.6 (whole order part) |
+ | 0050 | 2026-10-11 | Price adjustments, part 3 (A16 Item adjustment): the unit price for this sale now has a choice of Fixed quantity (a set number of units; fewer than the line splits it) or All in cart (every unit of that item, including ones added later); fixed quantities are flagged for review when the quantity changes; never on gift cards | A16.3, A16.6 (item part) |
+@@ -252,12 +253,12 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker. **Started in 0028.** Three pages per patch, as you asked. Design: `docs/patches/0028-plan.md`; writer's guide: `help/README.md`.
+   - **How it works.** Pages are Markdown files in `help/` (`help/<folder>/<name>.md`, a folder's own page is its `index.md`). Each has a header (id, title, parent, summary, tags, related) and up to three sections, `## Basic`, `## Deep`, `## Advanced`. Choosing a depth shows it **plus the levels above it**. `[[page-id]]` links pages together; contents lists come from each page's `parent`. `npm run help:build` checks every page (dead links, missing parent or Basic section, loops, unclosed code, stray headings, bad mermaid) and writes `help/help.json`, which the app and the docs Worker both read. Code: `src/lib/helpDocs.ts` (pure, tested), `scripts/build-help.ts`. The Advanced flowcharts are Mermaid; the in-app drawing supports a simple subset (see the guide) and the website draws the full thing.
+   - [x] B7a (0028) foundation: format, checker, build, guide, tests, first three pages.
+-  - [ ] B7b (0029) **Help screen in the app**: More ▸ Help (tree, search, depth picker remembered per device and kept in backups, "pages that link here", flowchart drawing with react-native-svg, built-in copy of `help.json`, works offline).
++  - [x] B7b (0029) **Help screen in the app**: More ▸ Help (tree, search, depth picker remembered per device and kept in backups, "pages that link here", flowchart drawing with react-native-svg, built-in copy of `help.json`, works offline).
+   - [ ] B7c (0030) **Docs Worker** (`docs-server/`, same pattern as the receipt and gift claim Workers): serves the pages as a website and a small JSON API (`/api/index`, `/api/page/:id`, with the content version as the ETag), draws full Mermaid, search box, depth picker. The app can optionally fetch newer pages from it and falls back to its built-in copy. Styling and subdomain wait for E1.
+   - [ ] B7d (0047) **Help from every screen**: a small "?" on each screen that opens the matching page, and a link from each error message to its fix page. Last, once every page exists.
+   - **Page plan** (id, then what it covers). Done pages are ticked. A page is Basic + Deep + Advanced unless noted. Each patch is 3 pages.
+     - **0028** [x] `start` Help home and how depth works · [x] `sales` Checkout: the main screen · [x] `sales/cart-and-prices` the cart and how prices are worked out
+-    - **0029** [ ] `sales/grid` the Quick Menu grid and editing it (tiles, nested categories, per-tile settings, pages, import/export, the path bar) · [ ] `sales/variants-and-stock` variations, stock counts, negative stock · [ ] `sales/scanners` Bluetooth and camera scanning, the double-click keyboard, passes and gift QRs
++    - **0029** [x] `sales/grid` the Quick Menu grid and editing it (tiles, nested categories, per-tile settings, pages, import/export, the path bar) · [x] `sales/variants-and-stock` variations, stock counts, negative stock · [x] `sales/scanners` Bluetooth and camera scanning, the double-click keyboard, passes and gift QRs
+     - **0030** [ ] `sales/lookup-tiles` Lock POS, Price check, Stock check · [ ] `sales/saved-carts` saved carts · [ ] `sales/customers` customers
+     - **0031** [ ] `sales/bundles` bundle deals and the builder · [ ] `pay` taking payment (overview) · [ ] `pay/card` paying by card (Zeller, the waiting strip, cancel)
+     - **0032** [ ] `pay/cash` paying by cash (tap pad, change) · [ ] `pay/gift-card` paying with a gift card · [ ] `pay/split-and-part` split and part payments
+@@ -287,7 +288,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028; 0048 adds 14 in `tests/lineadjust.test.ts`, 0049 adds 11 in `tests/orderadjust.test.ts`, 0050 adds 14 in `tests/itemadjust.test.ts`, 0051 adds 9 in `tests/adjustreview.test.ts`, 0052 adds 10 in `tests/adjustreason.test.ts`). In my current sandbox I could not reinstall `@noble/hashes` and `fflate` (no network), so 8 test files that need them did not load, the same 8 with and without 0048; every other file passes. `tsc --noEmit` also could not run there this time, so please run `npm run typecheck` on 0048 to 0052. `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028; 0029 adds 22 in `tests/helpview.test.ts` and `tests/helpcitations.test.ts`; 0048 adds 14 in `tests/lineadjust.test.ts`, 0049 adds 11 in `tests/orderadjust.test.ts`, 0050 adds 14 in `tests/itemadjust.test.ts`, 0051 adds 9 in `tests/adjustreview.test.ts`, 0052 adds 10 in `tests/adjustreason.test.ts`). In my current sandbox I could not reinstall `@noble/hashes` and `fflate` (no network), so 8 test files that need them did not load, the same 8 with and without 0048; every other file passes. `tsc --noEmit` also could not run there this time, so please run `npm run typecheck` on 0048 to 0052. `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -323,12 +324,13 @@ Ordered by priority, highest first.
+ - [ ] N18 **Non-blocking (B1c):** the smart change test in B1j.
+ - [ ] N19 **Non-blocking (B1f):** the float report test in B1k.
+ - [ ] N20 **Non-blocking (B5a):** the display mode test in B5d. Registers still on an older app version ignore the mode and show Standard, so update every register.
+-- [ ] N21 **Non-blocking (B7):** read `help/start.md`, `help/sales/index.md` and `help/sales/cart-and-prices.md` (plain Markdown for now) and tell me if the tone, the level of detail, or any fact is wrong. Also say if you would rather a chosen depth show **only** that level instead of that level plus the ones above it (the plan assumes cumulative). Changing the page text costs nothing now and a lot after 58 pages.
++- [ ] N21 **Non-blocking (B7):** read the help pages in `help/` (plain Markdown, or in the app from 0029) and tell me if the tone, the level of detail, or any fact is wrong. Cumulative depth is confirmed (you said it is what you wanted), so that question is closed. Changing page text costs nothing now and a lot after 58 pages.
+ - [ ] N22 **Non-blocking (A16.1, A16.2):** on the iPad, add 13 of a product with a couple of deals, open the line ▸ Line price adjustment, set a final price, and check the row reads right in the cart. Then change the quantity on that line and check it is flagged with the right reason, and try Keep, Adjust and Remove. Try a cart discount alongside it, a gift card (should be unavailable) and a price at or above the current one (should be refused). Tell me if the flag wording or the keypad flow is awkward. Also say whether you want Reports to show line adjustments apart from discounts.
+ - [ ] N23 **Non-blocking (A16.4, A16.7):** on the iPad, ring up a few items (with a gift card in one try), open ••• ▸ Whole order price and set a total. Check the footer and the per-line rows read right and the receipt shows "Order price adjustment". Then add another item and check the order price is flagged and Keep / Remove work. Try setting a line price on that cart and an order total on a cart with line prices (both should ask first), and save the cart (it should say the order price isn't kept). Tell me if the wording is awkward, and whether you would rather the order price spread evenly or by value (it is by value now).
+ - [ ] N24 **Non-blocking (A16.3):** on the iPad, add 5 of a product, open the line ▸ Item price adjustment, pick Fixed quantity, step to 2 and set a price: check the line splits into 3 at the normal price and 2 at yours. Then try All in cart on another product, add one more of it (it should join the line at your price), and use Reset. Change the quantity on a fixed-quantity line and check the flag and Keep / Adjust / Remove. Tell me if the sheet is confusing, whether splitting the line is what you expect, and whether an All in cart price should be able to cover different variations of the same product (it only covers the exact variation now).
+ - [ ] N25 **Non-blocking (A16.5):** on the iPad, in normal and in guided checkout, set a line price, an item price and a whole order price on different sales, press Charge / Take payment and check the list reads right. Then change the quantity on an adjusted line so it is flagged: Continue should be unavailable until you Keep, Adjust or Remove. Check Adjust takes you to the right editor and that coming back to Charge shows the list again with the new numbers. Tell me if the list is too much to read at the till or the wording is awkward, and whether you want unflagged adjustments to need a tap each sale or just show the flagged ones (it shows them all, once, now).
+ - [ ] N26 **Non-blocking (A16.8):** on the iPad, set an item price, a line price and a whole order price on separate sales, each with a reason (and one without), and finish the sales. Check the checkout review shows the reasons, the transaction detail shows the "Price adjustments" card, and Reports shows the "Price adjustments" card with a row per reason. In Shopify admin, open one of the orders and check the `pos_adjustments` attribute is there. Tell me if the reason box is in the way at the till, whether you want a few tap-to-pick reasons instead of typing (for example Damaged, Price match, Regular customer), and whether the reason should also go on the receipt or in the sales CSV.
++- [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/patches/0029-plan.md b/docs/patches/0029-plan.md
+new file mode 100644
+index 0000000..9bd859f
+--- /dev/null
++++ b/docs/patches/0029-plan.md
+@@ -0,0 +1,25 @@
++# Patch 0029: in-app help, part 2 (B7b): the Help screen, plus three pages
++
++Items: B7b, and the 0029 pages from the B7 page plan. Status: `[x]` done and tested in my sandbox (pure logic, `tsc`, the whole suite), `[ ]` needs you (the screens are not run in my sandbox, so they are untested on a device).
++
++## What you asked for
++- Continue B7 in small chunks, three pages per patch. Cumulative depth confirmed (a chosen depth shows it plus the ones above it).
++
++## Steps
++1. [x] Checked the repo for updates (nothing newer than my 0028 commit).
++2. [x] `src/lib/mdBlocks.ts` (pure): the Markdown slice the pages use: headings, paragraphs, bullet and numbered lists (nested), tables with alignment, fenced code, mermaid blocks, and inline bold, italic, code and links. A link only becomes tappable if it is `(#/page-id)` or `http(s)://`; anything else (such as `javascript:`) is shown as text.
++3. [x] `src/lib/flowchart.ts` (pure): reads the Mermaid flowchart subset (`flowchart TD|LR`, `[box]`, `{decision}`, `(round)`, `-->`, `-->|label|`, chains, `;`, comments) and lays it out in layers: longest-path layers, branch ordering by neighbour position, loops handled (drawn dashed), nothing overlaps. Anything outside the subset returns null and the screen shows the source as text.
++4. [x] `src/ui/Markdown.tsx` and `src/ui/Flowchart.tsx` (react-native-svg, already a dependency): draw the above, follow the display mode's text size, scroll sideways when wide.
++5. [x] `src/lib/helpBuiltin.ts`: the copy of `help/help.json` that ships in the app, turned into pages and an index. Works with no internet.
++6. [x] `src/screens/Help.tsx`: search, a Basic / Deep / Advanced picker (remembered), a trail of parent pages, the page, "In this section", "Related" and "Pages that link here" lists, a Home button, and a back button that goes back through the pages you opened before leaving Help. Opens at a given page when the route has an `id` (for the "?" buttons in B7d).
++7. [x] More ▸ **Help** row (in every display mode, including Minimal and for every role), `help` route in `App.tsx`, `helpDepth` setting (default Basic, kept in backups).
++8. [x] Fixed by the new checks: a `;` inside a flowchart label was being treated as a statement break; the parser now respects brackets, and the page text avoids it anyway.
++9. [x] Pages: `sales/grid`, `sales/variants-and-stock`, `sales/scanners`. Each is Basic, Deep and Advanced. Every function and file named in them was checked against the code.
++10. [x] Tests: `tests/helpview.test.ts` (21: Markdown, flowchart parse and layout, every real flowchart is drawable and free of characters the website's Mermaid dislikes, every real page parses at every depth, the built-in bundle) and `tests/helpcitations.test.ts` (1: every file and function a page names in backticks exists; a mutation check confirmed it fails when a name is wrong). Suite: 327 pass, `tsc` clean.
++11. [x] `docs/PROGRESS.md`: patch log row, B7b and the 0029 pages ticked, N21 updated, new N27.
++12. [ ] You: N27, try the Help screen on the iPad and a phone.
++
++## Notes
++- The citations test means that renaming a function a page mentions will fail `npm test` until the page is updated. That is on purpose: the pages say they describe the app as it is.
++- Flowcharts scroll sideways if they are wider than the screen. A very wide diagram is drawn at full size rather than shrunk.
++- Not in this patch: fetching newer pages from a docs website (0030), "?" buttons on screens (B7d).
+diff --git a/help/README.md b/help/README.md
+index d162697..e045d63 100644
+--- a/help/README.md
++++ b/help/README.md
+@@ -42,6 +42,7 @@ Put a Mermaid flowchart in a fenced block marked `mermaid`, in **Advanced** sect
+ - Boxes `A[text]`, decisions `A{text}`, rounded `A(text)`
+ - Arrows `A --> B` and `A -->|label| B`
+ - No `subgraph`, no `style` or `classDef`, no `click`.
++- Keep labels free of `;`, `"`, `(` and `)`, so the website's Mermaid draws them the same way. A test checks this.
+ 
+ Anything the in-app drawing cannot read is shown as plain text, and the website draws the full Mermaid. Every block must start with a diagram type (`flowchart`, `graph`, `sequenceDiagram`, ...); the checker enforces that.
+ 
+diff --git a/help/help.json b/help/help.json
+index 199b32e..fcc3d8c 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "b1ccc6ae",
++ "version": "3f358cd9",
+  "pages": [
+   {
+    "id": "sales",
+@@ -22,7 +22,7 @@
+    "sections": {
+     "basic": "### The three ways to add items\nAt the top of the left side, pick one:\n- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.\n- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.\n- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a \"Custom amount\".\n\nOn the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.\n\n### Items with several variations\nIf a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with \"stock will go negative\".\n\n### Adding more than one\nPick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count applies to that one item and then goes back to ×1.\n\n### Other ways to find things\n- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.\n- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.\n- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.\n\n### The cart\nOn an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].\n\n### The strip under the search bar\nOn an iPad it always shows **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red button instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the strip only appears when there is a problem.\n\n### When you cannot change the cart\nOnce part of a sale has been paid, the cart is locked and you see \"Payment in progress\". Finish the payment or cancel it first.",
+     "deep": "### Why a tap does different things\nA tile is one of several kinds: an item, a category, a display group, a discount, or an action (such as Custom amount, Lock POS, Price check, Stock check or Check change). Items and variations go into the cart; categories and groups open a level of the grid; discounts apply to the whole cart; actions open a sheet or do a job. Categories can contain categories to any depth.\n\n### What \"consolidate\" means\nBy default, adding the same item again raises the quantity on its existing line instead of making a second line. A line is **not** merged into if it has been changed in some way (its price adjusted, a discount put on it, or a note added), because merging would mix a special line with a normal one. This can be turned off in Settings (Checkout ▸ Consolidate identical items).\n\n### How scanning finds an item\nA barcode is compared after removing spaces and leading zeros, so a 12-digit UPC and a 13-digit EAN with a leading 0 match the same item. If no barcode matches, the scan is tried as an exact SKU. If nothing matches you see \"No item for …\".\n\n### Why the grid sometimes does not show an item you expect\nAn item that sits in both a sub-category and its parent category shows only in the sub-category. Items you pin yourself as tiles are never hidden by that rule.\n\n### Your cart is saved as you go\nEvery change to the cart is written to the device (after a very short delay), so closing the app does not lose it.",
+-    "advanced": "### What happens on a tap\n```mermaid\nflowchart TD\n  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]\n  A -->|one variant| B[add]\n  A -->|several variants| P[VariantPicker sub-page]\n  P -->|tap one| B\n  B --> L{cart locked? tenders present}\n  L -->|yes| X[alert: Payment in progress]\n  L -->|no| C[ops.addVariant: cartOps.ts]\n  C --> S[useApp setCart: store.ts]\n  S --> W[persist 'pos' to storage, 400 ms debounce]\n  S --> R[usePriced: selectors.ts]\n  R --> Q[priceCart: pricing.ts]\n  Q --> V[CartPane re-renders with the new totals]\n```\n\n### What happens on a scan\n```mermaid\nflowchart TD\n  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]\n  O --> B{isBadgeCode?}\n  B -->|yes| I[signInWithPass; cart unchanged]\n  B -->|no| F[ops.findByBarcode: barcode, then SKU]\n  F -->|found| A[add 1 of the variant]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge, Gift card]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |\n| The status strip | `StatusStrip` in the same file |\n| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |\n| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |\n| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |\n| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |\n| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |\n| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |\n\n### Reading the code for a fault\n- **A scan adds nothing and says \"No item\"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.\n- **A tap does nothing and shows \"Payment in progress\"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.\n- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.\n- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins)."
++    "advanced": "### What happens on a tap\n```mermaid\nflowchart TD\n  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]\n  A -->|one variant| B[add]\n  A -->|several variants| P[VariantPicker sub-page]\n  P -->|tap one| B\n  B --> L{cart locked? tenders present}\n  L -->|yes| X[alert: Payment in progress]\n  L -->|no| C[ops.addVariant: cartOps.ts]\n  C --> S[useApp setCart: store.ts]\n  S --> W[persist 'pos' to storage, 400 ms debounce]\n  S --> R[usePriced: selectors.ts]\n  R --> Q[priceCart: pricing.ts]\n  Q --> V[CartPane re-renders with the new totals]\n```\n\n### What happens on a scan\n```mermaid\nflowchart TD\n  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]\n  O --> B{isBadgeCode?}\n  B -->|yes| I[signInWithPass, cart unchanged]\n  B -->|no| F[ops.findByBarcode: barcode, then SKU]\n  F -->|found| A[add 1 of the variant]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge, Gift card]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |\n| The status strip | `StatusStrip` in the same file |\n| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |\n| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |\n| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |\n| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |\n| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |\n| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |\n\n### Reading the code for a fault\n- **A scan adds nothing and says \"No item\"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.\n- **A tap does nothing and shows \"Payment in progress\"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.\n- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.\n- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins)."
+    }
+   },
+   {
+@@ -50,6 +50,90 @@
+     "advanced": "### The pricing pipeline\n```mermaid\nflowchart TD\n  U[usePriced: src/state/selectors.ts] --> P[priceCart cart, ctx]\n  P --> W[Work per line: base = overrideCents or unitCents]\n  W --> B1[1 matchBundles: bundles.ts]\n  B1 --> B2[2 chooseAutoDiscounts: pricing.ts]\n  B2 --> B3[3 manual line discount]\n  B3 --> B4[4 cart discount, allocate by remaining value]\n  B4 --> R[PricedCart: lines, itemsCents, discountCents, netCents, deals, bundles]\n  R --> UI[CartPane, Pay, receipts]\n  R --> S[splitLineForOrder for Shopify order lines]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The whole pipeline | `priceCart` in `src/lib/pricing.ts` |\n| Running it live | `usePriced` in `src/state/selectors.ts` (re-runs when the cart, catalogue, automatic discounts or the bundles setting change) |\n| Bundle matching | `matchBundles` in `src/lib/bundles.ts` |\n| Automatic discounts | `chooseAutoDiscounts`, `autoMove`, `isLot`, `activeNow` in `src/lib/pricing.ts` |\n| Clamping a discount to what is left | the local `add` in `priceCart` (`Math.min(d.cents, remaining(w))`) and `remaining` |\n| Percent and spreading cents | `pctOf`, `allocate` in `src/lib/money.ts` |\n| Which lines are discountable | `discountable` in `priceCart`: not `gift_card`, not `noDiscount`, no `no-discount` tag (`NO_DISCOUNT_TAG`) |\n| Rows shown in the cart | `invoiceRows`, `unitLine` in `src/lib/invoiceRows.ts` |\n| The cart screen | `src/screens/CartPane.tsx`; the line editor `LineEditor` in `src/screens/sheets.tsx` |\n| Splitting for Shopify | `splitLineForOrder` in `src/lib/pricing.ts` |\n| Tests | `tests/compound.test.ts`, `tests/autocombine.test.ts`, `tests/bundleform.test.ts`, `tests/swipe.test.ts` |\n\n### The data it returns\n`PricedCart` has `lines` (each with `baseUnitCents`, `grossCents`, `discounts`, `discountCents`, `netCents`, `bundleUnits`), the cart totals `itemsCents`, `discountCents` and `netCents`, `deals` (the discounts rolled up by type and label, which is what the totals area lists), and `bundles` (one entry per bundle application, with the units it used). Each entry in `discounts` has a `type` (`bundle`, `auto`, `manual` or `cart`), a `label`, `cents`, and for repeated deals a `times` count.\n\n### Reading the code for a fault\n- **A deal you expect did not apply.** Check, in order: is the line discountable (tag, `noDiscount`, gift card or custom amount)? Is the discount inside its dates (`activeNow` compares `startsAt` and `endsAt`)? Does the line's product, variation or collection match the discount's target (`matches`)? For a bundle, check its on/off switch, dates and \"most times per order\" in the bundle editor.\n- **A line discount you set vanished from the receipt.** The line also got a bundle discount, and step 3 skips lines that did (`w.discounts.some(d => d.type === 'bundle')`).\n- **The total is a cent out against Shopify.** Compare `splitLineForOrder` output with the order lines; the groups must add to `netCents`.\n- **A discount seems to apply to the wrong line.** The cart discount is spread over every discountable line, so each gets a share; look at the per-line `discounts` array, not just the rolled-up `deals`.\n- **Debugging a cart.** Call `priceCart` from a test with the same cart and context as the sale (see `tests/autocombine.test.ts` for how a context is built).\n\n### Known to change\nThe single \"Price adjustment\" on a line is planned to be replaced by Line, Item and Whole-order adjustments with a review step (checklist item A16). This page will be updated when that is built."
+    }
+   },
++  {
++   "id": "sales/grid",
++   "title": "The Quick Menu grid and editing it",
++   "parent": "sales",
++   "summary": "Tiles, categories, display groups and pages on the Quick Menu, how to change them, and how the layout is shared and moved.",
++   "tags": [
++    "grid",
++    "quick menu",
++    "tile",
++    "category",
++    "group",
++    "page",
++    "edit",
++    "layout",
++    "import",
++    "export"
++   ],
++   "related": [
++    "sales",
++    "sales/variants-and-stock"
++   ],
++   "updated": "2026-10-11",
++   "lead": "The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.",
++   "sections": {
++    "basic": "### What a tile can be\n- **Item**: adds that product to the cart. If it has several variations you pick one first (see [[sales/variants-and-stock]]).\n- **Category**: opens inside to show its own tiles, then every product in that Shopify collection. The photo on the tile is the collection's picture.\n- **Display group**: a folder you fill yourself with any tiles you like. It can optionally act like a collection too.\n- **Action**: a button that does a job: Custom amount, Sell gift card, Clear cart, Create item, Customers, Discounts, Cart discount, Saved carts, Switch staff, Lock POS, Price check, Stock check, Check change.\n- **Discount**: applies a percentage or dollar discount to the whole cart.\n\nA small dot on an item tile shows its stock: green is fine, amber is low (2 or fewer), red is oversold (below zero). No dot means the stock is not tracked.\n\n### Moving around\nWhen you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.\n\n### Changing the grid\n1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.\n2. **Tap a tile** to change it: its label, its colour, and for a category or group what it shows and what is inside it.\n3. The **red minus** at a tile's top-left removes it. The **arrows** at its bottom-right move it earlier or later.\n4. The dashed **+** tile adds something: Items, Categories, Display groups, Actions or Discounts.\n5. Tap the green tick when you are done.\n\nYou are editing the level you are standing in. Open a category first to change what is inside it. Everything saves as you go, and your other registers get the change shortly afterwards.\n\n### Pages\nIf you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.\n\n### Tile size\nSettings ▸ Theme ▸ **Tile size** (Small, Medium or Large) changes how many tiles fit across.\n\n### Missing tiles\nA greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.\n\n### Moving a layout in or out\nSettings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.",
++    "deep": "### Category or display group?\nA **category** is tied to a Shopify collection. Open it and you see the tiles you put inside it first (usually sub-categories), then the products in the collection. A **display group** is just your own folder with its own tiles. If you switch on \"Acts like a collection\" for a group, it shows that collection's products after its tiles, like a category does.\n\n### Which products show where\nIf a product belongs to both a category and one of that category's sub-categories (at any depth), it only shows in the deepest one. This stops the same product appearing in every level. A product you pin yourself as an **Item** tile is never hidden by this, and it is not shown twice in the same place.\n\n### One product or one variation\nAn Item tile can point at a whole product (the picker appears if it has several variations) or at one specific variation (it is added straight away). Tiles you add from a product use the whole product.\n\n### What editing shows\nWhile editing, a category shows only the tiles stored inside it, not its collection's products, because those are filled in automatically and cannot be moved. A note under the grid says so.\n\n### Shared between registers\nThe layout is stored in Shopify, so every register shows the same grid. After you change something, the new layout is sent about a second and a half later. Each register checks for a newer layout about every 25 seconds while the app is open, and when it returns to the front. A layout that cannot be read is ignored, so a bad import cannot blank another register.",
++    "advanced": "### The data\n```text\n{ \"version\": 1, \"pages\": [ { \"id\": \"...\", \"name\": \"Home\", \"tiles\": [ ... ] } ] }\n```\nA tile is one of five shapes, from `src/lib/grid.ts`:\n\n| `type` | Fields |\n|---|---|\n| `action` | `action` (one of `ACTIONS`), optional `label`, `color` |\n| `category` | `collectionId`, optional `label`, `color`, `subs` (more tiles) |\n| `item` | `variantId` or `productId`, optional `label`, `color` |\n| `discount` | `code`, `pct` or `amtCents`, optional `label`, `color` |\n| `group` | `name`, `tiles`, optional `collectionId`, `color` |\n\n`parseGrid` accepts a JSON string or object, drops any tile that fails `isTile` (counting them in `dropped`), and always returns at least one page. A new install gets `defaultGrid()`: one Home page with every action except Cart discount.\n\n### Paths and nesting\n`src/lib/gridNav.ts` is pure and works on a **path**: a list of tile indexes, one per level (`[2, 0]` is tile 2 on the page, then tile 0 inside it). `resolvePath` walks it and stops at the first step that no longer exists, so a layout change from another register cannot leave a screen pointing at nothing. `listAt`, `editListAt`, `updateTileAt`, `addTileAt`, `removeTileAt` and `moveTileAt` return changed copies and never edit in place.\n\n```mermaid\nflowchart TD\n  P[path from Checkout state] --> R[resolvePath]\n  R --> E{editing?}\n  E -->|yes| C[childTiles of the last container]\n  E -->|no| V[viewTiles: own tiles, then ownProductIds items]\n  C --> G[TileGrid]\n  V --> G\n  G -->|tap a container| O[onOpen: path plus index]\n  G -->|tap an item| A[handlers.onVariants]\n```\n\n`ownProductIds` implements the deepest-wins rule: it removes any product found in `descendantCollectionIds`. `viewTiles` also skips a product already pinned as an item tile inside the container. `breadcrumbs` builds the bar from the resolved nodes.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Edit mode, page chips, path state | `Checkout.tsx` (`editing`, `pageIdx`, `path`, `edit`, `editPage`) |\n| Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |\n| Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |\n| Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |\n| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |\n| Import and export | `GridSettings` in `Settings.tsx` |\n| Tests | `tests/gridnav.test.ts` |\n\n### Reading the code for a fault\n- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.\n- **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).\n- **Import said \"N unsupported tiles skipped\".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`."
++   }
++  },
++  {
++   "id": "sales/scanners",
++   "title": "Scanning items, passes and gift cards",
++   "parent": "sales",
++   "summary": "The Bluetooth scanner and the camera, what a scan does on each screen, and what to do when scanning misbehaves.",
++   "tags": [
++    "scanner",
++    "scan",
++    "barcode",
++    "bluetooth",
++    "camera",
++    "keyboard",
++    "sku",
++    "pass",
++    "qr"
++   ],
++   "related": [
++    "sales",
++    "sales/variants-and-stock"
++   ],
++   "updated": "2026-10-11",
++   "lead": "A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.",
++   "sections": {
++    "basic": "### The two scanners\n- **Bluetooth scanner.** Pair it in the iPad's own Settings as a keyboard (HID mode). After that, on Checkout, just scan: the item goes in the cart.\n- **Camera.** Tap the camera icon next to the search bar. A full-screen camera opens and stays open, so you can scan several things in a row. Each scan shows a green message (\"Added Dragon plush\") or a red one (\"Not found: …\"). Tap **Done** when finished. The camera reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, ITF-14 and QR codes.\n\nThe gift card pop-up (Charge ▸ Gift card) has its own camera button for scanning a gift card's QR code.\n\nTo check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart.\n\n### What a scan does, by screen\n| Where you are | Item barcode | Cashier pass | Gift card QR |\n|---|---|---|---|\n| **Checkout** | Adds 1 to the cart | Signs that person in; the cart stays as it is | Tells you to redeem it from Charge ▸ Gift card |\n| **Price check / Stock check** | Shows its price or stock; the cart is not touched | \"That is a cashier pass, not an item.\" | Tells you to check it from Charge ▸ Gift card |\n| **Staff sign-in** | Not accepted | Signs in | Not accepted |\n\nIf nothing matches you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).\n\n### When scanning does nothing\n- A pop-up is open, or you are on another screen (such as Pay). Scanning only adds to the cart from the Checkout screen with nothing on top of it.\n- You were typing in a box a moment ago. Scans are ignored for about 2½ seconds after you finish typing, so the scanner cannot take over what you were typing.\n- The scanner is not paired or not in keyboard mode. Test it in Settings ▸ Hardware.\n\n### Getting the on-screen keyboard back\nA Bluetooth scanner stops the iPad showing its on-screen keyboard. On the POS-mate scanner, **double-click the scanner button** to show the keyboard, and double-click again to hide it.",
++    "deep": "### How a code is matched\nThe code is compared with each variation's **barcode** after removing spaces and any zeros at the start. That is why a 12-digit UPC and the 13-digit EAN that begins with 0 find the same item. If no barcode matches, the code is tried against each **SKU** exactly, ignoring capital letters. If two items share a barcode, the first one found wins, so keep barcodes unique.\n\n### The order things are checked\nCheckout asks \"is it a cashier pass?\" first, then \"is it an item?\", then \"is it a gift card?\". The Price check and Stock check pop-ups ask \"is it an item?\" first, so a real barcode always wins there. A pass is the letter P followed by 12 letters and digits. A gift card QR starts with `shopify-giftcard-v1-`. Because no item should ever look like either, the order rarely matters.\n\n### Why a scanner acts like a keyboard\nA Bluetooth scanner connected this way pretends to be a keyboard: it types the digits and then presses Return. The POS keeps a hidden, always-ready text box that catches those keystrokes, and treats Return as \"scan finished\". This is also why a scanner can fight with a real keyboard, and why the POS backs off while you type.\n\n### Two scans of the same code\nThe camera ignores the same code if it is seen again within about a second, so holding the camera on one barcode does not add ten.",
++    "advanced": "### The path of a scan\n```mermaid\nflowchart TD\n  K[Scanner types code and Return] --> H[HidScanner hidden TextInput]\n  H -->|onSubmitEditing| S[onScan code]\n  C[CameraScanner onBarcodeScanned] -->|same code within 1.2 s ignored| S\n  S --> B{Checkout: isBadgeCode?}\n  B -->|yes| P[signInWithPass, cart unchanged]\n  B -->|no| F[findByBarcode: barcode then SKU]\n  F -->|found| A[add 1, toast Added]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Hidden keyboard capture, camera screen | `src/screens/Scanner.tsx` (`HidScanner`, `CameraScanner`) |\n| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0}` |\n| Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |\n| Pass, gift, none | `resolveScan`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |\n| Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |\n| Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |\n| Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |\n| Hardware test | `HardwareTest` in `Settings.tsx` (keeps the last 8 scans) |\n| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts` |\n\n### How HidScanner keeps focus\nIt only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.\n\n### Reading the code for a fault\n- **\"No item for …\" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.\n- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the five conditions in the `enabled` expression is false: a sheet is open, the camera is up, a screen is stacked on top, or the tab is not Checkout.\n- **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.\n- **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).\n- **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.\n- **Characters come out wrong.** The scanner's keyboard layout does not match the iPad's. Change it with the scanner's setup barcodes, not in the app."
++   }
++  },
++  {
++   "id": "sales/variants-and-stock",
++   "title": "Variations, stock counts and negative stock",
++   "parent": "sales",
++   "summary": "Choosing a variation, what the stock dots and words mean, why you can sell below zero, and how counts stay up to date.",
++   "tags": [
++    "variant",
++    "variation",
++    "stock",
++    "inventory",
++    "negative",
++    "oversold",
++    "picker"
++   ],
++   "related": [
++    "sales",
++    "sales/grid",
++    "sales/scanners"
++   ],
++   "updated": "2026-10-11",
++   "lead": "A product can come in several variations, such as colour or size. Each variation has its own price and its own stock count.",
++   "sections": {
++    "basic": "### Choosing a variation\nTap a product that has more than one variation and the grid is replaced by one tile per variation. Each shows its photo, name, price and stock. Tap the one you want and it goes in the cart, and you are back where you were. The bar above shows the product as the last step, for example *Home > Dragons > Highland cow*, so tap an earlier name to leave without choosing.\n\nA product with only one variation skips this step and is added straight away.\n\n### What the stock words mean\n| You see | It means |\n|---|---|\n| **12 in stock** | There are 12 counted. |\n| **Out of stock** | The count is 0. |\n| **3 oversold** | The count is below zero: 3 more have been sold than were counted. |\n| **Not tracked** | This item has no stock count (a service, or tracking is off in Shopify). |\n\nThe coloured dot follows the same idea: green is fine, amber is 2 or fewer (including 0), and red is oversold.\n\n### Selling when stock is 0\nYou can always sell an item that shows 0 or below. The POS warns you (\"stock will go negative\") and carries on, because the shelf is the truth and the count may simply be behind.\n\n### When the count changes\n- Selling an item lowers its count straight away on this device.\n- A refund puts it back.\n- Counts also change when someone on another register or in Shopify changes them. The app checks about every 25 seconds while it is open.\n- If any item goes below zero, a notification appears in the Notifications tab that takes you to Inventory so you can fix the count.\n\n### Fixing a wrong count\nCounts are corrected in Inventory (set a count, receive stock, or adjust it). If many items look wrong after a busy day, check that sales are not queued: the strip on Checkout says \"Offline\" or \"queued\" when they are.",
++    "deep": "### Why overselling is allowed\nShopify is told to take the stock off even if that makes it negative. A till that refused to sell would stop a customer who is standing there with the item in their hand, so the rule is: sell first, correct the count after.\n\n### Not tracked\nA variation whose stock is \"not tracked\" never shows a dot, is never counted in totals, and is not changed by sales or refunds. This is not the same as 0.\n\n### Stock check totals\nThe Stock check tile shows the scanned variation first, then its siblings, and a total. The total only adds counts that are tracked, and treats negative counts as 0, so oversold stock does not pull the total down. It also says how many variations are not tracked, in brackets after the total.\n\n### Several registers\nEach register keeps its own copy of the counts and applies its own sales at once, so the number you see is right for you immediately. The real number lives in Shopify and each register catches up every 25 seconds or so. Two registers selling the last item at the same moment will both succeed, and the count will go to -1.",
++    "advanced": "### Data and thresholds\n`Variant.stock` is `number | null` (`null` = not tracked). The thresholds are in two places that agree: `stockToneOf` in `src/lib/lookup.ts` (`none`, `ok`, `low` at 1 to 2, `out` at 0, `neg` below 0) and `stockTone` in `src/state/selectors.ts` for the tile dot (which has no separate `out`, so 0 shows as low).\n\n### When stock moves\n```mermaid\nflowchart TD\n  A[Add an item] --> B{stock tracked and stock minus qty below 0?}\n  B -->|yes| W[toast: stock will go negative]\n  B -->|no| T[toast: Added item]\n  S[Sale completes] --> L[applyLocalStock: sync.ts]\n  L --> O[outbox: Shopify orderCreate with DECREMENT_IGNORING_POLICY]\n  O --> H[Shopify lowers the stock]\n  P[pollShared every 25 s] --> D[fetchStockDelta since stockSince]\n  D --> U[variants stock replaced from Shopify]\n```\n\n- `applyLocalStock` changes the local count for each sold line by `-qty` for a sale, `+qty` for a refund, skipping untracked variations.\n- Shopify's own count is lowered by the order itself (`DECREMENT_IGNORING_POLICY`), so the POS does not send a second adjustment for sales.\n- For refunds the outbox item carries `done: { order, stock }` and the stock step uses `adjustStock` in `src/lib/shopify/inventory.ts` (`inventoryAdjustQuantities` with an idempotency key, so a retry cannot apply twice).\n- `pollShared` fetches stock changes since `stockSince` and replaces the matching variants' counts. Remote values win, which is how the count is corrected after a manual change in Shopify.\n- `App.tsx` runs a 25-second tick that polls, empties the outbox, and raises the \"N item(s) with negative stock\" notice (route `inventory`).\n\n### The picker\n`VariantPicker` in `Tiles.tsx` draws one tile per variation using `pickerVariants` (catalogue order, no duplicate ids) and `stockText`. It is a level of the grid, not a popup: `pickerCrumbs` adds the product as the last crumb, and changing tab, page, path or edit mode closes it (the `useEffect` that calls `setVariants(null)` in `Checkout.tsx`).\n\n### Reading the code for a fault\n- **Count did not drop after a sale.** The variation is untracked (`stock === null`), or `inventoryItemId` is missing so a later `pollShared` cannot match it. Check the variant on the device.\n- **Count jumped back after a sale.** `pollShared` replaced it with Shopify's number; the order has probably not reached Shopify yet (outbox not empty).\n- **Stock dot differs from the picker word.** Expected at exactly 0: the tile dot is amber for low, the picker says Out of stock.\n- **Tests.** `tests/lookup.test.ts` covers the tones, the words, the stock check totals and the picker helpers."
++   }
++  },
+   {
+    "id": "start",
+    "title": "Help home",
+diff --git a/help/sales/grid.md b/help/sales/grid.md
+new file mode 100644
+index 0000000..5604a07
+--- /dev/null
++++ b/help/sales/grid.md
+@@ -0,0 +1,113 @@
++---
++id: sales/grid
++title: The Quick Menu grid and editing it
++parent: sales
++summary: Tiles, categories, display groups and pages on the Quick Menu, how to change them, and how the layout is shared and moved.
++tags: [grid, quick menu, tile, category, group, page, edit, layout, import, export]
++related: [sales, sales/variants-and-stock]
++updated: 2026-10-11
++---
++The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.
++
++## Basic
++
++### What a tile can be
++- **Item**: adds that product to the cart. If it has several variations you pick one first (see [[sales/variants-and-stock]]).
++- **Category**: opens inside to show its own tiles, then every product in that Shopify collection. The photo on the tile is the collection's picture.
++- **Display group**: a folder you fill yourself with any tiles you like. It can optionally act like a collection too.
++- **Action**: a button that does a job: Custom amount, Sell gift card, Clear cart, Create item, Customers, Discounts, Cart discount, Saved carts, Switch staff, Lock POS, Price check, Stock check, Check change.
++- **Discount**: applies a percentage or dollar discount to the whole cart.
++
++A small dot on an item tile shows its stock: green is fine, amber is low (2 or fewer), red is oversold (below zero). No dot means the stock is not tracked.
++
++### Moving around
++When you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.
++
++### Changing the grid
++1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.
++2. **Tap a tile** to change it: its label, its colour, and for a category or group what it shows and what is inside it.
++3. The **red minus** at a tile's top-left removes it. The **arrows** at its bottom-right move it earlier or later.
++4. The dashed **+** tile adds something: Items, Categories, Display groups, Actions or Discounts.
++5. Tap the green tick when you are done.
++
++You are editing the level you are standing in. Open a category first to change what is inside it. Everything saves as you go, and your other registers get the change shortly afterwards.
++
++### Pages
++If you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.
++
++### Tile size
++Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) changes how many tiles fit across.
++
++### Missing tiles
++A greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.
++
++### Moving a layout in or out
++Settings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.
++
++## Deep
++
++### Category or display group?
++A **category** is tied to a Shopify collection. Open it and you see the tiles you put inside it first (usually sub-categories), then the products in the collection. A **display group** is just your own folder with its own tiles. If you switch on "Acts like a collection" for a group, it shows that collection's products after its tiles, like a category does.
++
++### Which products show where
++If a product belongs to both a category and one of that category's sub-categories (at any depth), it only shows in the deepest one. This stops the same product appearing in every level. A product you pin yourself as an **Item** tile is never hidden by this, and it is not shown twice in the same place.
++
++### One product or one variation
++An Item tile can point at a whole product (the picker appears if it has several variations) or at one specific variation (it is added straight away). Tiles you add from a product use the whole product.
++
++### What editing shows
++While editing, a category shows only the tiles stored inside it, not its collection's products, because those are filled in automatically and cannot be moved. A note under the grid says so.
++
++### Shared between registers
++The layout is stored in Shopify, so every register shows the same grid. After you change something, the new layout is sent about a second and a half later. Each register checks for a newer layout about every 25 seconds while the app is open, and when it returns to the front. A layout that cannot be read is ignored, so a bad import cannot blank another register.
++
++## Advanced
++
++### The data
++```text
++{ "version": 1, "pages": [ { "id": "...", "name": "Home", "tiles": [ ... ] } ] }
++```
++A tile is one of five shapes, from `src/lib/grid.ts`:
++
++| `type` | Fields |
++|---|---|
++| `action` | `action` (one of `ACTIONS`), optional `label`, `color` |
++| `category` | `collectionId`, optional `label`, `color`, `subs` (more tiles) |
++| `item` | `variantId` or `productId`, optional `label`, `color` |
++| `discount` | `code`, `pct` or `amtCents`, optional `label`, `color` |
++| `group` | `name`, `tiles`, optional `collectionId`, `color` |
++
++`parseGrid` accepts a JSON string or object, drops any tile that fails `isTile` (counting them in `dropped`), and always returns at least one page. A new install gets `defaultGrid()`: one Home page with every action except Cart discount.
++
++### Paths and nesting
++`src/lib/gridNav.ts` is pure and works on a **path**: a list of tile indexes, one per level (`[2, 0]` is tile 2 on the page, then tile 0 inside it). `resolvePath` walks it and stops at the first step that no longer exists, so a layout change from another register cannot leave a screen pointing at nothing. `listAt`, `editListAt`, `updateTileAt`, `addTileAt`, `removeTileAt` and `moveTileAt` return changed copies and never edit in place.
++
++```mermaid
++flowchart TD
++  P[path from Checkout state] --> R[resolvePath]
++  R --> E{editing?}
++  E -->|yes| C[childTiles of the last container]
++  E -->|no| V[viewTiles: own tiles, then ownProductIds items]
++  C --> G[TileGrid]
++  V --> G
++  G -->|tap a container| O[onOpen: path plus index]
++  G -->|tap an item| A[handlers.onVariants]
++```
++
++`ownProductIds` implements the deepest-wins rule: it removes any product found in `descendantCollectionIds`. `viewTiles` also skips a product already pinned as an item tile inside the container. `breadcrumbs` builds the bar from the resolved nodes.
++
++### Where the code is
++| Job | Where |
++|---|---|
++| Edit mode, page chips, path state | `Checkout.tsx` (`editing`, `pageIdx`, `path`, `edit`, `editPage`) |
++| Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |
++| Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |
++| Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |
++| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |
++| Import and export | `GridSettings` in `Settings.tsx` |
++| Tests | `tests/gridnav.test.ts` |
++
++### Reading the code for a fault
++- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
++- **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).
++- **Import said "N unsupported tiles skipped".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`.
+diff --git a/help/sales/index.md b/help/sales/index.md
+index 232d4d5..d491678 100644
+--- a/help/sales/index.md
++++ b/help/sales/index.md
+@@ -80,7 +80,7 @@ flowchart TD
+ flowchart TD
+   H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]
+   O --> B{isBadgeCode?}
+-  B -->|yes| I[signInWithPass; cart unchanged]
++  B -->|yes| I[signInWithPass, cart unchanged]
+   B -->|no| F[ops.findByBarcode: barcode, then SKU]
+   F -->|found| A[add 1 of the variant]
+   F -->|not found| G{isGiftQr?}
+diff --git a/help/sales/scanners.md b/help/sales/scanners.md
+new file mode 100644
+index 0000000..0c8bb3f
+--- /dev/null
++++ b/help/sales/scanners.md
+@@ -0,0 +1,92 @@
++---
++id: sales/scanners
++title: Scanning items, passes and gift cards
++parent: sales
++summary: The Bluetooth scanner and the camera, what a scan does on each screen, and what to do when scanning misbehaves.
++tags: [scanner, scan, barcode, bluetooth, camera, keyboard, sku, pass, qr]
++related: [sales, sales/variants-and-stock]
++updated: 2026-10-11
++---
++A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.
++
++## Basic
++
++### The two scanners
++- **Bluetooth scanner.** Pair it in the iPad's own Settings as a keyboard (HID mode). After that, on Checkout, just scan: the item goes in the cart.
++- **Camera.** Tap the camera icon next to the search bar. A full-screen camera opens and stays open, so you can scan several things in a row. Each scan shows a green message ("Added Dragon plush") or a red one ("Not found: …"). Tap **Done** when finished. The camera reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, ITF-14 and QR codes.
++
++The gift card pop-up (Charge ▸ Gift card) has its own camera button for scanning a gift card's QR code.
++
++To check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart.
++
++### What a scan does, by screen
++| Where you are | Item barcode | Cashier pass | Gift card QR |
++|---|---|---|---|
++| **Checkout** | Adds 1 to the cart | Signs that person in; the cart stays as it is | Tells you to redeem it from Charge ▸ Gift card |
++| **Price check / Stock check** | Shows its price or stock; the cart is not touched | "That is a cashier pass, not an item." | Tells you to check it from Charge ▸ Gift card |
++| **Staff sign-in** | Not accepted | Signs in | Not accepted |
++
++If nothing matches you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).
++
++### When scanning does nothing
++- A pop-up is open, or you are on another screen (such as Pay). Scanning only adds to the cart from the Checkout screen with nothing on top of it.
++- You were typing in a box a moment ago. Scans are ignored for about 2½ seconds after you finish typing, so the scanner cannot take over what you were typing.
++- The scanner is not paired or not in keyboard mode. Test it in Settings ▸ Hardware.
++
++### Getting the on-screen keyboard back
++A Bluetooth scanner stops the iPad showing its on-screen keyboard. On the POS-mate scanner, **double-click the scanner button** to show the keyboard, and double-click again to hide it.
++
++## Deep
++
++### How a code is matched
++The code is compared with each variation's **barcode** after removing spaces and any zeros at the start. That is why a 12-digit UPC and the 13-digit EAN that begins with 0 find the same item. If no barcode matches, the code is tried against each **SKU** exactly, ignoring capital letters. If two items share a barcode, the first one found wins, so keep barcodes unique.
++
++### The order things are checked
++Checkout asks "is it a cashier pass?" first, then "is it an item?", then "is it a gift card?". The Price check and Stock check pop-ups ask "is it an item?" first, so a real barcode always wins there. A pass is the letter P followed by 12 letters and digits. A gift card QR starts with `shopify-giftcard-v1-`. Because no item should ever look like either, the order rarely matters.
++
++### Why a scanner acts like a keyboard
++A Bluetooth scanner connected this way pretends to be a keyboard: it types the digits and then presses Return. The POS keeps a hidden, always-ready text box that catches those keystrokes, and treats Return as "scan finished". This is also why a scanner can fight with a real keyboard, and why the POS backs off while you type.
++
++### Two scans of the same code
++The camera ignores the same code if it is seen again within about a second, so holding the camera on one barcode does not add ten.
++
++## Advanced
++
++### The path of a scan
++```mermaid
++flowchart TD
++  K[Scanner types code and Return] --> H[HidScanner hidden TextInput]
++  H -->|onSubmitEditing| S[onScan code]
++  C[CameraScanner onBarcodeScanned] -->|same code within 1.2 s ignored| S
++  S --> B{Checkout: isBadgeCode?}
++  B -->|yes| P[signInWithPass, cart unchanged]
++  B -->|no| F[findByBarcode: barcode then SKU]
++  F -->|found| A[add 1, toast Added]
++  F -->|not found| G{isGiftQr?}
++  G -->|yes| M[toast: redeem from Charge]
++  G -->|no| N[toast: No item for code]
++```
++
++### Where the code is
++| Job | Where |
++|---|---|
++| Hidden keyboard capture, camera screen | `src/screens/Scanner.tsx` (`HidScanner`, `CameraScanner`) |
++| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0}` |
++| Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |
++| Pass, gift, none | `resolveScan`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
++| Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |
++| Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |
++| Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |
++| Hardware test | `HardwareTest` in `Settings.tsx` (keeps the last 8 scans) |
++| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts` |
++
++### How HidScanner keeps focus
++It only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.
++
++### Reading the code for a fault
++- **"No item for …" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.
++- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the five conditions in the `enabled` expression is false: a sheet is open, the camera is up, a screen is stacked on top, or the tab is not Checkout.
++- **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.
++- **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).
++- **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.
++- **Characters come out wrong.** The scanner's keyboard layout does not match the iPad's. Change it with the scanner's setup barcodes, not in the app.
+diff --git a/help/sales/variants-and-stock.md b/help/sales/variants-and-stock.md
+new file mode 100644
+index 0000000..1c7c216
+--- /dev/null
++++ b/help/sales/variants-and-stock.md
+@@ -0,0 +1,86 @@
++---
++id: sales/variants-and-stock
++title: Variations, stock counts and negative stock
++parent: sales
++summary: Choosing a variation, what the stock dots and words mean, why you can sell below zero, and how counts stay up to date.
++tags: [variant, variation, stock, inventory, negative, oversold, picker]
++related: [sales, sales/grid, sales/scanners]
++updated: 2026-10-11
++---
++A product can come in several variations, such as colour or size. Each variation has its own price and its own stock count.
++
++## Basic
++
++### Choosing a variation
++Tap a product that has more than one variation and the grid is replaced by one tile per variation. Each shows its photo, name, price and stock. Tap the one you want and it goes in the cart, and you are back where you were. The bar above shows the product as the last step, for example *Home > Dragons > Highland cow*, so tap an earlier name to leave without choosing.
++
++A product with only one variation skips this step and is added straight away.
++
++### What the stock words mean
++| You see | It means |
++|---|---|
++| **12 in stock** | There are 12 counted. |
++| **Out of stock** | The count is 0. |
++| **3 oversold** | The count is below zero: 3 more have been sold than were counted. |
++| **Not tracked** | This item has no stock count (a service, or tracking is off in Shopify). |
++
++The coloured dot follows the same idea: green is fine, amber is 2 or fewer (including 0), and red is oversold.
++
++### Selling when stock is 0
++You can always sell an item that shows 0 or below. The POS warns you ("stock will go negative") and carries on, because the shelf is the truth and the count may simply be behind.
++
++### When the count changes
++- Selling an item lowers its count straight away on this device.
++- A refund puts it back.
++- Counts also change when someone on another register or in Shopify changes them. The app checks about every 25 seconds while it is open.
++- If any item goes below zero, a notification appears in the Notifications tab that takes you to Inventory so you can fix the count.
++
++### Fixing a wrong count
++Counts are corrected in Inventory (set a count, receive stock, or adjust it). If many items look wrong after a busy day, check that sales are not queued: the strip on Checkout says "Offline" or "queued" when they are.
++
++## Deep
++
++### Why overselling is allowed
++Shopify is told to take the stock off even if that makes it negative. A till that refused to sell would stop a customer who is standing there with the item in their hand, so the rule is: sell first, correct the count after.
++
++### Not tracked
++A variation whose stock is "not tracked" never shows a dot, is never counted in totals, and is not changed by sales or refunds. This is not the same as 0.
++
++### Stock check totals
++The Stock check tile shows the scanned variation first, then its siblings, and a total. The total only adds counts that are tracked, and treats negative counts as 0, so oversold stock does not pull the total down. It also says how many variations are not tracked, in brackets after the total.
++
++### Several registers
++Each register keeps its own copy of the counts and applies its own sales at once, so the number you see is right for you immediately. The real number lives in Shopify and each register catches up every 25 seconds or so. Two registers selling the last item at the same moment will both succeed, and the count will go to -1.
++
++## Advanced
++
++### Data and thresholds
++`Variant.stock` is `number | null` (`null` = not tracked). The thresholds are in two places that agree: `stockToneOf` in `src/lib/lookup.ts` (`none`, `ok`, `low` at 1 to 2, `out` at 0, `neg` below 0) and `stockTone` in `src/state/selectors.ts` for the tile dot (which has no separate `out`, so 0 shows as low).
++
++### When stock moves
++```mermaid
++flowchart TD
++  A[Add an item] --> B{stock tracked and stock minus qty below 0?}
++  B -->|yes| W[toast: stock will go negative]
++  B -->|no| T[toast: Added item]
++  S[Sale completes] --> L[applyLocalStock: sync.ts]
++  L --> O[outbox: Shopify orderCreate with DECREMENT_IGNORING_POLICY]
++  O --> H[Shopify lowers the stock]
++  P[pollShared every 25 s] --> D[fetchStockDelta since stockSince]
++  D --> U[variants stock replaced from Shopify]
++```
++
++- `applyLocalStock` changes the local count for each sold line by `-qty` for a sale, `+qty` for a refund, skipping untracked variations.
++- Shopify's own count is lowered by the order itself (`DECREMENT_IGNORING_POLICY`), so the POS does not send a second adjustment for sales.
++- For refunds the outbox item carries `done: { order, stock }` and the stock step uses `adjustStock` in `src/lib/shopify/inventory.ts` (`inventoryAdjustQuantities` with an idempotency key, so a retry cannot apply twice).
++- `pollShared` fetches stock changes since `stockSince` and replaces the matching variants' counts. Remote values win, which is how the count is corrected after a manual change in Shopify.
++- `App.tsx` runs a 25-second tick that polls, empties the outbox, and raises the "N item(s) with negative stock" notice (route `inventory`).
++
++### The picker
++`VariantPicker` in `Tiles.tsx` draws one tile per variation using `pickerVariants` (catalogue order, no duplicate ids) and `stockText`. It is a level of the grid, not a popup: `pickerCrumbs` adds the product as the last crumb, and changing tab, page, path or edit mode closes it (the `useEffect` that calls `setVariants(null)` in `Checkout.tsx`).
++
++### Reading the code for a fault
++- **Count did not drop after a sale.** The variation is untracked (`stock === null`), or `inventoryItemId` is missing so a later `pollShared` cannot match it. Check the variant on the device.
++- **Count jumped back after a sale.** `pollShared` replaced it with Shopify's number; the order has probably not reached Shopify yet (outbox not empty).
++- **Stock dot differs from the picker word.** Expected at exactly 0: the tile dot is amber for low, the picker says Out of stock.
++- **Tests.** `tests/lookup.test.ts` covers the tones, the words, the stock check totals and the picker helpers.
+diff --git a/src/lib/flowchart.ts b/src/lib/flowchart.ts
+new file mode 100644
+index 0000000..3ae1931
+--- /dev/null
++++ b/src/lib/flowchart.ts
+@@ -0,0 +1,121 @@
++// Location: src/lib/flowchart.ts
++// Reads the small Mermaid flowchart subset that help pages use and lays it out in layers (B7b). Pure: the Help screen only draws what this returns.
++// Supported: `flowchart TD|TB|LR` (or `graph`), nodes `A[text]` `A{text}` `A(text)`, arrows `A --> B` and `A -->|label| B`, chains `A --> B --> C`,
++// statements split by new lines or `;`, `%%` comments. Anything else (subgraph, style, classDef, click, other diagram types) returns null,
++// and the screen shows the source as text instead.
++
++export type FlowShape = 'box' | 'decision' | 'round';
++export type FlowParsed = { dir: 'TD' | 'LR'; nodes: { id: string; label: string; shape: FlowShape }[]; edges: { from: string; to: string; label?: string }[] };
++export type FlowNode = { id: string; shape: FlowShape; lines: string[]; x: number; y: number; w: number; h: number };
++export type FlowEdge = { from: string; to: string; label?: string; x1: number; y1: number; x2: number; y2: number; back: boolean };
++export type FlowLayout = { width: number; height: number; nodes: FlowNode[]; edges: FlowEdge[] };
++
++const HEADER = /^(flowchart|graph)\s+(TD|TB|LR)\s*$/i;
++const UNSUPPORTED = /^(subgraph|end|style|classDef|class|click|linkStyle|direction)\b/;
++const NODE = /^([A-Za-z_][\w]*)\s*(?:\[([^\]]*)\]|\{([^}]*)\}|\(([^)]*)\))?$/;
++const ARROW = /\s*-->\s*(?:\|([^|]*)\|)?\s*/;
++
++/** Split a line on `;`, but not inside [ ], { } or ( ), so a label can hold one. */
++function splitStatements(line: string): string[] {
++  const out: string[] = []; let depth = 0, cur = '';
++  for (const ch of line) {
++    if (ch === '[' || ch === '{' || ch === '(') depth++; else if ((ch === ']' || ch === '}' || ch === ')') && depth > 0) depth--;
++    if (ch === ';' && depth === 0) { out.push(cur); cur = ''; } else cur += ch;
++  }
++  out.push(cur); return out.map(x => x.trim()).filter(Boolean);
++}
++export function parseFlowchart(source: string): FlowParsed | null {
++  const lines = source.replace(/\r\n?/g, '\n').split('\n').map(l => l.trim()).filter(l => l && !l.startsWith('%%'));
++  if (!lines.length) return null;
++  const head = HEADER.exec(lines[0]); if (!head) return null;
++  const dir: 'TD' | 'LR' = head[2].toUpperCase() === 'LR' ? 'LR' : 'TD';
++  const nodes = new Map<string, { id: string; label: string; shape: FlowShape }>(); const edges: FlowParsed['edges'] = [];
++  const ref = (txt: string): string | null => {
++    const m = NODE.exec(txt.trim()); if (!m) return null;
++    const id = m[1]; const label = (m[2] ?? m[3] ?? m[4])?.trim().replace(/^"(.*)"$/, '$1');
++    const shape: FlowShape = m[3] !== undefined ? 'decision' : m[4] !== undefined ? 'round' : 'box';
++    const have = nodes.get(id);
++    if (label !== undefined) nodes.set(id, { id, label, shape }); else if (!have) nodes.set(id, { id, label: id, shape: 'box' });
++    return id;
++  };
++  for (const raw of lines.slice(1)) {
++    for (const stmt of splitStatements(raw)) {
++      if (UNSUPPORTED.test(stmt)) return null;
++      const parts = stmt.split(ARROW); // node, label, node, label, node ...
++      if (parts.length === 1) { if (ref(parts[0]) === null) return null; continue; }
++      let prev: string | null = null;
++      for (let k = 0; k < parts.length; k += 2) {
++        const id = ref(parts[k]); if (id === null) return null;
++        if (prev !== null) { const lab = parts[k - 1]?.trim(); edges.push({ from: prev, to: id, ...(lab ? { label: lab } : {}) }); }
++        prev = id;
++      }
++    }
++  }
++  return nodes.size ? { dir, nodes: [...nodes.values()], edges } : null;
++}
++
++const CHAR_W = 6.6, LINE_H = 15, PAD_X = 12, PAD_Y = 9, MAX_CHARS = 24, GAP_ALONG = 38, GAP_ACROSS = 18;
++/** Break a label into lines no longer than `max` characters, at spaces where possible. */
++export function wrapLabel(text: string, max = MAX_CHARS): string[] {
++  const out: string[] = []; let cur = '';
++  for (const word of text.split(/\s+/).filter(Boolean)) {
++    if (!cur) cur = word; else if ((cur + ' ' + word).length <= max) cur += ' ' + word; else { out.push(cur); cur = word; }
++    while (cur.length > max + 6) { out.push(cur.slice(0, max)); cur = cur.slice(max); } // an unbreakable path or word
++  }
++  if (cur) out.push(cur);
++  return out.length ? out : [''];
++}
++
++/** Layered layout. Layers follow the longest route from the start nodes (arrows that would loop back are drawn but do not push nodes around). */
++export function layoutFlowchart(f: FlowParsed): FlowLayout {
++  const ids = f.nodes.map(n => n.id); const idx = new Map(ids.map((id, i) => [id, i]));
++  const out = new Map<string, string[]>(ids.map(id => [id, []])); const inn = new Map<string, string[]>(ids.map(id => [id, []]));
++  // find back edges with a depth-first walk, so cycles cannot stall the layering
++  const state = new Map<string, 0 | 1 | 2>(); const back = new Set<string>(); const key = (a: string, b: string) => `${a}\u0000${b}`;
++  const adj = new Map<string, string[]>(ids.map(id => [id, []])); for (const e of f.edges) adj.get(e.from)?.push(e.to);
++  const dfs = (u: string) => { state.set(u, 1); for (const v of adj.get(u) ?? []) { const s = state.get(v) ?? 0; if (s === 1) back.add(key(u, v)); else if (s === 0) dfs(v); } state.set(u, 2); };
++  const hasIn = new Set(f.edges.filter(e => e.from !== e.to).map(e => e.to));
++  for (const id of ids) if (!hasIn.has(id) && !state.get(id)) dfs(id);
++  for (const id of ids) if (!state.get(id)) dfs(id);
++  for (const e of f.edges) { if (e.from === e.to || back.has(key(e.from, e.to))) continue; out.get(e.from)!.push(e.to); inn.get(e.to)!.push(e.from); }
++  // longest-path layers
++  const layer = new Map<string, number>(); const visit = (u: string): number => { if (layer.has(u)) return layer.get(u)!; layer.set(u, 0); const l = Math.max(0, ...inn.get(u)!.map(p => visit(p) + 1)); layer.set(u, l); return l; };
++  for (const id of ids) visit(id);
++  const nLayers = Math.max(...ids.map(id => layer.get(id)!)) + 1;
++  const rows: string[][] = Array.from({ length: nLayers }, () => []); for (const id of ids) rows[layer.get(id)!].push(id);
++  // order inside each layer: a few passes of the average position of the neighbours (keeps branches from crossing needlessly)
++  const pos = new Map<string, number>(); rows.forEach(r => r.forEach((id, i) => pos.set(id, i)));
++  const sweep = (down: boolean) => {
++    const order = down ? rows.map((_, i) => i).slice(1) : rows.map((_, i) => i).slice(0, -1).reverse();
++    for (const li of order) {
++      const bary = (id: string) => { const ns = (down ? inn.get(id)! : out.get(id)!).filter(n => layer.get(n) === (down ? li - 1 : li + 1)); return ns.length ? ns.reduce((s, n) => s + pos.get(n)!, 0) / ns.length : pos.get(id)!; };
++      rows[li].sort((a, b) => bary(a) - bary(b) || idx.get(a)! - idx.get(b)!); rows[li].forEach((id, i) => pos.set(id, i));
++    }
++  };
++  for (let p = 0; p < 3; p++) { sweep(true); sweep(false); }
++
++  const info = new Map(f.nodes.map(n => { const lines = wrapLabel(n.label); const w = Math.max(70, Math.max(...lines.map(l => l.length)) * CHAR_W + PAD_X * 2) + (n.shape === 'decision' ? 24 : 0); const h = lines.length * LINE_H + PAD_Y * 2 + (n.shape === 'decision' ? 10 : 0); return [n.id, { shape: n.shape, lines, w, h }] as const; }));
++  const td = f.dir === 'TD';
++  // `across` = the direction nodes in one layer are spread along; `along` = the direction layers stack
++  const acrossSize = (id: string) => (td ? info.get(id)!.w : info.get(id)!.h), alongSize = (id: string) => (td ? info.get(id)!.h : info.get(id)!.w);
++  const layerAcross = rows.map(r => r.reduce((s, id) => s + acrossSize(id), 0) + GAP_ACROSS * Math.max(0, r.length - 1));
++  const layerAlong = rows.map(r => Math.max(...r.map(alongSize)));
++  const totalAcross = Math.max(...layerAcross), totalAlong = layerAlong.reduce((s, v) => s + v, 0) + GAP_ALONG * (nLayers - 1);
++  const nodes: FlowNode[] = []; const at = new Map<string, FlowNode>(); let along = 0;
++  rows.forEach((r, li) => {
++    let across = (totalAcross - layerAcross[li]) / 2;
++    for (const id of r) {
++      const i = info.get(id)!; const a = acrossSize(id), l = alongSize(id); const alongPos = along + (layerAlong[li] - l) / 2;
++      const n: FlowNode = { id, shape: i.shape, lines: i.lines, w: i.w, h: i.h, x: td ? across : alongPos, y: td ? alongPos : across };
++      nodes.push(n); at.set(id, n); across += a + GAP_ACROSS;
++    }
++    along += layerAlong[li] + GAP_ALONG;
++  });
++  const edges: FlowEdge[] = f.edges.map(e => {
++    const a = at.get(e.from)!, b = at.get(e.to)!; const isBack = back.has(key(e.from, e.to)) || e.from === e.to;
++    // leave from the side facing the target, arrive on the side facing the source
++    if (td) { const down = b.y >= a.y; return { ...e, back: isBack, x1: a.x + a.w / 2, y1: down ? a.y + a.h : a.y, x2: b.x + b.w / 2, y2: down ? b.y : b.y + b.h }; }
++    const right = b.x >= a.x; return { ...e, back: isBack, x1: right ? a.x + a.w : a.x, y1: a.y + a.h / 2, x2: right ? b.x : b.x + b.w, y2: b.y + b.h / 2 };
++  });
++  return { width: td ? totalAcross : totalAlong, height: td ? totalAlong : totalAcross, nodes, edges };
++}
+diff --git a/src/lib/helpBuiltin.ts b/src/lib/helpBuiltin.ts
+new file mode 100644
+index 0000000..5c048e3
+--- /dev/null
++++ b/src/lib/helpBuiltin.ts
+@@ -0,0 +1,18 @@
++// Location: src/lib/helpBuiltin.ts
++// The copy of the help pages that ships inside the app (help/help.json, made by `npm run help:build`), so Help works with no internet.
++import bundled from '../../help/help.json';
++import { buildIndex, readBundle, type HelpIndex, type Page } from './helpDocs';
++
++export type HelpSet = { version: string; pages: Page[]; index: HelpIndex };
++/** Turn a bundle (the built-in one, or later a downloaded newer one) into pages plus their index. Null if the bundle is unusable. */
++export function helpSetFrom(raw: unknown): HelpSet | null {
++  const b = readBundle(raw); if (!b) return null;
++  const pages: Page[] = b.pages.map(p => ({ ...p, file: p.id }));
++  return { version: b.version, pages, index: buildIndex(pages) };
++}
++let cached: HelpSet | null | undefined;
++export function builtinHelp(): HelpSet {
++  if (cached === undefined) cached = helpSetFrom(bundled);
++  if (!cached) throw new Error('help/help.json is unreadable. Run: npm run help:build');
++  return cached;
++}
+diff --git a/src/lib/mdBlocks.ts b/src/lib/mdBlocks.ts
+new file mode 100644
+index 0000000..40720c9
+--- /dev/null
++++ b/src/lib/mdBlocks.ts
+@@ -0,0 +1,117 @@
++// Location: src/lib/mdBlocks.ts
++// The small slice of Markdown that help pages use, turned into plain data the Help screen can draw (B7b). Pure.
++// Supported: ### and #### headings, paragraphs, bullet and numbered lists (nested by 2-space indent), tables, fenced code,
++// ```mermaid blocks, and inline **bold**, *italic*, `code` and [text](href). Anything else is shown as ordinary text.
++// Links: `(#/page-id)` is a link to another help page (what resolveLinks produces); `http(s)://` is an outside link.
++// Anything else in a link's brackets is shown as text only, so a typo can never open something unexpected.
++
++export type Inline =
++  | { t: 'text'; s: string }
++  | { t: 'bold'; s: string }
++  | { t: 'italic'; s: string }
++  | { t: 'code'; s: string }
++  | { t: 'page'; s: string; id: string }
++  | { t: 'url'; s: string; href: string };
++export type ListItem = { inline: Inline[]; children: ListItem[] };
++export type Align = 'left' | 'center' | 'right';
++export type Block =
++  | { k: 'heading'; level: 2 | 3 | 4; inline: Inline[] }
++  | { k: 'para'; inline: Inline[] }
++  | { k: 'list'; ordered: boolean; items: ListItem[] }
++  | { k: 'table'; head: Inline[][]; align: Align[]; rows: Inline[][][] }
++  | { k: 'code'; lang: string; text: string }
++  | { k: 'diagram'; source: string };
++
++/** Inline spans. Bold and italic hold plain text only (no nesting), which is all the pages need. */
++export function parseInline(src: string): Inline[] {
++  const out: Inline[] = []; let buf = ''; let i = 0;
++  const flush = () => { if (buf) { out.push({ t: 'text', s: buf }); buf = ''; } };
++  while (i < src.length) {
++    const ch = src[i];
++    if (ch === '\\' && i + 1 < src.length && /[\\`*_[\]()#|]/.test(src[i + 1])) { buf += src[i + 1]; i += 2; continue; }
++    if (ch === '`') { const e = src.indexOf('`', i + 1); if (e > i) { flush(); out.push({ t: 'code', s: src.slice(i + 1, e) }); i = e + 1; continue; } }
++    if (ch === '*' && src[i + 1] === '*') { const e = src.indexOf('**', i + 2); if (e > i + 2) { flush(); out.push({ t: 'bold', s: src.slice(i + 2, e) }); i = e + 2; continue; } }
++    if (ch === '*' && src[i + 1] !== '*' && src[i + 1] !== ' ') { const e = src.indexOf('*', i + 1); if (e > i + 1 && src[e - 1] !== ' ') { flush(); out.push({ t: 'italic', s: src.slice(i + 1, e) }); i = e + 1; continue; } }
++    if (ch === '[') {
++      const m = /^\[([^\]\n]+)\]\(([^)\s]+)\)/.exec(src.slice(i));
++      if (m) {
++        flush(); const [whole, text, href] = m;
++        if (href.startsWith('#/')) out.push({ t: 'page', s: text, id: href.slice(2) });
++        else if (/^https?:\/\//i.test(href)) out.push({ t: 'url', s: text, href });
++        else out.push({ t: 'text', s: text });
++        i += whole.length; continue;
++      }
++    }
++    buf += ch; i++;
++  }
++  flush();
++  return out;
++}
++
++const FENCE = /^\s{0,3}(`{3,}|~{3,})\s*([\w-]*)\s*$/;
++const BULLET = /^(\s*)([-*+])\s+(.*)$/;
++const NUMBER = /^(\s*)\d+[.)]\s+(.*)$/;
++const splitRow = (line: string): string[] => {
++  let t = line.trim(); if (t.startsWith('|')) t = t.slice(1); if (t.endsWith('|') && !t.endsWith('\\|')) t = t.slice(0, -1);
++  const cells: string[] = []; let cur = '';
++  for (let i = 0; i < t.length; i++) { if (t[i] === '\\' && t[i + 1] === '|') { cur += '|'; i++; } else if (t[i] === '|') { cells.push(cur.trim()); cur = ''; } else cur += t[i]; }
++  cells.push(cur.trim()); return cells;
++};
++const isSepRow = (line: string) => line.includes('|') && /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/.test(line);
++
++export function parseBlocks(md: string): Block[] {
++  const lines = md.replace(/\r\n?/g, '\n').split('\n'); const out: Block[] = []; let i = 0;
++  while (i < lines.length) {
++    const line = lines[i];
++    if (!line.trim()) { i++; continue; }
++    const f = FENCE.exec(line);
++    if (f) {
++      const mark = f[1][0]; const lang = f[2].toLowerCase(); const buf: string[] = []; i++;
++      while (i < lines.length) { const c = FENCE.exec(lines[i]); if (c && c[1][0] === mark && !c[2]) break; buf.push(lines[i]); i++; }
++      i++; // the closing fence (a missing one just ends the block at the end of the text)
++      const text = buf.join('\n').replace(/\s+$/, '');
++      out.push(lang === 'mermaid' ? { k: 'diagram', source: text } : { k: 'code', lang, text });
++      continue;
++    }
++    const h = /^(#{2,4})\s+(.+?)\s*#*\s*$/.exec(line);
++    if (h) { out.push({ k: 'heading', level: h[1].length as 2 | 3 | 4, inline: parseInline(h[2]) }); i++; continue; }
++    if (line.includes('|') && i + 1 < lines.length && isSepRow(lines[i + 1])) {
++      const head = splitRow(line); const sep = splitRow(lines[i + 1]);
++      const align: Align[] = head.map((_, c) => { const s = sep[c] ?? ''; return s.startsWith(':') && s.endsWith(':') ? 'center' : s.endsWith(':') ? 'right' : 'left'; });
++      i += 2; const rows: Inline[][][] = [];
++      while (i < lines.length && lines[i].trim() && lines[i].includes('|')) { const cells = splitRow(lines[i]); rows.push(head.map((_, c) => parseInline(cells[c] ?? ''))); i++; }
++      out.push({ k: 'table', head: head.map(parseInline), align, rows });
++      continue;
++    }
++    if (BULLET.test(line) || NUMBER.test(line)) {
++      const root: ListItem[] = []; const stack: { indent: number; items: ListItem[] }[] = [{ indent: -1, items: root }]; let ordered = NUMBER.test(line) && !BULLET.test(line);
++      while (i < lines.length) {
++        const l = lines[i]; const b = BULLET.exec(l); const n = b ? null : NUMBER.exec(l);
++        if (b || n) {
++          const indent = (b ? b[1] : n![1]).replace(/\t/g, '  ').length; const text = b ? b[3] : n![2];
++          while (stack.length > 1 && indent <= stack[stack.length - 1].indent) stack.pop();
++          const item: ListItem = { inline: parseInline(text), children: [] };
++          const top = stack[stack.length - 1]; top.items.push(item);
++          stack.push({ indent, items: item.children }); i++; continue;
++        }
++        // a wrapped continuation line (indented, not blank, not a new block) joins the last item
++        if (l.trim() && /^\s{2,}\S/.test(l) && !FENCE.test(l) && stack.length > 1) {
++          const parent = stack[stack.length - 2]; const owner = parent.items[parent.items.length - 1];
++          owner.inline = [...owner.inline, { t: 'text', s: ' ' }, ...parseInline(l.trim())]; i++; continue;
++        }
++        break;
++      }
++      out.push({ k: 'list', ordered, items: root });
++      continue;
++    }
++    // paragraph: runs until a blank line or the start of another block
++    const buf: string[] = [];
++    while (i < lines.length && lines[i].trim() && !FENCE.test(lines[i]) && !/^#{2,4}\s/.test(lines[i]) && !BULLET.test(lines[i]) && !NUMBER.test(lines[i]) && !(lines[i].includes('|') && i + 1 < lines.length && isSepRow(lines[i + 1]))) { buf.push(lines[i].trim()); i++; }
++    if (buf.length) out.push({ k: 'para', inline: parseInline(buf.join(' ')) });
++    else i++; // safety: never loop on a line nothing recognises
++  }
++  return out;
++}
++
++/** The plain text of some inline spans (for search snippets and accessibility labels). */
++export const inlineText = (xs: Inline[]): string => xs.map(x => x.s).join('');
+diff --git a/src/lib/uiMode.ts b/src/lib/uiMode.ts
+index 72306ba..ec941a5 100644
+--- a/src/lib/uiMode.ts
++++ b/src/lib/uiMode.ts
+@@ -8,7 +8,7 @@ export type TextSize = 'normal' | 'large' | 'xlarge';
+ export type TabLevel = 'all' | 'core' | 'basic';
+ export type MoreLevel = 'all' | 'everyday' | 'essential';
+ export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
+-export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'lock';
++export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'help' | 'lock';
+ 
+ /** The four dials a Custom mode exposes. */
+ export type CustomUi = { textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel; guided: boolean };
+@@ -26,10 +26,10 @@ export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
+ /** Rows in the More screen, in three groups (the screen draws a card per group). */
+ export const MORE_GROUPS: MoreRowId[][] = [
+   ['orders', 'items', 'customers', 'saved', 'giftcards'],
+-  ['reports', 'drawer', 'staff', 'settings', 'diagnostics'],
++  ['reports', 'drawer', 'staff', 'settings', 'diagnostics', 'help'],
+   ['lock'],
+ ];
+-const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'lock'];
++const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'help', 'lock'];
+ const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
+ export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
+ const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
+@@ -101,6 +101,7 @@ export const MORE_EXPLAIN: Record<MoreRowId, string> = {
+   staff: 'Who can use the till, their PINs and passes.',
+   settings: 'Payments, receipts and everything else.',
+   diagnostics: 'Check the card reader and fix problems.',
++  help: 'How every part of the till works, in as much detail as you like.',
+   lock: 'Lock the till so nobody else can use it. Your cart stays as it is.',
+ };
+ 
+diff --git a/src/screens/Help.tsx b/src/screens/Help.tsx
+new file mode 100644
+index 0000000..3066d4d
+--- /dev/null
++++ b/src/screens/Help.tsx
+@@ -0,0 +1,66 @@
++// Location: src/screens/Help.tsx
++// More ▸ Help (B7b). Reads the built-in copy of the help pages (help/help.json), so it works offline.
++// A page shows at the depth you chose (Basic, Deep or Advanced), which is remembered. `id` opens a page directly (used by the "?" buttons later).
++import React, { useMemo, useState } from 'react';
++import { ScrollView, View } from 'react-native';
++import { Chip, Empty, Field, IconBtn, Page, Row, Section, Segmented, Txt } from '../ui/kit';
++import Markdown from '../ui/Markdown';
++import { useTheme } from '../ui/theme';
++import { useNav } from '../ui/nav';
++import { useApp } from '../state/store';
++import { builtinHelp } from '../lib/helpBuiltin';
++import { DEPTHS, DEPTH_BLURB, DEPTH_LABEL, ROOT_ID, depthsPresent, resolveLinks, searchPages, selectDepth, trail, type Depth } from '../lib/helpDocs';
++import { parseBlocks } from '../lib/mdBlocks';
++
++const asDepth = (v: unknown): Depth => ((DEPTHS as readonly string[]).includes(v as string) ? (v as Depth) : 'basic');
++
++export default function Help({ id }: { id?: string }) {
++  const { c } = useTheme(); const nav = useNav();
++  const set = useMemo(builtinHelp, []); const { index, pages } = set;
++  const depth = asDepth(useApp(s => s.settings.helpDepth)); const patch = useApp(s => s.patchSettings);
++  const [hist, setHist] = useState<string[]>([id && index.byId[id] ? id : ROOT_ID]);
++  const [q, setQ] = useState('');
++  const cur = hist[hist.length - 1]; const page = index.byId[cur] ?? index.byId[ROOT_ID];
++  const go = (to: string) => { if (!index.byId[to]) return; setQ(''); setHist(h => (h[h.length - 1] === to ? h : [...h, to])); };
++  const back = () => (q ? setQ('') : hist.length > 1 ? setHist(h => h.slice(0, -1)) : nav.pop());
++  const results = useMemo(() => (q.trim() ? searchPages(pages, q, depth).slice(0, 30) : []), [q, pages, depth]);
++  const blocks = useMemo(() => parseBlocks(resolveLinks(selectDepth(page, depth), t => index.byId[t]?.title, t => `#/${t}`)), [page, depth, index]);
++  const crumbs = trail(index, page.id).slice(0, -1);
++  const kids = (index.children[page.id] ?? []).map(k => index.byId[k]);
++  const related = page.related.filter(r => index.byId[r] && r !== page.id).map(r => index.byId[r]);
++  const seen = new Set([...kids.map(k => k.id), ...related.map(r => r.id), page.id]);
++  const linkedHere = (index.backlinks[page.id] ?? []).filter(b => !seen.has(b) && b !== page.parent).map(b => index.byId[b]);
++  const present = depthsPresent(page); const missing = depth !== 'basic' && !present.includes(depth);
++  const parentTitle = (p: { parent?: string }) => (p.parent && index.byId[p.parent] ? index.byId[p.parent].title : undefined);
++
++  return (
++    <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back}
++      right={page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : undefined}>
++      <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
++        <Field kind="search" placeholder="Search help" value={q} onChangeText={setQ} />
++        <Segmented value={depth} options={DEPTHS.map(d => ({ v: d, label: DEPTH_LABEL[d] }))} onChange={d => patch({ helpDepth: d })} />
++        <Txt size={13} sub>{DEPTH_BLURB[depth]}</Txt>
++
++        {q.trim() ? (
++          results.length ? (
++            <Section>{results.map((r, i) => <Row key={r.page.id} title={r.page.title} sub={[parentTitle(r.page), r.page.summary].filter(Boolean).join(' · ')} last={i === results.length - 1} onPress={() => go(r.page.id)} />)}</Section>
++          ) : <Empty icon="search-outline" title="Nothing found" sub="Try fewer or different words. Every word you type has to match." />
++        ) : (
++          <>
++            {crumbs.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{crumbs.map(p => <Chip key={p.id} label={p.id === ROOT_ID ? 'Help' : p.title} icon="chevron-back" onPress={() => go(p.id)} />)}</ScrollView> : null}
++            {page.id !== ROOT_ID ? <Txt size={24} weight="700">{page.title}</Txt> : null}
++            <Markdown blocks={blocks} onPage={go} />
++            {missing ? <View style={{ backgroundColor: c.fill, borderRadius: 10, padding: 12 }}><Txt size={13} sub>There are no {DEPTH_LABEL[depth]} notes for this page yet, so you are seeing everything it has.</Txt></View> : null}
++          </>
++        )}
++      </View>
++      {q.trim() ? null : (
++        <>
++          {kids.length ? <Section title={page.id === ROOT_ID ? 'Topics' : 'In this section'}>{kids.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === kids.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
++          {related.length ? <Section title="Related">{related.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === related.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
++          {linkedHere.length ? <Section title="Pages that link here">{linkedHere.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === linkedHere.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
++        </>
++      )}
++    </Page>
++  );
++}
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index 882334e..db23318 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -12,7 +12,7 @@ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }>
+   customers: { icon: 'people-outline', title: 'Customers', route: 'customers' }, saved: { icon: 'bookmarks-outline', title: 'Saved carts', route: 'saved' },
+   giftcards: { icon: 'gift-outline', title: 'Gift cards', route: 'giftcards' }, reports: { icon: 'stats-chart-outline', title: 'Reports', route: 'reports' },
+   drawer: { icon: 'cash-outline', title: 'Cash drawer', route: 'drawer' }, staff: { icon: 'id-card-outline', title: 'Staff', route: 'staff' },
+-  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' },
++  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' },
+   lock: { icon: 'lock-closed-outline', title: 'Lock register' },
+ };
+ /** What the row says underneath when explanations are off. */
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 7acdceb..245d4e1 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -10,6 +10,7 @@ import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPres
+ import type { Totals } from '../lib/rollup';
+ import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
+ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
++import type { Depth } from '../lib/helpDocs';
+ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+ 
+@@ -23,11 +24,12 @@ export type Settings = {
+   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
+   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
+   inventory: InvPrefs; // Inventory screen filters / sort / grouping (per device)
++  helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
+   sharedVersion: number;
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
+-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
++  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', sharedVersion: 0,
+ });
+ 
+ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+diff --git a/src/ui/Flowchart.tsx b/src/ui/Flowchart.tsx
+new file mode 100644
+index 0000000..b6487c1
+--- /dev/null
++++ b/src/ui/Flowchart.tsx
+@@ -0,0 +1,57 @@
++// Location: src/ui/Flowchart.tsx
++// Draws a help-page flowchart with react-native-svg from the layout in lib/flowchart.ts. Anything the reader cannot parse is shown as text instead.
++import React, { useMemo } from 'react';
++import { Platform, ScrollView, Text, View } from 'react-native';
++import Svg, { Defs, G, Marker, Path, Polygon, Rect, Text as SvgText } from 'react-native-svg';
++import { layoutFlowchart, parseFlowchart } from '../lib/flowchart';
++import { useTheme } from './theme';
++import { useUi } from './uiProfile';
++
++const PAD = 10, LINE_H = 15;
++const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
++
++export default function Flowchart({ source }: { source: string }) {
++  const { c } = useTheme(); const k = useUi().textScale;
++  const layout = useMemo(() => { try { const f = parseFlowchart(source); return f ? layoutFlowchart(f) : null; } catch { return null; } }, [source]);
++  if (!layout) return (
++    <View style={{ backgroundColor: c.fill, borderRadius: 10, padding: 12, marginVertical: 6 }}>
++      <Text style={{ color: c.sub, fontSize: 12, marginBottom: 6 }}>This diagram cannot be drawn here. Its source:</Text>
++      <ScrollView horizontal><Text selectable style={{ color: c.text, fontFamily: MONO, fontSize: 12 * Math.min(k, 1.25) }}>{source}</Text></ScrollView>
++    </View>
++  );
++  const W = layout.width + PAD * 2, H = layout.height + PAD * 2;
++  const byId = new Map(layout.nodes.map(n => [n.id, n]));
++  return (
++    <ScrollView horizontal showsHorizontalScrollIndicator style={{ backgroundColor: c.fill, borderRadius: 10, marginVertical: 6 }} contentContainerStyle={{ padding: 4 }}>
++      <Svg width={W} height={H} accessibilityLabel={`Flowchart with ${layout.nodes.length} steps: ${layout.nodes.map(n => n.lines.join(' ')).join(', ')}`}>
++        <Defs><Marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><Path d="M 0 0 L 10 5 L 0 10 z" fill={c.sub} /></Marker></Defs>
++        <G x={PAD} y={PAD}>
++          {layout.edges.map((e, i) => {
++            const horiz = Math.abs(e.x2 - e.x1) >= Math.abs(e.y2 - e.y1) && !(Math.abs(e.x2 - e.x1) < 1);
++            // a gentle S-curve: leave and arrive straight on, so arrows meet the faces squarely
++            const mx = (e.x1 + e.x2) / 2, my = (e.y1 + e.y2) / 2;
++            const d = Math.abs(e.x1 - e.x2) < 1 || Math.abs(e.y1 - e.y2) < 1 ? `M ${e.x1} ${e.y1} L ${e.x2} ${e.y2}` : horiz ? `M ${e.x1} ${e.y1} C ${mx} ${e.y1}, ${mx} ${e.y2}, ${e.x2} ${e.y2}` : `M ${e.x1} ${e.y1} C ${e.x1} ${my}, ${e.x2} ${my}, ${e.x2} ${e.y2}`;
++            return (
++              <G key={i}>
++                <Path d={d} stroke={c.sub} strokeWidth={1.4} fill="none" strokeDasharray={e.back ? '4 3' : undefined} markerEnd="url(#arrow)" />
++                {e.label ? <G><Rect x={mx - e.label.length * 3.1 - 4} y={my - 8} width={e.label.length * 6.2 + 8} height={16} rx={4} fill={c.fill} /><SvgText x={mx} y={my + 4} fontSize={11} fill={c.sub} textAnchor="middle">{e.label}</SvgText></G> : null}
++              </G>
++            );
++          })}
++          {layout.nodes.map(n => {
++            const cx = n.x + n.w / 2, cy = n.y + n.h / 2; const first = cy - ((n.lines.length - 1) * LINE_H) / 2 + 4;
++            const shape = n.shape === 'decision'
++              ? <Polygon points={`${cx},${n.y} ${n.x + n.w},${cy} ${cx},${n.y + n.h} ${n.x},${cy}`} fill={c.card} stroke={c.warn} strokeWidth={1.4} />
++              : <Rect x={n.x} y={n.y} width={n.w} height={n.h} rx={n.shape === 'round' ? n.h / 2 : 8} fill={c.card} stroke={c.line} strokeWidth={1.4} />;
++            return (
++              <G key={n.id}>
++                {shape}
++                {n.lines.map((l, i) => <SvgText key={i} x={cx} y={first + i * LINE_H} fontSize={12} fill={c.text} textAnchor="middle">{l}</SvgText>)}
++              </G>
++            );
++          })}
++        </G>
++      </Svg>
++    </ScrollView>
++  );
++}
+diff --git a/src/ui/Markdown.tsx b/src/ui/Markdown.tsx
+new file mode 100644
+index 0000000..11e72a4
+--- /dev/null
++++ b/src/ui/Markdown.tsx
+@@ -0,0 +1,71 @@
++// Location: src/ui/Markdown.tsx
++// Draws the blocks from lib/mdBlocks.ts. Text follows the display mode's text size, like the rest of the app.
++import React from 'react';
++import { Linking, Platform, ScrollView, Text, View } from 'react-native';
++import type { Align, Block, Inline, ListItem } from '../lib/mdBlocks';
++import { useTheme } from './theme';
++import { useUi } from './uiProfile';
++import Flowchart from './Flowchart';
++
++const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
++const half = (n: number) => Math.round(n * 2) / 2;
++
++export default function Markdown({ blocks, onPage }: { blocks: Block[]; onPage: (id: string) => void }) {
++  const { c, dark } = useTheme(); const k = useUi().textScale;
++  const link = dark ? '#60A5FA' : '#2563EB';
++  const size = half(15 * k);
++  const spans = (xs: Inline[], base: { color?: string; weight?: '400' | '600' | '700'; size?: number } = {}) => xs.map((x, i) => {
++    const common = { fontSize: base.size ?? size, color: base.color ?? c.text };
++    switch (x.t) {
++      case 'bold': return <Text key={i} style={{ ...common, fontWeight: '700' }}>{x.s}</Text>;
++      case 'italic': return <Text key={i} style={{ ...common, fontStyle: 'italic' }}>{x.s}</Text>;
++      case 'code': return <Text key={i} style={{ fontFamily: MONO, fontSize: half((base.size ?? size) * 0.9), color: c.text, backgroundColor: c.fill }}>{` ${x.s} `}</Text>;
++      case 'page': return <Text key={i} onPress={() => onPage(x.id)} accessibilityRole="link" style={{ ...common, color: link, textDecorationLine: 'underline' }}>{x.s}</Text>;
++      case 'url': return <Text key={i} onPress={() => { void Linking.openURL(x.href).catch(() => {}); }} accessibilityRole="link" style={{ ...common, color: link, textDecorationLine: 'underline' }}>{x.s}</Text>;
++      default: return <Text key={i} style={{ ...common, fontWeight: base.weight }}>{x.s}</Text>;
++    }
++  });
++  const list = (items: ListItem[], ordered: boolean, depth: number): React.ReactNode => (
++    <View style={{ gap: 4 }}>
++      {items.map((it, i) => (
++        <View key={i}>
++          <View style={{ flexDirection: 'row', gap: 8, paddingLeft: depth * 16 }}>
++            <Text style={{ fontSize: size, color: c.sub, width: ordered ? 22 : 10 }}>{ordered ? `${i + 1}.` : '•'}</Text>
++            <Text style={{ flex: 1, fontSize: size, lineHeight: half(size * 1.4), color: c.text }}>{spans(it.inline)}</Text>
++          </View>
++          {it.children.length ? <View style={{ marginTop: 4 }}>{list(it.children, false, depth + 1)}</View> : null}
++        </View>
++      ))}
++    </View>
++  );
++  const alignOf = (a: Align) => (a === 'center' ? 'center' : a === 'right' ? 'right' : 'left');
++  return (
++    <View style={{ gap: 12 }}>
++      {blocks.map((b, bi) => {
++        switch (b.k) {
++          case 'heading': return <Text key={bi} accessibilityRole="header" style={{ marginTop: 6, fontSize: half((b.level === 2 ? 20 : b.level === 3 ? 17 : 15) * k), fontWeight: '700', color: c.text }}>{spans(b.inline, { weight: '700', size: half((b.level === 2 ? 20 : b.level === 3 ? 17 : 15) * k) })}</Text>;
++          case 'para': return <Text key={bi} style={{ fontSize: size, lineHeight: half(size * 1.45), color: c.text }}>{spans(b.inline)}</Text>;
++          case 'list': return <View key={bi}>{list(b.items, b.ordered, 0)}</View>;
++          case 'table': {
++            const fs = half(13.5 * k);
++            return (
++              <View key={bi} style={{ borderWidth: 1, borderColor: c.line, borderRadius: 10, overflow: 'hidden' }}>
++                {[b.head, ...b.rows].map((row, ri) => (
++                  <View key={ri} style={{ flexDirection: 'row', backgroundColor: ri === 0 ? c.fill : c.card, borderTopWidth: ri === 0 ? 0 : 1, borderTopColor: c.line }}>
++                    {row.map((cell, ci) => (
++                      <View key={ci} style={{ flex: 1, padding: 8, borderLeftWidth: ci === 0 ? 0 : 1, borderLeftColor: c.line }}>
++                        <Text style={{ fontSize: fs, lineHeight: half(fs * 1.35), color: c.text, textAlign: alignOf(b.align[ci] ?? 'left') }}>{spans(cell, { size: fs, weight: ri === 0 ? '700' : undefined })}</Text>
++                      </View>
++                    ))}
++                  </View>
++                ))}
++              </View>
++            );
++          }
++          case 'code': return <ScrollView key={bi} horizontal style={{ backgroundColor: c.fill, borderRadius: 10 }} contentContainerStyle={{ padding: 12 }}><Text selectable style={{ fontFamily: MONO, fontSize: half(12.5 * Math.min(k, 1.25)), color: c.text }}>{b.text}</Text></ScrollView>;
++          case 'diagram': return <Flowchart key={bi} source={b.source} />;
++        }
++      })}
++    </View>
++  );
++}
+diff --git a/tests/helpcitations.test.ts b/tests/helpcitations.test.ts
+new file mode 100644
+index 0000000..fd416e9
+--- /dev/null
++++ b/tests/helpcitations.test.ts
+@@ -0,0 +1,38 @@
++// Location: tests/helpcitations.test.ts
++// B7: help pages name real files and functions. If code is renamed or deleted, this fails and says which page to update.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import { loadPages } from '../scripts/build-help';
++
++const ROOT = path.resolve(__dirname, '..');
++const walk = (dir: string, out: string[] = []): string[] => {
++  for (const e of fs.readdirSync(path.join(ROOT, dir), { withFileTypes: true })) {
++    if (e.name === 'node_modules' || e.name.startsWith('.')) continue;
++    const rel = path.join(dir, e.name);
++    if (e.isDirectory()) walk(rel, out); else if (/\.(ts|tsx|js)$/.test(e.name)) out.push(rel);
++  }
++  return out;
++};
++const code = [...walk('src'), ...walk('tests'), ...walk('scripts'), 'App.tsx'];
++const corpus = code.map(f => fs.readFileSync(path.join(ROOT, f), 'utf8')).join('\n');
++const baseNames = new Set(code.map(f => path.basename(f)));
++/** Words that are fine to name in a page even though they are not code in this repo. Keep this short, and say why. */
++const ALLOW = new Set<string>([
++  'inventoryAdjustQuantities', 'orderCreate', // Shopify API names, called inside template strings
++]);
++
++test('every file and function a page names in `backticks` exists in the code', () => {
++  const missing: string[] = [];
++  for (const p of loadPages().pages) {
++    const text = [p.lead, p.sections.basic, p.sections.deep, p.sections.advanced].join('\n').replace(/```[\s\S]*?```/g, '');
++    for (const m of new Set([...text.matchAll(/`([^`\n]+)`/g)].map(x => x[1].trim()))) {
++      if (ALLOW.has(m)) continue;
++      if (/^(src|tests|scripts|help)\/[\w./-]+\.\w+$/.test(m)) { if (!fs.existsSync(path.join(ROOT, m))) missing.push(`${p.id}: file ${m}`); continue; }
++      if (/^[A-Za-z][\w]*\.tsx?$/.test(m)) { if (!baseNames.has(m)) missing.push(`${p.id}: file name ${m}`); continue; }
++      if (/^[a-z][a-z0-9]*[A-Z][A-Za-z0-9]*$/.test(m) || /^[A-Z][A-Za-z0-9]*[a-z][A-Za-z0-9]*[A-Z]?[A-Za-z0-9]*$/.test(m) && m.length > 4) { if (!corpus.includes(m)) missing.push(`${p.id}: name ${m}`); }
++    }
++  }
++  assert.deepEqual(missing, [], 'A help page names something that is not in the code any more. Update the page (or, for an outside name, add it to ALLOW with a reason).');
++});
+diff --git a/tests/helpview.test.ts b/tests/helpview.test.ts
+new file mode 100644
+index 0000000..4406439
+--- /dev/null
++++ b/tests/helpview.test.ts
+@@ -0,0 +1,128 @@
++// Location: tests/helpview.test.ts
++// B7b: the Markdown subset, the flowchart reader and layout, and the real pages through both.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { inlineText, parseBlocks, parseInline } from '../src/lib/mdBlocks';
++import { layoutFlowchart, parseFlowchart, wrapLabel } from '../src/lib/flowchart';
++import { diagramBlocks, resolveLinks, selectDepth, trail } from '../src/lib/helpDocs';
++import { loadPages } from '../scripts/build-help';
++
++// ── inline ───────────────────────────────────────────────────────────────────
++test('inline: bold, italic, code, page links, outside links, escapes', () => {
++  const x = parseInline('a **b** *c* `d` [P](#/sales/cart) [W](https://x.org/y) \\*not\\*');
++  assert.deepEqual(x.map(i => i.t), ['text', 'bold', 'text', 'italic', 'text', 'code', 'text', 'page', 'text', 'url', 'text']);
++  assert.deepEqual(x.find(i => i.t === 'page'), { t: 'page', s: 'P', id: 'sales/cart' });
++  assert.equal(inlineText(x).endsWith('*not*'), true);
++});
++test('inline: code is literal, an unmatched marker stays as text, odd links are text only', () => {
++  assert.deepEqual(parseInline('`**x**`'), [{ t: 'code', s: '**x**' }]);
++  assert.deepEqual(parseInline('2 * 3 and **open'), [{ t: 'text', s: '2 * 3 and **open' }]);
++  assert.ok(parseInline('[click](javascript:alert(1))').every(i => i.t === 'text')); // never becomes a link
++  assert.deepEqual(parseInline('[a](ftp://x)'), [{ t: 'text', s: 'a' }]);
++});
++
++// ── blocks ───────────────────────────────────────────────────────────────────
++test('blocks: headings, paragraphs joined, lists nested by indent, numbered lists', () => {
++  const b = parseBlocks('### Head\nline one\nline two\n\n- a\n  - a1\n  - a2\n- b\n\n1. one\n2. two');
++  assert.equal(b[0].k, 'heading'); assert.equal((b[1] as any).inline[0].s, 'line one line two');
++  const list = b[2] as any; assert.equal(list.k, 'list'); assert.equal(list.ordered, false); assert.equal(list.items.length, 2); assert.equal(list.items[0].children.length, 2);
++  assert.equal((b[3] as any).ordered, true); assert.equal((b[3] as any).items.length, 2);
++});
++test('blocks: a wrapped list line joins its item', () => {
++  const b = parseBlocks('- first part\n  second part\n- next'); const l = b[0] as any;
++  assert.equal(l.items.length, 2); assert.equal(inlineText(l.items[0].inline), 'first part second part');
++});
++test('blocks: tables with alignment, a pipe escaped inside a cell, short rows padded', () => {
++  const b = parseBlocks('| A | B |\n|:--|--:|\n| 1 | x\\|y |\n| 2 |\n\nafter');
++  const t = b[0] as any; assert.equal(t.k, 'table'); assert.deepEqual(t.align, ['left', 'right']);
++  assert.equal(inlineText(t.rows[0][1]), 'x|y'); assert.equal(t.rows[1].length, 2); assert.equal(b[1].k, 'para');
++});
++test('blocks: code fences keep their text (even ## and |), mermaid becomes a diagram, a missing close ends at the end', () => {
++  const b = parseBlocks('```text\n## not a heading\n| a | b |\n```\n```mermaid\nflowchart TD\nA-->B\n```\n```\nunclosed');
++  assert.deepEqual(b.map(x => x.k), ['code', 'diagram', 'code']); assert.equal((b[0] as any).text, '## not a heading\n| a | b |'); assert.equal((b[2] as any).text, 'unclosed');
++});
++test('blocks: a table needs a separator row, otherwise it is a paragraph', () => {
++  assert.equal(parseBlocks('a | b\nc | d')[0].k, 'para');
++});
++test('blocks: never loops on odd input', () => {
++  for (const s of ['', '\n\n', '---', '#### x', '|', '- ', '```', '1)']) assert.doesNotThrow(() => parseBlocks(s));
++});
++
++// ── flowchart ────────────────────────────────────────────────────────────────
++test('flowchart: shapes, labels on arrows, chains, ; and comments', () => {
++  const f = parseFlowchart('flowchart LR\n%% note\nA[Start] --> B{Ok?} -->|yes| C(Done); B -->|no| D\n');
++  assert.equal(f!.dir, 'LR'); assert.deepEqual(f!.nodes.map(n => [n.id, n.shape, n.label]), [['A', 'box', 'Start'], ['B', 'decision', 'Ok?'], ['C', 'round', 'Done'], ['D', 'box', 'D']]);
++  assert.deepEqual(f!.edges, [{ from: 'A', to: 'B' }, { from: 'B', to: 'C', label: 'yes' }, { from: 'B', to: 'D', label: 'no' }]);
++});
++test('flowchart: a node can be labelled later; punctuation in labels is fine', () => {
++  const f = parseFlowchart('flowchart TD\nA --> B\nA[persist \'pos\', 400 ms: debounce]');
++  assert.equal(f!.nodes.find(n => n.id === 'A')!.label, "persist 'pos', 400 ms: debounce");
++});
++test('flowchart: a ; inside a label is part of the label, outside it separates statements', () => {
++  const f = parseFlowchart('flowchart TD\nA[one; two] --> B; B --> C')!;
++  assert.equal(f.nodes.find(n => n.id === 'A')!.label, 'one; two'); assert.equal(f.edges.length, 2);
++});
++test('flowchart: anything outside the subset returns null (the screen then shows the source)', () => {
++  for (const s of ['sequenceDiagram\nA->>B: hi', 'flowchart TD\nsubgraph x\nA-->B\nend', 'flowchart TD\nstyle A fill:#f00', 'flowchart TD\nA --- B', '', 'flowchart TD', 'not a chart', 'flowchart TD\nA[ok] --> ???']) assert.equal(parseFlowchart(s), null, s);
++});
++test('wrapLabel: wraps at spaces, splits one very long word, never returns nothing', () => {
++  assert.deepEqual(wrapLabel('aaa bbb ccc', 7), ['aaa bbb', 'ccc']); assert.ok(wrapLabel('x'.repeat(80)).length >= 3); assert.deepEqual(wrapLabel(''), ['']);
++});
++test('layout: layers follow the arrows, branches sit side by side, nothing overlaps', () => {
++  const l = layoutFlowchart(parseFlowchart('flowchart TD\nA --> B\nA --> C\nB --> D\nC --> D')!);
++  const n = Object.fromEntries(l.nodes.map(x => [x.id, x]));
++  assert.ok(n.A.y < n.B.y && n.B.y < n.D.y); assert.equal(n.B.y, n.C.y); assert.ok(n.B.x !== n.C.x);
++  for (const a of l.nodes) for (const b of l.nodes) if (a !== b) assert.ok(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y, `${a.id} overlaps ${b.id}`);
++  for (const x of l.nodes) assert.ok(x.x >= 0 && x.y >= 0 && x.x + x.w <= l.width + 0.001 && x.y + x.h <= l.height + 0.001);
++});
++test('layout: left-to-right runs along x; a loop does not hang and is marked as a back arrow', () => {
++  const lr = layoutFlowchart(parseFlowchart('flowchart LR\nA --> B --> C')!); const n = Object.fromEntries(lr.nodes.map(x => [x.id, x]));
++  assert.ok(n.A.x < n.B.x && n.B.x < n.C.x);
++  const loop = layoutFlowchart(parseFlowchart('flowchart TD\nA --> B\nB --> C\nC --> A\nC --> C')!);
++  assert.equal(loop.nodes.length, 3); assert.equal(loop.edges.filter(e => e.back).length, 2);
++});
++test('layout: edges join the faces of their nodes', () => {
++  const l = layoutFlowchart(parseFlowchart('flowchart TD\nA --> B')!); const [a, b] = [l.nodes[0], l.nodes[1]]; const e = l.edges[0];
++  assert.equal(e.y1, a.y + a.h); assert.equal(e.y2, b.y); assert.equal(e.x1, a.x + a.w / 2);
++});
++
++// ── the real pages ───────────────────────────────────────────────────────────
++test('every flowchart in help/ is in the subset the app can draw', () => {
++  let n = 0;
++  for (const p of loadPages().pages) for (const src of diagramBlocks([p.lead, p.sections.basic, p.sections.deep, p.sections.advanced].join('\n'))) { n++; const f = parseFlowchart(src); assert.ok(f, `${p.id}: a diagram uses something the app cannot draw:\n${src}`); layoutFlowchart(f!); for (const nd of f!.nodes) assert.ok(!/[;"()]/.test(nd.label), `${p.id}: label "${nd.label}" has ; " ( or ), which the website's Mermaid may not draw`); }
++  assert.ok(n >= 3);
++});
++test('every real page turns into blocks with no raw [[ ]] left, and links point at real pages', () => {
++  const { pages } = loadPages(); const ids = new Set(pages.map(p => p.id)); const byId = Object.fromEntries(pages.map(p => [p.id, p]));
++  for (const p of pages) for (const d of ['basic', 'deep', 'advanced'] as const) {
++    const md = resolveLinks(selectDepth(p, d), id => byId[id]?.title, id => `#/${id}`);
++    const blocks = parseBlocks(md);
++    const walk = (xs: any[]) => xs.forEach(i => { if (i.t !== 'code') assert.ok(!/\[\[|\]\]/.test(i.s ?? ''), `${p.id}: raw link brackets`); if (i.t === 'page') assert.ok(ids.has(i.id), `${p.id}: link to ${i.id}`); });
++    for (const b of blocks) {
++      if (b.k === 'para' || b.k === 'heading') walk(b.inline);
++      if (b.k === 'list') { const w = (items: any[]) => items.forEach(it => { walk(it.inline); w(it.children); }); w(b.items); }
++      if (b.k === 'table') { b.head.forEach(walk); b.rows.forEach(r => r.forEach(walk)); }
++    }
++    assert.ok(blocks.length > 0);
++  }
++});
++
++// ── the copy that ships inside the app ───────────────────────────────────────
++import { builtinHelp, helpSetFrom } from '../src/lib/helpBuiltin';
++test('the built-in help set loads, has the top page, and every page leads up to it', () => {
++  const h = builtinHelp();
++  assert.ok(h.index.byId.start && h.pages.length >= 6 && h.version.length === 8);
++  for (const p of h.pages) assert.equal(trail(h.index, p.id)[0].id, 'start');
++  assert.equal(builtinHelp(), h); // loaded once
++});
++test('helpSetFrom refuses rubbish and keeps a good bundle', () => {
++  assert.equal(helpSetFrom(null), null); assert.equal(helpSetFrom({ version: 'x', pages: [] }), null);
++  const h = builtinHelp(); const again = helpSetFrom(JSON.parse(JSON.stringify({ version: h.version, pages: h.pages.map(({ file: _f, ...r }) => r) })));
++  assert.equal(again!.pages.length, h.pages.length);
++});
++test('every page at every depth gives some blocks, and Advanced has at least as many as Basic', () => {
++  for (const p of builtinHelp().pages) {
++    const n = (d: 'basic' | 'deep' | 'advanced') => parseBlocks(selectDepth(p, d)).length;
++    assert.ok(n('basic') > 0 && n('deep') >= n('basic') && n('advanced') >= n('deep'), p.id);
++  }
++});
+diff --git a/tests/uimode.test.ts b/tests/uimode.test.ts
+index 6a0ad76..6ff9125 100644
+--- a/tests/uimode.test.ts
++++ b/tests/uimode.test.ts
+@@ -18,7 +18,7 @@ test('Simple keeps every tab and every row, with bigger text and explanations',
+ test('Minimal: three tabs, essentials only, biggest text', () => {
+   const p = resolveUi({ mode: 'minimal' });
+   assert.deepEqual(p.tabs, ['checkout', 'transactions', 'more']);
+-  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'lock', 'orders', 'saved']);
++  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'help', 'lock', 'orders', 'saved']);
+   assert.ok(p.textScale > resolveUi({ mode: 'simple' }).textScale);
+ });
+ test('a mode never widens what a role allows', () => {
+-- 
+2.43.0
+
