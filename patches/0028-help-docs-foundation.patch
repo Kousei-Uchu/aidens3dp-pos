@@ -1,0 +1,1119 @@
+From 222d1349385c36b256ea72d74b264d1077cf2843 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 16:20:12 +0000
+Subject: [PATCH] 0028: in-app help part 1 (help page format, checker, build,
+ first three pages)
+
+---
+ docs/PROGRESS.md              |  34 ++++-
+ docs/patches/0028-plan.md     |  25 +++
+ help/README.md                |  52 +++++++
+ help/help.json                |  73 +++++++++
+ help/sales/cart-and-prices.md | 111 ++++++++++++++
+ help/sales/index.md           | 107 +++++++++++++
+ help/start.md                 |  93 ++++++++++++
+ package.json                  |   4 +-
+ scripts/build-help.ts         |  52 +++++++
+ src/lib/helpDocs.ts           | 276 ++++++++++++++++++++++++++++++++++
+ tests/helpdocs.test.ts        | 163 ++++++++++++++++++++
+ 11 files changed, 987 insertions(+), 3 deletions(-)
+ create mode 100644 docs/patches/0028-plan.md
+ create mode 100644 help/README.md
+ create mode 100644 help/help.json
+ create mode 100644 help/sales/cart-and-prices.md
+ create mode 100644 help/sales/index.md
+ create mode 100644 help/start.md
+ create mode 100644 scripts/build-help.ts
+ create mode 100644 src/lib/helpDocs.ts
+ create mode 100644 tests/helpdocs.test.ts
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 82b5596..b26298e 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -34,6 +34,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0025 | 2026-10-11 | Display modes, part 1 (B5a): Standard / Simple / Minimal / Custom per staff member, big-text and plain-English More menu, tab sets, Custom dials in Staff. The guided checkout flow is the next patch | B5a |
+ | 0026 | 2026-10-11 | Display modes, part 2 (B5b): Minimal's guided checkout, one question per screen (Items, Customer, Discount, Check, Pay), with a More options button for everything else; new "Guided steps" dial for Custom | B5b |
+ | 0027 | 2026-10-11 | Display modes, part 3 (B5c): Simple-mode polish in Checkout, Cart, Pay and Cash: plain-English payment buttons with a line under each, hints, bigger tap targets. Finishes B5 | B5c |
++| 0028 | 2026-10-11 | In-app help, part 1 (B7a): the page format, a checker that refuses broken pages, the build script, the writer's guide, and the first three pages (Help home, Checkout, Cart and prices) | B7a |
+ 
+ ---
+ 
+@@ -243,7 +244,35 @@ Status as found in the zip you sent (I only inspected files; not run).
+   - [x] B5c (0027) Simple-mode polish inside the screens. Applies to anyone with explanations on (Simple, Minimal, or Custom with the dial on); Standard reads exactly as before. **Pay:** a "How is the customer paying?" heading, buttons reworded ("Pay by card $12.50", "Pay with cash", "Pay with a gift card", "Split the payment") each with a one-line explanation. **Cash sheet:** a line saying to tap the notes and coins handed over and that the change is worked out for you. **Checkout:** a hint under the quantity chips ("Pick how many first..."). **Cart:** "Add a customer (optional)", a friendlier empty-cart message, and a note under Charge that nothing is taken until the customer pays. **Bigger tap targets:** buttons, list rows, chips, segmented controls and icon buttons grow with the text size (15% at Simple, 30% at Minimal), everywhere in the app. I did not hide any buttons: Simple still gives every option. Code: `src/lib/simpleLabels.ts` (pure), small edits in `Pay.tsx`, `CashSheet.tsx`, `CartPane.tsx`, `Checkout.tsx`, `kit.tsx`. Tests: `tests/simplelabels.test.ts` (2).
+   - [ ] B5d **You (deferred by you for now):** in Staff, open a cashier and try each mode, and for Simple check the Pay screen wording and the bigger buttons (a cash sale and a card sale), and for Minimal ring up a whole sale through the guided steps (card, cash, and a part-paid one, plus backing out with Back and More options), then sign in as them: check the text size, the tab bar, the More menu, and that Custom's four dials do what they say. Tell me if the text is too big or too small at Simple and Minimal, if anything overflows or gets cut off at 30% bigger, and if the More descriptions read well.
+ - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
+-- [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
++- [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker. **Started in 0028.** Three pages per patch, as you asked. Design: `docs/patches/0028-plan.md`; writer's guide: `help/README.md`.
++  - **How it works.** Pages are Markdown files in `help/` (`help/<folder>/<name>.md`, a folder's own page is its `index.md`). Each has a header (id, title, parent, summary, tags, related) and up to three sections, `## Basic`, `## Deep`, `## Advanced`. Choosing a depth shows it **plus the levels above it**. `[[page-id]]` links pages together; contents lists come from each page's `parent`. `npm run help:build` checks every page (dead links, missing parent or Basic section, loops, unclosed code, stray headings, bad mermaid) and writes `help/help.json`, which the app and the docs Worker both read. Code: `src/lib/helpDocs.ts` (pure, tested), `scripts/build-help.ts`. The Advanced flowcharts are Mermaid; the in-app drawing supports a simple subset (see the guide) and the website draws the full thing.
++  - [x] B7a (0028) foundation: format, checker, build, guide, tests, first three pages.
++  - [ ] B7b (0029) **Help screen in the app**: More ▸ Help (tree, search, depth picker remembered per device and kept in backups, "pages that link here", flowchart drawing with react-native-svg, built-in copy of `help.json`, works offline).
++  - [ ] B7c (0030) **Docs Worker** (`docs-server/`, same pattern as the receipt and gift claim Workers): serves the pages as a website and a small JSON API (`/api/index`, `/api/page/:id`, with the content version as the ETag), draws full Mermaid, search box, depth picker. The app can optionally fetch newer pages from it and falls back to its built-in copy. Styling and subdomain wait for E1.
++  - [ ] B7d (0047) **Help from every screen**: a small "?" on each screen that opens the matching page, and a link from each error message to its fix page. Last, once every page exists.
++  - **Page plan** (id, then what it covers). Done pages are ticked. A page is Basic + Deep + Advanced unless noted. Each patch is 3 pages.
++    - **0028** [x] `start` Help home and how depth works · [x] `sales` Checkout: the main screen · [x] `sales/cart-and-prices` the cart and how prices are worked out
++    - **0029** [ ] `sales/grid` the Quick Menu grid and editing it (tiles, nested categories, per-tile settings, pages, import/export, the path bar) · [ ] `sales/variants-and-stock` variations, stock counts, negative stock · [ ] `sales/scanners` Bluetooth and camera scanning, the double-click keyboard, passes and gift QRs
++    - **0030** [ ] `sales/lookup-tiles` Lock POS, Price check, Stock check · [ ] `sales/saved-carts` saved carts · [ ] `sales/customers` customers
++    - **0031** [ ] `sales/bundles` bundle deals and the builder · [ ] `pay` taking payment (overview) · [ ] `pay/card` paying by card (Zeller, the waiting strip, cancel)
++    - **0032** [ ] `pay/cash` paying by cash (tap pad, change) · [ ] `pay/gift-card` paying with a gift card · [ ] `pay/split-and-part` split and part payments
++    - **0033** [ ] `pay/receipts` receipts, QR and email · [ ] `cash` the cash drawer and ledger (overview) · [ ] `cash/open-close` opening, paid in/out, counting and closing
++    - **0034** [ ] `cash/change` how change is worked out and what "can't make change" means · [ ] `cash/check-change` Check Change · [ ] `cash/smart-change` Smart change
++    - **0035** [ ] `cash/float-report` the daily float report · [ ] `cash/tender-machine` tender machine (under construction) · [ ] `gift` selling gift cards
++    - **0036** [ ] `gift/claim-page` the claim QR and page · [ ] `gift/check-redeem` checking and redeeming, QR codes · [ ] `orders` orders and transactions
++    - **0037** [ ] `orders/refunds` refunds and exchanges · [ ] `orders/reports` reports · [ ] `orders/square-history` Square history
++    - **0038** [ ] `stock` items and inventory (overview) · [ ] `stock/inventory` the Inventory screen (filters, sort, nesting) · [ ] `stock/items` items and creating one
++    - **0039** [ ] `staff` staff and roles · [ ] `staff/passes` cashier passes and signing in · [ ] `staff/modes` display modes (Standard, Simple, Minimal, Custom)
++    - **0040** [ ] `staff/guided-checkout` the guided checkout · [ ] `staff/screensaver` screensaver and keep-awake · [ ] `settings` settings (overview)
++    - **0041** [ ] `settings/shopify` connecting Shopify · [ ] `settings/payments` payments settings (fees, rounding, Zeller) · [ ] `settings/hardware` hardware and the scanner test
++    - **0042** [ ] `settings/receipts` receipt settings, ABN and GST · [ ] `settings/backup` backup, transfer and data · [ ] `settings/theme` theme
++    - **0043** [ ] `fix` when something goes wrong (overview) · [ ] `fix/card-declined` · [ ] `fix/reader` reader not ready or pairing
++    - **0044** [ ] `fix/offline-sync` offline, queued, sync issue · [ ] `fix/cant-make-change` · [ ] `fix/stock-mismatch` counts differ from Shopify
++    - **0045** [ ] `fix/keyboard` keyboard and scanner problems · [ ] `fix/locked-out` forgotten PIN or lost pass · [ ] `concepts` how the POS works (overview)
++    - **0046** [ ] `concepts/data-and-sync` where data lives, Shopify as shared storage, the outbox · [ ] `concepts/roles` roles and what each can do · [ ] `concepts/money` cents, rounding, GST
++    - **0047** [ ] `concepts/glossary` words used in the POS · B7d (help from every screen) · a final check that every screen and setting has a page
++  - Pages describe the app as it is now. Two will need a later update: `sales/cart-and-prices` when A16 (price adjustments) is built, and anything that mentions "More ▸ Help" is only true from 0029.
++  - [ ] B7e **You:** (N21) read the three pages and tell me what is wrong or unclear.
+ - [ ] B8 Extra ideas (saved for last, after E1 below)
+ 
+ ---
+@@ -253,7 +282,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (262 after patch 0024). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028). `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -289,6 +318,7 @@ Ordered by priority, highest first.
+ - [ ] N18 **Non-blocking (B1c):** the smart change test in B1j.
+ - [ ] N19 **Non-blocking (B1f):** the float report test in B1k.
+ - [ ] N20 **Non-blocking (B5a):** the display mode test in B5d. Registers still on an older app version ignore the mode and show Standard, so update every register.
++- [ ] N21 **Non-blocking (B7):** read `help/start.md`, `help/sales/index.md` and `help/sales/cart-and-prices.md` (plain Markdown for now) and tell me if the tone, the level of detail, or any fact is wrong. Also say if you would rather a chosen depth show **only** that level instead of that level plus the ones above it (the plan assumes cumulative). Changing the page text costs nothing now and a lot after 58 pages.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/patches/0028-plan.md b/docs/patches/0028-plan.md
+new file mode 100644
+index 0000000..a4aecbd
+--- /dev/null
++++ b/docs/patches/0028-plan.md
+@@ -0,0 +1,25 @@
++# Patch 0028: in-app help, part 1 (B7a): format, checker, build, first three pages
++
++Items: B7 (started). Status: `[x]` done and tested in my sandbox (pure logic, `tsc`), `[ ]` needs you.
++
++## Design decisions (read these, tell me if one is wrong)
++- **One source.** Pages are Markdown files in `help/`. The app and the docs Worker read the same generated `help/help.json`, so they cannot drift. Git history is the version history; the file also carries a content fingerprint (`version`).
++- **Three depths in one file.** `## Basic`, `## Deep`, `## Advanced` sections. **Choosing a depth shows it plus the ones above it** (Deep = Basic + Deep). I chose this so nobody reads two copies of a page. Say if you would rather see only the level you picked.
++- **Nested and interlinked.** Every page has a `parent` (the folders-in-folders tree) and `[[page-id]]` links; each page also shows "pages that link here". Contents lists are built from `parent`, never written by hand, so a new page appears in the right place automatically.
++- **A page cannot be wrong in structure.** The build refuses a set with a dead link, a missing parent, a parent loop, a missing Basic section, an unclosed code block, a stray `##`, or a mermaid block with no diagram type.
++- **No new package, no native rebuild.** Everything in this patch is pure TypeScript plus Markdown.
++
++## Steps
++1. [x] Read the repo (latest commit is patch 0027), DEV_NOTES and PROGRESS. Baseline: 282 tests pass.
++2. [x] `src/lib/helpDocs.ts` (pure): header reader, depth sections (fence-aware), links (fence and inline-code aware), `selectDepth`, `validatePages`, `buildIndex`/`trail`, `searchPages`, `diagramBlocks`, bundle (`makeBundle`, `readBundle`, `contentVersion`).
++3. [x] `scripts/build-help.ts` + `npm run help:build` / `npm run help:check`.
++4. [x] `help/help.json` (generated) and `help/README.md` (the writer's guide: format, what each depth is for, link and flowchart rules, style).
++5. [x] Pages: `start` (Help home and how depth works), `sales` (Checkout: the main screen), `sales/cart-and-prices` (the cart and the four-step price order). Every Advanced claim checked against `Checkout.tsx`, `CartPane.tsx`, `cartOps.ts`, `pricing.ts`, `selectors.ts`, `store.ts`, `invoiceRows.ts`.
++6. [x] `tests/helpdocs.test.ts` (23 tests): header, sections, fences, depth, ids, links, every validation rule, index and trail, search, bundle, and the real `help/` pages (no problems, all reachable from `start`, `help.json` current). A mutation check confirmed the inline-code link rule is really tested.
++7. [x] `docs/PROGRESS.md`: patch log row, the full B7 page plan with a checkbox per page, new item N21.
++8. [x] Total tests 305 pass; `tsc --noEmit` clean.
++9. [ ] You: read the three pages (they are plain Markdown for now) and tell me about anything wrong or unclear, in tone or in fact (N21).
++
++## Deliberately not in this patch
++- The in-app Help screen (0029) and the docs Worker (0030). Until 0029 the pages are only files.
++- The pages mention "More ▸ Help". That entry arrives in 0029.
+diff --git a/help/README.md b/help/README.md
+new file mode 100644
+index 0000000..d162697
+--- /dev/null
++++ b/help/README.md
+@@ -0,0 +1,52 @@
++# Writing help pages
++
++These notes are for whoever writes or edits the pages in this folder. Staff never see this file (the build skips `README.md` and any file starting with `_`).
++
++## Add or change a page
++1. Create or edit a `.md` file under `help/`. A folder's own page is `index.md` inside it (`help/sales/index.md` has the id `sales`). Any other page is `help/<folder>/<name>.md` with the id `<folder>/<name>`.
++2. Run `npm run help:build`. It checks every page and rewrites `help/help.json`. If something is wrong it prints the file and the problem and writes nothing.
++3. Commit the `.md` file **and** `help/help.json` together. `npm test` fails if `help.json` is out of date.
++
++## The header
++```text
++---
++id: sales/cart-and-prices        (must match the file path)
++title: The cart and how prices are worked out
++parent: sales                    (every page except `start` needs one; it must exist)
++summary: One line for lists and search results.
++tags: [cart, discount]           (words people might search for)
++related: [sales]                 (pages to list under "Related", optional)
++updated: 2026-10-11              (optional, YYYY-MM-DD)
++---
++```
++Anything written between the header and the first `## Basic` is the **lead**. It is shown at every depth, so keep it to a sentence or two.
++
++## The three depths
++Use exactly `## Basic`, `## Deep`, `## Advanced`, in that order. A reader who picks a depth also sees the ones above it, so never repeat yourself.
++- **Basic**: what a staff member needs to do the job. Plain words, short sentences, the names on the buttons exactly as they are on screen. No code, no jargon. If a message can appear, say what it means and what to do.
++- **Deep**: why it behaves the way it does. Still plain English, but you may explain the rules, the order things happen in, and the odd cases. Worked examples go here.
++- **Advanced**: how it is built. Name the files and functions, add a flowchart, say how to trace a fault, and list the tests. Every claim here should be something you checked in the code.
++
++`## Basic` is required. Deep and Advanced can be left out for a simple page, but say so in the plan (`docs/PROGRESS.md`) rather than leaving them out by accident.
++
++Inside a section use `###` for headings. `##` is reserved for the three depth headings, and the checker rejects any other `##`.
++
++## Links
++- `[[sales/cart-and-prices]]` links to a page using its title. `[[sales/cart-and-prices|the cart page]]` uses your words.
++- The checker refuses a link to a page that does not exist. Links inside code fences and `inline code` are not links, so you can show the syntax.
++- Do not write a contents list by hand. The Help screen builds one from each page's `parent`.
++
++## Flowcharts
++Put a Mermaid flowchart in a fenced block marked `mermaid`, in **Advanced** sections. To keep the in-app drawing simple, stay inside this subset:
++- `flowchart TD` (top to bottom) or `flowchart LR` (left to right)
++- Boxes `A[text]`, decisions `A{text}`, rounded `A(text)`
++- Arrows `A --> B` and `A -->|label| B`
++- No `subgraph`, no `style` or `classDef`, no `click`.
++
++Anything the in-app drawing cannot read is shown as plain text, and the website draws the full Mermaid. Every block must start with a diagram type (`flowchart`, `graph`, `sequenceDiagram`, ...); the checker enforces that.
++
++## Style
++- Australian spelling (colour, organise). Dollar amounts as `$12.50`.
++- Use the real button and screen names, with ▸ for a path: Settings ▸ Payments ▸ Smart change.
++- Write what the app does now, not what is planned. If a change is coming, add a short "Known to change" note at the end of Advanced, and update the page when it ships.
++- Check each Advanced claim against the code before writing it. If you cannot check it, leave it out.
+diff --git a/help/help.json b/help/help.json
+new file mode 100644
+index 0000000..199b32e
+--- /dev/null
++++ b/help/help.json
+@@ -0,0 +1,73 @@
++{
++ "version": "b1ccc6ae",
++ "pages": [
++  {
++   "id": "sales",
++   "title": "Checkout: the main screen",
++   "parent": "start",
++   "summary": "Adding items to a sale: the Quick Menu grid, All products, the keypad, search, scanning, and the cart.",
++   "tags": [
++    "checkout",
++    "sell",
++    "grid",
++    "scan",
++    "search",
++    "keypad"
++   ],
++   "related": [
++    "sales/cart-and-prices"
++   ],
++   "updated": "2026-10-11",
++   "lead": "Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.",
++   "sections": {
++    "basic": "### The three ways to add items\nAt the top of the left side, pick one:\n- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.\n- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.\n- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a \"Custom amount\".\n\nOn the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.\n\n### Items with several variations\nIf a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with \"stock will go negative\".\n\n### Adding more than one\nPick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count applies to that one item and then goes back to ×1.\n\n### Other ways to find things\n- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.\n- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.\n- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.\n\n### The cart\nOn an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].\n\n### The strip under the search bar\nOn an iPad it always shows **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red button instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the strip only appears when there is a problem.\n\n### When you cannot change the cart\nOnce part of a sale has been paid, the cart is locked and you see \"Payment in progress\". Finish the payment or cancel it first.",
++    "deep": "### Why a tap does different things\nA tile is one of several kinds: an item, a category, a display group, a discount, or an action (such as Custom amount, Lock POS, Price check, Stock check or Check change). Items and variations go into the cart; categories and groups open a level of the grid; discounts apply to the whole cart; actions open a sheet or do a job. Categories can contain categories to any depth.\n\n### What \"consolidate\" means\nBy default, adding the same item again raises the quantity on its existing line instead of making a second line. A line is **not** merged into if it has been changed in some way (its price adjusted, a discount put on it, or a note added), because merging would mix a special line with a normal one. This can be turned off in Settings (Checkout ▸ Consolidate identical items).\n\n### How scanning finds an item\nA barcode is compared after removing spaces and leading zeros, so a 12-digit UPC and a 13-digit EAN with a leading 0 match the same item. If no barcode matches, the scan is tried as an exact SKU. If nothing matches you see \"No item for …\".\n\n### Why the grid sometimes does not show an item you expect\nAn item that sits in both a sub-category and its parent category shows only in the sub-category. Items you pin yourself as tiles are never hidden by that rule.\n\n### Your cart is saved as you go\nEvery change to the cart is written to the device (after a very short delay), so closing the app does not lose it.",
++    "advanced": "### What happens on a tap\n```mermaid\nflowchart TD\n  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]\n  A -->|one variant| B[add]\n  A -->|several variants| P[VariantPicker sub-page]\n  P -->|tap one| B\n  B --> L{cart locked? tenders present}\n  L -->|yes| X[alert: Payment in progress]\n  L -->|no| C[ops.addVariant: cartOps.ts]\n  C --> S[useApp setCart: store.ts]\n  S --> W[persist 'pos' to storage, 400 ms debounce]\n  S --> R[usePriced: selectors.ts]\n  R --> Q[priceCart: pricing.ts]\n  Q --> V[CartPane re-renders with the new totals]\n```\n\n### What happens on a scan\n```mermaid\nflowchart TD\n  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]\n  O --> B{isBadgeCode?}\n  B -->|yes| I[signInWithPass; cart unchanged]\n  B -->|no| F[ops.findByBarcode: barcode, then SKU]\n  F -->|found| A[add 1 of the variant]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge, Gift card]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |\n| The status strip | `StatusStrip` in the same file |\n| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |\n| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |\n| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |\n| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |\n| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |\n| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |\n\n### Reading the code for a fault\n- **A scan adds nothing and says \"No item\"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.\n- **A tap does nothing and shows \"Payment in progress\"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.\n- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.\n- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins)."
++   }
++  },
++  {
++   "id": "sales/cart-and-prices",
++   "title": "The cart and how prices are worked out",
++   "parent": "sales",
++   "summary": "What is in the cart, how to change a line, and how bundles, automatic deals and discounts turn into the final price.",
++   "tags": [
++    "cart",
++    "discount",
++    "bundle",
++    "price",
++    "total",
++    "line",
++    "customer"
++   ],
++   "related": [
++    "sales"
++   ],
++   "updated": "2026-10-11",
++   "lead": "The cart is the list of what the customer is buying. The total at the bottom is always the final price after every deal.",
++   "sections": {
++    "basic": "### Reading a line\nEach line shows the item and variation, then **quantity × price** (for example *13 × $4.00*). If a discount applies, the full price is struck through with the final price beside it, and each discount sits on its own green row underneath with the amount taken off. A deal that applied more than once shows **(x2)** after its name.\n\n### Changing a line\n- **Swipe left** on a line to remove it (let go past halfway and tap the red button, or swipe all the way across).\n- **Tap** a line to edit it:\n  - **− / +** change the quantity (going to 0 removes the line).\n  - **Variation** chips swap to another variation of the same product.\n  - **Discount** puts a percentage or dollar discount on this line only.\n  - **Price adjustment** sets a new unit price for this sale only. **Reset to catalogue price** undoes it.\n  - **Note** adds a note to the line.\n  - **Remove item** takes it out.\n\n### The customer\nTap the person row at the top of the cart to add a customer to the sale, or the small ✕ to take them off. You can create a new customer from the ••• menu.\n\n### The ••• menu\n**Clear cart**, **Save cart** (for later; see saved carts), **Create customer**, **Custom amount**, **Apply cart discount**, **Sell gift card**, **Check gift card**, and **Check change** (can we make change for this cart?).\n\n### Bundle deals\nWhen items in the cart qualify for a bundle deal, a **Bundle deals** block appears under the lines with one card per deal, naming each item and variation and the saving. A card may say **Recommended pair** or **Not a recommended pair**. The customer gets the deal either way. When you press **Charge** with a \"not a recommended pair\" bundle in the cart, a sheet shows it once so you can check it is what the customer wants (**Edit cart** or **Continue to payment**).\n\n### What cannot be discounted\nGift cards, custom amounts, and any item tagged `no-discount` in Shopify. Their line shows \"Not discountable\" in the editor.\n\n### The total\nAbove the **Charge** button you see **Items** (the full price), each deal in green with its saving, and the final amount on the button. The count underneath is the total number of items.",
++    "deep": "### The order discounts are applied in\nThe price is built in four steps, always in this order:\n1. **Bundle deals** (the deals you set up in Settings ▸ Discounts & bundles).\n2. **Automatic discounts** imported from Shopify.\n3. **The line's own discount** (the one you set in the line editor).\n4. **The cart discount.**\n\nEach step works on what is left after the one before it, and a discount never takes a line below $0.\n\n### Rules that follow from that\n- A single unit can be part of **one** bundle deal or **one** automatic discount, never two. Several different deals can apply in the same order, and the POS picks the combination with the biggest total saving for the customer.\n- A line that received a bundle discount does **not** also get its own line discount.\n- The cart discount is spread over the remaining value of every line that can be discounted, in proportion to that value. The pieces add up exactly: no cent is lost or invented.\n- A percentage is rounded to the nearest cent (half up).\n- The POS works out Shopify's automatic discounts itself, so the total on screen is instant and works offline. Shopify's own \"combines with\" settings are not read.\n\n### A worked example\nA customer buys 2 Highland cows and 8 Tadlings. The shop has an automatic deal for 2 cows ($2 off), one for 3 Tadlings ($5 off) and one for 5 Tadlings ($10 off). The cows get the $2 deal. Of the 8 Tadlings, 5 take the $10 deal and the other 3 take the $5 deal, so the Tadling line shows two discount rows, **5x Tadlings** (−$10) and **3x Tadlings** (−$5). (The prices here are only to show the shape.)\n\n### Price adjustment versus discount\nA price adjustment replaces the item's unit price before any discount is worked out, so a discount is then taken off the adjusted price. A line with an adjustment, a discount or a note does not merge with a plain line of the same item when you add it again.\n\n### Prices sent to Shopify\nShopify needs a whole-cent price per unit. When a line's final price does not divide evenly, the POS splits it into at most two groups of units that differ by one cent, so the pieces add up to the line total exactly. For example, $10.00 for 3 units becomes 2 units at $3.33 and 1 unit at $3.34.",
++    "advanced": "### The pricing pipeline\n```mermaid\nflowchart TD\n  U[usePriced: src/state/selectors.ts] --> P[priceCart cart, ctx]\n  P --> W[Work per line: base = overrideCents or unitCents]\n  W --> B1[1 matchBundles: bundles.ts]\n  B1 --> B2[2 chooseAutoDiscounts: pricing.ts]\n  B2 --> B3[3 manual line discount]\n  B3 --> B4[4 cart discount, allocate by remaining value]\n  B4 --> R[PricedCart: lines, itemsCents, discountCents, netCents, deals, bundles]\n  R --> UI[CartPane, Pay, receipts]\n  R --> S[splitLineForOrder for Shopify order lines]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The whole pipeline | `priceCart` in `src/lib/pricing.ts` |\n| Running it live | `usePriced` in `src/state/selectors.ts` (re-runs when the cart, catalogue, automatic discounts or the bundles setting change) |\n| Bundle matching | `matchBundles` in `src/lib/bundles.ts` |\n| Automatic discounts | `chooseAutoDiscounts`, `autoMove`, `isLot`, `activeNow` in `src/lib/pricing.ts` |\n| Clamping a discount to what is left | the local `add` in `priceCart` (`Math.min(d.cents, remaining(w))`) and `remaining` |\n| Percent and spreading cents | `pctOf`, `allocate` in `src/lib/money.ts` |\n| Which lines are discountable | `discountable` in `priceCart`: not `gift_card`, not `noDiscount`, no `no-discount` tag (`NO_DISCOUNT_TAG`) |\n| Rows shown in the cart | `invoiceRows`, `unitLine` in `src/lib/invoiceRows.ts` |\n| The cart screen | `src/screens/CartPane.tsx`; the line editor `LineEditor` in `src/screens/sheets.tsx` |\n| Splitting for Shopify | `splitLineForOrder` in `src/lib/pricing.ts` |\n| Tests | `tests/compound.test.ts`, `tests/autocombine.test.ts`, `tests/bundleform.test.ts`, `tests/swipe.test.ts` |\n\n### The data it returns\n`PricedCart` has `lines` (each with `baseUnitCents`, `grossCents`, `discounts`, `discountCents`, `netCents`, `bundleUnits`), the cart totals `itemsCents`, `discountCents` and `netCents`, `deals` (the discounts rolled up by type and label, which is what the totals area lists), and `bundles` (one entry per bundle application, with the units it used). Each entry in `discounts` has a `type` (`bundle`, `auto`, `manual` or `cart`), a `label`, `cents`, and for repeated deals a `times` count.\n\n### Reading the code for a fault\n- **A deal you expect did not apply.** Check, in order: is the line discountable (tag, `noDiscount`, gift card or custom amount)? Is the discount inside its dates (`activeNow` compares `startsAt` and `endsAt`)? Does the line's product, variation or collection match the discount's target (`matches`)? For a bundle, check its on/off switch, dates and \"most times per order\" in the bundle editor.\n- **A line discount you set vanished from the receipt.** The line also got a bundle discount, and step 3 skips lines that did (`w.discounts.some(d => d.type === 'bundle')`).\n- **The total is a cent out against Shopify.** Compare `splitLineForOrder` output with the order lines; the groups must add to `netCents`.\n- **A discount seems to apply to the wrong line.** The cart discount is spread over every discountable line, so each gets a share; look at the per-line `discounts` array, not just the rolled-up `deals`.\n- **Debugging a cart.** Call `priceCart` from a test with the same cart and context as the sale (see `tests/autocombine.test.ts` for how a context is built).\n\n### Known to change\nThe single \"Price adjustment\" on a line is planned to be replaced by Line, Item and Whole-order adjustments with a review step (checklist item A16). This page will be updated when that is built."
++   }
++  },
++  {
++   "id": "start",
++   "title": "Help home",
++   "summary": "How to find things in this help, and what Basic, Deep and Advanced mean.",
++   "tags": [
++    "help",
++    "start",
++    "search",
++    "depth"
++   ],
++   "related": [],
++   "updated": "2026-10-11",
++   "lead": "This help explains every part of the POS: what each screen is for, how to do each job, what the messages mean, and what to do when something goes wrong.",
++   "sections": {
++    "basic": "### Finding what you need\n- Open the **Help** screen (More ▸ Help). Pages are grouped by job: selling, taking payment, the cash drawer, gift cards, orders and refunds, stock, staff, settings, and fixing problems.\n- Use the search box at the top. Type a word or two (\"refund\", \"card declined\") and every word has to match.\n- A page ends with **Related pages**. Words in blue take you to another page.\n\n### Choosing how much detail you want\nEvery page has up to three levels. You pick one and the Help screen remembers it.\n\n| Level | What you get |\n|---|---|\n| **Basic** | What you need to know to do the job. Start here. |\n| **Deep** | Basic, plus a plain-English look at how it works, so the odd behaviours make sense. |\n| **Advanced** | Everything above, plus the code behind it, flowcharts, and how to trace a fault that the screen cannot fix. |\n\nA deeper level always includes the levels above it, so you never have to read two copies of a page.\n\n### If a page is missing or wrong\nTell the person who looks after the POS. The pages are ordinary text files, so a fix is a small edit and shows up everywhere (the app and the website) at once.",
++    "deep": "### One set of pages, two places to read them\nThe pages are Markdown files kept in one folder. The app has a copy built in, so it works with no internet, and the docs website serves the same files. Because both read the same source, they cannot drift apart. When a page changes, its fingerprint (a short code) changes too, so a device can tell whether it has the latest.\n\n### How pages are organised\nEach page has a **parent**, which makes the folders-inside-folders shape you see on the Help screen. Pages also point at each other with links, and each page shows the pages that link to it. Nothing is listed by hand: the contents list is built from the parents, so a new page appears in the right place the moment it exists.\n\n### Checks before a page is accepted\nA page cannot be added to the set unless its links all go somewhere, its parent exists, it has a Basic section, and its code blocks are closed. This is why you should not meet a dead link while reading.",
++    "advanced": "### Where things live\n| What | Where |\n|---|---|\n| The pages | `help/**/*.md` (a page is `help/<folder>/<name>.md`; a folder's own page is `index.md`) |\n| Format, parsing, checks, search | `src/lib/helpDocs.ts` (pure, no React) |\n| Build and check script | `scripts/build-help.ts` (`npm run help:build`, `npm run help:check`) |\n| What the app and the website read | `help/help.json` (generated, do not edit by hand) |\n| Tests | `tests/helpdocs.test.ts` |\n| Notes for people writing pages | `help/README.md` |\n\n### The page format\nA page is a header, an optional lead, and up to three sections:\n\n```text\n---\nid: sales/cart-and-prices\ntitle: The cart and how prices are worked out\nparent: sales\nsummary: One line for lists and search.\ntags: [cart, discount]\nrelated: [pay]\nupdated: 2026-10-11\n---\nLead text, shown at every depth.\n## Basic\n## Deep\n## Advanced\n```\n\nRules the checker enforces (`validatePages`): the `id` must match the file path (`sales/index.md` is `sales`, `start.md` is `start`); every page except `start` has a `parent` that exists, with no loops; every `[[link]]` and every `related` entry must point at a real page; `## Basic` must be present; code fences must close; and `##` is reserved for the three depth headings, so inside a section you use `###`.\n\n### How the pieces fit\n```mermaid\nflowchart TD\n  A[help/*.md] -->|parsePage| B[Page objects]\n  B -->|validatePages| C{Any problems?}\n  C -->|yes| D[build stops, lists each problem]\n  C -->|no| E[makeBundle]\n  E --> F[help/help.json]\n  F --> G[App: built-in copy]\n  F --> H[Docs website]\n```\n\n### Showing a page at a depth\n`selectDepth(page, depth)` returns the lead, then each section down to the chosen depth. `resolveLinks` turns `[[id|text]]` into a real link for whichever viewer is showing it, and leaves plain text if the id is unknown, so raw brackets never reach the screen. `searchPages` requires every word to match and ranks title and tag matches above body matches. `buildIndex` gives the parent/child tree and the \"pages that link here\" lists; `trail` gives the path from the top page down to a page.\n\n### Tracing a problem\n- A page is not showing up: run `npm run help:check`. It prints every problem with the file name.\n- The app shows an old page: compare `version` in `help/help.json` with the one the app holds (`readBundle` rejects a bundle it cannot use, and the app then keeps its built-in copy).\n- A link is plain text instead of a link: the id in `[[...]]` does not exist, so `resolveLinks` printed only its text. The checker would have refused it, so look for a page that was deleted or renamed after the link was written."
++   }
++  }
++ ]
++}
+diff --git a/help/sales/cart-and-prices.md b/help/sales/cart-and-prices.md
+new file mode 100644
+index 0000000..0742a0f
+--- /dev/null
++++ b/help/sales/cart-and-prices.md
+@@ -0,0 +1,111 @@
++---
++id: sales/cart-and-prices
++title: The cart and how prices are worked out
++parent: sales
++summary: What is in the cart, how to change a line, and how bundles, automatic deals and discounts turn into the final price.
++tags: [cart, discount, bundle, price, total, line, customer]
++related: [sales]
++updated: 2026-10-11
++---
++The cart is the list of what the customer is buying. The total at the bottom is always the final price after every deal.
++
++## Basic
++
++### Reading a line
++Each line shows the item and variation, then **quantity × price** (for example *13 × $4.00*). If a discount applies, the full price is struck through with the final price beside it, and each discount sits on its own green row underneath with the amount taken off. A deal that applied more than once shows **(x2)** after its name.
++
++### Changing a line
++- **Swipe left** on a line to remove it (let go past halfway and tap the red button, or swipe all the way across).
++- **Tap** a line to edit it:
++  - **− / +** change the quantity (going to 0 removes the line).
++  - **Variation** chips swap to another variation of the same product.
++  - **Discount** puts a percentage or dollar discount on this line only.
++  - **Price adjustment** sets a new unit price for this sale only. **Reset to catalogue price** undoes it.
++  - **Note** adds a note to the line.
++  - **Remove item** takes it out.
++
++### The customer
++Tap the person row at the top of the cart to add a customer to the sale, or the small ✕ to take them off. You can create a new customer from the ••• menu.
++
++### The ••• menu
++**Clear cart**, **Save cart** (for later; see saved carts), **Create customer**, **Custom amount**, **Apply cart discount**, **Sell gift card**, **Check gift card**, and **Check change** (can we make change for this cart?).
++
++### Bundle deals
++When items in the cart qualify for a bundle deal, a **Bundle deals** block appears under the lines with one card per deal, naming each item and variation and the saving. A card may say **Recommended pair** or **Not a recommended pair**. The customer gets the deal either way. When you press **Charge** with a "not a recommended pair" bundle in the cart, a sheet shows it once so you can check it is what the customer wants (**Edit cart** or **Continue to payment**).
++
++### What cannot be discounted
++Gift cards, custom amounts, and any item tagged `no-discount` in Shopify. Their line shows "Not discountable" in the editor.
++
++### The total
++Above the **Charge** button you see **Items** (the full price), each deal in green with its saving, and the final amount on the button. The count underneath is the total number of items.
++
++## Deep
++
++### The order discounts are applied in
++The price is built in four steps, always in this order:
++1. **Bundle deals** (the deals you set up in Settings ▸ Discounts & bundles).
++2. **Automatic discounts** imported from Shopify.
++3. **The line's own discount** (the one you set in the line editor).
++4. **The cart discount.**
++
++Each step works on what is left after the one before it, and a discount never takes a line below $0.
++
++### Rules that follow from that
++- A single unit can be part of **one** bundle deal or **one** automatic discount, never two. Several different deals can apply in the same order, and the POS picks the combination with the biggest total saving for the customer.
++- A line that received a bundle discount does **not** also get its own line discount.
++- The cart discount is spread over the remaining value of every line that can be discounted, in proportion to that value. The pieces add up exactly: no cent is lost or invented.
++- A percentage is rounded to the nearest cent (half up).
++- The POS works out Shopify's automatic discounts itself, so the total on screen is instant and works offline. Shopify's own "combines with" settings are not read.
++
++### A worked example
++A customer buys 2 Highland cows and 8 Tadlings. The shop has an automatic deal for 2 cows ($2 off), one for 3 Tadlings ($5 off) and one for 5 Tadlings ($10 off). The cows get the $2 deal. Of the 8 Tadlings, 5 take the $10 deal and the other 3 take the $5 deal, so the Tadling line shows two discount rows, **5x Tadlings** (−$10) and **3x Tadlings** (−$5). (The prices here are only to show the shape.)
++
++### Price adjustment versus discount
++A price adjustment replaces the item's unit price before any discount is worked out, so a discount is then taken off the adjusted price. A line with an adjustment, a discount or a note does not merge with a plain line of the same item when you add it again.
++
++### Prices sent to Shopify
++Shopify needs a whole-cent price per unit. When a line's final price does not divide evenly, the POS splits it into at most two groups of units that differ by one cent, so the pieces add up to the line total exactly. For example, $10.00 for 3 units becomes 2 units at $3.33 and 1 unit at $3.34.
++
++## Advanced
++
++### The pricing pipeline
++```mermaid
++flowchart TD
++  U[usePriced: src/state/selectors.ts] --> P[priceCart cart, ctx]
++  P --> W[Work per line: base = overrideCents or unitCents]
++  W --> B1[1 matchBundles: bundles.ts]
++  B1 --> B2[2 chooseAutoDiscounts: pricing.ts]
++  B2 --> B3[3 manual line discount]
++  B3 --> B4[4 cart discount, allocate by remaining value]
++  B4 --> R[PricedCart: lines, itemsCents, discountCents, netCents, deals, bundles]
++  R --> UI[CartPane, Pay, receipts]
++  R --> S[splitLineForOrder for Shopify order lines]
++```
++
++### Where the code is
++| Job | Where |
++|---|---|
++| The whole pipeline | `priceCart` in `src/lib/pricing.ts` |
++| Running it live | `usePriced` in `src/state/selectors.ts` (re-runs when the cart, catalogue, automatic discounts or the bundles setting change) |
++| Bundle matching | `matchBundles` in `src/lib/bundles.ts` |
++| Automatic discounts | `chooseAutoDiscounts`, `autoMove`, `isLot`, `activeNow` in `src/lib/pricing.ts` |
++| Clamping a discount to what is left | the local `add` in `priceCart` (`Math.min(d.cents, remaining(w))`) and `remaining` |
++| Percent and spreading cents | `pctOf`, `allocate` in `src/lib/money.ts` |
++| Which lines are discountable | `discountable` in `priceCart`: not `gift_card`, not `noDiscount`, no `no-discount` tag (`NO_DISCOUNT_TAG`) |
++| Rows shown in the cart | `invoiceRows`, `unitLine` in `src/lib/invoiceRows.ts` |
++| The cart screen | `src/screens/CartPane.tsx`; the line editor `LineEditor` in `src/screens/sheets.tsx` |
++| Splitting for Shopify | `splitLineForOrder` in `src/lib/pricing.ts` |
++| Tests | `tests/compound.test.ts`, `tests/autocombine.test.ts`, `tests/bundleform.test.ts`, `tests/swipe.test.ts` |
++
++### The data it returns
++`PricedCart` has `lines` (each with `baseUnitCents`, `grossCents`, `discounts`, `discountCents`, `netCents`, `bundleUnits`), the cart totals `itemsCents`, `discountCents` and `netCents`, `deals` (the discounts rolled up by type and label, which is what the totals area lists), and `bundles` (one entry per bundle application, with the units it used). Each entry in `discounts` has a `type` (`bundle`, `auto`, `manual` or `cart`), a `label`, `cents`, and for repeated deals a `times` count.
++
++### Reading the code for a fault
++- **A deal you expect did not apply.** Check, in order: is the line discountable (tag, `noDiscount`, gift card or custom amount)? Is the discount inside its dates (`activeNow` compares `startsAt` and `endsAt`)? Does the line's product, variation or collection match the discount's target (`matches`)? For a bundle, check its on/off switch, dates and "most times per order" in the bundle editor.
++- **A line discount you set vanished from the receipt.** The line also got a bundle discount, and step 3 skips lines that did (`w.discounts.some(d => d.type === 'bundle')`).
++- **The total is a cent out against Shopify.** Compare `splitLineForOrder` output with the order lines; the groups must add to `netCents`.
++- **A discount seems to apply to the wrong line.** The cart discount is spread over every discountable line, so each gets a share; look at the per-line `discounts` array, not just the rolled-up `deals`.
++- **Debugging a cart.** Call `priceCart` from a test with the same cart and context as the sale (see `tests/autocombine.test.ts` for how a context is built).
++
++### Known to change
++The single "Price adjustment" on a line is planned to be replaced by Line, Item and Whole-order adjustments with a review step (checklist item A16). This page will be updated when that is built.
+diff --git a/help/sales/index.md b/help/sales/index.md
+new file mode 100644
+index 0000000..232d4d5
+--- /dev/null
++++ b/help/sales/index.md
+@@ -0,0 +1,107 @@
++---
++id: sales
++title: Checkout: the main screen
++parent: start
++summary: Adding items to a sale: the Quick Menu grid, All products, the keypad, search, scanning, and the cart.
++tags: [checkout, sell, grid, scan, search, keypad]
++related: [sales/cart-and-prices]
++updated: 2026-10-11
++---
++Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.
++
++## Basic
++
++### The three ways to add items
++At the top of the left side, pick one:
++- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.
++- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.
++- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a "Custom amount".
++
++On the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.
++
++### Items with several variations
++If a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with "stock will go negative".
++
++### Adding more than one
++Pick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count applies to that one item and then goes back to ×1.
++
++### Other ways to find things
++- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.
++- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.
++- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.
++
++### The cart
++On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
++
++### The strip under the search bar
++On an iPad it always shows **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red button instead ("Reader issue", "Offline · 2 queued", "Sync issue"). Tap it to go to the page that explains it. On a phone the strip only appears when there is a problem.
++
++### When you cannot change the cart
++Once part of a sale has been paid, the cart is locked and you see "Payment in progress". Finish the payment or cancel it first.
++
++## Deep
++
++### Why a tap does different things
++A tile is one of several kinds: an item, a category, a display group, a discount, or an action (such as Custom amount, Lock POS, Price check, Stock check or Check change). Items and variations go into the cart; categories and groups open a level of the grid; discounts apply to the whole cart; actions open a sheet or do a job. Categories can contain categories to any depth.
++
++### What "consolidate" means
++By default, adding the same item again raises the quantity on its existing line instead of making a second line. A line is **not** merged into if it has been changed in some way (its price adjusted, a discount put on it, or a note added), because merging would mix a special line with a normal one. This can be turned off in Settings (Checkout ▸ Consolidate identical items).
++
++### How scanning finds an item
++A barcode is compared after removing spaces and leading zeros, so a 12-digit UPC and a 13-digit EAN with a leading 0 match the same item. If no barcode matches, the scan is tried as an exact SKU. If nothing matches you see "No item for …".
++
++### Why the grid sometimes does not show an item you expect
++An item that sits in both a sub-category and its parent category shows only in the sub-category. Items you pin yourself as tiles are never hidden by that rule.
++
++### Your cart is saved as you go
++Every change to the cart is written to the device (after a very short delay), so closing the app does not lose it.
++
++## Advanced
++
++### What happens on a tap
++```mermaid
++flowchart TD
++  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]
++  A -->|one variant| B[add]
++  A -->|several variants| P[VariantPicker sub-page]
++  P -->|tap one| B
++  B --> L{cart locked? tenders present}
++  L -->|yes| X[alert: Payment in progress]
++  L -->|no| C[ops.addVariant: cartOps.ts]
++  C --> S[useApp setCart: store.ts]
++  S --> W[persist 'pos' to storage, 400 ms debounce]
++  S --> R[usePriced: selectors.ts]
++  R --> Q[priceCart: pricing.ts]
++  Q --> V[CartPane re-renders with the new totals]
++```
++
++### What happens on a scan
++```mermaid
++flowchart TD
++  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]
++  O --> B{isBadgeCode?}
++  B -->|yes| I[signInWithPass; cart unchanged]
++  B -->|no| F[ops.findByBarcode: barcode, then SKU]
++  F -->|found| A[add 1 of the variant]
++  F -->|not found| G{isGiftQr?}
++  G -->|yes| M[toast: redeem from Charge, Gift card]
++  G -->|no| N[toast: No item for code]
++```
++
++### Where the code is
++| Job | Where |
++|---|---|
++| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |
++| The status strip | `StatusStrip` in the same file |
++| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |
++| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |
++| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |
++| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |
++| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |
++| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |
++
++### Reading the code for a fault
++- **A scan adds nothing and says "No item"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.
++- **A tap does nothing and shows "Payment in progress"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.
++- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.
++- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins).
+diff --git a/help/start.md b/help/start.md
+new file mode 100644
+index 0000000..0911c8e
+--- /dev/null
++++ b/help/start.md
+@@ -0,0 +1,93 @@
++---
++id: start
++title: Help home
++summary: How to find things in this help, and what Basic, Deep and Advanced mean.
++tags: [help, start, search, depth]
++updated: 2026-10-11
++---
++This help explains every part of the POS: what each screen is for, how to do each job, what the messages mean, and what to do when something goes wrong.
++
++## Basic
++
++### Finding what you need
++- Open the **Help** screen (More ▸ Help). Pages are grouped by job: selling, taking payment, the cash drawer, gift cards, orders and refunds, stock, staff, settings, and fixing problems.
++- Use the search box at the top. Type a word or two ("refund", "card declined") and every word has to match.
++- A page ends with **Related pages**. Words in blue take you to another page.
++
++### Choosing how much detail you want
++Every page has up to three levels. You pick one and the Help screen remembers it.
++
++| Level | What you get |
++|---|---|
++| **Basic** | What you need to know to do the job. Start here. |
++| **Deep** | Basic, plus a plain-English look at how it works, so the odd behaviours make sense. |
++| **Advanced** | Everything above, plus the code behind it, flowcharts, and how to trace a fault that the screen cannot fix. |
++
++A deeper level always includes the levels above it, so you never have to read two copies of a page.
++
++### If a page is missing or wrong
++Tell the person who looks after the POS. The pages are ordinary text files, so a fix is a small edit and shows up everywhere (the app and the website) at once.
++
++## Deep
++
++### One set of pages, two places to read them
++The pages are Markdown files kept in one folder. The app has a copy built in, so it works with no internet, and the docs website serves the same files. Because both read the same source, they cannot drift apart. When a page changes, its fingerprint (a short code) changes too, so a device can tell whether it has the latest.
++
++### How pages are organised
++Each page has a **parent**, which makes the folders-inside-folders shape you see on the Help screen. Pages also point at each other with links, and each page shows the pages that link to it. Nothing is listed by hand: the contents list is built from the parents, so a new page appears in the right place the moment it exists.
++
++### Checks before a page is accepted
++A page cannot be added to the set unless its links all go somewhere, its parent exists, it has a Basic section, and its code blocks are closed. This is why you should not meet a dead link while reading.
++
++## Advanced
++
++### Where things live
++| What | Where |
++|---|---|
++| The pages | `help/**/*.md` (a page is `help/<folder>/<name>.md`; a folder's own page is `index.md`) |
++| Format, parsing, checks, search | `src/lib/helpDocs.ts` (pure, no React) |
++| Build and check script | `scripts/build-help.ts` (`npm run help:build`, `npm run help:check`) |
++| What the app and the website read | `help/help.json` (generated, do not edit by hand) |
++| Tests | `tests/helpdocs.test.ts` |
++| Notes for people writing pages | `help/README.md` |
++
++### The page format
++A page is a header, an optional lead, and up to three sections:
++
++```text
++---
++id: sales/cart-and-prices
++title: The cart and how prices are worked out
++parent: sales
++summary: One line for lists and search.
++tags: [cart, discount]
++related: [pay]
++updated: 2026-10-11
++---
++Lead text, shown at every depth.
++## Basic
++## Deep
++## Advanced
++```
++
++Rules the checker enforces (`validatePages`): the `id` must match the file path (`sales/index.md` is `sales`, `start.md` is `start`); every page except `start` has a `parent` that exists, with no loops; every `[[link]]` and every `related` entry must point at a real page; `## Basic` must be present; code fences must close; and `##` is reserved for the three depth headings, so inside a section you use `###`.
++
++### How the pieces fit
++```mermaid
++flowchart TD
++  A[help/*.md] -->|parsePage| B[Page objects]
++  B -->|validatePages| C{Any problems?}
++  C -->|yes| D[build stops, lists each problem]
++  C -->|no| E[makeBundle]
++  E --> F[help/help.json]
++  F --> G[App: built-in copy]
++  F --> H[Docs website]
++```
++
++### Showing a page at a depth
++`selectDepth(page, depth)` returns the lead, then each section down to the chosen depth. `resolveLinks` turns `[[id|text]]` into a real link for whichever viewer is showing it, and leaves plain text if the id is unknown, so raw brackets never reach the screen. `searchPages` requires every word to match and ranks title and tag matches above body matches. `buildIndex` gives the parent/child tree and the "pages that link here" lists; `trail` gives the path from the top page down to a page.
++
++### Tracing a problem
++- A page is not showing up: run `npm run help:check`. It prints every problem with the file name.
++- The app shows an old page: compare `version` in `help/help.json` with the one the app holds (`readBundle` rejects a bundle it cannot use, and the app then keeps its built-in copy).
++- A link is plain text instead of a link: the id in `[[...]]` does not exist, so `resolveLinks` printed only its text. The checker would have refused it, so look for a page that was deleted or renamed after the link was written.
+diff --git a/package.json b/package.json
+index 896ac79..37c477d 100644
+--- a/package.json
++++ b/package.json
+@@ -13,7 +13,9 @@
+     "test": "tsx --test tests/*.test.ts",
+     "zeller": "sh scripts/install-zeller.sh",
+     "android": "expo run:android",
+-    "zeller:pack": "sh scripts/package-zeller-sdk.sh"
++    "zeller:pack": "sh scripts/package-zeller-sdk.sh",
++    "help:build": "tsx scripts/build-help.ts",
++    "help:check": "tsx scripts/build-help.ts --check"
+   },
+   "dependencies": {
+     "@expo/ui": "0.2.0-beta.9",
+diff --git a/scripts/build-help.ts b/scripts/build-help.ts
+new file mode 100644
+index 0000000..ea227ad
+--- /dev/null
++++ b/scripts/build-help.ts
+@@ -0,0 +1,52 @@
++// Location: scripts/build-help.ts
++// Reads every page in help/, checks them, and writes help/help.json: the one file the app and the docs Worker both read.
++//   npm run help:build            write help/help.json (fails, writing nothing, if any page has a problem)
++//   npm run help:check            check the pages and that help/help.json is up to date (what `npm test` also does)
++import fs from 'node:fs';
++import path from 'node:path';
++import { makeBundle, parsePage, validatePages, type HelpBundle, type Page, type PageIssue } from '../src/lib/helpDocs';
++
++export const HELP_DIR = path.resolve(__dirname, '..', 'help');
++export const BUNDLE_FILE = path.join(HELP_DIR, 'help.json');
++
++/** Every `.md` under help/, as paths relative to it. README.md and files starting with `_` are notes for authors, not pages. */
++export function listPageFiles(dir = HELP_DIR): string[] {
++  const out: string[] = [];
++  const walk = (d: string) => {
++    for (const e of fs.readdirSync(d, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
++      if (e.isDirectory()) walk(path.join(d, e.name));
++      else if (e.name.toLowerCase().endsWith('.md') && e.name.toLowerCase() !== 'readme.md' && !e.name.startsWith('_')) out.push(path.relative(dir, path.join(d, e.name)).split(path.sep).join('/'));
++    }
++  };
++  walk(dir);
++  return out;
++}
++export function loadPages(dir = HELP_DIR): { pages: Page[]; issues: PageIssue[] } {
++  const pages: Page[] = []; const issues: PageIssue[] = [];
++  for (const f of listPageFiles(dir)) {
++    const r = parsePage(f, fs.readFileSync(path.join(dir, f), 'utf8'));
++    if ('page' in r) pages.push(r.page); else issues.push(r.issue);
++  }
++  return { pages, issues: [...issues, ...validatePages(pages)] };
++}
++export const serialise = (b: HelpBundle) => JSON.stringify(b, null, 1) + '\n';
++
++function main() {
++  const check = process.argv.includes('--check');
++  const { pages, issues } = loadPages();
++  if (issues.length) {
++    console.error(`${issues.length} problem${issues.length === 1 ? '' : 's'} in help/:`);
++    for (const i of issues) console.error(`  ${i.file}${i.id ? ` (${i.id})` : ''}: ${i.problem}`);
++    process.exit(1);
++  }
++  const text = serialise(makeBundle(pages));
++  if (check) {
++    const have = fs.existsSync(BUNDLE_FILE) ? fs.readFileSync(BUNDLE_FILE, 'utf8') : '';
++    if (have !== text) { console.error('help/help.json is out of date. Run: npm run help:build'); process.exit(1); }
++    console.log(`help OK: ${pages.length} pages, help.json is current.`);
++    return;
++  }
++  fs.writeFileSync(BUNDLE_FILE, text);
++  console.log(`Wrote help/help.json: ${pages.length} pages.`);
++}
++if (require.main === module) main();
+diff --git a/src/lib/helpDocs.ts b/src/lib/helpDocs.ts
+new file mode 100644
+index 0000000..7a03769
+--- /dev/null
++++ b/src/lib/helpDocs.ts
+@@ -0,0 +1,276 @@
++// Location: src/lib/helpDocs.ts
++// In-app help (B7): the page format, parser, checks and search. Pure: no React, no file access, so the app, the docs
++// Worker, the build script and the tests all share it. The pages themselves are Markdown files in `help/`.
++//
++// A page is one Markdown file: a small header, an optional lead paragraph, then up to three depth sections.
++//   ---
++//   id: sales/cart-and-prices
++//   title: The cart and how prices are worked out
++//   parent: sales
++//   summary: One line for lists and search results.
++//   tags: [cart, discount]
++//   related: [pay]
++//   ---
++//   Lead (shown at every depth).
++//   ## Basic     what a staff member needs
++//   ## Deep      how it works, in plain words
++//   ## Advanced  the code, flowcharts, how to trace a fault
++// Choosing a depth shows that section AND the ones above it (Deep shows Basic + Deep; Advanced shows all three).
++// Links between pages are written [[page-id]] or [[page-id|link text]].
++
++export const DEPTHS = ['basic', 'deep', 'advanced'] as const;
++export type Depth = (typeof DEPTHS)[number];
++export const DEPTH_LABEL: Record<Depth, string> = { basic: 'Basic', deep: 'Deep', advanced: 'Advanced' };
++export const DEPTH_BLURB: Record<Depth, string> = {
++  basic: 'What you need to know to use it.',
++  deep: 'Plus a plain-English look at how it works.',
++  advanced: 'Plus the code behind it, flowcharts, and how to trace a fault.',
++};
++export const ROOT_ID = 'start';
++
++export type Page = {
++  id: string; title: string; parent?: string; summary: string; tags: string[]; related: string[]; updated?: string;
++  /** Text before the first depth heading. Shown at every depth. */
++  lead: string;
++  sections: Record<Depth, string>;
++  /** Path of the source file, relative to `help/`, for error messages. */
++  file: string;
++};
++export type PageIssue = { file: string; id?: string; problem: string };
++
++// ── header ───────────────────────────────────────────────────────────────────
++function unquote(s: string): string {
++  const t = s.trim();
++  return t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'")) ? t.slice(1, -1) : t;
++}
++/** A tiny `key: value` / `key: [a, b]` reader. Not YAML: no nesting, no multi-line values. */
++export function parseFrontMatter(raw: string): { meta: Record<string, string | string[]>; body: string } | null {
++  const text = raw.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
++  if (!text.startsWith('---\n')) return null;
++  const end = text.indexOf('\n---', 4);
++  if (end < 0) return null;
++  const head = text.slice(4, end);
++  const after = text.slice(end + 4);
++  if (after && !after.startsWith('\n')) return null;
++  const meta: Record<string, string | string[]> = {};
++  for (const line of head.split('\n')) {
++    if (!line.trim() || line.trim().startsWith('#')) continue;
++    const m = /^([A-Za-z][\w-]*)\s*:\s*(.*)$/.exec(line);
++    if (!m) return null;
++    const v = m[2].trim();
++    meta[m[1]] = v.startsWith('[') && v.endsWith(']') ? v.slice(1, -1).split(',').map(unquote).filter(Boolean) : unquote(v);
++  }
++  return { meta, body: after.replace(/^\n/, '') };
++}
++
++// ── fences and sections ──────────────────────────────────────────────────────
++const FENCE = /^\s{0,3}(`{3,}|~{3,})/;
++/** True when every code fence that opens also closes. */
++export function fencesBalanced(md: string): boolean {
++  let open: string | null = null;
++  for (const line of md.split('\n')) {
++    const m = FENCE.exec(line); if (!m) continue;
++    if (open === null) open = m[1][0]; else if (m[1][0] === open) open = null;
++  }
++  return open === null;
++}
++/** Split a page body into its lead and depth sections. Headings inside code fences do not count. */
++export function splitSections(body: string): { lead: string; sections: Record<Depth, string> } {
++  const out = { lead: '', sections: { basic: '', deep: '', advanced: '' } as Record<Depth, string> };
++  let cur: Depth | 'lead' = 'lead'; let fence: string | null = null; const buf: Record<string, string[]> = { lead: [], basic: [], deep: [], advanced: [] };
++  for (const line of body.replace(/\r\n?/g, '\n').split('\n')) {
++    const f = FENCE.exec(line);
++    if (f) { if (fence === null) fence = f[1][0]; else if (f[1][0] === fence) fence = null; }
++    const h = fence === null ? /^##\s+(.+?)\s*$/.exec(line) : null;
++    if (h) {
++      const name = h[1].toLowerCase();
++      if ((DEPTHS as readonly string[]).includes(name)) { cur = name as Depth; continue; }
++    }
++    buf[cur].push(line);
++  }
++  out.lead = buf.lead.join('\n').trim();
++  for (const d of DEPTHS) out.sections[d] = buf[d].join('\n').trim();
++  return out;
++}
++
++// ── pages ────────────────────────────────────────────────────────────────────
++/** The id a file path must have: `sales/index.md` is `sales`, `start.md` is `start`, `sales/cart.md` is `sales/cart`. */
++export function idForPath(file: string): string {
++  const p = file.replace(/\\/g, '/').replace(/\.md$/i, '');
++  return p === 'index' ? ROOT_ID : p.endsWith('/index') ? p.slice(0, -6) : p;
++}
++export function parsePage(file: string, raw: string): { page: Page } | { issue: PageIssue } {
++  const fm = parseFrontMatter(raw);
++  if (!fm) return { issue: { file, problem: 'Missing or unreadable header (the `---` block at the top).' } };
++  const s = (k: string) => (typeof fm.meta[k] === 'string' ? (fm.meta[k] as string).trim() : '');
++  const l = (k: string) => (Array.isArray(fm.meta[k]) ? (fm.meta[k] as string[]) : typeof fm.meta[k] === 'string' && s(k) ? [s(k)] : []);
++  const sp = splitSections(fm.body);
++  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), lead: sp.lead, sections: sp.sections, file } };
++}
++
++// ── links ────────────────────────────────────────────────────────────────────
++const LINK = /\[\[([^\]|\n]+?)(?:\|([^\]\n]+?))?\]\]/g;
++const INLINE_CODE = /`[^`\n]*`/g;
++/** Every [[id]] / [[id|text]] in some Markdown, outside code fences and `inline code`. */
++export function extractLinks(md: string): { id: string; text?: string }[] {
++  const out: { id: string; text?: string }[] = []; let fence: string | null = null;
++  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
++    const f = FENCE.exec(line);
++    if (f) { if (fence === null) fence = f[1][0]; else if (f[1][0] === fence) fence = null; continue; }
++    if (fence) continue;
++    for (const m of line.replace(INLINE_CODE, m => ' '.repeat(m.length)).matchAll(LINK)) out.push({ id: m[1].trim(), text: m[2]?.trim() });
++  }
++  return out;
++}
++/** Turn [[id|text]] into the viewer's own link. Unknown ids keep their text and lose the link, so nothing shows raw brackets. */
++export function resolveLinks(md: string, titleOf: (id: string) => string | undefined, hrefFor: (id: string) => string): string {
++  let fence: string | null = null;
++  return md.replace(/\r\n?/g, '\n').split('\n').map(line => {
++    const f = FENCE.exec(line);
++    if (f) { if (fence === null) fence = f[1][0]; else if (f[1][0] === fence) fence = null; return line; }
++    if (fence) return line;
++    // text between single backticks is code: leave it exactly as written
++    return line.split(/(`[^`\n]*`)/).map((seg, i) => (i % 2 ? seg : seg.replace(LINK, (_m, id: string, text?: string) => { const t = titleOf(id.trim()); const label = (text ?? t ?? id).trim(); return t === undefined ? label : `[${label}](${hrefFor(id.trim())})`; }))).join('');
++  }).join('\n');
++}
++const allText = (p: Page) => [p.lead, ...DEPTHS.map(d => p.sections[d])].join('\n');
++const DIAGRAM_START = /^(flowchart|graph|sequenceDiagram|stateDiagram(-v2)?|classDiagram|erDiagram|journey|gantt|pie)\b/;
++/** The source of every ```mermaid block in some Markdown, so a viewer can draw it and the checker can look at it. */
++export function diagramBlocks(md: string): string[] {
++  const out: string[] = []; let open: { mark: string; mermaid: boolean; buf: string[] } | null = null;
++  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
++    const f = FENCE.exec(line);
++    if (!open) { if (f) open = { mark: f[1][0], mermaid: /^\s{0,3}(`{3,}|~{3,})\s*mermaid\s*$/i.test(line), buf: [] }; continue; }
++    if (f && f[1][0] === open.mark) { if (open.mermaid) out.push(open.buf.join('\n').trim()); open = null; continue; }
++    open.buf.push(line);
++  }
++  return out;
++}
++/** `##` headings left in a page after the depth headings are taken out. Inside a section use `###`, or the depth headings get confused. */
++export function strayHeadings(md: string): string[] {
++  const out: string[] = []; let fence: string | null = null;
++  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
++    const f = FENCE.exec(line);
++    if (f) { if (fence === null) fence = f[1][0]; else if (f[1][0] === fence) fence = null; continue; }
++    const h = fence === null ? /^##\s+(.+?)\s*$/.exec(line) : null; if (h) out.push(h[1]);
++  }
++  return out;
++}
++/** The Markdown to show at a depth: the lead, then each section down to and including that depth. Headings are re-levelled for display. */
++export function selectDepth(p: Page, depth: Depth): string {
++  const parts: string[] = []; if (p.lead) parts.push(p.lead);
++  for (const d of DEPTHS) { if (p.sections[d]) parts.push(`## ${DEPTH_LABEL[d]}\n\n${p.sections[d]}`); if (d === depth) break; }
++  return parts.join('\n\n');
++}
++/** Which depths a page has text for (so a viewer can say "no Advanced notes yet"). */
++export const depthsPresent = (p: Page): Depth[] => DEPTHS.filter(d => p.sections[d].length > 0);
++
++// ── the whole set ────────────────────────────────────────────────────────────
++export type HelpIndex = {
++  byId: Record<string, Page>;
++  /** parent id → child ids, in title order */
++  children: Record<string, string[]>;
++  /** page id → ids of pages that link to it ([[…]] or `related`) */
++  backlinks: Record<string, string[]>;
++  roots: string[];
++};
++export function buildIndex(pages: Page[]): HelpIndex {
++  const byId: Record<string, Page> = {}; for (const p of pages) if (p.id && !byId[p.id]) byId[p.id] = p;
++  const children: Record<string, string[]> = {}; const back: Record<string, Set<string>> = {}; const roots: string[] = [];
++  for (const p of Object.values(byId)) {
++    if (p.parent && byId[p.parent]) (children[p.parent] ??= []).push(p.id); else roots.push(p.id);
++    const targets = new Set([...p.related, ...extractLinks(allText(p)).map(l => l.id)]);
++    for (const t of targets) if (t !== p.id && byId[t]) (back[t] ??= new Set()).add(p.id);
++  }
++  const byTitle = (a: string, b: string) => byId[a].title.localeCompare(byId[b].title);
++  for (const k of Object.keys(children)) children[k].sort(byTitle);
++  const backlinks: Record<string, string[]> = {}; for (const [k, v] of Object.entries(back)) backlinks[k] = [...v].sort(byTitle);
++  return { byId, children, backlinks, roots: roots.sort(byTitle) };
++}
++/** From the root down to the page itself: the trail shown above a page. Stops if the chain is broken or loops. */
++export function trail(idx: HelpIndex, id: string): Page[] {
++  const out: Page[] = []; const seen = new Set<string>(); let cur: string | undefined = id;
++  while (cur && idx.byId[cur] && !seen.has(cur)) { seen.add(cur); out.unshift(idx.byId[cur]); cur = idx.byId[cur].parent; }
++  return out;
++}
++
++const ID_OK = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
++/** Everything that would make the help wrong or broken. An empty list means the set is sound. */
++export function validatePages(pages: Page[]): PageIssue[] {
++  const issues: PageIssue[] = []; const bad = (p: Page, problem: string) => issues.push({ file: p.file, id: p.id || undefined, problem });
++  const seen = new Map<string, Page>();
++  for (const p of pages) {
++    if (!p.id) { bad(p, 'No `id`.'); continue; }
++    if (!ID_OK.test(p.id)) bad(p, `The id "${p.id}" must be lowercase words joined by "-", with "/" between folders.`);
++    if (p.id !== idForPath(p.file)) bad(p, `The id "${p.id}" does not match the file path (it should be "${idForPath(p.file)}").`);
++    const dup = seen.get(p.id); if (dup) bad(p, `The id "${p.id}" is also used by ${dup.file}.`); else seen.set(p.id, p);
++  }
++  const ids = new Set(seen.keys());
++  for (const p of pages) {
++    if (!p.id) continue;
++    if (!p.title) bad(p, 'No `title`.');
++    if (!p.summary) bad(p, 'No `summary` (the one line shown in lists and search).');
++    if (p.id === ROOT_ID) { if (p.parent) bad(p, `"${ROOT_ID}" is the top page and cannot have a parent.`); }
++    else if (!p.parent) bad(p, 'No `parent`. Every page except the top one sits under another page.');
++    else if (!ids.has(p.parent)) bad(p, `The parent "${p.parent}" does not exist.`);
++    else if (p.parent === p.id) bad(p, 'A page cannot be its own parent.');
++    if (!p.sections.basic) bad(p, 'No "## Basic" section. Every page needs the plain version.');
++    const all = allText(p);
++    if (![p.lead, ...DEPTHS.map(d => p.sections[d])].every(fencesBalanced)) bad(p, 'A code fence is opened and never closed (checked inside each section).');
++    for (const d of diagramBlocks(all)) if (!DIAGRAM_START.test(d)) bad(p, `A mermaid block does not start with a diagram type such as "flowchart TD" (it starts "${d.split('\n')[0].slice(0, 30)}").`);
++    for (const h of strayHeadings(all)) bad(p, `The heading "## ${h}" is not Basic, Deep or Advanced. Use "###" for headings inside a section.`);
++    for (const r of p.related) if (!ids.has(r)) bad(p, `\`related\` points at "${r}", which does not exist.`);
++    for (const l of extractLinks(all)) if (!ids.has(l.id)) bad(p, `The link [[${l.id}]] goes to a page that does not exist.`);
++    if (p.updated && !/^\d{4}-\d{2}-\d{2}$/.test(p.updated)) bad(p, '`updated` must look like 2026-10-11.');
++  }
++  // parent loops (a → b → a): walk each chain
++  for (const p of pages) {
++    if (!p.id) continue; const path = new Set<string>(); let cur: string | undefined = p.id;
++    while (cur && seen.has(cur)) { if (path.has(cur)) { bad(p, `The parents loop back on themselves (${[...path].join(' → ')} → ${cur}).`); break; } path.add(cur); cur = seen.get(cur)!.parent; }
++  }
++  return issues;
++}
++
++// ── search ───────────────────────────────────────────────────────────────────
++const words = (s: string) => s.toLowerCase().split(/[^a-z0-9$]+/).filter(Boolean);
++/** Every search word must appear somewhere (title, summary, tags or text at the chosen depth). Title and tag hits rank highest. */
++export function searchPages(pages: Page[], query: string, depth: Depth = 'advanced'): { page: Page; score: number }[] {
++  const q = words(query); if (!q.length) return [];
++  const out: { page: Page; score: number }[] = [];
++  for (const p of pages) {
++    const title = p.title.toLowerCase(), sum = p.summary.toLowerCase(), tags = p.tags.join(' ').toLowerCase(), body = selectDepth(p, depth).toLowerCase();
++    let score = 0, ok = true;
++    for (const w of q) {
++      const s = (title.includes(w) ? 10 : 0) + (tags.includes(w) ? 6 : 0) + (sum.includes(w) ? 4 : 0) + (body.includes(w) ? 1 : 0);
++      if (!s) { ok = false; break; } score += s;
++    }
++    if (ok) out.push({ page: p, score });
++  }
++  return out.sort((a, b) => b.score - a.score || a.page.title.localeCompare(b.page.title));
++}
++
++// ── the bundle the app and the Worker both read ──────────────────────────────
++export type HelpBundle = { version: string; pages: Omit<Page, 'file'>[] };
++/** A short fingerprint of the content, so a device can tell whether its copy is the latest. FNV-1a, not security. */
++export function contentVersion(pages: Omit<Page, 'file'>[]): string {
++  let h = 0x811c9dc5; const s = JSON.stringify(pages);
++  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
++  return h.toString(16).padStart(8, '0');
++}
++export function makeBundle(pages: Page[]): HelpBundle {
++  const list = [...pages].sort((a, b) => a.id.localeCompare(b.id)).map(({ file: _f, ...rest }) => rest);
++  return { version: contentVersion(list), pages: list };
++}
++/** Read a bundle from untrusted JSON (a download, or an old saved copy). Returns null if it is not usable. */
++export function readBundle(raw: unknown): HelpBundle | null {
++  if (!raw || typeof raw !== 'object') return null;
++  const r = raw as Record<string, unknown>; if (typeof r.version !== 'string' || !Array.isArray(r.pages)) return null;
++  const pages: Omit<Page, 'file'>[] = [];
++  for (const x of r.pages) {
++    if (!x || typeof x !== 'object') continue; const p = x as Record<string, unknown>; const sec = (p.sections ?? {}) as Record<string, unknown>;
++    if (typeof p.id !== 'string' || !p.id || typeof p.title !== 'string') continue;
++    const str = (v: unknown) => (typeof v === 'string' ? v : ''); const arr = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []);
++    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) } });
++  }
++  return pages.length ? { version: r.version, pages } : null;
++}
+diff --git a/tests/helpdocs.test.ts b/tests/helpdocs.test.ts
+new file mode 100644
+index 0000000..91bfe91
+--- /dev/null
++++ b/tests/helpdocs.test.ts
+@@ -0,0 +1,163 @@
++// Location: tests/helpdocs.test.ts
++// B7: the help page format, its checks, search, and the real pages in help/.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import {
++  buildIndex, contentVersion, depthsPresent, diagramBlocks, extractLinks, fencesBalanced, idForPath, makeBundle, parseFrontMatter, parsePage,
++  readBundle, resolveLinks, searchPages, selectDepth, splitSections, strayHeadings, trail, validatePages, type Page,
++} from '../src/lib/helpDocs';
++import { BUNDLE_FILE, listPageFiles, loadPages, serialise } from '../scripts/build-help';
++
++const page = (id: string, over: Partial<Page> = {}): Page => ({
++  id, title: id.toUpperCase(), ...(id === 'start' ? {} : { parent: 'start' }), summary: `about ${id}`, tags: [], related: [], lead: '',
++  sections: { basic: 'basic text', deep: '', advanced: '' }, file: id === 'start' ? 'start.md' : `${id}.md`, ...over,
++});
++const problems = (ps: Page[]) => validatePages(ps).map(i => i.problem);
++
++// ── header ───────────────────────────────────────────────────────────────────
++test('front matter: values, lists, quotes, colons in values, CRLF and BOM', () => {
++  const r = parseFrontMatter('\uFEFF---\r\nid: a/b\r\ntitle: "Checkout: the screen"\r\ntags: [x, "y z", \'w\']\r\n# comment\r\nsummary: hi\r\n---\r\nBody\r\n');
++  assert.ok(r);
++  assert.equal(r!.meta.id, 'a/b'); assert.equal(r!.meta.title, 'Checkout: the screen');
++  assert.deepEqual(r!.meta.tags, ['x', 'y z', 'w']); assert.equal(r!.body.trim(), 'Body');
++});
++test('front matter: missing, unclosed, or a line that is not key: value is rejected', () => {
++  assert.equal(parseFrontMatter('no header'), null);
++  assert.equal(parseFrontMatter('---\nid: a\nno close'), null);
++  assert.equal(parseFrontMatter('---\nthis is not valid\n---\nx'), null);
++  assert.equal(parseFrontMatter('---\nid: a\n---x'), null);
++});
++test('parsePage reports a missing header as an issue, not a throw', () => {
++  const r = parsePage('x.md', 'hello'); assert.ok('issue' in r);
++});
++
++// ── sections ─────────────────────────────────────────────────────────────────
++test('sections: lead, three depths, headings are case-insensitive, ### stays inside', () => {
++  const s = splitSections('Lead\n\n## basic\nB1\n### Sub\nB2\n## DEEP\nD\n## Advanced\nA');
++  assert.equal(s.lead, 'Lead'); assert.equal(s.sections.basic, 'B1\n### Sub\nB2'); assert.equal(s.sections.deep, 'D'); assert.equal(s.sections.advanced, 'A');
++});
++test('sections: a "## Deep" inside a code fence is not a heading', () => {
++  const s = splitSections('## Basic\n```text\n## Deep\nnot a heading\n```\nstill basic\n## Deep\nreal');
++  assert.ok(s.sections.basic.includes('not a heading') && s.sections.basic.includes('still basic')); assert.equal(s.sections.deep, 'real');
++});
++test('fences: balanced and unbalanced, and ~~~ does not close ```', () => {
++  assert.ok(fencesBalanced('```\nx\n```')); assert.ok(!fencesBalanced('```\nx')); assert.ok(!fencesBalanced('```\nx\n~~~')); assert.ok(fencesBalanced('no fences'));
++});
++test('stray ## headings are found outside fences only', () => {
++  assert.deepEqual(strayHeadings('## One\n```\n## Two\n```\n## Three'), ['One', 'Three']);
++});
++test('depth is cumulative: Basic, Deep = Basic + Deep, Advanced = all', () => {
++  const p = page('x', { lead: 'LEAD', sections: { basic: 'B', deep: 'D', advanced: 'A' } });
++  const b = selectDepth(p, 'basic'), d = selectDepth(p, 'deep'), a = selectDepth(p, 'advanced');
++  assert.ok(b.startsWith('LEAD') && b.includes('B') && !b.includes('\nD') && !b.includes('A\n') && !b.includes('## Deep'));
++  assert.ok(d.includes('## Basic') && d.includes('## Deep') && !d.includes('## Advanced'));
++  assert.ok(a.includes('## Advanced'));
++  assert.deepEqual(depthsPresent(p), ['basic', 'deep', 'advanced']); assert.deepEqual(depthsPresent(page('y')), ['basic']);
++});
++
++// ── ids and links ────────────────────────────────────────────────────────────
++test('idForPath: index files take their folder, start.md is start', () => {
++  assert.equal(idForPath('start.md'), 'start'); assert.equal(idForPath('sales/index.md'), 'sales');
++  assert.equal(idForPath('sales/cart.md'), 'sales/cart'); assert.equal(idForPath('a\\b\\index.md'), 'a/b'); assert.equal(idForPath('index.md'), 'start');
++});
++test('links: plain and aliased, ignoring code fences and `inline code`', () => {
++  const md = 'See [[a]] and [[b/c|the text]].\n`[[nope]]` and ```[[no]]```\n```\n[[fenced]]\n```\n[[d]]';
++  assert.deepEqual(extractLinks(md), [{ id: 'a', text: undefined }, { id: 'b/c', text: 'the text' }, { id: 'd', text: undefined }]);
++});
++test('resolveLinks: known ids become links, unknown keep their text, code is untouched', () => {
++  const titles: Record<string, string> = { a: 'Page A' };
++  const out = resolveLinks('[[a]] [[a|custom]] [[gone|Gone text]] [[gone2]] `[[a]]`\n```\n[[a]]\n```', id => titles[id], id => `#/${id}`);
++  assert.equal(out, '[Page A](#/a) [custom](#/a) Gone text gone2 `[[a]]`\n```\n[[a]]\n```');
++});
++test('diagram blocks are found, other fences are skipped', () => {
++  const md = '```text\nflowchart no\n```\n```mermaid\nflowchart TD\nA-->B\n```\n~~~mermaid\ngraph LR\n~~~';
++  assert.deepEqual(diagramBlocks(md), ['flowchart TD\nA-->B', 'graph LR']);
++});
++
++// ── validation ───────────────────────────────────────────────────────────────
++test('a sound set has no problems', () => {
++  assert.deepEqual(problems([page('start'), page('a'), page('a/b', { parent: 'a', file: 'a/b.md' })].map(p => (p.id === 'a' ? { ...p, file: 'a/index.md' } : p))), []);
++});
++test('each kind of mistake is caught', () => {
++  const root = page('start');
++  const has = (ps: Page[], re: RegExp) => assert.ok(problems(ps).some(m => re.test(m)), `expected ${re} in ${JSON.stringify(problems(ps))}`);
++  has([root, page('a', { file: 'a.md' }), page('a', { file: 'other.md' })], /also used by/);
++  has([root, page('a', { file: 'wrong.md' })], /does not match the file path/);
++  has([root, page('a', { parent: 'nope' })], /parent "nope" does not exist/);
++  has([root, page('a', { parent: undefined })], /No `parent`/);
++  has([page('start', { parent: 'x' })], /cannot have a parent/);
++  has([root, page('a', { parent: 'a' })], /own parent/);
++  has([root, page('a', { parent: 'b' }), page('b', { parent: 'a' })], /loop/);
++  has([root, page('a', { sections: { basic: '', deep: 'only deep', advanced: '' } })], /No "## Basic"/);
++  has([root, page('a', { sections: { basic: 'see [[ghost]]', deep: '', advanced: '' } })], /\[\[ghost\]\]/);
++  has([root, page('a', { related: ['ghost'] })], /`related` points at "ghost"/);
++  has([root, page('a', { sections: { basic: '```\nopen', deep: '```', advanced: '' } })], /never closed/);
++  has([root, page('a', { sections: { basic: '## Extra\ntext', deep: '', advanced: '' } })], /Use "###"/);
++  has([root, page('a', { sections: { basic: '```mermaid\nnot a diagram\n```', deep: '', advanced: '' } })], /mermaid block/);
++  has([root, page('a', { title: '' })], /No `title`/);
++  has([root, page('a', { summary: '' })], /No `summary`/);
++  has([root, page('a', { updated: '11/10/2026' })], /updated/);
++  has([root, page('Bad_Id', { file: 'Bad_Id.md' })], /lowercase/);
++  has([root, page('', { file: 'x.md' })], /No `id`/);
++});
++
++// ── index and trail ──────────────────────────────────────────────────────────
++test('index: children in title order, backlinks from links and related, roots', () => {
++  const ps = [page('start'), page('b', { title: 'Bee' }), page('a', { title: 'Ant', sections: { basic: 'see [[b]]', deep: '', advanced: '' } }), page('c', { title: 'Cat', related: ['b'] })];
++  const idx = buildIndex(ps);
++  assert.deepEqual(idx.children.start, ['a', 'b', 'c']); assert.deepEqual(idx.backlinks.b, ['a', 'c']); assert.deepEqual(idx.roots, ['start']);
++});
++test('trail runs from the top page down and stops on a loop or a broken parent', () => {
++  const idx = buildIndex([page('start'), page('a'), page('a/b', { parent: 'a' })]);
++  assert.deepEqual(trail(idx, 'a/b').map(p => p.id), ['start', 'a', 'a/b']);
++  const loop = buildIndex([page('x', { parent: 'y' }), page('y', { parent: 'x' })]);
++  assert.deepEqual(trail(loop, 'x').map(p => p.id), ['y', 'x']);
++  assert.deepEqual(trail(idx, 'missing'), []);
++});
++
++// ── search ───────────────────────────────────────────────────────────────────
++test('search: every word must match; title beats summary beats body; depth limits the body', () => {
++  const ps = [
++    page('refund', { title: 'Refunds', summary: 'give money back', sections: { basic: 'card declined notes', deep: 'ledger internals', advanced: '' } }),
++    page('declined', { title: 'Card declined', summary: 'what to do', sections: { basic: 'try again', deep: '', advanced: '' } }),
++    page('misc', { title: 'Misc', summary: 'nothing', sections: { basic: 'cards', deep: '', advanced: '' } }),
++  ];
++  assert.deepEqual(searchPages(ps, 'card declined').map(r => r.page.id), ['declined', 'refund']);
++  assert.deepEqual(searchPages(ps, 'ledger', 'basic'), []); assert.equal(searchPages(ps, 'ledger', 'deep').length, 1);
++  assert.deepEqual(searchPages(ps, '   '), []); assert.deepEqual(searchPages(ps, 'zebra'), []);
++});
++
++// ── the bundle ───────────────────────────────────────────────────────────────
++test('bundle: version is stable for the same content and changes when a page changes; file paths are left out', () => {
++  const a = makeBundle([page('start'), page('a')]), b = makeBundle([page('a'), page('start')]);
++  assert.equal(a.version, b.version); assert.ok(!('file' in a.pages[0]));
++  assert.notEqual(a.version, makeBundle([page('start'), page('a', { lead: 'changed' })]).version);
++  assert.equal(contentVersion([]), contentVersion([]));
++});
++test('readBundle: round trip, and rubbish is refused or cleaned', () => {
++  const b = makeBundle([page('start'), page('a', { tags: ['t'] })]);
++  assert.deepEqual(readBundle(JSON.parse(JSON.stringify(b))), b);
++  for (const bad of [null, 5, 'x', {}, { version: 1, pages: [] }, { version: 'v', pages: [] }, { version: 'v', pages: [{ title: 'no id' }] }]) assert.equal(readBundle(bad), null);
++  const cleaned = readBundle({ version: 'v', pages: [{ id: 'a', title: 'A', tags: ['x', 5], sections: { basic: 'b', deep: 7 } }, null, 3] });
++  assert.deepEqual(cleaned!.pages[0].tags, ['x']); assert.equal(cleaned!.pages[0].sections.deep, ''); assert.equal(cleaned!.pages.length, 1);
++});
++
++// ── the real pages ───────────────────────────────────────────────────────────
++test('the pages in help/ have no problems, and every one can be reached from the top page', () => {
++  const { pages, issues } = loadPages();
++  assert.deepEqual(issues, []); assert.ok(pages.length >= 3);
++  const idx = buildIndex(pages);
++  for (const p of pages) assert.equal(trail(idx, p.id)[0].id, 'start', `${p.id} does not lead up to "start"`);
++  assert.deepEqual(idx.roots, ['start']);
++});
++test('help/help.json is up to date with the pages (run: npm run help:build)', () => {
++  assert.equal(fs.readFileSync(BUNDLE_FILE, 'utf8'), serialise(makeBundle(loadPages().pages)));
++});
++test('the build skips README.md and files starting with _', () => {
++  assert.ok(listPageFiles().every(f => !/readme\.md$/i.test(f) && !f.split('/').pop()!.startsWith('_')));
++  assert.ok(listPageFiles().includes('start.md'));
++});
++test('every real page has all three levels written, or is marked as Basic-only on purpose', () => {
++  for (const p of loadPages().pages) assert.ok(depthsPresent(p).includes('basic'), p.id);
++});
+-- 
+2.43.0
+

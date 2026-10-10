@@ -34,6 +34,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0025 | 2026-10-11 | Display modes, part 1 (B5a): Standard / Simple / Minimal / Custom per staff member, big-text and plain-English More menu, tab sets, Custom dials in Staff. The guided checkout flow is the next patch | B5a |
 | 0026 | 2026-10-11 | Display modes, part 2 (B5b): Minimal's guided checkout, one question per screen (Items, Customer, Discount, Check, Pay), with a More options button for everything else; new "Guided steps" dial for Custom | B5b |
 | 0027 | 2026-10-11 | Display modes, part 3 (B5c): Simple-mode polish in Checkout, Cart, Pay and Cash: plain-English payment buttons with a line under each, hints, bigger tap targets. Finishes B5 | B5c |
+| 0028 | 2026-10-11 | In-app help, part 1 (B7a): the page format, a checker that refuses broken pages, the build script, the writer's guide, and the first three pages (Help home, Checkout, Cart and prices) | B7a |
 
 ---
 
@@ -243,7 +244,35 @@ Status as found in the zip you sent (I only inspected files; not run).
   - [x] B5c (0027) Simple-mode polish inside the screens. Applies to anyone with explanations on (Simple, Minimal, or Custom with the dial on); Standard reads exactly as before. **Pay:** a "How is the customer paying?" heading, buttons reworded ("Pay by card $12.50", "Pay with cash", "Pay with a gift card", "Split the payment") each with a one-line explanation. **Cash sheet:** a line saying to tap the notes and coins handed over and that the change is worked out for you. **Checkout:** a hint under the quantity chips ("Pick how many first..."). **Cart:** "Add a customer (optional)", a friendlier empty-cart message, and a note under Charge that nothing is taken until the customer pays. **Bigger tap targets:** buttons, list rows, chips, segmented controls and icon buttons grow with the text size (15% at Simple, 30% at Minimal), everywhere in the app. I did not hide any buttons: Simple still gives every option. Code: `src/lib/simpleLabels.ts` (pure), small edits in `Pay.tsx`, `CashSheet.tsx`, `CartPane.tsx`, `Checkout.tsx`, `kit.tsx`. Tests: `tests/simplelabels.test.ts` (2).
   - [ ] B5d **You (deferred by you for now):** in Staff, open a cashier and try each mode, and for Simple check the Pay screen wording and the bigger buttons (a cash sale and a card sale), and for Minimal ring up a whole sale through the guided steps (card, cash, and a part-paid one, plus backing out with Back and More options), then sign in as them: check the text size, the tab bar, the More menu, and that Custom's four dials do what they say. Tell me if the text is too big or too small at Simple and Minimal, if anything overflows or gets cut off at 30% bigger, and if the More descriptions read well.
 - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
-- [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
+- [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker. **Started in 0028.** Three pages per patch, as you asked. Design: `docs/patches/0028-plan.md`; writer's guide: `help/README.md`.
+  - **How it works.** Pages are Markdown files in `help/` (`help/<folder>/<name>.md`, a folder's own page is its `index.md`). Each has a header (id, title, parent, summary, tags, related) and up to three sections, `## Basic`, `## Deep`, `## Advanced`. Choosing a depth shows it **plus the levels above it**. `[[page-id]]` links pages together; contents lists come from each page's `parent`. `npm run help:build` checks every page (dead links, missing parent or Basic section, loops, unclosed code, stray headings, bad mermaid) and writes `help/help.json`, which the app and the docs Worker both read. Code: `src/lib/helpDocs.ts` (pure, tested), `scripts/build-help.ts`. The Advanced flowcharts are Mermaid; the in-app drawing supports a simple subset (see the guide) and the website draws the full thing.
+  - [x] B7a (0028) foundation: format, checker, build, guide, tests, first three pages.
+  - [ ] B7b (0029) **Help screen in the app**: More ▸ Help (tree, search, depth picker remembered per device and kept in backups, "pages that link here", flowchart drawing with react-native-svg, built-in copy of `help.json`, works offline).
+  - [ ] B7c (0030) **Docs Worker** (`docs-server/`, same pattern as the receipt and gift claim Workers): serves the pages as a website and a small JSON API (`/api/index`, `/api/page/:id`, with the content version as the ETag), draws full Mermaid, search box, depth picker. The app can optionally fetch newer pages from it and falls back to its built-in copy. Styling and subdomain wait for E1.
+  - [ ] B7d (0047) **Help from every screen**: a small "?" on each screen that opens the matching page, and a link from each error message to its fix page. Last, once every page exists.
+  - **Page plan** (id, then what it covers). Done pages are ticked. A page is Basic + Deep + Advanced unless noted. Each patch is 3 pages.
+    - **0028** [x] `start` Help home and how depth works · [x] `sales` Checkout: the main screen · [x] `sales/cart-and-prices` the cart and how prices are worked out
+    - **0029** [ ] `sales/grid` the Quick Menu grid and editing it (tiles, nested categories, per-tile settings, pages, import/export, the path bar) · [ ] `sales/variants-and-stock` variations, stock counts, negative stock · [ ] `sales/scanners` Bluetooth and camera scanning, the double-click keyboard, passes and gift QRs
+    - **0030** [ ] `sales/lookup-tiles` Lock POS, Price check, Stock check · [ ] `sales/saved-carts` saved carts · [ ] `sales/customers` customers
+    - **0031** [ ] `sales/bundles` bundle deals and the builder · [ ] `pay` taking payment (overview) · [ ] `pay/card` paying by card (Zeller, the waiting strip, cancel)
+    - **0032** [ ] `pay/cash` paying by cash (tap pad, change) · [ ] `pay/gift-card` paying with a gift card · [ ] `pay/split-and-part` split and part payments
+    - **0033** [ ] `pay/receipts` receipts, QR and email · [ ] `cash` the cash drawer and ledger (overview) · [ ] `cash/open-close` opening, paid in/out, counting and closing
+    - **0034** [ ] `cash/change` how change is worked out and what "can't make change" means · [ ] `cash/check-change` Check Change · [ ] `cash/smart-change` Smart change
+    - **0035** [ ] `cash/float-report` the daily float report · [ ] `cash/tender-machine` tender machine (under construction) · [ ] `gift` selling gift cards
+    - **0036** [ ] `gift/claim-page` the claim QR and page · [ ] `gift/check-redeem` checking and redeeming, QR codes · [ ] `orders` orders and transactions
+    - **0037** [ ] `orders/refunds` refunds and exchanges · [ ] `orders/reports` reports · [ ] `orders/square-history` Square history
+    - **0038** [ ] `stock` items and inventory (overview) · [ ] `stock/inventory` the Inventory screen (filters, sort, nesting) · [ ] `stock/items` items and creating one
+    - **0039** [ ] `staff` staff and roles · [ ] `staff/passes` cashier passes and signing in · [ ] `staff/modes` display modes (Standard, Simple, Minimal, Custom)
+    - **0040** [ ] `staff/guided-checkout` the guided checkout · [ ] `staff/screensaver` screensaver and keep-awake · [ ] `settings` settings (overview)
+    - **0041** [ ] `settings/shopify` connecting Shopify · [ ] `settings/payments` payments settings (fees, rounding, Zeller) · [ ] `settings/hardware` hardware and the scanner test
+    - **0042** [ ] `settings/receipts` receipt settings, ABN and GST · [ ] `settings/backup` backup, transfer and data · [ ] `settings/theme` theme
+    - **0043** [ ] `fix` when something goes wrong (overview) · [ ] `fix/card-declined` · [ ] `fix/reader` reader not ready or pairing
+    - **0044** [ ] `fix/offline-sync` offline, queued, sync issue · [ ] `fix/cant-make-change` · [ ] `fix/stock-mismatch` counts differ from Shopify
+    - **0045** [ ] `fix/keyboard` keyboard and scanner problems · [ ] `fix/locked-out` forgotten PIN or lost pass · [ ] `concepts` how the POS works (overview)
+    - **0046** [ ] `concepts/data-and-sync` where data lives, Shopify as shared storage, the outbox · [ ] `concepts/roles` roles and what each can do · [ ] `concepts/money` cents, rounding, GST
+    - **0047** [ ] `concepts/glossary` words used in the POS · B7d (help from every screen) · a final check that every screen and setting has a page
+  - Pages describe the app as it is now. Two will need a later update: `sales/cart-and-prices` when A16 (price adjustments) is built, and anything that mentions "More ▸ Help" is only true from 0029.
+  - [ ] B7e **You:** (N21) read the three pages and tell me what is wrong or unclear.
 - [ ] B8 Extra ideas (saved for last, after E1 below)
 
 ---
@@ -253,7 +282,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
 - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (262 after patch 0024). `npm test` on your machine runs the same files.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028). `npm test` on your machine runs the same files.
 - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
@@ -289,6 +318,7 @@ Ordered by priority, highest first.
 - [ ] N18 **Non-blocking (B1c):** the smart change test in B1j.
 - [ ] N19 **Non-blocking (B1f):** the float report test in B1k.
 - [ ] N20 **Non-blocking (B5a):** the display mode test in B5d. Registers still on an older app version ignore the mode and show Standard, so update every register.
+- [ ] N21 **Non-blocking (B7):** read `help/start.md`, `help/sales/index.md` and `help/sales/cart-and-prices.md` (plain Markdown for now) and tell me if the tone, the level of detail, or any fact is wrong. Also say if you would rather a chosen depth show **only** that level instead of that level plus the ones above it (the plan assumes cumulative). Changing the page text costs nothing now and a lot after 58 pages.
 
 ### Priority 3
 - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
