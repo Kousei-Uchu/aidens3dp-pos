@@ -6,12 +6,13 @@ import * as Crypto from 'expo-crypto';
 import { gql, throwUserErrors } from './client';
 import { CURRENCY, toCents, toDecimal } from '../money';
 import { uid } from '../ids';
+import { normaliseCode } from '../giftCode';
 import { createCustomer, searchRemote } from './customers';
 import type { GiftRecipient } from '../types';
 
 export type GiftCardInfo = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
 
-export const normaliseCode = (s: string) => s.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+export { normaliseCode, stripGiftPrefix, giftQrPayload } from '../giftCode';
 export const newGiftCode = () => uid().replace(/-/g, '').slice(0, 16).toUpperCase();
 const checksum = async (code: string) => (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normaliseCode(code))).slice(0, 10);
 
@@ -42,12 +43,11 @@ export async function createGiftCard(valueCents: number, code: string, saleUuid:
     if (existing) return existing;
   }
   throwUserErrors(errs, 'Creating the gift card');
-  const card = mapCard(d.giftCardCreate.giftCard, true);
-  if (recipientAttributes) await sendGiftCardEmail(card.id); // delivers the code + (if enabled in Shopify) the Apple Wallet button
-  return card;
+  return mapCard(d.giftCardCreate.giftCard, true);
 }
 
-/** (Re)send the gift card notification to its recipient. Never fails a sale: the card exists either way. */
+/** Manually (re)send the gift card notification to its recipient. Not used at sale time: Shopify already emails the recipient when a card is
+ *  created with one (A9.6: sending it again made two emails). Kept for a "Resend" action. Never fails a sale: the card exists either way. */
 export async function sendGiftCardEmail(id: string): Promise<boolean> {
   try {
     const d = await gql(`mutation($id:ID!){ giftCardSendNotificationToRecipient(id:$id) { userErrors { field message } } }`, { id });

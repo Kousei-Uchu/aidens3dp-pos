@@ -1,0 +1,556 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 868ba0a..6f8c967 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -18,6 +18,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0009 | 2026-10-10 | Bundle builder GUI: deal list + editor, % off / set price / $ off, dates, recommended pairs, bundle rows in the cart, pre-payment check; fixes a missing "Square history" page title from 0008 | A8, B4 |
+ | 0010 | 2026-10-10 | Gift cards: QR prefix stripped everywhere a code is read, one email per card sent only after the card exists, safe retries; `npm run zeller:pack` script | A9.3-A9.5, A11.3 |
+ | 0011 | 2026-10-10 | Remove the app's own gift card email (Shopify already sends one on creation) | A9.3, A9.6 |
++| 0012 | 2026-10-10 | Gift card claim page (own Worker) + Claim QR and gift card QR on the receipt step | A10 |
+ 
+ ---
+ 
+@@ -102,9 +103,10 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
+ - [x] A9.6 Answered by you (N10): two emails arrived, so the extra send is gone.
+ 
+ ### A10. Gift card web page / QR / recipient form
+-- [ ] A10.1 QR to the card's Shopify gift-card page where available.
+-- [ ] A10.2 Fallback Cloudflare Worker "claim your gift card" page (recipient name + email).
+-- [ ] A10.3 Keep manual recipient entry (email and details typed in the app) as a fallback alongside the QR and web page.
++- [-] A10.1 Not possible: Shopify's Admin API has no field for a gift card's customer web page. That link only exists inside Shopify's own email, so the app cannot print it as a QR. Replaced by A10.2 (our own page) and the card QR below.
++- [x] A10.2 New Worker `gift-claim-server/` (own Shopify app, own secrets; README inside). After you sell a gift card with no email, the receipt step shows **Claim QR: customer adds their email**. The customer scans it, enters name, email and an optional message, and Shopify emails the card. Details: signed link `/c/<CODE>.<SIG>` (HMAC with `CLAIM_SECRET`, made by the POS), card found by last characters + the POS checksum note, only enabled cards with no recipient yet, one claim per card (locked first, unlocked if Shopify fails), per-IP rate limit, page shows only the last 4 characters. App side: `src/lib/giftClaim.ts`, Settings ▸ Gift cards ▸ Gift card claim page (URL + secret in the Keychain, included in backups). Tests: `tests/giftclaim.test.ts` (7), including that the app and the Worker agree on signatures.
++- [x] A10.3 Manual recipient entry ("Email it" when adding the card) is unchanged and still the first choice. The receipt step also has **Gift card QR (for scanning at a register)**, which holds `shopify-giftcard-v1-CODE` (the A9.5 format) and works with the redeem and check scanners.
++- [~] A10.4 **You:** set the Worker up (README), sell a test card with no email, scan the Claim QR with your phone, and enter your email. Tell me how many emails arrive. Not run against a real store: the update + notify calls are written from Shopify's docs. This patch needs no native rebuild and no `npm install`.
+ 
+ ### A11. Zeller terminal shouldn't show our own sheet
+ - [ ] A11.1 Remove our payment sheet for terminal calls; show only a slim in-app "waiting on terminal" state while Zeller's UI is up.
+@@ -180,7 +182,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [ ] B8 Extra ideas
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (151 after patch 0010). `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (158 after patch 0012). `npm test` on your machine runs the same files.
+ - Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -202,6 +204,8 @@ Ordered by priority, highest first.
+ 
+ - [x] N10 Answered: two emails arrived with 0010. Fixed in 0011 (the app no longer sends its own).
+ 
++- [ ] N11 **Non-blocking (A10.4):** set up `gift-claim-server` (its README) and test one claim. Skip it if you don't want the claim page; the app hides the Claim QR until the URL and secret are filled in.
++
+ ### Priority 3
+ - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+ - [ ] N7 **Non-blocking (B1):** confirm the cash drawer ledger and denomination entry were meant to be part of the project. I am building it as its own run of patches either way.
+diff --git a/gift-claim-server/README.md b/gift-claim-server/README.md
+new file mode 100644
+index 0000000..e9ee43b
+--- /dev/null
++++ b/gift-claim-server/README.md
+@@ -0,0 +1,30 @@
++# Gift card claim page (optional, UNTESTED against your store)
++
++Lets a customer add their own name and email to a gift card you sold **without** an email at the till.
++At the receipt step the POS shows **Claim QR**. The customer scans it with a phone camera, types a name and email, and Shopify emails them the card. It works once per card.
++
++The POS works without this. Typing the recipient's email at the till still works exactly as before.
++
++## Setup
++1. **Make a separate Shopify app** for this Worker (Dev Dashboard, like the pass server). Scopes: `read_gift_cards`, `write_gift_cards`, `read_customers`, `write_customers`. Do not reuse the POS app's login.
++2. Deploy:
++```
++cd gift-claim-server && npm install
++npx wrangler kv namespace create CLAIMS     # paste the id into wrangler.toml
++openssl rand -hex 32                         # this is CLAIM_SECRET
++for s in CLAIM_SECRET SHOPIFY_DOMAIN SHOPIFY_CLIENT_ID SHOPIFY_CLIENT_SECRET SHOP_NAME; do npx wrangler secret put $s; done
++npx wrangler deploy
++```
++`SHOPIFY_DOMAIN` is the `your-store.myshopify.com` address.
++3. In the app: **Settings ▸ Gift cards ▸ Gift card claim page**: the Worker URL and the same `CLAIM_SECRET`.
++
++## How it stays safe
++- A link is `/c/<CODE>.<SIGNATURE>`; the signature is an HMAC of the code with `CLAIM_SECRET`, made by the POS. Edited, guessed or forged links get "not valid".
++- It only works for cards the POS created (the code's checksum must match the card's note), that are enabled, and that have no recipient yet.
++- One claim per card: it is locked before anything is sent, and unlocked again only if Shopify fails.
++- Light per-IP rate limit (KV, approximate). Pages are `noindex`, never cached, and send no referrer.
++- The page shows only the last 4 characters of the card, never the balance or full code.
++- Limits: anyone who has the printed/shown QR can claim the card, the same as holding a paper card. KV is not atomic, so two phones submitting in the same instant could in theory both pass the check; Shopify still holds one recipient per card.
++
++## Not verified
++Whether Shopify sends the card email when a recipient is *added to an existing card* is not in its docs. The Worker sends the notification itself after setting the recipient. If your test card arrives **twice**, tell Claude and that call will be removed.
+diff --git a/gift-claim-server/package.json b/gift-claim-server/package.json
+new file mode 100644
+index 0000000..d5e54c6
+--- /dev/null
++++ b/gift-claim-server/package.json
+@@ -0,0 +1,2 @@
++{ "name": "pos-gift-claim", "private": true, "version": "0.1.0", "scripts": { "dev": "wrangler dev", "deploy": "wrangler deploy" },
++  "devDependencies": { "wrangler": "^3.90.0", "@cloudflare/workers-types": "^4.0.0", "typescript": "~5.8.3" } }
+diff --git a/gift-claim-server/src/claim.ts b/gift-claim-server/src/claim.ts
+new file mode 100644
+index 0000000..97cc780
+--- /dev/null
++++ b/gift-claim-server/src/claim.ts
+@@ -0,0 +1,59 @@
++// Location: gift-claim-server/src/claim.ts
++// Pure helpers for the claim page (WebCrypto only, so they run in Workers and in node tests).
++// A claim link is  https://<worker>/c/<CODE>.<SIG>  where SIG = first 32 hex of HMAC-SHA256(CLAIM_SECRET, `claim:${CODE}`).
++// The POS signs it with the same secret, so only links the shop issued work, and guessing a link means guessing a 16-character code.
++const enc = new TextEncoder();
++const toHex = (b: ArrayBuffer) => [...new Uint8Array(b)].map(x => x.toString(16).padStart(2, '0')).join('');
++
++async function hmacHex(secret: string, msg: string) {
++  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
++  return toHex(await crypto.subtle.sign('HMAC', key, enc.encode(msg)));
++}
++export function safeEqual(a: string, b: string): boolean {
++  const x = enc.encode(a), y = enc.encode(b); let d = x.length ^ y.length;
++  for (let i = 0; i < Math.max(x.length, y.length); i++) d |= (x[i] ?? 0) ^ (y[i] ?? 0);
++  return d === 0;
++}
++export const normaliseCode = (s: string) => s.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
++export const claimSig = async (secret: string, rawCode: string) => (await hmacHex(secret, `claim:${normaliseCode(rawCode)}`)).slice(0, 32);
++
++/** Splits `<CODE>.<SIG>` and checks the signature. Returns the normalised code, or null for anything not issued by the shop. */
++export async function verifyClaimToken(secret: string, token: string): Promise<string | null> {
++  const m = /^([A-Za-z0-9]{8,20})\.([0-9a-f]{32})$/.exec(token);
++  if (!secret || !m) return null;
++  const code = normaliseCode(m[1]);
++  return safeEqual(await claimSig(secret, code), m[2]) ? code : null;
++}
++/** The note the POS puts on every card it creates: `pos|sale:…|chk:<first 10 hex of SHA-256(code)>`. Matches src/lib/shopify/giftcards.ts. */
++export async function codeChecksum(code: string) {
++  return toHex(await crypto.subtle.digest('SHA-256', enc.encode(normaliseCode(code)))).slice(0, 10);
++}
++
++export type ClaimFields = { name: string; email: string; message: string };
++const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
++/** Returns the cleaned fields, or an error message to show the visitor. */
++export function validateClaim(f: { name?: unknown; email?: unknown; message?: unknown }): { ok: true; value: ClaimFields } | { ok: false; error: string } {
++  const name = String(f.name ?? '').trim().replace(/\s+/g, ' '); const email = String(f.email ?? '').trim().toLowerCase(); const message = String(f.message ?? '').trim();
++  if (!name || name.length > 100) return { ok: false, error: 'Please enter your name (up to 100 characters).' };
++  if (email.length > 254 || !EMAIL.test(email)) return { ok: false, error: 'That email address does not look right.' };
++  if (message.length > 200) return { ok: false, error: 'Please keep the message to 200 characters.' };
++  return { ok: true, value: { name, email, message } };
++}
++
++const esc = (s: string) => s.replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]!));
++const page = (shop: string, body: string) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>${esc(shop)} gift card</title><style>
++body{font:16px/1.45 -apple-system,system-ui,sans-serif;margin:0;background:#f5f5f5;color:#111}main{max-width:420px;margin:0 auto;padding:28px 18px}
++h1{font-size:22px;margin:0 0 6px}p{color:#444;margin:6px 0 16px}label{display:block;font-weight:600;margin:14px 0 4px}
++input,textarea{width:100%;box-sizing:border-box;font:inherit;padding:12px;border:1px solid #bbb;border-radius:10px;background:#fff}
++button{margin-top:20px;width:100%;font:inherit;font-weight:700;padding:14px;border:0;border-radius:12px;background:#111;color:#fff}
++.err{background:#fee2e2;color:#991b1b;padding:10px 12px;border-radius:10px;margin-top:14px}.card{background:#fff;border-radius:16px;padding:20px}
++</style></head><body><main><div class="card">${body}</div></main></body></html>`;
++
++export const messagePage = (shop: string, title: string, text: string) => page(shop, `<h1>${esc(title)}</h1><p>${esc(text)}</p>`);
++export const formPage = (shop: string, last4: string, v: Partial<ClaimFields> = {}, error = '') => page(shop, `<h1>You have a gift card from ${esc(shop)}</h1>
++<p>Card ending <b>${esc(last4)}</b>. Tell us where to send it and we will email it to you.</p>
++<form method="post">${error ? `<div class="err">${esc(error)}</div>` : ''}
++<label for="n">Your name</label><input id="n" name="name" autocomplete="name" maxlength="100" required value="${esc(v.name ?? '')}">
++<label for="e">Your email</label><input id="e" name="email" type="email" autocomplete="email" inputmode="email" maxlength="254" required value="${esc(v.email ?? '')}">
++<label for="m">Message (optional)</label><textarea id="m" name="message" rows="2" maxlength="200">${esc(v.message ?? '')}</textarea>
++<button type="submit">Send me my gift card</button></form>`);
+diff --git a/gift-claim-server/src/index.ts b/gift-claim-server/src/index.ts
+new file mode 100644
+index 0000000..8d8a536
+--- /dev/null
++++ b/gift-claim-server/src/index.ts
+@@ -0,0 +1,83 @@
++// Location: gift-claim-server/src/index.ts
++// Gift card "claim" page. The POS shows a QR for  https://<worker>/c/<CODE>.<SIG>  when a gift card is sold without a recipient email.
++// The buyer (or whoever they hand it to) scans it, enters a name + email, and Shopify emails the card. One claim per card.
++//   GET  /c/<token>   form (or "already claimed" / "not found")
++//   POST /c/<token>   sets the card's recipient and sends the notification
++// Uses its OWN Shopify app (scopes: read_gift_cards, write_gift_cards, read_customers, write_customers), not the POS app's login.
++import { codeChecksum, formPage, messagePage, validateClaim, verifyClaimToken } from './claim';
++
++export interface Env { CLAIMS: KVNamespace; CLAIM_SECRET: string; SHOPIFY_DOMAIN: string; SHOPIFY_CLIENT_ID: string; SHOPIFY_CLIENT_SECRET: string; SHOP_NAME: string }
++const API = '2026-07';
++const html = (body: string, status = 200) => new Response(body, { status, headers: {
++  'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex, nofollow', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff',
++  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" } });
++
++async function shopifyToken(env: Env): Promise<string> {
++  const cached = await env.CLAIMS.get('shopify-token'); if (cached) return cached;
++  const r = await fetch(`https://${env.SHOPIFY_DOMAIN}/admin/oauth/access_token`, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams({ grant_type: 'client_credentials', client_id: env.SHOPIFY_CLIENT_ID, client_secret: env.SHOPIFY_CLIENT_SECRET }) });
++  const j = (await r.json()) as any; if (!j.access_token) throw new Error('Shopify token request failed');
++  await env.CLAIMS.put('shopify-token', j.access_token, { expirationTtl: Math.max(60, (j.expires_in ?? 3600) - 300) });
++  return j.access_token;
++}
++async function gql(env: Env, query: string, variables: Record<string, unknown>) {
++  const token = await shopifyToken(env);
++  const r = await fetch(`https://${env.SHOPIFY_DOMAIN}/admin/api/${API}/graphql.json`, { method: 'POST', headers: { 'content-type': 'application/json', 'x-shopify-access-token': token }, body: JSON.stringify({ query, variables }) });
++  const j = (await r.json()) as any; if (j.errors?.length) throw new Error(j.errors.map((e: any) => e.message).join('; '));
++  return j.data;
++}
++
++type Card = { id: string; last4: string; enabled: boolean; hasRecipient: boolean };
++/** Finds the card for a code. Shopify only searches by last characters, so the POS note checksum picks the right one. */
++async function findCard(env: Env, code: string): Promise<Card | null> {
++  const d = await gql(env, `query($q:String){ giftCards(first: 10, query: $q) { nodes { id lastCharacters enabled note recipientAttributes { recipient { id } } } } }`, { q: `last_characters:${code.slice(-4).toLowerCase()}` });
++  const chk = await codeChecksum(code);
++  const n = (d.giftCards.nodes as any[]).find(x => (x.note ?? '').includes(`chk:${chk}`));
++  return n ? { id: n.id, last4: n.lastCharacters, enabled: !!n.enabled, hasRecipient: !!n.recipientAttributes?.recipient?.id } : null;
++}
++async function customerId(env: Env, email: string, name: string): Promise<string> {
++  const d = await gql(env, `query($q:String){ customers(first: 5, query: $q) { nodes { id email } } }`, { q: `email:${email}` });
++  const hit = (d.customers.nodes as any[]).find(c => c.email?.toLowerCase() === email); if (hit) return hit.id;
++  const [firstName, ...rest] = name.split(' ');
++  const c = await gql(env, `mutation($i:CustomerInput!){ customerCreate(input:$i){ customer { id } userErrors { message } } }`, { i: { email, firstName, lastName: rest.join(' ') || undefined } });
++  const id = c.customerCreate.customer?.id; if (!id) throw new Error(c.customerCreate.userErrors?.[0]?.message ?? 'Could not save the email address');
++  return id;
++}
++
++export default {
++  async fetch(req: Request, env: Env): Promise<Response> {
++    const url = new URL(req.url); const shop = env.SHOP_NAME || 'our shop';
++    const m = url.pathname.match(/^\/c\/([^/]+)$/);
++    if (url.pathname === '/') return html(messagePage(shop, 'Gift cards', 'Scan the QR code on your gift card to claim it.'));
++    if (!m) return html(messagePage(shop, 'Not found', ''), 404);
++    const code = await verifyClaimToken(env.CLAIM_SECRET, m[1]);
++    if (!code) return html(messagePage(shop, 'This link is not valid', 'Please check the QR code, or ask the shop.'), 404);
++
++    // light per-IP rate limit (KV, approximate): 20 requests per 10 minutes
++    const ip = req.headers.get('cf-connecting-ip') ?? 'x'; const rk = `rl:${ip}:${Math.floor(Date.now() / 600_000)}`;
++    const used = Number((await env.CLAIMS.get(rk)) ?? 0); if (used >= 20) return html(messagePage(shop, 'Too many tries', 'Please wait a few minutes and try again.'), 429);
++    await env.CLAIMS.put(rk, String(used + 1), { expirationTtl: 700 });
++
++    let lock = '';
++    try {
++      const card = await findCard(env, code);
++      if (!card || !card.enabled) return html(messagePage(shop, 'Gift card not found', 'Please ask the shop for help.'), 404);
++      if (card.hasRecipient || (await env.CLAIMS.get(`claimed:${card.id}`))) return html(messagePage(shop, 'Already claimed', 'This gift card has already been sent to someone. If that was not you, please contact the shop.'));
++      if (req.method === 'GET') return html(formPage(shop, card.last4));
++      if (req.method !== 'POST') return new Response('method not allowed', { status: 405 });
++      const text = await req.text(); if (text.length > 4000) return new Response('too large', { status: 413 });
++      const form = new URLSearchParams(text); const v = validateClaim({ name: form.get('name'), email: form.get('email'), message: form.get('message') });
++      if (!v.ok) return html(formPage(shop, card.last4, { name: form.get('name') ?? '', email: form.get('email') ?? '', message: form.get('message') ?? '' }, v.error), 422);
++      lock = `claimed:${card.id}`; await env.CLAIMS.put(lock, new Date().toISOString()); // set first, so a double tap cannot send two
++      const cid = await customerId(env, v.value.email, v.value.name);
++      const u = await gql(env, `mutation($id:ID!,$i:GiftCardUpdateInput!){ giftCardUpdate(id:$id, input:$i){ giftCard { id } userErrors { message } } }`,
++        { id: card.id, i: { recipientAttributes: { id: cid, preferredName: v.value.name.slice(0, 100), ...(v.value.message ? { message: v.value.message } : {}) } } });
++      if (u.giftCardUpdate.userErrors?.length) throw new Error(u.giftCardUpdate.userErrors[0].message);
++      const s = await gql(env, `mutation($id:ID!){ giftCardSendNotificationToRecipient(id:$id){ userErrors { message } } }`, { id: card.id });
++      if (s.giftCardSendNotificationToRecipient.userErrors?.length) throw new Error(s.giftCardSendNotificationToRecipient.userErrors[0].message);
++      return html(messagePage(shop, 'On its way', `We have emailed your gift card to ${v.value.email}. It can take a minute to arrive.`));
++    } catch (e) {
++      if (lock) await env.CLAIMS.delete(lock).catch(() => {}); // the claim did not complete, so let them try again
++      return html(messagePage(shop, 'Something went wrong', 'Please try again in a minute, or ask the shop for help.'), 500);
++    }
++  },
++};
+diff --git a/gift-claim-server/tsconfig.json b/gift-claim-server/tsconfig.json
+new file mode 100644
+index 0000000..ac198b0
+--- /dev/null
++++ b/gift-claim-server/tsconfig.json
+@@ -0,0 +1 @@
++{ "compilerOptions": { "target": "ES2022", "module": "ES2022", "moduleResolution": "Bundler", "lib": ["ES2022"], "types": ["@cloudflare/workers-types"], "strict": true, "noEmit": true, "skipLibCheck": true }, "include": ["src"] }
+diff --git a/gift-claim-server/wrangler.toml b/gift-claim-server/wrangler.toml
+new file mode 100644
+index 0000000..de42502
+--- /dev/null
++++ b/gift-claim-server/wrangler.toml
+@@ -0,0 +1,9 @@
++name = "pos-gift-claim"
++main = "src/index.ts"
++compatibility_date = "2025-01-01"
++
++[[kv_namespaces]]
++binding = "CLAIMS"
++id = "REPLACE_WITH_ID"   # npx wrangler kv namespace create CLAIMS
++
++# Secrets (npx wrangler secret put NAME): CLAIM_SECRET SHOPIFY_DOMAIN SHOPIFY_CLIENT_ID SHOPIFY_CLIENT_SECRET SHOP_NAME
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index 82297d0..964803a 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -12,7 +12,7 @@ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+ export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion'] as const;
+ 
+-export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string };
++export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string };
+ export type BackupV1 = {
+   app: typeof BACKUP_APP; v: number; createdAt: string;
+   settings: Record<string, unknown>; grid?: { grid: unknown; version: number };
+@@ -47,7 +47,7 @@ export function validateBackup(x: unknown): BackupV1 {
+   return {
+     app: BACKUP_APP, v: b.v, createdAt: str(b.createdAt), settings,
+     ...(b.grid && typeof b.grid === 'object' && b.grid.grid ? { grid: { grid: b.grid.grid, version: Number(b.grid.version) || 0 } } : {}),
+-    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret) },
++    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret), claimSecret: str(c.claimSecret) },
+   };
+ }
+ 
+diff --git a/src/lib/backupIO.ts b/src/lib/backupIO.ts
+index ee3c3b4..5c4a059 100644
+--- a/src/lib/backupIO.ts
++++ b/src/lib/backupIO.ts
+@@ -2,17 +2,17 @@
+ // Reads this device's settings + logins into a BackupV1, and applies one on another device.
+ import * as FS from 'expo-file-system/legacy';
+ import { useApp } from '../state/store';
+-import { getPassSecret, getReceiptSecret, getToken, loadCreds, saveCreds, setPassSecret, setReceiptSecret } from './shopify/client';
++import { getClaimSecret, getPassSecret, getReceiptSecret, getToken, loadCreds, saveCreds, setClaimSecret, setPassSecret, setReceiptSecret } from './shopify/client';
+ import { parseGrid } from './grid';
+ import { buildBackup, mergeSettings, type BackupV1 } from './backupFile';
+ 
+ export async function collectBackup(): Promise<BackupV1> {
+   const c = await loadCreds();
+-  const [passSecret, receiptSecret] = await Promise.all([getPassSecret(), getReceiptSecret()]);
++  const [passSecret, receiptSecret, claimSecret] = await Promise.all([getPassSecret(), getReceiptSecret(), getClaimSecret()]);
+   const st = useApp.getState();
+   const b = buildBackup({
+     settings: st.settings as unknown as Record<string, unknown>, grid: st.grid, gridVersion: st.gridVersion,
+-    credentials: { shopifyDomain: c?.domain ?? '', shopifyClientId: c?.clientId ?? '', shopifyClientSecret: c?.clientSecret ?? '', passSecret, receiptSecret },
++    credentials: { shopifyDomain: c?.domain ?? '', shopifyClientId: c?.clientId ?? '', shopifyClientSecret: c?.clientSecret ?? '', passSecret, receiptSecret, claimSecret },
+   });
+   const logoData = await readLogoData(st.settings.screensaver.logoFile);
+   if (logoData) b.settings.screensaver = { ...(b.settings.screensaver as object), logoData };
+@@ -61,6 +61,7 @@ export async function applyBackup(b: BackupV1): Promise<string> {
+   if (hasShopify) await saveCreds({ domain: c.shopifyDomain, clientId: c.shopifyClientId, clientSecret: c.shopifyClientSecret });
+   if (c.passSecret) await setPassSecret(c.passSecret);
+   if (c.receiptSecret) await setReceiptSecret(c.receiptSecret);
++  if (c.claimSecret) await setClaimSecret(c.claimSecret);
+   if (!hasShopify) return `Settings restored. The backup had no Shopify login, so set that up under Settings ▸ Shopify.${gridNote}`;
+   try { await getToken(true); return `Restored. The Shopify login works. Next, open Settings ▸ Shopify and tap Import from Shopify to load the catalogue.${gridNote}`; }
+   catch (e: any) { return `Settings restored, but the Shopify login did not work: ${e.message}${gridNote}`; }
+diff --git a/src/lib/giftClaim.ts b/src/lib/giftClaim.ts
+new file mode 100644
+index 0000000..4aedb08
+--- /dev/null
++++ b/src/lib/giftClaim.ts
+@@ -0,0 +1,15 @@
++// Location: src/lib/giftClaim.ts
++// A10: claim links for gift cards sold without a recipient email. Signed with the claim secret (same value as the gift-claim-server's CLAIM_SECRET),
++// so only links this shop issued work. Matches gift-claim-server/src/claim.ts (a test checks the two agree).
++import { hmac } from '@noble/hashes/hmac';
++import { sha256 } from '@noble/hashes/sha256';
++import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
++import { normaliseCode } from './giftCode';
++
++export const claimSig = (secret: string, rawCode: string) => bytesToHex(hmac(sha256, utf8ToBytes(secret), utf8ToBytes(`claim:${normaliseCode(rawCode)}`))).slice(0, 32);
++/** https://<worker>/c/<CODE>.<SIG>  (null until the page URL and secret are both set up) */
++export function claimUrl(base: string, secret: string, rawCode: string): string | null {
++  const b = base.trim().replace(/\/$/, ''); const code = normaliseCode(rawCode);
++  if (!/^https:\/\//i.test(b) || !secret.trim() || code.length < 8) return null;
++  return `${b}/c/${code}.${claimSig(secret.trim(), code)}`;
++}
+diff --git a/src/lib/shopify/client.ts b/src/lib/shopify/client.ts
+index de658a6..b2ec2ba 100644
+--- a/src/lib/shopify/client.ts
++++ b/src/lib/shopify/client.ts
+@@ -129,6 +129,10 @@ export const isNetworkError = (e: unknown) => e instanceof ShopifyNetworkError;
+ export const getPassSecret = async () => { try { return (await SecureStore.getItemAsync('pos.passSecret')) ?? ''; } catch { return ''; } };
+ export const setPassSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
+ 
++// Gift card claim page shared secret (signs claim links). Keychain only.
++export const getClaimSecret = async () => { try { return (await SecureStore.getItemAsync('pos.claimSecret')) ?? ''; } catch { return ''; } };
++export const setClaimSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
++
+ // Receipt server shared secret (authorises receipt uploads). Keychain only.
+ export const getReceiptSecret = async () => { try { return (await SecureStore.getItemAsync('pos.receiptSecret')) ?? ''; } catch { return ''; } };
+ export const setReceiptSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
+diff --git a/src/screens/Receipt.tsx b/src/screens/Receipt.tsx
+index 5c69b92..a831d60 100644
+--- a/src/screens/Receipt.tsx
++++ b/src/screens/Receipt.tsx
+@@ -4,7 +4,9 @@ import { Linking, Share, View } from 'react-native';
+ import { Btn, Sheet, Txt, alertMsg } from '../ui/kit';
+ import { useApp } from '../state/store';
+ import { fmt } from '../lib/money';
+-import { getPassSecret } from '../lib/shopify/client';
++import { getClaimSecret, getPassSecret } from '../lib/shopify/client';
++import { claimUrl } from '../lib/giftClaim';
++import { giftQrPayload } from '../lib/giftCode';
+ import { signedPassUrl } from '../lib/passUrl';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { receiptId, receiptUrl } from '../lib/receiptDoc';
+@@ -23,19 +25,34 @@ export const receiptText = (s: SaleRecord): string => {
+ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDone: () => void }) {
+   const url = useApp(s => s.settings.passServerUrl); const rc = useApp(s => s.settings.receipt); const shop = useApp(s => s.settings.shopName);
+   const [qr, setQr] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
++  const claimBase = useApp(s => s.settings.giftClaimUrl); const [claimSecret, setClaimSecretState] = useState('');
++  const [giftView, setGiftView] = useState<null | { kind: 'claim' | 'card'; i: number }>(null);
++  useEffect(() => { void getClaimSecret().then(setClaimSecretState); }, []);
+   const enabled = !!rc.serverUrl.trim();
+   useEffect(() => { if (sale && enabled) void uploadReceipt(sale).catch(() => {}); }, [sale?.uuid, enabled]); // publish early; the outbox retries if this fails
+   if (!sale) return null;
+   const link = enabled ? receiptUrl(rc.serverUrl, receiptId(sale.uuid)) : '';
+   const body = enabled ? `${rc.name || shop || 'Receipt'}\nYour ${rc.gstRegistered ? 'tax invoice' : 'receipt'}: ${link}` : receiptText(sale);
+-  const gift = sale.lines.find(l => l.kind === 'gift_card' && l.giftCardCode);
++  const gifts = sale.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode); const gift = gifts[0];
++  const claimable = gifts.filter(l => !l.giftRecipient && claimUrl(claimBase, claimSecret, l.giftCardCode!)); // A10: no email given at the till, so the customer can add theirs
+   const open = async (u: string) => { try { await Linking.openURL(u); } catch { alertMsg('Could not open that app'); } };
+   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
+   return (
+     <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
+       <View style={{ alignItems: 'center', marginBottom: 14 }}><Txt size={34} weight="700">{fmt(sale.netCents)}</Txt><Txt sub>{sale.type === 'refund' ? 'Refund complete' : 'Sale complete'}{sale.orderName ? ` · ${sale.orderName}` : ''}</Txt></View>
+       {sale.tenders.some(t => (t.changeCents ?? 0) > 0) ? <Txt weight="700" size={20} style={{ textAlign: 'center', marginBottom: 12 }}>Change {fmt(sale.tenders.reduce((s, t) => s + (t.changeCents ?? 0), 0))}</Txt> : null}
+-      {qr ? <View style={{ gap: 10 }}>
++      {giftView ? <View style={{ gap: 10 }}>
++        {(() => {
++          const list = giftView.kind === 'claim' ? claimable : gifts; const l = list[giftView.i]; if (!l) return null;
++          const value = giftView.kind === 'claim' ? claimUrl(claimBase, claimSecret, l.giftCardCode!) ?? '' : giftQrPayload(l.giftCardCode!);
++          return <>
++            <QR value={value} size={230} />
++            <Txt size={13} sub style={{ textAlign: 'center' }}>{giftView.kind === 'claim' ? 'Scan with a phone camera. The customer enters their name and email and the gift card is emailed to them. It works once.' : 'Scan this at any register to use or check the card. It holds the gift card code, so treat it like cash.'}{list.length > 1 ? ` (${giftView.i + 1} of ${list.length})` : ''}</Txt>
++            {list.length > 1 ? <Btn title="Next gift card" kind="secondary" onPress={() => setGiftView({ ...giftView, i: (giftView.i + 1) % list.length })} /> : null}
++          </>;
++        })()}
++        <Btn title="Back" kind="secondary" onPress={() => setGiftView(null)} />
++      </View> : qr ? <View style={{ gap: 10 }}>
+         <QR value={link} size={230} />
+         <Txt size={13} sub style={{ textAlign: 'center' }}>Scan to open the {rc.gstRegistered ? 'tax invoice' : 'receipt'}: itemised, with card details, PDF and image download.</Txt>
+         {note ? <Txt size={13} color="#B45309" style={{ textAlign: 'center' }}>{note}</Txt> : null}
+@@ -46,6 +63,8 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
+         <Btn title={enabled ? 'Text link' : 'Text receipt'} icon="chatbubble-outline" kind="secondary" onPress={() => { const to = sale.customer?.phone ?? ''; void open(`sms:${to}&body=${encodeURIComponent(body)}`); }} />
+         <Btn title="Share…" icon="share-outline" kind="secondary" onPress={() => void Share.share({ message: body })} />
+         {GIFT_CARD_PASSES && gift && url ? <Btn title="Add gift card to Apple Wallet" icon="wallet-outline" kind="secondary" onPress={async () => { const secret = await getPassSecret(); if (!secret) return alertMsg('Pass server secret missing', 'Add it in Settings ▸ Gift cards.'); void open(signedPassUrl(url, secret, gift.giftCardCode!)); }} /> : null}
++        {claimable.length ? <Btn title="Claim QR: customer adds their email" icon="qr-code-outline" kind="secondary" onPress={() => setGiftView({ kind: 'claim', i: 0 })} /> : null}
++        {gift ? <Btn title="Gift card QR (for scanning at a register)" icon="gift-outline" kind="secondary" onPress={() => setGiftView({ kind: 'card', i: 0 })} /> : null}
+         {gift ? <Txt size={13} sub style={{ textAlign: 'center' }}>Gift card code: {gift.giftCardCode}{gift.giftRecipient ? ` · emailing to ${gift.giftRecipient.email}` : ''}</Txt> : null}
+         <Btn title="No receipt" onPress={onDone} />
+       </View>}
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index fbe20bf..d4afd78 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -7,7 +7,7 @@ import * as Sharing from 'expo-sharing';
+ import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+-import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
++import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
+ import { fetchShop } from '../lib/shopify/catalogue';
+ import { ensureDefinitions } from '../lib/shopify/metaobjects';
+ import { importFromShopify, pushLayout, pushSharedSettings, pollShared } from '../lib/sync';
+@@ -62,7 +62,10 @@ export default function Settings() {
+       {sub === 'data' ? <DataSettings /> : null}
+       {sub === 'square' ? <SquareHistorySettings /> : null}
+       {sub === 'grid' ? <GridSettings /> : null}
+-      {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
++      {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt>
++        <Txt weight="600" style={{ marginTop: 18 }}>Gift card claim page</Txt>
++        <Field kind="url" label="Claim page URL" value={s.giftClaimUrl} onChangeText={t => patch({ giftClaimUrl: t.trim() })} placeholder="https://gift.example.workers.dev" /><ClaimSecret />
++        <Txt size={13} sub>Lets a customer scan a QR after you sell a gift card with no email, and enter their own name and email to receive it. See gift-claim-server/README. Leave empty to skip.</Txt></View> : null}
+       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
+         <Txt weight="600">Tile size</Txt><Segmented value={s.tileSize} onChange={v => patch({ tileSize: v })} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
+         <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View></View> : null}
+@@ -141,6 +144,11 @@ function GridSettings() {
+ }
+ void Linking; void Sheet;
+ 
++function ClaimSecret() {
++  const [v, setV] = useState(''); useEffect(() => { void getClaimSecret().then(setV); }, []);
++  return <Field kind="secret" label="Claim page secret (CLAIM_SECRET)" value={v} onChangeText={t => { setV(t); void setClaimSecret(t); }} placeholder="Same value as the claim Worker's CLAIM_SECRET" />;
++}
++
+ function PassSecret() {
+   const [v, setV] = useState(''); useEffect(() => { void getPassSecret().then(setV); }, []);
+   return <Field kind="secret" label="Pass server secret (POS_SECRET)" value={v} onChangeText={t => { setV(t); void setPassSecret(t); }} placeholder="Same value as the Worker's POS_SECRET" />;
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 75ea476..d61ef00 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -17,7 +17,7 @@ export type Settings = {
+   registerId: string; registerName: string;
+   cashRounding: boolean; consolidate: boolean; fees: FeeSettings;
+   theme: 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L';
+-  staff: StaffMember[]; requirePin: boolean; passServerUrl: string; autoReceipt: 'ask' | 'none';
++  staff: StaffMember[]; requirePin: boolean; passServerUrl: string; giftClaimUrl: string; autoReceipt: 'ask' | 'none';
+   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
+   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
+   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
+@@ -26,7 +26,7 @@ export type Settings = {
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, consolidate: true, fees: DEFAULT_FEES,
+-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
++  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
+ });
+ 
+ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+diff --git a/tests/backup.test.ts b/tests/backup.test.ts
+index 5c41d6a..6346985 100644
+--- a/tests/backup.test.ts
++++ b/tests/backup.test.ts
+@@ -3,7 +3,7 @@ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import { BACKUP_APP, buildBackup, decryptBackup, detectBackup, encryptBackup, mergeSettings, validateBackup, backupFileName } from '../src/lib/backupFile';
+ 
+-const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id-123', shopifyClientSecret: 'shpss_secret', passSecret: 'pass-s', receiptSecret: 'rcpt-s' };
++const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id-123', shopifyClientSecret: 'shpss_secret', passSecret: 'pass-s', receiptSecret: 'rcpt-s', claimSecret: 'claim-s' };
+ const settings = { shopName: 'Aiden 3D', registerId: 'abcd1234', registerName: 'Register 1', sharedVersion: 7, cashRounding: true, fees: { cardPresentRate: 0.0165, keyedRate: 0.025 },
+   receipt: { serverUrl: 'https://r.example.dev', abn: '12 345 678 901', gstRegistered: true }, staff: [{ id: 's1', name: 'Aiden', role: 'owner', salt: 'x', pinHash: 'y' }], theme: 'dark' };
+ const grid = { version: 1, pages: [{ id: 'p1', name: 'Home', tiles: [] }] };
+diff --git a/tests/giftclaim.test.ts b/tests/giftclaim.test.ts
+new file mode 100644
+index 0000000..d43f4f6
+--- /dev/null
++++ b/tests/giftclaim.test.ts
+@@ -0,0 +1,51 @@
++// Location: tests/giftclaim.test.ts
++// A10: claim links. The app (noble hmac) and the Worker (WebCrypto) must produce and accept the same signatures.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { claimSig as appSig, claimUrl } from '../src/lib/giftClaim';
++import { claimSig as workerSig, verifyClaimToken, validateClaim, codeChecksum, formPage, messagePage } from '../gift-claim-server/src/claim';
++
++const secret = 'test-claim-secret-0123456789abcdef'; const code = 'ABCD1234EFGH5678';
++
++test('app and Worker agree on the signature', async () => {
++  assert.equal(appSig(secret, code), await workerSig(secret, code));
++  assert.equal(appSig(secret, 'abcd-1234 efgh-5678'), appSig(secret, code), 'normalised before signing');
++  assert.equal(appSig(secret, 'shopify-giftcard-v1-ABCD1234EFGH5678'), appSig(secret, code), 'QR prefix ignored');
++});
++test('claimUrl builds a link the Worker accepts', async () => {
++  const u = claimUrl('https://gift.example.workers.dev/', secret, code)!;
++  assert.match(u, /^https:\/\/gift\.example\.workers\.dev\/c\/ABCD1234EFGH5678\.[0-9a-f]{32}$/);
++  assert.equal(await verifyClaimToken(secret, u.split('/c/')[1]), code);
++});
++test('claimUrl refuses to build an unusable link', () => {
++  assert.equal(claimUrl('', secret, code), null);
++  assert.equal(claimUrl('http://insecure.example', secret, code), null);
++  assert.equal(claimUrl('https://x.example', '', code), null);
++  assert.equal(claimUrl('https://x.example', secret, 'SHORT'), null);
++});
++test('the Worker rejects forged, edited or malformed tokens', async () => {
++  const good = `${code}.${await workerSig(secret, code)}`;
++  assert.equal(await verifyClaimToken(secret, good), code);
++  assert.equal(await verifyClaimToken('other-secret', good), null, 'wrong secret');
++  assert.equal(await verifyClaimToken(secret, `ZZZZ1234EFGH5678.${await workerSig(secret, code)}`), null, 'edited code');
++  assert.equal(await verifyClaimToken(secret, `${code}.${'0'.repeat(32)}`), null, 'bad signature');
++  assert.equal(await verifyClaimToken(secret, code), null, 'no signature');
++  assert.equal(await verifyClaimToken('', good), null, 'no secret configured');
++  assert.equal(await verifyClaimToken(secret, `${code}.${(await workerSig(secret, code)).toUpperCase()}`), null, 'uppercase hex');
++});
++test('claim form validation', () => {
++  const ok = validateClaim({ name: '  Sam   Lee ', email: ' Sam@Example.COM ', message: 'Happy birthday' });
++  assert.deepEqual(ok, { ok: true, value: { name: 'Sam Lee', email: 'sam@example.com', message: 'Happy birthday' } });
++  for (const bad of [{ name: '' }, { name: 'x'.repeat(101) }, { email: 'nope' }, { email: 'a@b' }, { email: 'a b@c.com' }, { message: 'm'.repeat(201) }]) {
++    assert.equal(validateClaim({ name: 'Sam', email: 'sam@example.com', message: '', ...bad }).ok, false, JSON.stringify(bad));
++  }
++});
++test('checksum matches the POS note format (first 10 hex of SHA-256 of the normalised code)', async () => {
++  const { createHash } = await import('node:crypto');
++  assert.equal(await codeChecksum('abcd-1234-efgh-5678'), createHash('sha256').update(code).digest('hex').slice(0, 10));
++});
++test('pages escape visitor input', () => {
++  const html = formPage('Shop <b>', '1234', { name: '"><script>x</script>', email: 'a@b.co', message: '' }, '<i>err</i>');
++  assert.ok(!html.includes('<script>x</script>') && !html.includes('<i>err</i>') && !html.includes('Shop <b>'));
++  assert.ok(messagePage('S', 'T<', 'x').includes('T&lt;'));
++});
+diff --git a/tsconfig.json b/tsconfig.json
+index 45a6241..5289f4f 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -2,5 +2,5 @@
+   "extends": "expo/tsconfig.base",
+   "compilerOptions": { "strict": true, "noEmit": true, "skipLibCheck": true, "resolveJsonModule": true, "types": ["node"] },
+   "include": ["App.tsx", "src/**/*", "tests/**/*"],
+-  "exclude": ["node_modules", "pass-server"]
++  "exclude": ["node_modules", "pass-server", "gift-claim-server"]
+ }

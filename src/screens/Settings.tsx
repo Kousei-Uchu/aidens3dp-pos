@@ -7,7 +7,7 @@ import * as Sharing from 'expo-sharing';
 import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
-import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
+import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
 import { fetchShop } from '../lib/shopify/catalogue';
 import { ensureDefinitions } from '../lib/shopify/metaobjects';
 import { importFromShopify, pushLayout, pushSharedSettings, pollShared } from '../lib/sync';
@@ -62,7 +62,10 @@ export default function Settings() {
       {sub === 'data' ? <DataSettings /> : null}
       {sub === 'square' ? <SquareHistorySettings /> : null}
       {sub === 'grid' ? <GridSettings /> : null}
-      {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt></View> : null}
+      {sub === 'gift' ? <View style={{ padding: 16 }}><Field kind="url" label={GIFT_CARD_PASSES ? 'Wallet pass server URL (optional)' : 'Pass server URL (cashier passes)'} value={s.passServerUrl} onChangeText={t => patch({ passServerUrl: t.trim() })} placeholder="https://pass.example.workers.dev" /><PassSecret /><Txt size={13} sub>{GIFT_CARD_PASSES ? 'A tiny serverless function that signs Apple Wallet passes and keeps balances live. See pass-server/README. Leave empty to skip passes.' : 'A tiny serverless function that signs cashier passes for Apple Wallet. See pass-server/README. Leave empty to skip Wallet passes (printing still works).'}</Txt>
+        <Txt weight="600" style={{ marginTop: 18 }}>Gift card claim page</Txt>
+        <Field kind="url" label="Claim page URL" value={s.giftClaimUrl} onChangeText={t => patch({ giftClaimUrl: t.trim() })} placeholder="https://gift.example.workers.dev" /><ClaimSecret />
+        <Txt size={13} sub>Lets a customer scan a QR after you sell a gift card with no email, and enter their own name and email to receive it. See gift-claim-server/README. Leave empty to skip.</Txt></View> : null}
       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
         <Txt weight="600">Tile size</Txt><Segmented value={s.tileSize} onChange={v => patch({ tileSize: v })} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
         <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View></View> : null}
@@ -140,6 +143,11 @@ function GridSettings() {
   );
 }
 void Linking; void Sheet;
+
+function ClaimSecret() {
+  const [v, setV] = useState(''); useEffect(() => { void getClaimSecret().then(setV); }, []);
+  return <Field kind="secret" label="Claim page secret (CLAIM_SECRET)" value={v} onChangeText={t => { setV(t); void setClaimSecret(t); }} placeholder="Same value as the claim Worker's CLAIM_SECRET" />;
+}
 
 function PassSecret() {
   const [v, setV] = useState(''); useEffect(() => { void getPassSecret().then(setV); }, []);

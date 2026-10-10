@@ -129,6 +129,10 @@ export const isNetworkError = (e: unknown) => e instanceof ShopifyNetworkError;
 export const getPassSecret = async () => { try { return (await SecureStore.getItemAsync('pos.passSecret')) ?? ''; } catch { return ''; } };
 export const setPassSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
 
+// Gift card claim page shared secret (signs claim links). Keychain only.
+export const getClaimSecret = async () => { try { return (await SecureStore.getItemAsync('pos.claimSecret')) ?? ''; } catch { return ''; } };
+export const setClaimSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
+
 // Receipt server shared secret (authorises receipt uploads). Keychain only.
 export const getReceiptSecret = async () => { try { return (await SecureStore.getItemAsync('pos.receiptSecret')) ?? ''; } catch { return ''; } };
 export const setReceiptSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };

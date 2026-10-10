@@ -1,0 +1,104 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 5da429c..868ba0a 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -17,6 +17,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
+ | 0009 | 2026-10-10 | Bundle builder GUI: deal list + editor, % off / set price / $ off, dates, recommended pairs, bundle rows in the cart, pre-payment check; fixes a missing "Square history" page title from 0008 | A8, B4 |
+ | 0010 | 2026-10-10 | Gift cards: QR prefix stripped everywhere a code is read, one email per card sent only after the card exists, safe retries; `npm run zeller:pack` script | A9.3-A9.5, A11.3 |
++| 0011 | 2026-10-10 | Remove the app's own gift card email (Shopify already sends one on creation) | A9.3, A9.6 |
+ 
+ ---
+ 
+@@ -95,10 +96,10 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
+ ### A9. Gift cards: when they are created, and how codes are read
+ - [-] A9.1 Dropped (you changed your mind): adding a gift card to the cart only records the amount.
+ - [-] A9.2 Dropped (you changed your mind): prompt for recipient details once at charge time. Recipient details stay where they are today.
+-- [x] A9.3 The recipient gets one gift card email, sent after the card exists. `createGiftCard` no longer emails by itself; the sync step (`runItem` in `src/lib/sync.ts`) calls `sendGiftCardEmail` once per card. Each finished card is recorded on the queued sale (`giftDone`), so a retry never re-sends. If Shopify refuses the email 5 runs in a row, the sale stops waiting on it and a notification says to resend it from Gift cards.
+-- [x] A9.4 Verified in the code, then tightened: a gift card is only created from the outbox, and a sale only enters the outbox once payment has completed (`recordSale`). Declined or abandoned sales never reach it. If creation fails after payment the item stays queued and retries (creation is idempotent by code). Before this patch a retry after a half-finished sale skipped the email for cards that already existed; that is fixed by the per-card record above.
++- [x] A9.3 The recipient gets exactly one gift card email, and only after the sale is recorded and the card exists. You confirmed Shopify already emails the recipient when a card is created with one (you got two when we also sent it), so 0010's explicit send was removed in 0011. `sendGiftCardEmail` stays for a manual resend only.
++- [x] A9.4 Verified in the code, then tightened: a gift card is only created from the outbox, and a sale only enters the outbox once payment has completed (`recordSale`). Declined or abandoned sales never reach it. If creation fails after payment the item stays queued and retries (creation is idempotent by code). Finished cards are recorded on the queued sale (`giftDone`), so a retry skips them.
+ - [x] A9.5 `src/lib/giftCode.ts` (pure): `stripGiftPrefix` removes `^shopify-giftcard-v\d+-` (case-insensitive, any version, anchored, so a code containing hyphens is never cut), `normaliseCode` strips the prefix first, `giftQrPayload` builds the same string for printing, `isGiftQr` detects it. Used by lookup/check (typed, pasted or scanned), the Check gift card field, and gift card tenders at payment (the stored code is now the clean one). Scanning a gift card QR on the main item scanner now says to redeem it from Charge ▸ Gift card instead of "No item". Tests: `tests/giftcode.test.ts` (5).
+-- [?] A9.6 **You:** Shopify's docs don't say whether `giftCardCreate` with a recipient emails them straight away when no send time is given. The app now sends the email itself once. If your test card arrives **twice**, tell me and I will stop sending it ourselves. If it arrives **once**, nothing to do.
++- [x] A9.6 Answered by you (N10): two emails arrived, so the extra send is gone.
+ 
+ ### A10. Gift card web page / QR / recipient form
+ - [ ] A10.1 QR to the card's Shopify gift-card page where available.
+@@ -189,7 +190,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+ Ordered by priority, highest first.
+ 
+ ### Priority 1
+-- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. Run `npm run zeller:pack` (added in 0010) and send me `zeller-sdk-pack.zip`. It is tested here against a fake SDK: it deletes `.npmrc`/key files, redacts key-like text, and refuses to write the zip if anything key-shaped is left. It uses `perl` and `zip`, which a Mac has. Look at the printed file list before you send it. The script strips credentials first.
++- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. The first zip you sent held only `zellerBridge.tsx`, `zeller.ts` and `zeller.d.ts`: the SDK package itself was missing. Please run `ls node_modules/@zeller-public` and `ls node_modules/@zeller-public/*` in the project folder and tell me what prints, then re-run `npm run zeller:pack` and send the new zip. It is tested here against a fake SDK: it deletes `.npmrc`/key files, redacts key-like text, and refuses to write the zip if anything key-shaped is left. It uses `perl` and `zip`, which a Mac has. Look at the printed file list before you send it. The script strips credentials first.
+ 
+ ### Priority 2
+ - [-] N2 No longer needed (A7 uses the Square API, not CSV).
+@@ -199,7 +200,7 @@ Ordered by priority, highest first.
+ - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
+ - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
+ 
+-- [ ] N10 **Non-blocking (A9.6):** sell a test gift card to your own email and tell me whether one or two emails arrive.
++- [x] N10 Answered: two emails arrived with 0010. Fixed in 0011 (the app no longer sends its own).
+ 
+ ### Priority 3
+ - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/shopify/giftcards.ts b/src/lib/shopify/giftcards.ts
+index 34e43ba..bf70f43 100644
+--- a/src/lib/shopify/giftcards.ts
++++ b/src/lib/shopify/giftcards.ts
+@@ -46,9 +46,8 @@ export async function createGiftCard(valueCents: number, code: string, saleUuid:
+   return mapCard(d.giftCardCreate.giftCard, true);
+ }
+ 
+-/** (Re)send the gift card notification to its recipient (delivers the code and, if enabled in Shopify, the Apple Wallet button).
+- *  A9.3: createGiftCard no longer emails by itself. The sync step calls this once per card, only after the sale is recorded and the card exists.
+- *  Never fails a sale: the card exists either way, and Gift cards ▸ lookup can resend it. */
++/** Manually (re)send the gift card notification to its recipient. Not used at sale time: Shopify already emails the recipient when a card is
++ *  created with one (A9.6: sending it again made two emails). Kept for a "Resend" action. Never fails a sale: the card exists either way. */
+ export async function sendGiftCardEmail(id: string): Promise<boolean> {
+   try {
+     const d = await gql(`mutation($id:ID!){ giftCardSendNotificationToRecipient(id:$id) { userErrors { field message } } }`, { id });
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 492e4e8..c414188 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -10,14 +10,13 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+ import * as meta from './shopify/metaobjects';
+ import { createOrderForSale } from './shopify/orders';
+-import { createGiftCard, sendGiftCardEmail } from './shopify/giftcards';
++import { createGiftCard } from './shopify/giftcards';
+ import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
+ import { adjustStock } from './shopify/inventory';
+ import type { BundleConfig, Cart, SaleRecord } from './types';
+ 
+ const st = () => useApp.getState();
+ let running = false;
+-const GIFT_EMAIL_TRIES = 5; // a card whose email keeps failing stops holding up the sale after this many runs; staff are told to resend it
+ 
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+@@ -58,20 +57,13 @@ async function runItem(o: OutboxItem) {
+   if (!o.done.giftCards) {
+     // A9.4: cards are only created here, from the outbox, which only exists once payment has completed. Declined or abandoned sales never reach this
+     // point, so they leave no card behind. A failure queues and retries (createGiftCard is idempotent by code), so a paid sale never loses its card.
+-    // A9.3: the recipient's email goes out once per card, after the card exists. `giftDone` records each finished line so a retry never re-sends.
++    // A9.3: Shopify emails the recipient itself when a card is created with a recipient (confirmed: sending it again from here made two emails),
++    // so creating the card is the one and only send. `giftDone` records finished cards so a retry skips them.
+     const giftLines = cur.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode);
+     let doneIds = st().pos.outbox.find(x => x.id === o.id)?.giftDone ?? o.giftDone ?? [];
+     for (const l of giftLines) {
+       if (doneIds.includes(l.giftCardCode!)) continue;
+-      const card = await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
+-      if (l.giftRecipient?.email) {
+-        const sent = await sendGiftCardEmail(card.id);
+-        if (!sent) {
+-          const tries = (st().pos.outbox.find(x => x.id === o.id)?.tries ?? 0) + 1;
+-          if (tries < GIFT_EMAIL_TRIES) throw new Error(`The gift card for ${l.giftRecipient.email} was created, but its email did not send yet. Retrying.`);
+-          st().notify({ kind: 'sync', title: 'Gift card email not sent', body: `Card ••••${card.last4} for ${l.giftRecipient.email} exists, but Shopify would not send the email. Resend it from Gift cards.`, route: 'giftcards' });
+-        }
+-      }
++      await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
+       doneIds = [...doneIds, l.giftCardCode!];
+       patchItem(o.id, x => ({ ...x, giftDone: doneIds }));
+     }

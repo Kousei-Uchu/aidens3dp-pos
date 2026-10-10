@@ -11,6 +11,7 @@ import { saveCartLocal } from '../lib/sync';
 import { uid } from '../lib/ids';
 import { searchRemote, createCustomer } from '../lib/shopify/customers';
 import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/giftcards';
+import { stripGiftPrefix } from '../lib/giftCode';
 import { CameraScanner } from './Scanner';
 import type { CartLine, Customer, ManualDiscount } from '../lib/types';
 
@@ -170,11 +171,11 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
 /** Check balance by scanning a QR/barcode or typing the code. */
 export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean; onClose: () => void; onUse?: (g: GiftCardInfo, code: string) => void }) {
   const [code, setCode] = useState(''); const [info, setInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [busy, setBusy] = useState(false); const [cam, setCam] = useState(false);
-  const look = async (raw: string) => { setBusy(true); try { setCode(raw); setInfo(await lookupGiftCard(raw)); } catch (e: any) { alertMsg('Lookup failed', e.message); } setBusy(false); };
+  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message); } setBusy(false); };
   return (
     <>
       <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">
-        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(t); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
+        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(stripGiftPrefix(t)); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
         <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setCam(true)} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(code)} busy={busy} disabled={code.trim().length < 4} style={{ flex: 1 }} /></View>
         {info === null ? <Txt color="#DC2626" style={{ marginTop: 14 }}>No gift card found for that code.</Txt> : null}
         {info ? <View style={{ marginTop: 16, gap: 4 }}><Txt sub>Card ••••{info.last4}</Txt><Money cents={info.balanceCents} size={34} weight="700" /><Txt sub size={13}>{info.enabled ? 'Active' : 'Disabled'}{info.verified ? '' : ' · code could not be verified'}{info.expiresOn ? ` · expires ${info.expiresOn}` : ''}</Txt>

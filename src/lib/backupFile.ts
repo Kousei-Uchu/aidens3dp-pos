@@ -12,7 +12,7 @@ export const MIN_PASSPHRASE = 8;
 /** Settings that identify this particular device and must never be copied to another one. */
 export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion'] as const;
 
-export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string };
+export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string };
 export type BackupV1 = {
   app: typeof BACKUP_APP; v: number; createdAt: string;
   settings: Record<string, unknown>; grid?: { grid: unknown; version: number };
@@ -47,7 +47,7 @@ export function validateBackup(x: unknown): BackupV1 {
   return {
     app: BACKUP_APP, v: b.v, createdAt: str(b.createdAt), settings,
     ...(b.grid && typeof b.grid === 'object' && b.grid.grid ? { grid: { grid: b.grid.grid, version: Number(b.grid.version) || 0 } } : {}),
-    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret) },
+    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret), claimSecret: str(c.claimSecret) },
   };
 }
 
