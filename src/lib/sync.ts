@@ -55,7 +55,18 @@ async function runItem(o: OutboxItem) {
   }
   await receiptStep('receiptFinal'); // now includes the Shopify order number
   if (!o.done.giftCards) {
-    for (const l of cur.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode)) await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
+    // A9.4: cards are only created here, from the outbox, which only exists once payment has completed. Declined or abandoned sales never reach this
+    // point, so they leave no card behind. A failure queues and retries (createGiftCard is idempotent by code), so a paid sale never loses its card.
+    // A9.3: Shopify emails the recipient itself when a card is created with a recipient (confirmed: sending it again from here made two emails),
+    // so creating the card is the one and only send. `giftDone` records finished cards so a retry skips them.
+    const giftLines = cur.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode);
+    let doneIds = st().pos.outbox.find(x => x.id === o.id)?.giftDone ?? o.giftDone ?? [];
+    for (const l of giftLines) {
+      if (doneIds.includes(l.giftCardCode!)) continue;
+      await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
+      doneIds = [...doneIds, l.giftCardCode!];
+      patchItem(o.id, x => ({ ...x, giftDone: doneIds }));
+    }
     mark('giftCards');
   }
   if (!o.done.entry) {

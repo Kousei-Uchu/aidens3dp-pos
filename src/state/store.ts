@@ -17,7 +17,7 @@ export type Settings = {
   registerId: string; registerName: string;
   cashRounding: boolean; consolidate: boolean; fees: FeeSettings;
   theme: 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L';
-  staff: StaffMember[]; requirePin: boolean; passServerUrl: string; autoReceipt: 'ask' | 'none';
+  staff: StaffMember[]; requirePin: boolean; passServerUrl: string; giftClaimUrl: string; autoReceipt: 'ask' | 'none';
   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
@@ -26,13 +26,14 @@ export type Settings = {
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
+  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), sharedVersion: 0,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
 export type OutboxItem = {
   id: string; sale: SaleRecord; queuedAt: string;
   done: { receipt?: boolean; receiptFinal?: boolean; order?: boolean; giftCards?: boolean; entry?: boolean; rollup?: boolean; stock?: boolean };
+  giftDone?: string[]; // A9: codes of gift card lines already created (and emailed, if they have a recipient)
   tries: number; error?: string; blocked?: boolean; // blocked = Shopify user error, needs a human
 };
 export type Attempt = { ref: string; saleUuid: string; amountCents: number; ts: string; status: 'started' | 'approved' | 'declined' | 'cancelled' | 'unknown' | 'resolved'; note?: string; resolvedBy?: string };

@@ -13,6 +13,7 @@ import { digitsToCents, fmt, allocate, roundCash } from '../lib/money';
 import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
 import { lookupGiftCard, debitGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
+import { normaliseCode } from '../lib/giftCode';
 import { GiftCheckSheet } from './sheets';
 import { ReceiptPrompt } from './Receipt';
 import type { SaleRecord, Tender } from '../lib/types';
@@ -110,7 +111,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const useGift = async (info: GiftCardInfo, code: string) => {
     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
     try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message); }
-    addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: code, at: new Date().toISOString() }, uuid); setGift(false);
+    addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
   };
 
   const abandon = async () => {

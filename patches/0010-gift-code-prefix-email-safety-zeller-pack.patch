@@ -1,0 +1,380 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 51e4f5a..5da429c 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -16,6 +16,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0007 | 2026-10-10 | Progress doc only: your answers recorded, scanner finding, "Needed from You" and "Deferred" sections | docs |
+ | 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
+ | 0009 | 2026-10-10 | Bundle builder GUI: deal list + editor, % off / set price / $ off, dates, recommended pairs, bundle rows in the cart, pre-payment check; fixes a missing "Square history" page title from 0008 | A8, B4 |
++| 0010 | 2026-10-10 | Gift cards: QR prefix stripped everywhere a code is read, one email per card sent only after the card exists, safe retries; `npm run zeller:pack` script | A9.3-A9.5, A11.3 |
+ 
+ ---
+ 
+@@ -94,9 +95,10 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
+ ### A9. Gift cards: when they are created, and how codes are read
+ - [-] A9.1 Dropped (you changed your mind): adding a gift card to the cart only records the amount.
+ - [-] A9.2 Dropped (you changed your mind): prompt for recipient details once at charge time. Recipient details stay where they are today.
+-- [ ] A9.3 Send the recipient one gift card email, and only after the transaction has completed.
+-- [ ] A9.4 Do not create the gift card in Shopify until payment has succeeded, so abandoned or declined sales never leave a stray card or a free code. If creation fails after payment, queue it and retry (same idempotent approach as orders) so the sale is never lost.
+-- [ ] A9.5 Gift card QR codes carry a prefix like `shopify-giftcard-v1-CODE`. Wherever a code is typed, pasted or scanned (redeem, balance check, lookup), strip the prefix and use the code. The version part can be any number (`v1`, `v2`, `v10`). I will anchor the match to the known prefix, `^shopify-giftcard-v\d+-`, instead of your looser `(?:.*-)?(.*)`, because the loose one would cut any code that happens to contain a hyphen. Say if you want the loose one anyway. Pure helper plus tests.
++- [x] A9.3 The recipient gets one gift card email, sent after the card exists. `createGiftCard` no longer emails by itself; the sync step (`runItem` in `src/lib/sync.ts`) calls `sendGiftCardEmail` once per card. Each finished card is recorded on the queued sale (`giftDone`), so a retry never re-sends. If Shopify refuses the email 5 runs in a row, the sale stops waiting on it and a notification says to resend it from Gift cards.
++- [x] A9.4 Verified in the code, then tightened: a gift card is only created from the outbox, and a sale only enters the outbox once payment has completed (`recordSale`). Declined or abandoned sales never reach it. If creation fails after payment the item stays queued and retries (creation is idempotent by code). Before this patch a retry after a half-finished sale skipped the email for cards that already existed; that is fixed by the per-card record above.
++- [x] A9.5 `src/lib/giftCode.ts` (pure): `stripGiftPrefix` removes `^shopify-giftcard-v\d+-` (case-insensitive, any version, anchored, so a code containing hyphens is never cut), `normaliseCode` strips the prefix first, `giftQrPayload` builds the same string for printing, `isGiftQr` detects it. Used by lookup/check (typed, pasted or scanned), the Check gift card field, and gift card tenders at payment (the stored code is now the clean one). Scanning a gift card QR on the main item scanner now says to redeem it from Charge ▸ Gift card instead of "No item". Tests: `tests/giftcode.test.ts` (5).
++- [?] A9.6 **You:** Shopify's docs don't say whether `giftCardCreate` with a recipient emails them straight away when no send time is given. The app now sends the email itself once. If your test card arrives **twice**, tell me and I will stop sending it ourselves. If it arrives **once**, nothing to do.
+ 
+ ### A10. Gift card web page / QR / recipient form
+ - [ ] A10.1 QR to the card's Shopify gift-card page where available.
+@@ -106,7 +108,7 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
+ ### A11. Zeller terminal shouldn't show our own sheet
+ - [ ] A11.1 Remove our payment sheet for terminal calls; show only a slim in-app "waiting on terminal" state while Zeller's UI is up.
+ - [ ] A11.2 Answer to "can Zeller's popup live inside a custom sheet?" (needs a look at the SDK's WebView API in `zellerBridge.tsx`).
+-- [ ] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
++- [x] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
+ 
+ ### A12. Discounts that combine (Shopify automatic discounts)
+ Clarified: this is about the imported Shopify automatic discounts, not custom bundles. Bundles should also stack, which they already do.
+@@ -177,8 +179,8 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [ ] B8 Extra ideas
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (146 after patch 0009). `npm test` on your machine runs the same files.
+-- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0009 (it found one real error left by 0008, now fixed). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (151 after patch 0010). `npm test` on your machine runs the same files.
++- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+ 
+@@ -187,7 +189,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+ Ordered by priority, highest first.
+ 
+ ### Priority 1
+-- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. Run `npm run zeller:pack` once A11.3 exists and send me the zip. The script strips credentials first.
++- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. Run `npm run zeller:pack` (added in 0010) and send me `zeller-sdk-pack.zip`. It is tested here against a fake SDK: it deletes `.npmrc`/key files, redacts key-like text, and refuses to write the zip if anything key-shaped is left. It uses `perl` and `zip`, which a Mac has. Look at the printed file list before you send it. The script strips credentials first.
+ 
+ ### Priority 2
+ - [-] N2 No longer needed (A7 uses the Square API, not CSV).
+@@ -197,6 +199,8 @@ Ordered by priority, highest first.
+ - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
+ - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
+ 
++- [ ] N10 **Non-blocking (A9.6):** sell a test gift card to your own email and tell me whether one or two emails arrive.
++
+ ### Priority 3
+ - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+ - [ ] N7 **Non-blocking (B1):** confirm the cash drawer ledger and denomination entry were meant to be part of the project. I am building it as its own run of patches either way.
+diff --git a/package.json b/package.json
+index d2cb0aa..896ac79 100644
+--- a/package.json
++++ b/package.json
+@@ -12,7 +12,8 @@
+     "typecheck": "tsc --noEmit",
+     "test": "tsx --test tests/*.test.ts",
+     "zeller": "sh scripts/install-zeller.sh",
+-    "android": "expo run:android"
++    "android": "expo run:android",
++    "zeller:pack": "sh scripts/package-zeller-sdk.sh"
+   },
+   "dependencies": {
+     "@expo/ui": "0.2.0-beta.9",
+diff --git a/scripts/package-zeller-sdk.sh b/scripts/package-zeller-sdk.sh
+new file mode 100755
+index 0000000..29dd631
+--- /dev/null
++++ b/scripts/package-zeller-sdk.sh
+@@ -0,0 +1,65 @@
++#!/bin/sh
++# A11.3: bundle the Zeller SDK source into ONE zip you can send to Claude (npm run zeller:pack).
++# The SDK is gated, so this script strips credentials first, scans what is left for anything that still looks like a key,
++# and refuses to write the zip if it finds one. It prints the file list so you can review it before sending.
++#
++# It looks in: vendor/*.tgz (the tarballs from install-zeller.sh), node_modules/@zeller-public (if installed), and src/zellerBridge.tsx + src/lib/zeller.ts.
++set -eu
++cd "$(dirname "$0")/.."
++OUT="zeller-sdk-pack.zip"
++WORK="$(mktemp -d)"
++trap 'rm -rf "$WORK"' EXIT
++PACK="$WORK/zeller-sdk-pack"
++mkdir -p "$PACK/app" "$PACK/vendor-unpacked" "$PACK/node_modules-copy"
++
++echo "1/5 Collecting files..."
++cp src/zellerBridge.tsx src/lib/zeller.ts src/types/zeller.d.ts "$PACK/app/" 2>/dev/null || true
++for t in vendor/*.tgz; do
++  [ -e "$t" ] || continue
++  d="$PACK/vendor-unpacked/$(basename "$t" .tgz)"; mkdir -p "$d"; tar -xzf "$t" -C "$d"
++done
++if [ -d node_modules/@zeller-public ]; then cp -R node_modules/@zeller-public "$PACK/node_modules-copy/"; fi
++# never copy dependencies of the SDK, only the SDK itself
++find "$PACK" -name node_modules -type d -prune -exec rm -rf {} + 2>/dev/null || true
++find "$PACK" \( -name '.git' -o -name '.DS_Store' \) -prune -exec rm -rf {} + 2>/dev/null || true
++
++echo "2/5 Stripping credential files..."
++find "$PACK" \( -name '.npmrc' -o -name '.yarnrc*' -o -name '.env' -o -name '.env.*' -o -name '*.pem' -o -name '*.key' -o -name '*.p8' -o -name '*.p12' -o -name '*.cer' -o -name '*.mobileprovision' -o -name 'auth.json' \) -type f -print -delete
++
++echo "3/5 Redacting key-like text in what is left..."
++# redact registry auth lines, bearer tokens, and key/secret/token assignments in text files (binary files are left alone and then scanned).
++# perl, not sed: it is on every Mac and its regex flags behave the same everywhere (BSD sed has no case-insensitive flag).
++find "$PACK" -type f | while read -r f; do
++  if grep -Iq . "$f" 2>/dev/null; then
++    perl -pi -e '
++      s{(//\S+/:_authToken=).*}{$1REDACTED}i;
++      s{(_auth(?:Token)?\s*=\s*).*}{$1REDACTED}i;
++      s{(Bearer\s+)[A-Za-z0-9._~+/=-]{16,}}{$1REDACTED}g;
++      s{((?:api[_-]?key|secret|token|password|client[_-]?secret)["\x27]?\s*[:=]\s*["\x27])[^"\x27]{12,}(["\x27])}{$1REDACTED$2}ig;
++    ' "$f"
++  fi
++done
++
++echo "4/5 Scanning for anything that still looks like a key..."
++HITS="$WORK/hits.txt"; : > "$HITS"
++# long random-looking strings next to key words, well-known token shapes, private key blocks
++grep -rIEn -i "(api[_-]?key|secret|token|password|authorization)[\"']?[[:space:]]*[:=][[:space:]]*[\"']?[A-Za-z0-9._~+/=-]{20,}" "$PACK" 2>/dev/null | grep -v "REDACTED" >> "$HITS" || true
++grep -rIEn "(npm_[A-Za-z0-9]{30,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|sk_(live|test)_[A-Za-z0-9]{16,}|AKIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,})" "$PACK" >> "$HITS" 2>/dev/null || true
++grep -rIn "BEGIN [A-Z ]*PRIVATE KEY" "$PACK" >> "$HITS" 2>/dev/null || true
++if [ -s "$HITS" ]; then
++  echo
++  echo "STOPPED: something still looks like a credential. No zip was written. Matches (values shortened):"
++  cut -c1-140 "$HITS" | sed -E 's#(.{0,100}).*#\1 ...#'
++  echo
++  echo "Remove or redact those lines (they are inside your own copy of the SDK), then run this again."
++  exit 1
++fi
++
++echo "5/5 Zipping..."
++rm -f "$OUT"
++( cd "$WORK" && zip -qr "$OLDPWD/$OUT" zeller-sdk-pack )
++echo
++echo "Files in $OUT (review before sending):"
++unzip -Z1 "$OUT" | sed 's#^#  #'
++echo
++echo "Wrote $(pwd)/$OUT. Nothing was uploaded."
+diff --git a/src/lib/giftCode.ts b/src/lib/giftCode.ts
+new file mode 100644
+index 0000000..887453c
+--- /dev/null
++++ b/src/lib/giftCode.ts
+@@ -0,0 +1,18 @@
++// Location: src/lib/giftCode.ts
++// A9.5: gift card QR codes carry a prefix like `shopify-giftcard-v1-CODE`. Anything that types, pastes or scans a code goes through here,
++// so the prefix is stripped in one place. Pure (no native imports) so it can be unit tested.
++
++/** Anchored to the known prefix on purpose: a looser "everything before the last hyphen" would cut any code that contains a hyphen. */
++const PREFIX = /^shopify-giftcard-v\d+-/i;
++
++/** Remove the QR prefix if (and only if) it is there. Whitespace around the value is ignored. */
++export const stripGiftPrefix = (raw: string): string => raw.trim().replace(PREFIX, '');
++
++/** The form Shopify stores: no prefix, letters and digits only, upper case. */
++export const normaliseCode = (raw: string): string => stripGiftPrefix(raw).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
++
++/** What a gift card QR should contain. Version 1 until the format changes. */
++export const giftQrPayload = (code: string, version = 1): string => `shopify-giftcard-v${version}-${normaliseCode(code)}`;
++
++/** True when a scanned value is a gift card QR (so the item scanner can say so instead of "no item found"). */
++export const isGiftQr = (raw: string): boolean => PREFIX.test(raw.trim());
+diff --git a/src/lib/shopify/giftcards.ts b/src/lib/shopify/giftcards.ts
+index 5a73d94..34e43ba 100644
+--- a/src/lib/shopify/giftcards.ts
++++ b/src/lib/shopify/giftcards.ts
+@@ -6,12 +6,13 @@ import * as Crypto from 'expo-crypto';
+ import { gql, throwUserErrors } from './client';
+ import { CURRENCY, toCents, toDecimal } from '../money';
+ import { uid } from '../ids';
++import { normaliseCode } from '../giftCode';
+ import { createCustomer, searchRemote } from './customers';
+ import type { GiftRecipient } from '../types';
+ 
+ export type GiftCardInfo = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
+ 
+-export const normaliseCode = (s: string) => s.replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
++export { normaliseCode, stripGiftPrefix, giftQrPayload } from '../giftCode';
+ export const newGiftCode = () => uid().replace(/-/g, '').slice(0, 16).toUpperCase();
+ const checksum = async (code: string) => (await Crypto.digestStringAsync(Crypto.CryptoDigestAlgorithm.SHA256, normaliseCode(code))).slice(0, 10);
+ 
+@@ -42,12 +43,12 @@ export async function createGiftCard(valueCents: number, code: string, saleUuid:
+     if (existing) return existing;
+   }
+   throwUserErrors(errs, 'Creating the gift card');
+-  const card = mapCard(d.giftCardCreate.giftCard, true);
+-  if (recipientAttributes) await sendGiftCardEmail(card.id); // delivers the code + (if enabled in Shopify) the Apple Wallet button
+-  return card;
++  return mapCard(d.giftCardCreate.giftCard, true);
+ }
+ 
+-/** (Re)send the gift card notification to its recipient. Never fails a sale: the card exists either way. */
++/** (Re)send the gift card notification to its recipient (delivers the code and, if enabled in Shopify, the Apple Wallet button).
++ *  A9.3: createGiftCard no longer emails by itself. The sync step calls this once per card, only after the sale is recorded and the card exists.
++ *  Never fails a sale: the card exists either way, and Gift cards ▸ lookup can resend it. */
+ export async function sendGiftCardEmail(id: string): Promise<boolean> {
+   try {
+     const d = await gql(`mutation($id:ID!){ giftCardSendNotificationToRecipient(id:$id) { userErrors { field message } } }`, { id });
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index b82c6ae..492e4e8 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -10,13 +10,14 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+ import * as meta from './shopify/metaobjects';
+ import { createOrderForSale } from './shopify/orders';
+-import { createGiftCard } from './shopify/giftcards';
++import { createGiftCard, sendGiftCardEmail } from './shopify/giftcards';
+ import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
+ import { adjustStock } from './shopify/inventory';
+ import type { BundleConfig, Cart, SaleRecord } from './types';
+ 
+ const st = () => useApp.getState();
+ let running = false;
++const GIFT_EMAIL_TRIES = 5; // a card whose email keeps failing stops holding up the sale after this many runs; staff are told to resend it
+ 
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+@@ -55,7 +56,25 @@ async function runItem(o: OutboxItem) {
+   }
+   await receiptStep('receiptFinal'); // now includes the Shopify order number
+   if (!o.done.giftCards) {
+-    for (const l of cur.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode)) await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
++    // A9.4: cards are only created here, from the outbox, which only exists once payment has completed. Declined or abandoned sales never reach this
++    // point, so they leave no card behind. A failure queues and retries (createGiftCard is idempotent by code), so a paid sale never loses its card.
++    // A9.3: the recipient's email goes out once per card, after the card exists. `giftDone` records each finished line so a retry never re-sends.
++    const giftLines = cur.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode);
++    let doneIds = st().pos.outbox.find(x => x.id === o.id)?.giftDone ?? o.giftDone ?? [];
++    for (const l of giftLines) {
++      if (doneIds.includes(l.giftCardCode!)) continue;
++      const card = await createGiftCard(l.netCents, l.giftCardCode!, cur.uuid, cur.customer?.id, l.giftRecipient);
++      if (l.giftRecipient?.email) {
++        const sent = await sendGiftCardEmail(card.id);
++        if (!sent) {
++          const tries = (st().pos.outbox.find(x => x.id === o.id)?.tries ?? 0) + 1;
++          if (tries < GIFT_EMAIL_TRIES) throw new Error(`The gift card for ${l.giftRecipient.email} was created, but its email did not send yet. Retrying.`);
++          st().notify({ kind: 'sync', title: 'Gift card email not sent', body: `Card ••••${card.last4} for ${l.giftRecipient.email} exists, but Shopify would not send the email. Resend it from Gift cards.`, route: 'giftcards' });
++        }
++      }
++      doneIds = [...doneIds, l.giftCardCode!];
++      patchItem(o.id, x => ({ ...x, giftDone: doneIds }));
++    }
+     mark('giftCards');
+   }
+   if (!o.done.entry) {
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index 7e5beea..c0a64ea 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -12,6 +12,7 @@ import { digitsToCents, fmt } from '../lib/money';
+ import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
+ import { AddTileSheet, TileGrid, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+ import { CameraScanner, HidScanner } from './Scanner';
++import { isGiftQr } from '../lib/giftCode';
+ import { SwitchStaffSheet } from './StaffLogin';
+ import { isBadgeCode } from '../lib/badge';
+ import { signInWithPass } from '../lib/staffAuth';
+@@ -62,7 +63,7 @@ export default function Checkout() {
+   const onScan = (code: string): string | null => {
+     if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
+     const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);
+-    if (!v) { toast.show(`No item for ${code}`); return null; }
++    if (!v) { toast.show(isGiftQr(code) ? 'That is a gift card. Redeem it from Charge ▸ Gift card.' : `No item for ${code}`); return null; }
+     add(v, 1); return `Added ${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}`;
+   };
+ 
+diff --git a/src/screens/Pay.tsx b/src/screens/Pay.tsx
+index 504060a..9282736 100644
+--- a/src/screens/Pay.tsx
++++ b/src/screens/Pay.tsx
+@@ -13,6 +13,7 @@ import { digitsToCents, fmt, allocate, roundCash } from '../lib/money';
+ import { uid } from '../lib/ids';
+ import { emptyCart } from '../lib/cartOps';
+ import { lookupGiftCard, debitGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { normaliseCode } from '../lib/giftCode';
+ import { GiftCheckSheet } from './sheets';
+ import { ReceiptPrompt } from './Receipt';
+ import type { SaleRecord, Tender } from '../lib/types';
+@@ -110,7 +111,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   const useGift = async (info: GiftCardInfo, code: string) => {
+     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
+     try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message); }
+-    addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: code, at: new Date().toISOString() }, uuid); setGift(false);
++    addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
+   };
+ 
+   const abandon = async () => {
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index ee19f90..184a42b 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -11,6 +11,7 @@ import { saveCartLocal } from '../lib/sync';
+ import { uid } from '../lib/ids';
+ import { searchRemote, createCustomer } from '../lib/shopify/customers';
+ import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/giftcards';
++import { stripGiftPrefix } from '../lib/giftCode';
+ import { CameraScanner } from './Scanner';
+ import type { CartLine, Customer, ManualDiscount } from '../lib/types';
+ 
+@@ -170,11 +171,11 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
+ /** Check balance by scanning a QR/barcode or typing the code. */
+ export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean; onClose: () => void; onUse?: (g: GiftCardInfo, code: string) => void }) {
+   const [code, setCode] = useState(''); const [info, setInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [busy, setBusy] = useState(false); const [cam, setCam] = useState(false);
+-  const look = async (raw: string) => { setBusy(true); try { setCode(raw); setInfo(await lookupGiftCard(raw)); } catch (e: any) { alertMsg('Lookup failed', e.message); } setBusy(false); };
++  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message); } setBusy(false); };
+   return (
+     <>
+       <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">
+-        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(t); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
++        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(stripGiftPrefix(t)); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
+         <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setCam(true)} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(code)} busy={busy} disabled={code.trim().length < 4} style={{ flex: 1 }} /></View>
+         {info === null ? <Txt color="#DC2626" style={{ marginTop: 14 }}>No gift card found for that code.</Txt> : null}
+         {info ? <View style={{ marginTop: 16, gap: 4 }}><Txt sub>Card ••••{info.last4}</Txt><Money cents={info.balanceCents} size={34} weight="700" /><Txt sub size={13}>{info.enabled ? 'Active' : 'Disabled'}{info.verified ? '' : ' · code could not be verified'}{info.expiresOn ? ` · expires ${info.expiresOn}` : ''}</Txt>
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 2adfe65..75ea476 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -33,6 +33,7 @@ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; t
+ export type OutboxItem = {
+   id: string; sale: SaleRecord; queuedAt: string;
+   done: { receipt?: boolean; receiptFinal?: boolean; order?: boolean; giftCards?: boolean; entry?: boolean; rollup?: boolean; stock?: boolean };
++  giftDone?: string[]; // A9: codes of gift card lines already created (and emailed, if they have a recipient)
+   tries: number; error?: string; blocked?: boolean; // blocked = Shopify user error, needs a human
+ };
+ export type Attempt = { ref: string; saleUuid: string; amountCents: number; ts: string; status: 'started' | 'approved' | 'declined' | 'cancelled' | 'unknown' | 'resolved'; note?: string; resolvedBy?: string };
+diff --git a/tests/giftcode.test.ts b/tests/giftcode.test.ts
+new file mode 100644
+index 0000000..2e21401
+--- /dev/null
++++ b/tests/giftcode.test.ts
+@@ -0,0 +1,38 @@
++// Location: tests/giftcode.test.ts
++// A9.5: gift card QR prefix handling.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { stripGiftPrefix, normaliseCode, giftQrPayload, isGiftQr } from '../src/lib/giftCode';
++
++test('strips the versioned prefix, any version number', () => {
++  assert.equal(stripGiftPrefix('shopify-giftcard-v1-ABCD1234EFGH5678'), 'ABCD1234EFGH5678');
++  assert.equal(stripGiftPrefix('shopify-giftcard-v2-ABCD'), 'ABCD');
++  assert.equal(stripGiftPrefix('shopify-giftcard-v10-ABCD'), 'ABCD');
++  assert.equal(stripGiftPrefix('  SHOPIFY-GIFTCARD-V3-ABCD \n'), 'ABCD');
++});
++
++test('leaves codes without the prefix alone, including codes that contain hyphens', () => {
++  assert.equal(stripGiftPrefix('ABCD1234'), 'ABCD1234');
++  assert.equal(stripGiftPrefix('ABCD-EFGH-IJKL'), 'ABCD-EFGH-IJKL'); // the loose "(?:.*-)?(.*)" regex would have cut this to IJKL
++  assert.equal(stripGiftPrefix('shopify-giftcard-ABCD'), 'shopify-giftcard-ABCD'); // no version part = not our prefix
++  assert.equal(stripGiftPrefix('xshopify-giftcard-v1-ABCD'), 'xshopify-giftcard-v1-ABCD'); // anchored at the start
++});
++
++test('normaliseCode strips the prefix first, then punctuation and case', () => {
++  assert.equal(normaliseCode('shopify-giftcard-v1-abcd-1234'), 'ABCD1234');
++  assert.equal(normaliseCode('abcd 1234'), 'ABCD1234');
++  assert.equal(normaliseCode('ABCD1234'), 'ABCD1234');
++});
++
++test('QR payload round trips', () => {
++  const q = giftQrPayload('abcd-1234');
++  assert.equal(q, 'shopify-giftcard-v1-ABCD1234');
++  assert.equal(normaliseCode(q), 'ABCD1234');
++  assert.equal(giftQrPayload('abcd1234', 2), 'shopify-giftcard-v2-ABCD1234');
++});
++
++test('isGiftQr only matches the prefix', () => {
++  assert.equal(isGiftQr('shopify-giftcard-v1-ABCD'), true);
++  assert.equal(isGiftQr('9300675024235'), false);
++  assert.equal(isGiftQr('ABCD-EFGH'), false);
++});

@@ -2,17 +2,17 @@
 // Reads this device's settings + logins into a BackupV1, and applies one on another device.
 import * as FS from 'expo-file-system/legacy';
 import { useApp } from '../state/store';
-import { getPassSecret, getReceiptSecret, getToken, loadCreds, saveCreds, setPassSecret, setReceiptSecret } from './shopify/client';
+import { getClaimSecret, getPassSecret, getReceiptSecret, getToken, loadCreds, saveCreds, setClaimSecret, setPassSecret, setReceiptSecret } from './shopify/client';
 import { parseGrid } from './grid';
 import { buildBackup, mergeSettings, type BackupV1 } from './backupFile';
 
 export async function collectBackup(): Promise<BackupV1> {
   const c = await loadCreds();
-  const [passSecret, receiptSecret] = await Promise.all([getPassSecret(), getReceiptSecret()]);
+  const [passSecret, receiptSecret, claimSecret] = await Promise.all([getPassSecret(), getReceiptSecret(), getClaimSecret()]);
   const st = useApp.getState();
   const b = buildBackup({
     settings: st.settings as unknown as Record<string, unknown>, grid: st.grid, gridVersion: st.gridVersion,
-    credentials: { shopifyDomain: c?.domain ?? '', shopifyClientId: c?.clientId ?? '', shopifyClientSecret: c?.clientSecret ?? '', passSecret, receiptSecret },
+    credentials: { shopifyDomain: c?.domain ?? '', shopifyClientId: c?.clientId ?? '', shopifyClientSecret: c?.clientSecret ?? '', passSecret, receiptSecret, claimSecret },
   });
   const logoData = await readLogoData(st.settings.screensaver.logoFile);
   if (logoData) b.settings.screensaver = { ...(b.settings.screensaver as object), logoData };
@@ -61,6 +61,7 @@ export async function applyBackup(b: BackupV1): Promise<string> {
   if (hasShopify) await saveCreds({ domain: c.shopifyDomain, clientId: c.shopifyClientId, clientSecret: c.shopifyClientSecret });
   if (c.passSecret) await setPassSecret(c.passSecret);
   if (c.receiptSecret) await setReceiptSecret(c.receiptSecret);
+  if (c.claimSecret) await setClaimSecret(c.claimSecret);
   if (!hasShopify) return `Settings restored. The backup had no Shopify login, so set that up under Settings ▸ Shopify.${gridNote}`;
   try { await getToken(true); return `Restored. The Shopify login works. Next, open Settings ▸ Shopify and tap Import from Shopify to load the catalogue.${gridNote}`; }
   catch (e: any) { return `Settings restored, but the Shopify login did not work: ${e.message}${gridNote}`; }

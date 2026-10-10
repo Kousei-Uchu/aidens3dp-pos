@@ -16,6 +16,9 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm �
 | 0007 | 2026-10-10 | Progress doc only: your answers recorded, scanner finding, "Needed from You" and "Deferred" sections | docs |
 | 0008 | 2026-10-10 | Square history import: PC script (Square SDK) → QR on your Wi-Fi → compressed read-only history in Reports + Transactions | A7 |
 | 0009 | 2026-10-10 | Bundle builder GUI: deal list + editor, % off / set price / $ off, dates, recommended pairs, bundle rows in the cart, pre-payment check; fixes a missing "Square history" page title from 0008 | A8, B4 |
+| 0010 | 2026-10-10 | Gift cards: QR prefix stripped everywhere a code is read, one email per card sent only after the card exists, safe retries; `npm run zeller:pack` script | A9.3-A9.5, A11.3 |
+| 0011 | 2026-10-10 | Remove the app's own gift card email (Shopify already sends one on creation) | A9.3, A9.6 |
+| 0012 | 2026-10-10 | Gift card claim page (own Worker) + Claim QR and gift card QR on the receipt step | A10 |
 
 ---
 
@@ -94,19 +97,21 @@ Settings ▸ Discounts & bundles. Saves the same JSON the engine already read (`
 ### A9. Gift cards: when they are created, and how codes are read
 - [-] A9.1 Dropped (you changed your mind): adding a gift card to the cart only records the amount.
 - [-] A9.2 Dropped (you changed your mind): prompt for recipient details once at charge time. Recipient details stay where they are today.
-- [ ] A9.3 Send the recipient one gift card email, and only after the transaction has completed.
-- [ ] A9.4 Do not create the gift card in Shopify until payment has succeeded, so abandoned or declined sales never leave a stray card or a free code. If creation fails after payment, queue it and retry (same idempotent approach as orders) so the sale is never lost.
-- [ ] A9.5 Gift card QR codes carry a prefix like `shopify-giftcard-v1-CODE`. Wherever a code is typed, pasted or scanned (redeem, balance check, lookup), strip the prefix and use the code. The version part can be any number (`v1`, `v2`, `v10`). I will anchor the match to the known prefix, `^shopify-giftcard-v\d+-`, instead of your looser `(?:.*-)?(.*)`, because the loose one would cut any code that happens to contain a hyphen. Say if you want the loose one anyway. Pure helper plus tests.
+- [x] A9.3 The recipient gets exactly one gift card email, and only after the sale is recorded and the card exists. You confirmed Shopify already emails the recipient when a card is created with one (you got two when we also sent it), so 0010's explicit send was removed in 0011. `sendGiftCardEmail` stays for a manual resend only.
+- [x] A9.4 Verified in the code, then tightened: a gift card is only created from the outbox, and a sale only enters the outbox once payment has completed (`recordSale`). Declined or abandoned sales never reach it. If creation fails after payment the item stays queued and retries (creation is idempotent by code). Finished cards are recorded on the queued sale (`giftDone`), so a retry skips them.
+- [x] A9.5 `src/lib/giftCode.ts` (pure): `stripGiftPrefix` removes `^shopify-giftcard-v\d+-` (case-insensitive, any version, anchored, so a code containing hyphens is never cut), `normaliseCode` strips the prefix first, `giftQrPayload` builds the same string for printing, `isGiftQr` detects it. Used by lookup/check (typed, pasted or scanned), the Check gift card field, and gift card tenders at payment (the stored code is now the clean one). Scanning a gift card QR on the main item scanner now says to redeem it from Charge ▸ Gift card instead of "No item". Tests: `tests/giftcode.test.ts` (5).
+- [x] A9.6 Answered by you (N10): two emails arrived, so the extra send is gone.
 
 ### A10. Gift card web page / QR / recipient form
-- [ ] A10.1 QR to the card's Shopify gift-card page where available.
-- [ ] A10.2 Fallback Cloudflare Worker "claim your gift card" page (recipient name + email).
-- [ ] A10.3 Keep manual recipient entry (email and details typed in the app) as a fallback alongside the QR and web page.
+- [-] A10.1 Not possible: Shopify's Admin API has no field for a gift card's customer web page. That link only exists inside Shopify's own email, so the app cannot print it as a QR. Replaced by A10.2 (our own page) and the card QR below.
+- [x] A10.2 New Worker `gift-claim-server/` (own Shopify app, own secrets; README inside). After you sell a gift card with no email, the receipt step shows **Claim QR: customer adds their email**. The customer scans it, enters name, email and an optional message, and Shopify emails the card. Details: signed link `/c/<CODE>.<SIG>` (HMAC with `CLAIM_SECRET`, made by the POS), card found by last characters + the POS checksum note, only enabled cards with no recipient yet, one claim per card (locked first, unlocked if Shopify fails), per-IP rate limit, page shows only the last 4 characters. App side: `src/lib/giftClaim.ts`, Settings ▸ Gift cards ▸ Gift card claim page (URL + secret in the Keychain, included in backups). Tests: `tests/giftclaim.test.ts` (7), including that the app and the Worker agree on signatures.
+- [x] A10.3 Manual recipient entry ("Email it" when adding the card) is unchanged and still the first choice. The receipt step also has **Gift card QR (for scanning at a register)**, which holds `shopify-giftcard-v1-CODE` (the A9.5 format) and works with the redeem and check scanners.
+- [~] A10.4 **You:** set the Worker up (README), sell a test card with no email, scan the Claim QR with your phone, and enter your email. Tell me how many emails arrive. Not run against a real store: the update + notify calls are written from Shopify's docs. This patch needs no native rebuild and no `npm install`.
 
 ### A11. Zeller terminal shouldn't show our own sheet
 - [ ] A11.1 Remove our payment sheet for terminal calls; show only a slim in-app "waiting on terminal" state while Zeller's UI is up.
 - [ ] A11.2 Answer to "can Zeller's popup live inside a custom sheet?" (needs a look at the SDK's WebView API in `zellerBridge.tsx`).
-- [ ] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
+- [x] A11.3 `scripts/package-zeller-sdk.sh` (`npm run zeller:pack`): bundles the Zeller SDK source from your machine into one zip you can send me. The SDK is gated, so the script strips credentials automatically first (registry tokens in `.npmrc`, API keys and secrets), scans the result for anything that still looks like a key, and refuses to produce the zip if it finds one. It prints the file list so you can review it.
 
 ### A12. Discounts that combine (Shopify automatic discounts)
 Clarified: this is about the imported Shopify automatic discounts, not custom bundles. Bundles should also stack, which they already do.
@@ -177,8 +182,8 @@ Status as found in the zip you sent (I only inspected files; not run).
 - [ ] B8 Extra ideas
 
 ## Notes
-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (146 after patch 0009). `npm test` on your machine runs the same files.
-- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0009 (it found one real error left by 0008, now fixed). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (158 after patch 0012). `npm test` on your machine runs the same files.
+- Type-checking: from patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
 
 ---
 
@@ -187,7 +192,7 @@ Status as found in the zip you sent (I only inspected files; not run).
 Ordered by priority, highest first.
 
 ### Priority 1
-- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. Run `npm run zeller:pack` once A11.3 exists and send me the zip. The script strips credentials first.
+- [ ] N1 **Blocking for A11.2** (non-blocking for A11.1): the Zeller SDK source, so I can answer whether Zeller's popup can live in a custom sheet. The first zip you sent held only `zellerBridge.tsx`, `zeller.ts` and `zeller.d.ts`: the SDK package itself was missing. Please run `ls node_modules/@zeller-public` and `ls node_modules/@zeller-public/*` in the project folder and tell me what prints, then re-run `npm run zeller:pack` and send the new zip. It is tested here against a fake SDK: it deletes `.npmrc`/key files, redacts key-like text, and refuses to write the zip if anything key-shaped is left. It uses `perl` and `zip`, which a Mac has. Look at the printed file list before you send it. The script strips credentials first.
 
 ### Priority 2
 - [-] N2 No longer needed (A7 uses the Square API, not CSV).
@@ -196,6 +201,10 @@ Ordered by priority, highest first.
 - [ ] N9 **Non-blocking (A8):** try the bundle builder on a device (see A8.7) and tell me anything awkward: the item picker, the date fields, the recommended-pair flow, the pre-payment prompt.
 - [ ] N4 **Non-blocking (A2.7):** test the scanner double click (shows or hides the on-screen keyboard) with the scanner paired.
 - [ ] N5 **Non-blocking (A12):** ring up a cart that should trigger two of your real discounts at once (for example 8 Tadlings, or 5 Tadlings + 2 cows) and tell me if the totals look right.
+
+- [x] N10 Answered: two emails arrived with 0010. Fixed in 0011 (the app no longer sends its own).
+
+- [ ] N11 **Non-blocking (A10.4):** set up `gift-claim-server` (its README) and test one claim. Skip it if you don't want the claim page; the app hides the Claim QR until the URL and secret are filled in.
 
 ### Priority 3
 - [ ] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 

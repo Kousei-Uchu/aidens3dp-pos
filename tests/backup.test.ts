@@ -3,7 +3,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { BACKUP_APP, buildBackup, decryptBackup, detectBackup, encryptBackup, mergeSettings, validateBackup, backupFileName } from '../src/lib/backupFile';
 
-const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id-123', shopifyClientSecret: 'shpss_secret', passSecret: 'pass-s', receiptSecret: 'rcpt-s' };
+const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id-123', shopifyClientSecret: 'shpss_secret', passSecret: 'pass-s', receiptSecret: 'rcpt-s', claimSecret: 'claim-s' };
 const settings = { shopName: 'Aiden 3D', registerId: 'abcd1234', registerName: 'Register 1', sharedVersion: 7, cashRounding: true, fees: { cardPresentRate: 0.0165, keyedRate: 0.025 },
   receipt: { serverUrl: 'https://r.example.dev', abn: '12 345 678 901', gstRegistered: true }, staff: [{ id: 's1', name: 'Aiden', role: 'owner', salt: 'x', pinHash: 'y' }], theme: 'dark' };
 const grid = { version: 1, pages: [{ id: 'p1', name: 'Home', tiles: [] }] };

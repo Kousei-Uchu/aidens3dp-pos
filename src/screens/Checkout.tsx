@@ -12,6 +12,7 @@ import { digitsToCents, fmt } from '../lib/money';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
 import { CameraScanner, HidScanner } from './Scanner';
+import { isGiftQr } from '../lib/giftCode';
 import { SwitchStaffSheet } from './StaffLogin';
 import { isBadgeCode } from '../lib/badge';
 import { signInWithPass } from '../lib/staffAuth';
@@ -62,7 +63,7 @@ export default function Checkout() {
   const onScan = (code: string): string | null => {
     if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
     const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);
-    if (!v) { toast.show(`No item for ${code}`); return null; }
+    if (!v) { toast.show(isGiftQr(code) ? 'That is a gift card. Redeem it from Charge ▸ Gift card.' : `No item for ${code}`); return null; }
     add(v, 1); return `Added ${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}`;
   };
 
