@@ -19,13 +19,15 @@ import { CashSheet, type CashResult } from './CashSheet';
 import { cashDue, postCashSale, reverseCashTender } from '../lib/cashSale';
 import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
 import { ReceiptPrompt } from './Receipt';
+import { useUi } from '../ui/uiProfile';
+import { payHint, payQuestion, payTitle } from '../lib/simpleLabels';
 import type { SaleRecord, Tender } from '../lib/types';
 
 type Card = { phase: 'idle' } | { phase: 'waiting'; text: string; amount: number } | { phase: 'declined'; text: string; amount: number; code?: string }
   | { phase: 'unknown'; ref: string; amount: number; text: string; checking: boolean } | { phase: 'notready'; text: string };
 
 export default function Pay({ onBack }: { onBack: () => void }) {
-  const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const settings = useApp(s => s.settings); const zeller = useApp(s => s.zeller);
+  const { c } = useTheme(); const ui = useUi(); const cart = useApp(s => s.pos.cart); const settings = useApp(s => s.settings); const zeller = useApp(s => s.zeller);
   const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue();
   const tenders = cart.tenders ?? []; const total = priced.netCents; const paid = paidTotal(tenders); const remaining = Math.max(0, total - paid);
   const [equalLeft, setEqualLeft] = useState(0); const [chunk, setChunk] = useState<number | null>(null);
@@ -152,10 +154,11 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       {tenders.length ? <View style={{ marginHorizontal: 16, marginBottom: 12 }}><Card>{tenders.map((t, i) => <Row key={t.id} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'} title={t.kind === 'card' ? `Card ${t.card?.panMasked ? '•••• ' + t.card.panMasked : ''}` : t.kind === 'cash' ? 'Cash' : 'Gift card'} right={<Money cents={t.amountCents} />} />)}</Card></View> : null}
       {remaining > 0 ? (
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
-          <Btn title={`Card — ${fmt(target)}`} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} />
-          <Btn title="Cash" icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} />
-          <Btn title="Gift card" icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} />
-          <Btn title="Split amount" icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} />
+          {payQuestion(ui.explain, true) ? <Txt size={17} weight="700" style={{ textAlign: 'center', marginBottom: 2 }}>{payQuestion(ui.explain, true)}</Txt> : null}
+          <PayOption hint={payHint('card', ui.explain)}><Btn title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption>
+          <PayOption hint={payHint('cash', ui.explain)}><Btn title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
+          <PayOption hint={payHint('gift', ui.explain)}><Btn title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
+          <PayOption hint={payHint('split', ui.explain)}><Btn title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
           {chunk !== null || equalLeft > 1 ? <Btn title="Cancel split" kind="ghost" onPress={() => { setChunk(null); setEqualLeft(0); }} /> : null}
         </View>
       ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: null, given: null })} /></View> : null}
@@ -187,5 +190,9 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       {done ? <ReceiptPrompt sale={done} onDone={finishAll} /> : null}
     </Page>
   );
+}
+/** A payment button with an optional plain-English line under it (Simple mode). */
+function PayOption({ hint, children }: { hint?: string; children: React.ReactNode }) {
+  return <View style={{ gap: 4 }}>{children}{hint ? <Txt size={13} sub style={{ textAlign: 'center', paddingHorizontal: 12 }}>{hint}</Txt> : null}</View>;
 }
 void lookupGiftCard;

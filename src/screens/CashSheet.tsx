@@ -4,6 +4,8 @@
 // Everything is confirmed by hand: the cashier taps what they received and confirms what they gave. No hardware is involved.
 import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
+import { useUi } from '../ui/uiProfile';
+import { cashHint } from '../lib/simpleLabels';
 import { Btn, Money, Sheet, Txt } from '../ui/kit';
 import { DenomPad } from '../ui/DenomPad';
 import { useTheme } from '../ui/theme';
@@ -60,7 +62,7 @@ export function GiveCashSheet({ visible, amount, onDone }: { visible: boolean; a
 }
 
 export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void }) {
-  const { c } = useTheme(); const drawer = useApp(s => s.pos.ledger.counts);
+  const { c } = useTheme(); const ui = useUi(); const drawer = useApp(s => s.pos.ledger.counts);
   const [step, setStep] = useState<'receive' | 'change'>('receive'); const [draft, setDraft] = useState<Draft>([]); const [partX, setPartX] = useState<number | null>(null); const [force, setForce] = useState(false);
   useEffect(() => { if (visible) { setStep('receive'); setDraft([]); setPartX(null); setForce(false); } }, [visible]);
 
@@ -83,6 +85,7 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
             {partX !== null ? <Txt size={13} sub>{fmt(due - partX)} will be left to pay another way</Txt> : null}
             {st.state === 'short' ? <Txt weight="600" color={c.bad}>Short by {fmt(st.shortBy)}</Txt> : st.state === 'change' ? <Txt weight="600" color={blocked ? c.bad : c.good}>Change to give: {fmt(st.change)}</Txt> : st.state === 'exact' && got > 0 ? <Txt weight="600" color={c.good}>Exact</Txt> : <Txt sub>Tap what the customer hands over</Txt>}
           </View>
+          {cashHint(ui.explain) ? <Txt size={13} sub style={{ textAlign: 'center' }}>{cashHint(ui.explain)}</Txt> : null}
           <DenomPad draft={draft} onChange={d => { setDraft(d); setForce(false); }} totalLabel="Received" />
 
           {st.state === 'short' ? (

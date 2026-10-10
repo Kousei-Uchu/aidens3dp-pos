@@ -1,0 +1,567 @@
+From e689f46ebd4ac53999b416904dba04085f177660 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sat, 10 Oct 2026 15:22:28 +0000
+Subject: [PATCH] 0025: display modes part 1 (Standard, Simple, Minimal,
+ Custom)
+
+---
+ App.tsx               |  14 +++--
+ docs/MODES.md         |  24 ++++++++
+ docs/PROGRESS.md      |   8 ++-
+ src/lib/types.ts      |   3 +-
+ src/lib/uiMode.ts     | 135 ++++++++++++++++++++++++++++++++++++++++++
+ src/screens/More.tsx  |  43 +++++++++-----
+ src/screens/Staff.tsx |  29 +++++++++
+ src/ui/kit.tsx        |  17 +++---
+ src/ui/uiProfile.tsx  |  16 +++++
+ tests/uimode.test.ts  |  64 ++++++++++++++++++++
+ 10 files changed, 322 insertions(+), 31 deletions(-)
+ create mode 100644 docs/MODES.md
+ create mode 100644 src/lib/uiMode.ts
+ create mode 100644 src/ui/uiProfile.tsx
+ create mode 100644 tests/uimode.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index 54469c1..1614de2 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -29,6 +29,8 @@ import Diagnostics from './src/screens/Diagnostics';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
+ import { isLockScreen } from './src/lib/posLock';
++import { UiProvider, useUi } from './src/ui/uiProfile';
++import { effectiveTab } from './src/lib/uiMode';
+ 
+ const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+   { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
+@@ -59,7 +61,9 @@ function Routes() {
+ 
+ function Shell() {
+   const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+-  const unread = useApp(s => s.pos.notices.filter(n => !n.read).length);
++  const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
++  // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
++  useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+   useEffect(() => {
+     if (!ready) return;
+@@ -82,9 +86,9 @@ function Shell() {
+       </View>
+       {!hasPage ? (
+         <View style={{ flexDirection: 'row', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingBottom: tablet ? 8 : 22, paddingTop: 6 }}>
+-          {TABS.map(t => { const on = nav.tab === t.id; return (
++          {TABS.filter(t => ui.tabs.includes(t.id)).map(t => { const on = nav.tab === t.id; return (
+             <Pressable key={t.id} onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
+-              <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={24} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
++              <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
+               <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable>); })}
+         </View>
+       ) : null}
+@@ -95,10 +99,10 @@ function Shell() {
+ export default function App() {
+   return (
+     <ZellerRoot>
+-      <ThemeProvider><NavProvider>
++      <ThemeProvider><UiProvider><NavProvider>
+         <View style={{ flex: 1 }} onTouchStart={noteActivity}><Shell /></View>
+         <KeepAwake /><ScreensaverLayer />
+-      </NavProvider></ThemeProvider>
++      </NavProvider></UiProvider></ThemeProvider>
+     </ZellerRoot>
+   );
+ }
+diff --git a/docs/MODES.md b/docs/MODES.md
+new file mode 100644
+index 0000000..f10dd23
+--- /dev/null
++++ b/docs/MODES.md
+@@ -0,0 +1,24 @@
++# Display modes (Standard, Simple, Minimal, Custom)
++
++Set per person: More ▸ Staff ▸ their name ▸ **Display mode**. It follows them to any register they sign in on (it is saved with the staff list). Nobody signed in, or no staff set up, means Standard.
++
++| | Text | Tabs | More menu | Explanations |
++|---|---|---|---|---|
++| Standard | normal | all five | everything their role allows | off |
++| Simple | 15% bigger | all five | everything their role allows | on |
++| Minimal | 30% bigger | Checkout, Transactions, More | Orders, Saved carts, Gift cards, Cash drawer, Support, Lock register | on |
++| Custom | your choice | your choice | your choice | your choice |
++
++Custom dials: text size (normal, large, extra large), plain-English lines (off, on), tabs (all, no Notifications, Checkout/Transactions/More), More menu (all, everyday, essentials). Choosing Custom starts from whatever mode the person already had.
++
++## Rules
++- A mode only narrows or enlarges. A cashier on any mode still never sees Reports, Staff or Settings.
++- The only manager or owner always keeps Staff and Settings, so they can always change a mode back.
++- Checkout and More are always present. If a tab is hidden while someone is on it (the mode changed, or a notification link points at it), the app goes to Checkout.
++- Lock register stays in More whenever locking is set up.
++
++## Code
++`src/lib/uiMode.ts` holds every rule and is tested without the app (`tests/uimode.test.ts`). `src/ui/uiProfile.tsx` gives the current person's profile to the screens. Text scaling is applied in `Txt`, `Btn`, `Chip` and `Segmented` (`src/ui/kit.tsx`). Registers on an older app version ignore the mode and show Standard.
++
++## Still to come
++Minimal's guided checkout flow (B5b) and Simple-mode polish inside Checkout, Pay and Cash (B5c).
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 916cb62..710bf72 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -31,6 +31,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0022 | 2026-10-10 | Smart change (weighted change choice): learns from your drawer history and item prices, picks the notes and coins that keep the drawer stocked for the next sales, "another way" button, smarter "worth it?" warning in Check Change; Settings ▸ Payments toggle (off by default) | B1c |
+ | 0023 | 2026-10-10 | Daily float report (Cash drawer ▸ Daily float report): the day's cash takings, which notes and coins to bank to match them, the float that leaves (judged by the learned profile), top-up and big-note banking hints, and a button to record the banking in the ledger | B1f |
+ | 0024 | 2026-10-10 | Tender machine porting point: one empty function (`src/lib/tenderMachine.ts`) and a greyed-out, locked-Off "Under Construction" switch in Settings ▸ Payments. Finishes B1 | B1g |
++| 0025 | 2026-10-11 | Display modes, part 1 (B5a): Standard / Simple / Minimal / Custom per staff member, big-text and plain-English More menu, tab sets, Custom dials in Staff. The guided checkout flow is the next patch | B5a |
+ 
+ ---
+ 
+@@ -234,7 +235,11 @@ Status as found in the zip you sent (I only inspected files; not run).
+ - [x] B2 Cashier passes (`StaffPass.tsx`, `StaffLogin.tsx`, `passCard.ts`, `badge.ts`) - present in zip. Wallet pass: you ticked N6 and D6, which I read as the Apple Pass Type ID certificate being set up. Tell me if that tick meant something else.
+ - [x] B3 Screensaver + keep-awake (`Screensaver.tsx`, `screensaver.ts`, `idle.ts`) - present in zip.
+ - [x] B4 Bundle GUI (same as A8, done in 0009)
+-- [ ] B5 Simple / Minimal / Custom staff modes
++- [~] B5 Simple / Minimal / Custom staff modes. Split into three patches. Details: `docs/MODES.md`.
++  - [x] B5a (0025) Mode per staff member (Staff ▸ their name ▸ Display mode), shared to every register with the staff list. **Simple**: everything stays, text 15% bigger, a plain-English line under every More entry. **Minimal**: text 30% bigger, only Checkout / Transactions / More tabs, only the essential More entries (Orders, Saved carts, Gift cards, Cash drawer, Support, Lock). **Custom**: four dials (text size, explanations, tabs, More menu), starting from what the person already had. A mode only narrows or enlarges: it never gives anyone more than their role allows. The only manager or owner always keeps Staff and Settings, so nobody can lock themselves out. Code: `src/lib/uiMode.ts` (pure), `src/ui/uiProfile.tsx`, `src/screens/More.tsx`, `src/screens/Staff.tsx`. Tests: `tests/uimode.test.ts` (10).
++  - [ ] B5b Minimal's guided, step-by-step checkout (question and answer flow, full checkout still available). Not started.
++  - [ ] B5c Simple mode polish inside the screens themselves (clearer labels, hide secondary buttons, bigger tap targets in Checkout, Pay and Cash). Not started: I want your B5d feedback on 0025 first.
++  - [ ] B5d **You:** in Staff, open a cashier and try each mode, then sign in as them: check the text size, the tab bar, the More menu, and that Custom's four dials do what they say. Tell me if the text is too big or too small at Simple and Minimal, if anything overflows or gets cut off at 30% bigger, and if the More descriptions read well.
+ - [ ] B6 Training mode (Info → Show → Guide → Check → Gratify)
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker
+ - [ ] B8 Extra ideas (saved for last, after E1 below)
+@@ -281,6 +286,7 @@ Ordered by priority, highest first.
+ - [ ] N17 **Non-blocking (B1):** the cash sale test in B1i.
+ - [ ] N18 **Non-blocking (B1c):** the smart change test in B1j.
+ - [ ] N19 **Non-blocking (B1f):** the float report test in B1k.
++- [ ] N20 **Non-blocking (B5a):** the display mode test in B5d. Registers still on an older app version ignore the mode and show Standard, so update every register.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index dd53739..afb2fa2 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -1,4 +1,5 @@
+ // Location: src/lib/types.ts
++import type { StaffUi } from './uiMode';
+ // Shared domain types. All money fields are integer cents.
+ 
+ export type Variant = {
+@@ -200,4 +201,4 @@ export type Notice = {
+ };
+ 
+ export type Role = 'cashier' | 'manager' | 'owner';
+-export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string };
++export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi };
+diff --git a/src/lib/uiMode.ts b/src/lib/uiMode.ts
+new file mode 100644
+index 0000000..43ebe74
+--- /dev/null
++++ b/src/lib/uiMode.ts
+@@ -0,0 +1,135 @@
++// Location: src/lib/uiMode.ts
++// Display modes for staff (B5): Standard, Simple, Minimal, Custom. Pure rules, no React.
++// A mode can only NARROW or ENLARGE what a person sees. It never grants anything their role does not already allow.
++import type { Role } from './types';
++
++export type UiMode = 'standard' | 'simple' | 'minimal' | 'custom';
++export type TextSize = 'normal' | 'large' | 'xlarge';
++export type TabLevel = 'all' | 'core' | 'basic';
++export type MoreLevel = 'all' | 'everyday' | 'essential';
++export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
++export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'lock';
++
++/** The four dials a Custom mode exposes. */
++export type CustomUi = { textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel };
++/** Stored on the staff member (so it travels with the staff list to every register). */
++export type StaffUi = { mode: UiMode; custom?: CustomUi };
++
++export const MODES: UiMode[] = ['standard', 'simple', 'minimal', 'custom'];
++export const TEXT_SCALE: Record<TextSize, number> = { normal: 1, large: 1.15, xlarge: 1.3 };
++export const TAB_ORDER: TabId[] = ['checkout', 'inventory', 'transactions', 'notifications', 'more'];
++export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
++  all: ['checkout', 'inventory', 'transactions', 'notifications', 'more'],
++  core: ['checkout', 'inventory', 'transactions', 'more'],
++  basic: ['checkout', 'transactions', 'more'],
++};
++/** Rows in the More screen, in three groups (the screen draws a card per group). */
++export const MORE_GROUPS: MoreRowId[][] = [
++  ['orders', 'items', 'customers', 'saved', 'giftcards'],
++  ['reports', 'drawer', 'staff', 'settings', 'diagnostics'],
++  ['lock'],
++];
++const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'lock'];
++const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
++export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
++const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
++
++export const DEFAULT_CUSTOM: CustomUi = { textSize: 'normal', explain: false, tabs: 'all', more: 'all' };
++const PRESETS: Record<'standard' | 'simple' | 'minimal', CustomUi> = {
++  standard: DEFAULT_CUSTOM,
++  simple: { textSize: 'large', explain: true, tabs: 'all', more: 'all' },
++  minimal: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential' },
++};
++
++export type UiProfile = { mode: UiMode; textScale: number; explain: boolean; tabs: TabId[]; moreLevel: MoreLevel };
++
++const isOne = <T extends string>(v: unknown, all: readonly T[]): v is T => typeof v === 'string' && (all as readonly string[]).includes(v);
++/** Anything read from storage or from another register is treated as untrusted: unknown values fall back to the standard ones. */
++export function readCustom(raw: unknown): CustomUi {
++  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  return {
++    textSize: isOne(r.textSize, ['normal', 'large', 'xlarge'] as const) ? r.textSize : DEFAULT_CUSTOM.textSize,
++    explain: typeof r.explain === 'boolean' ? r.explain : DEFAULT_CUSTOM.explain,
++    tabs: isOne(r.tabs, ['all', 'core', 'basic'] as const) ? r.tabs : DEFAULT_CUSTOM.tabs,
++    more: isOne(r.more, ['all', 'everyday', 'essential'] as const) ? r.more : DEFAULT_CUSTOM.more,
++  };
++}
++export function readUi(raw: unknown): StaffUi {
++  const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
++  const mode: UiMode = isOne(r.mode, MODES) ? r.mode : 'standard';
++  return mode === 'custom' ? { mode, custom: readCustom(r.custom) } : { mode };
++}
++
++export type ResolveCtx = {
++  /** True when this person is the only manager or owner. Mode then never hides Staff and Settings from them, so nobody can lock themselves out of changing it back. */
++  soleAdmin?: boolean;
++};
++
++/** Turns a staff member's saved mode into what the app should show. No staff member (nobody signed in, or no staff set up) = Standard. */
++export function resolveUi(ui: unknown, ctx: ResolveCtx = {}): UiProfile {
++  const s = readUi(ui);
++  const d = s.mode === 'custom' ? readCustom(s.custom) : PRESETS[s.mode];
++  // Checkout and More are always there: Checkout is the job, More holds Lock register and the way back.
++  const tabs = TABS_BY_LEVEL[d.tabs].slice();
++  let moreLevel = d.more;
++  if (ctx.soleAdmin && moreLevel !== 'all') moreLevel = 'all';
++  return { mode: s.mode, textScale: TEXT_SCALE[d.textSize], explain: d.explain, tabs, moreLevel };
++}
++export const STANDARD_PROFILE: UiProfile = resolveUi({ mode: 'standard' });
++
++/** Which More rows to draw, per group, for this role. Mode narrows, role gates; the two never widen each other. */
++export function visibleMoreRows(p: UiProfile, role: Role, lockAvailable: boolean): MoreRowId[][] {
++  const allowedByLevel = ROWS_BY_LEVEL[p.moreLevel];
++  const ok = (id: MoreRowId) => {
++    if (MANAGER_ROWS.includes(id) && role === 'cashier') return false;
++    if (id === 'lock' && !lockAvailable) return false;
++    return allowedByLevel === 'all' || allowedByLevel.includes(id);
++  };
++  return MORE_GROUPS.map(g => g.filter(ok)).filter(g => g.length > 0);
++}
++
++/** Plain-language lines shown under the More rows when "explain" is on. */
++export const MORE_EXPLAIN: Record<MoreRowId, string> = {
++  orders: 'Look up a past sale, or give a refund.',
++  items: 'Add products or change names and prices.',
++  customers: 'Your customer list.',
++  saved: 'Carts you put on hold to finish later.',
++  giftcards: 'Check a gift card balance or sell one.',
++  reports: 'How much you have sold, by day or month.',
++  drawer: 'Open and close the cash drawer and see what is in it.',
++  staff: 'Who can use the till, their PINs and passes.',
++  settings: 'Payments, receipts and everything else.',
++  diagnostics: 'Check the card reader and fix problems.',
++  lock: 'Lock the till so nobody else can use it. Your cart stays as it is.',
++};
++
++export const MODE_LABEL: Record<UiMode, string> = { standard: 'Standard', simple: 'Simple', minimal: 'Minimal', custom: 'Custom' };
++export const MODE_BLURB: Record<UiMode, string> = {
++  standard: 'The full app as it is today.',
++  simple: 'Everything is still there. Bigger text and a plain-English line under each menu entry.',
++  minimal: 'Biggest text, only the everyday menus (Checkout, Transactions, More) and no setup screens. The guided checkout arrives in a later update.',
++  custom: 'Pick text size, explanations, which tabs and which More entries.',
++};
++export const TEXT_LABEL: Record<TextSize, string> = { normal: 'Normal', large: 'Large', xlarge: 'Extra large' };
++export const TAB_LABEL: Record<TabLevel, string> = { all: 'All five', core: 'No Notifications', basic: 'Checkout, Transactions, More' };
++export const MORE_LABEL: Record<MoreLevel, string> = { all: 'Everything their role allows', everyday: 'Everyday only', essential: 'Essentials only' };
++
++/** A new StaffUi after the person picks a mode. Switching to Custom starts from what they were using, so nothing jumps. */
++export function withMode(cur: unknown, mode: UiMode): StaffUi {
++  const now = readUi(cur);
++  if (mode !== 'custom') return { mode };
++  const start = now.mode === 'custom' ? readCustom(now.custom) : PRESETS[now.mode];
++  return { mode, custom: { ...start } };
++}
++export function withCustom(cur: unknown, patch: Partial<CustomUi>): StaffUi {
++  const now = readUi(cur);
++  return { mode: 'custom', custom: { ...readCustom(now.mode === 'custom' ? now.custom : PRESETS[now.mode]), ...patch } };
++}
++/** Staff list helper: the one place that says whether someone is the only manager or owner. */
++export function isSoleAdmin(staff: { id: string; role: Role }[], id: string | undefined): boolean {
++  if (!id) return false;
++  const admins = staff.filter(m => m.role !== 'cashier');
++  return admins.length === 1 && admins[0].id === id;
++}
++/** The tab to show: a hidden tab (mode changed while signed in, or a notification link) falls back to Checkout. */
++export const effectiveTab = (tab: TabId, p: UiProfile): TabId => (p.tabs.includes(tab) ? tab : 'checkout');
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index ea94c28..882334e 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -1,30 +1,41 @@
+ import React from 'react';
+ import { ScrollView, View } from 'react-native';
+-import { Row, Section, Txt } from '../ui/kit';
++import { Row, Section, Txt, type IconName } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
++import { useUi } from '../ui/uiProfile';
+ import { useApp, currentStaff } from '../state/store';
++import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
++
++const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }> = {
++  orders: { icon: 'receipt-outline', title: 'Orders', route: 'orders' }, items: { icon: 'cube-outline', title: 'Items', route: 'items' },
++  customers: { icon: 'people-outline', title: 'Customers', route: 'customers' }, saved: { icon: 'bookmarks-outline', title: 'Saved carts', route: 'saved' },
++  giftcards: { icon: 'gift-outline', title: 'Gift cards', route: 'giftcards' }, reports: { icon: 'stats-chart-outline', title: 'Reports', route: 'reports' },
++  drawer: { icon: 'cash-outline', title: 'Cash drawer', route: 'drawer' }, staff: { icon: 'id-card-outline', title: 'Staff', route: 'staff' },
++  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' },
++  lock: { icon: 'lock-closed-outline', title: 'Lock register' },
++};
++/** What the row says underneath when explanations are off. */
++const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller reader, sync' };
+ 
+ export default function More() {
+-  const { c } = useTheme(); const nav = useNav(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
+-  const role = s.requirePin && s.staff.length ? staff?.role ?? 'cashier' : 'owner'; const mgr = role !== 'cashier';
++  const { c } = useTheme(); const nav = useNav(); const ui = useUi(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
++  const lockOn = s.requirePin && s.staff.length > 0;
++  const role = lockOn ? staff?.role ?? 'cashier' : 'owner';
++  const groups = visibleMoreRows(ui, role, lockOn);
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={24} weight="700">More</Txt>{staff ? <Txt sub>{staff.name} · {staff.role}</Txt> : null}</View>
+       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+-        <Section>
+-          <Row icon="receipt-outline" title="Orders" onPress={() => nav.push('orders')} />
+-          <Row icon="cube-outline" title="Items" onPress={() => nav.push('items')} />
+-          <Row icon="people-outline" title="Customers" onPress={() => nav.push('customers')} />
+-          <Row icon="bookmarks-outline" title="Saved carts" onPress={() => nav.push('saved')} />
+-          <Row icon="gift-outline" title="Gift cards" last onPress={() => nav.push('giftcards')} /></Section>
+-        <Section>
+-          {mgr ? <Row icon="stats-chart-outline" title="Reports" onPress={() => nav.push('reports')} /> : null}
+-          <Row icon="cash-outline" title="Cash drawer" onPress={() => nav.push('drawer')} />
+-          {mgr ? <Row icon="id-card-outline" title="Staff" onPress={() => nav.push('staff')} /> : null}
+-          {mgr ? <Row icon="settings-outline" title="Settings" onPress={() => nav.push('settings')} /> : null}
+-          <Row icon="medkit-outline" title="Support & diagnostics" sub="Zeller reader, sync" badge={unread ? String(unread) : undefined} last onPress={() => nav.push('diagnostics')} /></Section>
+-        {s.requirePin && s.staff.length ? <Section><Row icon="lock-closed-outline" title="Lock register" last onPress={() => useApp.getState().set({ unlocked: false, staffId: undefined })} /></Section> : null}
++        {groups.map((g, gi) => (
++          <Section key={gi}>
++            {g.map((id, i) => {
++              const r = ROWS[id];
++              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} last={i === g.length - 1}
++                onPress={() => (r.route ? nav.push(r.route) : useApp.getState().set({ unlocked: false, staffId: undefined }))} />;
++            })}
++          </Section>
++        ))}
+       </ScrollView>
+     </View>
+   );
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index fa3129e..b096d56 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -10,6 +10,7 @@ import { StaffLoginPad } from './StaffLogin';
+ import { StaffPassSheet } from './StaffPass';
+ import { pushSharedSettings } from '../lib/sync';
+ import { uid } from '../lib/ids';
++import { MODES, MODE_BLURB, MODE_LABEL, MORE_LABEL, TAB_LABEL, TEXT_LABEL, isSoleAdmin, readUi, readCustom, withCustom, withMode, type CustomUi, type UiMode } from '../lib/uiMode';
+ import type { Role } from '../lib/types';
+ 
+ /** Staff: PINs (salted hash, shared across registers via the settings metaobject) and roles. */
+@@ -21,6 +22,8 @@ export default function Staff() {
+     for (const m of s.staff) if (await verifyPin(m.salt, f.pin, m.pinHash)) return alertMsg('That PIN is already used');
+     const salt = newSalt(); patch({ staff: [...s.staff, { id: uid(), name: f.name.trim(), role: f.role, salt, pinHash: await hashPin(salt, f.pin) }] }); void pushSharedSettings().catch(() => {}); setOpen(false); setF({ name: '', pin: '', role: 'cashier' });
+   };
++  /** Saves a person's display mode and shares it to the other registers with the rest of the staff list. */
++  const setUi = (id: string, ui: ReturnType<typeof withMode>) => { patch({ staff: s.staff.map(x => (x.id === id ? { ...x, ui } : x)) }); void pushSharedSettings().catch(() => {}); };
+   return (
+     <Page title="Staff" onBack={nav.pop}>
+       <Section footer="PINs lock the till and tag each sale with who made it. They’re stored hashed, and shared to your other registers.">
+@@ -29,6 +32,13 @@ export default function Staff() {
+       <View style={{ padding: 16 }}><Btn title="Add staff member" icon="person-add-outline" onPress={() => setOpen(true)} /></View>
+       <Sheet visible={!!sel} onClose={() => setSel(null)} title={s.staff.find(x => x.id === sel)?.name ?? ''}>
+         {s.staff.filter(x => x.id === sel).map(m => <View key={m.id}>
++          <View style={{ paddingHorizontal: 16, paddingTop: 12, paddingBottom: 6, gap: 8 }}>
++            <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Display mode</Txt>
++            <Segmented<UiMode> value={readUi(m.ui).mode} onChange={mode => setUi(m.id, withMode(m.ui, mode))} options={MODES.map(v => ({ v, label: MODE_LABEL[v] }))} />
++            <Txt size={13} sub>{MODE_BLURB[readUi(m.ui).mode]}</Txt>
++            {readUi(m.ui).mode === 'custom' ? <CustomModeEditor value={readCustom(readUi(m.ui).custom)} onChange={p => setUi(m.id, withCustom(m.ui, p))} /> : null}
++            {readUi(m.ui).mode !== 'standard' && m.role !== 'cashier' && isSoleAdmin(s.staff, m.id) ? <Txt size={12} sub>You are the only manager or owner, so this mode keeps Staff and Settings in the More menu.</Txt> : null}
++          </View>
+           <Row icon="qr-code-outline" title="Cashier pass" sub={hasBadge(m) ? 'Issued. Print it, add it to Apple Wallet, or replace it.' : 'Not issued yet'} onPress={() => { setSel(null); setTimeout(() => setPassFor(m.id), 350); }} />
+           <Row icon="trash-outline" title={`Remove ${m.name}`} danger last onPress={async () => { setSel(null); if (await confirm(`Remove ${m.name}?`, 'Their PIN and cashier pass stop working.', 'Remove', true)) { patch({ staff: s.staff.filter(x => x.id !== m.id) }); void forgetBadge(m.id); void pushSharedSettings().catch(() => {}); } }} />
+         </View>)}
+@@ -42,6 +52,25 @@ export default function Staff() {
+   );
+ }
+ 
++/** The four dials of Custom mode. */
++function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: Partial<CustomUi>) => void }) {
++  const label = (t: string) => <Txt size={13} weight="600" style={{ marginTop: 6 }}>{t}</Txt>;
++  return (
++    <View style={{ gap: 6 }}>
++      {label('Text size')}
++      <Segmented<CustomUi['textSize']> value={value.textSize} onChange={textSize => onChange({ textSize })} options={(['normal', 'large', 'xlarge'] as const).map(v => ({ v, label: TEXT_LABEL[v] }))} />
++      {label('Plain-English line under each More entry')}
++      <Segmented<'on' | 'off'> value={value.explain ? 'on' : 'off'} onChange={v => onChange({ explain: v === 'on' })} options={[{ v: 'off', label: 'Off' }, { v: 'on', label: 'On' }]} />
++      {label('Tabs along the bottom')}
++      <Segmented<CustomUi['tabs']> value={value.tabs} onChange={tabs => onChange({ tabs })} options={(['all', 'core', 'basic'] as const).map(v => ({ v, label: v === 'all' ? 'All' : v === 'core' ? 'No alerts' : 'Basic' }))} />
++      <Txt size={12} sub>{TAB_LABEL[value.tabs]}</Txt>
++      {label('More menu')}
++      <Segmented<CustomUi['more']> value={value.more} onChange={more => onChange({ more })} options={(['all', 'everyday', 'essential'] as const).map(v => ({ v, label: v === 'all' ? 'All' : v === 'everyday' ? 'Everyday' : 'Essentials' }))} />
++      <Txt size={12} sub>{MORE_LABEL[value.more]}</Txt>
++    </View>
++  );
++}
++
+ export function PinLock() {
+   return (
+     <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 30, gap: 14 }}>
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index b500da0..c1daedc 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -11,26 +11,27 @@ import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
+ import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
+ import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
+ import { sheetMaxHeight } from '../lib/keyboardMath';
++import { useUi } from './uiProfile';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+ export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+ 
+ export function Txt({ style, children, size = 15, weight, color, sub, numberOfLines }: { style?: any; children?: React.ReactNode; size?: number; weight?: '400' | '500' | '600' | '700'; color?: string; sub?: boolean; numberOfLines?: number }) {
+-  const { c } = useTheme();
+-  return <Text numberOfLines={numberOfLines} style={[{ fontSize: size, color: color ?? (sub ? c.sub : c.text), fontWeight: weight }, style]}>{children}</Text>;
++  const { c } = useTheme(); const k = useUi().textScale;
++  return <Text numberOfLines={numberOfLines} style={[{ fontSize: Math.round(size * k * 2) / 2, color: color ?? (sub ? c.sub : c.text), fontWeight: weight }, style]}>{children}</Text>;
+ }
+ export const Money = ({ cents, size = 15, weight, color, style }: { cents: number; size?: number; weight?: '400' | '500' | '600' | '700'; color?: string; style?: any }) =>
+   <Txt size={size} weight={weight} color={color} style={[{ fontVariant: ['tabular-nums'] }, style]}>{fmt(cents)}</Txt>;
+ 
+ export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, style, small }: { title: string; onPress?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'ghost'; icon?: IconName; disabled?: boolean; busy?: boolean; style?: StyleProp<ViewStyle>; small?: boolean }) {
+-  const { c } = useTheme();
++  const { c } = useTheme(); const k = useUi().textScale;
+   const bg = kind === 'primary' ? c.accent : kind === 'danger' ? c.bad : kind === 'secondary' ? c.fill : 'transparent';
+   const fg = kind === 'primary' ? c.onAccent : kind === 'danger' ? '#fff' : c.text;
+   return (
+     <Pressable disabled={disabled || busy} onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityLabel={title}
+       style={({ pressed }) => [{ backgroundColor: bg, opacity: disabled ? 0.4 : pressed ? 0.75 : 1, paddingVertical: small ? 8 : 14, paddingHorizontal: small ? 14 : 20, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: small ? 36 : 50 }, style]}>
+       {busy ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
+-      <Text style={{ color: fg, fontWeight: '600', fontSize: small ? 14 : 16 }}>{title}</Text>
++      <Text style={{ color: fg, fontWeight: '600', fontSize: Math.round((small ? 14 : 16) * k * 2) / 2 }}>{title}</Text>
+     </Pressable>
+   );
+ }
+@@ -71,16 +72,16 @@ export function Section({ title, children, footer }: { title?: string; children:
+   return <View style={{ marginTop: 18 }}>{title ? <Txt size={13} sub weight="600" style={{ marginHorizontal: 20, marginBottom: 6, textTransform: 'uppercase' }}>{title}</Txt> : null}<Card style={{ marginHorizontal: 16 }}>{children}</Card>{footer ? <Txt size={12} sub style={{ marginHorizontal: 20, marginTop: 6 }}>{footer}</Txt> : null}</View>;
+ }
+ export function Chip({ label, active, onPress, icon }: { label: string; active?: boolean; onPress?: () => void; icon?: IconName }) {
+-  const { c } = useTheme();
++  const { c } = useTheme(); const k = useUi().textScale;
+   return <Pressable onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={{ paddingHorizontal: 14, paddingVertical: 8, borderRadius: 999, backgroundColor: active ? c.accent : c.fill, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+-    {icon ? <Ionicons name={icon} size={14} color={active ? c.onAccent : c.text} /> : null}<Text style={{ color: active ? c.onAccent : c.text, fontWeight: '600', fontSize: 14 }}>{label}</Text></Pressable>;
++    {icon ? <Ionicons name={icon} size={14} color={active ? c.onAccent : c.text} /> : null}<Text style={{ color: active ? c.onAccent : c.text, fontWeight: '600', fontSize: Math.round(14 * k * 2) / 2 }}>{label}</Text></Pressable>;
+ }
+ export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void }) {
+-  const { c } = useTheme();
++  const { c } = useTheme(); const k = useUi().textScale;
+   if (hasSwiftUI) return <NativeSegmented value={value} options={options} onChange={v => { tap(); onChange(v); }} />;
+   return <View style={{ flexDirection: 'row', backgroundColor: c.fill, borderRadius: 12, padding: 3 }}>{options.map(o => (
+     <Pressable key={o.v} onPress={() => { tap(); onChange(o.v); }} accessibilityRole="button" accessibilityState={{ selected: o.v === value }} style={{ flex: 1, paddingVertical: 8, borderRadius: 9, alignItems: 'center', backgroundColor: o.v === value ? c.card : 'transparent' }}>
+-      <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: 14 }}>{o.label}</Text></Pressable>))}</View>;
++      <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: Math.round(14 * k * 2) / 2 }}>{o.label}</Text></Pressable>))}</View>;
+ }
+ /** `kind` picks the keyboard + capitalisation + autocorrect for the data (see lib/fieldKinds.ts); explicit props override it. */
+ export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
+diff --git a/src/ui/uiProfile.tsx b/src/ui/uiProfile.tsx
+new file mode 100644
+index 0000000..9371ebb
+--- /dev/null
++++ b/src/ui/uiProfile.tsx
+@@ -0,0 +1,16 @@
++// Location: src/ui/uiProfile.tsx
++// Hands the signed-in person's display mode (text size, tabs, explanations) to every screen.
++import React, { createContext, useContext, useMemo } from 'react';
++import { useApp } from '../state/store';
++import { STANDARD_PROFILE, isSoleAdmin, resolveUi, type UiProfile } from '../lib/uiMode';
++
++const Ctx = createContext<UiProfile>(STANDARD_PROFILE);
++export function UiProvider({ children }: { children: React.ReactNode }) {
++  const staff = useApp(s => s.settings.staff); const id = useApp(s => s.staffId);
++  const profile = useMemo(() => {
++    const m = staff.find(x => x.id === id);
++    return m ? resolveUi(m.ui, { soleAdmin: isSoleAdmin(staff, m.id) }) : STANDARD_PROFILE;
++  }, [staff, id]);
++  return <Ctx.Provider value={profile}>{children}</Ctx.Provider>;
++}
++export const useUi = () => useContext(Ctx);
+diff --git a/tests/uimode.test.ts b/tests/uimode.test.ts
+new file mode 100644
+index 0000000..2ac5265
+--- /dev/null
++++ b/tests/uimode.test.ts
+@@ -0,0 +1,64 @@
++// Location: tests/uimode.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { MORE_EXPLAIN, MORE_GROUPS, STANDARD_PROFILE, effectiveTab, isSoleAdmin, readCustom, readUi, resolveUi, visibleMoreRows, withCustom, withMode } from '../src/lib/uiMode';
++
++const flat = (g: string[][]) => g.flat();
++
++test('no mode saved = Standard: nothing changes from today', () => {
++  for (const raw of [undefined, null, {}, 'simple', 7, { mode: 'nonsense' }]) assert.deepEqual(resolveUi(raw), STANDARD_PROFILE);
++  assert.equal(STANDARD_PROFILE.textScale, 1); assert.equal(STANDARD_PROFILE.explain, false); assert.equal(STANDARD_PROFILE.tabs.length, 5);
++  assert.deepEqual(flat(visibleMoreRows(STANDARD_PROFILE, 'owner', true)), MORE_GROUPS.flat());
++});
++test('Simple keeps every tab and every row, with bigger text and explanations', () => {
++  const p = resolveUi({ mode: 'simple' });
++  assert.equal(p.tabs.length, 5); assert.ok(p.textScale > 1); assert.equal(p.explain, true);
++  assert.deepEqual(flat(visibleMoreRows(p, 'owner', true)), MORE_GROUPS.flat());
++});
++test('Minimal: three tabs, essentials only, biggest text', () => {
++  const p = resolveUi({ mode: 'minimal' });
++  assert.deepEqual(p.tabs, ['checkout', 'transactions', 'more']);
++  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'lock', 'orders', 'saved']);
++  assert.ok(p.textScale > resolveUi({ mode: 'simple' }).textScale);
++});
++test('a mode never widens what a role allows', () => {
++  for (const mode of ['standard', 'simple', 'minimal', 'custom'] as const) {
++    const rows = flat(visibleMoreRows(resolveUi({ mode, custom: { more: 'all' } }), 'cashier', true));
++    for (const r of ['reports', 'staff', 'settings']) assert.ok(!rows.includes(r), `${mode} cashier sees ${r}`);
++  }
++  assert.ok(!flat(visibleMoreRows(STANDARD_PROFILE, 'owner', false)).includes('lock'), 'no lock row when locking is not set up');
++});
++test('Custom uses its own dials and falls back per dial when a value is bad', () => {
++  const p = resolveUi({ mode: 'custom', custom: { textSize: 'large', explain: true, tabs: 'core', more: 'everyday' } });
++  assert.deepEqual(p.tabs, ['checkout', 'inventory', 'transactions', 'more']); assert.equal(p.moreLevel, 'everyday');
++  assert.deepEqual(readCustom({ textSize: 'huge', explain: 'yes', tabs: 'none', more: 3 }), { textSize: 'normal', explain: false, tabs: 'all', more: 'all' });
++  assert.deepEqual(readUi({ mode: 'custom' }), { mode: 'custom', custom: readCustom(undefined) });
++  assert.deepEqual(readUi({ mode: 'simple', custom: { more: 'essential' } }), { mode: 'simple' });
++});
++test('Checkout and More are in every tab set', () => {
++  for (const tabs of ['all', 'core', 'basic'] as const) { const t = resolveUi({ mode: 'custom', custom: { tabs } }).tabs; assert.ok(t.includes('checkout') && t.includes('more'), tabs); }
++});
++test('the only manager or owner can never hide Staff and Settings from themselves', () => {
++  const staff = [{ id: 'a', role: 'owner' as const }, { id: 'b', role: 'cashier' as const }];
++  assert.equal(isSoleAdmin(staff, 'a'), true); assert.equal(isSoleAdmin(staff, 'b'), false); assert.equal(isSoleAdmin(staff, undefined), false);
++  assert.equal(isSoleAdmin([...staff, { id: 'c', role: 'manager' as const }], 'a'), false);
++  const restricted = { mode: 'minimal' };
++  assert.ok(!flat(visibleMoreRows(resolveUi(restricted), 'owner', true)).includes('settings'));
++  assert.ok(flat(visibleMoreRows(resolveUi(restricted, { soleAdmin: true }), 'owner', true)).includes('settings'));
++  assert.ok(flat(visibleMoreRows(resolveUi(restricted, { soleAdmin: true }), 'owner', true)).includes('staff'));
++});
++test('switching mode starts Custom from what the person was using', () => {
++  assert.deepEqual(withMode(undefined, 'simple'), { mode: 'simple' });
++  assert.deepEqual(withMode({ mode: 'minimal' }, 'custom'), { mode: 'custom', custom: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential' } });
++  assert.deepEqual(withCustom({ mode: 'simple' }, { tabs: 'core' }), { mode: 'custom', custom: { textSize: 'large', explain: true, tabs: 'core', more: 'all' } });
++  assert.deepEqual(withMode({ mode: 'custom', custom: { tabs: 'core' } }, 'standard'), { mode: 'standard' });
++});
++test('a hidden tab falls back to Checkout; a shown one stays', () => {
++  const p = resolveUi({ mode: 'minimal' });
++  assert.equal(effectiveTab('notifications', p), 'checkout'); assert.equal(effectiveTab('inventory', p), 'checkout');
++  assert.equal(effectiveTab('transactions', p), 'transactions'); assert.equal(effectiveTab('more', p), 'more');
++});
++test('every More row has an explanation and nothing is listed twice', () => {
++  const all = MORE_GROUPS.flat(); assert.equal(new Set(all).size, all.length);
++  for (const id of all) assert.ok(MORE_EXPLAIN[id].length > 10, id);
++});
+-- 
+2.43.0
+

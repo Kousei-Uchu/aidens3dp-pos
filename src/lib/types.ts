@@ -1,4 +1,5 @@
 // Location: src/lib/types.ts
+import type { StaffUi } from './uiMode';
 // Shared domain types. All money fields are integer cents.
 
 export type Variant = {
@@ -200,4 +201,4 @@ export type Notice = {
 };
 
 export type Role = 'cashier' | 'manager' | 'owner';
-export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string };
+export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi };

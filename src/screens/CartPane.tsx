@@ -13,11 +13,13 @@ import { invoiceRows, unitLine } from '../lib/invoiceRows';
 import SwipeRow from '../ui/SwipeRow';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
 import { CheckChangeSheet } from './CheckChange';
+import { useUi } from '../ui/uiProfile';
+import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, SaveCartSheet } from './sheets';
 import type { CartLine } from '../lib/types';
 
 export default function CartPane({ onClose }: { onClose?: () => void }) {
-  const { c } = useTheme(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
+  const { c } = useTheme(); const ui = useUi(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change'>('none');
   const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
@@ -32,13 +34,13 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {onClose ? <IconBtn icon="chevron-back" label="Back" onPress={onClose} /> : null}
         <Pressable onPress={() => setSheet('customer')} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 }} accessibilityRole="button" accessibilityLabel="Attach customer">
           <Ionicons name={cart.customer ? 'person-circle' : 'person-add-outline'} size={22} color={c.text} />
-          <Txt weight="600" numberOfLines={1} style={{ flex: 1 }}>{cart.customer?.name || (cart.customer ? 'Customer' : 'Add customer')}</Txt>
+          <Txt weight="600" numberOfLines={1} style={{ flex: 1 }}>{customerRowText(ui.explain, cart.customer?.name, !!cart.customer)}</Txt>
           {cart.customer ? <Pressable onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
         </Pressable>
         <IconBtn icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
       </View>
 
-      {empty ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}><Ionicons name="cart-outline" size={44} color={c.sub} /><Txt sub>Cart is empty</Txt></View> : (
+      {empty ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}><Ionicons name="cart-outline" size={44} color={c.sub} /><Txt sub style={{ textAlign: 'center', paddingHorizontal: 24 }}>{cartEmptyText(ui.explain)}</Txt></View> : (
         <ScrollView style={{ flex: 1 }}>
           {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale — finish payment to edit</Txt></View> : null}
           {priced.lines.map(pl => {
@@ -84,6 +86,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {cart.discount ? <Txt size={13} sub>{cart.discount.label} applied to the cart</Txt> : null}
         <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
         {!empty ? <Txt size={12} sub style={{ textAlign: 'center' }}>{qty} item{qty === 1 ? '' : 's'}{!consolidate ? '' : ''}</Txt> : null}
+        {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
       </View>
 
       <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart">
@@ -117,7 +120,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
 }
 
 /** One bundle application: names the items and variations in it, the saving, and whether it is a recommended pair. */
-function BundleRow({ b }: { b: import('../lib/types').AppliedBundle }) {
+export function BundleRow({ b }: { b: import('../lib/types').AppliedBundle }) {
   const { c } = useTheme();
   return (
     <Card style={{ padding: 12, gap: 4 }}>
