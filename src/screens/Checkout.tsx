@@ -1,5 +1,5 @@
 // Location: src/screens/Checkout.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Chip, Empty, Field, IconBtn, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm, useToast } from '../ui/kit';
@@ -11,6 +11,8 @@ import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+import { TileSettingsSheet } from './TileSettings';
+import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
 import { CameraScanner, HidScanner } from './Scanner';
 import { isGiftQr } from '../lib/giftCode';
 import { SwitchStaffSheet } from './StaffLogin';
@@ -47,7 +49,7 @@ export default function Checkout() {
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
-  const [drill, setDrill] = useState<{ kind: 'category'; id: string } | { kind: 'group'; pageId: string; index: number } | null>(null);
+  const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
   const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
   const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
@@ -84,18 +86,23 @@ export default function Checkout() {
     },
   };
 
-  // current tile list (page / group / category drill-down)
-  const group = drill?.kind === 'group' ? (grid.pages.find(p => p.id === drill.pageId)?.tiles[drill.index] as Extract<Tile, { type: 'group' }> | undefined) : undefined;
-  const catTiles: Tile[] | null = drill?.kind === 'category' ? (cat.collections.find(x => x.id === drill.id)?.productIds ?? []).map(pid => ({ type: 'item' as const, productId: pid })).filter(t => cat.byProduct[t.productId]) : null;
-  const tiles = catTiles ?? group?.tiles ?? page?.tiles ?? [];
-  const title = drill?.kind === 'category' ? cat.collections.find(x => x.id === drill.id)?.title : group?.name;
+  // where we are: the page's tiles, or inside nested categories / display groups (path = one tile index per level)
+  const { nodes, valid } = useMemo(() => resolvePath(page?.tiles ?? [], path), [page, path]);
+  useEffect(() => { if (valid.length !== path.length) setPath(valid); }, [valid, path.length]); // a synced layout change removed a level we were in
+  const node = nodes[nodes.length - 1];
+  const nodeLabel = (t: (typeof nodes)[number]) => (t.type === 'category' ? t.label ?? cat.collections.find(x => x.id === t.collectionId)?.title ?? 'Category' : t.name);
+  // editing shows only the tiles stored in the container (its collection's items are filled in when not editing)
+  const tiles = !node ? page?.tiles ?? [] : editing ? childTiles(node) : viewTiles(node, cat.collections, pid => !!cat.byProduct[pid]);
+  const crumbs = breadcrumbs(page?.name ?? 'Home', nodes, valid, nodeLabel);
 
   const edit = (f: (g: typeof grid) => typeof grid) => commitGrid(f);
-  const editingGroup = !!group && editing;
-  const mutateGroup = (fn: (t: Tile[]) => Tile[]) => edit(g => ({ ...g, pages: g.pages.map(p => (p.id === (drill as any).pageId ? { ...p, tiles: p.tiles.map((t, i) => (i === (drill as any).index && t.type === 'group' ? { ...t, tiles: fn(t.tiles) } : t)) } : p)) }));
-  const onRemove = (i: number) => (editingGroup ? mutateGroup(t => t.filter((_, k) => k !== i)) : edit(g => gridOps.removeTile(g, page.id, i)));
-  const onMove = (i: number, d: -1 | 1) => (editingGroup ? mutateGroup(t => { const a = [...t]; const [x] = a.splice(i, 1); a.splice(i + d, 0, x); return a; }) : edit(g => gridOps.moveTile(g, page.id, i, i + d)));
-  const onAddTile = (t: Tile) => (editingGroup ? mutateGroup(a => [...a, t]) : edit(g => gridOps.addTile(g, page.id, t)));
+  const editPage = (fn: (t: Tile[]) => Tile[]) => edit(g => ({ ...g, pages: g.pages.map(p => (p.id === page.id ? { ...p, tiles: fn(p.tiles) } : p)) }));
+  const onRemove = (i: number) => editPage(t => removeTileAt(t, valid, i));
+  const onMove = (i: number, d: -1 | 1) => editPage(t => moveTileAt(t, valid, i, i + d));
+  const onAddTile = (t: Tile) => editPage(l => addTileAt(l, valid, t));
+  const onOpen = (i: number) => { if (isContainer(tiles[i])) setPath([...valid, i]); };
+  const editing_ = editIdx === null ? undefined : childOrPage()[editIdx];
+  function childOrPage(): Tile[] { return node ? childTiles(node) : page?.tiles ?? []; }
 
   // search
   const results = useMemo(() => {
@@ -122,9 +129,9 @@ export default function Checkout() {
           {staffList.length ? <Pressable onPress={() => setSheet('staff')} accessibilityRole="button" accessibilityLabel={curStaff ? `Signed in as ${curStaff.name}. Switch staff` : 'Sign in'} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 140 }}>
             <Ionicons name="person-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>{curStaff?.name ?? 'Sign in'}</Txt></Pressable> : null}
           <IconBtn icon="barcode-outline" label="Scan with camera" onPress={() => setCam(true)} />
-          {tab === 'quick' ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setDrill(d => (d?.kind === 'category' ? null : d)); }} color={editing ? c.good : undefined} /> : null}
+          {tab === 'quick' ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
         </View>
-        <View style={{ padding: 12, paddingBottom: 8 }}><Segmented value={tab} onChange={t => { setTab(t); setDrill(null); setEditing(false); }} options={[{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
+        <View style={{ padding: 12, paddingBottom: 8 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={[{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
         <StatusStrip />
       </View>
 
@@ -140,13 +147,19 @@ export default function Checkout() {
 
       {tab === 'quick' ? (
         <ScrollView>
-          {drill ? <View style={{ flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4 }}><IconBtn icon="chevron-back" label="Back" onPress={() => setDrill(null)} /><Txt size={18} weight="700">{title}</Txt></View>
+          {node ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
+            <IconBtn icon="chevron-back" label="Back one level" onPress={() => setPath(valid.slice(0, -1))} />
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 16 }} accessibilityRole="menu">
+              {crumbs.map((cr, i) => i === crumbs.length - 1
+                ? <Txt key={i} size={18} weight="700">{cr.label}</Txt>
+                : <React.Fragment key={i}><Pressable onPress={() => setPath(cr.path)} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Go to ${cr.label}`}><Txt size={16} color={c.accent}>{cr.label}</Txt></Pressable><Txt size={16} sub>{'>'}</Txt></React.Fragment>)}
+            </ScrollView></View>
             : grid.pages.length > 1 || editing ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 12 }}>
-              {grid.pages.map((p, i) => <Chip key={p.id} label={p.name} active={i === pageIdx} onPress={() => (editing && i === pageIdx ? setSheet('pages') : setPageIdx(i))} />)}
+              {grid.pages.map((p, i) => <Chip key={p.id} label={p.name} active={i === pageIdx} onPress={() => (editing && i === pageIdx ? setSheet('pages') : (setPageIdx(i), setPath([])))} />)}
               {editing ? <Chip label="Pages" icon="settings-outline" onPress={() => setSheet('pages')} /> : null}</ScrollView> : null}
-          <TileGrid tiles={tiles} editing={editing && drill?.kind !== 'category'} handlers={handlers} pageId={page?.id}
-            onOpenGroup={t => setDrill({ kind: 'group', pageId: page.id, index: page.tiles.indexOf(t) })} onOpenCategory={id => setDrill({ kind: 'category', id })}
-            onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} />
+          <TileGrid tiles={tiles} editing={editing} handlers={handlers} onOpen={onOpen} onEdit={i => setEditIdx(i)}
+            onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} emptyHint={node ? 'This one has no tiles or items yet. Tap the pencil to add some.' : undefined} />
+          {editing && node ? <Txt size={12} sub style={{ textAlign: 'center', paddingHorizontal: 16 }}>{node.type === 'category' || node.collectionId ? 'The items in its collection show after these tiles when you are not editing.' : 'Tap a tile to change its label, colour or contents.'}</Txt> : null}
           {editing ? <Txt size={12} sub style={{ textAlign: 'center', padding: 12 }}>Changes save automatically and sync to your other registers.</Txt> : null}
         </ScrollView>
       ) : null}
@@ -185,6 +198,7 @@ export default function Checkout() {
       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
       <CustomerSheet visible={sheet === 'customers'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
       <AddTileSheet visible={sheet === 'add'} onClose={() => setSheet('none')} onPick={onAddTile} />
+      <TileSettingsSheet tile={editing_} onClose={() => setEditIdx(null)} onChange={t => editPage(l => updateTileAt(l, valid, editIdx!, () => t))} onRemove={() => { if (editIdx !== null) onRemove(editIdx); setEditIdx(null); }} onOpen={() => { if (editIdx !== null) setPath([...valid, editIdx]); }} />
 
       <Sheet visible={!!variants} onClose={() => setVariants(null)} title={variants?.[0]?.productTitle ?? 'Choose variation'}>
         {variants?.map((v, i) => <Row key={v.id} image={v.image ?? null} last={i === variants.length - 1} title={v.variantTitle || 'Default'} sub={v.stock === null ? undefined : `${v.stock} in stock`} right={<Money cents={v.priceCents} weight="600" color={stockTone(v) === 'neg' ? c.bad : undefined} />} onPress={() => { add(v); setVariants(null); }} />)}
