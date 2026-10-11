@@ -1,0 +1,201 @@
+From 68cf7d79c699477cfdc6d850f8dede89fa3ceb3c Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sun, 11 Oct 2026 15:01:18 +0000
+Subject: [PATCH] 0064: Quick Menu grid fits its pane
+
+---
+ docs/PROGRESS.md          |  1 +
+ docs/patches/0064-plan.md | 16 +++++++++++++
+ help/help.json            |  6 ++---
+ help/sales/grid.md        |  6 +++--
+ src/lib/gridLayout.ts     | 32 ++++++++++++++++++++++----
+ tests/gridlayout.test.ts  | 47 +++++++++++++++++++++++++++++++--------
+ 6 files changed, 90 insertions(+), 18 deletions(-)
+ create mode 100644 docs/patches/0064-plan.md
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 0ea14d7..38f2206 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -66,6 +66,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0057 | 2026-10-11 | Copilot-authored; review pending. Require denomination counts for cash received, change and cash refunds; use the smart optimal change suggestion for customer payouts; on cancellation, collect previously given change and return exactly the original denominations without optimizing. Update cash Help and What’s Next status/default responses. Device verification remains pending. | B1, B7 |
+ | 0058 | 2026-10-11 | Copilot-authored; review pending. Improve Help presentation without changing its content model: visual ordered-step cards in the app and web, a one-step-at-a-time web guide, and visual topic cards in the app. Style the Docs site locally using the supplied storefront's dark plum/purple direction. Prepare—but do not execute—Cloudflare custom-domain/release steps for the proposed `help.aidens3dp.com`; refresh roadmap status/export with device-dependent items clearly pending. | B7, E1 |
+ | 0063 | 2026-10-11 | Copilot-authored; review pending. Adapt the supplied old-repo `0059-training-foundations.patch` to the current app: animated Info and Show scenes, spotlighted interaction with the real POS screens over isolated fixture state, staged Guide/Check flow, escalating hints, fake card terminal, persistence/network guards, and a "How training works" demonstration course. Assumption: never expose a live sale or reader during training; restore the real app state on exit. Device verification remains outstanding. | B6 |
++| 0064 | 2026-10-12 | Quick Menu grid fits its pane: `tileSizeForPane` now picks the column count that changes the tile size least (grow when under about half a tile is spare, otherwise add a column and shrink), keeps the tile shape, and rounds the width down to a quarter point so a row can never wrap early and leave a column-sized gap. Updated `tests/gridlayout.test.ts` and the Tile size paragraph in `sales/grid` | B-grid |
+ 
+ ---
+ 
+diff --git a/docs/patches/0064-plan.md b/docs/patches/0064-plan.md
+new file mode 100644
+index 0000000..c64339b
+--- /dev/null
++++ b/docs/patches/0064-plan.md
+@@ -0,0 +1,16 @@
++# Patch 0064: Quick Menu grid fits its pane
++
++## What you asked for
++- The tile grid leaves a big gap between its last column and the cart pane. Make the tiles scale up or down, keeping their shape, so the columns fit the width. Under half a tile spare: scale up. Over half: scale down and add a column. Better criteria are welcome.
++
++## Steps
++1. [x] Re-fetched the repo (HEAD "Fixed Tab Bar & Worker Migration"). Dropped the 0032 help work.
++2. [x] Found that `src/lib/gridLayout.ts` already stretched tiles to fill the pane, but only ever **up** (it always took as many whole columns as fit). With a lot spare, tiles got up to a quarter bigger instead of adding a column.
++3. [x] Found a probable cause of a *whole-column* gap: the tile width was `(pane - 16) / columns`, so a row could add up to a hair more than the pane in floating point and wrap its last tile onto the next row. The width is now rounded down to a quarter point so that cannot happen.
++4. [x] New rule in `tileColumnsForPane`: compare the stretch needed with the columns that fit against the squash needed with one more column, as ratios, and take the smaller change. That is your half-a-tile rule, made symmetric (it switches at about 0.45 to 0.49 of a tile spare rather than exactly 0.5, because growing by 20% and shrinking by 20% are not equally big changes). Minimum of two columns is kept. The tile height still follows from its fixed shape (0.82 of the width), so the aspect ratio never changes.
++5. [x] `tests/gridlayout.test.ts` rewritten: a row never exceeds the pane and wastes under a quarter point per column; your two cases (0.3 spare grows, 0.7 spare adds a column and shrinks); sizes stay within about 0.84x to 1.17x of the target once three or more columns fit; narrow and zero-width panes. 4 of 4 pass.
++6. [x] Help: the Tile size paragraph and fault list in `sales/grid` updated; `help/help.json` rebuilt.
++7. [ ] You: try it on the iPad in landscape and in Split View, and tell me if the tiles now look too big or too small at any size. The target widths (96, 124, 160) are unchanged.
++
++## Not changed
++- The text and icons inside a tile keep their size; only the tile box scales.
+diff --git a/help/help.json b/help/help.json
+index ec71241..9b17b12 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "7c8eb14f",
++ "version": "7e8fc54f",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1169,9 +1169,9 @@
+    "updated": "2026-10-11",
+    "lead": "The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.",
+    "sections": {
+-    "basic": "### What a tile can be\n- **Item**: adds that product to the cart. If it has several variations you pick one first (see [[sales/variants-and-stock]]).\n- **Category**: opens inside to show its own tiles, then every product in that Shopify collection. The photo on the tile is the collection's picture.\n- **Display group**: a folder you fill yourself with any tiles you like. It can optionally act like a collection too.\n- **Action**: a button that does a job: Custom amount, Sell gift card, Clear cart, Create item, Customers, Discounts, Cart discount, Saved carts, Switch staff, Lock POS, Price check, Stock check, Check change.\n- **Discount**: applies a percentage or dollar discount to the whole cart.\n\nA small dot on an item tile shows its stock: green is fine, amber is low (2 or fewer), red is oversold (below zero). No dot means the stock is not tracked.\n\n### Moving around\nWhen you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.\n\n### Changing the grid\n1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.\n2. **Tap a tile** to change it: its label, its colour, and for a category or group what it shows and what is inside it.\n3. The **red minus** at a tile's top-left removes it. The **arrows** at its bottom-right move it earlier or later.\n4. The dashed **+** tile adds something: Items, Categories, Display groups, Actions or Discounts.\n5. Tap the green tick when you are done.\n\nYou are editing the level you are standing in. Open a category first to change what is inside it. Everything saves as you go, and your other registers get the change shortly afterwards.\n\n### Pages\nIf you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.\n\n### Tile size\nSettings ▸ Theme ▸ **Tile size** (Small, Medium or Large) changes how many tiles fit across.\n\n### Missing tiles\nA greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.\n\n### Moving a layout in or out\nSettings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.",
++    "basic": "### What a tile can be\n- **Item**: adds that product to the cart. If it has several variations you pick one first (see [[sales/variants-and-stock]]).\n- **Category**: opens inside to show its own tiles, then every product in that Shopify collection. The photo on the tile is the collection's picture.\n- **Display group**: a folder you fill yourself with any tiles you like. It can optionally act like a collection too.\n- **Action**: a button that does a job: Custom amount, Sell gift card, Clear cart, Create item, Customers, Discounts, Cart discount, Saved carts, Switch staff, Lock POS, Price check, Stock check, Check change.\n- **Discount**: applies a percentage or dollar discount to the whole cart.\n\nA small dot on an item tile shows its stock: green is fine, amber is low (2 or fewer), red is oversold (below zero). No dot means the stock is not tracked.\n\n### Moving around\nWhen you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.\n\n### Changing the grid\n1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.\n2. **Tap a tile** to change it: its label, its colour, and for a category or group what it shows and what is inside it.\n3. The **red minus** at a tile's top-left removes it. The **arrows** at its bottom-right move it earlier or later.\n4. The dashed **+** tile adds something: Items, Categories, Display groups, Actions or Discounts.\n5. Tap the green tick when you are done.\n\nYou are editing the level you are standing in. Open a category first to change what is inside it. Everything saves as you go, and your other registers get the change shortly afterwards.\n\n### Pages\nIf you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.\n\n### Tile size\nSettings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size the grid aims for. The tiles are then stretched or squeezed a little, keeping their shape, so the columns fill the width beside the cart with no gap at the edge. If less than about half a tile of space would be left over, the tiles grow to use it. If more, the grid adds another column and the tiles shrink a little to fit it. The grid always has at least two columns.\n\n### Missing tiles\nA greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.\n\n### Moving a layout in or out\nSettings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.",
+     "deep": "### Category or display group?\nA **category** is tied to a Shopify collection. Open it and you see the tiles you put inside it first (usually sub-categories), then the products in the collection. A **display group** is just your own folder with its own tiles. If you switch on \"Acts like a collection\" for a group, it shows that collection's products after its tiles, like a category does.\n\n### Which products show where\nIf a product belongs to both a category and one of that category's sub-categories (at any depth), it only shows in the deepest one. This stops the same product appearing in every level. A product you pin yourself as an **Item** tile is never hidden by this, and it is not shown twice in the same place.\n\n### One product or one variation\nAn Item tile can point at a whole product (the picker appears if it has several variations) or at one specific variation (it is added straight away). Tiles you add from a product use the whole product.\n\n### What editing shows\nWhile editing, a category shows only the tiles stored inside it, not its collection's products, because those are filled in automatically and cannot be moved. A note under the grid says so.\n\n### Shared between registers\nThe layout is stored in Shopify, so every register shows the same grid. After you change something, the new layout is sent about a second and a half later. Each register checks for a newer layout about every 25 seconds while the app is open, and when it returns to the front. A layout that cannot be read is ignored, so a bad import cannot blank another register.",
+-    "advanced": "### The data\n```text\n{ \"version\": 1, \"pages\": [ { \"id\": \"...\", \"name\": \"Home\", \"tiles\": [ ... ] } ] }\n```\nA tile is one of five shapes, from `src/lib/grid.ts`:\n\n| `type` | Fields |\n|---|---|\n| `action` | `action` (one of `ACTIONS`), optional `label`, `color` |\n| `category` | `collectionId`, optional `label`, `color`, `subs` (more tiles) |\n| `item` | `variantId` or `productId`, optional `label`, `color` |\n| `discount` | `code`, `pct` or `amtCents`, optional `label`, `color` |\n| `group` | `name`, `tiles`, optional `collectionId`, `color` |\n\n`parseGrid` accepts a JSON string or object, drops any tile that fails `isTile` (counting them in `dropped`), and always returns at least one page. A new install gets `defaultGrid()`: one Home page with every action except Cart discount.\n\n### Paths and nesting\n`src/lib/gridNav.ts` is pure and works on a **path**: a list of tile indexes, one per level (`[2, 0]` is tile 2 on the page, then tile 0 inside it). `resolvePath` walks it and stops at the first step that no longer exists, so a layout change from another register cannot leave a screen pointing at nothing. `listAt`, `editListAt`, `updateTileAt`, `addTileAt`, `removeTileAt` and `moveTileAt` return changed copies and never edit in place.\n\n```mermaid\nflowchart TD\n  P[path from Checkout state] --> R[resolvePath]\n  R --> E{editing?}\n  E -->|yes| C[childTiles of the last container]\n  E -->|no| V[viewTiles: own tiles, then ownProductIds items]\n  C --> G[TileGrid]\n  V --> G\n  G -->|tap a container| O[onOpen: path plus index]\n  G -->|tap an item| A[handlers.onVariants]\n```\n\n`ownProductIds` implements the deepest-wins rule: it removes any product found in `descendantCollectionIds`. `viewTiles` also skips a product already pinned as an item tile inside the container. `breadcrumbs` builds the bar from the resolved nodes.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Edit mode, page chips, path state | `Checkout.tsx` (`editing`, `pageIdx`, `path`, `edit`, `editPage`) |\n| Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |\n| Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |\n| Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |\n| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |\n| Import and export | `GridSettings` in `Settings.tsx` |\n| Tests | `tests/gridnav.test.ts` |\n\n### Reading the code for a fault\n- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.\n- **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).\n- **Import said \"N unsupported tiles skipped\".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`."
++    "advanced": "### The data\n```text\n{ \"version\": 1, \"pages\": [ { \"id\": \"...\", \"name\": \"Home\", \"tiles\": [ ... ] } ] }\n```\nA tile is one of five shapes, from `src/lib/grid.ts`:\n\n| `type` | Fields |\n|---|---|\n| `action` | `action` (one of `ACTIONS`), optional `label`, `color` |\n| `category` | `collectionId`, optional `label`, `color`, `subs` (more tiles) |\n| `item` | `variantId` or `productId`, optional `label`, `color` |\n| `discount` | `code`, `pct` or `amtCents`, optional `label`, `color` |\n| `group` | `name`, `tiles`, optional `collectionId`, `color` |\n\n`parseGrid` accepts a JSON string or object, drops any tile that fails `isTile` (counting them in `dropped`), and always returns at least one page. A new install gets `defaultGrid()`: one Home page with every action except Cart discount.\n\n### Paths and nesting\n`src/lib/gridNav.ts` is pure and works on a **path**: a list of tile indexes, one per level (`[2, 0]` is tile 2 on the page, then tile 0 inside it). `resolvePath` walks it and stops at the first step that no longer exists, so a layout change from another register cannot leave a screen pointing at nothing. `listAt`, `editListAt`, `updateTileAt`, `addTileAt`, `removeTileAt` and `moveTileAt` return changed copies and never edit in place.\n\n```mermaid\nflowchart TD\n  P[path from Checkout state] --> R[resolvePath]\n  R --> E{editing?}\n  E -->|yes| C[childTiles of the last container]\n  E -->|no| V[viewTiles: own tiles, then ownProductIds items]\n  C --> G[TileGrid]\n  V --> G\n  G -->|tap a container| O[onOpen: path plus index]\n  G -->|tap an item| A[handlers.onVariants]\n```\n\n`ownProductIds` implements the deepest-wins rule: it removes any product found in `descendantCollectionIds`. `viewTiles` also skips a product already pinned as an item tile inside the container. `breadcrumbs` builds the bar from the resolved nodes.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Edit mode, page chips, path state | `Checkout.tsx` (`editing`, `pageIdx`, `path`, `edit`, `editPage`) |\n| Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |\n| Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |\n| Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |\n| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |\n| Import and export | `GridSettings` in `Settings.tsx` |\n| Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |\n| Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |\n\n### Reading the code for a fault\n- **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.\n- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.\n- **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).\n- **Import said \"N unsupported tiles skipped\".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`."
+    }
+   },
+   {
+diff --git a/help/sales/grid.md b/help/sales/grid.md
+index 5604a07..ef94ce8 100644
+--- a/help/sales/grid.md
++++ b/help/sales/grid.md
+@@ -36,7 +36,7 @@ You are editing the level you are standing in. Open a category first to change w
+ If you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.
+ 
+ ### Tile size
+-Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) changes how many tiles fit across.
++Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size the grid aims for. The tiles are then stretched or squeezed a little, keeping their shape, so the columns fill the width beside the cart with no gap at the edge. If less than about half a tile of space would be left over, the tiles grow to use it. If more, the grid adds another column and the tiles shrink a little to fit it. The grid always has at least two columns.
+ 
+ ### Missing tiles
+ A greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.
+@@ -105,9 +105,11 @@ flowchart TD
+ | Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |
+ | Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |
+ | Import and export | `GridSettings` in `Settings.tsx` |
+-| Tests | `tests/gridnav.test.ts` |
++| Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |
++| Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |
+ 
+ ### Reading the code for a fault
++- **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.
+ - **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
+ - **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).
+ - **Import said "N unsupported tiles skipped".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`.
+diff --git a/src/lib/gridLayout.ts b/src/lib/gridLayout.ts
+index ac5f306..252b1f0 100644
+--- a/src/lib/gridLayout.ts
++++ b/src/lib/gridLayout.ts
+@@ -1,8 +1,32 @@
+ export type TileSizePreference = 'S' | 'M' | 'L';
+ 
+-/** Tile width that fills a measured pane while keeping the selected size as the column-count target. */
++/** Space the grid keeps for its own side padding (8 on each side). */
++export const GRID_PADDING = 16;
++/** The tile width each size preference aims for. The real width is nudged up or down from this to fill the pane. */
++export const TILE_TARGET: Record<TileSizePreference, number> = { S: 96, M: 124, L: 160 };
++const MIN_COLUMNS = 2;
++/** Tile widths are rounded down to this step so the row can never add up to a hair more than the pane and wrap early. */
++const STEP = 0.25;
++
++/**
++ * How many columns to use for a pane. It tries the two column counts either side of the preferred tile width
++ * (as many as fit, and one more) and picks the one that changes the tile size the least, measured as a ratio so
++ * "10% bigger" and "10% smaller" count the same. Roughly: if less than about half a tile of space would be left
++ * over, the tiles grow to use it. If more, one more column is added and the tiles shrink a little to fit it.
++ */
++export function tileColumnsForPane(width: number, preference: TileSizePreference): number {
++  const target = TILE_TARGET[preference];
++  const room = Math.max(0, width - GRID_PADDING);
++  const fit = Math.floor(room / target);
++  if (fit < MIN_COLUMNS) return MIN_COLUMNS;
++  const grow = room / (fit * target); // >= 1: how much each tile would have to stretch with `fit` columns
++  const shrink = ((fit + 1) * target) / room; // > 1: how much each tile would have to squash with one more
++  return shrink < grow ? fit + 1 : fit;
++}
++
++/** Tile width (height follows from the tile's fixed shape, so the aspect ratio never changes) that fills a measured pane. */
+ export function tileSizeForPane(width: number, preference: TileSizePreference): number {
+-  const target = preference === 'S' ? 96 : preference === 'L' ? 160 : 124;
+-  const columns = Math.max(2, Math.floor((width - 16) / target));
+-  return (width - 16) / columns;
++  const room = Math.max(0, width - GRID_PADDING);
++  const columns = tileColumnsForPane(width, preference);
++  return Math.floor((room / columns) / STEP) * STEP;
+ }
+diff --git a/tests/gridlayout.test.ts b/tests/gridlayout.test.ts
+index 877a0a4..d228202 100644
+--- a/tests/gridlayout.test.ts
++++ b/tests/gridlayout.test.ts
+@@ -1,16 +1,45 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { tileSizeForPane, type TileSizePreference } from '../src/lib/gridLayout';
++import { GRID_PADDING, TILE_TARGET, tileColumnsForPane, tileSizeForPane, type TileSizePreference } from '../src/lib/gridLayout';
+ 
+-test('tiles fill the available pane at the closest column count for each size preference', () => {
+-  const prefs: TileSizePreference[] = ['S', 'M', 'L'];
+-  for (const width of [320, 390, 612, 900]) {
+-    for (const pref of prefs) {
+-      const target = pref === 'S' ? 96 : pref === 'L' ? 160 : 124;
+-      const columns = Math.max(2, Math.floor((width - 16) / target));
++const PREFS: TileSizePreference[] = ['S', 'M', 'L'];
++
++test('a row of tiles never adds up to more than the pane, and leaves less than a point per column unused', () => {
++  for (let width = 300; width <= 1400; width += 7) {
++    for (const pref of PREFS) {
++      const columns = tileColumnsForPane(width, pref);
+       const size = tileSizeForPane(width, pref);
+-      assert.ok(Math.abs(size * columns + 16 - width) < 0.001);
+-      assert.ok(size >= target || columns === 2);
++      const used = size * columns;
++      const room = width - GRID_PADDING;
++      assert.ok(used <= room, `${pref} at ${width}: ${used} > ${room}`);
++      assert.ok(room - used < columns * 0.25 + 0.001, `${pref} at ${width}: gap ${room - used}`);
+     }
+   }
+ });
++
++test('with less than about half a tile left over the tiles grow, with more they shrink to fit another column', () => {
++  const t = TILE_TARGET.M;
++  // 4 columns plus 0.3 of a tile spare: stay at 4 columns, tiles bigger than the target
++  assert.equal(tileColumnsForPane(4.3 * t + GRID_PADDING, 'M'), 4);
++  assert.ok(tileSizeForPane(4.3 * t + GRID_PADDING, 'M') > t);
++  // 4 columns plus 0.7 of a tile spare: add a fifth column, tiles a little smaller than the target
++  assert.equal(tileColumnsForPane(4.7 * t + GRID_PADDING, 'M'), 5);
++  assert.ok(tileSizeForPane(4.7 * t + GRID_PADDING, 'M') < t);
++});
++
++test('tiles stay within about a quarter of the chosen size once there is room for three or more columns', () => {
++  for (let width = 400; width <= 1400; width += 5) {
++    for (const pref of PREFS) {
++      if (Math.floor((width - GRID_PADDING) / TILE_TARGET[pref]) < 3) continue;
++      const ratio = tileSizeForPane(width, pref) / TILE_TARGET[pref];
++      assert.ok(ratio > 0.84 && ratio < 1.17, `${pref} at ${width}: ratio ${ratio}`);
++    }
++  }
++});
++
++test('narrow panes still get two columns, and an empty measurement does not break', () => {
++  assert.equal(tileColumnsForPane(150, 'L'), 2);
++  assert.ok(tileSizeForPane(150, 'L') > 0);
++  assert.equal(tileColumnsForPane(0, 'M'), 2);
++  assert.equal(tileSizeForPane(0, 'M'), 0);
++});
+-- 
+2.43.0
+
