@@ -4,7 +4,7 @@ title: Staff and roles
 parent: start
 summary: Add team members, set unique PINs and roles, require sign-in, and manage each person's display settings and pass.
 tags: [staff, cashier, manager, owner, role, PIN, sign in, team, access]
-related: [staff/passes, staff/modes, staff/guided-checkout, staff/screensaver, sales/bundles]
+related: [staff/passes, staff/modes, staff/guided-checkout, staff/training, staff/screensaver, sales/bundles]
 updated: 2026-10-11
 ---
 Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass, display mode, appearance, accent colour and tile size.
@@ -27,6 +27,7 @@ You can switch staff from the **Switch staff** sheet without locking the registe
 Tap a person's row to open their settings. Choose their display mode, manage their cashier pass, or remove them. Removing someone makes their PIN and pass stop working.
 
 For issuing, printing or cancelling a pass, see [[staff/passes]]. For per-person screen layout and appearance, see [[staff/modes]].
+For interactive practice modules, see [[staff/training]].
 
 ## Deep
 

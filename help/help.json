@@ -1,5 +1,5 @@
 {
- "version": "cddb3072",
+ "version": "32847ef9",
  "pages": [
   {
    "id": "cash",
@@ -1521,13 +1521,14 @@
     "staff/passes",
     "staff/modes",
     "staff/guided-checkout",
+    "staff/training",
     "staff/screensaver",
     "sales/bundles"
    ],
    "updated": "2026-10-11",
    "lead": "Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass, display mode, appearance, accent colour and tile size.",
    "sections": {
-    "basic": "### Add a staff member\n1. Tap **Add staff member**.\n2. Enter their name and a unique PIN of **4–6 digits**.\n3. Choose **Cashier**, **Manager** or **Owner**, then tap **Add**.\n\nPINs must not be shared between staff members. The app stores each PIN as a salted hash and shares the staff list with your other registers.\n\n### Require sign-in\nTurn on **Require PIN to use the register** to show the sign-in screen when the register is locked. Add at least one staff member first. To sign in, enter the PIN or scan that person's cashier pass.\n\nYou can switch staff from the **Switch staff** sheet without locking the register first. The cart stays as it is. The register will not switch people while a card payment is in progress.\n\n### Change or remove someone\nTap a person's row to open their settings. Choose their display mode, manage their cashier pass, or remove them. Removing someone makes their PIN and pass stop working.\n\nFor issuing, printing or cancelling a pass, see [[staff/passes]]. For per-person screen layout and appearance, see [[staff/modes]].",
+    "basic": "### Add a staff member\n1. Tap **Add staff member**.\n2. Enter their name and a unique PIN of **4–6 digits**.\n3. Choose **Cashier**, **Manager** or **Owner**, then tap **Add**.\n\nPINs must not be shared between staff members. The app stores each PIN as a salted hash and shares the staff list with your other registers.\n\n### Require sign-in\nTurn on **Require PIN to use the register** to show the sign-in screen when the register is locked. Add at least one staff member first. To sign in, enter the PIN or scan that person's cashier pass.\n\nYou can switch staff from the **Switch staff** sheet without locking the register first. The cart stays as it is. The register will not switch people while a card payment is in progress.\n\n### Change or remove someone\nTap a person's row to open their settings. Choose their display mode, manage their cashier pass, or remove them. Removing someone makes their PIN and pass stop working.\n\nFor issuing, printing or cancelling a pass, see [[staff/passes]]. For per-person screen layout and appearance, see [[staff/modes]].\nFor interactive practice modules, see [[staff/training]].",
     "deep": "### What roles control\n- **Cashier** accounts do not see **Reports**, **Staff** or **Settings** while staff sign-in is required.\n- **Manager** and **Owner** accounts can see those More menu entries.\n- Display modes can hide menu entries, but never add access that a role does not have.\n- Without staff sign-in enabled, the till acts as the owner for role-gated functions.\n\nThe Staff screen also has role switches for who may set item, line and whole-order price adjustments. Owners cannot be restricted. Managers or owners can change those switches; a manager can do so when the team has no owner account.\n\n### Staff settings are shared\nPIN hashes, roles, passes, display modes and personal appearance preferences travel with the shared staff settings. A pass's scannable code is kept only on the iPad that issued it; other registers can recognise it from its hash but cannot reprint its code.",
     "advanced": "### Staff and sign-in flow\n```mermaid\nflowchart TD\n  A[Add staff name PIN and role] --> B[Store salted PIN hash in staff settings]\n  B --> C[Require PIN on register]\n  C --> D[Sign in by PIN or cashier pass]\n  D --> E[Apply that person's role and display mode]\n  E --> F[Share staff settings with other registers]\n```\n\n| Job | Where |\n|---|---|\n| Add/remove staff and select role | `src/screens/Staff.tsx` |\n| PIN hashing and verification | `hashPin`, `verifyPin` in `src/lib/pin.ts` |\n| Sign-in, switching and register locking | `src/lib/staffAuth.ts` |\n| Role-gated More entries | `visibleMoreRows` in `src/lib/uiMode.ts`, `src/screens/More.tsx` |\n| Price-adjustment role rules | `src/lib/adjustPerms.ts` |\n| Staff record | `StaffMember` in `src/lib/types.ts` |\n| Shared staff settings | `pushSharedSettings` in `src/lib/sync.ts` |\n\nChanging staff or sign-in settings updates the local settings immediately. If upload fails, the register keeps the change pending and retries while the app is open; other online registers receive it on their next poll after the upload succeeds."
    }
@@ -1645,6 +1646,34 @@
     "basic": "### Keep the iPad awake\nTurn on **Keep iPad awake** to stop iOS from auto-locking or dimming while the POS is open. This is separate from the Screensaver switch. The app recommends leaving it on for a till and keeping the iPad plugged in.\n\n### Show an idle screen\nTurn on **Screensaver**, then choose **Show after** 1, 2, 5, 10 or 30 minutes. It shows a logo on a background colour; if there is no usable logo, it shows the shop name or **Point of sale**.\n\nTap the screen once to wake it. If the register was locked, waking the screen does not sign anyone in; use the PIN or cashier pass on the sign-in screen.\n\n### Set a logo\nUse **Logo link (https)** for a secure image URL, or tap **Upload an image from Files…**. PNG and JPG are supported; SVG files are not. An uploaded logo is stored on this iPad. You can choose a background swatch or enter a three- or six-digit hex colour, then tap **Preview full screen**.",
     "deep": "### Logged-out timing and other options\n- **Show when logged out** uses a shorter wait on the PIN screen. Choose **Logged-out wait** of 5, 15, 30 or 60 seconds.\n- **Slowly move the logo** drifts the image around the screen. **Show the time** adds a clock.\n- When the register is logged out and the shorter wait is enabled, the screensaver uses the shorter of the logged-out wait and normal idle time.\n- It never covers the screen while a card payment is waiting on the reader.\n\nThe idle timer resets when someone touches the app, types or scans. The screensaver and Keep iPad awake settings belong to this device; they do not follow the staff member to another register.",
     "advanced": "### Idle screen rules\n```mermaid\nflowchart TD\n  A[Check screensaver enabled and time idle] --> B{Card payment waiting}\n  B -->|yes| C[Keep the POS visible]\n  B -->|no| D{Logged out and short wait enabled}\n  D -->|yes| E[Use shorter of waits]\n  D -->|no| F[Use normal idle wait]\n  E --> G[Show screensaver when wait is reached]\n  F --> G\n```\n\n| Job | Where |\n|---|---|\n| Screensaver timing and UI | `src/ui/Screensaver.tsx` |\n| Idle timer | `idleMs`, `noteActivity` in `src/lib/idle.ts` |\n| Show timing, colours and logo source | `shouldShowScreensaver`, `normaliseHex`, `logoSource` in `src/lib/screensaver.ts` |\n| Screensaver settings panel | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Per-device settings default | `screensaver` in `src/state/store.ts` |\n| Tests | `tests/screensaver.test.ts` |\n\nThe Screensaver switch is off by default. **Keep iPad awake** is on by default. A card payment waiting on the reader suppresses the screensaver even when the idle time has elapsed."
+   }
+  },
+  {
+   "id": "staff/training",
+   "title": "Training mode",
+   "parent": "staff",
+   "summary": "Learn app tasks in short modules with visual explanations, a process walkthrough, safe practice and recovery questions.",
+   "tags": [
+    "training",
+    "lessons",
+    "practice",
+    "learning",
+    "checkout",
+    "scenarios"
+   ],
+   "related": [
+    "staff",
+    "sales",
+    "sales/scanners",
+    "pay",
+    "fix"
+   ],
+   "updated": "2026-10-11",
+   "lead": "Open **More → Training mode** to practise common POS tasks. Choose any module from the list; modules are independent, so you can learn them in any order.",
+   "sections": {
+    "basic": "### A training module\nEach module uses the same five parts:\n1. **Info** explains what the task is for and what to look out for.\n2. **Process** shows the task as a short sequence.\n3. **Guide** rehearses the important actions.\n4. **Check** asks what you would do in a normal situation and a recovery situation.\n5. **Done** celebrates completion when both answers are correct.\n\nHints get more specific each time. If the hints are not enough, the module reveals the answer. Training practice does not add items to your live cart or take payment.\n\n### Progress\nCompletion marks are saved on this register for the signed-in staff member. If nobody is signed in, progress is saved for the register. Module content is kept separate from the screen layout so a lesson can be updated as the app changes.",
+    "deep": "Training modules are described as data: lesson slides, process steps, guide prompts, answer choices, hints and the linked Help page. The training screen renders those definitions in one shared five-stage flow. This keeps content revisions separate from app screen layout; it does not automatically guarantee that every guide prompt changes when a related POS flow changes, so review the linked Help page when updating a module.",
+    "advanced": "| Job | Where |\n|---|---|\n| Module content and answer rules | `src/lib/training.ts` |\n| Training list and module player | `src/screens/Training.tsx` |\n| Route and More menu entry | `App.tsx`, `src/screens/More.tsx` |\n| Per-learner completion storage | `trainingProgress` in `src/state/store.ts` |\n\nTraining is an offline lesson and practice preview. The first module is a simulated rehearsal for finding and adding an item; it does not inspect or control live UI elements. Future modules can link to current Help pages and add additional realistic workflows without changing the training player."
    }
   },
   {

@@ -31,6 +31,9 @@ export default function More() {
         <HelpButton id="concepts/roles" label="Role and access help" />
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        <Section title="Learn">
+          <Row icon="school-outline" title="Training mode" sub="Short, interactive lessons and safe practice scenarios" onPress={() => nav.push('training')} last />
+        </Section>
         {groups.map((g, gi) => (
           <Section key={gi}>
             {g.map((id, i) => {
