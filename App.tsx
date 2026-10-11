@@ -3,7 +3,7 @@ import { AppState, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { ZellerRoot } from './src/zellerBridge';
-import { ThemeProvider, useLayout, useTheme } from './src/ui/theme';
+import { ThemeProvider, useTheme } from './src/ui/theme';
 import { NavProvider, useNav, type Tab } from './src/ui/nav';
 import { Txt } from './src/ui/kit';
 import { useApp } from './src/state/store';
@@ -41,6 +41,7 @@ import { noteActivity } from './src/lib/idle';
 import { isLockScreen } from './src/lib/posLock';
 import { UiProvider, useUi } from './src/ui/uiProfile';
 import { effectiveTab } from './src/lib/uiMode';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
 const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
   { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
@@ -73,7 +74,7 @@ function Routes() {
 }
 
 function Shell() {
-  const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+  const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
   const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined));
   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
@@ -99,12 +100,14 @@ function Shell() {
         {hasPage ? <Routes /> : null}
       </View>
       {!hasPage ? (
-        <View style={{ flexDirection: 'row', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingBottom: tablet ? 8 : 22, paddingTop: 6 }}>
-          {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
-            <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
-              <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
-              <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}
-        </View>
+        <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
+          <View style={{ flexDirection: 'row', paddingTop: 6, paddingBottom: 8 }}>
+            {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
+              <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
+                <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
+                <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}
+          </View>
+        </SafeAreaView>
       ) : null}
     </View>
   );
@@ -113,10 +116,10 @@ function Shell() {
 export default function App() {
   return (
     <ZellerRoot>
-      <ThemeProvider><UiProvider><NavProvider>
+      <SafeAreaProvider><ThemeProvider><UiProvider><NavProvider>
         <View style={{ flex: 1 }} onTouchStart={noteActivity}><TrainingHost><Shell /></TrainingHost></View>
         <KeepAwake /><ScreensaverLayer />
-      </NavProvider></UiProvider></ThemeProvider>
+      </NavProvider></UiProvider></ThemeProvider></SafeAreaProvider>
     </ZellerRoot>
   );
 }

@@ -79,6 +79,55 @@ export const totalUnits = (f: Pick<DealForm, 'slots'>) => f.slots.reduce((a, s) 
 /** Slot index for each unit position of the deal (qty expanded), used by the recommended-pair picker. */
 export const unitSlots = (f: Pick<DealForm, 'slots'>): number[] => f.slots.flatMap((s, i) => Array(s.qty).fill(i));
 
+export const RECOMMENDED_PAIR_FORMAT = 'aidens3dpos.recommended-pairs.v1';
+
+/** JSON handoff containing every allowed variation in each deal position and an empty result field for the LLM to fill. */
+export function recommendedPairsExport(f: DealForm, variants: Record<string, Variant>): string {
+  const positions = unitSlots(f);
+  return JSON.stringify({
+    format: RECOMMENDED_PAIR_FORMAT,
+    dealId: f.id,
+    instructions: 'Fill recommended with arrays of variant IDs. Each inner array must have one ID per position, in order. Use only IDs listed in that position. Return this JSON structure.',
+    positions: positions.map((slot, index) => ({
+      position: index + 1,
+      group: slot + 1,
+      variations: slotVariants(f.slots[slot], variants).map(v => ({
+        id: v.id, name: variantName(v), productId: v.productId, sku: v.sku ?? null,
+      })),
+    })),
+    recommended: [],
+  }, null, 2);
+}
+
+/** Validate an LLM-edited export before replacing this deal's recommended pairs. */
+export function importRecommendedPairs(text: string, f: DealForm, variants: Record<string, Variant>): { pairs?: string[][]; error?: string } {
+  const trimmed = text.trim();
+  const json = trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
+  let raw: unknown;
+  try { raw = JSON.parse(json); } catch (e) { return { error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` }; }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { error: 'Import must be a JSON object.' };
+  const obj = raw as Record<string, unknown>;
+  if (obj.format != null && obj.format !== RECOMMENDED_PAIR_FORMAT) return { error: 'This JSON is for a different format.' };
+  if (obj.dealId != null && obj.dealId !== f.id) return { error: `This JSON is for deal "${String(obj.dealId)}", not "${f.id}".` };
+  if (!Array.isArray(obj.recommended) || obj.recommended.some(pair => !Array.isArray(pair))) return { error: 'recommended must be a list of variant-ID lists.' };
+  const positions = unitSlots(f);
+  const allowed = positions.map(slot => new Set(slotVariants(f.slots[slot], variants).map(v => v.id)));
+  const pairs: string[][] = [];
+  for (let pairIndex = 0; pairIndex < obj.recommended.length; pairIndex++) {
+    const pair = obj.recommended[pairIndex] as unknown[];
+    if (pair.length !== positions.length) return { error: `Pair ${pairIndex + 1} needs ${positions.length} variant ID(s).` };
+    const ids: string[] = [];
+    for (let position = 0; position < pair.length; position++) {
+      const id = pair[position];
+      if (typeof id !== 'string' || !id.trim()) return { error: `Pair ${pairIndex + 1}, position ${position + 1} needs a variant ID.` };
+      if (!allowed[position].has(id)) return { error: `Pair ${pairIndex + 1}: ${id} is not an allowed variation for position ${position + 1}.` };
+      ids.push(id);
+    }
+    pairs.push(ids);
+  }
+  return { pairs };
+}
+
 export function formToDeal(f: DealForm): { deal: BundleDeal; items: Record<string, string[]> } {
   const items: Record<string, string[]> = {}; const sets: string[] = []; const setIdOf: string[] = [];
   f.slots.forEach((s, i) => { const sid = `${f.id}_${i + 1}`; setIdOf.push(sid); items[sid] = [...s.ids]; for (let n = 0; n < s.qty; n++) sets.push(sid); });

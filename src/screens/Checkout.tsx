@@ -13,6 +13,7 @@ import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { CheckChangeSheet } from './CheckChange';
 import { useUi } from '../ui/uiProfile';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { qtyHint } from '../lib/simpleLabels';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
@@ -29,7 +30,6 @@ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from '
 import CartPane from './CartPane';
 import { openSavedCart } from '../lib/savedOps';
 import type { Variant } from '../lib/types';
-import { BUSINESS_LOGO_URL } from '../lib/screensaver';
 
 const QTYS = [1, 2, 3, 5, 10];
 
@@ -53,7 +53,7 @@ const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicon
 
 /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
 export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const chargeRef = useSpotRef(SPOT.cartCharge);
+  const { c } = useTheme(); const { tablet } = useLayout(); const insets = useSafeAreaInsets(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const chargeRef = useSpotRef(SPOT.cartCharge);
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
@@ -150,9 +150,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
 
   const left = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingTop: guided ? 8 : 54, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      <View style={{ paddingTop: insets.top, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         {!guided ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 8 }}>
-          <Image source={{ uri: BUSINESS_LOGO_URL }} resizeMode="contain" style={{ width: 24, height: 24 }} accessibilityLabel="Aiden’s 3D Printing logo" />
+          <Image source={require('../../assets/icon.png')} resizeMode="contain" style={{ width: 24, height: 24 }} accessibilityLabel="Aiden’s 3D Printing logo" />
           {shopName ? <Txt size={13} weight="600" sub numberOfLines={1}>{shopName}</Txt> : null}
         </View> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
@@ -164,11 +164,11 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
           {!guided ? <HelpButton id="sales" label="Checkout help" /> : null}
           {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
         </View>
-        <View style={{ padding: 12, paddingBottom: 8 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
+        <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
         <StatusStrip />
       </View>
 
-      {tab !== 'keypad' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 8 }}>
+      {tab !== 'keypad' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 4 }}>
         <Txt size={13} sub weight="600">Qty</Txt>{QTYS.map(x => <Chip key={x} label={`×${x}`} active={qty === x} onPress={() => setQty(x)} />)}</View> : null}
       {tab !== 'keypad' && !guided && qtyHint(ui.explain) ? <Txt size={13} sub style={{ paddingHorizontal: 16, paddingBottom: 6 }}>{qtyHint(ui.explain)}</Txt> : null}
 
@@ -181,7 +181,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
 
       {tab === 'quick' ? (
         <ScrollView>
-          {node || variants ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
+          {node || variants ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingLeft: 8, gap: 4 }}>
             <IconBtn icon="chevron-back" label={variants ? 'Back to the grid' : 'Back one level'} onPress={() => (variants ? setVariants(null) : setPath(valid.slice(0, -1)))} />
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 16 }} accessibilityRole="menu">
               {trail.map((cr, i) => i === trail.length - 1

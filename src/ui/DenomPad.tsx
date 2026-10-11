@@ -21,14 +21,17 @@ export function DenomPad({ draft, onChange, base = {}, totalLabel }: { draft: Dr
   };
   const undo = () => { const u = undoLast(draft); if (!u.undone) return; setMsg(`Undid: ${describeTap(u.undone)} · total now ${fmt(totalOf(draftCounts(u.draft, base)))}`); onChange(u.draft); };
   const lastTap = draft[draft.length - 1];
-  const group = (kind: 'note' | 'coin') => (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-      {DENOMS.filter(d => d.kind === kind).map(d => { const n = countOf(counts, d.cents); return (
-        <Pressable key={d.cents} onPress={() => { haptic(); press(d.cents); }} accessibilityRole="button" accessibilityLabel={`${mode === 'add' ? 'Add' : 'Remove'} ${d.label}, ${n} now`}
-          style={({ pressed }) => ({ width: '31.5%', height: 64, borderRadius: 14, backgroundColor: mode === 'remove' ? c.bad + '22' : kind === 'note' ? c.accent + '18' : c.fill, opacity: pressed ? 0.6 : 1, alignItems: 'center', justifyContent: 'center', borderWidth: n ? 1.5 : 0, borderColor: mode === 'remove' ? c.bad : c.accent })}>
-          <Txt size={20} weight="700">{d.label}</Txt>
-          <Txt size={12} sub weight="600">{n ? `× ${n}` : '–'}</Txt>
-        </Pressable>); })}
+  const group = (kind: 'note' | 'coin', label: string) => (
+    <View style={{ flex: 1, gap: 6, paddingHorizontal: 4 }}>
+      <Txt size={12} sub weight="600">{label}</Txt>
+      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+        {DENOMS.filter(d => d.kind === kind).map(d => { const n = countOf(counts, d.cents); return (
+          <Pressable key={d.cents} onPress={() => { haptic(); press(d.cents); }} accessibilityRole="button" accessibilityLabel={`${mode === 'add' ? 'Add' : 'Remove'} ${d.label}, ${n} now`}
+            style={({ pressed }) => ({ width: '47%', height: 56, borderRadius: 12, backgroundColor: mode === 'remove' ? c.bad + '22' : kind === 'note' ? c.accent + '18' : c.fill, opacity: pressed ? 0.6 : 1, alignItems: 'center', justifyContent: 'center', borderWidth: n ? 1.5 : 0, borderColor: mode === 'remove' ? c.bad : c.accent })}>
+            <Txt size={18} weight="700">{d.label}</Txt>
+            <Txt size={11} sub weight="600">{n ? `× ${n}` : '–'}</Txt>
+          </Pressable>); })}
+      </View>
     </View>);
   return (
     <View style={{ gap: 12 }}>
@@ -39,8 +42,11 @@ export function DenomPad({ draft, onChange, base = {}, totalLabel }: { draft: Dr
       </View>
       <Segmented value={mode} onChange={m => { setMode(m); setMsg(''); }} options={[{ v: 'add', label: 'Add' }, { v: 'remove', label: 'Remove' }]} />
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><Txt size={13} sub weight="600">Each tap</Txt>{MULTS.map(m => <Chip key={m} label={`×${m}`} active={mult === m} onPress={() => setMult(m)} />)}</View>
-      <Txt size={13} sub weight="600">Notes</Txt>{group('note')}
-      <Txt size={13} sub weight="600">Coins</Txt>{group('coin')}
+      <View style={{ flexDirection: 'row', alignItems: 'stretch', borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingVertical: 8 }}>
+        {group('note', 'Notes')}
+        <View style={{ width: 1, backgroundColor: c.line }} />
+        {group('coin', 'Coins')}
+      </View>
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Btn title={lastTap ? `Undo ${describeTap(lastTap).replace(/ \(.*\)$/, '')}` : 'Undo'} kind="secondary" small disabled={!draft.length} onPress={undo} style={{ flex: 2 }} />
         <Btn title="Start over" kind="secondary" small disabled={!draft.length} onPress={() => { onChange([]); setMsg('Back to the start.'); }} style={{ flex: 1 }} />

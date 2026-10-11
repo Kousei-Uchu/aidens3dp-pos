@@ -2,7 +2,7 @@
 // 0022: weighted ("smart") change: the profile learned from the ledger, the score, and the planner.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, smartTightness, type CashProfile } from '../src/lib/changeScore';
+import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, selectSmartCandidates, smartTightness, type CashProfile } from '../src/lib/changeScore';
 import { newEntry, totalOf, type Counts, type LedgerEntry } from '../src/lib/cashLedger';
 import { planChange } from '../src/lib/cashSale';
 import { checkChange } from '../src/lib/checkChange';
@@ -72,6 +72,14 @@ test('planChangeSmart: keeps the notes the next sales will need, even if that is
   assert.equal(a.kind, 'exact'); assert.equal(b.kind, 'exact');
   if (a.kind === 'exact') { assert.deepEqual(a.counts, { '100': 5 }); assert.equal(a.smart, true); assert.match(a.why, /more \$5/); assert.deepEqual(a.alternatives[0], { '500': 1 }); }
   if (b.kind === 'exact') { assert.deepEqual(b.counts, { '500': 1 }); assert.match(b.why, /Quickest way/); }
+});
+test('smart candidate cap keeps quickest options and samples through the highest-piece combinations', () => {
+  const all = Array.from({ length: 1000 }, (_, pieces) => ({ pieces, counts: { [String(pieces)]: 1 } }));
+  const selected = selectSmartCandidates(all, 400);
+  assert.equal(selected.length, 400);
+  assert.deepEqual(selected.slice(0, 40), all.slice(0, 40));
+  assert.equal(selected.at(-1)?.pieces, 999);
+  assert.equal(new Set(selected.map(c => c.pieces)).size, selected.length);
 });
 test('planChangeSmart: always exact, never uses more than exists, alternatives are other exact answers (random drawers)', () => {
   let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const dens = [2000, 1000, 500, 200, 100, 50, 20, 10, 5];

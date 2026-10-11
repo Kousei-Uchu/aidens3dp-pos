@@ -3,8 +3,8 @@
 //  1. A product GID in a set matches ALL its variants; a variant GID matches only that variant.
 //  2. A deal matches when the cart can supply one unit from EACH listed set (`sets` may repeat a set).
 //     Units are consumed by a match and cannot be reused.
-//  3. Competing deals/units: choose the assignment that MAXIMISES total discount (exhaustive search with a
-//     node cap, greedy fallback). Ties → most RECOMMENDED pairs (deals that list `recommended` variant combinations),
+//  3. Competing deals/units: prefer the assignment with the most RECOMMENDED pairs (deals that list `recommended`
+//     variant combinations), then maximise total discount (exhaustive search with a node cap, greedy fallback).
 //     then fewest deal applications (so 6 units of a 3-for-$5 / 5-for-$10 pair use one 5-unit deal, not two 3-unit
 //     deals), then lowest priority number, then config order.
 //  4. Delta is applied to current unit prices (after any price override), never below $0.
@@ -184,7 +184,7 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null, 
   {
     const chosen: Assignment[] = []; let total = 0;
     const rank = (a: Assignment) => (a.status === 'recommended' ? 0 : 1);
-    const byValue = [...all].sort((a, b) => b.discount - a.discount || rank(a) - rank(b) || a.dealIdx - b.dealIdx);
+    const byValue = [...all].sort((a, b) => rank(a) - rank(b) || b.discount - a.discount || a.dealIdx - b.dealIdx);
     for (;;) {
       const a = byValue.find(fits);
       if (!a) break;
@@ -199,9 +199,9 @@ export function matchBundles(sources: BundleSource[], cfg: BundleConfig | null, 
   const chosen: Assignment[] = [];
   const recCount = (l: Assignment[]) => l.filter(a => a.status === 'recommended').length;
   const dfs = (start: number, total: number, rec: number) => {
-    // strictly better saving wins; on an equal saving prefer more recommended pairs, then fewer deal applications (bigger lots)
+    // Recommended combinations take precedence; savings and application count break ties.
     const bestRec = recCount(best.chosen);
-    if (total > best.total || (total === best.total && chosen.length > 0 && (rec > bestRec || (rec === bestRec && chosen.length < best.chosen.length)))) best = { total, chosen: [...chosen] };
+    if (rec > bestRec || (rec === bestRec && (total > best.total || (total === best.total && chosen.length > 0 && chosen.length < best.chosen.length)))) best = { total, chosen: [...chosen] };
     if (++nodes > maxNodes) return;
     for (let k = start; k < all.length; k++) {
       const a = all[k];

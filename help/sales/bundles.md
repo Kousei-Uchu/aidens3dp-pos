@@ -37,9 +37,11 @@ If something is missing, red notes appear under the form when you tap **Create d
 ### Recommended pairs
 Some deals only make sense for certain combinations, like matching colours. Under **Recommended pairs** tap **Add a recommended pair** and choose one variation for each item in the deal.
 
-Every variation still gets the deal. A recommended pair only changes two things:
+Every variation still gets the deal. A recommended pair guides the matcher and cashier:
 - If the cashier rings up a different combination, they are asked to check it before payment (see below).
-- When two ways of matching save the customer the same amount, the POS picks the recommended one.
+- When more than one eligible combination is available, the POS prefers the recommended combination, even if another combination would produce a larger saving.
+
+For many variations, **Export variation JSON** shares each deal position's allowed variant IDs and names. Ask an LLM to fill the `recommended` array with one variant ID per position, then paste its JSON response into **Import pairs JSON**. The app checks every ID against the variations allowed in that position before replacing the current pairs.
 
 If you change the items or quantities after adding pairs, you are asked **Clear recommended pairs?**, because the old pairs no longer fit.
 
@@ -64,13 +66,14 @@ If the sale also has price adjustments, those are reviewed first, then the bundl
 ## Deep
 
 ### How the POS chooses between deals
-Several deals can apply to one order, and a unit can only be used once. When the cart could be matched more than one way, the POS tries the possible ways and keeps the one with the **biggest total saving**. If two ways save exactly the same, it prefers, in order:
+Several deals can apply to one order, and a unit can only be used once. When the cart could be matched more than one way, the POS tries the possible ways and prefers, in order:
 1. more recommended pairs,
-2. fewer deal applications (so a bigger lot beats two smaller ones),
-3. the deal with the lower priority number,
-4. the deal that comes first in the list.
+2. the biggest total saving,
+3. fewer deal applications (so a bigger lot beats two smaller ones),
+4. the deal with the lower priority number,
+5. the deal that comes first in the list.
 
-A recommended pair never beats a bigger saving. The customer is never worse off to keep to the recommendation.
+This means a recommended variation pairing can be chosen over a different pairing with a larger discount. Without any available recommended pairs, savings remain the primary choice.
 
 ### Worked examples
 - *2 Highland Cows for $2 off*, customer buys 3 cows: one application ($2 off two cows). The third cow is at full price.

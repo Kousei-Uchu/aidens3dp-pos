@@ -11,6 +11,7 @@ import { useCatalogue, stockTone } from '../state/selectors';
 import { ACTION_LABEL, ACTIONS, addPage, addTile, moveTile, removePage, removeTile, renamePage, type ActionId, type Tile } from '../lib/grid';
 import { pushLayout } from '../lib/sync';
 import { pickerVariants, stockText, stockToneOf } from '../lib/lookup';
+import { tileSizeForPane } from '../lib/gridLayout';
 import type { Variant } from '../lib/types';
 
 const ACTION_ICON: Record<ActionId, React.ComponentProps<typeof Ionicons>['name']> = {
@@ -67,11 +68,11 @@ export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove
   );
 }
 
-/** Width of one square-ish tile, from the pane width and the tile size setting. Shared by the grid and the variation picker so they line up. */
-export function useTileSize(): number {
+function useMeasuredTileSize() {
   const { width, tablet } = useLayout(); const tileSize = useApp(s => s.settings.staff.find(m => m.id === s.staffId)?.preferences?.tileSize ?? s.settings.tileSize);
-  const pane = tablet ? width * 0.6 : width; const target = tileSize === 'S' ? 96 : tileSize === 'L' ? 160 : 124; const cols = Math.max(2, Math.floor((pane - 16) / target));
-  return (pane - 16) / cols;
+  const [measuredWidth, setMeasuredWidth] = useState(0);
+  const pane = measuredWidth || (tablet ? width * 0.6 : width);
+  return { size: tileSizeForPane(pane, tileSize), onLayout: (nextWidth: number) => setMeasuredWidth(prev => prev === nextWidth ? prev : nextWidth) };
 }
 
 const TONE_DOT: Record<ReturnType<typeof stockToneOf>, string | null> = { none: null, ok: '#16A34A', low: '#F59E0B', out: '#F59E0B', neg: '#DC2626' };
@@ -80,9 +81,9 @@ const TONE_DOT: Record<ReturnType<typeof stockToneOf>, string | null> = { none: 
  * photo, name, price and a stock line. Tapping one calls onPick. Out of stock and oversold stay tappable, because stock may go negative by design.
  */
 export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPick: (v: Variant) => void }) {
-  const size = useTileSize(); const vs = pickerVariants(variants);
+  const { size, onLayout } = useMeasuredTileSize(); const vs = pickerVariants(variants);
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8 }}>
+    <View onLayout={e => onLayout(e.nativeEvent.layout.width)} style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingTop: 2, paddingBottom: 8 }}>
       {vs.map(v => { const tone = stockToneOf(v.stock); const dot = TONE_DOT[tone]; const name = v.variantTitle || 'Default'; return (
         <View key={v.id} style={{ width: size, height: size * 0.9, padding: 4 }}>
           <Pressable onPress={() => { tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
@@ -104,7 +105,7 @@ export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPic
 export function TileGrid({ tiles, editing, handlers, onRemove, onMove, onOpen, onEdit, onAdd, emptyHint }: {
   tiles: Tile[]; editing: boolean; handlers: TileHandlers; onRemove?: (i: number) => void; onMove?: (i: number, d: -1 | 1) => void; onOpen: (i: number) => void; onEdit?: (i: number) => void; onAdd?: () => void; emptyHint?: string;
 }) {
-  const { c } = useTheme(); const cat = useCatalogue(); const size = useTileSize();
+  const { c } = useTheme(); const cat = useCatalogue(); const { size, onLayout } = useMeasuredTileSize();
   const press = (t: Tile, i: number) => {
     switch (t.type) {
       case 'action': return handlers.onAction(t.action);
@@ -117,7 +118,7 @@ export function TileGrid({ tiles, editing, handlers, onRemove, onMove, onOpen, o
     }
   };
   return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', padding: 8 }}>
+    <View onLayout={e => onLayout(e.nativeEvent.layout.width)} style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingTop: 2, paddingBottom: 8 }}>
       {tiles.map((t, i) => <TileView key={i} tile={t} idx={i} count={tiles.length} editing={editing} size={size} color={(t as any).color ?? TILE_COLORS[(t.type === 'category' ? 5 : t.type === 'action' ? 0 : t.type === 'discount' ? 4 : t.type === 'group' ? 6 : 3)]} onPress={() => press(t, i)} onEdit={() => onEdit?.(i)} onRemove={() => onRemove?.(i)} onMove={d => onMove?.(i, d)} />)}
       {editing && onAdd ? <View style={{ width: size, height: size * 0.82, padding: 4 }}><Pressable onPress={onAdd} accessibilityRole="button" accessibilityLabel="Add tile" style={{ flex: 1, borderRadius: 14, borderWidth: 1.5, borderStyle: 'dashed', borderColor: c.sub, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="add" size={30} color={c.sub} /></Pressable></View> : null}
       {!tiles.length && !editing ? <Empty title={emptyHint ? 'Nothing here' : 'No tiles yet'} sub={emptyHint ?? 'Tap the pencil to edit the grid, or import your layout in Settings ▸ Grid.'} /> : null}

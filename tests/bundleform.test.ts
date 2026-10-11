@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 import { priceCart, type PricingContext } from '../src/lib/pricing';
 import { bundleReviewKey, bundleStatus, bundleUnitName, matchBundles, needsBundleCheck, oddBundles, parseBundleConfig, validateBundleConfig, type BundleSource } from '../src/lib/bundles';
 import {
-  dealToForm, dealSummary, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, formToDeal, isoToDateText, makeDealId,
+  dealToForm, dealSummary, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, formToDeal, importRecommendedPairs, isoToDateText, makeDealId, recommendedPairsExport,
   removeDeal, setDealEnabled, slotVariants, stringifyBundleConfig, unitSlots, upsertDeal, type DealForm,
 } from '../src/lib/bundleForm';
 import type { BundleConfig, Cart, CartLine, Variant } from '../src/lib/types';
@@ -101,14 +101,15 @@ test('the matcher prefers recommended pairs when the saving is the same', () => 
   assert.deepEqual(keys, ['db+eb', 'dr+er']);
 });
 
-test('the preference never costs the customer money: a bigger saving beats a recommended pair', () => {
-  // Dragon (Red $20) + Egg Red ($10) is recommended but the deal is 10% off, so pairing the dearer cross-colour units saves more.
+test('recommended pairs take precedence over a larger saving from another eligible combination', () => {
+  // Dragon (Red $50) + Egg Red ($10) is recommended, while the non-recommended Blue Egg costs $40.
   const dragonPricey = variant(1, 1, 5000, 'Red');
   const cfg = cfgOf({ d: [P(1)], e: [P(2)] }, [{ id: 'c', label: 'C', sets: ['d', 'e'], mode: 'percent', percent: 10, recommended: [[V(1), V(3)]] }]);
   const m = matchBundles([src('d', dragonPricey), src('eRed', eggRed), src('eBlue', { ...eggBlue, priceCents: 4000 })], cfg);
   assert.equal(m.length, 1);
-  assert.equal(m[0].discountCents, 900); // 10% of ($50 + $40), the non-recommended pairing
-  assert.equal(m[0].status, 'other');
+  assert.equal(m[0].discountCents, 600); // 10% of the recommended $50 + $10 combination
+  assert.equal(m[0].status, 'recommended');
+  assert.equal(m[0].picks.find(p => p.sourceKey.startsWith('e'))?.sourceKey, 'eRed');
 });
 
 test('deals without recommended pairs behave exactly as before (status none)', () => {
@@ -164,6 +165,22 @@ test('round trip: form → config → JSON text → parse → form gives the sam
   const back = parseBundleConfig(text).cfg!;
   const f2 = dealToForm(back, back.discounts[0]);
   assert.deepEqual(f2, f);
+});
+
+test('recommended pair JSON exports allowed variations and imports only valid positional variant IDs', () => {
+  const variants = [dragonRed, dragonBlue, eggRed, eggBlue];
+  const byId = Object.fromEntries(variants.map(v => [v.id, v]));
+  const form = formOf();
+  const exported = JSON.parse(recommendedPairsExport(form, byId));
+  assert.equal(exported.format, 'aidens3dpos.recommended-pairs.v1');
+  assert.deepEqual(exported.positions.map((p: { variations: { id: string }[] }) => p.variations.map(v => v.id)), [
+    [V(2), V(1)], [V(4), V(3)], [V(4), V(3)],
+  ]);
+  const result = importRecommendedPairs(`\`\`\`json\n${JSON.stringify({ ...exported, recommended: [[V(1), V(3), V(4)]] })}\n\`\`\``, form, byId);
+  assert.deepEqual(result.pairs, [[V(1), V(3), V(4)]]);
+  assert.match(importRecommendedPairs(JSON.stringify({ ...exported, recommended: [[V(1), V(3)]] }), form, byId).error!, /needs 3/);
+  assert.match(importRecommendedPairs(JSON.stringify({ ...exported, recommended: [[V(1), V(1), V(4)]] }), form, byId).error!, /not an allowed variation/);
+  assert.match(importRecommendedPairs(JSON.stringify({ ...exported, dealId: 'another' }), form, byId).error!, /not "dragon_egg"/);
 });
 
 test('a deal built in the GUI is what the pricing engine runs', () => {

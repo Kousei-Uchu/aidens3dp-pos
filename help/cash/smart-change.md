@@ -97,8 +97,8 @@ flowchart TD
   E --> F[planChangeSmart pool owed profile]
   F --> G[planChange first: is exact change possible]
   G -->|no| H[return impossible unchanged]
-  G -->|yes| I[findCombinationsLimited collects every exact way]
-  I --> J[scoreAfter for the fewest 400]
+  G -->|yes| I[findCombinationsLimited collects exact ways up to the search limit]
+  I --> J[scoreAfter up to 400: quickest baseline plus spread sample]
   J --> K[best plus 3 alternatives plus explainChoice]
 ```
 
@@ -122,7 +122,7 @@ flowchart TD
 | Confidence point | 8 recent change sales | history and the item-price guess count equally |
 | Horizon | 4 to 12, default 6 | how many upcoming sales to plan for |
 | Amounts kept | 60 | the most usual change amounts in a profile |
-| Candidates scored | 400 | the fewest-piece ways examined |
+| Candidates scored | 400 | keeps the quickest options and samples across the full piece-count/search range |
 | Alternatives kept | 3 | for Show another way |
 | Prior notes | $5, $10, $20, $50, $100 | which notes a customer is assumed to pay with |
 | Prior change from | $20 and smaller | note and coin sizes the guess builds change from |
@@ -131,7 +131,7 @@ flowchart TD
 `fromLedger` only reads entries that carry a sale id. A `sale_change` entry counts as a change given if all its amounts are negative and its note does not start with *Sale cancelled*. A `sale_in` entry counts towards what customers hand over. Other kinds (`refund_out`, `paid_out`, `adjust` and so on) are skipped. The ledger keeps only the newest 1,000 entries, so very old sales fall out anyway.
 
 ### Falling back to the plain answer
-`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding anything, it returns the plain answer with `smart: false`.
+`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding any exact option, it returns the plain answer with `smart: false`. A truncated search with some exact options is marked as truncated in the UI; the smart pick is then best among the options found. To keep scoring bounded on large drawers, it scores at most 400 options: the quickest baseline and a deterministic spread across the full range, rather than only the first 400 quickest combinations.
 
 ### Reading the code for a fault
 - **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.
