@@ -10,6 +10,8 @@ import * as ops from '../lib/cartOps';
 import { hasItemPrice, itemReviewReasons } from '../lib/itemAdjust';
 import { keepOrderAdjust, makeOrderAdjust, orderAdjustProblem, orderReviewReasons, stripAdjustments } from '../lib/orderAdjust';
 import { adjustProblem, beforeAdjustCents, canAdjustLine, keepAdjust, makeAdjust, reviewReasons } from '../lib/lineAdjust';
+import { flaggedDeniedHint } from '../lib/adjustPerms';
+import { checkAdjustAllowed, gateAdjust, useAdjustAllowed } from '../ui/adjustGate';
 import { saveCartLocal } from '../lib/sync';
 import { uid } from '../lib/ids';
 import { searchRemote, createCustomer } from '../lib/shopify/customers';
@@ -104,13 +106,14 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
 /** A16.4: set what the whole order costs. Also the review sheet (Keep / Adjust / Remove) when the cart changed under an existing order price. */
 export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const price = usePricer();
-  const [digits, setDigits] = useState(''); const [reason, setReason] = useState('');
+  const [digits, setDigits] = useState(''); const [reason, setReason] = useState(''); const mayOrder = useAdjustAllowed('order');
   useEffect(() => { if (visible) setReason(cart.orderAdjust?.reason ?? ''); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
   const base = useMemo(() => price(stripAdjustments(cart)), [cart, price]);
   const reasons = orderReviewReasons(cart, priced); const cents = digitsToCents(digits);
   const problem = digits ? orderAdjustProblem(cents, base) : null; const lineCount = cart.lines.filter(l => l.adjust).length;
   const close = () => { setDigits(''); onClose(); };
   const set = async () => {
+    if (!checkAdjustAllowed('order')) return; // A16.9
     const p = orderAdjustProblem(cents, base); if (p) return alertMsg('Cannot use that total', p);
     // A16.7: a whole-order price and line prices are never both active.
     if (lineCount && !(await confirm('Remove the line prices?', `A whole order price and line prices can't both be used. Setting the order total removes the ${lineCount} line price adjustment${lineCount === 1 ? '' : 's'} on this order.`, 'Replace', true))) return;
@@ -122,9 +125,9 @@ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClo
         <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginBottom: 10 }}>
           <Txt weight="700" color={c.warn}>Check the order price</Txt>
           {reasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
-          <Txt size={13} sub>The order still costs {fmt(priced.netCents)}. Keep it, set a new total, or take the adjustment off.</Txt>
+          <Txt size={13} sub>The order still costs {fmt(priced.netCents)}. {mayOrder ? 'Keep it, set a new total, or take the adjustment off.' : flaggedDeniedHint('order')}</Txt>
           <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-            <Btn title="Keep" small onPress={() => { setCart(cc => ops.setOrderAdjust(cc, keepOrderAdjust(cc.orderAdjust!, cc, priced))); close(); }} style={{ flex: 1 }} />
+            {mayOrder ? <Btn title="Keep" small onPress={() => { setCart(cc => ops.setOrderAdjust(cc, keepOrderAdjust(cc.orderAdjust!, cc, priced))); close(); }} style={{ flex: 1 }} /> : null}
             <Btn title="Remove" small kind="danger" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ flex: 1 }} />
           </View>
         </View>
@@ -144,13 +147,15 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
   const [disc, setDisc] = useState(false); const [price, setPrice] = useState(false); const [digits, setDigits] = useState(''); const [noteDraft, setNoteDraft] = useState<string | null>(null);
   const [adj, setAdj] = useState(false); const [adjDigits, setAdjDigits] = useState(''); const [adjReason, setAdjReason] = useState(''); const [itemReason, setItemReason] = useState(''); const priced = usePriced(); const orderAdj = useApp(s => s.pos.cart.orderAdjust);
   const [scope, setScope] = useState<'qty' | 'all'>('qty'); const [scopeQty, setScopeQty] = useState(1);
+  const mayItem = useAdjustAllowed('item'); const mayLine = useAdjustAllowed('line'); // A16.9
   if (!line) return null;
   const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
   const canAll = line.kind === 'item' && !!line.variantId;
   const openPrice = () => { setDigits(''); setItemReason(line.overrideReason ?? ''); setScope(line.overrideAll && canAll ? 'all' : 'qty'); setScopeQty(Math.max(1, Math.min(line.qty, line.overrideSeenQty ?? line.qty))); setPrice(true); };
-  const setItemPrice = () => { const how = scope === 'all' && canAll ? { scope: 'all' as const } : { scope: 'qty' as const, qty: scopeQty }; const split = how.scope === 'qty' && how.qty < line.qty; setCart(cc => ops.setItemPrice(cc, line.id, digitsToCents(digits), how, itemReason)); setPrice(false); if (split) onClose(); };
+  const setItemPrice = () => { if (!checkAdjustAllowed('item')) return; const how = scope === 'all' && canAll ? { scope: 'all' as const } : { scope: 'qty' as const, qty: scopeQty }; const split = how.scope === 'qty' && how.qty < line.qty; setCart(cc => ops.setItemPrice(cc, line.id, digitsToCents(digits), how, itemReason)); setPrice(false); if (split) onClose(); };
   const adjProblem = pl && adjDigits ? adjustProblem(digitsToCents(adjDigits), pl) : null;
   const setAdjustment = async () => {
+    if (!checkAdjustAllowed('line')) return; // A16.9
     if (!pl) return; const cents = digitsToCents(adjDigits); const p = adjustProblem(cents, pl); if (p) return alertMsg('Cannot use that price', p);
     // A16.7: a whole-order price and line prices are never both active.
     if (orderAdj && !(await confirm('Remove the whole order price?', `This order has its total set to ${fmt(orderAdj.finalCents)}. A whole order price and line prices can't both be used, so setting this line's price removes the order price.`, 'Replace', true))) return;
@@ -171,29 +176,29 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
         <Row title="Item price adjustment" icon="create-outline"
           sub={line.kind === 'gift_card' ? 'Not available for gift cards' : hasItemPrice(line) ? `${fmt(line.overrideCents!)} (was ${fmt(line.unitCents)}) · ${line.overrideAll ? 'all in cart' : line.overrideSeenQty !== undefined ? `for ${line.overrideSeenQty} unit${line.overrideSeenQty === 1 ? '' : 's'}` : 'this line'}` : fmt(line.unitCents)}
-          onPress={line.kind === 'gift_card' ? undefined : openPrice} />
+          onPress={line.kind === 'gift_card' ? undefined : async () => { if (await gateAdjust('item', hasItemPrice(line), () => setCart(cc => ops.clearItemPrice(cc, line.id)))) openPrice(); }} />
         {itemReasons.length ? (
           <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
             <Txt weight="700" color={c.warn}>Check this item's adjusted price</Txt>
             {itemReasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
-            <Txt size={13} sub>The adjusted price of {fmt(line.overrideCents ?? 0)} now applies to all {line.qty}. Keep it, change it, or take it off.</Txt>
+            <Txt size={13} sub>The adjusted price of {fmt(line.overrideCents ?? 0)} now applies to all {line.qty}. {mayItem ? 'Keep it, change it, or take it off.' : flaggedDeniedHint('item')}</Txt>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <Btn title="Keep" small onPress={() => setCart(cc => ops.keepItemPrice(cc, line.id))} style={{ flex: 1 }} />
-              <Btn title="Adjust" small kind="secondary" onPress={openPrice} style={{ flex: 1 }} />
+              {mayItem ? <Btn title="Keep" small onPress={() => setCart(cc => ops.keepItemPrice(cc, line.id))} style={{ flex: 1 }} /> : null}
+              {mayItem ? <Btn title="Adjust" small kind="secondary" onPress={openPrice} style={{ flex: 1 }} /> : null}
               <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.clearItemPrice(cc, line.id))} style={{ flex: 1 }} />
             </View>
           </View>
         ) : null}
         <Row title="Line price adjustment" icon="cut-outline" sub={line.adjust ? `${fmt(line.adjust.finalCents)} for the whole line` : canAdjustLine(line) ? 'Set what the whole line costs' : 'Not available for gift cards'}
-          onPress={canAdjustLine(line) ? () => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); } : undefined} />
+          onPress={canAdjustLine(line) ? async () => { if (await gateAdjust('line', !!line.adjust, () => setCart(cc => ops.setLineAdjust(cc, line.id, undefined)))) { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); } } : undefined} />
         {reasons.length ? (
           <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
             <Txt weight="700" color={c.warn}>Check this line's price adjustment</Txt>
             {reasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
-            <Txt size={13} sub>The line still costs {fmt(pl?.netCents ?? 0)}. Keep it, change it, or take the adjustment off.</Txt>
+            <Txt size={13} sub>The line still costs {fmt(pl?.netCents ?? 0)}. {mayLine ? 'Keep it, change it, or take the adjustment off.' : flaggedDeniedHint('line')}</Txt>
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              <Btn title="Keep" small onPress={() => pl && line.adjust && setCart(cc => ops.setLineAdjust(cc, line.id, keepAdjust(line.adjust!, pl)))} style={{ flex: 1 }} />
-              <Btn title="Adjust" small kind="secondary" onPress={() => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); }} style={{ flex: 1 }} />
+              {mayLine ? <Btn title="Keep" small onPress={() => pl && line.adjust && setCart(cc => ops.setLineAdjust(cc, line.id, keepAdjust(line.adjust!, pl)))} style={{ flex: 1 }} /> : null}
+              {mayLine ? <Btn title="Adjust" small kind="secondary" onPress={() => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); }} style={{ flex: 1 }} /> : null}
               <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.setLineAdjust(cc, line.id, undefined))} style={{ flex: 1 }} />
             </View>
           </View>

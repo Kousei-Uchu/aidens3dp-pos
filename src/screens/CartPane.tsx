@@ -15,6 +15,7 @@ import { orderReviewReasons } from '../lib/orderAdjust';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import AdjustmentReviewSheet from './AdjustmentReview';
 import SwipeRow from '../ui/SwipeRow';
+import { gateAdjust } from '../ui/adjustGate';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
 import { CheckChangeSheet } from './CheckChange';
 import { useUi } from '../ui/uiProfile';
@@ -108,7 +109,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
         <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
-        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('orderadj'))} />
+        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />

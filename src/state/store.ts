@@ -13,6 +13,7 @@ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver
 import type { Depth } from '../lib/helpDocs';
 import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+import type { AdjustPerms } from '../lib/adjustPerms';
 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
@@ -25,11 +26,12 @@ export type Settings = {
   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
   inventory: InvPrefs; // Inventory screen filters / sort / grouping (per device)
   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
+  adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
   sharedVersion: number;
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', sharedVersion: 0,
+  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };

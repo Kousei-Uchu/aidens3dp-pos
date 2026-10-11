@@ -12,6 +12,7 @@ import { pushSharedSettings } from '../lib/sync';
 import { uid } from '../lib/ids';
 import { MODES, MODE_BLURB, MODE_LABEL, MORE_LABEL, TAB_LABEL, TEXT_LABEL, isSoleAdmin, readUi, readCustom, withCustom, withMode, type CustomUi, type UiMode } from '../lib/uiMode';
 import type { Role } from '../lib/types';
+import { ADJUST_KINDS, KIND_NAME, RESTRICTABLE_ROLES, ROLE_PLURAL, actingRole, canAdjust, canEditAdjustPerms, permsSummary, setAdjustPerm } from '../lib/adjustPerms';
 
 /** Staff: PINs (salted hash, shared across registers via the settings metaobject) and roles. */
 export default function Staff() {
@@ -28,6 +29,7 @@ export default function Staff() {
     <Page title="Staff" onBack={nav.pop}>
       <Section footer="PINs lock the till and tag each sale with who made it. They’re stored hashed, and shared to your other registers.">
         <Toggle label="Require PIN to use the register" value={s.requirePin && s.staff.length > 0} onChange={v => { if (v && !s.staff.length) return alertMsg('Add a staff member first'); patch({ requirePin: v }); void pushSharedSettings().catch(() => {}); }} /></Section>
+      <AdjustRoleRules />
       <Section title="Team">{s.staff.length ? s.staff.map((m, i) => <Row key={m.id} title={m.name} sub={`${m.role}${hasBadge(m) ? ' · pass issued' : ''}`} last={i === s.staff.length - 1} icon="person-outline" onPress={() => setSel(m.id)} />) : <Row title="No staff yet" last />}</Section>
       <View style={{ padding: 16 }}><Btn title="Add staff member" icon="person-add-outline" onPress={() => setOpen(true)} /></View>
       <Sheet visible={!!sel} onClose={() => setSel(null)} title={s.staff.find(x => x.id === sel)?.name ?? ''}>
@@ -83,3 +85,21 @@ export function PinLock() {
   );
 }
 void Card; void Chip;
+
+/** A16.9: which roles may set which price adjustments. Everything is allowed until a switch is turned off. */
+function AdjustRoleRules() {
+  const s = useApp(st => st.settings); const staffId = useApp(st => st.staffId); const patch = useApp(st => st.patchSettings);
+  const me = actingRole(s.requirePin, s.staff, staffId); const mayEdit = canEditAdjustPerms(me, s.staff);
+  const notes = permsSummary(s.adjustPerms);
+  const flip = (role: Role, kind: (typeof ADJUST_KINDS)[number], allowed: boolean) => {
+    if (!mayEdit) return alertMsg('Only an owner can change this', 'Ask an owner to change who may set price adjustments.');
+    patch({ adjustPerms: setAdjustPerm(s.adjustPerms, role, kind, allowed) }); void pushSharedSettings().catch(() => {});
+  };
+  return (
+    <Section title="Price adjustments by role" footer={`${notes.length ? notes.join(' ') + ' ' : 'Everyone is allowed. '}Owners are never restricted. Taking an adjustment off is always allowed. Keeping or changing one a colleague set follows the same switches.${mayEdit ? '' : ' Only an owner can change these.'}`}>
+      {RESTRICTABLE_ROLES.flatMap(role => ADJUST_KINDS.map(kind => (
+        <Toggle key={`${role}:${kind}`} label={`${ROLE_PLURAL[role]} can set ${KIND_NAME[kind]}`} value={canAdjust(s.adjustPerms, role, kind)} onChange={v => flip(role, kind, v)} disabled={!mayEdit} />
+      )))}
+    </Section>
+  );
+}

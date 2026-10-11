@@ -5,6 +5,7 @@ import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useUi } from '../ui/uiProfile';
 import { useApp, currentStaff } from '../state/store';
+import { actingRole } from '../lib/adjustPerms';
 import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
 
 const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }> = {
@@ -21,7 +22,7 @@ const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller rea
 export default function More() {
   const { c } = useTheme(); const nav = useNav(); const ui = useUi(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
   const lockOn = s.requirePin && s.staff.length > 0;
-  const role = lockOn ? staff?.role ?? 'cashier' : 'owner';
+  const role = actingRole(s.requirePin, s.staff, staff?.id);
   const groups = visibleMoreRows(ui, role, lockOn);
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

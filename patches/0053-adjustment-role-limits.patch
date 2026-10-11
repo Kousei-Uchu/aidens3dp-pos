@@ -1,0 +1,527 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index b2a1032..25ceb76 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -41,6 +41,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0050 | 2026-10-11 | Price adjustments, part 3 (A16 Item adjustment): the unit price for this sale now has a choice of Fixed quantity (a set number of units; fewer than the line splits it) or All in cart (every unit of that item, including ones added later); fixed quantities are flagged for review when the quantity changes; never on gift cards | A16.3, A16.6 (item part) |
+ | 0051 | 2026-10-11 | Price adjustments, part 4 (A16 checkout review): Charge (and guided Take payment) first lists every price adjustment on the sale, flagged ones first, each with Keep / Adjust / Remove; flagged ones must be resolved before payment can start | A16.5 |
+ | 0052 | 2026-10-11 | Price adjustments, part 5 (A16 reasons): an optional reason on every item, line and whole order price; shown in the checkout review, saved on the sale and on the Shopify order (pos_adjustments), shown in the transaction detail, and added up by reason in Reports | A16.8 |
++| 0053 | 2026-10-11 | Price adjustments, part 6 (A16 role limits): Staff ▸ Price adjustments by role has a switch per role and per kind (item price, line price, whole order price); everything is on by default, owners are never restricted, taking an adjustment off is always allowed; shared to every register. Finishes A16 | A16.9 |
+ 
+ ---
+ 
+@@ -165,7 +166,7 @@ Added from your A12 notes. Replaces today's single per-item price override.
+ - [x] A16.6 (done in 0048, 0049 and 0050: gift cards untouched by all three types, never below $0, splits into Shopify unit prices that add up exactly, refunds use what was paid) Edge cases I will handle: gift cards cannot be adjusted, an adjustment cannot take a line below $0, refunds use the price actually paid for the line, and adjusted lines still split correctly into Shopify order lines (`splitLineForOrder`).
+ - [x] A16.7 (done in 0049) Agreed by you: a Whole order adjustment and Line adjustments cannot both be active. Setting an order total on a cart that has line adjustments asks first ("Remove the line prices?") and then clears them; setting a line adjustment on a cart with an order total asks first ("Remove the whole order price?") and then removes it. Merging a saved cart that brings line adjustments into a cart with an order total drops the order total (the merged order is a different order). Two overlapping adjustments make receipts hard to read and hard to refund.
+ - [x] A16.8 (done in 0052) Agreed by you: an optional reason for each adjustment, saved on the order and shown in Reports. **Entering it:** a "Reason (optional)" box above the keypad in the Item price, Line price and Whole order price sheets, prefilled when you adjust an existing one (typed text is tidied and cut to 80 characters; blank means no reason). It is part of the adjustment: Keep keeps it, Remove takes it away with the adjustment, an All in cart price puts it on every line that follows the price (including units added later), a fixed-quantity price that splits a line puts it on the adjusted line, and swapping the variation clears it. It never changes a price. **Shown:** under each row of the checkout review, and in the transaction detail as a "Price adjustments" card (kind, item, "Reason: …" or "No reason given", and what it took off). **Saved:** `SaleRecord.adjustments` (kind, item, amount, reason) and, on the Shopify order, one custom attribute `pos_adjustments` (kind|cents|item|reason per adjustment, text URL-encoded, 255 characters at most: long reasons are shortened to fit and any adjustments that still don't fit are counted at the end), read back by `mapOrder` so an order made on another register shows its reasons too. **Reports:** a "Price adjustments" card (only when the period has any) with the count, the total taken off, and a row per reason, biggest first, with "No reason given" as its own row. Reasons are grouped ignoring capitals and spacing. The card is a breakdown of what is **already inside Discounts**, so no existing figure changes; the share text export gets the same table. Stored daily totals from before this don't have it and are read as none, so older days simply show no adjustments. **Not done:** the reason is not printed on the customer's receipt (it is internal), is not in the CSV export of sales, and the Orders screen's detail doesn't list adjustments (the Transactions detail does).
+-- [ ] A16.9 Agreed by you: adjustments can be limited by staff role. Every role is allowed by default, so nothing changes until you restrict one.
++- [x] A16.9 (done in 0053, `src/lib/adjustPerms.ts`, `src/ui/adjustGate.ts`) Agreed by you: adjustments can be limited by staff role. Every role is allowed by default, so nothing changes until you restrict one. **Where:** Staff ▸ **Price adjustments by role**, six switches: Cashiers and Managers, each for item prices, line prices and whole order prices (`Settings.adjustPerms`; only an explicit "off" is stored, so a fully open setup is empty, and it is shared to every register with the staff list and included in backups). **Rules:** the **owner is never restricted** (so nobody can lock themselves out, the same idea as B5's sole-admin rule). **Only an owner can change the switches**, or a manager when the team has no owner at all; everyone else sees them greyed out. **What counts as "setting":** adding or changing an adjustment, and also **Keep** and **Adjust** on a flagged one, because those confirm or change a price a colleague chose. **Taking one off is never restricted** (Remove, Reset, "Remove adjustment"): it can only put a price back to normal. **What a restricted person sees:** tapping the row (line editor item and line rows, ••• ▸ Whole order price) says "Not allowed for your role" if there is nothing to remove, or offers "Take the adjustment off?" if one is already there; a flagged banner or review row shows only **Remove**, with a line saying their role can't keep or change it (flagged ones still block payment until removed, or until a manager or owner signs in and keeps them); saving is checked again at the moment of the tap, so a PIN or pass swap while a sheet is open can't slip through. **Who the till thinks is acting:** the same rule as the More menu (`actingRole`): with Require PIN on and staff set up, the signed-in person's role, and a locked or unknown person counts as a **cashier**; with no PIN required there are no accounts to restrict, so it acts as owner (More now uses the same function). **Unchanged on purpose:** an adjustment someone allowed stays on the cart if a restricted person takes over (they can remove it or leave it); the cart discount, line discount and manual discount presets are **not** covered (this item is about price adjustments only; say if you want discounts limited too); registers on an older app version ignore the switches and also, when they next push shared settings, would write the list back without them, so **update every register before restricting a role**. Tests: `tests/adjustperms.test.ts` (11, with a mutation check that the owner-exemption tests fail without it).
+ 
+ ### A13. Swipe actions (cart lines, saved carts; not customers)
+ - [x] A13.1 `src/ui/SwipeRow.tsx`, built on React Native's own `Animated` and `PanResponder`, so there is **no new package and no native rebuild**. Swipe a row left: let go past halfway and a red button stays open (tap it to delete, tap the row to close it); drag most of the way across, or flick hard, and it deletes straight away. VoiceOver gets a "Delete" action, so swiping is never the only way. The sliding maths is pure and tested (`src/lib/swipe.ts`, `tests/swipe.test.ts`).
+@@ -288,7 +289,7 @@ Placed after every part it touches is built (the gift card claim page is done, t
+ - [ ] E1 Style the Workers like your main Shopify site, and give each its own subdomain. Workers today: the gift card claim page (`gift-claim-server/`, A10.2), the receipt server, and the docs Worker from B7 once it exists. Plan: one shared stylesheet and header/footer (logo, colours, fonts, spacing) copied from your storefront, used by every Worker page, then one subdomain per Worker (for example `gift.` and `docs.` on your own domain) added as a custom domain in each Worker's `wrangler.toml`, with a short step-by-step in each Worker's README. Needs N14.
+ 
+ ## Notes
+-- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. Latest run: all pass (305 after patch 0028; 0029 adds 22 in `tests/helpview.test.ts` and `tests/helpcitations.test.ts`; 0048 adds 14 in `tests/lineadjust.test.ts`, 0049 adds 11 in `tests/orderadjust.test.ts`, 0050 adds 14 in `tests/itemadjust.test.ts`, 0051 adds 9 in `tests/adjustreview.test.ts`, 0052 adds 10 in `tests/adjustreason.test.ts`). In my current sandbox I could not reinstall `@noble/hashes` and `fflate` (no network), so 8 test files that need them did not load, the same 8 with and without 0048; every other file passes. `tsc --noEmit` also could not run there this time, so please run `npm run typecheck` on 0048 to 0052. `npm test` on your machine runs the same files.
++- Tests: in my sandbox the Zeller SDK cannot be installed (private registry), so I install everything else and run the pure-logic tests. **Latest run (0053): this time the other dependencies did install, so the whole suite ran: 396 tests, all pass, and `tsc --noEmit` is clean (exit 0) with everything except the gated Zeller SDK; that also covers 0048 to 0052, which I could not typecheck before.** Earlier runs: all pass (305 after patch 0028; 0029 adds 22 in `tests/helpview.test.ts` and `tests/helpcitations.test.ts`; 0048 adds 14 in `tests/lineadjust.test.ts`, 0049 adds 11 in `tests/orderadjust.test.ts`, 0050 adds 14 in `tests/itemadjust.test.ts`, 0051 adds 9 in `tests/adjustreview.test.ts`, 0052 adds 10 in `tests/adjustreason.test.ts`, 0053 adds 11 in `tests/adjustperms.test.ts`). In my current sandbox I could not reinstall `@noble/hashes` and `fflate` (no network), so 8 test files that need them did not load, the same 8 with and without 0048; every other file passes. `tsc --noEmit` also could not run there this time, so please run `npm run typecheck` on 0048 to 0052. `npm test` on your machine runs the same files.
+ - Type-checking: since your Zeller zip I can run `tsc --noEmit` against the real Zeller SDK types too (v0.2.5), and it is clean after 0014. From patch 0009 on I can run `tsc --noEmit` by installing every dependency except the gated Zeller SDK. It is clean after 0010 (it found one real error in my first draft of 0010, fixed before sending). Please still run `npm run typecheck` on your machine, since your copy has the real SDK types.
+ 
+ ---
+@@ -330,6 +331,7 @@ Ordered by priority, highest first.
+ - [ ] N24 **Non-blocking (A16.3):** on the iPad, add 5 of a product, open the line ▸ Item price adjustment, pick Fixed quantity, step to 2 and set a price: check the line splits into 3 at the normal price and 2 at yours. Then try All in cart on another product, add one more of it (it should join the line at your price), and use Reset. Change the quantity on a fixed-quantity line and check the flag and Keep / Adjust / Remove. Tell me if the sheet is confusing, whether splitting the line is what you expect, and whether an All in cart price should be able to cover different variations of the same product (it only covers the exact variation now).
+ - [ ] N25 **Non-blocking (A16.5):** on the iPad, in normal and in guided checkout, set a line price, an item price and a whole order price on different sales, press Charge / Take payment and check the list reads right. Then change the quantity on an adjusted line so it is flagged: Continue should be unavailable until you Keep, Adjust or Remove. Check Adjust takes you to the right editor and that coming back to Charge shows the list again with the new numbers. Tell me if the list is too much to read at the till or the wording is awkward, and whether you want unflagged adjustments to need a tap each sale or just show the flagged ones (it shows them all, once, now).
+ - [ ] N26 **Non-blocking (A16.8):** on the iPad, set an item price, a line price and a whole order price on separate sales, each with a reason (and one without), and finish the sales. Check the checkout review shows the reasons, the transaction detail shows the "Price adjustments" card, and Reports shows the "Price adjustments" card with a row per reason. In Shopify admin, open one of the orders and check the `pos_adjustments` attribute is there. Tell me if the reason box is in the way at the till, whether you want a few tap-to-pick reasons instead of typing (for example Damaged, Price match, Regular customer), and whether the reason should also go on the receipt or in the sales CSV.
++- [ ] N28 **Non-blocking (A16.9):** on the iPad, open Staff ▸ Price adjustments by role and turn off, for Cashiers, line prices only. Sign in as a cashier (PIN, then also by pass): the line editor's Line price row should refuse with the role message while item price and the ••• Whole order price still work. Then as an owner set a line price on a line, switch to the cashier (the line price stays) and change that line's quantity so it is flagged: the banner and the checkout review should show only Remove, and Continue should stay blocked until you Remove it. Try the same for whole order prices, and check a manager can't edit the switches while an owner exists. Also confirm a second register gets the switches after a minute or two. Tell me if the wording is too long for the till, and whether you also want the cart discount and line discounts limited by role.
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+ 
+ ### Priority 3
+diff --git a/src/lib/adjustPerms.ts b/src/lib/adjustPerms.ts
+new file mode 100644
+index 0000000..f099f3d
+--- /dev/null
++++ b/src/lib/adjustPerms.ts
+@@ -0,0 +1,90 @@
++// Location: src/lib/adjustPerms.ts
++// A16.9: which staff roles may set price adjustments. Pure rules, no React, so they are testable.
++//
++// The model, in one paragraph: there are three kinds of adjustment (item price, line price, whole order price) and
++// three roles (cashier, manager, owner). Everything is allowed until someone says otherwise, so only a `false` is ever
++// stored. The owner can never be restricted (like the sole admin keeping Staff and Settings in B5, nobody can lock
++// themselves out). Taking an adjustment OFF is never restricted: it can only put a price back to normal. "Keep" on a
++// flagged adjustment and "Adjust" both count as setting one, because they confirm or change a price someone else chose.
++import type { Role, StaffMember } from './types';
++import type { AdjustKind } from './adjustReview';
++
++/** Only explicit `false` entries are stored. Missing or unknown anything = allowed. */
++export type AdjustPerms = Partial<Record<Role, Partial<Record<AdjustKind, boolean>>>>;
++
++export const ADJUST_KINDS: AdjustKind[] = ['item', 'line', 'order'];
++/** Roles that can be restricted. The owner is deliberately missing. */
++export const RESTRICTABLE_ROLES: Exclude<Role, 'owner'>[] = ['cashier', 'manager'];
++
++export const KIND_NAME: Record<AdjustKind, string> = { item: 'item prices', line: 'line prices', order: 'whole order prices' };
++const KIND_ONE: Record<AdjustKind, string> = { item: 'an item price', line: 'a line price', order: 'a whole order price' };
++export const ROLE_PLURAL: Record<Role, string> = { cashier: 'Cashiers', manager: 'Managers', owner: 'Owners' };
++
++/** Anything read from storage or from another register is untrusted: keep only explicit `false` for a known role and kind. */
++export function readAdjustPerms(raw: unknown): AdjustPerms {
++  const out: AdjustPerms = {};
++  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
++  for (const role of RESTRICTABLE_ROLES) {
++    const r = (raw as Record<string, unknown>)[role];
++    if (!r || typeof r !== 'object' || Array.isArray(r)) continue;
++    const denied: Partial<Record<AdjustKind, boolean>> = {};
++    for (const k of ADJUST_KINDS) if ((r as Record<string, unknown>)[k] === false) denied[k] = false;
++    if (Object.keys(denied).length) out[role] = denied;
++  }
++  return out;
++}
++
++/** May this role set (or keep, or change) this kind of adjustment? */
++export function canAdjust(perms: unknown, role: Role, kind: AdjustKind): boolean {
++  if (role === 'owner') return true;
++  return readAdjustPerms(perms)[role]?.[kind] !== false;
++}
++
++/** A new perms object with one switch changed. Allowed switches are dropped, empty roles are dropped, so a fully open setup is `{}`. */
++export function setAdjustPerm(perms: unknown, role: Role, kind: AdjustKind, allowed: boolean): AdjustPerms {
++  const cur = readAdjustPerms(perms);
++  if (role === 'owner') return cur; // the owner is never restricted
++  const mine = { ...(cur[role] ?? {}) };
++  if (allowed) delete mine[kind]; else mine[kind] = false;
++  const next = { ...cur };
++  if (Object.keys(mine).length) next[role] = mine; else delete next[role];
++  return next;
++}
++
++/** True when nothing is restricted (the default). */
++export const isOpen = (perms: unknown): boolean => Object.keys(readAdjustPerms(perms)).length === 0;
++
++/**
++ * The role the person at the till is acting as. It matches the More screen: with a PIN required and staff set up, it is the
++ * signed-in person's role (a locked or unknown person counts as a cashier, the safe side); otherwise there are no accounts
++ * to restrict, so the till acts as the owner.
++ */
++export function actingRole(requirePin: boolean, staff: Pick<StaffMember, 'id' | 'role'>[], staffId: string | undefined): Role {
++  const lockOn = requirePin && staff.length > 0;
++  if (!lockOn) return 'owner';
++  return staff.find(m => m.id === staffId)?.role ?? 'cashier';
++}
++
++/** Who may change these switches: an owner, or a manager when the team has no owner (otherwise nobody could). The till with no accounts acts as owner. */
++export function canEditAdjustPerms(role: Role, staff: Pick<StaffMember, 'role'>[]): boolean {
++  if (role === 'owner') return true;
++  return role === 'manager' && !staff.some(m => m.role === 'owner');
++}
++
++/** What to tell someone who is not allowed. */
++export function deniedMessage(role: Role, kind: AdjustKind): { title: string; message: string } {
++  return { title: 'Not allowed for your role', message: `${ROLE_PLURAL[role]} can't set ${KIND_NAME[kind]} on this register. Ask a manager or owner to do it, or switch to their sign-in.` };
++}
++/** The line shown in place of Keep / Adjust on a flagged adjustment the person may not touch. */
++export const flaggedDeniedHint = (kind: AdjustKind): string => `Your role can't keep or change ${KIND_ONE[kind]}. You can remove it, or ask a manager or owner to look at it.`;
++
++/** One line per restricted role for the Staff screen, e.g. "Cashiers can't set line prices or whole order prices." Empty when open. */
++export function permsSummary(perms: unknown): string[] {
++  const p = readAdjustPerms(perms); const out: string[] = [];
++  for (const role of RESTRICTABLE_ROLES) {
++    const no = ADJUST_KINDS.filter(k => p[role]?.[k] === false);
++    if (!no.length) continue;
++    out.push(no.length === ADJUST_KINDS.length ? `${ROLE_PLURAL[role]} can't set any price adjustments.` : `${ROLE_PLURAL[role]} can't set ${no.map(k => KIND_NAME[k]).join(' or ')}.`);
++  }
++  return out;
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index c414188..00110bc 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -208,7 +208,7 @@ export async function pushSharedSettings() {
+   if (!hasCreds()) return;
+   const s = st().settings; const version = s.sharedVersion + 1;
+   await meta.upsert(meta.TYPES.settings, 'shared', { settings_key: 'shared', version,
+-    settings_json: JSON.stringify({ staff: s.staff, bundlesJson: s.bundlesJson, fees: s.fees, cashRounding: s.cashRounding, requirePin: s.requirePin }) });
++    settings_json: JSON.stringify({ staff: s.staff, bundlesJson: s.bundlesJson, fees: s.fees, cashRounding: s.cashRounding, requirePin: s.requirePin, adjustPerms: s.adjustPerms }) });
+   st().patchSettings({ sharedVersion: version });
+ }
+ async function pullSettings() {
+diff --git a/src/screens/AdjustmentReview.tsx b/src/screens/AdjustmentReview.tsx
+index 103e41f..afd4845 100644
+--- a/src/screens/AdjustmentReview.tsx
++++ b/src/screens/AdjustmentReview.tsx
+@@ -8,15 +8,19 @@ import { useApp } from '../state/store';
+ import { usePriced } from '../state/selectors';
+ import { fmt } from '../lib/money';
+ import { adjustmentRows, keepRow, removeRow, signedSaving, unresolvedRows, type AdjustRow } from '../lib/adjustReview';
++import { actingRole, canAdjust, flaggedDeniedHint } from '../lib/adjustPerms';
+ 
+ const KIND_LABEL = { item: 'Item price', line: 'Line price', order: 'Whole order price' } as const;
+ 
+ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, onAdjust }: { visible: boolean; onClose: () => void; onContinue: () => void; onAdjust: (row: AdjustRow) => void }) {
+   const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced();
+   const rows = adjustmentRows(cart, priced); const todo = unresolvedRows(rows);
++  // A16.9: Keep and Adjust confirm or change a price, so they follow the role rules. Remove only puts a price back, so it never does.
++  const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
++  const may = (k: AdjustRow['kind']) => canAdjust(perms, role, k);
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Check the price adjustments">
+-      <Txt sub style={{ marginBottom: 10 }}>{rows.length === 0 ? 'There are no price adjustments on this sale.' : todo.length ? 'Some adjustments need a second look. Keep, adjust or remove each flagged one to carry on.' : 'These prices were changed by hand. Check they are what you meant.'}</Txt>
++      <Txt sub style={{ marginBottom: 10 }}>{rows.length === 0 ? 'There are no price adjustments on this sale.' : todo.length ? 'Some adjustments need a second look. Keep, adjust or remove each flagged one to carry on. If your role can\'t keep them, remove them or ask a manager.' : 'These prices were changed by hand. Check they are what you meant.'}</Txt>
+       <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 10 }}>
+         {rows.map(r => (
+           <Card key={r.id} style={{ padding: 12, gap: 6, ...(r.reasons.length ? { borderColor: c.warn } : {}) }}>
+@@ -30,9 +34,10 @@ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, on
+             <Txt size={13} sub>{r.detail}</Txt>
+             {r.reason ? <Txt size={13}>Reason: {r.reason}</Txt> : null}
+             {r.reasons.map((x, i) => <Txt key={i} size={13} weight="600" color={c.warn}>{x}</Txt>)}
++            {!may(r.kind) ? <Txt size={13} sub>{r.reasons.length ? flaggedDeniedHint(r.kind) : 'Your role can\'t change this one. You can remove it.'}</Txt> : null}
+             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+-              {r.reasons.length ? <Btn title="Keep" small onPress={() => setCart(cc => keepRow(cc, priced, r))} style={{ flex: 1 }} /> : null}
+-              <Btn title="Adjust" small kind="secondary" onPress={() => onAdjust(r)} style={{ flex: 1 }} />
++              {r.reasons.length && may(r.kind) ? <Btn title="Keep" small onPress={() => setCart(cc => keepRow(cc, priced, r))} style={{ flex: 1 }} /> : null}
++              {may(r.kind) ? <Btn title="Adjust" small kind="secondary" onPress={() => onAdjust(r)} style={{ flex: 1 }} /> : null}
+               <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => removeRow(cc, r))} style={{ flex: 1 }} />
+             </View>
+           </Card>
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index dfd2588..a364e0e 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -15,6 +15,7 @@ import { orderReviewReasons } from '../lib/orderAdjust';
+ import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+ import AdjustmentReviewSheet from './AdjustmentReview';
+ import SwipeRow from '../ui/SwipeRow';
++import { gateAdjust } from '../ui/adjustGate';
+ import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
+ import { CheckChangeSheet } from './CheckChange';
+ import { useUi } from '../ui/uiProfile';
+@@ -108,7 +109,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
+         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
+         <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
+-        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('orderadj'))} />
++        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
+         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
+         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
+         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index db23318..ae138d1 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -5,6 +5,7 @@ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useUi } from '../ui/uiProfile';
+ import { useApp, currentStaff } from '../state/store';
++import { actingRole } from '../lib/adjustPerms';
+ import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
+ 
+ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }> = {
+@@ -21,7 +22,7 @@ const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller rea
+ export default function More() {
+   const { c } = useTheme(); const nav = useNav(); const ui = useUi(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
+   const lockOn = s.requirePin && s.staff.length > 0;
+-  const role = lockOn ? staff?.role ?? 'cashier' : 'owner';
++  const role = actingRole(s.requirePin, s.staff, staff?.id);
+   const groups = visibleMoreRows(ui, role, lockOn);
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index e3c1ac2..6d9b3d9 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -12,6 +12,7 @@ import { pushSharedSettings } from '../lib/sync';
+ import { uid } from '../lib/ids';
+ import { MODES, MODE_BLURB, MODE_LABEL, MORE_LABEL, TAB_LABEL, TEXT_LABEL, isSoleAdmin, readUi, readCustom, withCustom, withMode, type CustomUi, type UiMode } from '../lib/uiMode';
+ import type { Role } from '../lib/types';
++import { ADJUST_KINDS, KIND_NAME, RESTRICTABLE_ROLES, ROLE_PLURAL, actingRole, canAdjust, canEditAdjustPerms, permsSummary, setAdjustPerm } from '../lib/adjustPerms';
+ 
+ /** Staff: PINs (salted hash, shared across registers via the settings metaobject) and roles. */
+ export default function Staff() {
+@@ -28,6 +29,7 @@ export default function Staff() {
+     <Page title="Staff" onBack={nav.pop}>
+       <Section footer="PINs lock the till and tag each sale with who made it. They’re stored hashed, and shared to your other registers.">
+         <Toggle label="Require PIN to use the register" value={s.requirePin && s.staff.length > 0} onChange={v => { if (v && !s.staff.length) return alertMsg('Add a staff member first'); patch({ requirePin: v }); void pushSharedSettings().catch(() => {}); }} /></Section>
++      <AdjustRoleRules />
+       <Section title="Team">{s.staff.length ? s.staff.map((m, i) => <Row key={m.id} title={m.name} sub={`${m.role}${hasBadge(m) ? ' · pass issued' : ''}`} last={i === s.staff.length - 1} icon="person-outline" onPress={() => setSel(m.id)} />) : <Row title="No staff yet" last />}</Section>
+       <View style={{ padding: 16 }}><Btn title="Add staff member" icon="person-add-outline" onPress={() => setOpen(true)} /></View>
+       <Sheet visible={!!sel} onClose={() => setSel(null)} title={s.staff.find(x => x.id === sel)?.name ?? ''}>
+@@ -83,3 +85,21 @@ export function PinLock() {
+   );
+ }
+ void Card; void Chip;
++
++/** A16.9: which roles may set which price adjustments. Everything is allowed until a switch is turned off. */
++function AdjustRoleRules() {
++  const s = useApp(st => st.settings); const staffId = useApp(st => st.staffId); const patch = useApp(st => st.patchSettings);
++  const me = actingRole(s.requirePin, s.staff, staffId); const mayEdit = canEditAdjustPerms(me, s.staff);
++  const notes = permsSummary(s.adjustPerms);
++  const flip = (role: Role, kind: (typeof ADJUST_KINDS)[number], allowed: boolean) => {
++    if (!mayEdit) return alertMsg('Only an owner can change this', 'Ask an owner to change who may set price adjustments.');
++    patch({ adjustPerms: setAdjustPerm(s.adjustPerms, role, kind, allowed) }); void pushSharedSettings().catch(() => {});
++  };
++  return (
++    <Section title="Price adjustments by role" footer={`${notes.length ? notes.join(' ') + ' ' : 'Everyone is allowed. '}Owners are never restricted. Taking an adjustment off is always allowed. Keeping or changing one a colleague set follows the same switches.${mayEdit ? '' : ' Only an owner can change these.'}`}>
++      {RESTRICTABLE_ROLES.flatMap(role => ADJUST_KINDS.map(kind => (
++        <Toggle key={`${role}:${kind}`} label={`${ROLE_PLURAL[role]} can set ${KIND_NAME[kind]}`} value={canAdjust(s.adjustPerms, role, kind)} onChange={v => flip(role, kind, v)} disabled={!mayEdit} />
++      )))}
++    </Section>
++  );
++}
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 22bd802..5136731 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -10,6 +10,8 @@ import * as ops from '../lib/cartOps';
+ import { hasItemPrice, itemReviewReasons } from '../lib/itemAdjust';
+ import { keepOrderAdjust, makeOrderAdjust, orderAdjustProblem, orderReviewReasons, stripAdjustments } from '../lib/orderAdjust';
+ import { adjustProblem, beforeAdjustCents, canAdjustLine, keepAdjust, makeAdjust, reviewReasons } from '../lib/lineAdjust';
++import { flaggedDeniedHint } from '../lib/adjustPerms';
++import { checkAdjustAllowed, gateAdjust, useAdjustAllowed } from '../ui/adjustGate';
+ import { saveCartLocal } from '../lib/sync';
+ import { uid } from '../lib/ids';
+ import { searchRemote, createCustomer } from '../lib/shopify/customers';
+@@ -104,13 +106,14 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+ /** A16.4: set what the whole order costs. Also the review sheet (Keep / Adjust / Remove) when the cart changed under an existing order price. */
+ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
+   const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const price = usePricer();
+-  const [digits, setDigits] = useState(''); const [reason, setReason] = useState('');
++  const [digits, setDigits] = useState(''); const [reason, setReason] = useState(''); const mayOrder = useAdjustAllowed('order');
+   useEffect(() => { if (visible) setReason(cart.orderAdjust?.reason ?? ''); }, [visible]); // eslint-disable-line react-hooks/exhaustive-deps
+   const base = useMemo(() => price(stripAdjustments(cart)), [cart, price]);
+   const reasons = orderReviewReasons(cart, priced); const cents = digitsToCents(digits);
+   const problem = digits ? orderAdjustProblem(cents, base) : null; const lineCount = cart.lines.filter(l => l.adjust).length;
+   const close = () => { setDigits(''); onClose(); };
+   const set = async () => {
++    if (!checkAdjustAllowed('order')) return; // A16.9
+     const p = orderAdjustProblem(cents, base); if (p) return alertMsg('Cannot use that total', p);
+     // A16.7: a whole-order price and line prices are never both active.
+     if (lineCount && !(await confirm('Remove the line prices?', `A whole order price and line prices can't both be used. Setting the order total removes the ${lineCount} line price adjustment${lineCount === 1 ? '' : 's'} on this order.`, 'Replace', true))) return;
+@@ -122,9 +125,9 @@ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClo
+         <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginBottom: 10 }}>
+           <Txt weight="700" color={c.warn}>Check the order price</Txt>
+           {reasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
+-          <Txt size={13} sub>The order still costs {fmt(priced.netCents)}. Keep it, set a new total, or take the adjustment off.</Txt>
++          <Txt size={13} sub>The order still costs {fmt(priced.netCents)}. {mayOrder ? 'Keep it, set a new total, or take the adjustment off.' : flaggedDeniedHint('order')}</Txt>
+           <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+-            <Btn title="Keep" small onPress={() => { setCart(cc => ops.setOrderAdjust(cc, keepOrderAdjust(cc.orderAdjust!, cc, priced))); close(); }} style={{ flex: 1 }} />
++            {mayOrder ? <Btn title="Keep" small onPress={() => { setCart(cc => ops.setOrderAdjust(cc, keepOrderAdjust(cc.orderAdjust!, cc, priced))); close(); }} style={{ flex: 1 }} /> : null}
+             <Btn title="Remove" small kind="danger" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ flex: 1 }} />
+           </View>
+         </View>
+@@ -144,13 +147,15 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+   const [disc, setDisc] = useState(false); const [price, setPrice] = useState(false); const [digits, setDigits] = useState(''); const [noteDraft, setNoteDraft] = useState<string | null>(null);
+   const [adj, setAdj] = useState(false); const [adjDigits, setAdjDigits] = useState(''); const [adjReason, setAdjReason] = useState(''); const [itemReason, setItemReason] = useState(''); const priced = usePriced(); const orderAdj = useApp(s => s.pos.cart.orderAdjust);
+   const [scope, setScope] = useState<'qty' | 'all'>('qty'); const [scopeQty, setScopeQty] = useState(1);
++  const mayItem = useAdjustAllowed('item'); const mayLine = useAdjustAllowed('line'); // A16.9
+   if (!line) return null;
+   const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
+   const canAll = line.kind === 'item' && !!line.variantId;
+   const openPrice = () => { setDigits(''); setItemReason(line.overrideReason ?? ''); setScope(line.overrideAll && canAll ? 'all' : 'qty'); setScopeQty(Math.max(1, Math.min(line.qty, line.overrideSeenQty ?? line.qty))); setPrice(true); };
+-  const setItemPrice = () => { const how = scope === 'all' && canAll ? { scope: 'all' as const } : { scope: 'qty' as const, qty: scopeQty }; const split = how.scope === 'qty' && how.qty < line.qty; setCart(cc => ops.setItemPrice(cc, line.id, digitsToCents(digits), how, itemReason)); setPrice(false); if (split) onClose(); };
++  const setItemPrice = () => { if (!checkAdjustAllowed('item')) return; const how = scope === 'all' && canAll ? { scope: 'all' as const } : { scope: 'qty' as const, qty: scopeQty }; const split = how.scope === 'qty' && how.qty < line.qty; setCart(cc => ops.setItemPrice(cc, line.id, digitsToCents(digits), how, itemReason)); setPrice(false); if (split) onClose(); };
+   const adjProblem = pl && adjDigits ? adjustProblem(digitsToCents(adjDigits), pl) : null;
+   const setAdjustment = async () => {
++    if (!checkAdjustAllowed('line')) return; // A16.9
+     if (!pl) return; const cents = digitsToCents(adjDigits); const p = adjustProblem(cents, pl); if (p) return alertMsg('Cannot use that price', p);
+     // A16.7: a whole-order price and line prices are never both active.
+     if (orderAdj && !(await confirm('Remove the whole order price?', `This order has its total set to ${fmt(orderAdj.finalCents)}. A whole order price and line prices can't both be used, so setting this line's price removes the order price.`, 'Replace', true))) return;
+@@ -171,29 +176,29 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+         <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
+         <Row title="Item price adjustment" icon="create-outline"
+           sub={line.kind === 'gift_card' ? 'Not available for gift cards' : hasItemPrice(line) ? `${fmt(line.overrideCents!)} (was ${fmt(line.unitCents)}) · ${line.overrideAll ? 'all in cart' : line.overrideSeenQty !== undefined ? `for ${line.overrideSeenQty} unit${line.overrideSeenQty === 1 ? '' : 's'}` : 'this line'}` : fmt(line.unitCents)}
+-          onPress={line.kind === 'gift_card' ? undefined : openPrice} />
++          onPress={line.kind === 'gift_card' ? undefined : async () => { if (await gateAdjust('item', hasItemPrice(line), () => setCart(cc => ops.clearItemPrice(cc, line.id)))) openPrice(); }} />
+         {itemReasons.length ? (
+           <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
+             <Txt weight="700" color={c.warn}>Check this item's adjusted price</Txt>
+             {itemReasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
+-            <Txt size={13} sub>The adjusted price of {fmt(line.overrideCents ?? 0)} now applies to all {line.qty}. Keep it, change it, or take it off.</Txt>
++            <Txt size={13} sub>The adjusted price of {fmt(line.overrideCents ?? 0)} now applies to all {line.qty}. {mayItem ? 'Keep it, change it, or take it off.' : flaggedDeniedHint('item')}</Txt>
+             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+-              <Btn title="Keep" small onPress={() => setCart(cc => ops.keepItemPrice(cc, line.id))} style={{ flex: 1 }} />
+-              <Btn title="Adjust" small kind="secondary" onPress={openPrice} style={{ flex: 1 }} />
++              {mayItem ? <Btn title="Keep" small onPress={() => setCart(cc => ops.keepItemPrice(cc, line.id))} style={{ flex: 1 }} /> : null}
++              {mayItem ? <Btn title="Adjust" small kind="secondary" onPress={openPrice} style={{ flex: 1 }} /> : null}
+               <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.clearItemPrice(cc, line.id))} style={{ flex: 1 }} />
+             </View>
+           </View>
+         ) : null}
+         <Row title="Line price adjustment" icon="cut-outline" sub={line.adjust ? `${fmt(line.adjust.finalCents)} for the whole line` : canAdjustLine(line) ? 'Set what the whole line costs' : 'Not available for gift cards'}
+-          onPress={canAdjustLine(line) ? () => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); } : undefined} />
++          onPress={canAdjustLine(line) ? async () => { if (await gateAdjust('line', !!line.adjust, () => setCart(cc => ops.setLineAdjust(cc, line.id, undefined)))) { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); } } : undefined} />
+         {reasons.length ? (
+           <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
+             <Txt weight="700" color={c.warn}>Check this line's price adjustment</Txt>
+             {reasons.map((r, i) => <Txt key={i} size={13}>{r}</Txt>)}
+-            <Txt size={13} sub>The line still costs {fmt(pl?.netCents ?? 0)}. Keep it, change it, or take the adjustment off.</Txt>
++            <Txt size={13} sub>The line still costs {fmt(pl?.netCents ?? 0)}. {mayLine ? 'Keep it, change it, or take the adjustment off.' : flaggedDeniedHint('line')}</Txt>
+             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
+-              <Btn title="Keep" small onPress={() => pl && line.adjust && setCart(cc => ops.setLineAdjust(cc, line.id, keepAdjust(line.adjust!, pl)))} style={{ flex: 1 }} />
+-              <Btn title="Adjust" small kind="secondary" onPress={() => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); }} style={{ flex: 1 }} />
++              {mayLine ? <Btn title="Keep" small onPress={() => pl && line.adjust && setCart(cc => ops.setLineAdjust(cc, line.id, keepAdjust(line.adjust!, pl)))} style={{ flex: 1 }} /> : null}
++              {mayLine ? <Btn title="Adjust" small kind="secondary" onPress={() => { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); }} style={{ flex: 1 }} /> : null}
+               <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => ops.setLineAdjust(cc, line.id, undefined))} style={{ flex: 1 }} />
+             </View>
+           </View>
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 245d4e1..192f4fd 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -13,6 +13,7 @@ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver
+ import type { Depth } from '../lib/helpDocs';
+ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
++import type { AdjustPerms } from '../lib/adjustPerms';
+ 
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+@@ -25,11 +26,12 @@ export type Settings = {
+   screensaver: ScreensaverSettings; // Settings ▸ Screensaver & display (per device, not shared between registers)
+   inventory: InvPrefs; // Inventory screen filters / sort / grouping (per device)
+   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
++  adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
+   sharedVersion: number;
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
+-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', sharedVersion: 0,
++  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0,
+ });
+ 
+ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+diff --git a/src/ui/adjustGate.ts b/src/ui/adjustGate.ts
+new file mode 100644
+index 0000000..bb91915
+--- /dev/null
++++ b/src/ui/adjustGate.ts
+@@ -0,0 +1,33 @@
++// Location: src/ui/adjustGate.ts
++// A16.9: connects the pure role rules (src/lib/adjustPerms.ts) to the signed-in person, for the cart screens.
++import { useApp } from '../state/store';
++import { actingRole, canAdjust, deniedMessage } from '../lib/adjustPerms';
++import type { AdjustKind } from '../lib/adjustReview';
++import { alertMsg, confirm } from './kit';
++
++/** Read at the moment of the tap, so a pass swipe or PIN change while a sheet is open is respected. */
++export function adjustAllowedNow(kind: AdjustKind): boolean {
++  const s = useApp.getState(); const st = s.settings;
++  return canAdjust(st.adjustPerms, actingRole(st.requirePin, st.staff, s.staffId), kind);
++}
++/** For drawing: re-renders when the person or the rules change. */
++export function useAdjustAllowed(kind: AdjustKind): boolean {
++  return useApp(s => canAdjust(s.settings.adjustPerms, actingRole(s.settings.requirePin, s.settings.staff, s.staffId), kind));
++}
++/**
++ * Called before opening an editor. True = go ahead. False = the person may not set this kind of adjustment: with nothing
++ * to remove it explains; with an adjustment already there it offers the one thing they can do, taking it off.
++ */
++export async function gateAdjust(kind: AdjustKind, existing: boolean, remove: () => void): Promise<boolean> {
++  if (adjustAllowedNow(kind)) return true;
++  const s = useApp.getState(); const st = s.settings; const d = deniedMessage(actingRole(st.requirePin, st.staff, s.staffId), kind);
++  if (!existing) { alertMsg(d.title, d.message); return false; }
++  if (await confirm('Take the adjustment off?', `${d.message} You can take this one off, which puts the price back to normal.`, 'Take off', true)) remove();
++  return false;
++}
++/** A last check at the moment of saving. Shows the message and returns false when not allowed. */
++export function checkAdjustAllowed(kind: AdjustKind): boolean {
++  if (adjustAllowedNow(kind)) return true;
++  const s = useApp.getState(); const st = s.settings; const d = deniedMessage(actingRole(st.requirePin, st.staff, s.staffId), kind);
++  alertMsg(d.title, d.message); return false;
++}
+diff --git a/tests/adjustperms.test.ts b/tests/adjustperms.test.ts
+new file mode 100644
+index 0000000..53b3b4d
+--- /dev/null
++++ b/tests/adjustperms.test.ts
+@@ -0,0 +1,91 @@
++// Location: tests/adjustperms.test.ts
++// A16.9: which roles may set which price adjustments.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { ADJUST_KINDS, actingRole, canAdjust, canEditAdjustPerms, deniedMessage, flaggedDeniedHint, isOpen, permsSummary, readAdjustPerms, setAdjustPerm } from '../src/lib/adjustPerms';
++import type { Role } from '../src/lib/types';
++
++const ROLES: Role[] = ['cashier', 'manager', 'owner'];
++const staff = [{ id: 'a', role: 'cashier' as Role }, { id: 'b', role: 'manager' as Role }, { id: 'c', role: 'owner' as Role }];
++
++test('by default every role may set every kind (nothing changes until you restrict one)', () => {
++  for (const r of ROLES) for (const k of ADJUST_KINDS) assert.equal(canAdjust({}, r, k), true);
++  for (const bad of [undefined, null, 'x', 5, [], { cashier: 'no' }]) for (const k of ADJUST_KINDS) assert.equal(canAdjust(bad, 'cashier', k), true);
++  assert.ok(isOpen({}) && isOpen(undefined));
++});
++
++test('a restriction affects only that role and that kind', () => {
++  const p = setAdjustPerm({}, 'cashier', 'line', false);
++  assert.equal(canAdjust(p, 'cashier', 'line'), false);
++  assert.equal(canAdjust(p, 'cashier', 'item'), true);
++  assert.equal(canAdjust(p, 'cashier', 'order'), true);
++  assert.equal(canAdjust(p, 'manager', 'line'), true);
++  assert.equal(isOpen(p), false);
++});
++
++test('the owner can never be restricted, even by a hand-edited or synced setting', () => {
++  assert.deepEqual(setAdjustPerm({}, 'owner', 'item', false), {});
++  assert.equal(canAdjust({ owner: { item: false, line: false, order: false } }, 'owner', 'item'), true);
++  assert.deepEqual(readAdjustPerms({ owner: { item: false } }), {});
++});
++
++test('turning a switch back on tidies up: a fully open setup is an empty object again', () => {
++  let p = setAdjustPerm({}, 'cashier', 'item', false);
++  p = setAdjustPerm(p, 'manager', 'order', false);
++  p = setAdjustPerm(p, 'cashier', 'item', true);
++  assert.deepEqual(p, { manager: { order: false } });
++  p = setAdjustPerm(p, 'manager', 'order', true);
++  assert.deepEqual(p, {});
++});
++
++test('setAdjustPerm does not change the object it was given', () => {
++  const before = { cashier: { line: false } } as const; const copy = JSON.parse(JSON.stringify(before));
++  setAdjustPerm(before, 'cashier', 'item', false); setAdjustPerm(before, 'cashier', 'line', true);
++  assert.deepEqual(before, copy);
++});
++
++test('readAdjustPerms keeps only explicit false for known roles and kinds (data from another register is not trusted)', () => {
++  const r = readAdjustPerms({ cashier: { item: false, line: true, order: 'no', bogus: false }, janitor: { item: false }, manager: [] , extra: 1 });
++  assert.deepEqual(r, { cashier: { item: false } });
++  assert.deepEqual(readAdjustPerms(JSON.parse('{"manager":{"order":false}}')), { manager: { order: false } });
++});
++
++test('actingRole matches the More screen: no PIN or no staff means owner, a locked or unknown person is a cashier', () => {
++  assert.equal(actingRole(false, staff, 'a'), 'owner');
++  assert.equal(actingRole(true, [], undefined), 'owner');
++  assert.equal(actingRole(true, staff, 'a'), 'cashier');
++  assert.equal(actingRole(true, staff, 'b'), 'manager');
++  assert.equal(actingRole(true, staff, 'c'), 'owner');
++  assert.equal(actingRole(true, staff, undefined), 'cashier');
++  assert.equal(actingRole(true, staff, 'gone'), 'cashier');
++});
++
++test('a locked register is as restricted as a cashier (nobody signed in cannot set an adjustment you banned for cashiers)', () => {
++  const p = setAdjustPerm({}, 'cashier', 'order', false);
++  assert.equal(canAdjust(p, actingRole(true, staff, undefined), 'order'), false);
++  assert.equal(canAdjust(p, actingRole(false, staff, undefined), 'order'), true); // PIN not required: no accounts to restrict
++});
++
++test('who may change the switches: owner, or a manager only when the team has no owner', () => {
++  assert.equal(canEditAdjustPerms('owner', staff), true);
++  assert.equal(canEditAdjustPerms('manager', staff), false);
++  assert.equal(canEditAdjustPerms('manager', staff.filter(m => m.role !== 'owner')), true);
++  assert.equal(canEditAdjustPerms('cashier', staff.filter(m => m.role !== 'owner')), false);
++  assert.equal(canEditAdjustPerms('cashier', staff), false);
++});
++
++test('messages name the role and the kind, and the summary lists only what is restricted', () => {
++  assert.match(deniedMessage('cashier', 'line').message, /Cashiers can't set line prices/);
++  assert.match(deniedMessage('manager', 'order').message, /Managers can't set whole order prices/);
++  assert.match(flaggedDeniedHint('item'), /remove it/);
++  assert.deepEqual(permsSummary({}), []);
++  assert.deepEqual(permsSummary({ cashier: { line: false, order: false } }), ["Cashiers can't set line prices or whole order prices."]);
++  assert.deepEqual(permsSummary({ cashier: { item: false, line: false, order: false }, manager: { item: false } }),
++    ["Cashiers can't set any price adjustments.", "Managers can't set item prices."]);
++});
++
++test('the setting survives the JSON round trip used by shared settings and backups', () => {
++  const p = setAdjustPerm(setAdjustPerm({}, 'cashier', 'item', false), 'manager', 'order', false);
++  const back = JSON.parse(JSON.stringify({ adjustPerms: p })).adjustPerms;
++  assert.deepEqual(readAdjustPerms(back), p);
++});

@@ -208,7 +208,7 @@ export async function pushSharedSettings() {
   if (!hasCreds()) return;
   const s = st().settings; const version = s.sharedVersion + 1;
   await meta.upsert(meta.TYPES.settings, 'shared', { settings_key: 'shared', version,
-    settings_json: JSON.stringify({ staff: s.staff, bundlesJson: s.bundlesJson, fees: s.fees, cashRounding: s.cashRounding, requirePin: s.requirePin }) });
+    settings_json: JSON.stringify({ staff: s.staff, bundlesJson: s.bundlesJson, fees: s.fees, cashRounding: s.cashRounding, requirePin: s.requirePin, adjustPerms: s.adjustPerms }) });
   st().patchSettings({ sharedVersion: version });
 }
 async function pullSettings() {
