@@ -4,7 +4,7 @@ title: Taking payment
 parent: start
 summary: The Payment screen: the four ways to pay, part payments, what happens when the sale is paid, and what Back does once money has been taken.
 tags: [pay, payment, charge, card, cash, gift card, split, total, remaining, receipt, cancel sale]
-related: [pay/card, sales/cart-and-prices, sales/bundles, sales]
+related: [pay/card, pay/cash, pay/gift-card, pay/split-and-part, sales/cart-and-prices, sales/bundles, sales]
 updated: 2026-10-11
 ---
 The Payment screen is where a sale is paid for. You reach it with **Charge** on the cart (or **Take payment** in the guided checkout). Nothing is taken from the customer until they pay.
@@ -26,9 +26,9 @@ Then the **Payment** screen opens.
 
 ### The four ways to pay
 - **Card**: the customer taps, inserts or swipes on the Zeller terminal. See [[pay/card]].
-- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back.
-- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away.
-- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot.
+- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back. See [[pay/cash]].
+- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away. See [[pay/gift-card]].
+- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot. See [[pay/split-and-part]].
 
 Every payment taken is added to the list. Pay the rest any way you like, in any order, until **Remaining** reaches $0.00.
 

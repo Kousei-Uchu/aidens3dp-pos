@@ -1,0 +1,622 @@
+From 1b5329a31b92f71cf08977bfab8aa405abec8765 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sun, 11 Oct 2026 00:27:15 +0000
+Subject: [PATCH] 0032: in-app help, pages 13 to 15 (Paying by cash, Paying
+ with a gift card, Split and part payments)
+
+---
+ docs/PROGRESS.md           |  10 +--
+ docs/patches/0032-plan.md  |  28 ++++++++
+ help/help.json             | 100 +++++++++++++++++++++++++-
+ help/pay/cash.md           | 144 +++++++++++++++++++++++++++++++++++++
+ help/pay/gift-card.md      |  91 +++++++++++++++++++++++
+ help/pay/index.md          |   8 +--
+ help/pay/split-and-part.md | 102 ++++++++++++++++++++++++++
+ 7 files changed, 473 insertions(+), 10 deletions(-)
+ create mode 100644 docs/patches/0032-plan.md
+ create mode 100644 help/pay/cash.md
+ create mode 100644 help/pay/gift-card.md
+ create mode 100644 help/pay/split-and-part.md
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 8eb1ce2..09458a7 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -38,6 +38,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0029 | 2026-10-11 | In-app help, part 2 (B7b): the Help screen (More ▸ Help: search, depth picker, trail, related pages, flowcharts), a Markdown and flowchart drawer, a citation check, and three pages (grid, variations and stock, scanning) | B7b |
+ | 0030 | 2026-10-11 | In-app help, pages 7 to 9 (B7): three more pages, Lock POS / Price check / Stock check, Saved carts, and Customers. No app code changes: pages only, checked by the existing help tests (the citation check confirms every file and function they name exists) | B7 |
+ | 0031 | 2026-10-11 | In-app help, pages 10 to 12 (B7): three more pages, Bundle deals and the builder, Taking payment (the Payment screen), and Paying by card. No app code changes: pages only, checked by the existing help tests (the citation check confirms every file and function they name exists) | B7 |
++| 0032 | 2026-10-11 | In-app help, pages 13 to 15 (B7): three more pages, Paying by cash, Paying with a gift card, and Split and part payments; `pay` now links to all three. No app code changes: pages only, checked by the existing help tests (the citation check confirms every file and function they name exists). Also corrects one line in the 0019 notes about "don't track it" | B7 |
+ | 0048 | 2026-10-11 | Price adjustments, part 1 (A16 Line adjustment): set what a whole line costs from the line editor, shown as a "Line price adjustment" row; lines are flagged for review when quantity, unit price or discounts change (Keep / Adjust / Remove); never on gift cards. Item and Whole order adjustments follow in their own patches | A16.1, A16.2, A16.6 (line part) |
+ | 0049 | 2026-10-11 | Price adjustments, part 2 (A16 Whole order adjustment): ••• cart menu ▸ Whole order price sets the total of the whole cart, shared over the items (gift cards never reduced); review flag with Keep / Remove; never together with line adjustments (setting one clears the other after asking) | A16.4, A16.7, A16.6 (whole order part) |
+ | 0050 | 2026-10-11 | Price adjustments, part 3 (A16 Item adjustment): the unit price for this sale now has a choice of Fixed quantity (a set number of units; fewer than the line splits it) or All in cart (every unit of that item, including ones added later); fixed quantities are flagged for review when the quantity changes; never on gift cards | A16.3, A16.6 (item part) |
+@@ -210,7 +211,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+     - Counts never show below zero. The history entry keeps exactly what was entered.
+     - **Change finder** (`findCombinations`, your function): same answers as yours. I added only (1) skipping branches that cannot reach the target and (2) an optional node cap (`findCombinationsLimited`) that says when it stopped early, so a very full drawer cannot freeze the iPad. Tested against a copy of your original on 200 random drawers (same results, same order). Note it returns combinations above and below the target within the tolerance, exactly as you wrote it; the Cash screen will only offer ones that give the customer at least what they are owed.
+     - **0019 details (Cash screen core).** Pay ▸ Cash now opens `src/screens/CashSheet.tsx`: tap the notes and coins the customer hands over (the same pad, with Undo and Remove). It shows Due, Received, and either "Short by", "Exact" or "Change to give". Short: **Take as part payment** (as before). Enough with change: **Next: give change** shows which notes and coins to take from the drawer, found with your finder (`planChange` in `src/lib/cashSale.ts`) over the drawer ledger **plus what the customer just handed over**, choosing the fewest pieces. **Gave this change** confirms it, or tap different notes and coins (the total must match the change owed). The sale then writes two ledger entries ("Cash received", "Change given") tagged with the sale, and the tender stores `cashIn` / `cashOut`. Cancelling a part-paid sale puts the ledger back.
+-    - **Skipping the counting:** **Exact amount (don't track notes)** and **Give change but don't track it** record the sale without touching the ledger, for a rush. The ledger then drifts until the next count; the Correct contents / Count & close screens fix that. The old Exact / $20 / $50 shortcut chips and the number keypad are gone from the Cash sheet (the pad replaces them; Split amount still uses the keypad).
++    - **Skipping the counting:** **Exact amount (don't track notes)** records the sale without touching the ledger. **Done, but don't track it** on the change step records the notes the customer handed over but not the change given (corrected in 0032: this line used to say it left the ledger alone; `takeCash` in `Pay.tsx` posts `received` whenever it is set). For a rush. The ledger then drifts until the next count; the Correct contents / Count & close screens fix that. The old Exact / $20 / $50 shortcut chips and the number keypad are gone from the Cash sheet (the pad replaces them; Split amount still uses the keypad).
+     - **0020 details (cash prompts).** On the Cash sheet, with the ledger as the source of truth:
+       - **Short:** says how much more to ask for, or offers a part payment with the rest on card or another method (the Pay screen shows what remains).
+       - **Change the drawer can't make:** the big button is disabled (greyed) and a red box explains, then lists what could work: **ask for less** (take a smaller part of what was handed over and hand the rest back, the smallest amount that still works), **part in cash** (the largest cash amount below the bill whose change works, rest on card; tap the button and the sheet continues with that amount), or **the full amount by card**. A ghost button, "The drawer has it (ledger is out of date)", is the escape hatch for when the ledger has drifted.
+@@ -264,7 +265,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+     - **0029** [x] `sales/grid` the Quick Menu grid and editing it (tiles, nested categories, per-tile settings, pages, import/export, the path bar) · [x] `sales/variants-and-stock` variations, stock counts, negative stock · [x] `sales/scanners` Bluetooth and camera scanning, the double-click keyboard, passes and gift QRs
+     - **0030** [x] `sales/lookup-tiles` Lock POS, Price check, Stock check · [x] `sales/saved-carts` saved carts · [x] `sales/customers` customers
+     - **0031** [x] `sales/bundles` bundle deals and the builder · [x] `pay` taking payment (overview) · [x] `pay/card` paying by card (Zeller, the waiting strip, cancel)
+-    - **0032** [ ] `pay/cash` paying by cash (tap pad, change) · [ ] `pay/gift-card` paying with a gift card · [ ] `pay/split-and-part` split and part payments
++    - **0032** [x] `pay/cash` paying by cash (tap pad, change) · [x] `pay/gift-card` paying with a gift card · [x] `pay/split-and-part` split and part payments
+     - **0033** [ ] `pay/receipts` receipts, QR and email · [ ] `cash` the cash drawer and ledger (overview) · [ ] `cash/open-close` opening, paid in/out, counting and closing
+     - **0034** [ ] `cash/change` how change is worked out and what "can't make change" means · [ ] `cash/check-change` Check Change · [ ] `cash/smart-change` Smart change
+     - **0035** [ ] `cash/float-report` the daily float report · [ ] `cash/tender-machine` tender machine (under construction) · [ ] `gift` selling gift cards
+@@ -280,7 +281,7 @@ Status as found in the zip you sent (I only inspected files; not run).
+     - **0045** [ ] `fix/keyboard` keyboard and scanner problems · [ ] `fix/locked-out` forgotten PIN or lost pass · [ ] `concepts` how the POS works (overview)
+     - **0046** [ ] `concepts/data-and-sync` where data lives, Shopify as shared storage, the outbox · [ ] `concepts/roles` roles and what each can do · [ ] `concepts/money` cents, rounding, GST
+     - **0047** [ ] `concepts/glossary` words used in the POS · B7d (help from every screen) · a final check that every screen and setting has a page
+-  - [ ] **Links owed from 0031:** `pay` describes cash, gift card and split payments in a few lines because their own pages do not exist yet, and it does not link to them. When 0032 adds `pay/cash`, `pay/gift-card` and `pay/split-and-part` (and 0033 adds `pay/receipts`), add them to `pay`'s `related` and link them from the matching Basic paragraphs. In the same way, `pay/card` should link `fix/card-declined` and `fix/reader` once 0043 builds them, and `sales/bundles` should link `staff` (who can open Settings) once 0039 builds it.
++  - [ ] **Links owed from 0031:** `pay` describes cash, gift card and split payments in a few lines because their own pages do not exist yet, and it does not link to them. 0032 did this for `pay/cash`, `pay/gift-card` and `pay/split-and-part`. Still owed: when 0033 adds `pay/receipts`, add it to `pay`'s `related` and link it from the receipt paragraph; when 0033 to 0035 add the cash pages (`cash`, `cash/open-close`, `cash/change`, `cash/smart-change`), link them from `pay/cash`, which names the drawer, Smart change and Count & close without links today. In the same way, `pay/card` should link `fix/card-declined` and `fix/reader` once 0043 builds them, and `sales/bundles` should link `staff` (who can open Settings) once 0039 builds it.
+   - [ ] **Page update owed (A16 is now built, 0048 to 0052):** `sales/cart-and-prices` still describes the single "Price adjustment" on a line. It needs a pass for Line, Item and Whole order prices, the checkout review and reasons. Small patch of its own, placed after the next batch of new pages unless you want it sooner.
+   - Pages describe the app as it is now. `sales/cart-and-prices` needs the update listed above now that A16 is built. Anything that mentions "More ▸ Help" is true from 0029.
+   - [ ] B7e **You:** (N21) read the three pages and tell me what is wrong or unclear.
+@@ -329,12 +330,13 @@ Ordered by priority, highest first.
+ - [ ] N18 **Non-blocking (B1c):** the smart change test in B1j.
+ - [ ] N19 **Non-blocking (B1f):** the float report test in B1k.
+ - [ ] N20 **Non-blocking (B5a):** the display mode test in B5d. Registers still on an older app version ignore the mode and show Standard, so update every register.
+-- [ ] N21 **Non-blocking (B7):** read the help pages in `help/` (now twelve, the newest being `sales/bundles`, `pay` and `pay/card` from 0031) (plain Markdown, or in the app from 0029) and tell me if the tone, the level of detail, or any fact is wrong. Cumulative depth is confirmed (you said it is what you wanted), so that question is closed. Changing page text costs nothing now and a lot after 58 pages.
++- [ ] N21 **Non-blocking (B7):** read the help pages in `help/` (now fifteen, the newest being `pay/cash`, `pay/gift-card` and `pay/split-and-part` from 0032) (plain Markdown, or in the app from 0029) and tell me if the tone, the level of detail, or any fact is wrong. Cumulative depth is confirmed (you said it is what you wanted), so that question is closed. Changing page text costs nothing now and a lot after 58 pages.
+ - [ ] N22 **Non-blocking (A16.1, A16.2):** on the iPad, add 13 of a product with a couple of deals, open the line ▸ Line price adjustment, set a final price, and check the row reads right in the cart. Then change the quantity on that line and check it is flagged with the right reason, and try Keep, Adjust and Remove. Try a cart discount alongside it, a gift card (should be unavailable) and a price at or above the current one (should be refused). Tell me if the flag wording or the keypad flow is awkward. Also say whether you want Reports to show line adjustments apart from discounts.
+ - [ ] N23 **Non-blocking (A16.4, A16.7):** on the iPad, ring up a few items (with a gift card in one try), open ••• ▸ Whole order price and set a total. Check the footer and the per-line rows read right and the receipt shows "Order price adjustment". Then add another item and check the order price is flagged and Keep / Remove work. Try setting a line price on that cart and an order total on a cart with line prices (both should ask first), and save the cart (it should say the order price isn't kept). Tell me if the wording is awkward, and whether you would rather the order price spread evenly or by value (it is by value now).
+ - [ ] N24 **Non-blocking (A16.3):** on the iPad, add 5 of a product, open the line ▸ Item price adjustment, pick Fixed quantity, step to 2 and set a price: check the line splits into 3 at the normal price and 2 at yours. Then try All in cart on another product, add one more of it (it should join the line at your price), and use Reset. Change the quantity on a fixed-quantity line and check the flag and Keep / Adjust / Remove. Tell me if the sheet is confusing, whether splitting the line is what you expect, and whether an All in cart price should be able to cover different variations of the same product (it only covers the exact variation now).
+ - [ ] N25 **Non-blocking (A16.5):** on the iPad, in normal and in guided checkout, set a line price, an item price and a whole order price on different sales, press Charge / Take payment and check the list reads right. Then change the quantity on an adjusted line so it is flagged: Continue should be unavailable until you Keep, Adjust or Remove. Check Adjust takes you to the right editor and that coming back to Charge shows the list again with the new numbers. Tell me if the list is too much to read at the till or the wording is awkward, and whether you want unflagged adjustments to need a tap each sale or just show the flagged ones (it shows them all, once, now).
+ - [ ] N26 **Non-blocking (A16.8):** on the iPad, set an item price, a line price and a whole order price on separate sales, each with a reason (and one without), and finish the sales. Check the checkout review shows the reasons, the transaction detail shows the "Price adjustments" card, and Reports shows the "Price adjustments" card with a row per reason. In Shopify admin, open one of the orders and check the `pos_adjustments` attribute is there. Tell me if the reason box is in the way at the till, whether you want a few tap-to-pick reasons instead of typing (for example Damaged, Price match, Regular customer), and whether the reason should also go on the receipt or in the sales CSV.
++- [ ] N30 **Non-blocking (B7, found while writing 0032):** when a sale is paid with a gift card, the receipt built straight after the sale (the one uploaded to the receipt server and shown at the QR link) prints the payment as "Gift card" followed by the **full code** (`payment` in `src/lib/receiptDoc.ts`, using the code `useGift` saved). The Shopify order only keeps the last four characters, so a receipt rebuilt later shows just those. Anyone with the receipt link can read the full code, and if the card still has a balance they could spend it. Do you want a small fix patch that shows only the last four characters on receipts? Say yes and I will slot it in and update the gift card page, which states the current behaviour.
+ - [ ] N29 **Non-blocking (B7, found while writing 0031):** shared settings (bundle deals, staff, fees, cash rounding, the PIN requirement, price adjustment limits) are sent to Shopify once, when you save, with the error swallowed (`void pushSharedSettings().catch(() => {})`). If the register is offline at that moment nothing retries, so the change stays on that register until someone saves a shared setting from it again. The bundles page says so. I did not change it. Do you want a small fix patch: remember that a push is owed and retry it on the 25 second tick? Say yes and I will slot it in; otherwise the pages keep describing it as it is.
+ - [ ] N28 **Non-blocking (A16.9):** on the iPad, open Staff ▸ Price adjustments by role and turn off, for Cashiers, line prices only. Sign in as a cashier (PIN, then also by pass): the line editor's Line price row should refuse with the role message while item price and the ••• Whole order price still work. Then as an owner set a line price on a line, switch to the cashier (the line price stays) and change that line's quantity so it is flagged: the banner and the checkout review should show only Remove, and Continue should stay blocked until you Remove it. Try the same for whole order prices, and check a manager can't edit the switches while an owner exists. Also confirm a second register gets the switches after a minute or two. Tell me if the wording is too long for the till, and whether you also want the cart discount and line discounts limited by role.
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+diff --git a/docs/patches/0032-plan.md b/docs/patches/0032-plan.md
+new file mode 100644
+index 0000000..a6d696d
+--- /dev/null
++++ b/docs/patches/0032-plan.md
+@@ -0,0 +1,28 @@
++# Patch 0032: in-app help, pages 13 to 15 (B7)
++
++Items: the 0032 pages from the B7 page plan. Status: `[x]` done and tested in my sandbox, `[ ]` needs you.
++
++## What you asked for
++- Continue B7 with patch 32. Small chunks, three pages per patch, planned in the progress doc and ticked as they are done.
++
++## Steps
++1. [x] Cloned the latest repo (HEAD "Docs Part 4": 0030, 0031 and 0048 to 0053 are all in) and read `DEV_NOTES.md` and `docs/PROGRESS.md` from the clone. The copy of `DEV_NOTES.md` I fetched over the web first is an old one (it stops at the first patches), so everything here comes from the clone.
++2. [x] Read the code behind each page before writing it: `src/screens/Pay.tsx`, `src/screens/CashSheet.tsx`, `src/lib/cashSale.ts`, `src/lib/saleBuilder.ts`, `src/lib/money.ts`, `src/lib/changeScore.ts`, `src/state/cashProfile.ts`, `src/ui/DenomPad.tsx`, `src/ui/kit.tsx` (Keypad), `src/screens/sheets.tsx` (GiftCheckSheet), `src/lib/shopify/giftcards.ts`, `src/lib/giftCode.ts`, `src/lib/saleCodec.ts`, `src/lib/shopify/orderModel.ts`, `src/lib/receiptDoc.ts`, `src/lib/receiptSync.ts`, `src/lib/simpleLabels.ts`.
++3. [x] Ran the real functions to check the numbers in the examples: `allocate` ($10.00 in 3 is 334, 333, 333), `roundCash` (1c and 2c down, 3c and 4c up), `cashTender` (rounded, short and settling cases), `planChange`, `partCashOption` (drawer $20, customer hands $50, bill $37 gives $30 cash and $7 left) and `handBackOptions` (drawer $5, customer hands $20 + $10 + $5, bill $25 gives take $20 + $5, hand back $10).
++4. [x] `help/pay/cash.md`: the Cash received sheet and tap pad, the three outcomes, the change step and its buttons, the red "can't make change" box and its options, skipping the tracking, rounding, what each button writes to the drawer record (table), one flowchart, fault checklist.
++5. [x] `help/pay/gift-card.md`: Check gift card sheet, Use as payment, messages, why the card is charged first, how a code is found (last four characters plus the hidden fingerprint), expiry, receipts, one flowchart, fault checklist.
++6. [x] `help/pay/split-and-part.md`: the Split amount sheet, equal shares and how each payment counts as one share (worked $90 example), part payments by cash, cash plus card and gift card, how the next payment amount is chosen, cancelling, one flowchart, fault checklist.
++7. [x] `help/pay/index.md`: `related` now lists the three new pages and the matching Basic bullets link to them (the "links owed" item from 0031).
++8. [x] `npm run help:build` (15 pages, no problems) and `help/help.json` rewritten. The three new flowcharts also parse with the in-app drawing's own parser.
++9. [x] Tests: `tests/helpdocs.test.ts`, `tests/helpview.test.ts` and `tests/helpcitations.test.ts` (45 tests) pass. No new tests: these are pages only. I could not run the whole suite or `tsc` this time (the full `npm install` fails in my sandbox on the private Zeller registry), but no app code changed.
++10. [x] `docs/PROGRESS.md`: patch log row, the 0032 pages ticked, the links-owed line updated, N21 widened, new question N30, and one correction (below).
++11. [ ] You: N21 now covers these three pages. N30 is a question (below).
++
++## Correction to the progress doc
++The 0019 notes said **Give change but don't track it** records the sale without touching the ledger. The code does not do that: **Done, but don't track it** on the change step still records the notes and coins the customer handed over, and only skips the change given (so the ledger then holds change that has left the drawer). **Exact amount (don't track notes)** does skip both. The cash page describes the real behaviour, and the progress doc line is fixed. I did not change the app. If you would rather the button skipped both, say so and I will make it a small patch.
++
++## Things I noticed while reading the code (not changed here)
++- **Gift card codes on receipts (N30).** A sale paid by gift card prints the full code on the receipt made straight after the sale. Only the last four characters are stored on the Shopify order.
++- **The split rule is untested.** The next payment amount (`target` in `Pay.tsx`) is written inline in the screen, so the only test is for `allocate` in `tests/lib.test.ts`. Pulling it into a small pure function with tests would be an easy follow-up.
++- **Gift card expiry is not checked by the POS.** The sheet shows the date, and Shopify decides at charge time.
++- **A cancelled part-paid sale never credits a gift card back.** Already noted in 0031, repeated on the gift card page.
+diff --git a/help/help.json b/help/help.json
+index 67b115a..453681c 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "a42febae",
++ "version": "77f602a4",
+  "pages": [
+   {
+    "id": "pay",
+@@ -21,6 +21,9 @@
+    ],
+    "related": [
+     "pay/card",
++    "pay/cash",
++    "pay/gift-card",
++    "pay/split-and-part",
+     "sales/cart-and-prices",
+     "sales/bundles",
+     "sales"
+@@ -28,7 +31,7 @@
+    "updated": "2026-10-11",
+    "lead": "The Payment screen is where a sale is paid for. You reach it with **Charge** on the cart (or **Take payment** in the guided checkout). Nothing is taken from the customer until they pay.",
+    "sections": {
+-    "basic": "### Getting there\nTap **Charge** on the cart. Two checks can come first, only if they apply:\n1. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].\n2. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].\n\nThen the **Payment** screen opens.\n\n### What you see\n- The big number is **Total due**. Once part of the bill is paid it changes to **Remaining**, with *of $…* underneath.\n- Under it, a list of the payments taken so far (card, cash, gift card) and what each paid.\n- The ways to pay. In standard mode the buttons read **Card**, **Cash**, **Gift card** and **Split amount**. In Simple and Minimal modes they read **Pay by card**, **Pay with cash**, **Pay with a gift card** and **Split the payment**, each with a line under it saying what it does, and a heading *How is the customer paying?*\n- If the card reader is not ready you see **Reader issue** in red at the top right. Cash and gift cards still work.\n\n### The four ways to pay\n- **Card**: the customer taps, inserts or swipes on the Zeller terminal. See [[pay/card]].\n- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back.\n- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away.\n- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot.\n\nEvery payment taken is added to the list. Pay the rest any way you like, in any order, until **Remaining** reaches $0.00.\n\n### When it is fully paid\nThe sale finishes by itself the moment nothing remains. It is saved and sent to Shopify in the background, and the **Receipt** sheet opens: show a QR code, email or text the link, share it, or tap **No receipt**. Tapping that (or finishing the receipt) clears the cart for the next customer.\n\nIf the total is $0.00 (a free sale), there is one button, **Complete $0.00 sale**.\n\n### Going back\n- **Nothing paid yet:** **Back** returns you to the cart and nothing has changed.\n- **Part paid:** the cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. If you choose **Refund & cancel**, card payments are refunded to the customer's card through the terminal. Cash and gift card payments are **not** returned automatically: hand the cash back yourself (the cash drawer record is put back for you) and deal with the gift card by hand.\n- **While the terminal is working** there is no Back button. Use **Cancel** on the *Waiting on terminal* strip first.\n\n### Good to know\n- A cash payment can be rounded to the nearest 5c if **Cash rounding (5c)** is on in Settings ▸ Payments. It only changes the cash amount due, and only when cash pays the whole of what remains. Card amounts are always exact.\n- The register will not lock, and staff cannot be switched, while a card payment is waiting on the terminal.\n- If the iPad is offline the sale is kept on it and sent when it is back online. Card payments need a connection, so they will not work offline, but cash will.",
++    "basic": "### Getting there\nTap **Charge** on the cart. Two checks can come first, only if they apply:\n1. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].\n2. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].\n\nThen the **Payment** screen opens.\n\n### What you see\n- The big number is **Total due**. Once part of the bill is paid it changes to **Remaining**, with *of $…* underneath.\n- Under it, a list of the payments taken so far (card, cash, gift card) and what each paid.\n- The ways to pay. In standard mode the buttons read **Card**, **Cash**, **Gift card** and **Split amount**. In Simple and Minimal modes they read **Pay by card**, **Pay with cash**, **Pay with a gift card** and **Split the payment**, each with a line under it saying what it does, and a heading *How is the customer paying?*\n- If the card reader is not ready you see **Reader issue** in red at the top right. Cash and gift cards still work.\n\n### The four ways to pay\n- **Card**: the customer taps, inserts or swipes on the Zeller terminal. See [[pay/card]].\n- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back. See [[pay/cash]].\n- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away. See [[pay/gift-card]].\n- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot. See [[pay/split-and-part]].\n\nEvery payment taken is added to the list. Pay the rest any way you like, in any order, until **Remaining** reaches $0.00.\n\n### When it is fully paid\nThe sale finishes by itself the moment nothing remains. It is saved and sent to Shopify in the background, and the **Receipt** sheet opens: show a QR code, email or text the link, share it, or tap **No receipt**. Tapping that (or finishing the receipt) clears the cart for the next customer.\n\nIf the total is $0.00 (a free sale), there is one button, **Complete $0.00 sale**.\n\n### Going back\n- **Nothing paid yet:** **Back** returns you to the cart and nothing has changed.\n- **Part paid:** the cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. If you choose **Refund & cancel**, card payments are refunded to the customer's card through the terminal. Cash and gift card payments are **not** returned automatically: hand the cash back yourself (the cash drawer record is put back for you) and deal with the gift card by hand.\n- **While the terminal is working** there is no Back button. Use **Cancel** on the *Waiting on terminal* strip first.\n\n### Good to know\n- A cash payment can be rounded to the nearest 5c if **Cash rounding (5c)** is on in Settings ▸ Payments. It only changes the cash amount due, and only when cash pays the whole of what remains. Card amounts are always exact.\n- The register will not lock, and staff cannot be switched, while a card payment is waiting on the terminal.\n- If the iPad is offline the sale is kept on it and sent when it is back online. Card payments need a connection, so they will not work offline, but cash will.",
+     "deep": "### Part payments and the order they are taken in\nA sale is made of **payments** (the app calls them tenders). Each one has its own amount, and the sale is paid when they add up to the total. You can mix any methods, in any order, and as many as you like. The *Next payment* amount is just the figure the next card, cash or gift card payment will aim for: the split amount, an equal share, or everything that remains.\n\n### Cash rounding in a part-paid sale\nRounding is worked out on the cash that is **due**, not on the amount handed over. If cash pays the whole of what remains, the due amount is rounded to the nearest 5c and the difference is kept on the payment. If cash is only part of the bill, nothing is rounded.\n\n### The gift card is charged first, not last\nWhen you choose a gift card, the amount is taken off the card's balance straight away, before the sale finishes. If Shopify cannot do it you see **Gift card could not be charged** with the reason, and nothing is added to the sale. This is why cancelling a part-paid sale does not give the money back to a gift card by itself.\n\n### What \"finished\" means\nWhen the last payment makes **Remaining** $0.00, the app builds the sale record, takes the sold units off the stock count on this iPad, puts the sale in a queue for Shopify, and, if the sale started from a saved cart, removes that saved cart. The queue creates the Shopify order and adjusts Shopify's stock. If that fails or the iPad is offline, the sale stays queued and is retried. You can see how many are waiting in More ▸ Support & diagnostics ▸ Sync.\n\n### Why the cart locks\nOnce any payment is on the sale, changing the cart would make what was paid and what is owed disagree. So the lines, the keypad, Save cart and Clear cart all say **Payment in progress** until the sale is paid or cancelled.",
+     "advanced": "### From Charge to a finished sale\n```mermaid\nflowchart TD\n  A[Charge in CartPane.tsx or Take payment in GuidedCheckout.tsx] --> B[Pay.tsx: remaining = total minus paidTotal]\n  B --> C{which button}\n  C -->|card| D[runCard: see the card page]\n  C -->|cash| E[CashSheet then takeCash]\n  C -->|gift card| F[GiftCheckSheet then useGift debits the card]\n  C -->|split| G[chunk or equalLeft sets the next payment amount]\n  D --> H[addTender adds to cart.tenders]\n  E --> H\n  F --> H\n  G --> B\n  H --> I{remaining is 0?}\n  I -->|no| B\n  I -->|yes| J[buildSale then applyLocalStock then recordSale]\n  J --> K[ReceiptPrompt then finishAll empties the cart]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen and all its state | `Pay` in `src/screens/Pay.tsx` |\n| Total, what is paid, what remains | `usePriced` in `src/state/selectors.ts` gives the total; `paidTotal` in `src/lib/saleBuilder.ts` adds up the payments; `Pay` itself works out what remains |\n| Building a payment | `cardTender`, `cashTender` in `src/lib/saleBuilder.ts`; the gift card payment is built in `useGift` in `Pay.tsx` |\n| Finishing | the `finalising` effect in `Pay.tsx`: `buildSale`, `applyLocalStock`, `recordSale` (`src/lib/saleBuilder.ts`, `src/lib/sync.ts`) |\n| Cash ledger | `postCashSale`, `reverseCashTender`, `cashDue` in `src/lib/cashSale.ts` |\n| Cancelling a part-paid sale | `abandon` in `Pay.tsx` |\n| Which card states may use a sheet | `showsOwnSheet`, `showsWaitingStrip`, `lockPayButtons` in `src/lib/payUi.ts` |\n| Simple mode wording | `payTitle`, `payHint`, `payQuestion` in `src/lib/simpleLabels.ts` |\n| Receipt step | `ReceiptPrompt` in `src/screens/Receipt.tsx` |\n\nThe payments live on the cart as `cart.tenders`, so they survive leaving the screen and are what locks the cart. The sale's id (`cart.saleUuid`) is made at the first payment and kept until the sale is paid or cancelled. Card attempt references are built from it, which is how a payment can be matched to its sale later.\n\nThe finishing effect runs once (a `finalising` flag stops it repeating) when there is at least one payment, nothing remains, and the terminal is not waiting. The flag is only cleared by `finishAll`.\n\n### Reading the code for a fault\n- **Pay by card, Cash, Gift card and Split are all greyed out.** `lockPayButtons` is true while the card phase is waiting. If the app was closed mid-payment, reopen the Payment screen: the waiting state is not saved, but the attempt is. Check the card page for what happens to an unfinished attempt.\n- **Paid in full but the sale did not finish.** The effect holds off while the card phase is `waiting`. Look for the strip at the top of the screen.\n- **Cart is stuck as \"Payment in progress\" with nothing paid.** Something left a payment in `cart.tenders`. Open Payment and use **Back**, then **Refund & cancel**.\n- **Sale is finished but missing in Shopify.** It is in the queue: More ▸ Support & diagnostics ▸ Sync shows how many are waiting and the last error, and **Sync now** retries.\n- **A free sale has no payment buttons.** Expected: only **Complete $0.00 sale** shows, and it adds a $0 cash payment.\n- **Tests.** `tests/payui.test.ts` (which card states may draw a sheet), `tests/sale.test.ts` and `tests/cashsale.test.ts` (building sales and cash payments), `tests/simplelabels.test.ts` (Simple mode wording)."
+    }
+@@ -65,6 +68,99 @@
+     "advanced": "### What happens when you tap Card\n```mermaid\nflowchart TD\n  A[runCard in Pay.tsx] --> B{buttons locked or an unknown attempt on this sale}\n  B -->|unknown attempt| C[Payment status unknown sheet]\n  B -->|no| D{terminal ready}\n  D -->|no| E[checkReader in zellerBridge.tsx]\n  E -->|still no| F[Reader sheet]\n  D -->|yes| G[attemptRef then onStarted saves the attempt as started]\n  E -->|ready| G\n  G --> H[startCharge in zeller.ts calls terminal.purchase]\n  H --> I[normalise turns the SDK result into a PaymentResult]\n  I -->|APPROVED| J[cardTender then addTender]\n  I -->|DECLINED| K[Not approved sheet]\n  I -->|CANCELLED| L[back to idle]\n  I -->|NOT_READY| F\n  I -->|UNKNOWN| M[recheck: reconcile up to 6 times 4 s apart]\n  M -->|approved| J\n  M -->|declined or cancelled| K\n  M -->|no answer| C\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The flow, sheets and strip | `runCard`, `recheck`, `manualResolve` in `src/screens/Pay.tsx` |\n| Which states may draw a sheet | `showsOwnSheet`, `showsWaitingStrip`, `lockPayButtons` in `src/lib/payUi.ts` |\n| Talking to the SDK | `startCharge`, `startRefund`, `reconcile`, `normalise`, `describeEvent` in `src/lib/zeller.ts` |\n| One terminal for the whole app | `ZellerRoot`, `getTerminal`, `checkReader`, `pairReader` in `src/zellerBridge.tsx` |\n| Code to message | `RESPONSE_CODES`, `lookupResponse` in `src/lib/responseCodes.ts` |\n| Fees | `feeFor`, `feeRateFor` in `src/lib/fees.ts`; `cardTender` in `src/lib/saleBuilder.ts` |\n| Pairing, test purchase, attempts list | `src/screens/Diagnostics.tsx` |\n| Saved attempts | `Attempt` in `src/state/store.ts` (`pos.attempts`) |\n| Locking while waiting | `paymentActive` in `src/lib/screensaver.ts`, used by `lockDecision` in `src/lib/posLock.ts` and by staff switching in `src/lib/staffAuth.ts` |\n\nThe SDK returns errors instead of throwing them. `normalise` turns either kind of result into one of five outcomes: `APPROVED`, `DECLINED`, `CANCELLED`, `UNKNOWN` or `NOT_READY`, and nothing outside `zeller.ts` reads a raw SDK result. A network or connection failure is `NOT_READY` when the terminal had not started, and `UNKNOWN` once it had.\n\n`startCharge` does one more thing before it returns. If the result is cancelled or unknown, or a decline arrived after the terminal had started processing, it calls `reconcile`, which looks the reference up with `getTransactions`. An approved match turns the result into `APPROVED`. That lookup is what makes Cancel safe.\n\nThe attempt's status moves `started`, then `approved`, `declined`, `cancelled`, `unknown` or `resolved`. A **started** attempt keeps `paymentActive` true for five minutes, which is what blocks locking and staff switching; an attempt left at **started** by a closed app stops blocking after that. The waiting state itself is not saved, so reopening Payment shows the buttons again, but an `unknown` attempt on the sale still blocks **Card** through `blockedByUnknown`.\n\nEvents are written to the history CSV with `csv.event`: `declined`, `cancelled`, `unknown_payment`, `unknown_resolved`, `refund_failed` and `void`.\n\n### Reading the code for a fault\n- **Card button does nothing.** The amount is $0 (`runCard` returns when it is 0 or less), the buttons are locked by a waiting card phase, or an `unknown` attempt exists for this sale.\n- **\"Reader issue\" that will not clear.** In More ▸ Support & diagnostics tap **Check reader**: it calls `initialise` on the terminal. `Setup Required` means pair it. `Network Failure` shows as *Reader offline — no internet*.\n- **The customer was charged but the sale shows no card payment.** It is an `unknown` attempt: check **Card attempts (this device)** in Support & diagnostics (the last eight, with their reference and who resolved them) and look for the same reference in the Zeller dashboard. The reference is the sale id followed by the attempt number.\n- **A decline message is vague.** The code is not in `RESPONSE_CODES`, so the SDK's own text is shown. Add it there if you want better wording.\n- **The reader says busy.** *Paired Device Busy* means another register is using the terminal. Only one register can charge at a time.\n- **Tests.** `tests/lib.test.ts` covers the response codes, fees, `normalise`, and `startCharge` (approve; a cancel after processing that still approves through `reconcile`; a timeout that stays unknown; a decline that keeps the cart) and `startRefund`. `tests/payui.test.ts` covers which states may draw a sheet."
+    }
+   },
++  {
++   "id": "pay/cash",
++   "title": "Paying by cash",
++   "parent": "pay",
++   "summary": "Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.",
++   "tags": [
++    "cash",
++    "change",
++    "notes",
++    "coins",
++    "drawer",
++    "ledger",
++    "rounding",
++    "short",
++    "part payment",
++    "denomination",
++    "tap pad"
++   ],
++   "related": [
++    "pay",
++    "pay/card",
++    "sales/cart-and-prices"
++   ],
++   "updated": "2026-10-11",
++   "lead": "Cash is taken by tapping the notes and coins the customer hands over. The POS works out the change, shows which notes and coins to take from the drawer, and keeps a record of what is in the drawer as it goes.",
++   "sections": {
++    "basic": "### Taking cash\n1. On the **Payment** screen tap **Cash** (**Pay with cash** in Simple and Minimal modes).\n2. The **Cash received** sheet opens. At the top it shows **Due**, the amount the customer owes in cash.\n3. Tap each note and coin the customer hands you. Each tap adds one. The number under the note or coin shows how many you have tapped, and **Received** shows the total.\n4. The line under **Due** tells you where you are:\n   - **Tap what the customer hands over**: nothing tapped yet.\n   - **Short by $…** (red): they have not given enough.\n   - **Exact** (green): the right amount.\n   - **Change to give: $…** (green): they gave too much and you owe change. It turns red if the drawer cannot make that change (see below).\n\n### The tap pad\n- **Add / Remove** switch: choose **Remove** to take notes or coins off what you have tapped. Removing something you have not tapped says *None of that to remove.*\n- **Each tap** (**×1**, **×5**, **×10**): how many one tap adds, handy for rolls of coins.\n- **Undo** takes back your last tap and tells you what it removed and the new total. **Start over** clears everything.\n- Notes are $100, $50, $20, $10 and $5. Coins are $2, $1, 50c, 20c, 10c and 5c.\n\n### What happens next\n- **Exact:** tap **Take cash**. The payment is added and, if nothing remains, the sale finishes.\n- **Short:** you can ask for more, or tap **Take $… as part payment**. The cash is recorded as a payment of what they gave, and the rest is paid another way. See [[pay/split-and-part]].\n- **Change to give:** tap **Next: give $… change**. The **Give change** screen shows **Take from the drawer** with the notes and coins to hand back.\n  - **Gave this** confirms you handed over exactly that.\n  - **I'll give different notes and coins** lets you tap what you really gave. The total must match the change owed.\n  - **Show another way** appears only when Smart change is on in Settings ▸ Payments and there is more than one good option. It steps through them.\n  - **Back** returns to the notes you tapped.\n\n### When the drawer cannot make the change\nA red box says **Can't make $… change** and **Next** is greyed out. It lists what could work:\n- **Ask for less:** take a smaller part of what they handed over and give the rest straight back. Tap **Use that smaller handover** to do it.\n- **Cash $… + the rest another way:** take part of the bill in cash (the most the drawer can make change for) and put the remainder on card or another method.\n- **Or take the full amount by card.**\n\nIf the box says **No cash in the ledger**, the drawer was never opened or counted, so the POS has no idea what is in it. Open the drawer from More ▸ Cash drawer first.\n\nIf you can see the drawer really does have the change and the record is out of date, tap **The drawer has it (ledger is out of date)**. You then tap the notes and coins you give. Fix the record later with **Correct contents** or **Count & close** in the cash drawer.\n\n### Skipping the tracking\nSometimes the queue is long and you just want to finish.\n- **Exact amount (don't track notes)** shows before you tap anything. It takes the exact amount and does not touch the drawer record.\n- **Done, but don't track it** on the **Give change** screen finishes the sale. The notes the customer handed over **are** added to the drawer record, but the change you gave is **not** taken out, so the record will show too much cash until the next count.\n\nEvery skip makes the record drift a little. A count and close at the end of the day puts it right.\n\n### Cash rounding\nIf **Cash rounding (5c)** is on in Settings ▸ Payments, the cash due on the **last** payment is rounded to the nearest 5c. 1c and 2c round down, 3c and 4c round up. So $10.02 is due as $10.00 and $10.03 as $10.05. Earlier payments in a split are never rounded.\n\n### Free sales\nIf the total is $0.00 the only button is **Complete $0.00 sale**.\n\n### Cancelling a sale that has cash in it\nIf you back out of a part-paid sale, hand the cash back yourself. The drawer record is put back for you for any cash that was tracked.",
++    "deep": "### Where the change comes from\nThe change is made from the notes and coins in the drawer record **plus what the customer just handed over**. So the customer's own notes can go straight back as change, and a drawer with no small notes can still change a $20 if the customer handed over a $10 and a $5 as well. Among all the exact ways to make the change, the POS picks the one with the fewest pieces, which is quickest to count out. With **Smart change** on it picks the way that leaves the drawer best stocked for the next sales instead.\n\n### How rounding is worked out\nRounding is applied to the cash **due**, not to what was handed over, and only when that cash payment clears the whole of what remains. The sale keeps the real amount and records the rounding separately, so receipts and reports can show it. Rounding down means the customer paid up to 2c less than the bill, rounding up means up to 2c more. If the cash is only part of the bill, nothing is rounded.\n\n### Short payments are not change\nIf the customer hands over less than is due, the payment is recorded as the amount handed over, with no change. That is what **Take $… as part payment** does.\n\n### What each button writes to the drawer record\n| You tap | Notes and coins in | Change out |\n|---|---|---|\n| **Take cash** (exact) | recorded | none |\n| **Take $… as part payment** | recorded | none |\n| **Gave this** | recorded | recorded |\n| **Done, but don't track it** (change screen) | recorded | **not** recorded |\n| **Exact amount (don't track notes)** | not recorded | not recorded |\n\n### The two ways round a drawer that cannot make change\n- **Ask for less** looks for the smallest amount you could keep from what they handed over that still covers the bill and whose change the drawer **can** make. Example: the drawer has one $5, the customer hands you $20, $10 and $5 for a $25 bill. Keep the $20 and $5 and hand the $10 straight back, so no change is needed at all.\n- **Part in cash** looks for the largest cash amount below the bill, in 5c steps, whose change can be made. Example: the drawer has one $20, the customer hands you a $50 for a $37 bill. The $13 change cannot be made, but $30 in cash works ($20 change from the drawer), leaving $7 for card.\n\n### The record can drift\nThe record is only as good as what is tapped. It lives on each iPad separately. Count & close, Correct contents, and the skip buttons above are the ways it gets reset or knocked out of line.",
++    "advanced": "### From Cash to a payment\n```mermaid\nflowchart TD\n  A[Cash button in Pay.tsx] --> B[CashSheet receive step]\n  B --> C{cashStatus of due and received}\n  C -->|short| D[Take as part payment]\n  C -->|exact| E[Take cash]\n  C -->|change| F{planChange from drawer plus received}\n  F -->|exact| G[GiveCash change step]\n  F -->|impossible| H[handBackOptions and partCashOption]\n  H --> G\n  G --> I[onTake with received and given]\n  D --> I\n  E --> I\n  I --> J[takeCash in Pay.tsx]\n  J --> K[cashTender builds the Tender]\n  J --> L[postCashSale writes the ledger]\n  K --> M[addTender]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The sheet and its two steps | `CashSheet` in `src/screens/CashSheet.tsx` |\n| The change step (also used for cash refunds) | `GiveCash`, `GiveCashSheet` in `src/screens/CashSheet.tsx` |\n| The tap pad | `DenomPad` in `src/ui/DenomPad.tsx`; the maths in `src/lib/cashLedger.ts` |\n| Due, short, exact, change | `cashDue`, `cashStatus` in `src/lib/cashSale.ts` |\n| Which notes and coins to give | `planChange` in `src/lib/cashSale.ts`; `planChangeSmart` in `src/lib/changeScore.ts` when Smart change is on |\n| Ask for less, part in cash | `handBackOptions`, `partCashOption` in `src/lib/cashSale.ts` |\n| Building the payment | `cashTender` in `src/lib/saleBuilder.ts`; `takeCash` in `src/screens/Pay.tsx` |\n| Writing and undoing the drawer record | `postCashSale`, `reverseCashTender` in `src/lib/cashSale.ts` |\n| Rounding | `roundCash` in `src/lib/money.ts` |\n| Empty drawer check | `ledgerEmpty` in `src/lib/cashSale.ts` |\n\n### The payment record\nA cash payment (a `Tender` of kind `cash`) has these fields:\n- `amountCents`: what was applied to the bill. For a settling payment this is the amount due **before** rounding. For a short payment it is what was handed over.\n- `tenderedCents` and `changeCents`: what was handed over and what went back.\n- `roundingCents`: the rounded due minus the amount (can be negative).\n- `cashIn` and `cashOut`: the notes and coins received and given, only when they were tracked.\n\n`cashTender` settles when the amount handed over is at least the due amount (rounded if rounding is on). Rounding is only passed in when `takeCash` sees `isFinal`: the payment is for everything that remains and it is not a part-cash amount (`applyCents` is not set). The sheet shows the same rounded amount because it gets it from `cashDue`.\n\n`takeCash` writes to the drawer record only when `received` or `given` is set, which is why the skip buttons behave as the table above says. On a cancelled sale `reverseCashTender` takes out `cashIn` and puts back `cashOut`.\n\n### Reading the code for a fault\n- **Next is greyed out and the box says Can't make change.** `planChange` found no exact combination from the drawer plus what was received. Check the record in More ▸ Cash drawer.\n- **The drawer record shows more cash than the drawer holds.** Someone used **Done, but don't track it** on the change screen, or gave change without confirming. Use Correct contents.\n- **Rounded amount looks wrong.** Check Settings ▸ Payments ▸ Cash rounding (5c). It only applies when this payment clears the remaining amount.\n- **Show another way is missing.** Smart change is off, there is only one way to make the change, or the search was cut short.\n- **Tests.** `tests/cashsale.test.ts` (status, change, ask for less, part in cash, ledger entries), `tests/cashledger.test.ts` (the tap pad and ledger), `tests/changescore.test.ts` (Smart change), `tests/sale.test.ts` (building cash payments)."
++   }
++  },
++  {
++   "id": "pay/gift-card",
++   "title": "Paying with a gift card",
++   "parent": "pay",
++   "summary": "Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.",
++   "tags": [
++    "gift card",
++    "gift",
++    "code",
++    "qr",
++    "scan",
++    "balance",
++    "redeem",
++    "shopify",
++    "disabled",
++    "expired",
++    "not found"
++   ],
++   "related": [
++    "pay",
++    "pay/card",
++    "pay/cash"
++   ],
++   "updated": "2026-10-11",
++   "lead": "A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.",
++   "sections": {
++    "basic": "### Taking a gift card payment\n1. On the **Payment** screen tap **Gift card** (**Pay with a gift card** in Simple and Minimal modes).\n2. The **Check gift card** sheet opens. Tap **Scan** and scan the QR code on the card or receipt, or type the code into **Code** and tap **Check**. **Check** stays greyed out until at least four characters are typed.\n3. The sheet shows the card (**Card ••••** and its last four characters), its balance, and whether it is **Active** or **Disabled**. It may also say **code could not be verified** or **expires** with a date.\n4. Tap **Use as payment**. This button only appears when the card is **Active** and has a balance.\n5. The amount is taken from the card straight away and the payment is added to the list as **Gift card**.\n\nThe amount taken is the card's balance or the next payment amount, whichever is **less**. If the balance is smaller than what is owed, the rest stays under **Remaining** and you take it another way.\n\n### Typing and scanning the code\n- Letters and numbers only. Capitals, spaces and dashes do not matter.\n- A scanned gift card QR carries a prefix that starts with `shopify-giftcard`. You never have to remove it, the POS strips it for you.\n\n### Messages\n- **No gift card found for that code.** Check the code and try again. Look at the card or receipt rather than guessing.\n- **Lookup failed** with a reason: usually no internet. Gift cards need a connection, cash does not.\n- **Disabled** next to the balance: the card has been switched off in Shopify. There is no **Use as payment** button. Ask the owner.\n- **code could not be verified:** the card was not made by this POS, so the POS can only partly check it. It can still be used if **Active**.\n- **Gift card could not be charged** with a reason: Shopify refused. Nothing was taken from the card and nothing was added to the sale.\n\n### Good to know\n- A gift card is never rounded and has no card fee.\n- You cannot pay for a gift card with itself. A gift card sold in the same sale does not exist until that sale is paid.\n- If you cancel a part-paid sale, the money is **not** put back on the gift card. The POS tells you to deal with it by hand. Ask someone who can edit gift cards in Shopify.\n- To check a balance without paying, use the **Check gift card** option in the cart menu or More ▸ Gift cards.",
++    "deep": "### Why the card is charged first\nThe balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once, but it means a cancelled sale leaves the money gone. The POS charges the card, and only if Shopify agrees does it add the payment to the sale.\n\n### How a code is found\nShopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.\n\n### What the sale records\nThe payment keeps the card's Shopify id and the code. On the Shopify order it appears as a **Gift card** payment of that amount, with only the last four characters of the code stored. Refunds to the original gift card use the same id.\n\n### Expiry\nThe sheet shows an expiry date but the POS does not check it. If Shopify refuses an expired card you see **Gift card could not be charged** with Shopify's reason.",
++    "advanced": "### From Gift card to a payment\n```mermaid\nflowchart TD\n  A[Gift card button in Pay.tsx] --> B[GiftCheckSheet in sheets.tsx]\n  B --> C[stripGiftPrefix on typed or scanned text]\n  C --> D[lookupGiftCard in giftcards.ts]\n  D -->|none| E[No gift card found]\n  D -->|card| F{enabled and balance above 0}\n  F -->|no| G[no Use as payment button]\n  F -->|yes| H[useGift in Pay.tsx]\n  H --> I[debitGiftCard]\n  I -->|error| J[Gift card could not be charged]\n  I -->|ok| K[addTender with kind gift_card]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The sheet (also used by Check gift card) | `GiftCheckSheet` in `src/screens/sheets.tsx` |\n| Taking the payment | `useGift` in `src/screens/Pay.tsx` |\n| Code cleaning | `stripGiftPrefix`, `normaliseCode` in `src/lib/giftCode.ts` |\n| Finding and charging the card | `lookupGiftCard`, `debitGiftCard` in `src/lib/shopify/giftcards.ts` |\n| The payment record | `giftCardId`, `giftCardCode` on `Tender` in `src/lib/types.ts` |\n| Shopify order and stored code | `GATEWAY` in `src/lib/shopify/orderModel.ts`; `encodeTender` in `src/lib/saleCodec.ts` |\n| Refunds to a gift card | `src/lib/refundFlow.ts` |\n\n`useGift` takes the smaller of the card balance and the current target, charges it with a note naming the sale, then adds the payment with the cleaned code. It does not touch the cash drawer record.\n\n### Receipts\nThe receipt built straight after the sale uses the full code in the payment line, as **Gift card** followed by the code. A receipt rebuilt later from the Shopify order only knows the last four characters. Only the last four are stored on the order.\n\n### Reading the code for a fault\n- **Use as payment is missing.** The card is disabled or has a zero balance (`GiftCheckSheet` checks both).\n- **A card the customer swears is valid is not found.** More than one card ends in the same four characters and none carries this POS's fingerprint, or the code was typed wrongly.\n- **Charged but the sale shows no gift card payment.** The charge succeeded and the app stopped before `addTender`. Look at the card's history in Shopify.\n- **Tests.** `tests/giftcode.test.ts` (prefix and cleaning), `tests/lookup.test.ts` (scanning a gift QR), `tests/sale.test.ts` (the stored code and refund split)."
++   }
++  },
++  {
++   "id": "pay/split-and-part",
++   "title": "Split and part payments",
++   "parent": "pay",
++   "summary": "Paying one bill in pieces: splitting equally or by an amount, part payments in cash or by gift card, and how the next payment amount is worked out.",
++   "tags": [
++    "split",
++    "part payment",
++    "partial",
++    "equal",
++    "share",
++    "remaining",
++    "next payment",
++    "cancel split",
++    "mix",
++    "several payments"
++   ],
++   "related": [
++    "pay",
++    "pay/cash",
++    "pay/card",
++    "pay/gift-card"
++   ],
++   "updated": "2026-10-11",
++   "lead": "One sale can be paid with as many payments as you like, in any mix of card, cash and gift card. The sale finishes by itself when nothing remains.",
++   "sections": {
++    "basic": "### Splitting\nOn the **Payment** screen tap **Split amount** (**Split the payment** in Simple and Minimal modes). The **Split amount** sheet opens with **First payment** and a keypad.\n- **Split equally 2, 3 or 4:** the bill is shared into that many equal payments. Cents that do not divide evenly go to the first payments.\n- **Key in an amount and tap Continue:** that is the first payment. It must be less than what remains, otherwise you see *Amount must be less than the remaining total*. **Continue** stays greyed out until the amount is above $0.00.\n\nAfter you choose, the screen shows **Next payment: $…**. Now tap **Card**, **Cash** or **Gift card** and that payment aims for the next payment amount. Tap **Cancel split** to go back to paying the lot.\n\nExample: $100.00 split equally 3 ways is $33.34, then $33.33, then $33.33.\n\n### Each payment counts as one share\nWith **Split equally**, every payment you take counts as one share, whatever it was and whatever its size. After each one the rest is shared between the people left. Example: $90.00 split 3 ways.\n1. The first person pays $30.00 by card. $60.00 remains for 2 people.\n2. The second hands over only $20.00 in cash and you take it as a part payment. That counts as their share, so $40.00 remains for 1 person.\n3. The last payment is the whole $40.00.\n\nA card that is declined or cancelled takes nothing, so it does not use up a share.\n\n### Part payments without splitting\nYou do not have to split first. A payment can simply be less than the bill:\n- **Cash:** if the customer hands over less than is due, tap **Take $… as part payment**. See [[pay/cash]].\n- **Cash and card:** if the drawer cannot make the change, the cash screen can offer **Cash $… + the rest another way**.\n- **Gift card:** a card with less balance than the bill pays what it has. See [[pay/gift-card]].\n\nIn every case the **Payment** screen then says **Remaining**, with *of $…* under it, and the payments so far are listed. Pay the rest any way you like.\n\n### While part of the sale is paid\nThe cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds the card payments to the customer's card through the terminal. Cash and gift card payments are **not** returned automatically. Hand the cash back yourself (the drawer record is put back for tracked cash) and deal with gift cards by hand. See [[pay]].\n\n### On the receipt\nThe receipt lists every payment with its amount, and the sale is sent to Shopify with one payment per entry.",
++    "deep": "### How the next payment amount is chosen\nThe next payment aims for the first of these that applies, never more than what remains:\n1. The amount you keyed in on the split sheet.\n2. An equal share, when **Split equally** is active and more than one share is left.\n3. Everything that remains.\n\nA keyed amount only applies to the **next** payment. Once any payment is added, the screen goes back to aiming for everything that remains, unless you split again. Example: $100.00 with $30.00 keyed. After the $30.00 is paid, $70.00 remains and the next payment aims for $70.00, not $30.00.\n\n### Equal shares and cents\nThe shares are worked out from what **remains**, so they are re-worked after every payment. Spare cents go to the earliest shares, which is why the first payer can be one cent more. The shares always add up exactly to what remains.\n\n### Rounding in a split\nCash rounding only applies to the payment that clears the whole of what remains. Earlier shares are always exact, and so are card payments. See [[pay/cash]].\n\n### Each payment is its own record\nEvery payment keeps its own method, amount, and for cards its own fee. The Shopify order gets one payment per entry, named **Zeller**, **Cash** or **Gift card**.\n\n### Cancelling\n**Refund & cancel** refunds each card payment through the terminal, one after another. If a refund does not complete nothing is cancelled and you see **Refund did not complete**. Cash drawer entries for tracked cash are reversed. Gift cards stay charged.",
++    "advanced": "### Working out the next payment\n```mermaid\nflowchart TD\n  A[Pay.tsx target] --> B{chunk set}\n  B -->|yes| C[use chunk]\n  B -->|no| D{equalLeft above 1}\n  D -->|yes| E[allocate remaining across equalLeft and take the first]\n  D -->|no| F[use remaining]\n  C --> G[cap at remaining]\n  E --> G\n  F --> G\n  G --> H[card cash or gift card aims for this amount]\n  H --> I[addTender clears chunk and lowers equalLeft by 1]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The next payment amount (`target`), `chunk`, `equalLeft` | `Pay` in `src/screens/Pay.tsx` |\n| Adding a payment | `addTender` in `src/screens/Pay.tsx` |\n| Equal shares | `allocate` in `src/lib/money.ts` (largest remainder) |\n| What has been paid | `paidTotal` in `src/lib/saleBuilder.ts` |\n| Cancelling a part-paid sale | `abandon` in `src/screens/Pay.tsx` |\n| The keypad on the split sheet | `Keypad` in `src/ui/kit.tsx` |\n\n`target` is the smaller of what remains and `chunk`, or the first result of `allocate` over `equalLeft` equal weights, or what remains. `addTender` sets `chunk` back to nothing and lowers `equalLeft` by one (never below zero), on any payment of any size. The split setting lives only in the `Pay` screen's state, so it is not saved. The payments themselves are saved on the cart as `cart.tenders`.\n\n`Keypad` greys out **Continue** for $0.00, and the split sheet refuses an amount at or above what remains, so a split can never be zero or the whole bill.\n\n### Reading the code for a fault\n- **Next payment shows the wrong amount.** A payment was added since you split (any payment resets `chunk`), or the equal shares were re-worked from a smaller remainder.\n- **Cancel split is missing.** It only shows while `chunk` is set or `equalLeft` is above 1. With one share left the screen is simply aiming for what remains.\n- **The split is gone after reopening the app.** Expected: it is screen state. The payments already taken are still on the cart.\n- **Tests.** The sharing maths is covered in `tests/lib.test.ts` (`allocate`). The `target` rule is inside the `Pay` screen and has no test of its own. Cash and sale building are in `tests/cashsale.test.ts` and `tests/sale.test.ts`."
++   }
++  },
+   {
+    "id": "sales",
+    "title": "Checkout: the main screen",
+diff --git a/help/pay/cash.md b/help/pay/cash.md
+new file mode 100644
+index 0000000..6687c25
+--- /dev/null
++++ b/help/pay/cash.md
+@@ -0,0 +1,144 @@
++---
++id: pay/cash
++title: Paying by cash
++parent: pay
++summary: Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.
++tags: [cash, change, notes, coins, drawer, ledger, rounding, short, part payment, denomination, tap pad]
++related: [pay, pay/card, sales/cart-and-prices]
++updated: 2026-10-11
++---
++Cash is taken by tapping the notes and coins the customer hands over. The POS works out the change, shows which notes and coins to take from the drawer, and keeps a record of what is in the drawer as it goes.
++
++## Basic
++
++### Taking cash
++1. On the **Payment** screen tap **Cash** (**Pay with cash** in Simple and Minimal modes).
++2. The **Cash received** sheet opens. At the top it shows **Due**, the amount the customer owes in cash.
++3. Tap each note and coin the customer hands you. Each tap adds one. The number under the note or coin shows how many you have tapped, and **Received** shows the total.
++4. The line under **Due** tells you where you are:
++   - **Tap what the customer hands over**: nothing tapped yet.
++   - **Short by $…** (red): they have not given enough.
++   - **Exact** (green): the right amount.
++   - **Change to give: $…** (green): they gave too much and you owe change. It turns red if the drawer cannot make that change (see below).
++
++### The tap pad
++- **Add / Remove** switch: choose **Remove** to take notes or coins off what you have tapped. Removing something you have not tapped says *None of that to remove.*
++- **Each tap** (**×1**, **×5**, **×10**): how many one tap adds, handy for rolls of coins.
++- **Undo** takes back your last tap and tells you what it removed and the new total. **Start over** clears everything.
++- Notes are $100, $50, $20, $10 and $5. Coins are $2, $1, 50c, 20c, 10c and 5c.
++
++### What happens next
++- **Exact:** tap **Take cash**. The payment is added and, if nothing remains, the sale finishes.
++- **Short:** you can ask for more, or tap **Take $… as part payment**. The cash is recorded as a payment of what they gave, and the rest is paid another way. See [[pay/split-and-part]].
++- **Change to give:** tap **Next: give $… change**. The **Give change** screen shows **Take from the drawer** with the notes and coins to hand back.
++  - **Gave this** confirms you handed over exactly that.
++  - **I'll give different notes and coins** lets you tap what you really gave. The total must match the change owed.
++  - **Show another way** appears only when Smart change is on in Settings ▸ Payments and there is more than one good option. It steps through them.
++  - **Back** returns to the notes you tapped.
++
++### When the drawer cannot make the change
++A red box says **Can't make $… change** and **Next** is greyed out. It lists what could work:
++- **Ask for less:** take a smaller part of what they handed over and give the rest straight back. Tap **Use that smaller handover** to do it.
++- **Cash $… + the rest another way:** take part of the bill in cash (the most the drawer can make change for) and put the remainder on card or another method.
++- **Or take the full amount by card.**
++
++If the box says **No cash in the ledger**, the drawer was never opened or counted, so the POS has no idea what is in it. Open the drawer from More ▸ Cash drawer first.
++
++If you can see the drawer really does have the change and the record is out of date, tap **The drawer has it (ledger is out of date)**. You then tap the notes and coins you give. Fix the record later with **Correct contents** or **Count & close** in the cash drawer.
++
++### Skipping the tracking
++Sometimes the queue is long and you just want to finish.
++- **Exact amount (don't track notes)** shows before you tap anything. It takes the exact amount and does not touch the drawer record.
++- **Done, but don't track it** on the **Give change** screen finishes the sale. The notes the customer handed over **are** added to the drawer record, but the change you gave is **not** taken out, so the record will show too much cash until the next count.
++
++Every skip makes the record drift a little. A count and close at the end of the day puts it right.
++
++### Cash rounding
++If **Cash rounding (5c)** is on in Settings ▸ Payments, the cash due on the **last** payment is rounded to the nearest 5c. 1c and 2c round down, 3c and 4c round up. So $10.02 is due as $10.00 and $10.03 as $10.05. Earlier payments in a split are never rounded.
++
++### Free sales
++If the total is $0.00 the only button is **Complete $0.00 sale**.
++
++### Cancelling a sale that has cash in it
++If you back out of a part-paid sale, hand the cash back yourself. The drawer record is put back for you for any cash that was tracked.
++
++## Deep
++
++### Where the change comes from
++The change is made from the notes and coins in the drawer record **plus what the customer just handed over**. So the customer's own notes can go straight back as change, and a drawer with no small notes can still change a $20 if the customer handed over a $10 and a $5 as well. Among all the exact ways to make the change, the POS picks the one with the fewest pieces, which is quickest to count out. With **Smart change** on it picks the way that leaves the drawer best stocked for the next sales instead.
++
++### How rounding is worked out
++Rounding is applied to the cash **due**, not to what was handed over, and only when that cash payment clears the whole of what remains. The sale keeps the real amount and records the rounding separately, so receipts and reports can show it. Rounding down means the customer paid up to 2c less than the bill, rounding up means up to 2c more. If the cash is only part of the bill, nothing is rounded.
++
++### Short payments are not change
++If the customer hands over less than is due, the payment is recorded as the amount handed over, with no change. That is what **Take $… as part payment** does.
++
++### What each button writes to the drawer record
++| You tap | Notes and coins in | Change out |
++|---|---|---|
++| **Take cash** (exact) | recorded | none |
++| **Take $… as part payment** | recorded | none |
++| **Gave this** | recorded | recorded |
++| **Done, but don't track it** (change screen) | recorded | **not** recorded |
++| **Exact amount (don't track notes)** | not recorded | not recorded |
++
++### The two ways round a drawer that cannot make change
++- **Ask for less** looks for the smallest amount you could keep from what they handed over that still covers the bill and whose change the drawer **can** make. Example: the drawer has one $5, the customer hands you $20, $10 and $5 for a $25 bill. Keep the $20 and $5 and hand the $10 straight back, so no change is needed at all.
++- **Part in cash** looks for the largest cash amount below the bill, in 5c steps, whose change can be made. Example: the drawer has one $20, the customer hands you a $50 for a $37 bill. The $13 change cannot be made, but $30 in cash works ($20 change from the drawer), leaving $7 for card.
++
++### The record can drift
++The record is only as good as what is tapped. It lives on each iPad separately. Count & close, Correct contents, and the skip buttons above are the ways it gets reset or knocked out of line.
++
++## Advanced
++
++### From Cash to a payment
++```mermaid
++flowchart TD
++  A[Cash button in Pay.tsx] --> B[CashSheet receive step]
++  B --> C{cashStatus of due and received}
++  C -->|short| D[Take as part payment]
++  C -->|exact| E[Take cash]
++  C -->|change| F{planChange from drawer plus received}
++  F -->|exact| G[GiveCash change step]
++  F -->|impossible| H[handBackOptions and partCashOption]
++  H --> G
++  G --> I[onTake with received and given]
++  D --> I
++  E --> I
++  I --> J[takeCash in Pay.tsx]
++  J --> K[cashTender builds the Tender]
++  J --> L[postCashSale writes the ledger]
++  K --> M[addTender]
++```
++
++### Where the code is
++| Job | Where |
++|---|---|
++| The sheet and its two steps | `CashSheet` in `src/screens/CashSheet.tsx` |
++| The change step (also used for cash refunds) | `GiveCash`, `GiveCashSheet` in `src/screens/CashSheet.tsx` |
++| The tap pad | `DenomPad` in `src/ui/DenomPad.tsx`; the maths in `src/lib/cashLedger.ts` |
++| Due, short, exact, change | `cashDue`, `cashStatus` in `src/lib/cashSale.ts` |
++| Which notes and coins to give | `planChange` in `src/lib/cashSale.ts`; `planChangeSmart` in `src/lib/changeScore.ts` when Smart change is on |
++| Ask for less, part in cash | `handBackOptions`, `partCashOption` in `src/lib/cashSale.ts` |
++| Building the payment | `cashTender` in `src/lib/saleBuilder.ts`; `takeCash` in `src/screens/Pay.tsx` |
++| Writing and undoing the drawer record | `postCashSale`, `reverseCashTender` in `src/lib/cashSale.ts` |
++| Rounding | `roundCash` in `src/lib/money.ts` |
++| Empty drawer check | `ledgerEmpty` in `src/lib/cashSale.ts` |
++
++### The payment record
++A cash payment (a `Tender` of kind `cash`) has these fields:
++- `amountCents`: what was applied to the bill. For a settling payment this is the amount due **before** rounding. For a short payment it is what was handed over.
++- `tenderedCents` and `changeCents`: what was handed over and what went back.
++- `roundingCents`: the rounded due minus the amount (can be negative).
++- `cashIn` and `cashOut`: the notes and coins received and given, only when they were tracked.
++
++`cashTender` settles when the amount handed over is at least the due amount (rounded if rounding is on). Rounding is only passed in when `takeCash` sees `isFinal`: the payment is for everything that remains and it is not a part-cash amount (`applyCents` is not set). The sheet shows the same rounded amount because it gets it from `cashDue`.
++
++`takeCash` writes to the drawer record only when `received` or `given` is set, which is why the skip buttons behave as the table above says. On a cancelled sale `reverseCashTender` takes out `cashIn` and puts back `cashOut`.
++
++### Reading the code for a fault
++- **Next is greyed out and the box says Can't make change.** `planChange` found no exact combination from the drawer plus what was received. Check the record in More ▸ Cash drawer.
++- **The drawer record shows more cash than the drawer holds.** Someone used **Done, but don't track it** on the change screen, or gave change without confirming. Use Correct contents.
++- **Rounded amount looks wrong.** Check Settings ▸ Payments ▸ Cash rounding (5c). It only applies when this payment clears the remaining amount.
++- **Show another way is missing.** Smart change is off, there is only one way to make the change, or the search was cut short.
++- **Tests.** `tests/cashsale.test.ts` (status, change, ask for less, part in cash, ledger entries), `tests/cashledger.test.ts` (the tap pad and ledger), `tests/changescore.test.ts` (Smart change), `tests/sale.test.ts` (building cash payments).
+diff --git a/help/pay/gift-card.md b/help/pay/gift-card.md
+new file mode 100644
+index 0000000..dabfaf9
+--- /dev/null
++++ b/help/pay/gift-card.md
+@@ -0,0 +1,91 @@
++---
++id: pay/gift-card
++title: Paying with a gift card
++parent: pay
++summary: Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.
++tags: [gift card, gift, code, qr, scan, balance, redeem, shopify, disabled, expired, not found]
++related: [pay, pay/card, pay/cash]
++updated: 2026-10-11
++---
++A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.
++
++## Basic
++
++### Taking a gift card payment
++1. On the **Payment** screen tap **Gift card** (**Pay with a gift card** in Simple and Minimal modes).
++2. The **Check gift card** sheet opens. Tap **Scan** and scan the QR code on the card or receipt, or type the code into **Code** and tap **Check**. **Check** stays greyed out until at least four characters are typed.
++3. The sheet shows the card (**Card ••••** and its last four characters), its balance, and whether it is **Active** or **Disabled**. It may also say **code could not be verified** or **expires** with a date.
++4. Tap **Use as payment**. This button only appears when the card is **Active** and has a balance.
++5. The amount is taken from the card straight away and the payment is added to the list as **Gift card**.
++
++The amount taken is the card's balance or the next payment amount, whichever is **less**. If the balance is smaller than what is owed, the rest stays under **Remaining** and you take it another way.
++
++### Typing and scanning the code
++- Letters and numbers only. Capitals, spaces and dashes do not matter.
++- A scanned gift card QR carries a prefix that starts with `shopify-giftcard`. You never have to remove it, the POS strips it for you.
++
++### Messages
++- **No gift card found for that code.** Check the code and try again. Look at the card or receipt rather than guessing.
++- **Lookup failed** with a reason: usually no internet. Gift cards need a connection, cash does not.
++- **Disabled** next to the balance: the card has been switched off in Shopify. There is no **Use as payment** button. Ask the owner.
++- **code could not be verified:** the card was not made by this POS, so the POS can only partly check it. It can still be used if **Active**.
++- **Gift card could not be charged** with a reason: Shopify refused. Nothing was taken from the card and nothing was added to the sale.
++
++### Good to know
++- A gift card is never rounded and has no card fee.
++- You cannot pay for a gift card with itself. A gift card sold in the same sale does not exist until that sale is paid.
++- If you cancel a part-paid sale, the money is **not** put back on the gift card. The POS tells you to deal with it by hand. Ask someone who can edit gift cards in Shopify.
++- To check a balance without paying, use the **Check gift card** option in the cart menu or More ▸ Gift cards.
++
++## Deep
++
++### Why the card is charged first
++The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once, but it means a cancelled sale leaves the money gone. The POS charges the card, and only if Shopify agrees does it add the payment to the sale.
++
++### How a code is found
++Shopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.
++
++### What the sale records
++The payment keeps the card's Shopify id and the code. On the Shopify order it appears as a **Gift card** payment of that amount, with only the last four characters of the code stored. Refunds to the original gift card use the same id.
++
++### Expiry
++The sheet shows an expiry date but the POS does not check it. If Shopify refuses an expired card you see **Gift card could not be charged** with Shopify's reason.
++
++## Advanced
++
++### From Gift card to a payment
++```mermaid
++flowchart TD
++  A[Gift card button in Pay.tsx] --> B[GiftCheckSheet in sheets.tsx]
++  B --> C[stripGiftPrefix on typed or scanned text]
++  C --> D[lookupGiftCard in giftcards.ts]
++  D -->|none| E[No gift card found]
++  D -->|card| F{enabled and balance above 0}
++  F -->|no| G[no Use as payment button]
++  F -->|yes| H[useGift in Pay.tsx]
++  H --> I[debitGiftCard]
++  I -->|error| J[Gift card could not be charged]
++  I -->|ok| K[addTender with kind gift_card]
++```
++
++### Where the code is
++| Job | Where |
++|---|---|
++| The sheet (also used by Check gift card) | `GiftCheckSheet` in `src/screens/sheets.tsx` |
++| Taking the payment | `useGift` in `src/screens/Pay.tsx` |
++| Code cleaning | `stripGiftPrefix`, `normaliseCode` in `src/lib/giftCode.ts` |
++| Finding and charging the card | `lookupGiftCard`, `debitGiftCard` in `src/lib/shopify/giftcards.ts` |
++| The payment record | `giftCardId`, `giftCardCode` on `Tender` in `src/lib/types.ts` |
++| Shopify order and stored code | `GATEWAY` in `src/lib/shopify/orderModel.ts`; `encodeTender` in `src/lib/saleCodec.ts` |
++| Refunds to a gift card | `src/lib/refundFlow.ts` |
++
++`useGift` takes the smaller of the card balance and the current target, charges it with a note naming the sale, then adds the payment with the cleaned code. It does not touch the cash drawer record.
++
++### Receipts
++The receipt built straight after the sale uses the full code in the payment line, as **Gift card** followed by the code. A receipt rebuilt later from the Shopify order only knows the last four characters. Only the last four are stored on the order.
++
++### Reading the code for a fault
++- **Use as payment is missing.** The card is disabled or has a zero balance (`GiftCheckSheet` checks both).
++- **A card the customer swears is valid is not found.** More than one card ends in the same four characters and none carries this POS's fingerprint, or the code was typed wrongly.
++- **Charged but the sale shows no gift card payment.** The charge succeeded and the app stopped before `addTender`. Look at the card's history in Shopify.
++- **Tests.** `tests/giftcode.test.ts` (prefix and cleaning), `tests/lookup.test.ts` (scanning a gift QR), `tests/sale.test.ts` (the stored code and refund split).
+diff --git a/help/pay/index.md b/help/pay/index.md
+index 39887fb..e7b46d0 100644
+--- a/help/pay/index.md
++++ b/help/pay/index.md
+@@ -4,7 +4,7 @@ title: Taking payment
+ parent: start
+ summary: The Payment screen: the four ways to pay, part payments, what happens when the sale is paid, and what Back does once money has been taken.
+ tags: [pay, payment, charge, card, cash, gift card, split, total, remaining, receipt, cancel sale]
+-related: [pay/card, sales/cart-and-prices, sales/bundles, sales]
++related: [pay/card, pay/cash, pay/gift-card, pay/split-and-part, sales/cart-and-prices, sales/bundles, sales]
+ updated: 2026-10-11
+ ---
+ The Payment screen is where a sale is paid for. You reach it with **Charge** on the cart (or **Take payment** in the guided checkout). Nothing is taken from the customer until they pay.
+@@ -26,9 +26,9 @@ Then the **Payment** screen opens.
+ 
+ ### The four ways to pay
+ - **Card**: the customer taps, inserts or swipes on the Zeller terminal. See [[pay/card]].
+-- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back.
+-- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away.
+-- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot.
++- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back. See [[pay/cash]].
++- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away. See [[pay/gift-card]].
++- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot. See [[pay/split-and-part]].
+ 
+ Every payment taken is added to the list. Pay the rest any way you like, in any order, until **Remaining** reaches $0.00.
+ 
+diff --git a/help/pay/split-and-part.md b/help/pay/split-and-part.md
+new file mode 100644
+index 0000000..379cb00
+--- /dev/null
++++ b/help/pay/split-and-part.md
+@@ -0,0 +1,102 @@
++---
++id: pay/split-and-part
++title: Split and part payments
++parent: pay
++summary: Paying one bill in pieces: splitting equally or by an amount, part payments in cash or by gift card, and how the next payment amount is worked out.
++tags: [split, part payment, partial, equal, share, remaining, next payment, cancel split, mix, several payments]
++related: [pay, pay/cash, pay/card, pay/gift-card]
++updated: 2026-10-11
++---
++One sale can be paid with as many payments as you like, in any mix of card, cash and gift card. The sale finishes by itself when nothing remains.
++
++## Basic
++
++### Splitting
++On the **Payment** screen tap **Split amount** (**Split the payment** in Simple and Minimal modes). The **Split amount** sheet opens with **First payment** and a keypad.
++- **Split equally 2, 3 or 4:** the bill is shared into that many equal payments. Cents that do not divide evenly go to the first payments.
++- **Key in an amount and tap Continue:** that is the first payment. It must be less than what remains, otherwise you see *Amount must be less than the remaining total*. **Continue** stays greyed out until the amount is above $0.00.
++
++After you choose, the screen shows **Next payment: $…**. Now tap **Card**, **Cash** or **Gift card** and that payment aims for the next payment amount. Tap **Cancel split** to go back to paying the lot.
++
++Example: $100.00 split equally 3 ways is $33.34, then $33.33, then $33.33.
++
++### Each payment counts as one share
++With **Split equally**, every payment you take counts as one share, whatever it was and whatever its size. After each one the rest is shared between the people left. Example: $90.00 split 3 ways.
++1. The first person pays $30.00 by card. $60.00 remains for 2 people.
++2. The second hands over only $20.00 in cash and you take it as a part payment. That counts as their share, so $40.00 remains for 1 person.
++3. The last payment is the whole $40.00.
++
++A card that is declined or cancelled takes nothing, so it does not use up a share.
++
++### Part payments without splitting
++You do not have to split first. A payment can simply be less than the bill:
++- **Cash:** if the customer hands over less than is due, tap **Take $… as part payment**. See [[pay/cash]].
++- **Cash and card:** if the drawer cannot make the change, the cash screen can offer **Cash $… + the rest another way**.
++- **Gift card:** a card with less balance than the bill pays what it has. See [[pay/gift-card]].
++
++In every case the **Payment** screen then says **Remaining**, with *of $…* under it, and the payments so far are listed. Pay the rest any way you like.
++
++### While part of the sale is paid
++The cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds the card payments to the customer's card through the terminal. Cash and gift card payments are **not** returned automatically. Hand the cash back yourself (the drawer record is put back for tracked cash) and deal with gift cards by hand. See [[pay]].
++
++### On the receipt
++The receipt lists every payment with its amount, and the sale is sent to Shopify with one payment per entry.
++
++## Deep
++
++### How the next payment amount is chosen
++The next payment aims for the first of these that applies, never more than what remains:
++1. The amount you keyed in on the split sheet.
++2. An equal share, when **Split equally** is active and more than one share is left.
++3. Everything that remains.
++
++A keyed amount only applies to the **next** payment. Once any payment is added, the screen goes back to aiming for everything that remains, unless you split again. Example: $100.00 with $30.00 keyed. After the $30.00 is paid, $70.00 remains and the next payment aims for $70.00, not $30.00.
++
++### Equal shares and cents
++The shares are worked out from what **remains**, so they are re-worked after every payment. Spare cents go to the earliest shares, which is why the first payer can be one cent more. The shares always add up exactly to what remains.
++
++### Rounding in a split
++Cash rounding only applies to the payment that clears the whole of what remains. Earlier shares are always exact, and so are card payments. See [[pay/cash]].
++
++### Each payment is its own record
++Every payment keeps its own method, amount, and for cards its own fee. The Shopify order gets one payment per entry, named **Zeller**, **Cash** or **Gift card**.
++
++### Cancelling
++**Refund & cancel** refunds each card payment through the terminal, one after another. If a refund does not complete nothing is cancelled and you see **Refund did not complete**. Cash drawer entries for tracked cash are reversed. Gift cards stay charged.
++
++## Advanced
++
++### Working out the next payment
++```mermaid
++flowchart TD
++  A[Pay.tsx target] --> B{chunk set}
++  B -->|yes| C[use chunk]
++  B -->|no| D{equalLeft above 1}
++  D -->|yes| E[allocate remaining across equalLeft and take the first]
++  D -->|no| F[use remaining]
++  C --> G[cap at remaining]
++  E --> G
++  F --> G
++  G --> H[card cash or gift card aims for this amount]
++  H --> I[addTender clears chunk and lowers equalLeft by 1]
++```
++
++### Where the code is
++| Job | Where |
++|---|---|
++| The next payment amount (`target`), `chunk`, `equalLeft` | `Pay` in `src/screens/Pay.tsx` |
++| Adding a payment | `addTender` in `src/screens/Pay.tsx` |
++| Equal shares | `allocate` in `src/lib/money.ts` (largest remainder) |
++| What has been paid | `paidTotal` in `src/lib/saleBuilder.ts` |
++| Cancelling a part-paid sale | `abandon` in `src/screens/Pay.tsx` |
++| The keypad on the split sheet | `Keypad` in `src/ui/kit.tsx` |
++
++`target` is the smaller of what remains and `chunk`, or the first result of `allocate` over `equalLeft` equal weights, or what remains. `addTender` sets `chunk` back to nothing and lowers `equalLeft` by one (never below zero), on any payment of any size. The split setting lives only in the `Pay` screen's state, so it is not saved. The payments themselves are saved on the cart as `cart.tenders`.
++
++`Keypad` greys out **Continue** for $0.00, and the split sheet refuses an amount at or above what remains, so a split can never be zero or the whole bill.
++
++### Reading the code for a fault
++- **Next payment shows the wrong amount.** A payment was added since you split (any payment resets `chunk`), or the equal shares were re-worked from a smaller remainder.
++- **Cancel split is missing.** It only shows while `chunk` is set or `equalLeft` is above 1. With one share left the screen is simply aiming for what remains.
++- **The split is gone after reopening the app.** Expected: it is screen state. The payments already taken are still on the cart.
++- **Tests.** The sharing maths is covered in `tests/lib.test.ts` (`allocate`). The `target` rule is inside the `Pay` screen and has no test of its own. Cash and sale building are in `tests/cashsale.test.ts` and `tests/sale.test.ts`.
+-- 
+2.43.0
+
