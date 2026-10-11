@@ -39,7 +39,7 @@ If the total is $0.00 (a free sale), there is one button, **Complete $0.00 sale*
 
 ### Going back
 - **Nothing paid yet:** **Back** returns you to the cart and nothing has changed.
-- **Part paid:** the cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. If you choose **Refund & cancel**, card payments are refunded to the customer's card through the terminal. Cash and gift card payments are **not** returned automatically: hand the cash back yourself (the cash drawer record is put back for you) and deal with the gift card by hand.
+- **Part paid:** the cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. If you choose **Refund & cancel**, card payments are refunded to the customer's card, and gift-card payments are credited back to the same gift cards. For cash, collect any previously given change and return exactly the original notes and coins; the drawer ledger records the denominations. If an electronic return fails partway through, the sale stays in cancellation mode and remembers returns already completed; retry cancellation after resolving the problem. Do not take another payment for it.
 - **While the terminal is working** there is no Back button. Use **Cancel** on the *Waiting on terminal* strip first.
 
 ### Good to know
@@ -56,7 +56,7 @@ A sale is made of **payments** (the app calls them tenders). Each one has its ow
 Rounding is worked out on the cash that is **due**, not on the amount handed over. If cash pays the whole of what remains, the due amount is rounded to the nearest 5c and the difference is kept on the payment. If cash is only part of the bill, nothing is rounded.
 
 ### The gift card is charged first, not last
-When you choose a gift card, the amount is taken off the card's balance straight away, before the sale finishes. If Shopify cannot do it you see **Gift card could not be charged** with the reason, and nothing is added to the sale. This is why cancelling a part-paid sale does not give the money back to a gift card by itself.
+When you choose a gift card, the amount is taken off the card's balance straight away, before the sale finishes. If Shopify cannot do it you see **Gift card could not be charged** with the reason, and nothing is added to the sale. Cancelling a part-paid sale credits the amount back to the same card; a failed cancellation stays locked for a safe retry.
 
 ### What "finished" means
 When the last payment makes **Remaining** $0.00, the app builds the sale record, takes the sold units off the stock count on this iPad, puts the sale in a queue for Shopify, and, if the sale started from a saved cart, removes that saved cart. The queue creates the Shopify order and adjusts Shopify's stock. If that fails or the iPad is offline, the sale stays queued and is retried. You can see how many are waiting in More ▸ Support & diagnostics ▸ Sync.
@@ -92,7 +92,7 @@ flowchart TD
 | Total, what is paid, what remains | `usePriced` in `src/state/selectors.ts` gives the total; `paidTotal` in `src/lib/saleBuilder.ts` adds up the payments; `Pay` itself works out what remains |
 | Building a payment | `cardTender`, `cashTender` in `src/lib/saleBuilder.ts`; the gift card payment is built in `useGift` in `Pay.tsx` |
 | Finishing | the `finalising` effect in `Pay.tsx`: `buildSale`, `applyLocalStock`, `recordSale` (`src/lib/saleBuilder.ts`, `src/lib/sync.ts`) |
-| Cash ledger | `postCashSale`, `reverseCashTender`, `cashDue` in `src/lib/cashSale.ts` |
+| Cash ledger | `postCashSale`, `recordCancelledCashTender`, `cashDue` in `src/lib/cashSale.ts` |
 | Cancelling a part-paid sale | `abandon` in `Pay.tsx` |
 | Which card states may use a sheet | `showsOwnSheet`, `showsWaitingStrip`, `lockPayButtons` in `src/lib/payUi.ts` |
 | Simple mode wording | `payTitle`, `payHint`, `payQuestion` in `src/lib/simpleLabels.ts` |

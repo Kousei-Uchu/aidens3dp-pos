@@ -46,13 +46,6 @@ If the box says **No cash in the ledger**, the drawer was never opened or counte
 
 If you can see the drawer really does have the change and the record is out of date, tap **The drawer has it (ledger is out of date)**. You then tap the notes and coins you give. Fix the record later with **Correct contents** or **Count & close** in the cash drawer. See [[cash/open-close]].
 
-### Skipping the tracking
-Sometimes the queue is long and you just want to finish.
-- **Exact amount (don't track notes)** shows before you tap anything. It takes the exact amount and does not touch the drawer record.
-- **Done, but don't track it** on the **Give change** screen finishes the sale. The notes the customer handed over **are** added to the drawer record, but the change you gave is **not** taken out, so the record will show too much cash until the next count.
-
-Every skip makes the record drift a little. A count and close at the end of the day puts it right.
-
 ### Cash rounding
 If **Cash rounding (5c)** is on in Settings ▸ Payments, the cash due on the **last** payment is rounded to the nearest 5c. 1c and 2c round down, 3c and 4c round up. So $10.02 is due as $10.00 and $10.03 as $10.05. Earlier payments in a split are never rounded.
 
@@ -60,7 +53,7 @@ If **Cash rounding (5c)** is on in Settings ▸ Payments, the cash due on the **
 If the total is $0.00 the only button is **Complete $0.00 sale**.
 
 ### Cancelling a sale that has cash in it
-If you back out of a part-paid sale, hand the cash back yourself. The drawer record is put back for you for any cash that was tracked.
+If you back out of a part-paid sale, the app asks you to collect any exact change previously given and return the exact notes and coins originally received. Follow the prompts and confirm the denominations physically exchanged; cancellation does not use the change optimizer.
 
 ## Deep
 
@@ -78,16 +71,16 @@ If the customer hands over less than is due, the payment is recorded as the amou
 |---|---|---|
 | **Take cash** (exact) | recorded | none |
 | **Take $… as part payment** | recorded | none |
-| **Gave this** | recorded | recorded |
-| **Done, but don't track it** (change screen) | recorded | **not** recorded |
-| **Exact amount (don't track notes)** | not recorded | not recorded |
+| **Gave this** (suggested or manually counted) | recorded | recorded |
+| **Cash refund** (suggested or manually counted) | none | recorded |
+| **Cancel part-paid sale** | exact original tender is removed | previously given change is collected back |
 
 ### The two ways round a drawer that cannot make change
 - **Ask for less** looks for the smallest amount you could keep from what they handed over that still covers the bill and whose change the drawer **can** make. Example: the drawer has one $5, the customer hands you $20, $10 and $5 for a $25 bill. Keep the $20 and $5 and hand the $10 straight back, so no change is needed at all.
 - **Part in cash** looks for the largest cash amount below the bill, in 5c steps, whose change can be made. Example: the drawer has one $20, the customer hands you a $50 for a $37 bill. The $13 change cannot be made, but $30 in cash works ($20 change from the drawer), leaving $7 for card.
 
 ### The record can drift
-The record is only as good as what is tapped. It lives on each iPad separately. See [[cash]]. Count & close, Correct contents, and the skip buttons above are the ways it gets reset or knocked out of line.
+The record is only as good as what is tapped. It lives on each iPad separately. See [[cash]]. Count & close and Correct contents are the ways it gets reset or corrected.
 
 ## Advanced
 
@@ -121,7 +114,7 @@ flowchart TD
 | Which notes and coins to give | `planChange` in `src/lib/cashSale.ts`; `planChangeSmart` in `src/lib/changeScore.ts` when Smart change is on |
 | Ask for less, part in cash | `handBackOptions`, `partCashOption` in `src/lib/cashSale.ts` |
 | Building the payment | `cashTender` in `src/lib/saleBuilder.ts`; `takeCash` in `src/screens/Pay.tsx` |
-| Writing and undoing the drawer record | `postCashSale`, `reverseCashTender` in `src/lib/cashSale.ts` |
+| Writing and reversing the drawer record | `postCashSale`, `recordCancelledCashTender` in `src/lib/cashSale.ts` |
 | Rounding | `roundCash` in `src/lib/money.ts` |
 | Empty drawer check | `ledgerEmpty` in `src/lib/cashSale.ts` |
 
@@ -130,15 +123,15 @@ A cash payment (a `Tender` of kind `cash`) has these fields:
 - `amountCents`: what was applied to the bill. For a settling payment this is the amount due **before** rounding. For a short payment it is what was handed over.
 - `tenderedCents` and `changeCents`: what was handed over and what went back.
 - `roundingCents`: the rounded due minus the amount (can be negative).
-- `cashIn` and `cashOut`: the notes and coins received and given, only when they were tracked.
+- `cashIn` and `cashOut`: the notes and coins received and given.
 
 `cashTender` settles when the amount handed over is at least the due amount (rounded if rounding is on). Rounding is only passed in when `takeCash` sees `isFinal`: the payment is for everything that remains and it is not a part-cash amount (`applyCents` is not set). The sheet shows the same rounded amount because it gets it from `cashDue`.
 
-`takeCash` writes to the drawer record only when `received` or `given` is set, which is why the skip buttons behave as the table above says. On a cancelled sale `reverseCashTender` takes out `cashIn` and puts back `cashOut`.
+`takeCash` writes the denominations received and given to the drawer record. On a cancelled sale, the cashier collects back the previously recorded change and returns exactly the originally received denominations; `recordCancelledCashTender` logs that physical exchange.
 
 ### Reading the code for a fault
 - **Next is greyed out and the box says Can't make change.** `planChange` found no exact combination from the drawer plus what was received. Check the record in More ▸ Cash drawer.
-- **The drawer record shows more cash than the drawer holds.** Someone used **Done, but don't track it** on the change screen, or gave change without confirming. Use Correct contents.
+- **The drawer record differs from the physical drawer.** The denominations entered may not match what was physically exchanged. Use Correct contents or Count & close.
 - **Rounded amount looks wrong.** Check Settings ▸ Payments ▸ Cash rounding (5c). It only applies when this payment clears the remaining amount.
 - **Show another way is missing.** Smart change is off, there is only one way to make the change, or the search was cut short.
 - **Tests.** `tests/cashsale.test.ts` (status, change, ask for less, part in cash, ledger entries), `tests/cashledger.test.ts` (the tap pad and ledger), `tests/changescore.test.ts` (Smart change), `tests/sale.test.ts` (building cash payments).

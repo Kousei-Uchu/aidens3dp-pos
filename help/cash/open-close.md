@@ -78,7 +78,7 @@ A paid in adds those notes and coins to the record. A paid out takes them off, b
 The daily float report's **I took this out: record it** button records the banking in exactly the same way, as a **Paid out** with the note *Daily banking (float report)*. If a drawer is open it also adds it to the shift's paid out.
 
 ### Why Expected can be right while the record is wrong
-**Expected** comes from sales and the paid in and out totals. The notes-and-coins record comes from what was tapped. Skipping the tapping on a cash sale (the **don't track** buttons) leaves **Expected** right, because the sale is still counted, but leaves the record out of line. So the closing count can match even when the record had drifted. Counting at close puts the record right, and **Correct contents** does it earlier.
+**Expected** comes from sales and the paid in and out totals. The notes-and-coins record comes from the denominations entered. A wrong count or cash moved outside the POS can leave **Expected** and the denomination record out of line. Counting at close puts the record right, and **Correct contents** does it earlier.
 
 ### What the Z-report is, and is not
 The text is made when you confirm and is only shown in the share sheet. The app keeps no copy of the text. What it does keep is one line in the events history file (`events.csv`) saying the drawer closed, who was signed in, and the counted amount, with a message holding the expected amount and the difference (both in cents) and the notes and coins counted. Opening, paid in and paid out add events lines too, and paid in and paid out include the reason you typed. **Correct contents** does not.

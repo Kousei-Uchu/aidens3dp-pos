@@ -1,6 +1,6 @@
 // Location: src/screens/Receipt.tsx
 import React, { useEffect, useState } from 'react';
-import { Linking, Share, View } from 'react-native';
+import { Image, Linking, Share, View } from 'react-native';
 import { Btn, HelpButton, Sheet, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
 import { fmt } from '../lib/money';
@@ -13,6 +13,7 @@ import { receiptId, receiptUrl } from '../lib/receiptDoc';
 import { uploadReceipt } from '../lib/receiptSync';
 import { QR } from '../ui/QR';
 import type { SaleRecord } from '../lib/types';
+import { BUSINESS_LOGO_URL } from '../lib/screensaver';
 
 export const receiptText = (s: SaleRecord): string => {
   const lines = s.lines.map(l => `${l.qty} × ${l.title}${l.variantTitle ? ` (${l.variantTitle})` : ''} — ${fmt(l.netCents)}`);
@@ -39,6 +40,10 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
   return (
     <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+        <Image source={{ uri: BUSINESS_LOGO_URL }} resizeMode="contain" style={{ width: 32, height: 32 }} accessibilityLabel="Aiden’s 3D Printing logo" />
+        <Txt size={16} weight="600">{rc.name || shop || 'Thank you for shopping with us'}</Txt>
+      </View>
       <View style={{ alignItems: 'center', marginBottom: 14 }}><Txt size={34} weight="700">{fmt(sale.netCents)}</Txt><Txt sub>{sale.type === 'refund' ? 'Refund complete' : 'Sale complete'}{sale.orderName ? ` · ${sale.orderName}` : ''}</Txt></View>
       {sale.tenders.some(t => (t.changeCents ?? 0) > 0) ? <Txt weight="700" size={20} style={{ textAlign: 'center', marginBottom: 12 }}>Change {fmt(sale.tenders.reduce((s, t) => s + (t.changeCents ?? 0), 0))}</Txt> : null}
       {giftView ? <View style={{ gap: 10 }}>

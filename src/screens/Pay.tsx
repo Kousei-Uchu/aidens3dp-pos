@@ -5,18 +5,18 @@ import { useTheme } from '../ui/theme';
 import { useApp, currentStaff, type Attempt } from '../state/store';
 import { usePriced, useCatalogue } from '../state/selectors';
 import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder';
-import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult } from '../lib/zeller';
+import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult, type RefundResult } from '../lib/zeller';
 import { getTerminal, checkReader } from '../zellerBridge';
 import { csv } from '../lib/csvStore';
 import { applyLocalStock, recordSale, updateSaved } from '../lib/sync';
 import { digitsToCents, fmt, allocate } from '../lib/money';
 import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
-import { lookupGiftCard, debitGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
+import { lookupGiftCard, debitGiftCard, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
 import { normaliseCode } from '../lib/giftCode';
 import { GiftCheckSheet } from './sheets';
-import { CashSheet, type CashResult } from './CashSheet';
-import { cashDue, postCashSale, reverseCashTender } from '../lib/cashSale';
+import { CancelCashSheet, CashSheet, type CashResult } from './CashSheet';
+import { cashDue, postCashSale, recordCancelledCashTender } from '../lib/cashSale';
 import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
 import { ReceiptPrompt } from './Receipt';
 import { useUi } from '../ui/uiProfile';
@@ -33,6 +33,8 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const [equalLeft, setEqualLeft] = useState(0); const [chunk, setChunk] = useState<number | null>(null);
   const [splitOpen, setSplitOpen] = useState(false); const [splitDigits, setSplitDigits] = useState(''); const [cashOpen, setCashOpen] = useState(false);
   const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [cancelCash, setCancelCash] = useState<Tender[] | null>(null);
   const [done, setDone] = useState<SaleRecord | null>(null); const [change, setChange] = useState<number | null>(null); const cancelRef = useRef<(() => void) | null>(null);
   const unknownRef = useRef<string | null>(null);
 
@@ -42,6 +44,22 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
   const addTender = (t: Tender, uuid: string) => {
     setCart(cc => ({ ...cc, saleUuid: uuid, tenders: [...(cc.tenders ?? []), t] })); setChunk(null); setEqualLeft(l => Math.max(0, l - 1));
+  };
+
+  const finishCancellation = (cash: Record<string, { returned: Record<string, number>; collected: Record<string, number> }> = {}) => {
+    if (tenders.some(tn => tn.kind === 'cash' && !cash[tn.id])) {
+      alertMsg('Cash return not recorded', 'Confirm the collected change and returned denominations for every cash payment before finishing cancellation.');
+      return;
+    }
+    let ledger = useApp.getState().pos.ledger;
+    for (const tn of tenders) if (tn.kind === 'cash' && cash[tn.id]) {
+      ledger = recordCancelledCashTender(ledger, tn, cash[tn.id].returned, cash[tn.id].collected, { saleUuid: cart.saleUuid, staff: staffName });
+    }
+    if (ledger !== useApp.getState().pos.ledger) useApp.getState().patchPos({ ledger });
+    void csv.event({ kind: 'void', saleUuid: cart.saleUuid, amountCents: paid, staff: staffName, message: 'Partial sale cancelled; electronic tenders returned and exact cash denominations logged' });
+    setCancelCash(null);
+    setCart(c0 => ({ ...c0, tenders: undefined, saleUuid: undefined, cancelPending: undefined, returnedTenderIds: undefined }));
+    onBack();
   };
 
   // finalise as soon as nothing remains
@@ -107,12 +125,12 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   };
 
   // ── cash ──
-  /** Cash taken on the Cash sheet. `received` / `given` (the notes and coins) are null when the cashier chose not to track them. */
+  /** Cash taken on the Cash sheet, including denomination counts for every received or given note and coin. */
   const takeCash = (r: CashResult) => {
     const isFinal = target === remaining && r.applyCents === undefined; const { tender, settles } = cashTender(r.applyCents ?? target, r.tendered, settings.cashRounding && isFinal);
     if (!settles && r.tendered <= 0) return;
-    const uuid = saleUuid(); const t: Tender = { ...tender, ...(r.received ? { cashIn: r.received } : {}), ...(r.given ? { cashOut: r.given } : {}) };
-    if (r.received || r.given) useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) });
+    const uuid = saleUuid(); const t: Tender = { ...tender, cashIn: r.received, cashOut: r.given };
+    useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) });
     addTender(t, uuid); setCashOpen(false);
   };
 
@@ -124,16 +142,41 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   };
 
   const abandon = async () => {
-    const cards = tenders.filter(t => t.kind === 'card'); if (!tenders.length) { onBack(); return; }
-    if (!(await confirm('Cancel this sale?', `Card payments (${cards.length}) will be refunded to the customer's card. Cash and gift card payments must be returned by hand${tenders.some(t => t.cashIn || t.cashOut) ? ' (the drawer ledger will be put back too)' : ''}.`, 'Refund & cancel', true))) return;
-    const t = getTerminal(); if (cards.length && !t) return alertMsg('Reader not ready', 'Cannot refund cards right now.');
-    for (const tn of cards) {
-      const ref = tn.card?.externalReference ?? tn.id; const r = await startRefund(t!, { purchaseRef: ref, amountCents: tn.amountCents, reference: `${ref}-void` }).promise;
-      if (r.kind !== 'APPROVED') { void csv.event({ kind: 'refund_failed', saleUuid: cart.saleUuid, reference: ref, amountCents: tn.amountCents, message: JSON.stringify(r), staff: staffName }); return alertMsg('Refund did not complete', 'kind' in r && r.kind === 'FAILED' ? r.text : 'Check the terminal, then try again.'); }
-    }
-    let ledger = useApp.getState().pos.ledger; for (const tn of tenders) ledger = reverseCashTender(ledger, tn, { saleUuid: cart.saleUuid, staff: staffName }); if (ledger !== useApp.getState().pos.ledger) useApp.getState().patchPos({ ledger });
-    void csv.event({ kind: 'void', saleUuid: cart.saleUuid, amountCents: paid, staff: staffName, message: 'Partial sale cancelled' });
-    setCart(c0 => ({ ...c0, tenders: undefined, saleUuid: undefined })); onBack();
+    if (cancelBusy) return;
+    if (!tenders.length) { onBack(); return; }
+    if (!(await confirm('Cancel this sale?', `Card payments will be refunded to the customer's card. Gift card payments will be credited back to the same cards.${tenders.some(t => t.kind === 'cash') ? ' For cash, collect any change previously given and return exactly the notes and coins received.' : ''}`, 'Refund & cancel', true))) return;
+    setCancelBusy(true);
+    try {
+      const returned = new Set(cart.returnedTenderIds ?? []);
+      setCart(c0 => ({ ...c0, cancelPending: true }));
+      const cards = tenders.filter(t => t.kind === 'card' && !returned.has(t.id));
+      const t = getTerminal(); if (cards.length && !t) return alertMsg('Reader not ready', 'Cannot refund cards right now.');
+      for (const tn of cards) {
+        const ref = tn.card?.externalReference ?? tn.id;
+        let r: RefundResult;
+        try { r = await startRefund(t!, { purchaseRef: ref, amountCents: tn.amountCents, reference: `${ref}-void` }).promise; }
+        catch (error) { return alertMsg('Refund did not complete', `Could not confirm the card refund. Cancellation remains in progress. ${String((error as Error)?.message ?? error)}`); }
+        if (r.kind !== 'APPROVED') {
+          void csv.event({ kind: 'refund_failed', saleUuid: cart.saleUuid, reference: ref, amountCents: tn.amountCents, message: JSON.stringify(r), staff: staffName });
+          const message = r.kind === 'FAILED' ? r.text : r.kind === 'UNKNOWN' ? `Refund status is unknown: ${r.reason}. Check the terminal before retrying.` : 'Card refund cancelled.';
+          return alertMsg('Refund did not complete', `${message} Approved returns are remembered.`);
+        }
+        returned.add(tn.id); setCart(c0 => ({ ...c0, cancelPending: true, returnedTenderIds: [...returned] }));
+      }
+      for (const tn of tenders.filter(t => t.kind === 'gift_card' && !returned.has(t.id))) {
+        let cardId: string | undefined;
+        try { cardId = tn.giftCardId ?? (tn.giftCardCode ? (await lookupGiftCard(tn.giftCardCode))?.id : undefined); }
+        catch (error) { return alertMsg('Gift card could not be credited', `Cancellation remains in progress; retry after checking the connection. ${String((error as Error)?.message ?? error)}`); }
+        if (!cardId) return alertMsg('Gift card could not be credited', 'The original Shopify gift card could not be identified. The sale is still saved here so you can resolve this without charging the customer again.');
+        const saleId = cart.saleUuid ?? saleUuid();
+        try { await creditGiftCardOnce(cardId, tn.amountCents, `POS cancel ${saleId} tender ${tn.id}`); }
+        catch (error) { return alertMsg('Gift card could not be credited', `Cancellation remains in progress; no further payment can be taken. ${String((error as Error)?.message ?? error)}`); }
+        returned.add(tn.id); setCart(c0 => ({ ...c0, cancelPending: true, returnedTenderIds: [...returned] }));
+      }
+      const cashToReturn = tenders.filter(tn => tn.kind === 'cash' && !returned.has(tn.id));
+      if (cashToReturn.length) { setCancelCash(cashToReturn); return; }
+      finishCancellation();
+    } finally { setCancelBusy(false); }
   };
 
   const busy = card.phase === 'waiting';
@@ -152,7 +195,11 @@ export default function Pay({ onBack }: { onBack: () => void }) {
         </View>
       ) : null}
       {tenders.length ? <View style={{ marginHorizontal: 16, marginBottom: 12 }}><Card>{tenders.map((t, i) => <Row key={t.id} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'} title={t.kind === 'card' ? `Card ${t.card?.panMasked ? '•••• ' + t.card.panMasked : ''}` : t.kind === 'cash' ? 'Cash' : 'Gift card'} right={<Money cents={t.amountCents} />} />)}</Card></View> : null}
-      {remaining > 0 ? (
+      {cart.cancelPending ? <View style={{ padding: 16, gap: 10 }}>
+        <Txt weight="700">Sale cancellation is in progress.</Txt>
+        <Txt sub>Payment methods already returned are remembered. Retry cancellation to return the remaining tenders; do not take another payment for this sale.</Txt>
+        <Btn title="Retry cancellation" busy={cancelBusy} onPress={() => void abandon()} />
+      </View> : remaining > 0 ? (
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
           {payQuestion(ui.explain, true) ? <Txt size={17} weight="700" style={{ textAlign: 'center', marginBottom: 2 }}>{payQuestion(ui.explain, true)}</Txt> : null}
           <PayOption hint={payHint('card', ui.explain)}><Btn title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption>
@@ -161,7 +208,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
           <PayOption hint={payHint('split', ui.explain)}><Btn title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
           {chunk !== null || equalLeft > 1 ? <Btn title="Cancel split" kind="ghost" onPress={() => { setChunk(null); setEqualLeft(0); }} /> : null}
         </View>
-      ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: null, given: null })} /></View> : null}
+      ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: {}, given: {} })} /></View> : null}
 
       {/* card status */}
       <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
@@ -189,6 +236,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       </Sheet>
 
       <GiftCheckSheet visible={gift} onClose={() => setGift(false)} onUse={(g, code) => void useGift(g, code)} />
+      <CancelCashSheet visible={!!cancelCash} tenders={cancelCash ?? []} onDone={returned => finishCancellation(returned)} />
       {done ? <ReceiptPrompt sale={done} onDone={finishAll} /> : null}
     </Page>
   );

@@ -29,11 +29,20 @@ export default function Markdown({ blocks, onPage }: { blocks: Block[]; onPage: 
     <View style={{ gap: 4 }}>
       {items.map((it, i) => (
         <View key={i}>
-          <View style={{ flexDirection: 'row', gap: 8, paddingLeft: depth * 16 }}>
-            <Text style={{ fontSize: size, color: c.sub, width: ordered ? 22 : 10 }}>{ordered ? `${i + 1}.` : '•'}</Text>
-            <Text style={{ flex: 1, fontSize: size, lineHeight: half(size * 1.4), color: c.text }}>{spans(it.inline)}</Text>
+          <View style={ordered ? {
+            flexDirection: 'row', gap: 10, alignItems: 'flex-start', padding: 10, marginLeft: depth * 12,
+            borderRadius: 12, borderWidth: 1, borderColor: c.line, backgroundColor: c.card,
+          } : { flexDirection: 'row', gap: 8, paddingLeft: depth * 16 }}>
+            {ordered ? (
+              <View style={{ width: 28, height: 28, borderRadius: 14, backgroundColor: c.fill, alignItems: 'center', justifyContent: 'center' }}>
+                <Text style={{ fontSize: 13, fontWeight: '700', color: c.accent }}>{i + 1}</Text>
+              </View>
+            ) : <Text style={{ fontSize: size, color: c.sub, width: 10 }}>•</Text>}
+            <View style={{ flex: 1, gap: it.children.length ? 6 : 0 }}>
+              <Text style={{ fontSize: size, lineHeight: half(size * 1.4), color: c.text }}>{spans(it.inline)}</Text>
+              {it.children.length ? list(it.children, false, depth + 1) : null}
+            </View>
           </View>
-          {it.children.length ? <View style={{ marginTop: 4 }}>{list(it.children, false, depth + 1)}</View> : null}
         </View>
       ))}
     </View>

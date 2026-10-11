@@ -4,9 +4,10 @@ export type ScreensaverSettings = {
   enabled: boolean; idleMinutes: number; showWhenLoggedOut: boolean; lockedSeconds: number;
   keepAwake: boolean; bgColor: string; logoUrl: string; logoFile: string; drift: boolean; showClock: boolean;
 };
+export const BUSINESS_LOGO_URL = 'https://www.aidens3dp.com/cdn/shop/files/Untitled_design_1.png?height=108&v=1745546152';
 export const defaultScreensaver = (): ScreensaverSettings => ({
   enabled: false, idleMinutes: 3, showWhenLoggedOut: true, lockedSeconds: 15,
-  keepAwake: true, bgColor: '#111111', logoUrl: '', logoFile: '', drift: true, showClock: false,
+  keepAwake: true, bgColor: '#13111C', logoUrl: BUSINESS_LOGO_URL, logoFile: '', drift: true, showClock: false,
 });
 
 export const IDLE_CHOICES = [1, 2, 5, 10, 30] as const;

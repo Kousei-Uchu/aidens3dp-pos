@@ -46,12 +46,15 @@ The red box offers the ways round it, each explained with its buttons on [[pay/c
 - **Part in cash:** take some of the bill in cash and put the rest on card or another method.
 - **Card:** take the full amount by card.
 
-If you can see the drawer does have the change, tap **The drawer has it (ledger is out of date)**, then confirm the denominations you actually give (unless you choose not to track them). Put the record right afterwards. For the cashier steps, see [[fix/cant-make-change]].
+If you can see the drawer does have the change, tap **The drawer has it (ledger is out of date)**, then confirm the denominations you actually give. Put the record right afterwards. For the cashier steps, see [[fix/cant-make-change]].
+
+### Cancellation is not a change suggestion
+When cancelling a part-paid cash sale, the app asks you to collect any exact change previously given and return the exact denominations originally received. It does not run the optimizer for this exchange. Older tenders without saved denomination counts require a manual count.
 
 You can also ask before taking the cash, with Check change. See [[cash/check-change]].
 
 ### Change on a cash refund
-When a refund pays out cash, the **Give cash refund** sheet works the same way. The notes and coins come from the drawer record only, because nobody has handed anything over. The same buttons are there, including **Done, but don't track it**.
+When a refund pays out cash, the **Give cash refund** sheet uses the same smart optimal suggestion from the drawer record, or lets you enter the denominations physically given if no exact suggestion is available. Confirming the count is required.
 
 ## Deep
 
@@ -74,7 +77,7 @@ The POS looks at every part of what the customer handed over, keeping some and h
 Starting just under the bill and going down in 5c steps, the POS looks for the **largest cash amount** such that the leftover from what the customer handed over can be made out of the drawer plus their notes. The first one that works is offered, and the rest of the bill is left for another method. It needs the customer to have handed over more than the bill. Example: the record holds one $20, the customer hands over a $50 for $37.00. The $13.00 change is impossible, but taking $30.00 in cash works (the $20 comes back from the drawer), which leaves $7.00 for card.
 
 ### "Impossible" is only as good as the record
-The record is a count of what was tapped. Every skipped tap (the **don't track** buttons) and every note moved without telling the POS makes it a little wrong, and a wrong record gives wrong answers in both directions: it can say "can't" when the drawer could, or suggest a note that is not there. That is why a count at closing, or **Correct contents** mid-shift, matters. See [[cash/open-close]].
+The record is a count of what was tapped. An incorrect count or any note moved without telling the POS makes it a little wrong, and a wrong record gives wrong answers in both directions: it can say "can't" when the drawer could, or suggest a note that is not there. That is why a count at closing, or **Correct contents** mid-shift, matters. See [[cash/open-close]].
 
 ## Advanced
 
@@ -123,7 +126,7 @@ flowchart TD
 ### Reading the code for a fault
 - **The big button is greyed and the box says Can't make change, but the drawer has it.** The record is out of date. `planChange` only sees `pos.ledger.counts`. Use **The drawer has it**, then fix the record.
 - **The box says No cash in the ledger.** `ledgerEmpty` is true: the record has no cash at all. It was never opened or counted on this iPad, or the saved copy could not be read. Open the drawer, or use **Correct contents**.
-- **The suggestion includes a note the drawer does not have.** The record is too high. Someone used **Done, but don't track it**, or gave change without confirming.
+- **The suggestion includes a note the drawer does not have.** The record is too high. The denominations may have been entered incorrectly, or cash may have moved without being recorded.
 - **No Ask for less option appears.** `handBackOptions` found no part of the handover that covers the bill and has makeable change, or hit its 600-parts limit when many different notes were handed over.
 - **No Part in cash option appears.** `partCashOption` needs more handed over than the bill, and no 5c-step amount below the bill works, or one was already chosen.
 - **The drawer holds a lot appears.** `truncated` is true: the search hit its step limit.

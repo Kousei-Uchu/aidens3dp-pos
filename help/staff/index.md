@@ -7,7 +7,7 @@ tags: [staff, cashier, manager, owner, role, PIN, sign in, team, access]
 related: [staff/passes, staff/modes, staff/guided-checkout, staff/screensaver, sales/bundles]
 updated: 2026-10-11
 ---
-Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass and their own display mode.
+Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass, display mode, appearance, accent colour and tile size.
 
 ## Basic
 
@@ -26,7 +26,7 @@ You can switch staff from the **Switch staff** sheet without locking the registe
 ### Change or remove someone
 Tap a person's row to open their settings. Choose their display mode, manage their cashier pass, or remove them. Removing someone makes their PIN and pass stop working.
 
-For issuing, printing or cancelling a pass, see [[staff/passes]]. For the per-person screen layout, see [[staff/modes]].
+For issuing, printing or cancelling a pass, see [[staff/passes]]. For per-person screen layout and appearance, see [[staff/modes]].
 
 ## Deep
 
@@ -39,7 +39,7 @@ For issuing, printing or cancelling a pass, see [[staff/passes]]. For the per-pe
 The Staff screen also has role switches for who may set item, line and whole-order price adjustments. Owners cannot be restricted. Managers or owners can change those switches; a manager can do so when the team has no owner account.
 
 ### Staff settings are shared
-PIN hashes, roles, passes and each person's display choice travel with the shared staff settings. A pass's scannable code is kept only on the iPad that issued it; other registers can recognise it from its hash but cannot reprint its code.
+PIN hashes, roles, passes, display modes and personal appearance preferences travel with the shared staff settings. A pass's scannable code is kept only on the iPad that issued it; other registers can recognise it from its hash but cannot reprint its code.
 
 ## Advanced
 
@@ -63,4 +63,4 @@ flowchart TD
 | Staff record | `StaffMember` in `src/lib/types.ts` |
 | Shared staff settings | `pushSharedSettings` in `src/lib/sync.ts` |
 
-Changing staff or sign-in settings updates the local settings immediately and sends shared settings to the other registers. Each register must be online and open to receive the update.
+Changing staff or sign-in settings updates the local settings immediately. If upload fails, the register keeps the change pending and retries while the app is open; other online registers receive it on their next poll after the upload succeeds.

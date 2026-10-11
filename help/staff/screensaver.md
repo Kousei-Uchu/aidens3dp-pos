@@ -7,7 +7,7 @@ tags: [screensaver, idle, keep awake, logo, display, iPad, auto-lock, background
 related: [settings, staff, staff/modes]
 updated: 2026-10-11
 ---
-Open **More ▸ Settings ▸ Screensaver & display** to stop the iPad sleeping or show a logo screen when the register is idle. These choices are for this iPad, not a staff member's display mode.
+Open **More ▸ Settings ▸ Screensaver & display** to stop the iPad sleeping or show a logo screen when the register is idle. Aiden’s 3D Printing logo and plum background are supplied as defaults; you can replace the logo or colour. These choices are for this iPad, not a staff member's display mode.
 
 ## Basic
 

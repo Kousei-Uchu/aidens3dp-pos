@@ -77,9 +77,14 @@ export default function Settings() {
         <Txt weight="600" style={{ marginTop: 18 }}>Gift card claim page</Txt>
         <Field kind="url" label="Claim page URL" value={s.giftClaimUrl} onChangeText={t => patch({ giftClaimUrl: t.trim() })} placeholder="https://gift.example.workers.dev" /><ClaimSecret />
         <Txt size={13} sub>Lets a customer scan a QR after you sell a gift card with no email, and enter their own name and email to receive it. See gift-claim-server/README. Leave empty to skip.</Txt></View> : null}
-      {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
+      {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'brand', label: 'Aiden’s brand' }, { v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
+        <Toggle label="Glass surfaces" sub="Adds blurred, translucent panels and buttons. This is a React Native glass-style effect, not Apple's exact iOS 26 Liquid Glass material." value={s.glassSurfaces} onChange={glassSurfaces => patch({ glassSurfaces })} />
         <Txt weight="600">Tile size</Txt><Segmented value={s.tileSize} onChange={v => patch({ tileSize: v })} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
-        <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View></View> : null}
+        <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#FAE9DC', '#13111C', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : a === '#FAE9DC' ? 'Brand peach' : a === '#13111C' ? 'Plum' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View>
+        <Section title="Item spotlight" footer="Show a brief, large confirmation on the checkout screen after an item is added. This applies to scans and taps.">
+          <Toggle label="Show item name" value={s.itemSpotlight.name} onChange={name => patch({ itemSpotlight: { ...s.itemSpotlight, name } })} />
+          <Toggle label="Show item image" value={s.itemSpotlight.image} onChange={image => patch({ itemSpotlight: { ...s.itemSpotlight, image } })} />
+        </Section></View> : null}
       {sub === 'about' ? <Section><Row title="Register" sub={`${s.registerName} · ${s.registerId}`} /><Row title="Shopify API" sub="2026-07" /><Row title="Currency" sub="AUD" last /></Section> : null}
       {sub === 'about' ? <View style={{ padding: 16 }}><Field kind="name" label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
     </Page>

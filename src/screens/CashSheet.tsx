@@ -15,13 +15,13 @@ import { cashStatus, countsToDraft, handBackOptions, ledgerEmpty, partCashOption
 import { planChangeSmart } from '../lib/changeScore';
 import { useCashProfile } from '../state/cashProfile';
 import { fmt } from '../lib/money';
+import type { Tender } from '../lib/types';
 
-/** What the sheet hands back. `received` / `given` are null when the cashier chose not to track notes and coins for this sale.
- *  `applyCents` is set when only part of the bill is being paid in cash (the rest goes on card). */
-export type CashResult = { tendered: number; received: Counts | null; given: Counts | null; applyCents?: number };
+/** The denominations physically received and given; `applyCents` marks a part-cash payment. */
+export type CashResult = { tendered: number; received: Counts; given: Counts; applyCents?: number };
 
 /** Notes and coins to hand to the customer: the suggestion from `pool`, or tap what is really given. */
-export function GiveCash({ pool, owed, headline = 'Give the customer', detail, onConfirm }: { pool: Counts; owed: number; headline?: string; detail?: string; onConfirm: (given: Counts | null) => void }) {
+export function GiveCash({ pool, owed, headline = 'Give the customer', detail, onConfirm }: { pool: Counts; owed: number; headline?: string; detail?: string; onConfirm: (given: Counts) => void }) {
   const { c } = useTheme(); const [manual, setManual] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [alt, setAlt] = useState(0);
   const profile = useCashProfile(); const plan = useMemo(() => planChangeSmart(pool, owed, profile), [pool, owed, profile]); const none = ledgerEmpty(pool);
   useEffect(() => { setAlt(0); }, [pool, owed]);
@@ -50,15 +50,56 @@ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, o
           <Btn title="Gave this" disabled={gave !== owed} onPress={() => onConfirm(giving)} />
         </>
       )}
-      <Btn title="Done, but don't track it" kind="ghost" onPress={() => onConfirm(null)} />
     </View>
   );
 }
 
 /** Cash refund: which notes and coins to hand the customer. */
-export function GiveCashSheet({ visible, amount, onDone }: { visible: boolean; amount: number; onDone: (given: Counts | null) => void }) {
+export function GiveCashSheet({ visible, amount, onDone }: { visible: boolean; amount: number; onDone: (given: Counts) => void }) {
   const drawer = useApp(s => s.pos.ledger.counts);
-  return <Sheet visible={visible} onClose={() => onDone(null)} title="Give cash refund" dismissable={false}><GiveCash pool={drawer} owed={amount} headline="Give the customer" onConfirm={onDone} /></Sheet>;
+  return <Sheet visible={visible} onClose={() => {}} title="Give cash refund" dismissable={false}><GiveCash pool={drawer} owed={amount} headline="Give the customer" onConfirm={onDone} /></Sheet>;
+}
+
+export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean; tenders: Tender[]; onDone: (cash: Record<string, { returned: Counts; collected: Counts }>) => void }) {
+  const [index, setIndex] = useState(0); const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [stage, setStage] = useState<'collect' | 'return'>('collect');
+  useEffect(() => { if (visible) { setIndex(0); setDrafts({}); setStage('collect'); } }, [visible]);
+  const current = tenders[index];
+  if (!current) return null;
+  const expected = current.tenderedCents ?? current.amountCents + (current.changeCents ?? 0);
+  const collectManually = !current.cashOut && (current.changeCents ?? 0) > 0;
+  const returnManually = !current.cashIn;
+  const cashOutTarget = current.changeCents ?? totalOf(current.cashOut ?? {});
+  const collectDraft = drafts[`${current.id}:collect`] ?? [];
+  const returnDraft = drafts[`${current.id}:return`] ?? [];
+  const collected = current.cashOut ?? draftCounts(collectDraft);
+  const returned = current.cashIn ?? draftCounts(returnDraft);
+  const canConfirmCollect = !collectManually || totalOf(collected) === cashOutTarget;
+  const canConfirmReturn = !returnManually || totalOf(returned) === expected;
+  return (
+    <Sheet visible={visible} onClose={() => {}} title="Return cash for cancelled sale" dismissable={false}>
+      <View style={{ gap: 12 }}>
+        <Txt size={13} sub>Cash payment {index + 1} of {tenders.length}. Do not use the change suggestion for a cancellation.</Txt>
+        {stage === 'collect' && cashOutTarget > 0 ? <>
+          {collectManually ? <>
+            <Txt weight="600">Collect back the previously given change ({fmt(cashOutTarget)}). Enter the exact notes and coins collected.</Txt>
+            <DenomPad draft={collectDraft} onChange={draft => setDrafts(s => ({ ...s, [`${current.id}:collect`]: draft }))} totalLabel="Change collected" />
+          </> : <Txt weight="600">Collect back the exact change previously given: {summariseCounts(collected)} ({fmt(totalOf(collected))}).</Txt>}
+          <Btn title="Change collected · next return exact cash" disabled={!canConfirmCollect} onPress={() => setStage('return')} />
+        </> : null}
+        {stage === 'return' || cashOutTarget === 0 ? <>
+          {returnManually ? <>
+            <Txt weight="600">These notes were not recorded. Enter the exact notes and coins now being returned (target {fmt(expected)}); this is a manual count, not an optimized suggestion.</Txt>
+            <DenomPad draft={returnDraft} onChange={draft => setDrafts(s => ({ ...s, [`${current.id}:return`]: draft }))} totalLabel="Cash returned" />
+          </> : <Txt weight="600">Return exactly what the customer handed over: {summariseCounts(returned)} ({fmt(totalOf(returned))}).</Txt>}
+          <Btn title={index === tenders.length - 1 ? 'Cash returned and change collected' : 'Next cash payment'} disabled={!canConfirmReturn} onPress={() => {
+            if (index < tenders.length - 1) { setIndex(i => i + 1); setStage('collect'); }
+            else onDone(Object.fromEntries(tenders.map(t => [t.id, { returned: t.cashIn ?? draftCounts(drafts[`${t.id}:return`] ?? []), collected: t.cashOut ?? draftCounts(drafts[`${t.id}:collect`] ?? []) }])));
+          }} />
+        </> : null}
+      </View>
+    </Sheet>
+  );
 }
 
 export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void }) {
@@ -74,7 +115,7 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
   const hand = useMemo(() => (blocked ? handBackOptions(drawer, received, billDue) : null), [blocked, drawer, received, billDue]);
   const part = useMemo(() => (blocked && partX === null ? partCashOption(drawer, received, due) : null), [blocked, partX, drawer, received, due]);
 
-  const finish = (given: Counts | null) => onTake({ tendered: got, received, given, ...(partX !== null ? { applyCents: partX } : {}) });
+  const finish = (given: Counts = {}) => onTake({ tendered: got, received, given, ...(partX !== null ? { applyCents: partX } : {}) });
 
   return (
     <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'}>
@@ -91,10 +132,10 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
           {st.state === 'short' ? (
             <>
               <Txt size={13} sub style={{ textAlign: 'center' }}>That doesn't cover the bill. Ask for {fmt(st.shortBy)} more, or take this as a part payment and put the other {fmt(st.shortBy)} on card or another method.</Txt>
-              <Btn title={`Take ${fmt(got)} as part payment`} onPress={() => finish(null)} />
+              <Btn title={`Take ${fmt(got)} as part payment`} onPress={() => finish()} />
             </>
           ) : null}
-          {st.state === 'exact' && got > 0 ? <Btn title="Take cash" onPress={() => finish(null)} /> : null}
+          {st.state === 'exact' && got > 0 ? <Btn title="Take cash" onPress={() => finish()} /> : null}
 
           {st.state === 'change' ? (
             <>
@@ -115,7 +156,6 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
             </>
           ) : null}
           {partX !== null ? <Btn title="Back to the full amount" kind="ghost" onPress={() => { setPartX(null); setForce(false); }} /> : null}
-          {billDue > 0 && got === 0 ? <Btn title="Exact amount (don't track notes)" kind="secondary" onPress={() => onTake({ tendered: billDue, received: null, given: null, ...(partX !== null ? { applyCents: partX } : {}) })} /> : null}
         </View>
       ) : (
         <View style={{ gap: 14 }}>

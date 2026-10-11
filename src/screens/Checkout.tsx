@@ -1,6 +1,6 @@
 // Location: src/screens/Checkout.tsx
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Image, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Chip, Empty, Field, HelpButton, IconBtn, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm, useToast } from '../ui/kit';
 import { useLayout, useTheme } from '../ui/theme';
@@ -27,6 +27,7 @@ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from '
 import CartPane from './CartPane';
 import { openSavedCart } from '../lib/savedOps';
 import type { Variant } from '../lib/types';
+import { BUSINESS_LOGO_URL } from '../lib/screensaver';
 
 const QTYS = [1, 2, 3, 5, 10];
 
@@ -54,17 +55,29 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
+  const shopName = useApp(s => s.settings.shopName);
+  const spotlightOptions = useApp(s => s.settings.itemSpotlight);
   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
   const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
   const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
+  const [spotlightItem, setSpotlightItem] = useState<Variant | null>(null);
+  const spotlightTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
+  useEffect(() => () => { if (spotlightTimer.current) clearTimeout(spotlightTimer.current); }, []);
+  const showSpotlight = (v: Variant) => {
+    if (!spotlightOptions.name && !spotlightOptions.image) return;
+    setSpotlightItem(v);
+    if (spotlightTimer.current) clearTimeout(spotlightTimer.current);
+    spotlightTimer.current = setTimeout(() => setSpotlightItem(null), 2200);
+  };
 
   const add = (v: Variant, count = qty) => {
     if (locked) return alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.');
     setCart(cc => ops.addVariant(cc, v, count, consolidate)); setQty(1);
+    showSpotlight(v);
     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
   };
   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
@@ -136,6 +149,10 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const left = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: guided ? 8 : 54, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+        {!guided ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 8 }}>
+          <Image source={{ uri: BUSINESS_LOGO_URL }} resizeMode="contain" style={{ width: 24, height: 24 }} accessibilityLabel="Aiden’s 3D Printing logo" />
+          {shopName ? <Txt size={13} weight="600" sub numberOfLines={1}>{shopName}</Txt> : null}
+        </View> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
           <Pressable onPress={() => setSheet('search')} accessibilityRole="search" accessibilityLabel="Search" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 12, height: 40 }}>
             <Ionicons name="search" size={18} color={c.sub} /><Txt sub>Search items, customers, discounts</Txt></Pressable>
@@ -220,6 +237,11 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
       <CustomerSheet visible={sheet === 'customers'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
       <AddTileSheet visible={sheet === 'add'} onClose={() => setSheet('none')} onPick={onAddTile} />
       <TileSettingsSheet tile={editing_} onClose={() => setEditIdx(null)} onChange={t => editPage(l => updateTileAt(l, valid, editIdx!, () => t))} onRemove={() => { if (editIdx !== null) onRemove(editIdx); setEditIdx(null); }} onOpen={() => { if (editIdx !== null) setPath([...valid, editIdx]); }} />
+      {spotlightItem && (spotlightOptions.name || (spotlightOptions.image && spotlightItem.image)) ? <Pressable onPress={() => setSpotlightItem(null)} accessibilityRole="button" accessibilityLabel="Dismiss item confirmation"
+        style={{ position: 'absolute', top: '18%', alignSelf: 'center', maxWidth: '86%', padding: 14, borderRadius: 18, alignItems: 'center', gap: 8, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 16, elevation: 8 }}>
+        {spotlightOptions.image && spotlightItem.image ? <Image source={{ uri: spotlightItem.image }} resizeMode="contain" style={{ width: 180, height: 150, borderRadius: 12 }} /> : null}
+        {spotlightOptions.name ? <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{spotlightItem.productTitle}{spotlightItem.variantTitle ? ` · ${spotlightItem.variantTitle}` : ''}</Txt> : null}
+      </Pressable> : null}
 
       <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
       <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />

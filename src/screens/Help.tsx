@@ -2,8 +2,8 @@
 // More ▸ Help (B7b). Reads the built-in copy of the help pages (help/help.json), so it works offline.
 // A page shows at the depth you chose (Basic, Deep or Advanced), which is remembered. `id` opens a page directly (used by the "?" buttons later).
 import React, { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Chip, Empty, Field, IconBtn, Page, Row, Section, Segmented, Txt } from '../ui/kit';
+import { Pressable, ScrollView, View } from 'react-native';
+import { Card, Chip, Empty, Field, IconBtn, Page, Row, Section, Segmented, Txt } from '../ui/kit';
 import Markdown from '../ui/Markdown';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
@@ -72,7 +72,22 @@ export default function Help({ id }: { id?: string }) {
       </View>
       {q.trim() ? null : (
         <>
-          {kids.length ? <Section title={page.id === ROOT_ID ? 'Topics' : 'In this section'}>{kids.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === kids.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
+          {kids.length && page.id === ROOT_ID ? (
+            <View style={{ marginTop: 18 }}>
+              <Txt size={13} sub weight="600" style={{ marginHorizontal: 20, marginBottom: 8, textTransform: 'uppercase' }}>Browse by task</Txt>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginHorizontal: 16 }}>
+                {kids.map(k => (
+                  <Card key={k.id} style={{ width: '48%' }}>
+                    <Pressable onPress={() => go(k.id)} accessibilityRole="button" accessibilityLabel={`Browse ${k.title}`}
+                      style={({ pressed }) => ({ minHeight: 94, padding: 12, gap: 5, backgroundColor: pressed ? c.fill : c.card })}>
+                      <Txt weight="700" numberOfLines={2}>{k.title}</Txt>
+                      <Txt size={12} sub numberOfLines={2}>{k.summary}</Txt>
+                    </Pressable>
+                  </Card>
+                ))}
+              </View>
+            </View>
+          ) : kids.length ? <Section title="In this section">{kids.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === kids.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
           {related.length ? <Section title="Related">{related.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === related.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
           {linkedHere.length ? <Section title="Pages that link here">{linkedHere.map((k, i) => <Row key={k.id} title={k.title} sub={k.summary} last={i === linkedHere.length - 1} onPress={() => go(k.id)} />)}</Section> : null}
         </>

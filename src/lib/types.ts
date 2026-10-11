@@ -115,6 +115,9 @@ export type Cart = {
   /** Set once a payment starts: approved part-payments persist on the sale (no 5-minute void). */
   saleUuid?: string;
   tenders?: Tender[];
+  /** Per-tender progress while cancelling a part-paid sale; protects remote refunds/credits from being repeated. */
+  cancelPending?: boolean;
+  returnedTenderIds?: string[];
   /** Saved cart this cart was opened from – voided once the sale completes. */
   savedFrom?: string;
 };
@@ -171,8 +174,8 @@ export type Tender = {
   amountCents: number; // applied to the bill
   tenderedCents?: number; // cash handed over
   changeCents?: number;
-  cashIn?: Record<string, number>; // notes and coins the customer handed over (cents → count), when tracked
-  cashOut?: Record<string, number>; // notes and coins given back as change, when tracked
+  cashIn?: Record<string, number>; // notes and coins the customer handed over; absent on older tenders
+  cashOut?: Record<string, number>; // notes and coins given back as change; absent on older tenders
   roundingCents?: number; // cash 5c rounding (cashDue − amount), may be negative
   card?: CardInfo;
   giftCardId?: string;
@@ -223,4 +226,5 @@ export type Notice = {
 };
 
 export type Role = 'cashier' | 'manager' | 'owner';
-export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi };
+export type StaffPreferences = { theme?: 'brand' | 'light' | 'dark' | 'system'; accent?: string; tileSize?: 'S' | 'M' | 'L' };
+export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi; preferences?: StaffPreferences };

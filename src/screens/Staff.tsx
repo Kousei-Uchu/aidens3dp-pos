@@ -10,7 +10,7 @@ import { StaffLoginPad } from './StaffLogin';
 import { StaffPassSheet } from './StaffPass';
 import { pushSharedSettings } from '../lib/sync';
 import { uid } from '../lib/ids';
-import { MODES, MODE_BLURB, MODE_LABEL, MORE_LABEL, TAB_LABEL, TEXT_LABEL, isSoleAdmin, readUi, readCustom, withCustom, withMode, type CustomUi, type UiMode } from '../lib/uiMode';
+import { MODES, MODE_BLURB, MODE_LABEL, MORE_GROUPS, MORE_LABEL, TAB_LABEL, TAB_ORDER, TABS_BY_LEVEL, TEXT_LABEL, isSoleAdmin, moreLevelIncludes, readUi, readCustom, withCustom, withMode, type CustomUi, type MoreRowId, type TabId, type UiMode } from '../lib/uiMode';
 import type { Role } from '../lib/types';
 import { ADJUST_KINDS, KIND_NAME, RESTRICTABLE_ROLES, ROLE_PLURAL, actingRole, canAdjust, canEditAdjustPerms, permsSummary, setAdjustPerm } from '../lib/adjustPerms';
 
@@ -25,6 +25,14 @@ export default function Staff() {
   };
   /** Saves a person's display mode and shares it to the other registers with the rest of the staff list. */
   const setUi = (id: string, ui: ReturnType<typeof withMode>) => { patch({ staff: s.staff.map(x => (x.id === id ? { ...x, ui } : x)) }); void pushSharedSettings().catch(() => {}); };
+  const setPreference = (id: string, key: 'theme' | 'accent' | 'tileSize', value: string) => {
+    patch({ staff: s.staff.map(x => {
+      if (x.id !== id) return x;
+      const preferences = { ...x.preferences, [key]: value === 'default' ? undefined : value };
+      return { ...x, preferences };
+    }) });
+    void pushSharedSettings().catch(() => {});
+  };
   return (
     <Page title="Staff" onBack={nav.pop} helpId="concepts/roles">
       <Section footer="PINs lock the till and tag each sale with who made it. They’re stored hashed, and shared to your other registers.">
@@ -40,6 +48,11 @@ export default function Staff() {
             <Txt size={13} sub>{MODE_BLURB[readUi(m.ui).mode]}</Txt>
             {readUi(m.ui).mode === 'custom' ? <CustomModeEditor value={readCustom(readUi(m.ui).custom)} onChange={p => setUi(m.id, withCustom(m.ui, p))} /> : null}
             {readUi(m.ui).mode !== 'standard' && m.role !== 'cashier' && isSoleAdmin(s.staff, m.id) ? <Txt size={12} sub>You are the only manager or owner, so this mode keeps Staff and Settings in the More menu.</Txt> : null}
+            <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase', marginTop: 12 }}>Personal display preferences</Txt>
+            <Txt size={12} sub>These override the register defaults for this staff member only.</Txt>
+            <Segmented value={m.preferences?.theme ?? 'default'} onChange={v => setPreference(m.id, 'theme', v)} options={[{ v: 'default', label: 'Register' }, { v: 'brand', label: 'Brand' }, { v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
+            <Segmented value={m.preferences?.tileSize ?? 'default'} onChange={v => setPreference(m.id, 'tileSize', v)} options={[{ v: 'default', label: 'Register tiles' }, { v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
+            <Segmented value={m.preferences?.accent ?? 'default'} onChange={v => setPreference(m.id, 'accent', v)} options={[{ v: 'default', label: 'Register accent' }, { v: '#FAE9DC', label: 'Peach' }, { v: '#13111C', label: 'Plum' }, { v: '#2563EB', label: 'Blue' }, { v: '#16A34A', label: 'Green' }, { v: '#9333EA', label: 'Purple' }]} />
           </View>
           <Row icon="qr-code-outline" title="Cashier pass" sub={hasBadge(m) ? 'Issued. Print it, add it to Apple Wallet, or replace it.' : 'Not issued yet'} onPress={() => { setSel(null); setTimeout(() => setPassFor(m.id), 350); }} />
           <Row icon="trash-outline" title={`Remove ${m.name}`} danger last onPress={async () => { setSel(null); if (await confirm(`Remove ${m.name}?`, 'Their PIN and cashier pass stop working.', 'Remove', true)) { patch({ staff: s.staff.filter(x => x.id !== m.id) }); void forgetBadge(m.id); void pushSharedSettings().catch(() => {}); } }} />
@@ -57,6 +70,10 @@ export default function Staff() {
 /** The four dials of Custom mode. */
 function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: Partial<CustomUi>) => void }) {
   const label = (t: string) => <Txt size={13} weight="600" style={{ marginTop: 6 }}>{t}</Txt>;
+  const tabNames: Record<TabId, string> = { checkout: 'Checkout tab', inventory: 'Inventory tab', transactions: 'Transactions tab', notifications: 'Notifications tab', more: 'More tab' };
+  const moreNames: Record<MoreRowId, string> = { orders: 'Orders', items: 'Items', customers: 'Customers', saved: 'Saved carts', giftcards: 'Gift cards', reports: 'Reports', drawer: 'Cash drawer', staff: 'Staff', settings: 'Settings', diagnostics: 'Diagnostics', help: 'Help', lock: 'Lock register' };
+  const flipTab = (id: TabId, shown: boolean) => onChange({ tabOverrides: { ...value.tabOverrides, [id]: shown } });
+  const flipMore = (id: MoreRowId, shown: boolean) => onChange({ moreOverrides: { ...value.moreOverrides, [id]: shown } });
   return (
     <View style={{ gap: 6 }}>
       {label('Text size')}
@@ -68,10 +85,15 @@ function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: 
       <Txt size={12} sub>{TAB_LABEL[value.tabs]}</Txt>
       {label('Checkout')}
       <Segmented<'on' | 'off'> value={value.guided ? 'on' : 'off'} onChange={v => onChange({ guided: v === 'on' })} options={[{ v: 'off', label: 'Normal' }, { v: 'on', label: 'Guided steps' }]} />
-      <Txt size={12} sub>Guided steps ask one question at a time: items, customer, discount, check, pay.</Txt>
+      <Txt size={12} sub>Guided steps ask one question at a time: items, discount, check and pay.</Txt>
+      {value.guided ? <Toggle label="Ask for a customer as a separate step" value={value.guidedCustomer ?? false} onChange={guidedCustomer => onChange({ guidedCustomer })} /> : null}
+      {label('Show individual tabs')}
+      {TAB_ORDER.map(id => <Toggle key={id} label={tabNames[id]} value={id === 'checkout' || id === 'more' || (value.tabOverrides?.[id] ?? TABS_BY_LEVEL[value.tabs].includes(id))} disabled={id === 'checkout' || id === 'more'} onChange={shown => flipTab(id, shown)} />)}
       {label('More menu')}
       <Segmented<CustomUi['more']> value={value.more} onChange={more => onChange({ more })} options={(['all', 'everyday', 'essential'] as const).map(v => ({ v, label: v === 'all' ? 'All' : v === 'everyday' ? 'Everyday' : 'Essentials' }))} />
       <Txt size={12} sub>{MORE_LABEL[value.more]}</Txt>
+      {label('Show individual More entries')}
+      {MORE_GROUPS.flat().map(id => <Toggle key={id} label={moreNames[id]} value={value.moreOverrides?.[id] ?? moreLevelIncludes(value.more, id)} onChange={shown => flipMore(id, shown)} />)}
     </View>
   );
 }

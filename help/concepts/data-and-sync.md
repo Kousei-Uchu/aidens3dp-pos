@@ -31,6 +31,8 @@ An order can therefore be visible in local Transactions while its Shopify order 
 ### Register-specific versus shared settings
 The register ID and name, display preferences, cash drawer ledger, screensaver, inventory view and some device state belong to this iPad. Staff, display modes saved on staff, and selected operational settings are shared between registers through Shopify. A settings backup can transfer configuration, but it is not the same as the live sale queue or the catalogue.
 
+If a shared-settings upload fails, the register keeps the pending change locally and retries from its foreground sync poll (about every 25 seconds). A remote settings pull will not replace that pending local change. Once the upload succeeds, other open registers can receive it on their next poll.
+
 ## Advanced
 
 ### Data path

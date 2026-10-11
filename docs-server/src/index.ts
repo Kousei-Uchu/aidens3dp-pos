@@ -22,34 +22,55 @@ function pageHTML(nonce: string): string {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="description" content="Help for the Shopify Zeller POS register.">
-  <title>POS Help</title>
+  <meta name="theme-color" content="#13111c">
+  <title>POS Help · Aiden’s 3D Printing</title>
   <style>
-    :root{font:16px system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#17202a;background:#f4f6f8}
-    *{box-sizing:border-box}body{margin:0}header{height:60px;display:flex;align-items:center;gap:16px;padding:0 22px;background:#fff;border-bottom:1px solid #d9dee4}
-    header strong{font-size:20px}header span{color:#68727d;font-size:13px}
-    #layout{display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr);min-height:calc(100vh - 60px)}
-    aside{padding:18px;border-right:1px solid #d9dee4;background:#fff;max-height:calc(100vh - 60px);overflow:auto;position:sticky;top:0}
-    input,select{font:inherit;width:100%;padding:10px 12px;border:1px solid #c6cdd5;border-radius:9px;background:#fff}
+    @font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400;font-display:swap;src:url("https://www.aidens3dp.com/cdn/fonts/instrument_sans/instrumentsans_n4.db86542ae5e1596dbdb28c279ae6c2086c4c5bfa.woff2") format("woff2")}
+    @font-face{font-family:"Instrument Sans";font-style:normal;font-weight:700;font-display:swap;src:url("https://www.aidens3dp.com/cdn/fonts/instrument_sans/instrumentsans_n7.e4ad9032e203f9a0977786c356573ced65a7419a.woff2") format("woff2")}
+    :root{font:14px/1.6 "Instrument Sans",sans-serif;color:#efd8c9;background:#13111c;font-synthesis:none;--bg:#13111c;--surface:#1b1924;--surface-raised:#211e29;--fg:#efd8c9;--muted:rgba(239,216,201,.68);--line:rgba(246,237,221,.16);--accent:#fae9dc;--accent-text:#13111c;--highlight:#fb873f;--soft:rgba(246,237,221,.08)}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg)}button,input,select{font:inherit}
+    header{height:68px;display:flex;align-items:center;gap:12px;padding:0 26px;background:var(--bg);color:var(--fg);border-bottom:1px solid var(--line)}
+    .brand-mark{display:block;width:36px;height:36px;object-fit:contain}
+    header strong{font-size:19px;font-weight:500;letter-spacing:0}header span{color:var(--muted);font-size:13px}
+    #layout{display:grid;grid-template-columns:minmax(250px,310px) minmax(0,1fr);min-height:calc(100vh - 68px);max-width:1600px;margin:auto}
+    aside{padding:22px 16px;border-right:1px solid var(--line);background:var(--surface);max-height:calc(100vh - 68px);overflow:auto;position:sticky;top:0}
+    .nav-heading{margin:0 8px 12px;color:var(--muted);font-size:12px;font-weight:700;letter-spacing:.09em;text-transform:uppercase}
+    input,select{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:12px;background:rgba(246,237,221,.08);color:var(--fg);outline:none}
+    input::placeholder{color:var(--muted)}option{background:var(--surface);color:var(--fg)}
+    input:focus,select:focus,button:focus-visible{border-color:var(--accent);box-shadow:0 0 0 3px rgba(250,233,220,.18);outline:none}
     #tree{padding:12px 0}#tree ul{list-style:none;margin:0;padding-left:14px}#tree>ul{padding-left:0}
-    #tree button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:7px 8px;border-radius:7px;color:#283747;cursor:pointer}
-    #tree button:hover,#tree button.active{background:#e9eef5;color:#111;font-weight:650}
-    main{max-width:940px;width:100%;margin:0 auto;padding:24px 34px 80px;background:#fff;min-height:calc(100vh - 60px)}
-    #crumb{font-size:13px;color:#68727d;margin-bottom:14px}h1{font-size:30px;margin:0 0 8px}#summary{color:#68727d;line-height:1.5;margin:0 0 14px}
-    #depth{max-width:240px;margin:8px 0 20px}.content{line-height:1.65}.content h2{font-size:22px;margin-top:30px;border-bottom:1px solid #e6e9ed;padding-bottom:6px}
-    .content h3{font-size:18px;margin-top:24px}.content a{color:#1259a7}.content pre{overflow:auto;background:#f3f5f7;padding:14px;border-radius:9px}
-    .content code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.content :not(pre)>code{background:#eef1f4;padding:2px 4px;border-radius:4px}
-    .content table{border-collapse:collapse;width:100%;display:block;overflow:auto}.content th,.content td{border:1px solid #d9dee4;padding:7px 9px;text-align:left}.content blockquote{border-left:3px solid #c6cdd5;margin-left:0;padding-left:14px;color:#55616d}
-    #status{color:#68727d;font-size:12px;margin-top:10px}.hidden{display:none}
-    @media(max-width:760px){header{padding:0 14px}#layout{display:block}aside{position:relative;top:auto;max-height:36vh;border-right:0;border-bottom:1px solid #d9dee4;padding:12px 14px}main{padding:20px 16px 60px;min-height:auto}h1{font-size:26px}}
+    #tree button{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:10px;color:var(--muted);cursor:pointer;line-height:1.4}
+    #tree button:hover,#tree button.active{background:var(--soft);color:var(--fg);font-weight:700}
+    main{max-width:1020px;width:100%;margin:24px auto;padding:32px 42px 76px;background:var(--surface);border:1px solid var(--line);border-radius:18px;min-height:calc(100vh - 116px)}
+    #crumb{font-size:13px;color:var(--muted);margin-bottom:18px}h1{font-size:clamp(30px,4vw,42px);line-height:1.2;letter-spacing:-.025em;font-weight:400;margin:0 0 9px;color:var(--fg)}#summary{color:var(--muted);line-height:1.6;margin:0 0 18px}
+    .reader-tools{display:flex;align-items:center;gap:12px;padding:12px;margin:0 0 25px;border:1px solid var(--line);border-radius:14px;background:var(--surface-raised)}
+    .reader-tools label{font-size:12px;font-weight:700;color:var(--muted);white-space:nowrap}#depth{max-width:210px;margin:0}
+    .content{line-height:1.7;color:var(--fg)}.content h2{font-size:clamp(22px,3vw,30px);line-height:1.3;font-weight:400;margin:34px 0 16px;color:var(--fg);border-bottom:1px solid var(--line);padding-bottom:9px}
+    .content h3{font-size:20px;line-height:1.4;font-weight:500;margin-top:26px;color:var(--highlight)}.content a{color:var(--highlight);text-decoration-thickness:1px;text-underline-offset:3px}.content a:hover{color:var(--accent)}
+    .content pre{overflow:auto;background:var(--bg);color:var(--fg);padding:14px;border-radius:12px;border:1px solid var(--line)}
+    .content code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.content :not(pre)>code{background:var(--soft);padding:2px 5px;border-radius:5px}
+    .content table{border-collapse:collapse;width:100%;display:block;overflow:auto;border-radius:10px}.content th,.content td{border:1px solid var(--line);padding:9px 11px;text-align:left}.content th{background:var(--surface-raised);color:var(--fg)}
+    .content blockquote{border-left:4px solid var(--highlight);margin:18px 0;padding:8px 16px;background:var(--surface-raised);color:var(--muted);border-radius:0 10px 10px 0}
+    .content ol{list-style:none;counter-reset:help-step;margin:16px 0;padding:0;display:grid;gap:10px}.content ol>li{counter-increment:help-step;position:relative;padding:14px 16px 14px 62px;border:1px solid var(--line);border-radius:14px;background:var(--surface-raised)}
+    .content ol>li::before{content:counter(help-step);position:absolute;left:16px;top:14px;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:14px}
+    .guide-toggle,.guide-nav button{border:0;border-radius:100px;background:var(--accent);color:var(--accent-text);font-weight:600;padding:11px 20px;cursor:pointer;transition:filter .15s ease}
+    .guide-toggle{margin:0 0 12px}.guide-toggle:hover,.guide-nav button:hover:not(:disabled){filter:brightness(.92)}
+    .step-guide{padding:18px;border:1px solid var(--line);border-radius:16px;background:var(--surface-raised);margin:0 0 16px}
+    .step-guide[hidden]{display:none}.step-guide-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .step-label{font-size:13px;font-weight:700;color:var(--highlight)}.step-track{height:6px;background:var(--soft);border-radius:99px;overflow:hidden;margin-bottom:16px}.step-track span{display:block;height:100%;background:var(--highlight);border-radius:inherit;transition:width .2s ease}
+    .step-current{padding:16px;border-radius:12px;background:var(--surface);border:1px solid var(--line);min-height:70px}
+    .guide-nav{display:flex;justify-content:space-between;gap:10px;margin-top:14px}.guide-nav button:disabled{opacity:.45;cursor:not-allowed}
+    #status{color:var(--muted);font-size:12px;margin-top:22px;padding-top:12px;border-top:1px solid var(--line)}
+    @media(max-width:760px){header{height:58px;padding:0 15px}header strong{white-space:nowrap}header span:last-child{display:none}#layout{display:flex;flex-direction:column;min-height:calc(100vh - 58px)}aside{position:relative;top:auto;max-height:34vh;min-height:120px;border-right:0;border-bottom:1px solid var(--line);padding:13px 14px}main{width:auto;margin:12px;padding:22px 18px 50px;min-height:auto;border-radius:15px}h1{font-size:30px}.reader-tools{align-items:flex-start;flex-direction:column}.reader-tools label{white-space:normal}#depth{max-width:none}.content ol>li{padding:12px 12px 12px 48px}.content ol>li::before{width:28px;height:28px;left:11px;top:12px}}
   </style>
 </head>
 <body>
-  <header><strong>POS Help</strong><span>Shopify Zeller POS</span></header>
+  <header><img class="brand-mark" src="https://www.aidens3dp.com/cdn/shop/files/Untitled_design_1.png?height=108&amp;v=1745546152" alt="Aiden’s 3D Printing"><strong>POS Help</strong><span>Aiden’s 3D Printing · Shopify Zeller POS</span></header>
   <div id="layout">
-    <aside><input id="search" type="search" placeholder="Search help" aria-label="Search help"><div id="tree"></div></aside>
+    <aside><p class="nav-heading">Browse help</p><input id="search" type="search" placeholder="Search 58 guides" aria-label="Search help"><div id="tree"></div></aside>
     <main>
       <div id="crumb"></div><h1 id="title">Loading help…</h1><p id="summary"></p>
-      <select id="depth" aria-label="Detail level"><option value="basic">Basic</option><option value="deep">Deep</option><option value="advanced">Advanced</option></select>
+      <div class="reader-tools"><label for="depth">How much detail?</label><select id="depth" aria-label="Detail level"><option value="basic">Basic</option><option value="deep">Deep</option><option value="advanced">Advanced</option></select></div>
       <article id="content" class="content"></article><div id="status"></div>
     </main>
   </div>
@@ -66,6 +87,7 @@ function pageHTML(nonce: string): string {
     const content = document.querySelector('#content');
     const crumb = document.querySelector('#crumb');
     const status = document.querySelector('#status');
+    const searchInput = document.querySelector('#search');
     let pages = [];
     let current = null;
     let version = '';
@@ -125,6 +147,82 @@ function pageHTML(nonce: string): string {
       tree.append(ul);
     }
     function toHTML(text) { return marked.parse(wikiLinks(text), { async:false }); }
+    function addStepGuides() {
+      let guideNumber = 0;
+      for (const list of content.querySelectorAll('ol')) {
+        const items = [...list.children].filter(node => node.tagName === 'LI');
+        if (items.length < 2) continue;
+        const id = 'step-guide-' + guideNumber++;
+        const toggle = document.createElement('button');
+        toggle.className = 'guide-toggle';
+        toggle.type = 'button';
+        toggle.textContent = 'Guide me through these steps';
+        toggle.setAttribute('aria-expanded', 'false');
+        toggle.setAttribute('aria-controls', id);
+        const guide = document.createElement('section');
+        guide.className = 'step-guide';
+        guide.id = id;
+        guide.hidden = true;
+        guide.setAttribute('aria-label', 'Interactive step-by-step guide');
+        const head = document.createElement('div');
+        head.className = 'step-guide-head';
+        const label = document.createElement('span');
+        label.className = 'step-label';
+        const close = document.createElement('button');
+        close.type = 'button';
+        close.className = 'guide-toggle';
+        close.textContent = 'Show all steps';
+        head.append(label, close);
+        const track = document.createElement('div');
+        track.className = 'step-track';
+        track.setAttribute('role', 'progressbar');
+        track.setAttribute('aria-label', 'Guide progress');
+        track.setAttribute('aria-valuemin', '1');
+        track.setAttribute('aria-valuemax', String(items.length));
+        const fill = document.createElement('span');
+        track.append(fill);
+        const currentStep = document.createElement('div');
+        currentStep.className = 'step-current';
+        currentStep.setAttribute('aria-live', 'polite');
+        const nav = document.createElement('div');
+        nav.className = 'guide-nav';
+        const previous = document.createElement('button');
+        previous.type = 'button';
+        previous.textContent = 'Previous';
+        const next = document.createElement('button');
+        next.type = 'button';
+        nav.append(previous, next);
+        guide.append(head, track, currentStep, nav);
+        let index = 0;
+        const render = () => {
+          label.textContent = 'Step ' + (index + 1) + ' of ' + items.length;
+          track.setAttribute('aria-valuenow', String(index + 1));
+          fill.style.width = ((index + 1) / items.length * 100) + '%';
+          currentStep.replaceChildren(...[...items[index].childNodes].map(node => node.cloneNode(true)));
+          previous.disabled = index === 0;
+          next.textContent = index === items.length - 1 ? 'Start again' : 'Next step';
+        };
+        previous.addEventListener('click', () => { index = Math.max(0, index - 1); render(); });
+        next.addEventListener('click', () => { index = index === items.length - 1 ? 0 : index + 1; render(); });
+        const hideGuide = () => {
+          guide.hidden = true;
+          list.hidden = false;
+          toggle.setAttribute('aria-expanded', 'false');
+          toggle.focus();
+        };
+        close.addEventListener('click', hideGuide);
+        toggle.addEventListener('click', () => {
+          index = 0;
+          render();
+          list.hidden = true;
+          guide.hidden = false;
+          toggle.setAttribute('aria-expanded', 'true');
+          guide.scrollIntoView({ block:'nearest', behavior:'smooth' });
+          previous.focus();
+        });
+        list.before(toggle, guide);
+      }
+    }
     async function show(id, updateHash=true) {
       const p = pageById.get(id) || pageById.get('start');
       if (!p) return;
@@ -143,6 +241,7 @@ function pageHTML(nonce: string): string {
         code.parentElement.replaceWith(div);
       }
       await mermaid.run({ nodes: content.querySelectorAll('.mermaid') });
+      addStepGuides();
       const chain = []; let node = p;
       while (node) { chain.unshift(node.title); node = pageById.get(node.parent); }
       crumb.textContent = chain.join('  ›  ');
@@ -157,6 +256,7 @@ function pageHTML(nonce: string): string {
       pages = data.pages;
       version = data.version;
       pages.forEach(p => pageById.set(p.id, p));
+      searchInput.placeholder = 'Search ' + pages.length + ' guides';
       renderTree(pages, 'start', tree);
       const requested = decodeURIComponent(location.hash.slice(2));
       depth.value = localStorage.getItem('pos-help-depth') || 'basic';
@@ -185,7 +285,7 @@ function siteResponse(): Response {
     'cache-control': 'public, max-age=60',
     'x-content-type-options': 'nosniff',
     'referrer-policy': 'strict-origin-when-cross-origin',
-    'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
+    'content-security-policy': `default-src 'none'; script-src 'nonce-${nonce}' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; font-src https://www.aidens3dp.com; connect-src 'self'; img-src 'self' https://www.aidens3dp.com data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'`,
   });
   return new Response(pageHTML(nonce), { headers });
 }

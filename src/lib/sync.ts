@@ -21,6 +21,7 @@ let running = false;
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
   const s = st();
+  if (s.pos.sales.some(r => r.uuid === sale.uuid) || s.pos.outbox.some(o => o.id === sale.uuid)) return;
   const done: OutboxItem['done'] = sale.type === 'refund' ? { order: true, stock: true } : {};
   s.patchPos({ sales: [sale, ...s.pos.sales].slice(0, 2000), outbox: [...s.pos.outbox, { id: sale.uuid, sale, queuedAt: new Date().toISOString(), done, tries: 0 }] });
   await csv.sale(sale).catch(e => s.notify({ kind: 'info', title: 'Could not write CSV history', body: String(e?.message ?? e) }));
@@ -130,6 +131,7 @@ export async function importFromShopify(onProgress: (s: string) => void) {
 export async function pollShared() {
   const s = st(); if (!hasCreds()) return;
   try {
+    if (s.settings.sharedSettingsPending) await pushSharedSettings();
     // stock
     if (s.settings.locationId && s.data.stockSince) {
       const since = new Date().toISOString();
@@ -205,13 +207,23 @@ async function pullLayout() {
   if (v > st().gridVersion) { try { st().setGrid(parseGrid(row.f.layout_json).grid, v); } catch { /* ignore a bad layout */ } }
 }
 export async function pushSharedSettings() {
+  const snapshot = st().settings;
+  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms };
+  st().patchSettings({ sharedSettingsPending: true });
   if (!hasCreds()) return;
-  const s = st().settings; const version = s.sharedVersion + 1;
-  await meta.upsert(meta.TYPES.settings, 'shared', { settings_key: 'shared', version,
-    settings_json: JSON.stringify({ staff: s.staff, bundlesJson: s.bundlesJson, fees: s.fees, cashRounding: s.cashRounding, requirePin: s.requirePin, adjustPerms: s.adjustPerms }) });
-  st().patchSettings({ sharedVersion: version });
+  const version = snapshot.sharedVersion + 1;
+  try {
+    await meta.upsert(meta.TYPES.settings, 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(shared) });
+  } catch (error) {
+    st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Shared settings not uploaded: ${String((error as Error)?.message ?? error)}` } });
+    throw error;
+  }
+  const current = st().settings;
+  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms });
+  st().patchSettings({ sharedVersion: version, sharedSettingsPending: !stillMatches });
 }
 async function pullSettings() {
+  if (st().settings.sharedSettingsPending) return;
   const row = await meta.getByHandle(meta.TYPES.settings, 'shared'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v > st().settings.sharedVersion) { try { st().patchSettings({ ...JSON.parse(row.f.settings_json), sharedVersion: v }); } catch {} }

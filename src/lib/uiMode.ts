@@ -11,12 +11,17 @@ export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' 
 export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'help' | 'lock';
 
 /** The four dials a Custom mode exposes. */
-export type CustomUi = { textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel; guided: boolean };
+export type CustomUi = {
+  textSize: TextSize; explain: boolean; tabs: TabLevel; more: MoreLevel; guided: boolean;
+  tabOverrides?: Partial<Record<TabId, boolean>>;
+  moreOverrides?: Partial<Record<MoreRowId, boolean>>;
+  guidedCustomer?: boolean;
+};
 /** Stored on the staff member (so it travels with the staff list to every register). */
 export type StaffUi = { mode: UiMode; custom?: CustomUi };
 
 export const MODES: UiMode[] = ['standard', 'simple', 'minimal', 'custom'];
-export const TEXT_SCALE: Record<TextSize, number> = { normal: 1, large: 1.15, xlarge: 1.3 };
+export const TEXT_SCALE: Record<TextSize, number> = { normal: 1, large: 1.05, xlarge: 1.1 };
 export const TAB_ORDER: TabId[] = ['checkout', 'inventory', 'transactions', 'notifications', 'more'];
 export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
   all: ['checkout', 'inventory', 'transactions', 'notifications', 'more'],
@@ -33,26 +38,44 @@ const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagn
 const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
 export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
 const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
+const ADMIN_REQUIRED_ROWS: MoreRowId[] = ['staff', 'settings'];
 
-export const DEFAULT_CUSTOM: CustomUi = { textSize: 'normal', explain: false, tabs: 'all', more: 'all', guided: false };
+export const DEFAULT_CUSTOM: CustomUi = { textSize: 'normal', explain: false, tabs: 'all', more: 'all', guided: false, guidedCustomer: false };
 const PRESETS: Record<'standard' | 'simple' | 'minimal', CustomUi> = {
   standard: DEFAULT_CUSTOM,
-  simple: { textSize: 'large', explain: true, tabs: 'all', more: 'all', guided: false },
-  minimal: { textSize: 'xlarge', explain: true, tabs: 'basic', more: 'essential', guided: true },
+  simple: { textSize: 'normal', explain: true, tabs: 'all', more: 'all', guided: false },
+  minimal: { textSize: 'normal', explain: true, tabs: 'basic', more: 'essential', guided: true },
 };
 
-export type UiProfile = { mode: UiMode; textScale: number; explain: boolean; tabs: TabId[]; moreLevel: MoreLevel; /** Checkout is the one-question-at-a-time flow. */ guided: boolean };
+export type UiProfile = {
+  mode: UiMode; textScale: number; explain: boolean; tabs: TabId[]; moreLevel: MoreLevel;
+  moreOverrides?: Partial<Record<MoreRowId, boolean>>; alwaysShowAdmin?: boolean;
+  /** Checkout is the one-question-at-a-time flow. */
+  guided: boolean; guidedCustomer: boolean;
+};
 
 const isOne = <T extends string>(v: unknown, all: readonly T[]): v is T => typeof v === 'string' && (all as readonly string[]).includes(v);
 /** Anything read from storage or from another register is treated as untrusted: unknown values fall back to the standard ones. */
 export function readCustom(raw: unknown): CustomUi {
   const r = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const readOverrides = <T extends string>(value: unknown, keys: readonly T[]): Partial<Record<T, boolean>> => {
+    const source = value && typeof value === 'object' ? value as Record<string, unknown> : {};
+    const result: Partial<Record<T, boolean>> = {};
+    for (const key of keys) {
+      const enabled = source[key];
+      if (typeof enabled === 'boolean') result[key] = enabled;
+    }
+    return result;
+  };
   return {
     textSize: isOne(r.textSize, ['normal', 'large', 'xlarge'] as const) ? r.textSize : DEFAULT_CUSTOM.textSize,
     explain: typeof r.explain === 'boolean' ? r.explain : DEFAULT_CUSTOM.explain,
     tabs: isOne(r.tabs, ['all', 'core', 'basic'] as const) ? r.tabs : DEFAULT_CUSTOM.tabs,
     more: isOne(r.more, ['all', 'everyday', 'essential'] as const) ? r.more : DEFAULT_CUSTOM.more,
     guided: typeof r.guided === 'boolean' ? r.guided : DEFAULT_CUSTOM.guided,
+    tabOverrides: readOverrides(r.tabOverrides, TAB_ORDER),
+    moreOverrides: readOverrides(r.moreOverrides, MORE_GROUPS.flat()),
+    guidedCustomer: typeof r.guidedCustomer === 'boolean' ? r.guidedCustomer : false,
   };
 }
 export function readUi(raw: unknown): StaffUi {
@@ -71,10 +94,11 @@ export function resolveUi(ui: unknown, ctx: ResolveCtx = {}): UiProfile {
   const s = readUi(ui);
   const d = s.mode === 'custom' ? readCustom(s.custom) : PRESETS[s.mode];
   // Checkout and More are always there: Checkout is the job, More holds Lock register and the way back.
-  const tabs = TABS_BY_LEVEL[d.tabs].slice();
+  const tabOverrides = s.mode === 'custom' ? d.tabOverrides : undefined;
+  const tabs = TAB_ORDER.filter(id => id === 'checkout' || id === 'more' || (tabOverrides?.[id] ?? TABS_BY_LEVEL[d.tabs].includes(id)));
   let moreLevel = d.more;
   if (ctx.soleAdmin && moreLevel !== 'all') moreLevel = 'all';
-  return { mode: s.mode, textScale: TEXT_SCALE[d.textSize], explain: d.explain, tabs, moreLevel, guided: d.guided };
+  return { mode: s.mode, textScale: TEXT_SCALE[d.textSize], explain: d.explain, tabs, moreLevel, moreOverrides: s.mode === 'custom' ? d.moreOverrides : undefined, alwaysShowAdmin: ctx.soleAdmin, guided: d.guided, guidedCustomer: d.guidedCustomer ?? false };
 }
 export const STANDARD_PROFILE: UiProfile = resolveUi({ mode: 'standard' });
 
@@ -84,10 +108,16 @@ export function visibleMoreRows(p: UiProfile, role: Role, lockAvailable: boolean
   const ok = (id: MoreRowId) => {
     if (MANAGER_ROWS.includes(id) && role === 'cashier') return false;
     if (id === 'lock' && !lockAvailable) return false;
-    return allowedByLevel === 'all' || allowedByLevel.includes(id);
+    if (p.alwaysShowAdmin && ADMIN_REQUIRED_ROWS.includes(id)) return true;
+    return p.moreOverrides?.[id] ?? (allowedByLevel === 'all' || allowedByLevel.includes(id));
   };
   return MORE_GROUPS.map(g => g.filter(ok)).filter(g => g.length > 0);
 }
+
+export const moreLevelIncludes = (level: MoreLevel, id: MoreRowId) => {
+  const rows = ROWS_BY_LEVEL[level];
+  return rows === 'all' || rows.includes(id);
+};
 
 /** Plain-language lines shown under the More rows when "explain" is on. */
 export const MORE_EXPLAIN: Record<MoreRowId, string> = {
@@ -108,9 +138,9 @@ export const MORE_EXPLAIN: Record<MoreRowId, string> = {
 export const MODE_LABEL: Record<UiMode, string> = { standard: 'Standard', simple: 'Simple', minimal: 'Minimal', custom: 'Custom' };
 export const MODE_BLURB: Record<UiMode, string> = {
   standard: 'The full app as it is today.',
-  simple: 'Everything is still there. Bigger text and a plain-English line under each menu entry.',
-  minimal: 'Biggest text, only the everyday menus, and a guided checkout that asks one question at a time (items, customer, discount, check, pay). Everything in the full checkout is still reachable from its More options button.',
-  custom: 'Pick text size, explanations, which tabs, which More entries, and whether checkout is guided.',
+  simple: 'Everything is still there, with a plain-English line under each menu entry.',
+  minimal: 'Only the everyday menus and a guided checkout that asks one question at a time (items, discount, check, pay). Adding a customer stays optional in More options.',
+  custom: 'Choose text size, explanations, every tab and More entry, and the guided checkout steps.',
 };
 export const TEXT_LABEL: Record<TextSize, string> = { normal: 'Normal', large: 'Large', xlarge: 'Extra large' };
 export const TAB_LABEL: Record<TabLevel, string> = { all: 'All five', core: 'No Notifications', basic: 'Checkout, Transactions, More' };

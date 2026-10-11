@@ -50,21 +50,24 @@ export function planChange(pool: Counts, owed: number, maxNodes = 150000): Chang
   return best ? { kind: 'exact', counts: best, truncated } : { kind: 'impossible', truncated };
 }
 
-/** Writes a cash sale into the ledger: what came in, then what went back out as change. Untracked sides are simply skipped. */
-export function postCashSale(l: CashLedger, o: { saleUuid: string; received?: Counts | null; given?: Counts | null; staff?: string }): CashLedger {
+/** Writes the received notes and coins into the ledger, then subtracts the notes and coins given as change. */
+export function postCashSale(l: CashLedger, o: { saleUuid: string; received: Counts; given: Counts; staff?: string }): CashLedger {
   let out = l;
-  const inn = cleanCounts(o.received ?? {}); const giv = cleanCounts(o.given ?? {});
+  const inn = cleanCounts(o.received); const giv = cleanCounts(o.given);
   if (totalOf(inn)) out = applyEntry(out, newEntry('sale_in', inn, { saleUuid: o.saleUuid, staff: o.staff }));
   if (totalOf(giv)) out = applyEntry(out, newEntry('sale_change', Object.fromEntries(Object.entries(giv).map(([v, n]) => [v, -n])), { saleUuid: o.saleUuid, staff: o.staff }));
   return out;
 }
-/** A cancelled sale hands the cash back by hand: take out what came in, put back what went out as change. */
-export function reverseCashTender(l: CashLedger, t: Tender, o: { saleUuid?: string; staff?: string } = {}): CashLedger {
-  if (t.kind !== 'cash' || (!t.cashIn && !t.cashOut)) return l;
+/** Cancellation records exactly what was physically returned and what prior change was collected back. */
+export function recordCancelledCashTender(l: CashLedger, t: Tender, returned: Counts, collected: Counts, o: { saleUuid?: string; staff?: string } = {}): CashLedger {
+  if (t.kind !== 'cash') return l;
   const delta: Counts = {};
-  for (const [v, n] of Object.entries(t.cashIn ?? {})) delta[v] = (delta[v] ?? 0) - n;
-  for (const [v, n] of Object.entries(t.cashOut ?? {})) delta[v] = (delta[v] ?? 0) + n;
-  return totalOf(cleanCounts(delta)) || Object.keys(cleanCounts(delta)).length ? applyEntry(l, newEntry('sale_change', delta, { saleUuid: o.saleUuid, staff: o.staff, note: 'Sale cancelled: cash handed back' })) : l;
+  for (const [v, n] of Object.entries(cleanCounts(collected))) delta[v] = (delta[v] ?? 0) + n;
+  for (const [v, n] of Object.entries(cleanCounts(returned))) delta[v] = (delta[v] ?? 0) - n;
+  const clean = cleanCounts(delta);
+  return Object.keys(clean).length
+    ? applyEntry(l, newEntry('sale_change', clean, { saleUuid: o.saleUuid, staff: o.staff, note: 'Sale cancelled: exact cash returned; prior change collected' }))
+    : l;
 }
 
 /** A counts map as a pad draft (so the pad can show and edit it). */
@@ -73,8 +76,8 @@ export const countsToDraft = (c: Counts): Draft => Object.entries(cleanCounts(c)
 export const ledgerEmpty = (drawer: Counts): boolean => totalOf(positive(drawer)) === 0;
 
 /** Cash refund: the notes and coins handed to the customer come out of the drawer. */
-export function postCashRefund(l: CashLedger, o: { saleUuid?: string; given: Counts | null; staff?: string }): CashLedger {
-  const g = cleanCounts(o.given ?? {}); if (!totalOf(g)) return l;
+export function postCashRefund(l: CashLedger, o: { saleUuid?: string; given: Counts; staff?: string }): CashLedger {
+  const g = cleanCounts(o.given); if (!totalOf(g)) return l;
   return applyEntry(l, newEntry('refund_out', Object.fromEntries(Object.entries(g).map(([v, n]) => [v, -n])), { saleUuid: o.saleUuid, staff: o.staff }));
 }
 
