@@ -4,7 +4,7 @@ title: Connecting Shopify
 parent: settings
 summary: Enter the shop domain and app credentials, test the connection, choose a location and import the catalogue.
 tags: [Shopify, connect, domain, client ID, client secret, location, import, catalogue, metaobjects]
-related: [settings, stock, stock/inventory]
+related: [settings, stock, stock/inventory, fix/offline-sync]
 updated: 2026-10-11
 ---
 Open **More ▸ Settings ▸ Shopify** to connect the register to a Shopify store, choose the stock location and import its catalogue.
@@ -55,3 +55,5 @@ flowchart TD
 | Shared storage definitions | `ensureDefinitions` in `src/lib/shopify/metaobjects.ts` |
 
 The access token is created by the app and refreshed automatically; you do not enter a token in Settings. Credentials and token are kept in the iOS Keychain on this device.
+
+For a completed sale that is queued or blocked from uploading, see [[fix/offline-sync]].

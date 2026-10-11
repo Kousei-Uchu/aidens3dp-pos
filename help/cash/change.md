@@ -4,7 +4,7 @@ title: How change is worked out
 parent: cash
 summary: Where the change comes from, how the notes and coins are picked, what "Can't make change" really means, and the three ways round it.
 tags: [change, cannot make change, ledger, notes, coins, fewest pieces, exact, ask for less, part cash, cash refund, impossible, drawer record]
-related: [cash, pay/cash, cash/open-close, cash/check-change, cash/smart-change]
+related: [cash, pay/cash, cash/open-close, cash/check-change, cash/smart-change, fix/cant-make-change]
 updated: 2026-10-11
 ---
 When a customer hands over more cash than is due, the POS works out which notes and coins to give back, using the drawer record. This page explains how it decides, and why it sometimes says it cannot.
@@ -46,7 +46,7 @@ The red box offers the ways round it, each explained with its buttons on [[pay/c
 - **Part in cash:** take some of the bill in cash and put the rest on card or another method.
 - **Card:** take the full amount by card.
 
-If you can see the drawer does have the change, tap **The drawer has it (ledger is out of date)**, then tap what you give. Put the record right afterwards.
+If you can see the drawer does have the change, tap **The drawer has it (ledger is out of date)**, then confirm the denominations you actually give (unless you choose not to track them). Put the record right afterwards. For the cashier steps, see [[fix/cant-make-change]].
 
 You can also ask before taking the cash, with Check change. See [[cash/check-change]].
 

@@ -23,7 +23,7 @@ export function useRollups() {
     if (!hasCreds()) return; setBusy(true);
     try { const rows: RollupRow[] = []; let after: string | null = null;
       for (let i = 0; i < 8; i++) { const r = await meta.list(meta.TYPES.rollup, { first: 100, after }); for (const x of r.rows) { try { rows.push({ registerId: x.f.register_id, date: x.f.date, totals: { ...emptyTotals(), ...JSON.parse(x.f.totals_json) } }); } catch {} } if (!r.next) break; after = r.next; }
-      setRemote(rows); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load reports', e.message); }
+      setRemote(rows); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load reports', e.message, 'orders/reports'); }
     setBusy(false);
   }, []);
   useEffect(() => { void load(); }, []);
@@ -55,7 +55,7 @@ export default function Reports() {
   const Stat = ({ label, cents, bold, before, sub }: { label: string; cents: number; bold?: boolean; before?: number; sub?: string }) => <Row title={label} sub={sub} last={false} right={<View style={{ alignItems: 'flex-end' }}><Money cents={cents} weight={bold ? '700' : '500'} size={bold ? 18 : 15} /><Trend now={cents} before={before} /></View>} />;
 
   return (
-    <Page title="Reports" onBack={nav.pop} right={<IconBtn icon="share-outline" label="Share report" onPress={exportText} />} >
+    <Page title="Reports" onBack={nav.pop} helpId="orders/reports" right={<IconBtn icon="share-outline" label="Share report" onPress={exportText} />} >
       <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'sales', label: 'Sales' }, { v: 'gift', label: 'Gift cards' }]} /></View>
       {tab === 'sales' ? <>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>

@@ -12,12 +12,12 @@ const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_statu
 /** Orders: Open | Unfulfilled | Completed – Mark fulfilled, refund and receipt. */
 export default function Orders() {
   const nav = useNav(); const [tab, setTab] = useState<keyof typeof Q>('open'); const [orders, setOrders] = useState<PosOrder[]>([]); const [busy, setBusy] = useState(false); const [sel, setSel] = useState<PosOrder | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
-  const load = useCallback(async () => { setBusy(true); try { setOrders((await listOrders({ query: Q[tab], first: 30 })).orders); } catch (e: any) { alertMsg('Could not load orders', e.message); } setBusy(false); }, [tab]);
+  const load = useCallback(async () => { setBusy(true); try { setOrders((await listOrders({ query: Q[tab], first: 30 })).orders); } catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
   useEffect(() => { void load(); }, [tab]);
   if (refund) return <RefundScreen order={refund} onClose={() => setRefund(null)} onGoPay={() => nav.push('pay')} />;
-  const mark = async (o: PosOrder) => { try { await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message); } };
+  const mark = async (o: PosOrder) => { try { await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
   return (
-    <Page title="Orders" onBack={nav.pop} scroll={false}>
+    <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
       <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></View>
       <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} />}>
         {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}

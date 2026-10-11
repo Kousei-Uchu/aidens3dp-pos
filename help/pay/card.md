@@ -29,6 +29,8 @@ A sheet called **Not approved** says why in plain words, for example *Insufficie
 - **Try card again**: starts a new card payment for the same amount.
 - **Use another method**: closes the sheet so you can pay by cash, gift card or a split.
 
+For more detail on responding safely to a decline, see [[fix/card-declined]].
+
 A few messages mean the customer can fix it: *Incorrect PIN — try again*, *Please insert the card*, *Card read failed — tap, insert or swipe again*. Others mean the card cannot be used and they need another one. If the message says *contact Zeller*, the terminal's set-up needs attention and card payments will keep failing until Zeller fixes it. Take cash in the meantime.
 
 ### Payment status unknown
@@ -56,6 +58,8 @@ If the terminal cannot be used, a **Reader** sheet says what is wrong, with **Re
 If the reader is not ready you also see **Reader issue** in red at the top right of the Payment screen, and a **Reader issue** notice is added to your notifications.
 
 To check or fix the reader, open **More ▸ Support & diagnostics**. Under **Zeller reader** you have **Check reader**, **Setup (pair terminal)**, and **Test purchase $1.00** with **Refund the $1.00 test** afterwards. After reinstalling the app you must pair the terminal again.
+
+For a step-by-step reader troubleshooting guide, see [[fix/reader]].
 
 ### Good to know
 - Card amounts are never rounded.

@@ -1,0 +1,217 @@
+From 2c22786e6252becc46fc84cd052bbd87d9ab469c Mon Sep 17 00:00:00 2001
+From: Copilot <223556219+Copilot@users.noreply.github.com>
+Subject: [PATCH] 0045 help keyboard concepts
+Copilot-Review: pending
+
+diff --git a/docs/patches/0045-plan.md b/docs/patches/0045-plan.md
+new file mode 100644
+index 0000000..48c8bbb
+--- /dev/null
++++ b/docs/patches/0045-plan.md
+@@ -0,0 +1,14 @@
++# Patch 0045: in-app help, pages 52 to 54 (B7)
++
++Attribution: Copilot-authored; review pending.
++
++## What changed
++- [x] Added `fix/keyboard.md` for HID scanner, barcode/SKU and focus troubleshooting.
++- [x] Added `fix/locked-out.md` for PIN and cashier-pass recovery.
++- [x] Added `concepts/index.md` to orient readers to the shared POS rules.
++- [x] Linked troubleshooting and concepts from the Help home and glossary from scanner guidance.
++- [x] Updated `help/help.json` and `docs/PROGRESS.md`.
++- [x] Validation: help build and existing help/citation tests.
++
++## Review
++- [ ] User: check scanner sign-in wording and the recovery steps.
+diff --git a/help/fix/keyboard.md b/help/fix/keyboard.md
+new file mode 100644
+index 0000000..c9db6ef
+--- /dev/null
++++ b/help/fix/keyboard.md
+@@ -0,0 +1,63 @@
++---
++id: fix/keyboard
++title: Scanner or keyboard input is not working
++parent: fix
++summary: Check a Bluetooth HID scanner's connection and suffix, then test it in the screen that expects a product or staff code.
++tags: [scanner, HID, Bluetooth, keyboard, barcode, SKU, focus, input]
++related: [fix, settings/hardware, sales/scanners, staff/passes]
++updated: 2026-10-11
++---
++A Bluetooth HID scanner behaves like a keyboard: it types the scanned code and usually sends Return. Checkout reads product barcodes or SKUs; staff sign-in reads cashier passes. Check that you are scanning into the right screen. Shopify GIDs are internal IDs, not scanner codes; see [[concepts/glossary]].
++
++## Basic
++
++### Test a Bluetooth scanner
++1. Check Bluetooth settings on the iPad and make sure the scanner is connected.
++2. Open **More ▸ Settings ▸ Hardware** and use **Test scanner**.
++3. Scan a known code. A successful test displays the scanned value; it does not add an item to the sale.
++4. In **Checkout**, scan a product's barcode or SKU. At staff sign-in, scan the cashier pass instead.
++
++The scanner's suffix must send Return to finish a scan. If the test shows a value without submitting it, set the scanner to append Enter/Return using its manufacturer instructions.
++
++### If characters are missing or out of order
++Check that the scanner is connected and test again with the iPad keyboard hidden. Keep the scanner close to the iPad and avoid scanning while another text field is active. Some scanner configurations add a prefix or suffix; reset it to the manufacturer's default barcode/keyboard settings, then configure Return as the suffix.
++
++For supported scanner types and the camera scanner, see [[sales/scanners]].
++
++## Deep
++
++### Where the scan goes
++Checkout's hidden HID input receives the whole code and submits when Return arrives. It does not grab focus while a real text field or the on-screen keyboard is active. Scanning a product then adds or finds it using the Checkout scan handler. At sign-in, only a cashier-pass code is accepted; an ordinary product code is not a staff login.
++
++The camera scanner is a separate option and does not depend on Bluetooth keyboard focus. You can use it from Checkout or the cashier-pass scanner when those screens offer it.
++
++### If a scan does nothing
++- If Test scanner does not show characters, reconnect or pair the scanner with the iPad.
++- If Test scanner shows the code but Checkout does not add an item, check that the code is a barcode or SKU on an imported variant, and that the correct register/location is loaded.
++- If the scanner types into a name or search field, finish or close that field before scanning again.
++- If staff sign-in says the code is not a pass, use the cashier's issued pass or enter their PIN.
++
++## Advanced
++
++### HID input path
++```mermaid
++flowchart TD
++  A[Scanner types code] --> B[Hidden HID input collects characters]
++  B --> C{Return suffix received}
++  C -->|yes| D[Submit complete code]
++  C -->|no| E[Check scanner suffix configuration]
++  D --> F{Current screen}
++  F -->|Checkout| G[Look up product barcode or SKU]
++  F -->|Staff sign in| H[Validate cashier pass]
++  B --> I[Do not steal focus from a real field]
++```
++
++| Job | Where |
++|---|---|
++| HID and camera scanning | `HidScanner`, `CameraScanner` in `src/screens/Scanner.tsx` |
++| Checkout barcode/SKU handling | `onScan` in `src/screens/Checkout.tsx`, `findByBarcode` in `src/lib/cartOps.ts` |
++| Pass scanning at sign-in | `StaffLoginPad` in `src/screens/StaffLogin.tsx` |
++| Scanner test and connection instructions | `src/screens/Settings.tsx`, `help/settings/hardware.md` |
++| Avoid taking focus from an active text field | `isUserTyping` in `src/lib/focusGuard.ts` |
++
++The hidden field is keyed again after each Return to clear the previous scan before the next one.
+diff --git a/help/fix/locked-out.md b/help/fix/locked-out.md
+new file mode 100644
+index 0000000..710c1a5
+--- /dev/null
++++ b/help/fix/locked-out.md
+@@ -0,0 +1,56 @@
++---
++id: fix/locked-out
++title: Cannot sign in or a cashier pass will not scan
++parent: fix
++summary: Recover from an incorrect PIN or cashier pass, and identify who can change staff access.
++tags: [PIN, sign in, locked out, cashier pass, staff, owner, access]
++related: [fix, staff, staff/passes, settings/backup]
++updated: 2026-10-11
++---
++Check whether the register expects a staff PIN or an issued cashier pass. A forgotten PIN cannot be recovered from the POS; ask an owner or manager who can still sign in to manage the staff record.
++
++## Basic
++
++### Check the sign-in method
++- Enter the PIN assigned to your staff account. PINs are 4–6 digits.
++- For a pass, scan the current cashier pass barcode. A cancelled or replaced pass no longer signs in.
++- If the pass is not recognised, use the PIN or ask an owner to check your Staff record and issue a replacement.
++
++An owner can open **More ▸ Staff**, select your name, and issue or replace your cashier pass. The app does not show an existing PIN. If your PIN is forgotten, ask an owner to remove the old staff record and add you again with a new PIN and the correct role. Have the owner verify that another owner remains before removing any owner account.
++
++### If nobody can sign in
++Do not delete the app or clear its data; that can remove local sales and settings. Use a working owner account on another register to check shared staff settings, then contact your POS administrator or support if no owner account remains available.
++
++## Deep
++
++### Pass versus PIN
++A cashier pass is a scannable credential tied to one staff record. Replacing or cancelling the pass invalidates the previous code. A pass can be printed or added to Apple Wallet; it is not a backup of the staff account or a way to reveal the PIN.
++
++PINs are stored as salted hashes and shared with the other registers through Shopify settings. They cannot be read back as plain digits. A replacement PIN is set by adding a new staff record after removing the old one.
++
++### Keep an owner available
++Before removing a staff member, confirm that the team will still have an owner able to manage staff and settings. A register with no available owner may require administrator/support assistance to restore access.
++
++## Advanced
++
++### Sign-in path
++```mermaid
++flowchart TD
++  A[Open sign in] --> B{Credential}
++  B -->|PIN| C[Verify staff PIN]
++  B -->|Pass| D[Validate cashier pass]
++  C --> E{Valid}
++  D --> E
++  E -->|yes| F[Set active staff]
++  E -->|no| G[Show sign in error]
++  G --> H[Ask an owner to restore access]
++```
++
++| Job | Where |
++|---|---|
++| Verify PIN and cashier pass | `signInWithPin`, `signInWithPass` in `src/lib/staffAuth.ts` |
++| Store salted PIN hashes | `hashPin`, `verifyPin` in `src/lib/pin.ts` |
++| Add or remove staff and issue a pass | `src/screens/Staff.tsx`, `src/screens/StaffPass.tsx` |
++| Scan a pass at sign-in | `src/screens/StaffLogin.tsx` |
++
++Staff PINs are not recoverable from a backup as plain text. To protect local data, do not reinstall the app as a PIN-reset step.
+diff --git a/help/concepts/index.md b/help/concepts/index.md
+new file mode 100644
+index 0000000..d00862f
+--- /dev/null
++++ b/help/concepts/index.md
+@@ -0,0 +1,28 @@
++---
++id: concepts
++title: How the POS works
++parent: start
++summary: A short map of the register: local sales, Shopify sync, staff access and money rules.
++tags: [concepts, how it works, local, Shopify, sync, staff, money, glossary]
++related: [concepts/data-and-sync, concepts/roles, concepts/money, concepts/glossary]
++updated: 2026-10-11
++---
++The register is an iPad app that works with a Shopify store, a selected location, staff accounts and optional payment hardware. These guides explain the shared rules behind the screens.
++
++## Basic
++
++### Choose a topic
++- Where sales and settings live, and how Shopify sync works: [[concepts/data-and-sync]].
++- What staff roles mean and who can use or change settings: [[concepts/roles]].
++- How cents, GST and rounding are handled: [[concepts/money]].
++- Words and labels used in the POS: [[concepts/glossary]].
++
++## Deep
++
++### Local first, then shared
++The register keeps working data on this iPad and shares selected records with Shopify. A completed sale is saved locally before its Shopify upload finishes. Staff, some settings, catalogue and stock are shared or refreshed separately, so two screens can briefly show different update times.
++
++## Advanced
++
++### Where to trace a behaviour
++Use the topic pages above for the data path, role rules, money calculations and terminology. For an immediate error, start at [[fix]] rather than changing data to make a message disappear.
+diff --git a/help/start.md b/help/start.md
+index 0911c8e..6e7b350 100644
+--- a/help/start.md
++++ b/help/start.md
+@@ -11,8 +11,10 @@ This help explains every part of the POS: what each screen is for, how to do eac
+ 
+ ### Finding what you need
+ - Open the **Help** screen (More ▸ Help). Pages are grouped by job: selling, taking payment, the cash drawer, gift cards, orders and refunds, stock, staff, settings, and fixing problems.
++- Tap the **?** in a screen header to open help for that screen. Some error alerts also have a **Help** button that opens the relevant troubleshooting page.
+ - Use the search box at the top. Type a word or two ("refund", "card declined") and every word has to match.
+ - A page ends with **Related pages**. Words in blue take you to another page.
++- For troubleshooting, start at [[fix]]. For the rules behind data, staff access and money, see [[concepts]].
+ 
+ ### Choosing how much detail you want
+ Every page has up to three levels. You pick one and the Help screen remembers it.
+diff --git a/help/README.md b/help/README.md
+index e045d63..2def521 100644
+--- a/help/README.md
++++ b/help/README.md
+@@ -35,6 +35,7 @@ Inside a section use `###` for headings. `##` is reserved for the three depth he
+ - `[[sales/cart-and-prices]]` links to a page using its title. `[[sales/cart-and-prices|the cart page]]` uses your words.
+ - The checker refuses a link to a page that does not exist. Links inside code fences and `inline code` are not links, so you can show the syntax.
+ - Do not write a contents list by hand. The Help screen builds one from each page's `parent`.
++- Contextual Help buttons and error-alert Help actions open a page by its id; keep those ids valid when renaming pages.
+ 
+ ## Flowcharts
+ Put a Mermaid flowchart in a fenced block marked `mermaid`, in **Advanced** sections. To keep the in-app drawing simple, stay inside this subset:

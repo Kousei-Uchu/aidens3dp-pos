@@ -1,7 +1,7 @@
 import { signedSaving } from '../lib/adjustReview';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
-import { Btn, Card, Chip, Empty, Field, IconBtn, Money, Page, Row, Txt, alertMsg } from '../ui/kit';
+import { Btn, Card, Chip, Empty, Field, HelpButton, IconBtn, Money, Page, Row, Txt, alertMsg } from '../ui/kit';
 import { useLayout, useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
@@ -28,7 +28,7 @@ export default function Transactions() {
 
   const load = useCallback(async (more = false) => {
     if (!hasCreds()) return; setBusy(true);
-    try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message); }
+    try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
     setBusy(false);
   }, [next]);
   useEffect(() => { void load(false); }, []);
@@ -48,12 +48,12 @@ export default function Transactions() {
   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
 
-  const searchRemote = async () => { if (!q.trim()) return; setBusy(true); try { setRemoteQ((await listOrders({ query: `tag:pos ${q.trim()}`, first: 25 })).orders); } catch (e: any) { alertMsg('Search failed', e.message); } setBusy(false); };
+  const searchRemote = async () => { if (!q.trim()) return; setBusy(true); try { setRemoteQ((await listOrders({ query: `tag:pos ${q.trim()}`, first: 25 })).orders); } catch (e: any) { alertMsg('Search failed', e.message, 'orders'); } setBusy(false); };
 
   const list = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
-        <Txt size={24} weight="700" style={{ marginBottom: 8, marginLeft: 4 }}>Transactions</Txt>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 4 }}><Txt size={24} weight="700" style={{ flex: 1 }}>Transactions</Txt><HelpButton id="orders" label="Transactions help" /></View>
         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
         <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
       </View>
@@ -102,6 +102,6 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
     </View>
   );
   return embedded ? <View style={{ flex: 1, backgroundColor: c.bg }}><View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={20} weight="700" style={{ flex: 1 }}>{e.name}</Txt><IconBtn icon="close" label="Close" onPress={onClose} /></View>{body}</View>
-    : <Page title={e.name} onBack={onClose}>{body}</Page>;
+    : <Page title={e.name} onBack={onClose} helpId="orders">{body}</Page>;
 }
 void Chip;

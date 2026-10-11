@@ -4,7 +4,7 @@ title: Paying by cash
 parent: pay
 summary: Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.
 tags: [cash, change, notes, coins, drawer, ledger, rounding, short, part payment, denomination, tap pad]
-related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, sales/cart-and-prices]
+related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, fix/cant-make-change, sales/cart-and-prices]
 updated: 2026-10-11
 ---
 Cash is taken by tapping the notes and coins the customer hands over. The POS works out the change, shows which notes and coins to take from the drawer, and keeps a record of what is in the drawer as it goes.
@@ -37,7 +37,7 @@ Cash is taken by tapping the notes and coins the customer hands over. The POS wo
   - **Back** returns to the notes you tapped.
 
 ### When the drawer cannot make the change
-A red box says **Can't make $… change** and **Next** is greyed out. See [[cash/change]] for what that means and how each option is found. It lists what could work:
+A red box says **Can't make $… change** and **Next** is greyed out. See [[cash/change]] for what that means and how each option is found, or [[fix/cant-make-change]] for what to do at the till. It lists what could work:
 - **Ask for less:** take a smaller part of what they handed over and give the rest straight back. Tap **Use that smaller handover** to do it.
 - **Cash $… + the rest another way:** take part of the bill in cash (the most the drawer can make change for) and put the remainder on card or another method.
 - **Or take the full amount by card.**

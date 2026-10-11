@@ -109,7 +109,7 @@ export function TileGrid({ tiles, editing, handlers, onRemove, onMove, onOpen, o
       case 'discount': return handlers.onDiscount(t);
       case 'item': {
         const v = t.variantId ? cat.variants[t.variantId] : undefined; if (v) return handlers.onVariants([v]);
-        const vs = cat.byProduct[t.productId!] ?? []; if (vs.length) handlers.onVariants(vs); else alertMsg('Item not found', 'It may have been removed from Shopify. Re-import or remove this tile.');
+        const vs = cat.byProduct[t.productId!] ?? []; if (vs.length) handlers.onVariants(vs); else alertMsg('Item not found', 'It may have been removed from Shopify. Re-import or remove this tile.', 'sales/grid');
       }
     }
   };

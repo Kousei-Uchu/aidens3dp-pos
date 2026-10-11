@@ -14,7 +14,7 @@ export default function GiftCards() {
   const [hist, setHist] = useState<{ info: GiftCardInfo; txns: GiftCardTxn[] } | null>(null);
   const show = async (_g: GiftCardInfo, code: string) => { const info = await lookupGiftCard(code); if (info) setHist({ info, txns: await giftCardHistory(info.id) }); setCheck(false); };
   return (
-    <Page title="Gift cards" onBack={nav.pop}>
+    <Page title="Gift cards" onBack={nav.pop} helpId="gift">
       <View style={{ padding: 16, gap: 10 }}>
         <Btn title="Sell gift card" icon="gift-outline" onPress={() => { setSell(true); }} />
         <Btn title="Check balance" icon="search-outline" kind="secondary" onPress={() => setCheck(true)} />

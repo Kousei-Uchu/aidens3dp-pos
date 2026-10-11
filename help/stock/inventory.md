@@ -4,7 +4,7 @@ title: The Inventory screen
 parent: stock
 summary: Search and filter the product catalogue, group variations, and receive, adjust or count stock.
 tags: [inventory, stock, filter, category, status, sort, nested, count, receive, adjust, negative]
-related: [stock, stock/items, sales/variants-and-stock]
+related: [stock, stock/items, sales/variants-and-stock, fix/stock-mismatch]
 updated: 2026-10-11
 ---
 The **Inventory** tab shows stock for the catalogue on this iPad. Search or filter to find a variation, then tap it to receive stock, make an adjustment, or set a counted quantity.
@@ -49,6 +49,8 @@ Nested groups show a product title, variation count, combined tracked stock and 
 
 ### If the catalogue count is lower than Shopify
 Tap **Refresh stock from Shopify** and compare the total variant count and import time shown in Filters. The catalogue import uses Shopify's bulk product-variant query and the selected location. Draft and archived status filters can hide rows, but the device total in the Filters sheet counts the entire local catalogue.
+
+If the same variant still differs from Shopify, check the selected location, tracked setting and **available** quantity in [[fix/stock-mismatch]].
 
 ## Advanced
 

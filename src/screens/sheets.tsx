@@ -72,7 +72,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
   const [f, setF] = useState({ first: '', last: '', email: '', phone: '' }); const [busy, setBusy] = useState(false);
   React.useEffect(() => { if (visible) setCreating(startCreating); }, [visible, startCreating]);
   const hits = useMemo(() => { const t = q.trim().toLowerCase(); if (!t) return local.slice(0, 30); return local.filter(c => `${c.name} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, local]);
-  const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message); } setBusy(false); };
+  const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
   const create = async () => {
     if (!f.first.trim() && !f.last.trim() && !f.email.trim() && !f.phone.trim()) return alertMsg('Add at least a name, email or phone');
@@ -80,7 +80,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
     try {
       const c = await createCustomer({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); onPick(c); onClose();
-    } catch (e: any) { alertMsg('Could not create customer', e.message); } setBusy(false);
+    } catch (e: any) { alertMsg('Could not create customer', e.message, 'sales/customers'); } setBusy(false);
   };
   return (
     <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
@@ -280,7 +280,7 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
 /** Check balance by scanning a QR/barcode or typing the code. */
 export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean; onClose: () => void; onUse?: (g: GiftCardInfo, code: string) => void }) {
   const [code, setCode] = useState(''); const [info, setInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [busy, setBusy] = useState(false); const [cam, setCam] = useState(false);
-  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message); } setBusy(false); };
+  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message, 'pay/gift-card'); } setBusy(false); };
   return (
     <>
       <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">

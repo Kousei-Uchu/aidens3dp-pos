@@ -27,13 +27,18 @@ import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
 
 type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
+const HELP_PAGE: Record<Sub, string> = {
+  menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
+  data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
+  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start',
+};
 
 export default function Settings() {
   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
   const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
   return (
-    <Page title={titles[sub]} onBack={back}>
+    <Page title={titles[sub]} onBack={back} helpId={HELP_PAGE[sub]}>
       {sub === 'menu' ? <>
         <Section>
           <Row icon="storefront-outline" title="Shopify" sub={hasCreds() ? shopDomain() : 'Not connected'} onPress={() => setSub('shopify')} />
@@ -127,7 +132,7 @@ function DataSettings() {
   const [files, setFiles] = useState<string[]>([]); useEffect(() => { void csv.paths().then(setFiles); }, []);
   return (
     <Section footer="Every sale, refund and declined card attempt is appended to CSV files on this device and never auto-cleared. They are also visible in the Files app under this app.">
-      <Row title="Export CSV" sub={files.length ? files.map(f => f.split('/').pop()).join(', ') : 'No history yet'} icon="share-outline" onPress={async () => { try { for (const f of files) { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(f, { mimeType: 'text/csv', dialogTitle: f.split('/').pop() }); } } catch (e: any) { alertMsg('Export failed', e.message); } }} />
+      <Row title="Export CSV" sub={files.length ? files.map(f => f.split('/').pop()).join(', ') : 'No history yet'} icon="share-outline" onPress={async () => { try { for (const f of files) { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(f, { mimeType: 'text/csv', dialogTitle: f.split('/').pop() }); } } catch (e: any) { alertMsg('Export failed', e.message, 'settings/backup'); } }} />
       <Row title="Delete local history" danger icon="trash-outline" last onPress={async () => { if (await confirm('Delete local history?', 'The CSV files on this device are erased. Shopify keeps the orders. Export first if you need them.', 'Delete', true) && await confirm('Really delete?', 'This cannot be undone.', 'Delete forever', true)) { await csv.deleteAll(); setFiles([]); } }} />
     </Section>
   );
@@ -302,7 +307,7 @@ function ReceiptSecret() {
 function ReceiptSettings() {
   const r = useApp(st => st.settings.receipt); const patch = useApp(st => st.patchSettings); const [busy, setBusy] = useState(false);
   const set = (p: Partial<typeof r>) => patch({ receipt: { ...r, ...p } });
-  const test = async () => { setBusy(true); try { const u = await uploadSampleReceipt(); await Linking.openURL(u); } catch (e: any) { alertMsg('Test failed', e.message); } setBusy(false); };
+  const test = async () => { setBusy(true); try { const u = await uploadSampleReceipt(); await Linking.openURL(u); } catch (e: any) { alertMsg('Test failed', e.message, 'settings/receipts'); } setBusy(false); };
   return (
     <View>
       <Section footer="Customers scan a QR code (or get a link) to a page that merges the Shopify order lines with the Zeller card details, with PDF and image download. Deploy receipt-server/ first (see its README).">
