@@ -1,0 +1,301 @@
+From 2c22786e6252becc46fc84cd052bbd87d9ab469c Mon Sep 17 00:00:00 2001
+From: Copilot <223556219+Copilot@users.noreply.github.com>
+Subject: [PATCH] 0044 help offline cash stock
+Copilot-Review: pending
+
+diff --git a/docs/patches/0044-plan.md b/docs/patches/0044-plan.md
+new file mode 100644
+index 0000000..9e1cc06
+--- /dev/null
++++ b/docs/patches/0044-plan.md
+@@ -0,0 +1,14 @@
++# Patch 0044: in-app help, pages 49 to 51 (B7)
++
++Attribution: Copilot-authored; review pending.
++
++## What changed
++- [x] Added `fix/offline-sync.md` for queued/blocked uploads and safe retries.
++- [x] Added `fix/cant-make-change.md` for cash handover options and manual ledger acknowledgement.
++- [x] Added `fix/stock-mismatch.md` for location, available quantity and refresh checks.
++- [x] Linked the related cash, stock, Shopify and payment guides.
++- [x] Updated `help/help.json` and `docs/PROGRESS.md`.
++- [x] Validation: help build and existing help/citation tests.
++
++## Review
++- [ ] User: check the instructions against the till and Shopify.
+diff --git a/help/fix/offline-sync.md b/help/fix/offline-sync.md
+new file mode 100644
+index 0000000..09c4c92
+--- /dev/null
++++ b/help/fix/offline-sync.md
+@@ -0,0 +1,60 @@
++---
++id: fix/offline-sync
++title: Offline, queued sales and sync errors
++parent: fix
++summary: Check connectivity, understand queued sale uploads and retry a blocked upload without duplicating the sale.
++tags: [offline, sync, queued, upload, Shopify, retry, connection, notification, outbox]
++related: [fix, settings/shopify]
++updated: 2026-10-11
++---
++Sales are saved on this iPad first, then uploaded to Shopify when the connection is available. If a sale is queued, leave it in place; do not ring it through again just to make it appear online.
++
++## Basic
++
++### Check the sync status
++Open **Notifications**. A queued sale says it will upload when the connection is back. A blocked sale shows an error and a **Retry** button.
++- If the iPad is offline, reconnect it to Wi-Fi or another working network and leave the POS open.
++- If Shopify credentials or permissions were rejected, fix the Shopify connection in **More ▸ Settings ▸ Shopify** before retrying.
++- After fixing the cause, tap **Retry** on the blocked sale. The POS resumes its saved upload steps.
++
++Cash and saved carts can work offline. Card payments require an internet connection to reach Zeller. To set up Shopify again, see [[settings/shopify]].
++
++### If the sale stays queued
++Check the exact error on Notifications and make sure the iPad can reach Shopify. The app retries automatically when it processes the outbox; keep the app open and connected. A blocked sale needs the cause corrected and an explicit **Retry**.
++
++## Deep
++
++### The sale is not lost or duplicated
++The POS records the completed sale locally and adds it to an upload queue. Upload steps use stable identifiers so a retry can resume rather than create a second order. A network failure leaves the sale queued; a Shopify user/permission error blocks that item until corrected.
++
++The device's local Transactions history can show the sale while Shopify is still catching up. The catalogue and stock updates may also take time to refresh on other registers.
++
++### What not to do
++- Do not make a second POS sale for the same customer purchase just because the upload has not finished.
++- Do not clear local history to fix a queue. CSV history and the sale upload queue are separate.
++- Do not repeatedly retry a blocked permission/configuration error without correcting its cause first.
++
++## Advanced
++
++### Outbox retry path
++```mermaid
++flowchart TD
++  A[Complete sale and save locally] --> B[Add sale to outbox]
++  B --> C[Upload idempotent steps to Shopify]
++  C -->|success| D[Remove completed outbox item]
++  C -->|network error| E[Keep queued and retry later]
++  C -->|Shopify user error| F[Mark blocked and show Retry]
++  F --> G[Fix credentials or Shopify setting]
++  G --> H[Retry existing outbox item]
++  H --> C
++```
++
++| Job | Where |
++|---|---|
++| Process and retry sale uploads | `processOutbox`, `retryBlocked` in `src/lib/sync.ts` |
++| Locally stored sales and outbox | `Pos`, `OutboxItem` in `src/state/store.ts` |
++| Queue status and Retry button | `src/screens/Notifications.tsx` |
++| Network vs Shopify configuration errors | `isNetworkError`, `ShopifyUserError` in `src/lib/shopify/client.ts` |
++| Shopify credentials and import | `src/screens/Settings.tsx`, `help/settings/shopify.md` |
++
++Completed outbox steps are marked individually. A retry skips those steps and uses the stored sale data for the work that remains.
+diff --git a/help/fix/cant-make-change.md b/help/fix/cant-make-change.md
+new file mode 100644
+index 0000000..ebe05f0
+--- /dev/null
++++ b/help/fix/cant-make-change.md
+@@ -0,0 +1,58 @@
++---
++id: fix/cant-make-change
++title: The drawer cannot make change
++parent: fix
++summary: Respond when the cash drawer ledger cannot make exact change, or check whether a different handover would work.
++tags: [cash, change, drawer, ledger, notes, coins, part payment, cash rounding]
++related: [fix, cash/change, cash/check-change, pay/cash]
++updated: 2026-10-11
++---
++If the Cash sheet says it **Can't make … change**, the notes and coins recorded in the drawer cannot make that exact amount from the handover and current ledger. Review the displayed options before taking the cash.
++
++## Basic
++
++### Choose an offered option
++The sheet may offer:
++- **Use that smaller handover**: accept a smaller set of the notes the customer gave, return the rest, and make the change from the drawer.
++- **Cash … + the rest another way**: take the displayed amount in cash and collect the remaining balance by card or another tender.
++- Take the full amount by card.
++
++If the ledger is empty or out of date, count the drawer and correct the ledger first. You can use **The drawer has it (ledger is out of date)** only when you have physically checked that the drawer can provide the displayed change.
++
++### If you have already taken the cash
++In **Give change**, the POS suggests notes and coins if it finds an exact combination. Check what you actually hand over, then tap **Gave this**. If needed, choose different denominations manually. You can choose **Done, but don't track it** if you do not want to record the notes and coins.
++
++For the normal cash flow and denominations, see [[pay/cash]] and [[cash/change]].
++
++## Deep
++
++### Ledger count versus physical drawer
++The suggestion uses the ledger's note and coin counts plus the notes the customer just handed over. If the actual drawer differs from the ledger, the suggestion can be impossible or not match the physical cash. Count or correct the ledger before relying on a suggestion.
++
++The override is a manual acknowledgement that the physical drawer can make the change despite the ledger. The **Give change** step records what was actually handed over when denominations are confirmed; choosing not to track leaves that cash out of the drawer record.
++
++### Do not promise change the drawer cannot make
++The POS blocks the normal overpayment path when it cannot make exact change. Ask for a different handover, use the suggested part-cash option, or use another tender. If the customer gives the exact amount, you can take it without tracking denominations.
++
++## Advanced
++
++### Change decision
++```mermaid
++flowchart TD
++  A[Tap received notes and coins] --> B{Amount covers cash due}
++  B -->|no| C[Ask for more or take part payment]
++  B -->|yes exact| D[Take cash]
++  B -->|over| E{Drawer plus handover makes exact change}
++  E -->|yes| F[Review and confirm notes given]
++  E -->|no| G[Offer smaller handover part cash or card]
++  G --> H[Override only after physical drawer check]
++```
++
++| Job | Where |
++|---|---|
++| Cash sheet prompts and handover options | `src/screens/CashSheet.tsx` |
++| Cash amount states, exact-change plan and fallback choices | `cashStatus`, `planChange`, `handBackOptions`, `partCashOption` in `src/lib/cashSale.ts` |
++| Note and coin counts | `src/lib/cashLedger.ts`, `src/ui/DenomPad.tsx` |
++| Check Change tool | `src/lib/checkChange.ts`, `src/screens/CheckChange.tsx` |
++
++The hardware tender machine is not active. The cashier enters received and given denominations and confirms them manually.
+diff --git a/help/fix/stock-mismatch.md b/help/fix/stock-mismatch.md
+new file mode 100644
+index 0000000..3929504
+--- /dev/null
++++ b/help/fix/stock-mismatch.md
+@@ -0,0 +1,55 @@
++---
++id: fix/stock-mismatch
++title: Stock counts differ from Shopify
++parent: fix
++summary: Refresh the selected location's stock, check variant tracking and distinguish local sales from Shopify's available quantity.
++tags: [stock, inventory, mismatch, Shopify, location, tracked, refresh, negative]
++related: [fix, stock, stock/inventory, settings/shopify]
++updated: 2026-10-11
++---
++Inventory shows stock for the Shopify location selected on this register. Refresh from Shopify before comparing, and make sure you are looking at the same location and variant in both places.
++
++## Basic
++
++### Refresh the catalogue and stock
++1. Check the location in **More ▸ Settings ▸ Shopify**.
++2. Open **Inventory** and tap **Refresh stock from Shopify**.
++3. In **Filters & sort**, check the import time and total variants on this iPad.
++4. Search by variant name, SKU or barcode and check that the product status and stock filters do not hide it.
++
++If this register is connected to the wrong location, select the correct active location and refresh again. For the filter meanings and stock update controls, see [[stock/inventory]].
++
++### Check whether the item is tracked
++**—** means inventory is not tracked; **0** means tracked and currently out of stock. A negative number means more units have been sold than the available count. Check the tracked setting and available quantity for that exact variant in Shopify.
++
++## Deep
++
++### Why registers can temporarily differ
++Shopify is the shared source. Each register keeps a local catalogue and stock snapshot. Sales update this register's local count immediately, while the sale upload and the other registers' stock refresh happen separately. A register that is offline or has not polled yet can show an older count.
++
++The POS reads the selected location's **available** quantity. Shopify's other inventory states or another location may not match that number.
++
++### When a sale is queued
++A completed sale reduces the local count and queues its Shopify order. If it is still queued, correct the sync issue rather than adjusting stock to make the local display look right. See [[fix/offline-sync]].
++
++## Advanced
++
++### Stock update and refresh path
++```mermaid
++flowchart TD
++  A[Choose active Shopify location] --> B[Import variants and available quantity]
++  B --> C[Save local catalogue snapshot]
++  D[Complete a sale] --> E[Reduce local stock]
++  E --> F[Upload order to Shopify]
++  F --> G[Other registers refresh stock delta]
++```
++
++| Job | Where |
++|---|---|
++| Select location and full catalogue import | `src/screens/Settings.tsx`, `importFromShopify` in `src/lib/sync.ts` |
++| Read tracked and available stock | `fetchVariants` in `src/lib/shopify/catalogue.ts` |
++| Poll location stock changes | `fetchStockDelta` in `src/lib/shopify/catalogue.ts`, `pollShared` in `src/lib/sync.ts` |
++| Mirror completed sale stock locally | `applyLocalStock` in `src/lib/sync.ts` |
++| Set or adjust stock from the POS | `src/screens/Inventory.tsx`, `src/lib/shopify/inventory.ts` |
++
++Compare the same variant, location and Shopify quantity name (**available**). A manual Inventory count or adjustment writes to Shopify; do not use one to conceal a delayed sync.
+diff --git a/help/pay/cash.md b/help/pay/cash.md
+index 4962c7e..8346ee1 100644
+--- a/help/pay/cash.md
++++ b/help/pay/cash.md
+@@ -4,7 +4,7 @@ title: Paying by cash
+ parent: pay
+ summary: Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.
+ tags: [cash, change, notes, coins, drawer, ledger, rounding, short, part payment, denomination, tap pad]
+-related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, sales/cart-and-prices]
++related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, fix/cant-make-change, sales/cart-and-prices]
+ updated: 2026-10-11
+ ---
+ Cash is taken by tapping the notes and coins the customer hands over. The POS works out the change, shows which notes and coins to take from the drawer, and keeps a record of what is in the drawer as it goes.
+@@ -37,7 +37,7 @@ Cash is taken by tapping the notes and coins the customer hands over. The POS wo
+   - **Back** returns to the notes you tapped.
+ 
+ ### When the drawer cannot make the change
+-A red box says **Can't make $… change** and **Next** is greyed out. See [[cash/change]] for what that means and how each option is found. It lists what could work:
++A red box says **Can't make $… change** and **Next** is greyed out. See [[cash/change]] for what that means and how each option is found, or [[fix/cant-make-change]] for what to do at the till. It lists what could work:
+ - **Ask for less:** take a smaller part of what they handed over and give the rest straight back. Tap **Use that smaller handover** to do it.
+ - **Cash $… + the rest another way:** take part of the bill in cash (the most the drawer can make change for) and put the remainder on card or another method.
+ - **Or take the full amount by card.**
+diff --git a/help/cash/change.md b/help/cash/change.md
+index 75a1209..56223e4 100644
+--- a/help/cash/change.md
++++ b/help/cash/change.md
+@@ -4,7 +4,7 @@ title: How change is worked out
+ parent: cash
+ summary: Where the change comes from, how the notes and coins are picked, what "Can't make change" really means, and the three ways round it.
+ tags: [change, cannot make change, ledger, notes, coins, fewest pieces, exact, ask for less, part cash, cash refund, impossible, drawer record]
+-related: [cash, pay/cash, cash/open-close, cash/check-change, cash/smart-change]
++related: [cash, pay/cash, cash/open-close, cash/check-change, cash/smart-change, fix/cant-make-change]
+ updated: 2026-10-11
+ ---
+ When a customer hands over more cash than is due, the POS works out which notes and coins to give back, using the drawer record. This page explains how it decides, and why it sometimes says it cannot.
+@@ -46,7 +46,7 @@ The red box offers the ways round it, each explained with its buttons on [[pay/c
+ - **Part in cash:** take some of the bill in cash and put the rest on card or another method.
+ - **Card:** take the full amount by card.
+ 
+-If you can see the drawer does have the change, tap **The drawer has it (ledger is out of date)**, then tap what you give. Put the record right afterwards.
++If you can see the drawer does have the change, tap **The drawer has it (ledger is out of date)**, then confirm the denominations you actually give (unless you choose not to track them). Put the record right afterwards. For the cashier steps, see [[fix/cant-make-change]].
+ 
+ You can also ask before taking the cash, with Check change. See [[cash/check-change]].
+ 
+diff --git a/help/settings/shopify.md b/help/settings/shopify.md
+index 64703c4..ccccd7b 100644
+--- a/help/settings/shopify.md
++++ b/help/settings/shopify.md
+@@ -4,7 +4,7 @@ title: Connecting Shopify
+ parent: settings
+ summary: Enter the shop domain and app credentials, test the connection, choose a location and import the catalogue.
+ tags: [Shopify, connect, domain, client ID, client secret, location, import, catalogue, metaobjects]
+-related: [settings, stock, stock/inventory]
++related: [settings, stock, stock/inventory, fix/offline-sync]
+ updated: 2026-10-11
+ ---
+ Open **More ▸ Settings ▸ Shopify** to connect the register to a Shopify store, choose the stock location and import its catalogue.
+@@ -55,3 +55,5 @@ flowchart TD
+ | Shared storage definitions | `ensureDefinitions` in `src/lib/shopify/metaobjects.ts` |
+ 
+ The access token is created by the app and refreshed automatically; you do not enter a token in Settings. Credentials and token are kept in the iOS Keychain on this device.
++
++For a completed sale that is queued or blocked from uploading, see [[fix/offline-sync]].
+diff --git a/help/stock/inventory.md b/help/stock/inventory.md
+index 55fcb7b..5be192c 100644
+--- a/help/stock/inventory.md
++++ b/help/stock/inventory.md
+@@ -4,7 +4,7 @@ title: The Inventory screen
+ parent: stock
+ summary: Search and filter the product catalogue, group variations, and receive, adjust or count stock.
+ tags: [inventory, stock, filter, category, status, sort, nested, count, receive, adjust, negative]
+-related: [stock, stock/items, sales/variants-and-stock]
++related: [stock, stock/items, sales/variants-and-stock, fix/stock-mismatch]
+ updated: 2026-10-11
+ ---
+ The **Inventory** tab shows stock for the catalogue on this iPad. Search or filter to find a variation, then tap it to receive stock, make an adjustment, or set a counted quantity.
+@@ -50,6 +50,8 @@ Nested groups show a product title, variation count, combined tracked stock and
+ ### If the catalogue count is lower than Shopify
+ Tap **Refresh stock from Shopify** and compare the total variant count and import time shown in Filters. The catalogue import uses Shopify's bulk product-variant query and the selected location. Draft and archived status filters can hide rows, but the device total in the Filters sheet counts the entire local catalogue.
+ 
++If the same variant still differs from Shopify, check the selected location, tracked setting and **available** quantity in [[fix/stock-mismatch]].
++
+ ## Advanced
+ 
+ ### Stock update path

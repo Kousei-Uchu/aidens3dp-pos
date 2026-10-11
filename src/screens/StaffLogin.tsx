@@ -2,7 +2,7 @@
 // PIN pad + pass scanning, shared by the lock screen and the "Switch staff" sheet.
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { Btn, Sheet, Txt } from '../ui/kit';
+import { Btn, HelpButton, Sheet, Txt } from '../ui/kit';
 import { useApp } from '../state/store';
 import { CameraScanner, HidScanner } from './Scanner';
 import { isBadgeCode } from '../lib/badge';
@@ -32,6 +32,7 @@ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignIn
       <Btn title="Unlock" onPress={() => void tryPin(pin, false)} disabled={pin.length < 4} style={{ width: 280 }} />
       <Btn title="Scan pass" kind="secondary" icon="qr-code-outline" onPress={() => setCam(true)} style={{ width: 280 }} />
       <Txt size={13} sub style={{ textAlign: 'center' }}>Enter your PIN, or scan your cashier pass with the scanner.</Txt>
+      <HelpButton id="fix/locked-out" label="Sign-in help" />
       <HidScanner enabled={scannerOn && !cam} onScan={code => { if (isBadgeCode(code)) void onScan(code); else setErr('That is not a cashier pass.'); }} />
       <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan your cashier pass" onScan={onScan} />
     </View>

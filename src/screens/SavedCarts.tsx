@@ -19,7 +19,7 @@ export default function SavedCarts() {
   const removeSaved = async (id: string) => { if (!(await confirm('Delete saved cart?', 'This removes it from all registers.', 'Delete', true))) return false; deleteSavedCart(id); return true; };
   const open = async () => { if (cur && await openSavedCart(cur)) { setSel(null); nav.reset(); nav.setTab('checkout'); } };
   return (
-    <Page title="Saved carts" onBack={nav.pop}>
+    <Page title="Saved carts" onBack={nav.pop} helpId="sales/saved-carts">
       {saved.length === 0 ? <Empty icon="bookmarks-outline" title="No saved carts" sub="Use ⋯ ▸ Save cart on the checkout screen. Saved carts appear on your other registers too." /> :
         saved.map(s => <SwipeRow key={s.id} background={c.card} onDelete={() => removeSaved(s.id)}><Row icon="bookmark-outline" title={s.name} sub={`${itemCount(s.cart)} items · ${fmt(s.cart.lines.reduce((t, l) => t + (l.overrideCents ?? l.unitCents) * l.qty, 0))}${s.cart.customer ? ' · ' + s.cart.customer.name : ''}${s.assignedTo ? ' · → ' + (staff.find(x => x.id === s.assignedTo)?.name ?? 'staff') : ''}${s.dirty ? ' · not synced' : ''}${s.note ? '\n' + s.note : ''}`} onPress={() => setSel(s.id)} /></SwipeRow>)}
       <Sheet visible={!!cur} onClose={() => setSel(null)} title={cur?.name}>

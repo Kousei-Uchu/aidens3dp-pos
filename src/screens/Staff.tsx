@@ -26,7 +26,7 @@ export default function Staff() {
   /** Saves a person's display mode and shares it to the other registers with the rest of the staff list. */
   const setUi = (id: string, ui: ReturnType<typeof withMode>) => { patch({ staff: s.staff.map(x => (x.id === id ? { ...x, ui } : x)) }); void pushSharedSettings().catch(() => {}); };
   return (
-    <Page title="Staff" onBack={nav.pop}>
+    <Page title="Staff" onBack={nav.pop} helpId="concepts/roles">
       <Section footer="PINs lock the till and tag each sale with who made it. They’re stored hashed, and shared to your other registers.">
         <Toggle label="Require PIN to use the register" value={s.requirePin && s.staff.length > 0} onChange={v => { if (v && !s.staff.length) return alertMsg('Add a staff member first'); patch({ requirePin: v }); void pushSharedSettings().catch(() => {}); }} /></Section>
       <AdjustRoleRules />

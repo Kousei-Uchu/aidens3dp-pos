@@ -11,8 +11,10 @@ This help explains every part of the POS: what each screen is for, how to do eac
 
 ### Finding what you need
 - Open the **Help** screen (More ▸ Help). Pages are grouped by job: selling, taking payment, the cash drawer, gift cards, orders and refunds, stock, staff, settings, and fixing problems.
+- Tap the **?** in a screen header to open help for that screen. Some error alerts also have a **Help** button that opens the relevant troubleshooting page.
 - Use the search box at the top. Type a word or two ("refund", "card declined") and every word has to match.
 - A page ends with **Related pages**. Words in blue take you to another page.
+- For troubleshooting, start at [[fix]]. For the rules behind data, staff access and money, see [[concepts]].
 
 ### Choosing how much detail you want
 Every page has up to three levels. You pick one and the Help screen remembers it.

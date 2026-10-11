@@ -14,12 +14,12 @@ export default function Customers() {
     if (!form) return; setBusy(true);
     try { const input = { firstName: form.first.trim() || undefined, lastName: form.last.trim() || undefined, email: form.email.trim() || undefined, phone: form.phone.trim() || undefined, note: form.note.trim() || undefined };
       const c = form.id ? await updateCustomer(form.id, input) : await createCustomer(input); const all = useApp.getState().data.customers; useApp.getState().patchData({ customers: [c, ...all.filter(x => x.id !== c.id)] }); setForm(null); setSel(c); }
-    catch (e: any) { alertMsg('Could not save customer', e.message); }
+    catch (e: any) { alertMsg('Could not save customer', e.message, 'sales/customers'); }
     setBusy(false);
   };
   const startSale = (c: Customer) => { useApp.getState().setCart(cc => ({ ...cc, customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } })); setSel(null); nav.setTab('checkout'); };
   return (
-    <Page title="Customers" onBack={nav.pop} scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
+    <Page title="Customers" onBack={nav.pop} helpId="sales/customers" scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
       <View style={{ padding: 12 }}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} style={{ marginBottom: 0 }} /></View>
       <FlatList data={shown} keyExtractor={c => c.id} ListEmptyComponent={<Empty icon="people-outline" title="No customers" />} renderItem={({ item: c }) => <Row title={c.name || c.email || c.phone || 'Customer'} sub={[c.email, c.phone].filter(Boolean).join(' · ') || undefined} onPress={() => setSel(c)} />} />
       <Sheet visible={!!sel && !form} onClose={() => setSel(null)} title={sel?.name || 'Customer'}>

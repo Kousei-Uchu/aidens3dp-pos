@@ -4,7 +4,7 @@ title: Scanning items, passes and gift cards
 parent: sales
 summary: The Bluetooth scanner and the camera, what a scan does on each screen, and what to do when scanning misbehaves.
 tags: [scanner, scan, barcode, bluetooth, camera, keyboard, sku, pass, qr]
-related: [sales, sales/variants-and-stock]
+related: [sales, sales/variants-and-stock, settings/hardware]
 updated: 2026-10-11
 ---
 A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.
@@ -17,7 +17,7 @@ A scan is the quickest way to add an item. The POS understands three kinds of co
 
 The gift card pop-up (Charge ▸ Gift card) has its own camera button for scanning a gift card's QR code.
 
-To check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart.
+To check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart. See [[settings/hardware]] for the test steps.
 
 ### What a scan does, by screen
 | Where you are | Item barcode | Cashier pass | Gift card QR |

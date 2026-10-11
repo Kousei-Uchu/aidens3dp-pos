@@ -75,7 +75,7 @@ function Shell() {
     return () => { clearInterval(t); sub.remove(); };
   }, [ready]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
-  if (isLockScreen({ staffCount, unlocked })) return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
+  if (isLockScreen({ staffCount, unlocked }) && nav.stack[nav.stack.length - 1]?.name !== 'help') return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
   const hasPage = nav.stack.length > 0;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

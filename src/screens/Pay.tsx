@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
-import { Btn, Card, Chip, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, Chip, HelpButton, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff, type Attempt } from '../state/store';
 import { usePriced, useCatalogue } from '../state/selectors';
@@ -119,7 +119,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   // ── gift card ──
   const useGift = async (info: GiftCardInfo, code: string) => {
     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
-    try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message); }
+    try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
     addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
   };
 
@@ -138,7 +138,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
   const busy = card.phase === 'waiting';
   return (
-    <Page title="Payment" onBack={busy ? undefined : () => (tenders.length ? void abandon() : onBack())} right={zeller.ready ? undefined : <Txt size={13} color={c.bad} style={{ marginRight: 12 }}>Reader issue</Txt>}>
+    <Page title="Payment" onBack={busy ? undefined : () => (tenders.length ? void abandon() : onBack())} helpId="pay/card" right={zeller.ready ? undefined : <Txt size={13} color={c.bad} style={{ marginRight: 12 }}>Reader issue</Txt>}>
       <View style={{ alignItems: 'center', paddingVertical: 24 }}>
         <Txt sub>{tenders.length ? 'Remaining' : 'Total due'}</Txt><Money cents={remaining} size={46} weight="700" />
         {tenders.length ? <Txt sub size={13}>of {fmt(total)}</Txt> : null}
@@ -165,14 +165,16 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
       {/* card status */}
       <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
-        {card.phase === 'declined' ? <View style={{ gap: 12 }}><Txt size={17}>{card.text}</Txt>{card.code ? <Txt sub size={13}>Code {card.code}. The cart is kept.</Txt> : <Txt sub size={13}>The cart is kept.</Txt>}
-          <Btn title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
-        {card.phase === 'unknown' ? <View style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>{card.checking ? <ActivityIndicator /> : null}<Txt size={16} style={{ flex: 1 }}>{card.text}</Txt></View>
-          <Txt sub size={13}>The customer may have been charged {fmt(card.amount)}. Do not charge again until this is resolved.</Txt>
-          <Btn title="Check again" kind="secondary" disabled={card.checking} onPress={() => void recheck(card.ref, card.amount, cart.saleUuid ?? saleUuid())} />
+          {card.phase === 'declined' ? <View style={{ gap: 12 }}><Txt size={17}>{card.text}</Txt>{card.code ? <Txt sub size={13}>Code {card.code}. The cart is kept.</Txt> : <Txt sub size={13}>The cart is kept.</Txt>}
+            <HelpButton id="fix/card-declined" label="Card payment help" />
+            <Btn title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
+          {card.phase === 'unknown' ? <View style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>{card.checking ? <ActivityIndicator /> : null}<Txt size={16} style={{ flex: 1 }}>{card.text}</Txt></View>
+            <Txt sub size={13}>The customer may have been charged {fmt(card.amount)}. Do not charge again until this is resolved.</Txt>
+            <HelpButton id="fix/card-declined" label="Unknown payment help" />
+            <Btn title="Check again" kind="secondary" disabled={card.checking} onPress={() => void recheck(card.ref, card.amount, cart.saleUuid ?? saleUuid())} />
           <Btn title="Customer WAS charged" kind="secondary" onPress={() => void manualResolve(true, card.ref, card.amount)} /><Btn title="Customer was NOT charged" kind="ghost" onPress={() => void manualResolve(false, card.ref, card.amount)} />
           <Btn title="Close" kind="ghost" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
-        {card.phase === 'notready' ? <View style={{ gap: 12 }}><Txt size={16}>{card.text}</Txt><Btn title="Retry" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Close" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
+        {card.phase === 'notready' ? <View style={{ gap: 12 }}><Txt size={16}>{card.text}</Txt><HelpButton id="fix/reader" label="Reader troubleshooting" /><Btn title="Retry" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Close" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
       </Sheet>
 
       {/* cash */}

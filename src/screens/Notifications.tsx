@@ -1,12 +1,13 @@
 import React from 'react';
 import { FlatList, View } from 'react-native';
-import { Btn, Empty, Row, Txt, Money } from '../ui/kit';
+import { Btn, Empty, HelpButton, Row, Txt, Money } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { retryBlocked } from '../lib/sync';
 
 const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline' };
+const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/offline-sync', stock: 'fix/stock-mismatch', reader: 'fix/reader', pass: 'fix/locked-out', refund: 'orders/refunds' };
 export default function Notifications() {
   const { c } = useTheme(); const nav = useNav(); const list = useApp(s => s.pos.notices); const outbox = useApp(s => s.pos.outbox); const patchPos = useApp(s => s.patchPos);
   const stuck = outbox.filter(o => o.blocked);
@@ -15,7 +16,7 @@ export default function Notifications() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center' }}>
-        <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
+        <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
       <FlatList data={list} keyExtractor={n => n.id} ListEmptyComponent={<Empty icon="notifications-outline" title="All clear" sub="Sync failures, queued sales, stock and reader issues show up here." />}
         ListHeaderComponent={<View>
           {stuck.map(o => <Row key={o.id} icon="warning-outline" danger title={`Sale ${o.sale.orderName ?? o.id.slice(0, 8)} needs attention`} sub={o.error} right={<Btn small title="Retry" onPress={() => retryBlocked(o.id)} />} />)}
@@ -23,7 +24,8 @@ export default function Notifications() {
           {low > 0 ? <Row icon="alert-circle-outline" title={`${low} item(s) low on stock (2 or fewer)`} onPress={() => nav.setTab('inventory')} /> : null}
           {neg > 0 ? <Row icon="alert-circle-outline" title={`${neg} item(s) with negative stock`} onPress={() => nav.setTab('inventory')} /> : null}</View>}
         renderItem={({ item: n }) => <Row icon={ICON[n.kind] ?? 'information-circle-outline'} title={n.title} sub={[n.body, new Date(n.ts).toLocaleString()].filter(Boolean).join('\n')}
-          onPress={() => { patchPos({ notices: list.map(x => (x.id === n.id ? { ...x, read: true } : x)) }); if (n.route) nav.go(n.route); }} right={n.read ? undefined : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.bad }} />} />} />
+          onPress={() => { patchPos({ notices: list.map(x => (x.id === n.id ? { ...x, read: true } : x)) }); if (n.route) nav.go(n.route); }}
+          right={HELP[n.kind] || !n.read ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{HELP[n.kind] ? <HelpButton id={HELP[n.kind]} label={`Help for ${n.title}`} /> : null}{n.read ? null : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.bad }} />}</View> : undefined} />} />
     </View>
   );
 }

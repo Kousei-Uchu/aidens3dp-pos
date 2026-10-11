@@ -1,0 +1,853 @@
+From 2c22786e6252becc46fc84cd052bbd87d9ab469c Mon Sep 17 00:00:00 2001
+From: Copilot <223556219+Copilot@users.noreply.github.com>
+Subject: [PATCH] 0047 help glossary contextual
+Copilot-Review: pending
+
+diff --git a/docs/patches/0047-plan.md b/docs/patches/0047-plan.md
+new file mode 100644
+index 0000000..792ffe2
+--- /dev/null
++++ b/docs/patches/0047-plan.md
+@@ -0,0 +1,16 @@
++# Patch 0047: in-app help, page 58 and contextual access (B7)
++
++Attribution: Copilot-authored; review pending.
++
++## What changed
++- [x] Added `concepts/glossary.md`, including SKU versus Shopify GID terminology.
++- [x] Added contextual **?** buttons to pushed pages and primary tabs.
++- [x] Added direct help buttons to scanner sign-in, guided checkout, cart and error notifications.
++- [x] Added topic-aware **Help** actions to matching error alerts.
++- [x] Added tested mappings that ensure error-help targets exist in the bundle.
++- [x] Updated Help home and authoring notes; rebuilt `help/help.json`.
++- [x] Updated `docs/PROGRESS.md`.
++- [x] Validation: help build/check, focused help/citation and contextual-help tests, and typecheck.
++
++## Review
++- [ ] User: verify question-mark placement and error destinations on the iPad.
+diff --git a/help/concepts/glossary.md b/help/concepts/glossary.md
+new file mode 100644
+index 0000000..fcd539d
+--- /dev/null
++++ b/help/concepts/glossary.md
+@@ -0,0 +1,57 @@
++---
++id: concepts/glossary
++title: POS glossary
++parent: concepts
++summary: Plain-English meanings for register, Shopify, scanner, staff and payment terms used throughout this help.
++tags: [glossary, SKU, GID, variant, outbox, tender, cashier pass, inventory, sync]
++related: [concepts, concepts/data-and-sync, concepts/roles, concepts/money]
++updated: 2026-10-11
++---
++Use this page when a POS or Shopify term is unfamiliar. Button names appear in **bold**; code identifiers are shown in `monospace`.
++
++## Basic
++
++### Products and stock
++- **Variant:** one sellable choice of a Shopify product, such as a particular size or colour.
++- **SKU:** the merchant's stock-keeping code for a variant. In Checkout, a scanner can find a variant by its SKU or barcode.
++- **Barcode:** the scannable product code stored on a variant. Barcode lookup normalises leading zeroes to match common UPC/EAN formats.
++- **Shopify ID / GID:** Shopify's internal identifier for a record. It is not the product code staff should scan at Checkout.
++- **Tracked / not tracked:** Shopify either keeps a quantity for this variant or does not. In Inventory, a dash means not tracked; zero is a tracked variant with no available stock.
++- **Available:** the Shopify stock quantity the POS imports for the selected location.
++
++### Sales, staff and sync
++- **Tender:** how the customer pays: cash, card or gift card.
++- **Outbox:** the local queue of completed sales and upload steps waiting to reach Shopify.
++- **Cashier pass:** a scannable credential that signs in a staff member; it is different from a product barcode.
++- **Role:** Cashier, Manager or Owner access assigned to a staff record.
++- **Unknown payment:** the POS cannot yet confirm whether a card payment completed. Check Zeller before charging again.
++
++## Deep
++
++### Similar words that mean different things
++- A **SKU** is a merchant-defined product code; a Shopify **GID** identifies a record inside Shopify. Scanners should use the variant's barcode or SKU, not its GID.
++- A stock count of **0** is not the same as **not tracked**. One is a tracked quantity; the other has no inventory quantity.
++- A **queued** sale is saved locally and waiting to upload. A **blocked** sale needs a person to fix the cause before retrying.
++- A card **decline** is a known result. An **unknown** result is not a decline and is not safe to retry until checked.
++
++### Guided checkout and price adjustments
++- **Guided checkout:** a step-by-step checkout that asks about items, customer, discount, review and payment.
++- **Line price:** a chosen price for the whole line and its quantity.
++- **Item price:** a chosen unit price for a selected quantity of one item.
++- **Whole order price:** a chosen total distributed over eligible cart lines.
++- **Adjustment review:** the check before payment that asks staff to keep, change or remove a flagged price adjustment.
++
++## Advanced
++
++### Where key terms are implemented
++| Term | Where |
++|---|---|
++| Barcode and SKU match | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` |
++| Shopify variant data and available quantity | `Variant` in `src/lib/types.ts`, `fetchVariants` in `src/lib/shopify/catalogue.ts` |
++| Local upload queue and per-step state | `OutboxItem` in `src/state/store.ts`, `processOutbox` in `src/lib/sync.ts` |
++| Tender and unresolved card attempt | `Tender`, `Attempt` in `src/state/store.ts` |
++| Staff roles | `Role` in `src/lib/types.ts` |
++| Guided flow steps | `STEPS` in `src/lib/guidedFlow.ts` |
++| Price adjustment types | `AdjustKind` in `src/lib/adjustReview.ts` |
++
++For the data lifecycle, see [[concepts/data-and-sync]]. For money calculations, see [[concepts/money]].
+diff --git a/App.tsx b/App.tsx
+index 12b3879..4b00b8c 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -75,7 +75,7 @@ function Shell() {
+     return () => { clearInterval(t); sub.remove(); };
+   }, [ready]);
+   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+-  if (isLockScreen({ staffCount, unlocked })) return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
++  if (isLockScreen({ staffCount, unlocked }) && nav.stack[nav.stack.length - 1]?.name !== 'help') return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
+   const hasPage = nav.stack.length > 0;
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 74f6356..97a5cba 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -12,10 +12,17 @@ import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
+ import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
+ import { sheetMaxHeight } from '../lib/keyboardMath';
+ import { useUi } from './uiProfile';
++import { openHelpPage, useNav } from './nav';
++import { helpForError } from '../lib/helpContext';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+ export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+ 
++export function HelpButton({ id, label = 'Help' }: { id: string; label?: string }) {
++  const nav = useNav();
++  return <IconBtn icon="help-circle-outline" label={label} onPress={() => nav.push('help', { id })} />;
++}
++
+ export function Txt({ style, children, size = 15, weight, color, sub, numberOfLines }: { style?: any; children?: React.ReactNode; size?: number; weight?: '400' | '500' | '600' | '700'; color?: string; sub?: boolean; numberOfLines?: number }) {
+   const { c } = useTheme(); const k = useUi().textScale;
+   return <Text numberOfLines={numberOfLines} style={[{ fontSize: Math.round(size * k * 2) / 2, color: color ?? (sub ? c.sub : c.text), fontWeight: weight }, style]}>{children}</Text>;
+@@ -107,13 +114,13 @@ export const Empty = ({ icon = 'file-tray-outline', title, sub }: { icon?: IconN
+ };
+ 
+ /** Page header used by every pushed screen. */
+-export function Page({ title, onBack, right, children, scroll = true, pad = true }: { title: string; onBack?: () => void; right?: React.ReactNode; children: React.ReactNode; scroll?: boolean; pad?: boolean }) {
++export function Page({ title, onBack, right, helpId = 'start', children, scroll = true, pad = true }: { title: string; onBack?: () => void; right?: React.ReactNode; helpId?: string | null; children: React.ReactNode; scroll?: boolean; pad?: boolean }) {
+   const { c } = useTheme();
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 54, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+         {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} /> : <View style={{ width: 12 }} />}
+-        <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}
++        <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}{helpId ? <HelpButton id={helpId} label={`Help for ${title}`} /> : null}
+       </View>
+       {scroll ? <RevealScroll inset contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</RevealScroll> : <View style={{ flex: 1 }}>{children}</View>}
+     </View>
+@@ -140,7 +147,14 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
+ 
+ export const confirm = (title: string, message: string, ok = 'Confirm', destructive = false): Promise<boolean> =>
+   new Promise(res => Alert.alert(title, message, [{ text: 'Cancel', style: 'cancel', onPress: () => res(false) }, { text: ok, style: destructive ? 'destructive' : 'default', onPress: () => res(true) }], { cancelable: true, onDismiss: () => res(false) }));
+-export const alertMsg = (title: string, message?: string) => Alert.alert(title, message);
++export const alertMsg = (title: string, message?: string, helpId?: string) => {
++  const target = helpId ?? helpForError(title, message);
++  if (!target) return Alert.alert(title, message);
++  Alert.alert(title, message, [
++    { text: 'Help', onPress: () => openHelpPage(target) },
++    { text: 'OK', style: 'cancel' },
++  ]);
++};
+ 
+ /** Calculator-style keypad: digits shift in from the right as cents (Square behaviour). */
+ export function Keypad({ value, onChange, onSubmit, submitLabel, decimal = true, big }: { value: string; onChange: (digits: string) => void; onSubmit?: () => void; submitLabel?: string; decimal?: boolean; big?: boolean }) {
+diff --git a/src/ui/nav.tsx b/src/ui/nav.tsx
+index 32437a1..8ab252e 100644
+--- a/src/ui/nav.tsx
++++ b/src/ui/nav.tsx
+@@ -5,12 +5,15 @@ export type Route = { name: string; params?: any };
+ type Nav = { tab: Tab; setTab: (t: Tab) => void; stack: Route[]; push: (name: string, params?: any) => void; pop: () => void; reset: () => void; go: (route: string, params?: any) => void };
+ const Ctx = createContext<Nav>(null as any);
+ const TAB_ROUTES: Record<string, Tab> = { checkout: 'checkout', inventory: 'inventory', transactions: 'transactions', notifications: 'notifications', more: 'more' };
++let helpOpener: ((id: string) => void) | undefined;
++export const openHelpPage = (id: string) => helpOpener?.(id);
+ 
+ export function NavProvider({ children }: { children: React.ReactNode }) {
+   const [tab, setTabState] = useState<Tab>('checkout');
+   const [stack, setStack] = useState<Route[]>([]);
+   const setTab = useCallback((t: Tab) => { setTabState(t); setStack([]); }, []);
+   const push = useCallback((name: string, params?: any) => setStack(s => [...s, { name, params }]), []);
++  helpOpener = id => push('help', { id });
+   const pop = useCallback(() => setStack(s => s.slice(0, -1)), []);
+   const reset = useCallback(() => setStack([]), []);
+   /** Notification deep-links: a tab name switches tab, anything else pushes a page. */
+diff --git a/src/lib/helpContext.ts b/src/lib/helpContext.ts
+new file mode 100644
+index 0000000..c8e913e
+--- /dev/null
++++ b/src/lib/helpContext.ts
+@@ -0,0 +1,31 @@
++export const HELP_ERROR_PAGES = {
++  card: 'fix/card-declined',
++  reader: 'fix/reader',
++  sync: 'fix/offline-sync',
++  cashChange: 'fix/cant-make-change',
++  stock: 'fix/stock-mismatch',
++  scanner: 'fix/keyboard',
++  staff: 'fix/locked-out',
++} as const;
++
++export function helpForError(title: string, message = ''): string | undefined {
++  const text = `${title} ${message}`.toLowerCase();
++  if (/card declined|payment status unknown|payment result unknown/.test(text)) return HELP_ERROR_PAGES.card;
++  if (/reader|terminal|zeller/.test(text)) return HELP_ERROR_PAGES.reader;
++  if (/can't make .*change|cannot make .*change|cash change|drawer change/.test(text)) return HELP_ERROR_PAGES.cashChange;
++  if (/stock|inventory|not linked/.test(text)) return HELP_ERROR_PAGES.stock;
++  if (/scanner|keyboard|barcode|sku/.test(text)) return HELP_ERROR_PAGES.scanner;
++  if (/wrong pin|cashier pass|sign in|staff access|pin/.test(text)) return HELP_ERROR_PAGES.staff;
++  if (/price adjustment|adjustment|cannot use that price|cannot use that total/.test(text)) return 'sales/cart-and-prices';
++  if (/role|owner/.test(text)) return 'concepts/roles';
++  if (/gift card/.test(text)) return /charge|redeem|lookup|balance/.test(text) ? 'pay/gift-card' : 'gift';
++  if (/customer/.test(text)) return 'sales/customers';
++  if (/receipt/.test(text)) return 'settings/receipts';
++  if (/item not found|tile/.test(text)) return 'sales/grid';
++  if (/refund/.test(text)) return 'orders/refunds';
++  if (/square/.test(text)) return 'orders/square-history';
++  if (/report/.test(text)) return 'orders/reports';
++  if (/order/.test(text)) return 'orders';
++  if (/sync|outbox|upload|shopify|offline|no connection|network|connection/.test(text)) return HELP_ERROR_PAGES.sync;
++  return undefined;
++}
+diff --git a/tests/helpcontext.test.ts b/tests/helpcontext.test.ts
+new file mode 100644
+index 0000000..9374a66
+--- /dev/null
++++ b/tests/helpcontext.test.ts
+@@ -0,0 +1,26 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { helpForError } from '../src/lib/helpContext';
++import { loadPages } from '../scripts/build-help';
++
++test('error help links target existing relevant pages', () => {
++  const pages = new Set(loadPages().pages.map(page => page.id));
++  const cases: [string, string | undefined, string][] = [
++    ['Card declined', undefined, 'fix/card-declined'],
++    ['Reader not ready', undefined, 'fix/reader'],
++    ['Sync issue', 'No connection', 'fix/offline-sync'],
++    ["Can't make change", undefined, 'fix/cant-make-change'],
++    ['Stock update failed', undefined, 'fix/stock-mismatch'],
++    ['Scanner barcode not found', undefined, 'fix/keyboard'],
++    ['Wrong PIN', undefined, 'fix/locked-out'],
++  ];
++  for (const [title, message, expected] of cases) {
++    const id = helpForError(title, message);
++    assert.equal(id, expected);
++    assert.ok(id && pages.has(id), `Help page ${id} exists`);
++  }
++});
++
++test('non-troubleshooting messages do not get a misleading fix link', () => {
++  assert.equal(helpForError('Name and price are required'), undefined);
++});
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index a364e0e..9423dac 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -2,7 +2,7 @@
+ import React, { useState } from 'react';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+ import { useCatalogue, usePriced } from '../state/selectors';
+@@ -46,6 +46,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+           <Txt weight="600" numberOfLines={1} style={{ flex: 1 }}>{customerRowText(ui.explain, cart.customer?.name, !!cart.customer)}</Txt>
+           {cart.customer ? <Pressable onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
+         </Pressable>
++        {onClose ? <HelpButton id="sales/cart-and-prices" label="Cart help" /> : null}
+         <IconBtn icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
+       </View>
+ 
+diff --git a/src/screens/CashSheet.tsx b/src/screens/CashSheet.tsx
+index 8784d92..8c7a214 100644
+--- a/src/screens/CashSheet.tsx
++++ b/src/screens/CashSheet.tsx
+@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from 'react';
+ import { View } from 'react-native';
+ import { useUi } from '../ui/uiProfile';
+ import { cashHint } from '../lib/simpleLabels';
+-import { Btn, Money, Sheet, Txt } from '../ui/kit';
++import { Btn, HelpButton, Money, Sheet, Txt } from '../ui/kit';
+ import { DenomPad } from '../ui/DenomPad';
+ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+@@ -102,6 +102,7 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
+                 <View style={{ gap: 8, backgroundColor: c.bad + '14', borderRadius: 14, padding: 12 }}>
+                   <Txt weight="700" color={c.bad}>{empty ? 'No cash in the ledger' : `Can't make ${fmt(change)} change`}</Txt>
+                   <Txt size={13}>{empty ? 'The ledger shows an empty drawer (it was never opened or counted), so change can\'t be suggested.' : 'The drawer ledger doesn\'t hold the notes and coins for exact change.'} Options:</Txt>
++                  <HelpButton id="fix/cant-make-change" label="Change troubleshooting" />
+                   {hand ? <Txt size={13}>• Ask for less: take {summariseCounts(hand.take)} and hand back {summariseCounts(hand.handBack)}.</Txt> : null}
+                   {part ? <Txt size={13}>• Take {fmt(part.cashCents)} in cash and put the other {fmt(part.restCents)} on card.</Txt> : null}
+                   <Txt size={13}>• Or take the full {fmt(billDue)} by card.</Txt>
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index d5b2e94..832ed58 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -2,7 +2,7 @@
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { FlatList, Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Btn, Chip, Empty, Field, IconBtn, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm, useToast } from '../ui/kit';
++import { Btn, Chip, Empty, Field, HelpButton, IconBtn, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm, useToast } from '../ui/kit';
+ import { useLayout, useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+@@ -142,6 +142,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+           {staffList.length && !guided ? <Pressable onPress={() => setSheet('staff')} accessibilityRole="button" accessibilityLabel={curStaff ? `Signed in as ${curStaff.name}. Switch staff` : 'Sign in'} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 140 }}>
+             <Ionicons name="person-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>{curStaff?.name ?? 'Sign in'}</Txt></Pressable> : null}
+           <IconBtn icon="barcode-outline" label="Scan with camera" onPress={() => setCam(true)} />
++          {!guided ? <HelpButton id="sales" label="Checkout help" /> : null}
+           {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
+         </View>
+         <View style={{ padding: 12, paddingBottom: 8 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
+diff --git a/src/screens/Customers.tsx b/src/screens/Customers.tsx
+index a60d021..e8b7b62 100644
+--- a/src/screens/Customers.tsx
++++ b/src/screens/Customers.tsx
+@@ -14,12 +14,12 @@ export default function Customers() {
+     if (!form) return; setBusy(true);
+     try { const input = { firstName: form.first.trim() || undefined, lastName: form.last.trim() || undefined, email: form.email.trim() || undefined, phone: form.phone.trim() || undefined, note: form.note.trim() || undefined };
+       const c = form.id ? await updateCustomer(form.id, input) : await createCustomer(input); const all = useApp.getState().data.customers; useApp.getState().patchData({ customers: [c, ...all.filter(x => x.id !== c.id)] }); setForm(null); setSel(c); }
+-    catch (e: any) { alertMsg('Could not save customer', e.message); }
++    catch (e: any) { alertMsg('Could not save customer', e.message, 'sales/customers'); }
+     setBusy(false);
+   };
+   const startSale = (c: Customer) => { useApp.getState().setCart(cc => ({ ...cc, customer: { id: c.id, name: c.name, email: c.email, phone: c.phone } })); setSel(null); nav.setTab('checkout'); };
+   return (
+-    <Page title="Customers" onBack={nav.pop} scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
++    <Page title="Customers" onBack={nav.pop} helpId="sales/customers" scroll={false} right={<IconBtn icon="person-add-outline" label="New customer" onPress={() => setForm({ first: '', last: '', email: '', phone: '', note: '' })} />}>
+       <View style={{ padding: 12 }}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={async () => { try { setRemote(await searchRemote(q.trim())); } catch {} }} style={{ marginBottom: 0 }} /></View>
+       <FlatList data={shown} keyExtractor={c => c.id} ListEmptyComponent={<Empty icon="people-outline" title="No customers" />} renderItem={({ item: c }) => <Row title={c.name || c.email || c.phone || 'Customer'} sub={[c.email, c.phone].filter(Boolean).join(' · ') || undefined} onPress={() => setSel(c)} />} />
+       <Sheet visible={!!sel && !form} onClose={() => setSel(null)} title={sel?.name || 'Customer'}>
+diff --git a/src/screens/Diagnostics.tsx b/src/screens/Diagnostics.tsx
+index c8535cf..2063eaf 100644
+--- a/src/screens/Diagnostics.tsx
++++ b/src/screens/Diagnostics.tsx
+@@ -19,7 +19,7 @@ export default function Diagnostics() {
+   };
+   const refund = async () => { const t = getTerminal(); if (!t || !lastRef) return; setBusy(true); const r = await startRefund(t, { purchaseRef: lastRef, amountCents: 100, reference: `${lastRef}-refund` }, { onEvent: e => add(describeEvent(e)) }).promise; setBusy(false); add(r.kind === 'APPROVED' ? 'Refund approved ✔' : `Refund: ${r.kind}`); if (r.kind === 'APPROVED') setLastRef(null); };
+   return (
+-    <Page title="Support & diagnostics" onBack={nav.pop}>
++    <Page title="Support & diagnostics" onBack={nav.pop} helpId="fix/reader">
+       <Section title="Zeller reader"><Row title={z.ready ? 'Reader ready' : 'Reader issue'} sub={z.message} icon={z.ready ? 'checkmark-circle' : 'alert-circle'} />
+         <View style={{ padding: 16, gap: 8 }}><Btn title="Setup (pair terminal)" icon="link-outline" kind="secondary" busy={busy} onPress={async () => { const e = await pairReader(); add(e ? `Setup: ${e}` : 'Paired ✔'); }} />
+           <Btn title="Check reader" icon="refresh" kind="secondary" onPress={async () => add((await checkReader()) ? 'Reader ready ✔' : useApp.getState().zeller.message ?? 'Not ready')} />
+diff --git a/src/screens/Drawer.tsx b/src/screens/Drawer.tsx
+index 9fc1dd1..5b15394 100644
+--- a/src/screens/Drawer.tsx
++++ b/src/screens/Drawer.tsx
+@@ -57,7 +57,7 @@ export default function Drawer() {
+     : sheet === 'close' ? `Count everything in the drawer. Expected ${fmt(expected)}.` : sheet === 'in' ? 'Tap the notes and coins you are putting in.' : 'Tap the notes and coins you are taking out.';
+   const recent = ledger.entries.slice(0, 15);
+   return (
+-    <Page title="Cash drawer" onBack={nav.pop}>
++    <Page title="Cash drawer" onBack={nav.pop} helpId="cash">
+       {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open on this register.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} /></View> : <>
+         <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
+         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}
+diff --git a/src/screens/GiftCards.tsx b/src/screens/GiftCards.tsx
+index 6a393ee..ee5c951 100644
+--- a/src/screens/GiftCards.tsx
++++ b/src/screens/GiftCards.tsx
+@@ -14,7 +14,7 @@ export default function GiftCards() {
+   const [hist, setHist] = useState<{ info: GiftCardInfo; txns: GiftCardTxn[] } | null>(null);
+   const show = async (_g: GiftCardInfo, code: string) => { const info = await lookupGiftCard(code); if (info) setHist({ info, txns: await giftCardHistory(info.id) }); setCheck(false); };
+   return (
+-    <Page title="Gift cards" onBack={nav.pop}>
++    <Page title="Gift cards" onBack={nav.pop} helpId="gift">
+       <View style={{ padding: 16, gap: 10 }}>
+         <Btn title="Sell gift card" icon="gift-outline" onPress={() => { setSell(true); }} />
+         <Btn title="Check balance" icon="search-outline" kind="secondary" onPress={() => setCheck(true)} />
+diff --git a/src/screens/GuidedCheckout.tsx b/src/screens/GuidedCheckout.tsx
+index 6bbb925..ebb1989 100644
+--- a/src/screens/GuidedCheckout.tsx
++++ b/src/screens/GuidedCheckout.tsx
+@@ -4,7 +4,7 @@
+ import React, { useEffect, useState } from 'react';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+@@ -50,6 +50,7 @@ export default function GuidedCheckout() {
+       <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
+         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+           <Txt size={13} sub weight="600" style={{ flex: 1 }}>Step {pr.n} of {pr.total}</Txt>
++          <HelpButton id={step === 'items' ? 'sales' : step === 'customer' ? 'sales/customers' : step === 'pay' ? 'pay' : 'sales/cart-and-prices'} label={`${info.label} help`} />
+           <Pressable onPress={() => setSheet('more')} accessibilityRole="button" accessibilityLabel="More options" hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+             <Ionicons name="ellipsis-horizontal-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600">More options</Txt></Pressable>
+         </View>
+diff --git a/src/screens/Inventory.tsx b/src/screens/Inventory.tsx
+index 5e68e6b..b473e42 100644
+--- a/src/screens/Inventory.tsx
++++ b/src/screens/Inventory.tsx
+@@ -2,7 +2,7 @@
+ import React, { useMemo, useState } from 'react';
+ import { FlatList, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Btn, Chip, Empty, Field, Keypad, Money, Row, Segmented, Sheet, Thumb, Txt, alertMsg } from '../ui/kit';
++import { Btn, Chip, Empty, Field, HelpButton, Keypad, Money, Row, Segmented, Sheet, Thumb, Txt, alertMsg } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+ import { useCatalogue } from '../state/selectors';
+@@ -64,6 +64,7 @@ export default function Inventory() {
+       <View style={{ paddingTop: 54, padding: 12, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
+         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+           <View style={{ flex: 1, marginLeft: 4 }}><Txt size={24} weight="700">Inventory</Txt><Txt size={12} sub>{rows.length ? `${filtered.length} variants · ${productCount} products` : 'Nothing matches'}</Txt></View>
++          <HelpButton id="fix/stock-mismatch" label="Inventory help" />
+           <Chip label={nFilters ? `Filters · ${nFilters}` : 'Filters'} icon="options-outline" active={nFilters > 0} onPress={() => setFilters(true)} />
+         </View>
+         <Field kind="search" placeholder="Search name, SKU or barcode" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} />
+diff --git a/src/screens/Items.tsx b/src/screens/Items.tsx
+index 9dbeb9c..10b680e 100644
+--- a/src/screens/Items.tsx
++++ b/src/screens/Items.tsx
+@@ -14,7 +14,7 @@ export function ItemsList() {
+   const nav = useNav(); const cat = useCatalogue(); const [q, setQ] = useState('');
+   const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)); }, [q, cat.list]);
+   return (
+-    <Page title="Items" onBack={nav.pop} scroll={false} right={<IconBtn icon="add" label="Create item" onPress={() => nav.push('createItem')} />}>
++    <Page title="Items" onBack={nav.pop} helpId="stock/items" scroll={false} right={<IconBtn icon="add" label="Create item" onPress={() => nav.push('createItem')} />}>
+       <View style={{ padding: 12 }}><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></View>
+       <FlatList data={list} keyExtractor={v => v.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify, or create one." />} renderItem={({ item: v }) => <Row image={v.image ?? null} title={v.productTitle} sub={[v.variantTitle, v.sku, v.barcode].filter(Boolean).join(' · ') || undefined} right={<Money cents={v.priceCents} weight="600" />} onPress={() => nav.push('editItem', { id: v.id })} />} />
+     </Page>
+@@ -28,14 +28,14 @@ export function CreateItem() {
+   const [f, setF] = useState({ title: '', price: '', sku: '', barcode: '', cost: '', stock: '' }); const [col, setCol] = useState<string | undefined>(); const [busy, setBusy] = useState(false);
+   const save = async () => {
+     const price = money(f.price); if (!f.title.trim() || price === undefined) return alertMsg('Name and price are required');
+-    if (!loc) return alertMsg('Pick a location first', 'Settings ▸ Shopify');
++    if (!loc) return alertMsg('Pick a location first', 'Settings ▸ Shopify', 'settings/shopify');
+     setBusy(true);
+     try { await createItem({ title: f.title.trim(), priceCents: price, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost), stock: f.stock ? Number(f.stock) : undefined, collectionId: col }, loc); await importFromShopify(() => {}); nav.pop(); }
+-    catch (e: any) { alertMsg('Could not create item', e.message); }
++    catch (e: any) { alertMsg('Could not create item', e.message, 'stock/items'); }
+     setBusy(false);
+   };
+   return (
+-    <Page title="Create item" onBack={nav.pop}>
++    <Page title="Create item" onBack={nav.pop} helpId="stock/items">
+       <View style={{ padding: 16 }}>
+         <Field kind="name" label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} placeholder="0.00" />
+         <Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} /><Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} />
+@@ -49,16 +49,16 @@ export function CreateItem() {
+ 
+ export function EditItem({ id }: { id: string }) {
+   const nav = useNav(); const v = useApp(s => s.data.variants[id]); const [f, setF] = useState({ price: v ? (v.priceCents / 100).toFixed(2) : '', sku: v?.sku ?? '', barcode: v?.barcode ?? '', cost: v?.costCents !== undefined ? (v.costCents / 100).toFixed(2) : '' }); const [busy, setBusy] = useState(false);
+-  if (!v) return <Page title="Item" onBack={nav.pop}><Empty title="Item not found" /></Page>;
++  if (!v) return <Page title="Item" onBack={nav.pop} helpId="stock/items"><Empty title="Item not found" /></Page>;
+   const save = async () => {
+     setBusy(true);
+     try { const p = money(f.price); await updateVariant(v.productId, v.id, { priceCents: p, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost) });
+       const next: Variant = { ...v, priceCents: p ?? v.priceCents, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost) ?? v.costCents }; useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: next } }); nav.pop(); }
+-    catch (e: any) { alertMsg('Could not save', e.message); }
++    catch (e: any) { alertMsg('Could not save', e.message, 'stock/items'); }
+     setBusy(false);
+   };
+   return (
+-    <Page title={v.productTitle} onBack={nav.pop}><View style={{ padding: 16 }}>
++    <Page title={v.productTitle} onBack={nav.pop} helpId="stock/items"><View style={{ padding: 16 }}>
+       {v.image ? <View style={{ alignItems: 'center', marginBottom: 12 }}><Thumb uri={v.image} size={160} radius={16} /></View> : null}
+       <Txt sub style={{ marginBottom: 10 }}>{v.variantTitle ? v.variantTitle + ' · ' : ''}Stock {v.stock ?? 'not tracked'} · current {fmt(v.priceCents)}</Txt>
+       <Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} /><Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} />
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index ae138d1..fca9362 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -1,6 +1,6 @@
+ import React from 'react';
+ import { ScrollView, View } from 'react-native';
+-import { Row, Section, Txt, type IconName } from '../ui/kit';
++import { HelpButton, Row, Section, Txt, type IconName } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useUi } from '../ui/uiProfile';
+@@ -26,7 +26,10 @@ export default function More() {
+   const groups = visibleMoreRows(ui, role, lockOn);
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+-      <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={24} weight="700">More</Txt>{staff ? <Txt sub>{staff.name} · {staff.role}</Txt> : null}</View>
++      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
++        <View style={{ flex: 1 }}><Txt size={24} weight="700">More</Txt>{staff ? <Txt sub>{staff.name} · {staff.role}</Txt> : null}</View>
++        <HelpButton id="concepts/roles" label="Role and access help" />
++      </View>
+       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+         {groups.map((g, gi) => (
+           <Section key={gi}>
+diff --git a/src/screens/Notifications.tsx b/src/screens/Notifications.tsx
+index a41dec4..539ab5b 100644
+--- a/src/screens/Notifications.tsx
++++ b/src/screens/Notifications.tsx
+@@ -1,12 +1,13 @@
+ import React from 'react';
+ import { FlatList, View } from 'react-native';
+-import { Btn, Empty, Row, Txt, Money } from '../ui/kit';
++import { Btn, Empty, HelpButton, Row, Txt, Money } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { retryBlocked } from '../lib/sync';
+ 
+ const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline' };
++const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/offline-sync', stock: 'fix/stock-mismatch', reader: 'fix/reader', pass: 'fix/locked-out', refund: 'orders/refunds' };
+ export default function Notifications() {
+   const { c } = useTheme(); const nav = useNav(); const list = useApp(s => s.pos.notices); const outbox = useApp(s => s.pos.outbox); const patchPos = useApp(s => s.patchPos);
+   const stuck = outbox.filter(o => o.blocked);
+@@ -15,7 +16,7 @@ export default function Notifications() {
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center' }}>
+-        <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
++        <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
+       <FlatList data={list} keyExtractor={n => n.id} ListEmptyComponent={<Empty icon="notifications-outline" title="All clear" sub="Sync failures, queued sales, stock and reader issues show up here." />}
+         ListHeaderComponent={<View>
+           {stuck.map(o => <Row key={o.id} icon="warning-outline" danger title={`Sale ${o.sale.orderName ?? o.id.slice(0, 8)} needs attention`} sub={o.error} right={<Btn small title="Retry" onPress={() => retryBlocked(o.id)} />} />)}
+@@ -23,7 +24,8 @@ export default function Notifications() {
+           {low > 0 ? <Row icon="alert-circle-outline" title={`${low} item(s) low on stock (2 or fewer)`} onPress={() => nav.setTab('inventory')} /> : null}
+           {neg > 0 ? <Row icon="alert-circle-outline" title={`${neg} item(s) with negative stock`} onPress={() => nav.setTab('inventory')} /> : null}</View>}
+         renderItem={({ item: n }) => <Row icon={ICON[n.kind] ?? 'information-circle-outline'} title={n.title} sub={[n.body, new Date(n.ts).toLocaleString()].filter(Boolean).join('\n')}
+-          onPress={() => { patchPos({ notices: list.map(x => (x.id === n.id ? { ...x, read: true } : x)) }); if (n.route) nav.go(n.route); }} right={n.read ? undefined : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.bad }} />} />} />
++          onPress={() => { patchPos({ notices: list.map(x => (x.id === n.id ? { ...x, read: true } : x)) }); if (n.route) nav.go(n.route); }}
++          right={HELP[n.kind] || !n.read ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{HELP[n.kind] ? <HelpButton id={HELP[n.kind]} label={`Help for ${n.title}`} /> : null}{n.read ? null : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.bad }} />}</View> : undefined} />} />
+     </View>
+   );
+ }
+diff --git a/src/screens/Orders.tsx b/src/screens/Orders.tsx
+index 67f6d49..fc2a445 100644
+--- a/src/screens/Orders.tsx
++++ b/src/screens/Orders.tsx
+@@ -12,12 +12,12 @@ const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_statu
+ /** Orders: Open | Unfulfilled | Completed – Mark fulfilled, refund and receipt. */
+ export default function Orders() {
+   const nav = useNav(); const [tab, setTab] = useState<keyof typeof Q>('open'); const [orders, setOrders] = useState<PosOrder[]>([]); const [busy, setBusy] = useState(false); const [sel, setSel] = useState<PosOrder | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
+-  const load = useCallback(async () => { setBusy(true); try { setOrders((await listOrders({ query: Q[tab], first: 30 })).orders); } catch (e: any) { alertMsg('Could not load orders', e.message); } setBusy(false); }, [tab]);
++  const load = useCallback(async () => { setBusy(true); try { setOrders((await listOrders({ query: Q[tab], first: 30 })).orders); } catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
+   useEffect(() => { void load(); }, [tab]);
+   if (refund) return <RefundScreen order={refund} onClose={() => setRefund(null)} onGoPay={() => nav.push('pay')} />;
+-  const mark = async (o: PosOrder) => { try { await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message); } };
++  const mark = async (o: PosOrder) => { try { await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
+   return (
+-    <Page title="Orders" onBack={nav.pop} scroll={false}>
++    <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
+       <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></View>
+       <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} />}>
+         {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
+diff --git a/src/screens/Pay.tsx b/src/screens/Pay.tsx
+index cb68a0a..edb8210 100644
+--- a/src/screens/Pay.tsx
++++ b/src/screens/Pay.tsx
+@@ -1,6 +1,6 @@
+ import React, { useEffect, useMemo, useRef, useState } from 'react';
+ import { ActivityIndicator, View } from 'react-native';
+-import { Btn, Card, Chip, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, Chip, HelpButton, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useApp, currentStaff, type Attempt } from '../state/store';
+ import { usePriced, useCatalogue } from '../state/selectors';
+@@ -119,7 +119,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+   // ── gift card ──
+   const useGift = async (info: GiftCardInfo, code: string) => {
+     const amt = Math.min(info.balanceCents, target); const uuid = saleUuid();
+-    try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message); }
++    try { await debitGiftCard(info.id, amt, `POS sale ${uuid.slice(0, 8)}`); } catch (e: any) { return alertMsg('Gift card could not be charged', e.message, 'pay/gift-card'); }
+     addTender({ id: uid(), kind: 'gift_card', amountCents: amt, giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }, uuid); setGift(false);
+   };
+ 
+@@ -138,7 +138,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+ 
+   const busy = card.phase === 'waiting';
+   return (
+-    <Page title="Payment" onBack={busy ? undefined : () => (tenders.length ? void abandon() : onBack())} right={zeller.ready ? undefined : <Txt size={13} color={c.bad} style={{ marginRight: 12 }}>Reader issue</Txt>}>
++    <Page title="Payment" onBack={busy ? undefined : () => (tenders.length ? void abandon() : onBack())} helpId="pay/card" right={zeller.ready ? undefined : <Txt size={13} color={c.bad} style={{ marginRight: 12 }}>Reader issue</Txt>}>
+       <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+         <Txt sub>{tenders.length ? 'Remaining' : 'Total due'}</Txt><Money cents={remaining} size={46} weight="700" />
+         {tenders.length ? <Txt sub size={13}>of {fmt(total)}</Txt> : null}
+@@ -165,14 +165,16 @@ export default function Pay({ onBack }: { onBack: () => void }) {
+ 
+       {/* card status */}
+       <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
+-        {card.phase === 'declined' ? <View style={{ gap: 12 }}><Txt size={17}>{card.text}</Txt>{card.code ? <Txt sub size={13}>Code {card.code}. The cart is kept.</Txt> : <Txt sub size={13}>The cart is kept.</Txt>}
+-          <Btn title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
+-        {card.phase === 'unknown' ? <View style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>{card.checking ? <ActivityIndicator /> : null}<Txt size={16} style={{ flex: 1 }}>{card.text}</Txt></View>
+-          <Txt sub size={13}>The customer may have been charged {fmt(card.amount)}. Do not charge again until this is resolved.</Txt>
+-          <Btn title="Check again" kind="secondary" disabled={card.checking} onPress={() => void recheck(card.ref, card.amount, cart.saleUuid ?? saleUuid())} />
++          {card.phase === 'declined' ? <View style={{ gap: 12 }}><Txt size={17}>{card.text}</Txt>{card.code ? <Txt sub size={13}>Code {card.code}. The cart is kept.</Txt> : <Txt sub size={13}>The cart is kept.</Txt>}
++            <HelpButton id="fix/card-declined" label="Card payment help" />
++            <Btn title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
++          {card.phase === 'unknown' ? <View style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>{card.checking ? <ActivityIndicator /> : null}<Txt size={16} style={{ flex: 1 }}>{card.text}</Txt></View>
++            <Txt sub size={13}>The customer may have been charged {fmt(card.amount)}. Do not charge again until this is resolved.</Txt>
++            <HelpButton id="fix/card-declined" label="Unknown payment help" />
++            <Btn title="Check again" kind="secondary" disabled={card.checking} onPress={() => void recheck(card.ref, card.amount, cart.saleUuid ?? saleUuid())} />
+           <Btn title="Customer WAS charged" kind="secondary" onPress={() => void manualResolve(true, card.ref, card.amount)} /><Btn title="Customer was NOT charged" kind="ghost" onPress={() => void manualResolve(false, card.ref, card.amount)} />
+           <Btn title="Close" kind="ghost" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
+-        {card.phase === 'notready' ? <View style={{ gap: 12 }}><Txt size={16}>{card.text}</Txt><Btn title="Retry" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Close" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
++        {card.phase === 'notready' ? <View style={{ gap: 12 }}><Txt size={16}>{card.text}</Txt><HelpButton id="fix/reader" label="Reader troubleshooting" /><Btn title="Retry" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Close" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
+       </Sheet>
+ 
+       {/* cash */}
+diff --git a/src/screens/Receipt.tsx b/src/screens/Receipt.tsx
+index a831d60..9289c4a 100644
+--- a/src/screens/Receipt.tsx
++++ b/src/screens/Receipt.tsx
+@@ -1,7 +1,7 @@
+ // Location: src/screens/Receipt.tsx
+ import React, { useEffect, useState } from 'react';
+ import { Linking, Share, View } from 'react-native';
+-import { Btn, Sheet, Txt, alertMsg } from '../ui/kit';
++import { Btn, HelpButton, Sheet, Txt, alertMsg } from '../ui/kit';
+ import { useApp } from '../state/store';
+ import { fmt } from '../lib/money';
+ import { getClaimSecret, getPassSecret } from '../lib/shopify/client';
+@@ -35,7 +35,7 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
+   const body = enabled ? `${rc.name || shop || 'Receipt'}\nYour ${rc.gstRegistered ? 'tax invoice' : 'receipt'}: ${link}` : receiptText(sale);
+   const gifts = sale.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode); const gift = gifts[0];
+   const claimable = gifts.filter(l => !l.giftRecipient && claimUrl(claimBase, claimSecret, l.giftCardCode!)); // A10: no email given at the till, so the customer can add theirs
+-  const open = async (u: string) => { try { await Linking.openURL(u); } catch { alertMsg('Could not open that app'); } };
++  const open = async (u: string) => { try { await Linking.openURL(u); } catch { alertMsg('Could not open that app', undefined, 'pay/receipts'); } };
+   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
+   return (
+     <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
+@@ -62,7 +62,8 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
+         <Btn title={enabled ? 'Email link' : 'Email receipt'} icon="mail-outline" kind="secondary" onPress={() => { const to = sale.customer?.email ?? ''; void open(`mailto:${to}?subject=${encodeURIComponent(enabled ? (rc.gstRegistered ? 'Your tax invoice' : 'Your receipt') : 'Your receipt')}&body=${encodeURIComponent(body)}`); }} />
+         <Btn title={enabled ? 'Text link' : 'Text receipt'} icon="chatbubble-outline" kind="secondary" onPress={() => { const to = sale.customer?.phone ?? ''; void open(`sms:${to}&body=${encodeURIComponent(body)}`); }} />
+         <Btn title="Share…" icon="share-outline" kind="secondary" onPress={() => void Share.share({ message: body })} />
+-        {GIFT_CARD_PASSES && gift && url ? <Btn title="Add gift card to Apple Wallet" icon="wallet-outline" kind="secondary" onPress={async () => { const secret = await getPassSecret(); if (!secret) return alertMsg('Pass server secret missing', 'Add it in Settings ▸ Gift cards.'); void open(signedPassUrl(url, secret, gift.giftCardCode!)); }} /> : null}
++        <HelpButton id={gift ? 'pay/gift-card' : 'pay/receipts'} label="Receipt help" />
++        {GIFT_CARD_PASSES && gift && url ? <Btn title="Add gift card to Apple Wallet" icon="wallet-outline" kind="secondary" onPress={async () => { const secret = await getPassSecret(); if (!secret) return alertMsg('Pass server secret missing', 'Add it in Settings ▸ Gift cards.', 'gift'); void open(signedPassUrl(url, secret, gift.giftCardCode!)); }} /> : null}
+         {claimable.length ? <Btn title="Claim QR: customer adds their email" icon="qr-code-outline" kind="secondary" onPress={() => setGiftView({ kind: 'claim', i: 0 })} /> : null}
+         {gift ? <Btn title="Gift card QR (for scanning at a register)" icon="gift-outline" kind="secondary" onPress={() => setGiftView({ kind: 'card', i: 0 })} /> : null}
+         {gift ? <Txt size={13} sub style={{ textAlign: 'center' }}>Gift card code: {gift.giftCardCode}{gift.giftRecipient ? ` · emailing to ${gift.giftRecipient.email}` : ''}</Txt> : null}
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index 745fecf..c367208 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -52,7 +52,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+   };
+ 
+   return (
+-    <Page title={`Return · ${order.name}`} onBack={onClose}>
++    <Page title={`Return · ${order.name}`} onBack={onClose} helpId="orders/refunds">
+       <View style={{ padding: 16 }}><Segmented value={mode} onChange={setMode} options={[{ v: 'items', label: 'Items' }, { v: 'amount', label: 'Amount' }]} /></View>
+       {mode === 'items' ? <Card style={{ marginHorizontal: 16 }}>{order.lines.map((l, i) => (
+         <Row key={l.id} last={i === order.lines.length - 1} title={l.title} sub={`${l.variantTitle ? l.variantTitle + ' · ' : ''}${fmt(l.unitCents)} each · ${l.refundableQty} refundable`}
+diff --git a/src/screens/Reports.tsx b/src/screens/Reports.tsx
+index 5dd1518..0e18157 100644
+--- a/src/screens/Reports.tsx
++++ b/src/screens/Reports.tsx
+@@ -23,7 +23,7 @@ export function useRollups() {
+     if (!hasCreds()) return; setBusy(true);
+     try { const rows: RollupRow[] = []; let after: string | null = null;
+       for (let i = 0; i < 8; i++) { const r = await meta.list(meta.TYPES.rollup, { first: 100, after }); for (const x of r.rows) { try { rows.push({ registerId: x.f.register_id, date: x.f.date, totals: { ...emptyTotals(), ...JSON.parse(x.f.totals_json) } }); } catch {} } if (!r.next) break; after = r.next; }
+-      setRemote(rows); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load reports', e.message); }
++      setRemote(rows); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load reports', e.message, 'orders/reports'); }
+     setBusy(false);
+   }, []);
+   useEffect(() => { void load(); }, []);
+@@ -55,7 +55,7 @@ export default function Reports() {
+   const Stat = ({ label, cents, bold, before, sub }: { label: string; cents: number; bold?: boolean; before?: number; sub?: string }) => <Row title={label} sub={sub} last={false} right={<View style={{ alignItems: 'flex-end' }}><Money cents={cents} weight={bold ? '700' : '500'} size={bold ? 18 : 15} /><Trend now={cents} before={before} /></View>} />;
+ 
+   return (
+-    <Page title="Reports" onBack={nav.pop} right={<IconBtn icon="share-outline" label="Share report" onPress={exportText} />} >
++    <Page title="Reports" onBack={nav.pop} helpId="orders/reports" right={<IconBtn icon="share-outline" label="Share report" onPress={exportText} />} >
+       <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'sales', label: 'Sales' }, { v: 'gift', label: 'Gift cards' }]} /></View>
+       {tab === 'sales' ? <>
+         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
+diff --git a/src/screens/SavedCarts.tsx b/src/screens/SavedCarts.tsx
+index a53dadd..c5c2556 100644
+--- a/src/screens/SavedCarts.tsx
++++ b/src/screens/SavedCarts.tsx
+@@ -19,7 +19,7 @@ export default function SavedCarts() {
+   const removeSaved = async (id: string) => { if (!(await confirm('Delete saved cart?', 'This removes it from all registers.', 'Delete', true))) return false; deleteSavedCart(id); return true; };
+   const open = async () => { if (cur && await openSavedCart(cur)) { setSel(null); nav.reset(); nav.setTab('checkout'); } };
+   return (
+-    <Page title="Saved carts" onBack={nav.pop}>
++    <Page title="Saved carts" onBack={nav.pop} helpId="sales/saved-carts">
+       {saved.length === 0 ? <Empty icon="bookmarks-outline" title="No saved carts" sub="Use ⋯ ▸ Save cart on the checkout screen. Saved carts appear on your other registers too." /> :
+         saved.map(s => <SwipeRow key={s.id} background={c.card} onDelete={() => removeSaved(s.id)}><Row icon="bookmark-outline" title={s.name} sub={`${itemCount(s.cart)} items · ${fmt(s.cart.lines.reduce((t, l) => t + (l.overrideCents ?? l.unitCents) * l.qty, 0))}${s.cart.customer ? ' · ' + s.cart.customer.name : ''}${s.assignedTo ? ' · → ' + (staff.find(x => x.id === s.assignedTo)?.name ?? 'staff') : ''}${s.dirty ? ' · not synced' : ''}${s.note ? '\n' + s.note : ''}`} onPress={() => setSel(s.id)} /></SwipeRow>)}
+       <Sheet visible={!!cur} onClose={() => setSel(null)} title={cur?.name}>
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index 3e481cf..82b9971 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -27,13 +27,18 @@ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
+ 
+ type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
++const HELP_PAGE: Record<Sub, string> = {
++  menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
++  data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
++  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start',
++};
+ 
+ export default function Settings() {
+   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
+   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
+   const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
+   return (
+-    <Page title={titles[sub]} onBack={back}>
++    <Page title={titles[sub]} onBack={back} helpId={HELP_PAGE[sub]}>
+       {sub === 'menu' ? <>
+         <Section>
+           <Row icon="storefront-outline" title="Shopify" sub={hasCreds() ? shopDomain() : 'Not connected'} onPress={() => setSub('shopify')} />
+@@ -127,7 +132,7 @@ function DataSettings() {
+   const [files, setFiles] = useState<string[]>([]); useEffect(() => { void csv.paths().then(setFiles); }, []);
+   return (
+     <Section footer="Every sale, refund and declined card attempt is appended to CSV files on this device and never auto-cleared. They are also visible in the Files app under this app.">
+-      <Row title="Export CSV" sub={files.length ? files.map(f => f.split('/').pop()).join(', ') : 'No history yet'} icon="share-outline" onPress={async () => { try { for (const f of files) { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(f, { mimeType: 'text/csv', dialogTitle: f.split('/').pop() }); } } catch (e: any) { alertMsg('Export failed', e.message); } }} />
++      <Row title="Export CSV" sub={files.length ? files.map(f => f.split('/').pop()).join(', ') : 'No history yet'} icon="share-outline" onPress={async () => { try { for (const f of files) { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(f, { mimeType: 'text/csv', dialogTitle: f.split('/').pop() }); } } catch (e: any) { alertMsg('Export failed', e.message, 'settings/backup'); } }} />
+       <Row title="Delete local history" danger icon="trash-outline" last onPress={async () => { if (await confirm('Delete local history?', 'The CSV files on this device are erased. Shopify keeps the orders. Export first if you need them.', 'Delete', true) && await confirm('Really delete?', 'This cannot be undone.', 'Delete forever', true)) { await csv.deleteAll(); setFiles([]); } }} />
+     </Section>
+   );
+@@ -302,7 +307,7 @@ function ReceiptSecret() {
+ function ReceiptSettings() {
+   const r = useApp(st => st.settings.receipt); const patch = useApp(st => st.patchSettings); const [busy, setBusy] = useState(false);
+   const set = (p: Partial<typeof r>) => patch({ receipt: { ...r, ...p } });
+-  const test = async () => { setBusy(true); try { const u = await uploadSampleReceipt(); await Linking.openURL(u); } catch (e: any) { alertMsg('Test failed', e.message); } setBusy(false); };
++  const test = async () => { setBusy(true); try { const u = await uploadSampleReceipt(); await Linking.openURL(u); } catch (e: any) { alertMsg('Test failed', e.message, 'settings/receipts'); } setBusy(false); };
+   return (
+     <View>
+       <Section footer="Customers scan a QR code (or get a link) to a page that merges the Shopify order lines with the Zeller card details, with PDF and image download. Deploy receipt-server/ first (see its README).">
+diff --git a/src/screens/SquareHistory.tsx b/src/screens/SquareHistory.tsx
+index 596f87a..f7a413d 100644
+--- a/src/screens/SquareHistory.tsx
++++ b/src/screens/SquareHistory.tsx
+@@ -16,7 +16,7 @@ export function SquareHistorySettings() {
+   useEffect(() => { void squareMeta().then(setMeta); }, []);
+   const run = async (fn: () => Promise<SquareMeta>) => {
+     setBusy('Starting…'); try { const m = await fn(); setMeta(m); alertMsg('Square history ready', `${m.sales} sales and ${m.refunds} refunds (${day(m.from)} – ${day(m.to)}). ${m.linkedLines} of ${m.lines} item lines matched a Shopify variant by SKU; the rest show as custom items.`); }
+-    catch (e: any) { alertMsg('Import failed', e.message); } setBusy('');
++    catch (e: any) { alertMsg('Import failed', e.message, 'orders/square-history'); } setBusy('');
+   };
+   const fromUrl = (u: string) => run(() => installFromUrl(u.trim(), setBusy));
+   const pick = async () => {
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index 6d9b3d9..7af156e 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -26,7 +26,7 @@ export default function Staff() {
+   /** Saves a person's display mode and shares it to the other registers with the rest of the staff list. */
+   const setUi = (id: string, ui: ReturnType<typeof withMode>) => { patch({ staff: s.staff.map(x => (x.id === id ? { ...x, ui } : x)) }); void pushSharedSettings().catch(() => {}); };
+   return (
+-    <Page title="Staff" onBack={nav.pop}>
++    <Page title="Staff" onBack={nav.pop} helpId="concepts/roles">
+       <Section footer="PINs lock the till and tag each sale with who made it. They’re stored hashed, and shared to your other registers.">
+         <Toggle label="Require PIN to use the register" value={s.requirePin && s.staff.length > 0} onChange={v => { if (v && !s.staff.length) return alertMsg('Add a staff member first'); patch({ requirePin: v }); void pushSharedSettings().catch(() => {}); }} /></Section>
+       <AdjustRoleRules />
+diff --git a/src/screens/StaffLogin.tsx b/src/screens/StaffLogin.tsx
+index c61209a..045e6a2 100644
+--- a/src/screens/StaffLogin.tsx
++++ b/src/screens/StaffLogin.tsx
+@@ -2,7 +2,7 @@
+ // PIN pad + pass scanning, shared by the lock screen and the "Switch staff" sheet.
+ import React, { useState } from 'react';
+ import { View } from 'react-native';
+-import { Btn, Sheet, Txt } from '../ui/kit';
++import { Btn, HelpButton, Sheet, Txt } from '../ui/kit';
+ import { useApp } from '../state/store';
+ import { CameraScanner, HidScanner } from './Scanner';
+ import { isBadgeCode } from '../lib/badge';
+@@ -32,6 +32,7 @@ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignIn
+       <Btn title="Unlock" onPress={() => void tryPin(pin, false)} disabled={pin.length < 4} style={{ width: 280 }} />
+       <Btn title="Scan pass" kind="secondary" icon="qr-code-outline" onPress={() => setCam(true)} style={{ width: 280 }} />
+       <Txt size={13} sub style={{ textAlign: 'center' }}>Enter your PIN, or scan your cashier pass with the scanner.</Txt>
++      <HelpButton id="fix/locked-out" label="Sign-in help" />
+       <HidScanner enabled={scannerOn && !cam} onScan={code => { if (isBadgeCode(code)) void onScan(code); else setErr('That is not a cashier pass.'); }} />
+       <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan your cashier pass" onScan={onScan} />
+     </View>
+diff --git a/src/screens/Tiles.tsx b/src/screens/Tiles.tsx
+index 8e60db8..58a4082 100644
+--- a/src/screens/Tiles.tsx
++++ b/src/screens/Tiles.tsx
+@@ -109,7 +109,7 @@ export function TileGrid({ tiles, editing, handlers, onRemove, onMove, onOpen, o
+       case 'discount': return handlers.onDiscount(t);
+       case 'item': {
+         const v = t.variantId ? cat.variants[t.variantId] : undefined; if (v) return handlers.onVariants([v]);
+-        const vs = cat.byProduct[t.productId!] ?? []; if (vs.length) handlers.onVariants(vs); else alertMsg('Item not found', 'It may have been removed from Shopify. Re-import or remove this tile.');
++        const vs = cat.byProduct[t.productId!] ?? []; if (vs.length) handlers.onVariants(vs); else alertMsg('Item not found', 'It may have been removed from Shopify. Re-import or remove this tile.', 'sales/grid');
+       }
+     }
+   };
+diff --git a/src/screens/Transactions.tsx b/src/screens/Transactions.tsx
+index 142eab5..66c96a0 100644
+--- a/src/screens/Transactions.tsx
++++ b/src/screens/Transactions.tsx
+@@ -1,7 +1,7 @@
+ import { signedSaving } from '../lib/adjustReview';
+ import React, { useCallback, useEffect, useMemo, useState } from 'react';
+ import { FlatList, RefreshControl, View } from 'react-native';
+-import { Btn, Card, Chip, Empty, Field, IconBtn, Money, Page, Row, Txt, alertMsg } from '../ui/kit';
++import { Btn, Card, Chip, Empty, Field, HelpButton, IconBtn, Money, Page, Row, Txt, alertMsg } from '../ui/kit';
+ import { useLayout, useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+@@ -28,7 +28,7 @@ export default function Transactions() {
+ 
+   const load = useCallback(async (more = false) => {
+     if (!hasCreds()) return; setBusy(true);
+-    try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message); }
++    try { const r = await listOrders({ query: 'tag:pos', first: 25, after: more ? next : null }); setOrders(o => (more ? [...o, ...r.orders] : r.orders)); setNext(r.next); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load orders', e.message, 'orders'); }
+     setBusy(false);
+   }, [next]);
+   useEffect(() => { void load(false); }, []);
+@@ -48,12 +48,12 @@ export default function Transactions() {
+   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
+   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
+ 
+-  const searchRemote = async () => { if (!q.trim()) return; setBusy(true); try { setRemoteQ((await listOrders({ query: `tag:pos ${q.trim()}`, first: 25 })).orders); } catch (e: any) { alertMsg('Search failed', e.message); } setBusy(false); };
++  const searchRemote = async () => { if (!q.trim()) return; setBusy(true); try { setRemoteQ((await listOrders({ query: `tag:pos ${q.trim()}`, first: 25 })).orders); } catch (e: any) { alertMsg('Search failed', e.message, 'orders'); } setBusy(false); };
+ 
+   const list = (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+-        <Txt size={24} weight="700" style={{ marginBottom: 8, marginLeft: 4 }}>Transactions</Txt>
++        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 4 }}><Txt size={24} weight="700" style={{ flex: 1 }}>Transactions</Txt><HelpButton id="orders" label="Transactions help" /></View>
+         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
+         <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
+       </View>
+@@ -102,6 +102,6 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
+     </View>
+   );
+   return embedded ? <View style={{ flex: 1, backgroundColor: c.bg }}><View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={20} weight="700" style={{ flex: 1 }}>{e.name}</Txt><IconBtn icon="close" label="Close" onPress={onClose} /></View>{body}</View>
+-    : <Page title={e.name} onBack={onClose}>{body}</Page>;
++    : <Page title={e.name} onBack={onClose} helpId="orders">{body}</Page>;
+ }
+ void Chip;
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 5136731..aa793af 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -72,7 +72,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+   const [f, setF] = useState({ first: '', last: '', email: '', phone: '' }); const [busy, setBusy] = useState(false);
+   React.useEffect(() => { if (visible) setCreating(startCreating); }, [visible, startCreating]);
+   const hits = useMemo(() => { const t = q.trim().toLowerCase(); if (!t) return local.slice(0, 30); return local.filter(c => `${c.name} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, local]);
+-  const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message); } setBusy(false); };
++  const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
+   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
+   const create = async () => {
+     if (!f.first.trim() && !f.last.trim() && !f.email.trim() && !f.phone.trim()) return alertMsg('Add at least a name, email or phone');
+@@ -80,7 +80,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+     try {
+       const c = await createCustomer({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
+       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); onPick(c); onClose();
+-    } catch (e: any) { alertMsg('Could not create customer', e.message); } setBusy(false);
++    } catch (e: any) { alertMsg('Could not create customer', e.message, 'sales/customers'); } setBusy(false);
+   };
+   return (
+     <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
+@@ -280,7 +280,7 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
+ /** Check balance by scanning a QR/barcode or typing the code. */
+ export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean; onClose: () => void; onUse?: (g: GiftCardInfo, code: string) => void }) {
+   const [code, setCode] = useState(''); const [info, setInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [busy, setBusy] = useState(false); const [cam, setCam] = useState(false);
+-  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message); } setBusy(false); };
++  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message, 'pay/gift-card'); } setBusy(false); };
+   return (
+     <>
+       <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">

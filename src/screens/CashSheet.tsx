@@ -6,7 +6,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { useUi } from '../ui/uiProfile';
 import { cashHint } from '../lib/simpleLabels';
-import { Btn, Money, Sheet, Txt } from '../ui/kit';
+import { Btn, HelpButton, Money, Sheet, Txt } from '../ui/kit';
 import { DenomPad } from '../ui/DenomPad';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
@@ -102,6 +102,7 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
                 <View style={{ gap: 8, backgroundColor: c.bad + '14', borderRadius: 14, padding: 12 }}>
                   <Txt weight="700" color={c.bad}>{empty ? 'No cash in the ledger' : `Can't make ${fmt(change)} change`}</Txt>
                   <Txt size={13}>{empty ? 'The ledger shows an empty drawer (it was never opened or counted), so change can\'t be suggested.' : 'The drawer ledger doesn\'t hold the notes and coins for exact change.'} Options:</Txt>
+                  <HelpButton id="fix/cant-make-change" label="Change troubleshooting" />
                   {hand ? <Txt size={13}>• Ask for less: take {summariseCounts(hand.take)} and hand back {summariseCounts(hand.handBack)}.</Txt> : null}
                   {part ? <Txt size={13}>• Take {fmt(part.cashCents)} in cash and put the other {fmt(part.restCents)} on card.</Txt> : null}
                   <Txt size={13}>• Or take the full {fmt(billDue)} by card.</Txt>

@@ -35,6 +35,7 @@ Inside a section use `###` for headings. `##` is reserved for the three depth he
 - `[[sales/cart-and-prices]]` links to a page using its title. `[[sales/cart-and-prices|the cart page]]` uses your words.
 - The checker refuses a link to a page that does not exist. Links inside code fences and `inline code` are not links, so you can show the syntax.
 - Do not write a contents list by hand. The Help screen builds one from each page's `parent`.
+- Contextual Help buttons and error-alert Help actions open a page by its id; keep those ids valid when renaming pages.
 
 ## Flowcharts
 Put a Mermaid flowchart in a fenced block marked `mermaid`, in **Advanced** sections. To keep the in-app drawing simple, stay inside this subset:

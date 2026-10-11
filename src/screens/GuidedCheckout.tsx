@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
@@ -50,6 +50,7 @@ export default function GuidedCheckout() {
       <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Txt size={13} sub weight="600" style={{ flex: 1 }}>Step {pr.n} of {pr.total}</Txt>
+          <HelpButton id={step === 'items' ? 'sales' : step === 'customer' ? 'sales/customers' : step === 'pay' ? 'pay' : 'sales/cart-and-prices'} label={`${info.label} help`} />
           <Pressable onPress={() => setSheet('more')} accessibilityRole="button" accessibilityLabel="More options" hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Ionicons name="ellipsis-horizontal-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600">More options</Txt></Pressable>
         </View>

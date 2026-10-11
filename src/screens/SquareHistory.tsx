@@ -16,7 +16,7 @@ export function SquareHistorySettings() {
   useEffect(() => { void squareMeta().then(setMeta); }, []);
   const run = async (fn: () => Promise<SquareMeta>) => {
     setBusy('Starting…'); try { const m = await fn(); setMeta(m); alertMsg('Square history ready', `${m.sales} sales and ${m.refunds} refunds (${day(m.from)} – ${day(m.to)}). ${m.linkedLines} of ${m.lines} item lines matched a Shopify variant by SKU; the rest show as custom items.`); }
-    catch (e: any) { alertMsg('Import failed', e.message); } setBusy('');
+    catch (e: any) { alertMsg('Import failed', e.message, 'orders/square-history'); } setBusy('');
   };
   const fromUrl = (u: string) => run(() => installFromUrl(u.trim(), setBusy));
   const pick = async () => {

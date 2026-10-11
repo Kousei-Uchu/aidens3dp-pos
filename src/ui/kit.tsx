@@ -12,9 +12,16 @@ import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
 import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
 import { sheetMaxHeight } from '../lib/keyboardMath';
 import { useUi } from './uiProfile';
+import { openHelpPage, useNav } from './nav';
+import { helpForError } from '../lib/helpContext';
 
 export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+
+export function HelpButton({ id, label = 'Help' }: { id: string; label?: string }) {
+  const nav = useNav();
+  return <IconBtn icon="help-circle-outline" label={label} onPress={() => nav.push('help', { id })} />;
+}
 
 export function Txt({ style, children, size = 15, weight, color, sub, numberOfLines }: { style?: any; children?: React.ReactNode; size?: number; weight?: '400' | '500' | '600' | '700'; color?: string; sub?: boolean; numberOfLines?: number }) {
   const { c } = useTheme(); const k = useUi().textScale;
@@ -107,13 +114,13 @@ export const Empty = ({ icon = 'file-tray-outline', title, sub }: { icon?: IconN
 };
 
 /** Page header used by every pushed screen. */
-export function Page({ title, onBack, right, children, scroll = true, pad = true }: { title: string; onBack?: () => void; right?: React.ReactNode; children: React.ReactNode; scroll?: boolean; pad?: boolean }) {
+export function Page({ title, onBack, right, helpId = 'start', children, scroll = true, pad = true }: { title: string; onBack?: () => void; right?: React.ReactNode; helpId?: string | null; children: React.ReactNode; scroll?: boolean; pad?: boolean }) {
   const { c } = useTheme();
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 54, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} /> : <View style={{ width: 12 }} />}
-        <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}
+        <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}{helpId ? <HelpButton id={helpId} label={`Help for ${title}`} /> : null}
       </View>
       {scroll ? <RevealScroll inset contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</RevealScroll> : <View style={{ flex: 1 }}>{children}</View>}
     </View>
@@ -140,7 +147,14 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
 
 export const confirm = (title: string, message: string, ok = 'Confirm', destructive = false): Promise<boolean> =>
   new Promise(res => Alert.alert(title, message, [{ text: 'Cancel', style: 'cancel', onPress: () => res(false) }, { text: ok, style: destructive ? 'destructive' : 'default', onPress: () => res(true) }], { cancelable: true, onDismiss: () => res(false) }));
-export const alertMsg = (title: string, message?: string) => Alert.alert(title, message);
+export const alertMsg = (title: string, message?: string, helpId?: string) => {
+  const target = helpId ?? helpForError(title, message);
+  if (!target) return Alert.alert(title, message);
+  Alert.alert(title, message, [
+    { text: 'Help', onPress: () => openHelpPage(target) },
+    { text: 'OK', style: 'cancel' },
+  ]);
+};
 
 /** Calculator-style keypad: digits shift in from the right as cents (Square behaviour). */
 export function Keypad({ value, onChange, onSubmit, submitLabel, decimal = true, big }: { value: string; onChange: (digits: string) => void; onSubmit?: () => void; submitLabel?: string; decimal?: boolean; big?: boolean }) {

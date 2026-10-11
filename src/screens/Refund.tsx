@@ -52,7 +52,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
   };
 
   return (
-    <Page title={`Return · ${order.name}`} onBack={onClose}>
+    <Page title={`Return · ${order.name}`} onBack={onClose} helpId="orders/refunds">
       <View style={{ padding: 16 }}><Segmented value={mode} onChange={setMode} options={[{ v: 'items', label: 'Items' }, { v: 'amount', label: 'Amount' }]} /></View>
       {mode === 'items' ? <Card style={{ marginHorizontal: 16 }}>{order.lines.map((l, i) => (
         <Row key={l.id} last={i === order.lines.length - 1} title={l.title} sub={`${l.variantTitle ? l.variantTitle + ' · ' : ''}${fmt(l.unitCents)} each · ${l.refundableQty} refundable`}

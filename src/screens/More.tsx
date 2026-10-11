@@ -1,6 +1,6 @@
 import React from 'react';
 import { ScrollView, View } from 'react-native';
-import { Row, Section, Txt, type IconName } from '../ui/kit';
+import { HelpButton, Row, Section, Txt, type IconName } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useUi } from '../ui/uiProfile';
@@ -26,7 +26,10 @@ export default function More() {
   const groups = visibleMoreRows(ui, role, lockOn);
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={24} weight="700">More</Txt>{staff ? <Txt sub>{staff.name} · {staff.role}</Txt> : null}</View>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+        <View style={{ flex: 1 }}><Txt size={24} weight="700">More</Txt>{staff ? <Txt sub>{staff.name} · {staff.role}</Txt> : null}</View>
+        <HelpButton id="concepts/roles" label="Role and access help" />
+      </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
         {groups.map((g, gi) => (
           <Section key={gi}>

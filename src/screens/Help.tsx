@@ -1,7 +1,7 @@
 // Location: src/screens/Help.tsx
 // More ▸ Help (B7b). Reads the built-in copy of the help pages (help/help.json), so it works offline.
 // A page shows at the depth you chose (Basic, Deep or Advanced), which is remembered. `id` opens a page directly (used by the "?" buttons later).
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Chip, Empty, Field, IconBtn, Page, Row, Section, Segmented, Txt } from '../ui/kit';
 import Markdown from '../ui/Markdown';
@@ -11,12 +11,27 @@ import { useApp } from '../state/store';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { DEPTHS, DEPTH_BLURB, DEPTH_LABEL, ROOT_ID, depthsPresent, resolveLinks, searchPages, selectDepth, trail, type Depth } from '../lib/helpDocs';
 import { parseBlocks } from '../lib/mdBlocks';
+import { fetchRemoteHelp } from '../lib/helpRemote';
 
 const asDepth = (v: unknown): Depth => ((DEPTHS as readonly string[]).includes(v as string) ? (v as Depth) : 'basic');
 
 export default function Help({ id }: { id?: string }) {
   const { c } = useTheme(); const nav = useNav();
-  const set = useMemo(builtinHelp, []); const { index, pages } = set;
+  const builtIn = useMemo(builtinHelp, []);
+  const [helpSet, setHelpSet] = useState(builtIn);
+  const [remoteUnavailable, setRemoteUnavailable] = useState(false);
+  const docsUrl = process.env.EXPO_PUBLIC_DOCS_URL?.trim() ?? '';
+  useEffect(() => {
+    if (!docsUrl) return;
+    let current = true;
+    void fetchRemoteHelp(docsUrl, builtIn.version).then(remote => {
+      if (current && remote) setHelpSet(remote);
+    }).catch(() => {
+      if (current) setRemoteUnavailable(true);
+    });
+    return () => { current = false; };
+  }, [docsUrl, builtIn.version]);
+  const { index, pages } = helpSet;
   const depth = asDepth(useApp(s => s.settings.helpDepth)); const patch = useApp(s => s.patchSettings);
   const [hist, setHist] = useState<string[]>([id && index.byId[id] ? id : ROOT_ID]);
   const [q, setQ] = useState('');
@@ -34,10 +49,11 @@ export default function Help({ id }: { id?: string }) {
   const parentTitle = (p: { parent?: string }) => (p.parent && index.byId[p.parent] ? index.byId[p.parent].title : undefined);
 
   return (
-    <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back}
+    <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back} helpId={null}
       right={page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : undefined}>
       <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
         <Field kind="search" placeholder="Search help" value={q} onChangeText={setQ} />
+        {remoteUnavailable ? <Txt size={12} sub>Showing built-in help. The newer online copy could not be reached.</Txt> : null}
         <Segmented value={depth} options={DEPTHS.map(d => ({ v: d, label: DEPTH_LABEL[d] }))} onChange={d => patch({ helpDepth: d })} />
         <Txt size={13} sub>{DEPTH_BLURB[depth]}</Txt>
 

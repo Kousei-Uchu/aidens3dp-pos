@@ -19,7 +19,7 @@ export default function Diagnostics() {
   };
   const refund = async () => { const t = getTerminal(); if (!t || !lastRef) return; setBusy(true); const r = await startRefund(t, { purchaseRef: lastRef, amountCents: 100, reference: `${lastRef}-refund` }, { onEvent: e => add(describeEvent(e)) }).promise; setBusy(false); add(r.kind === 'APPROVED' ? 'Refund approved ✔' : `Refund: ${r.kind}`); if (r.kind === 'APPROVED') setLastRef(null); };
   return (
-    <Page title="Support & diagnostics" onBack={nav.pop}>
+    <Page title="Support & diagnostics" onBack={nav.pop} helpId="fix/reader">
       <Section title="Zeller reader"><Row title={z.ready ? 'Reader ready' : 'Reader issue'} sub={z.message} icon={z.ready ? 'checkmark-circle' : 'alert-circle'} />
         <View style={{ padding: 16, gap: 8 }}><Btn title="Setup (pair terminal)" icon="link-outline" kind="secondary" busy={busy} onPress={async () => { const e = await pairReader(); add(e ? `Setup: ${e}` : 'Paired ✔'); }} />
           <Btn title="Check reader" icon="refresh" kind="secondary" onPress={async () => add((await checkReader()) ? 'Reader ready ✔' : useApp.getState().zeller.message ?? 'Not ready')} />

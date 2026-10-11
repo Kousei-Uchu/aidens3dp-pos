@@ -1,7 +1,7 @@
 // Location: src/screens/Receipt.tsx
 import React, { useEffect, useState } from 'react';
 import { Linking, Share, View } from 'react-native';
-import { Btn, Sheet, Txt, alertMsg } from '../ui/kit';
+import { Btn, HelpButton, Sheet, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
 import { fmt } from '../lib/money';
 import { getClaimSecret, getPassSecret } from '../lib/shopify/client';
@@ -35,7 +35,7 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
   const body = enabled ? `${rc.name || shop || 'Receipt'}\nYour ${rc.gstRegistered ? 'tax invoice' : 'receipt'}: ${link}` : receiptText(sale);
   const gifts = sale.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode); const gift = gifts[0];
   const claimable = gifts.filter(l => !l.giftRecipient && claimUrl(claimBase, claimSecret, l.giftCardCode!)); // A10: no email given at the till, so the customer can add theirs
-  const open = async (u: string) => { try { await Linking.openURL(u); } catch { alertMsg('Could not open that app'); } };
+  const open = async (u: string) => { try { await Linking.openURL(u); } catch { alertMsg('Could not open that app', undefined, 'pay/receipts'); } };
   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
   return (
     <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
@@ -62,7 +62,8 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
         <Btn title={enabled ? 'Email link' : 'Email receipt'} icon="mail-outline" kind="secondary" onPress={() => { const to = sale.customer?.email ?? ''; void open(`mailto:${to}?subject=${encodeURIComponent(enabled ? (rc.gstRegistered ? 'Your tax invoice' : 'Your receipt') : 'Your receipt')}&body=${encodeURIComponent(body)}`); }} />
         <Btn title={enabled ? 'Text link' : 'Text receipt'} icon="chatbubble-outline" kind="secondary" onPress={() => { const to = sale.customer?.phone ?? ''; void open(`sms:${to}&body=${encodeURIComponent(body)}`); }} />
         <Btn title="Share…" icon="share-outline" kind="secondary" onPress={() => void Share.share({ message: body })} />
-        {GIFT_CARD_PASSES && gift && url ? <Btn title="Add gift card to Apple Wallet" icon="wallet-outline" kind="secondary" onPress={async () => { const secret = await getPassSecret(); if (!secret) return alertMsg('Pass server secret missing', 'Add it in Settings ▸ Gift cards.'); void open(signedPassUrl(url, secret, gift.giftCardCode!)); }} /> : null}
+        <HelpButton id={gift ? 'pay/gift-card' : 'pay/receipts'} label="Receipt help" />
+        {GIFT_CARD_PASSES && gift && url ? <Btn title="Add gift card to Apple Wallet" icon="wallet-outline" kind="secondary" onPress={async () => { const secret = await getPassSecret(); if (!secret) return alertMsg('Pass server secret missing', 'Add it in Settings ▸ Gift cards.', 'gift'); void open(signedPassUrl(url, secret, gift.giftCardCode!)); }} /> : null}
         {claimable.length ? <Btn title="Claim QR: customer adds their email" icon="qr-code-outline" kind="secondary" onPress={() => setGiftView({ kind: 'claim', i: 0 })} /> : null}
         {gift ? <Btn title="Gift card QR (for scanning at a register)" icon="gift-outline" kind="secondary" onPress={() => setGiftView({ kind: 'card', i: 0 })} /> : null}
         {gift ? <Txt size={13} sub style={{ textAlign: 'center' }}>Gift card code: {gift.giftCardCode}{gift.giftRecipient ? ` · emailing to ${gift.giftRecipient.email}` : ''}</Txt> : null}

@@ -57,7 +57,7 @@ export default function Drawer() {
     : sheet === 'close' ? `Count everything in the drawer. Expected ${fmt(expected)}.` : sheet === 'in' ? 'Tap the notes and coins you are putting in.' : 'Tap the notes and coins you are taking out.';
   const recent = ledger.entries.slice(0, 15);
   return (
-    <Page title="Cash drawer" onBack={nav.pop}>
+    <Page title="Cash drawer" onBack={nav.pop} helpId="cash">
       {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open on this register.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} /></View> : <>
         <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}

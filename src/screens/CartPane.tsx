@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Btn, Card, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced } from '../state/selectors';
@@ -46,6 +46,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
           <Txt weight="600" numberOfLines={1} style={{ flex: 1 }}>{customerRowText(ui.explain, cart.customer?.name, !!cart.customer)}</Txt>
           {cart.customer ? <Pressable onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
         </Pressable>
+        {onClose ? <HelpButton id="sales/cart-and-prices" label="Cart help" /> : null}
         <IconBtn icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
       </View>
 
