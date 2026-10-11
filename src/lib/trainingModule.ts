@@ -36,8 +36,13 @@ export type DemoStep = {
 };
 export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
 
-/** What the training driver can see of the app. Kept small on purpose. */
-export type TrainSnap = { tab: string; route: string; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean };
+/** One cart line as training sees it. */
+export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean };
+/** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
+export type TrainSnap = {
+  tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
+  cart: SnapLine[]; cartDiscount: boolean; orderAdjusted: boolean; hasNote: boolean;
+};
 export type Until =
   | { kind: 'next' }                                  // an informational step: the Next button moves on
   | { kind: 'press'; id: string }                     // the person taps this spot
@@ -50,6 +55,13 @@ export type Injection =
   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number }                                  // the fake terminal declines the card this many times (code 51)
   | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
+/** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
+export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
+export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'adjust', 'customer', 'note', 'tender', 'sale'];
+/** Where the work for a goal happens. Anywhere else is off course. Left out, it is the module's own tabs and routes, with sheets allowed. */
+export type Place = { tabs?: string[]; routes?: string[]; sheets?: boolean };
+/** A mistake specific to one goal, in the module author's words: when it is true, the person is told `say` and pointed at `target`. */
+export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string };
 export type Goal = {
   id: string; title: string;                  // what the person has to achieve, shown in the dock
   until: Until;                               // how the app knows they did it (never 'next')
@@ -57,7 +69,10 @@ export type Goal = {
   reveal?: string;                            // spot to highlight when the hints are used up
   via?: string;                               // spot to point at first when `reveal` is not on screen (for example the bar that opens the cart on a phone)
   inject?: Injection[];
-  taughtBy?: string;                          // Check 2 only: the id of the info beat, show beat or guide step that taught the fix
+  taughtBy?: string;                          // Check 2 only: the id of the info step, show step or guide step that taught the fix
+  allow: Allow[];                             // what may change without being off course (an empty list means nothing may change except what the goal asks)
+  at?: Place;                                 // where the work happens
+  watch?: Watch[];                            // mistakes specific to this goal
 };
 export type TrainingModule = {
   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
@@ -92,6 +107,16 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
       if (g.ladder.some(h => !h.trim())) at(name, `goal ${g.id} has an empty hint`);
       if (!g.reveal) at(name, `goal ${g.id} has nothing to highlight when the hints run out`);
       for (const t of [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined]) if (t && !spotOk(t)) at(name, `goal ${g.id} uses the unknown spot "${t}"`);
+      if (!Array.isArray(g.allow)) at(name, `goal ${g.id} must say what may change (allow), even if that is an empty list`);
+      else for (const a of g.allow) if (!ALLOWS.includes(a)) at(name, `goal ${g.id} allows the unknown change "${a}"`);
+      for (const t of g.at?.tabs ?? []) if (!m.tabs.includes(t)) at(name, `goal ${g.id} works on the tab "${t}", which the course does not allow`);
+      for (const r of g.at?.routes ?? []) if (!m.routes.includes(r)) at(name, `goal ${g.id} works on the page "${r}", which the course does not allow`);
+      const wi = new Set<string>();
+      for (const w of g.watch ?? []) {
+        if (wi.has(w.id)) at(name, `goal ${g.id} has two watches called "${w.id}"`); wi.add(w.id);
+        if (!w.say.trim()) at(name, `goal ${g.id} watch ${w.id} says nothing`);
+        for (const t of [w.target, w.via]) if (t && !spotOk(t)) at(name, `goal ${g.id} watch ${w.id} uses the unknown spot "${t}"`);
+      }
     }
   }
   if (!m.check2.some(g => g.inject?.length)) at('check2', 'must make something go wrong (needs at least one goal with an injection)');

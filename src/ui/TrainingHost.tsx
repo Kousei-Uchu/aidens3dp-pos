@@ -15,22 +15,27 @@ import TrainingDock from './TrainingDock';
 import { Enter } from './Motion';
 import { Veil, dipThrough } from './Veil';
 import { trainingActions } from './trainingActions';
+import { SPOT } from '../lib/trainingSpots';
 import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, type Rect } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
 import { hintView, shouldNudge } from '../lib/trainingHints';
+import { diagnose, freshStray, trackStray, type StrayTracker } from '../lib/trainingCourse';
+import { layerDepth } from '../lib/trainingLayers';
 import { advanceGoal, advanceStep } from '../lib/trainingRun';
 import { idleMs } from '../lib/idle';
-import type { Goal, Step, TrainingModule } from '../lib/trainingModule';
+import type { Goal, Step, TrainSnap, TrainingModule } from '../lib/trainingModule';
 
 const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed: new Set(), visible: new Set() });
 
 export default function TrainingHost({ children }: { children: React.ReactNode }) {
   const nav = useNav(); const win = useWindowDimensions(); const sandbox = useTraining(s => s.sandbox);
   const navRef = useRef(nav); navRef.current = nav; const winRef = useRef(win); winRef.current = win;
-  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef(''); const leaving = useRef(false);
+  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef(''); const leaving = useRef(false); const kickRef = useRef<(() => void) | null>(null);
+  const base = useRef<TrainSnap | null>(null); const stray = useRef<StrayTracker>(freshStray());
 
-  useEffect(() => onSpotPressed(id => { ev.current.pressed.add(id); }), []);
+  useEffect(() => onSpotPressed(id => { ev.current.pressed.add(id); kickRef.current?.(); }), []);
+  useEffect(() => { kickRef.current?.(); }, [nav.tab, nav.stack.length]);
 
   useEffect(() => {
     const current = (): { mod: TrainingModule; step?: Step; goal?: Goal; n: number; i: number } | null => {
@@ -52,6 +57,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     };
     trainingActions.next = () => { nextTap.current = true; };
     trainingActions.hint = () => { const cur = current(); if (cur?.goal) useTraining.getState().pressHint(cur.goal.id, cur.goal.ladder); };
+    trainingActions.restart = () => {
+      const cur = current(); if (!cur?.goal) return; const st = useTraining.getState();
+      if (!st.restartGoal(cur.goal.inject)) return;
+      ev.current = mutable(); stray.current = freshStray(); sig.current = ''; navRef.current.reset(); navRef.current.setTab(cur.mod.tabs[0] as Tab); kickRef.current?.();
+    };
     trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
     trainingActions.exit = () => {
       void confirm('Leave training?', 'Your real till is exactly as you left it. You can pick this course up again from More, Training.', 'Leave', true).then(ok => {
@@ -70,9 +80,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         if (top && !mod.routes.includes(top.name)) { n.pop(); return; }
         const item = cur.step ?? cur.goal; if (!item) return;
         const k = `${st.run.stage}:${cur.i}`;
-        if (key.current !== k) { key.current = k; ev.current = mutable(); nextTap.current = false; if (cur.goal) st.inject(cur.goal.inject); return; } // a new step or goal starts from a clean slate
+        const fresh = key.current !== k;
+        if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        if (cur.goal && (fresh || !base.current)) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this goal began, for spotting and undoing a stray
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
@@ -81,19 +93,32 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         if (cur.step) {
           const step = cur.step; let say = step.say; let rect = await spot(step.target);
           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
-          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next', reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: true, counter: `Step ${cur.i + 1} of ${cur.n}` };
+          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next', reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: true, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n };
         } else {
           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
-          view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: hv.reveal && !!rect, nudge: shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}` };
+          // Off course? Compare with where this goal began. The person is told only after it has lasted a moment, and a hint never hides it.
+          const dev = base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null;
+          const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; let strayView: DockView['stray'];
+          if (tr.show) {
+            rect = await spot(tr.show.target); let sayNow = tr.show.say;
+            if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
+            say = sayNow; strayView = { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart };
+          }
+          view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
       } finally { busy.current = false; }
     };
     if (!sandbox) return undefined;
-    const t = setInterval(() => void tick(), 300); void tick();
-    return () => clearInterval(t);
+    // The poll is a safety net. Anything that can change the answer (a tap on a spot, the app's own state, the page or tab) asks for an immediate check instead,
+    // so a finished step moves on within a frame or two rather than waiting for the next poll.
+    let pending: ReturnType<typeof setTimeout> | null = null; let again = false;
+    const kick = () => { if (busy.current) { again = true; return; } if (pending) return; pending = setTimeout(() => { pending = null; void tick().then(() => { if (again) { again = false; kick(); } }); }, 30); };
+    kickRef.current = kick; const unsub = useApp.subscribe(kick);
+    const t = setInterval(() => void tick(), 120); void tick();
+    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; };
   }, [sandbox]);
 
   return (

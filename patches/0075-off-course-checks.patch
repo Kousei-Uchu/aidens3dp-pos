@@ -1,0 +1,646 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index dbb4fb3..9986785 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -77,6 +77,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0072 | 2026-10-12 | Docs only: adds the **F. Final Touches** list (F1 to F9), records that the domains are done and only the Gift-card and Receipt Workers still need styling (E1), answers the screenshots question for B7e, ticks the typecheck item (N3), and adds `docs/DEVICE_TESTS.md` with exact steps for every open device test | E1, B7e, B8, F1 to F9, N3, N32 |
+ | 0073 | 2026-10-12 | Training corrections (new list of 7), 1 of 7: smoother transitions on **most pages**, not just Training. Every pushed page now slides in (and the old page drifts away when it is safe to draw it again: lists and read-only screens, never Pay or the item forms), switching tabs fades and rises the new tab (Checkout stays mounted, so it keeps its cart and scanner), and the guided checkout's steps fade and rise. New `TabPane` in `src/ui/Motion.tsx`, `canLeaveDrawn` and `LEAVE_DRAWN` in `src/lib/motion.ts`. Reduce Motion still turns it all off | B6 |
+ | 0074 | 2026-10-12 | Training corrections (new list of 7), 2 of 7: the **Guide is animated** and reacts at once. The driver no longer waits for a poll (a tap, any app state change or a page change asks for an immediate check; a new step no longer wastes a tick), the spotlight glides between targets and closes in the first time, the ring pulses with a glow, a pointer glides to the target and taps it, the bubble glides and swaps its words, a green burst marks each finished step, a progress bar shows how far along you are, and a missing target holds the last spotlight instead of flashing dark. New `src/lib/guideMotion.ts` (pure, tested) and `src/ui/Swap.tsx`. Reduce Motion turns it off | B6 |
++| 0075 | 2026-10-12 | Training corrections (new list of 7), 3 of 7: **going off course in the Checks is handled**. The till is compared with where the goal began, and a finished sale, a wrong place or window, something taken out or added that the sale did not need, too many of an item, a stray discount, price change, customer, note or payment are each explained in one sentence with the fix ringed and pointed at. **Start this part again** puts the practice till back exactly (always on the bar). Goals now declare `allow`, `at` and `watch`; the welcome course's second goal no longer passes if you remove the wrong item. New `src/lib/trainingCourse.ts` (pure, tested), spots `page.back` and `sheet.close` | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0075-plan.md b/docs/patches/0075-plan.md
+new file mode 100644
+index 0000000..5cf6435
+--- /dev/null
++++ b/docs/patches/0075-plan.md
+@@ -0,0 +1,40 @@
++# Patch 0075: going off course in the Checks (new Training list, 3 of 7)
++
++Stacks on 0074.
++
++## What you asked for
++- In Check 1 and 2, if you go off course it does not react. It should handle every way you could possibly stray, and guide you back.
++
++## Cause
++The driver only kept you on the course's tabs and pages (and quietly pushed you back). It never compared what you had done with what the goal needed, so a wrong item, a stray discount or a finished sale just carried on.
++
++## How it works (`src/lib/trainingCourse.ts`, pure and tested)
++When a goal starts, the driver remembers the practice till as it began (the baseline). Each tick it compares the till with that baseline and gives the **first** thing wrong, in this order:
++1. **A sale that finished** when the goal did not allow one (cannot be undone, so it offers starting again).
++2. **The goal's own `watch` rules** (mistakes the course author knows about, for example taking out the wrong item).
++3. **The wrong place**: another tab, another page, or a window that is not wanted (points at the Checkout tab, Back, or the window's Close).
++4. **The cart**: something the sale needs was taken out or reduced (points at its grid tile to add it back), something extra was added (points at its line with "Swipe left, then Remove"), too many of one item.
++5. **Things added that the goal did not ask for**: a discount, a price change, a customer, a note, or a started payment.
++
++Each goal declares what may change (`allow`, required, can be empty), where it happens (`at`) and its own mistakes (`watch`). Anything else is off course. Removing something the person added themselves is never flagged.
++
++## What the person sees
++- A card at the top, "Off course: ...", one plain sentence, with the control to tap **ringed with the pointer** (via the cart bar first on a phone).
++- It appears after 0.9 s of the same mistake, so the moment between two taps of a normal path is never flagged. A different mistake starts its own clock.
++- **Start this part again** appears when it cannot be undone by hand, or after 12 s of being stuck. A **Start again** button is on the bar for the whole Check. It restores the practice till, drawer and card-decline setup exactly as the goal began, so nobody can get stuck.
++- A hint never hides an off-course notice, and the idle "Stuck? Tap Hint" nudge is held back while one shows.
++
++## Also
++- `TrainSnap` now carries the cart lines (item, quantity, discounted, adjusted), open windows, discount, order price and note. The welcome course's second goal now passes only when the Red Dragon is gone **and the Bumble Bee is still there** (before, taking out the wrong item passed), and its `watch` rule shows the feature.
++- New spots `page.back` (every page's Back arrow) and `sheet.close` (every window's Close).
++- The validator refuses a goal with no `allow`, an unknown change, or a place the course does not allow. Writer's guide and the Training help page updated.
++
++## Tests
++- `tests/trainingcourse.test.ts` (11): on course, each kind of stray, the order of rules, the grace, restart offers, the validator, and the welcome course.
++
++## Steps
++1. [x] Engine, types, snapshot, spots.
++2. [x] Session `captureGoalStart` / `restartGoal`; driver diagnoses each tick.
++3. [x] Overlay card, ring and pointer; dock text and Start again.
++4. [x] Welcome goals declared.
++5. [ ] You: on the iPad, Check 1: add the same item twice, open a sheet from Custom amount, switch tab, press Charge. Check 2: take out the Bumble Bee instead of the Red Dragon, add a customer, change a quantity. Each should explain, ring the fix and let you recover; try Start again. Tell me any stray I missed.
+diff --git a/help/help.json b/help/help.json
+index f25a718..4e6a39c 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "c28ec34c",
++ "version": "34fa998e",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1672,7 +1672,7 @@
+    "updated": "2026-10-12",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen) the app says what happened, rings the control that puts it right and points at it. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
+     "deep": "Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+     "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+diff --git a/help/staff/training.md b/help/staff/training.md
+index d8b0a0d..bd744b5 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -20,7 +20,7 @@ Each course has six parts:
+ 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
+ 6. **Done** recaps what you can do and marks the course complete.
+ 
+-During Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
++During Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen) the app says what happened, rings the control that puts it right and points at it. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
+ 
+ ### Progress
+ Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index 77faafe..77bdfe4 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -13,7 +13,13 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+     case 'state': try { return !!u.test(snap); } catch { return false; }
+   }
+ }
+-/** What the driver reads of the real app state. */
+-export function snapOf(s: { tab: string; route: string; cart: { lines: { qty: number }[]; customer?: unknown; tenders?: unknown[] }; sales: number; paying: boolean }): TrainSnap {
+-  return { tab: s.tab, route: s.route, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales, hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying };
++/** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
++type CartLike = { variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number };
++export function snapOf(s: { tab: string; route: string; sheets?: number; cart: { lines: CartLike[]; customer?: unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
++  return {
++    tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
++    hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying,
++    cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined })),
++    cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
++  };
+ }
+diff --git a/src/lib/trainingCourse.ts b/src/lib/trainingCourse.ts
+new file mode 100644
+index 0000000..9a68958
+--- /dev/null
++++ b/src/lib/trainingCourse.ts
+@@ -0,0 +1,108 @@
++// Location: src/lib/trainingCourse.ts
++// Check stages: spots when a person has gone off course and says how to get back. Pure, tested (tests/trainingcourse.test.ts).
++//
++// How it works. When a goal starts, the driver remembers what the practice till looked like (the baseline). From then on it compares the till with that baseline.
++// Anything the goal did not say may change (`allow`), and anywhere the goal does not happen (`at`), counts as off course. On top of that a module can add
++// its own `watch` rules for mistakes specific to one goal. Every deviation says what happened, how to undo it, and which control to point at.
++// Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
++// practice till back exactly as the goal began. So nobody can ever get stuck.
++import type { Allow, Goal, SnapLine, TrainSnap } from './trainingModule';
++import { SPOT, cartLineSpot, gridItemSpot } from './trainingSpots';
++
++export type DeviationKind = 'sale' | 'watch' | 'place' | 'sheet' | 'lost' | 'extra' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender';
++export type Deviation = {
++  /** Stable while the same mistake continues, so the driver can tell "still the same problem" from "a new one". */
++  id: string; kind: DeviationKind;
++  title: string; say: string;
++  /** What to point at, and what to point at first when that is not on screen (for example the bar that opens the cart on a phone). */
++  target?: string; via?: string;
++  /** `undo`: the person can put it right with the control pointed at. `restart`: only starting this part again fixes it. */
++  fix: 'undo' | 'restart';
++};
++
++/** The tabs and pages a goal's work happens on, falling back to the module's own. */
++export type CourseFrame = { tabs: readonly string[]; routes: readonly string[] };
++
++const keyOf = (l: SnapLine): string => l.variantId ?? `${l.kind}:${l.title}`;
++const tally = (lines: readonly SnapLine[]): Map<string, { qty: number; line: SnapLine }> => {
++  const m = new Map<string, { qty: number; line: SnapLine }>();
++  for (const l of lines) { const k = keyOf(l); const cur = m.get(k); m.set(k, { qty: (cur?.qty ?? 0) + l.qty, line: cur?.line ?? l }); }
++  return m;
++};
++const name = (l: SnapLine): string => l.title || 'item';
++const plural = (n: number, w: string): string => `${n} ${w}${n === 1 ? '' : 's'}`;
++
++/** The first thing wrong with where the person is now, compared with where the goal began. Null means they are on course. Pure. */
++export function diagnose(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
++  const allow = new Set<Allow>(goal.allow ?? []);
++
++  // A finished sale cannot be undone.
++  if (now.sales > base.sales && !allow.has('sale')) {
++    return { id: 'sale', kind: 'sale', fix: 'restart', title: 'That sale went through', say: 'A sale was completed, and this part did not need one. Tap Start this part again to set it up fresh.' };
++  }
++
++  // Mistakes the module author knows about.
++  for (const w of goal.watch ?? []) { let hit = false; try { hit = !!w.when(now); } catch { hit = false; } if (hit) return { id: `watch:${w.id}`, kind: 'watch', fix: 'undo', title: 'Not quite', say: w.say, target: w.target, via: w.via }; }
++
++  // The wrong place.
++  const tabs = goal.at?.tabs ?? frame.tabs; const routes = goal.at?.routes ?? frame.routes;
++  if (!tabs.includes(now.tab)) {
++    return { id: 'place:tab', kind: 'place', fix: 'undo', title: 'Wrong screen', say: tabs.includes('checkout') ? 'That is not where this part happens. Tap Checkout to go back.' : 'That is not where this part happens. Tap the tab for this task to go back.', target: tabs.includes('checkout') ? SPOT.tabCheckout : undefined };
++  }
++  if (now.route && !routes.includes(now.route)) {
++    return { id: `place:route:${now.route}`, kind: 'place', fix: 'undo', title: 'Wrong screen', say: 'This screen is not part of this task. Tap Back to return.', target: SPOT.back };
++  }
++  if (goal.at?.sheets === false && now.sheets > 0) {
++    return { id: 'sheet', kind: 'sheet', fix: 'undo', title: 'Not needed here', say: 'This task does not need this window. Close it to carry on.', target: SPOT.sheetClose };
++  }
++
++  // The cart.
++  const was = tally(base.cart); const is = tally(now.cart);
++  for (const [k, b] of was) {
++    const n = is.get(k)?.qty ?? 0;
++    if (n < b.qty && !(allow.has('remove') && n === 0) && !(allow.has('qty') && n > 0)) {
++      const l = b.line; const gone = n === 0;
++      return { id: `lost:${k}`, kind: 'lost', fix: 'undo', title: gone ? `${name(l)} was taken out` : `${name(l)} was reduced`, say: gone ? `This sale still needs the ${name(l)}. Tap its tile to add it back.` : `This sale needs ${plural(b.qty, name(l))}. Tap its tile to add one back.`, target: l.variantId ? gridItemSpot(l.variantId) : undefined };
++    }
++  }
++  for (const [k, c] of is) {
++    const b = was.get(k)?.qty ?? 0; const l = c.line; const target = l.variantId ? cartLineSpot(l.variantId) : undefined;
++    if (b === 0 && !allow.has('add')) {
++      return { id: `extra:${k}`, kind: 'extra', fix: 'undo', title: `${name(l)} was added`, say: `The ${name(l)} is not part of this task. Swipe its line to the left, then tap Remove.`, target, via: SPOT.cartOpen };
++    }
++    const wanted = b === 0 ? 1 : b;
++    if (c.qty > wanted && !allow.has('qty')) {
++      const extra = c.qty - wanted;
++      return { id: `qty:${k}`, kind: 'qty', fix: 'undo', title: `Too many ${name(l)}`, say: b === 0 ? `You have ${c.qty} of the ${name(l)}, and one is enough here. Take ${extra === 1 ? 'one' : plural(extra, 'unit')} out.` : `The ${name(l)} was only meant to be ${b}. Take ${extra === 1 ? 'one' : plural(extra, 'unit')} out.`, target, via: SPOT.cartOpen };
++    }
++  }
++
++  // Things added to the sale that the goal did not ask for.
++  const lineNow = (f: (l: SnapLine) => boolean): SnapLine | undefined => now.cart.find(f);
++  if (!allow.has('discount')) {
++    const newLine = lineNow(l => l.discounted && !base.cart.some(b => keyOf(b) === keyOf(l) && b.discounted));
++    if ((now.cartDiscount && !base.cartDiscount) || newLine) return { id: 'discount', kind: 'discount', fix: 'undo', title: 'A discount was added', say: 'This task does not use a discount. Open the discount and remove it.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen };
++  }
++  if (!allow.has('adjust')) {
++    const newLine = lineNow(l => l.adjusted && !base.cart.some(b => keyOf(b) === keyOf(l) && b.adjusted));
++    if ((now.orderAdjusted && !base.orderAdjusted) || newLine) return { id: 'adjust', kind: 'adjust', fix: 'undo', title: 'A price was changed', say: 'This task does not change any prices. Open the item or the order price and remove the adjustment.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen };
++  }
++  if (!allow.has('customer') && now.hasCustomer && !base.hasCustomer) return { id: 'customer', kind: 'customer', fix: 'undo', title: 'A customer was added', say: 'This task does not need a customer on the sale. Open the cart and take the customer off.', via: SPOT.cartOpen };
++  if (!allow.has('note') && now.hasNote && !base.hasNote) return { id: 'note', kind: 'note', fix: 'undo', title: 'A note was added', say: 'This task does not need a note. Open the cart and clear the note.', via: SPOT.cartOpen };
++  if (!allow.has('tender') && now.tenders > base.tenders) return { id: 'tender', kind: 'tender', fix: 'restart', title: 'A payment was started', say: 'A payment was started that this part did not need. Tap Start this part again to set it up fresh.' };
++  return null;
++}
++
++/** A deviation must keep happening this long before the person is told, so the moment between two taps of a normal path is never flagged. */
++export const STRAY_GRACE_MS = 900;
++/** After this long off course the dock offers "Start this part again" even for mistakes that can be undone by hand. */
++export const STRAY_OFFER_RESTART_MS = 12_000;
++
++export type StrayTracker = { id: string | null; since: number };
++export const freshStray = (): StrayTracker => ({ id: null, since: 0 });
++/** Feed it the latest diagnosis. It says what to show (nothing until the grace has passed) and whether to offer starting again. */
++export function trackStray(t: StrayTracker, d: Deviation | null, now: number): { tracker: StrayTracker; show: Deviation | null; offerRestart: boolean } {
++  if (!d) return { tracker: freshStray(), show: null, offerRestart: false };
++  const same = t.id === d.id; const tracker = same ? t : { id: d.id, since: now }; const age = now - tracker.since;
++  return { tracker, show: age >= STRAY_GRACE_MS ? d : null, offerRestart: d.fix === 'restart' || age >= STRAY_OFFER_RESTART_MS };
++}
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index c31afd6..c160e08 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -36,8 +36,13 @@ export type DemoStep = {
+ };
+ export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
+ 
+-/** What the training driver can see of the app. Kept small on purpose. */
+-export type TrainSnap = { tab: string; route: string; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean };
++/** One cart line as training sees it. */
++export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean };
++/** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
++export type TrainSnap = {
++  tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
++  cart: SnapLine[]; cartDiscount: boolean; orderAdjusted: boolean; hasNote: boolean;
++};
+ export type Until =
+   | { kind: 'next' }                                  // an informational step: the Next button moves on
+   | { kind: 'press'; id: string }                     // the person taps this spot
+@@ -50,6 +55,13 @@ export type Injection =
+   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
+   | { kind: 'decline'; times: number }                                  // the fake terminal declines the card this many times (code 51)
+   | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
++/** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
++export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
++export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'adjust', 'customer', 'note', 'tender', 'sale'];
++/** Where the work for a goal happens. Anywhere else is off course. Left out, it is the module's own tabs and routes, with sheets allowed. */
++export type Place = { tabs?: string[]; routes?: string[]; sheets?: boolean };
++/** A mistake specific to one goal, in the module author's words: when it is true, the person is told `say` and pointed at `target`. */
++export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string };
+ export type Goal = {
+   id: string; title: string;                  // what the person has to achieve, shown in the dock
+   until: Until;                               // how the app knows they did it (never 'next')
+@@ -57,7 +69,10 @@ export type Goal = {
+   reveal?: string;                            // spot to highlight when the hints are used up
+   via?: string;                               // spot to point at first when `reveal` is not on screen (for example the bar that opens the cart on a phone)
+   inject?: Injection[];
+-  taughtBy?: string;                          // Check 2 only: the id of the info beat, show beat or guide step that taught the fix
++  taughtBy?: string;                          // Check 2 only: the id of the info step, show step or guide step that taught the fix
++  allow: Allow[];                             // what may change without being off course (an empty list means nothing may change except what the goal asks)
++  at?: Place;                                 // where the work happens
++  watch?: Watch[];                            // mistakes specific to this goal
+ };
+ export type TrainingModule = {
+   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
+@@ -92,6 +107,16 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+       if (g.ladder.some(h => !h.trim())) at(name, `goal ${g.id} has an empty hint`);
+       if (!g.reveal) at(name, `goal ${g.id} has nothing to highlight when the hints run out`);
+       for (const t of [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined]) if (t && !spotOk(t)) at(name, `goal ${g.id} uses the unknown spot "${t}"`);
++      if (!Array.isArray(g.allow)) at(name, `goal ${g.id} must say what may change (allow), even if that is an empty list`);
++      else for (const a of g.allow) if (!ALLOWS.includes(a)) at(name, `goal ${g.id} allows the unknown change "${a}"`);
++      for (const t of g.at?.tabs ?? []) if (!m.tabs.includes(t)) at(name, `goal ${g.id} works on the tab "${t}", which the course does not allow`);
++      for (const r of g.at?.routes ?? []) if (!m.routes.includes(r)) at(name, `goal ${g.id} works on the page "${r}", which the course does not allow`);
++      const wi = new Set<string>();
++      for (const w of g.watch ?? []) {
++        if (wi.has(w.id)) at(name, `goal ${g.id} has two watches called "${w.id}"`); wi.add(w.id);
++        if (!w.say.trim()) at(name, `goal ${g.id} watch ${w.id} says nothing`);
++        for (const t of [w.target, w.via]) if (t && !spotOk(t)) at(name, `goal ${g.id} watch ${w.id} uses the unknown spot "${t}"`);
++      }
+     }
+   }
+   if (!m.check2.some(g => g.inject?.length)) at('check2', 'must make something go wrong (needs at least one goal with an injection)');
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index 26bdf8e..0e656a0 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -7,6 +7,8 @@ export const SPOT = {
+   tabCheckout: 'tab.checkout',
+   tabMore: 'tab.more',
+   moreTraining: 'more.training',
++  back: 'page.back',           // the Back arrow at the top of every pushed page
++  sheetClose: 'sheet.close',   // the Close button of a sheet
+ } as const;
+ export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
+ /** Spots whose id ends in a record id: a grid tile, or a cart line. */
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index 0add597..2a3cf2c 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -17,6 +17,8 @@ import type { Rect } from '../lib/trainingGeometry';
+ export type DockView = {
+   mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
+   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
++  /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
++  stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean };
+ };
+ type Sess = {
+   run: Run | null; sandbox: boolean; hint: HintState; view: DockView | null; progress: Progress; loaded: boolean;
+@@ -30,8 +32,11 @@ type Sess = {
+   pressHint: (goalId: string, ladder: readonly string[]) => void;
+   setView: (v: DockView | null) => void;
+   patchRun: (f: (r: Run) => Run) => void;
++  captureGoalStart: () => void;                  // remember the practice till as a goal began
++  restartGoal: (inj: readonly Injection[] | undefined) => boolean;  // put it back exactly as it was
+ };
+ let real: Swap | null = null;
++let goalStart: Swap | null = null;
+ 
+ export const useTraining = create<Sess>((set, get) => ({
+   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false,
+@@ -54,6 +59,7 @@ export const useTraining = create<Sess>((set, get) => ({
+     useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj));
+   },
+   leave: () => {
++    goalStart = null;
+     if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); } // restore first, then drop the guard
+     set({ sandbox: false, view: null });
+   },
+@@ -66,5 +72,10 @@ export const useTraining = create<Sess>((set, get) => ({
+   },
+   pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
+   setView: v => set({ view: v }),
++  captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
++  restartGoal: inj => {
++    if (!goalStart) return false;
++    resetTrainingTerminal(); useApp.setState(goalStart); setDeclines(declinesOf(inj)); set({ hint: freshHints(), view: null }); return true;
++  },
+ }));
+ export const isPractising = (): boolean => real !== null;
+diff --git a/src/training/README.md b/src/training/README.md
+index a7ba182..301243a 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -41,6 +41,16 @@ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`
+ 
+ A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
+ 
++## Going off course (Checks)
++
++A person in a Check is free to tap anything the course allows, so the app watches for mistakes and guides them back. When a goal starts, the app remembers the practice till as it began. From then on it compares. Each goal says what may change:
++
++- `allow` (required, may be empty): any of `add`, `remove`, `qty`, `discount`, `adjust`, `customer`, `note`, `tender`, `sale`. Changing anything not listed is off course. Removing something the person added themselves is never a mistake.
++- `at` (optional): `{ tabs, routes, sheets }`, where the work happens. Another tab or page is off course, and `sheets: false` means any open window is. Left out, it is the course's own tabs and pages with windows allowed.
++- `watch` (optional): mistakes specific to this goal, `{ id, when(snap), say, target?, via? }`. These are checked before the general ones, so use them for a wrong choice that looks like progress (for example taking out the wrong item).
++
++Each deviation is explained in one plain sentence, with the control to tap ringed and pointed at. It appears after about a second, so a normal path is never flagged. If it can only be fixed by starting over (a sale went through, a payment was started), or the person is still stuck after 12 seconds, **Start this part again** is offered. A **Start again** button is always on the bar in a Check. It puts the practice till back exactly as the goal began, so nobody can get stuck. The rules are in `src/lib/trainingCourse.ts`.
++
+ ## Injections
+ 
+ - `cart`: start with these lines in the cart (practice item ids, see `src/lib/trainingSandbox.ts`)
+diff --git a/src/training/modules/welcome.ts b/src/training/modules/welcome.ts
+index 7014db9..a70866c 100644
+--- a/src/training/modules/welcome.ts
++++ b/src/training/modules/welcome.ts
+@@ -87,11 +87,14 @@ export const welcome: TrainingModule = {
+     { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
+   ],
+   check1: [
+-    { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg') },
++    { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg'),
++      allow: ['add', 'remove'], at: { tabs: ['checkout'], routes: [], sheets: false } },
+   ],
+   check2: [
+-    { id: 'change-mind', title: 'The customer changed their mind. Take the Red Dragon out of the cart', until: { kind: 'state', test: s => s.lines <= 1 }, inject: [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 1 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-remove',
+-      ladder: ['The cart lists everything that has been added.', 'A line can be removed from the cart.', 'Swipe the Red Dragon line to the left, then tap Remove.'], reveal: cartLineSpot('train-v-dragon'), via: SPOT.cartOpen },
++    { id: 'change-mind', title: 'The customer changed their mind. Take the Red Dragon out of the cart', until: { kind: 'state', test: s => !s.cart.some(l => l.variantId === 'train-v-dragon') && s.cart.some(l => l.variantId === 'train-v-bee') }, inject: [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 1 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-remove',
++      ladder: ['The cart lists everything that has been added.', 'A line can be removed from the cart.', 'Swipe the Red Dragon line to the left, then tap Remove.'], reveal: cartLineSpot('train-v-dragon'), via: SPOT.cartOpen,
++      allow: ['remove'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true },
++      watch: [{ id: 'bee-removed', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The customer is keeping the Bumble Bee. Tap its tile to add it back, then take out the Red Dragon.', target: gridItemSpot('train-v-bee') }] },
+   ],
+   recap: ['You can add items to a sale from the grid.', 'You can take an item out of the cart.', 'You know where Hint and Exit are when you get stuck.'],
+ };
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+index 65900f4..d098ab1 100644
+--- a/src/ui/TrainingDock.tsx
++++ b/src/ui/TrainingDock.tsx
+@@ -24,7 +24,7 @@ export default function TrainingDock() {
+           <View style={{ backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: '#111', fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
+           <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{mod?.title ?? 'Training'} · {STAGE_LABEL[run.stage]}{view ? ` · ${view.counter}` : ''}</Text>
+         </View>
+-        <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{check ? (view?.say ? view.say : view?.objective) : view?.title === mod?.title ? 'Follow the arrows.' : view?.title ?? ''}</Text>
++        <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{view?.stray ? `Off course: ${view.stray.title}` : check ? (view?.say ? view.say : view?.objective) : view?.title === mod?.title ? 'Follow the arrows.' : view?.title ?? ''}</Text>
+         {check && view?.say ? <Text style={{ color: c.sub, fontSize: 12 }} numberOfLines={2}>Goal: {view.objective}</Text> : null}
+         {nudge ? <Text style={{ color: c.warn, fontSize: 12, fontWeight: '700' }}>Stuck? Tap Hint.</Text> : null}
+       </View>
+@@ -33,6 +33,7 @@ export default function TrainingDock() {
+           <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={[btn, { backgroundColor: c.accent }]}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable>
+         </Animated.View>
+       ) : null}
++      {check ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="refresh" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Start again</Text></Pressable> : null}
+       {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
+       <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
+     </View></Enter>
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 8ab04cb..cbd1d43 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -15,13 +15,16 @@ import TrainingDock from './TrainingDock';
+ import { Enter } from './Motion';
+ import { Veil, dipThrough } from './Veil';
+ import { trainingActions } from './trainingActions';
++import { SPOT } from '../lib/trainingSpots';
+ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, type Rect } from '../lib/trainingGeometry';
+ import { isMet, snapOf, type Events } from '../lib/trainingConds';
+ import { hintView, shouldNudge } from '../lib/trainingHints';
++import { diagnose, freshStray, trackStray, type StrayTracker } from '../lib/trainingCourse';
++import { layerDepth } from '../lib/trainingLayers';
+ import { advanceGoal, advanceStep } from '../lib/trainingRun';
+ import { idleMs } from '../lib/idle';
+-import type { Goal, Step, TrainingModule } from '../lib/trainingModule';
++import type { Goal, Step, TrainSnap, TrainingModule } from '../lib/trainingModule';
+ 
+ const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed: new Set(), visible: new Set() });
+ 
+@@ -29,6 +32,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+   const nav = useNav(); const win = useWindowDimensions(); const sandbox = useTraining(s => s.sandbox);
+   const navRef = useRef(nav); navRef.current = nav; const winRef = useRef(win); winRef.current = win;
+   const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef(''); const leaving = useRef(false); const kickRef = useRef<(() => void) | null>(null);
++  const base = useRef<TrainSnap | null>(null); const stray = useRef<StrayTracker>(freshStray());
+ 
+   useEffect(() => onSpotPressed(id => { ev.current.pressed.add(id); kickRef.current?.(); }), []);
+   useEffect(() => { kickRef.current?.(); }, [nav.tab, nav.stack.length]);
+@@ -53,6 +57,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+     };
+     trainingActions.next = () => { nextTap.current = true; };
+     trainingActions.hint = () => { const cur = current(); if (cur?.goal) useTraining.getState().pressHint(cur.goal.id, cur.goal.ladder); };
++    trainingActions.restart = () => {
++      const cur = current(); if (!cur?.goal) return; const st = useTraining.getState();
++      if (!st.restartGoal(cur.goal.inject)) return;
++      ev.current = mutable(); stray.current = freshStray(); sig.current = ''; navRef.current.reset(); navRef.current.setTab(cur.mod.tabs[0] as Tab); kickRef.current?.();
++    };
+     trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
+     trainingActions.exit = () => {
+       void confirm('Leave training?', 'Your real till is exactly as you left it. You can pick this course up again from More, Training.', 'Leave', true).then(ok => {
+@@ -71,9 +80,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         if (top && !mod.routes.includes(top.name)) { n.pop(); return; }
+         const item = cur.step ?? cur.goal; if (!item) return;
+         const k = `${st.run.stage}:${cur.i}`;
+-        if (key.current !== k) { key.current = k; ev.current = mutable(); nextTap.current = false; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
++        const fresh = key.current !== k;
++        if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
+         const app = useApp.getState();
+-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        if (cur.goal && (fresh || !base.current)) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this goal began, for spotting and undoing a stray
+         const until = item.until;
+         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
+         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
+@@ -86,7 +97,15 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         } else {
+           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
+           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
+-          view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: hv.reveal && !!rect, nudge: shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n };
++          // Off course? Compare with where this goal began. The person is told only after it has lasted a moment, and a hint never hides it.
++          const dev = base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null;
++          const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; let strayView: DockView['stray'];
++          if (tr.show) {
++            rect = await spot(tr.show.target); let sayNow = tr.show.say;
++            if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
++            say = sayNow; strayView = { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart };
++          }
++          view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+         }
+         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
+         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index f8e7321..b5541e3 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -167,13 +167,24 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+           {view.next ? <Pressable onPress={() => trainingActions.next()} accessibilityRole="button" accessibilityLabel="Next" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
+         </Animated.View>
+       ) : null}
++      {view.mode === 'check' && view.stray ? (
++        <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, top: isRoot ? 12 : 56, alignItems: 'center' }}>
++          <Swap k={view.stray.title} dy={-10} appear style={{ width: '100%', maxWidth: 520 }}>
++            <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 2, borderColor: c.warn, padding: 14, gap: 8, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
++              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Ionicons name="compass" size={20} color={c.warn} /><Text style={{ color: c.warn, fontSize: 13, fontWeight: '800', textTransform: 'uppercase' }}>Off course: {view.stray.title}</Text></View>
++              <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.stray.say}</Text>
++              {view.stray.offerRestart ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 }}><Text style={{ color: c.onAccent, fontWeight: '700' }}>Start this part again</Text></Pressable> : null}
++            </View>
++          </Swap>
++        </View>
++      ) : null}
+       {!isRoot ? (
+         <View pointerEvents="box-none" style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 8 }}>
+           {view.mode === 'check' ? <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={{ flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable> : null}
+           <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={{ backgroundColor: c.fill, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
+         </View>
+       ) : null}
+-      {!isRoot && view.mode === 'check' && view.say ? <View pointerEvents="none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View> : null}
++      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <View pointerEvents="none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View> : null}
+     </View>
+   );
+ }
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 1771a74..5b926aa 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -17,6 +17,7 @@ import { useUi } from './uiProfile';
+ import { openHelpPage, useNav } from './nav';
+ import { helpForError } from '../lib/helpContext';
+ import { spotPressed, useSpotRef } from './Spot';
++import { SPOT } from '../lib/trainingSpots';
+ import { TrainingLayer } from './TrainingLayer';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+@@ -128,7 +129,7 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 54, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+-        {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} /> : <View style={{ width: 12 }} />}
++        {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} spot={SPOT.back} /> : <View style={{ width: 12 }} />}
+         <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}{helpId ? <HelpButton id={helpId} label={`Help for ${title}`} /> : null}
+       </View>
+       {scroll ? <RevealScroll inset contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</RevealScroll> : <View style={{ flex: 1 }}>{children}</View>}
+@@ -145,7 +146,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
+         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
+         <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
+           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 }}>
+-            <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} /> : null}
++            <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} spot={SPOT.sheetClose} /> : null}
+           </View>
+           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
+         </View>
+diff --git a/src/ui/trainingActions.ts b/src/ui/trainingActions.ts
+index 30f7d21..c5e9136 100644
+--- a/src/ui/trainingActions.ts
++++ b/src/ui/trainingActions.ts
+@@ -1,3 +1,3 @@
+ // Location: src/ui/trainingActions.ts
+ // The buttons on the dock and bubble call these. TrainingHost fills them in (it owns navigation), so the overlay never imports it.
+-export const trainingActions: { next: () => void; hint: () => void; skip: () => void; exit: () => void } = { next: () => {}, hint: () => {}, skip: () => {}, exit: () => {} };
++export const trainingActions: { next: () => void; hint: () => void; skip: () => void; exit: () => void; restart: () => void } = { next: () => {}, hint: () => {}, skip: () => {}, exit: () => {}, restart: () => {} };
+diff --git a/tests/trainingcourse.test.ts b/tests/trainingcourse.test.ts
+new file mode 100644
+index 0000000..62026e0
+--- /dev/null
++++ b/tests/trainingcourse.test.ts
+@@ -0,0 +1,88 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, trackStray } from '../src/lib/trainingCourse';
++import { snapOf } from '../src/lib/trainingConds';
++import { SPOT, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
++import { validateModule, type Goal, type TrainSnap } from '../src/lib/trainingModule';
++import { welcome } from '../src/training/modules/welcome';
++import { isKnownSpot } from '../src/lib/trainingSpots';
++
++const frame = { tabs: ['checkout'], routes: ['cart'] };
++const line = (variantId: string, qty = 1, extra: object = {}) => ({ variantId, title: variantId.replace('train-v-', ''), kind: 'item' as const, qty, ...extra });
++const snap = (o: Partial<{ tab: string; route: string; sheets: number; lines: ReturnType<typeof line>[]; sales: number; customer: boolean; tenders: number; discount: boolean; note: string }> = {}): TrainSnap =>
++  snapOf({ tab: o.tab ?? 'checkout', route: o.route ?? '', sheets: o.sheets ?? 0, cart: { lines: o.lines ?? [], customer: o.customer ? {} : undefined, tenders: Array(o.tenders ?? 0).fill({}), discount: o.discount ? {} : undefined, note: o.note }, sales: o.sales ?? 0, paying: false });
++const goal = (allow: Goal['allow'], rest: Partial<Goal> = {}): Pick<Goal, 'allow' | 'at' | 'watch'> => ({ allow, ...rest });
++
++test('on course: nothing changed, or only what the goal allows', () => {
++  const b = snap({ lines: [line('train-v-bee')] });
++  assert.equal(diagnose(goal([]), frame, b, b), null);
++  assert.equal(diagnose(goal(['add']), frame, snap(), snap({ lines: [line('train-v-egg')] })), null);
++  assert.equal(diagnose(goal(['remove']), frame, b, snap()), null);
++});
++test('a sale that completes unasked can only be fixed by starting again', () => {
++  const d = diagnose(goal([]), frame, snap(), snap({ sales: 1 }))!; assert.equal(d.kind, 'sale'); assert.equal(d.fix, 'restart');
++  assert.equal(diagnose(goal(['sale']), frame, snap(), snap({ sales: 1 })), null);
++});
++test('taking out something the sale needs says how to put it back', () => {
++  const b = snap({ lines: [line('train-v-bee'), line('train-v-dragon')] });
++  const d = diagnose(goal([]), frame, b, snap({ lines: [line('train-v-dragon')] }))!;
++  assert.equal(d.kind, 'lost'); assert.equal(d.target, gridItemSpot('train-v-bee')); assert.match(d.say, /add it back/);
++  const q = diagnose(goal([]), frame, snap({ lines: [line('train-v-bee', 3)] }), snap({ lines: [line('train-v-bee', 1)] }))!; assert.equal(q.kind, 'lost'); assert.match(q.say, /3/);
++});
++test('an item that should not be there points at its line, via the cart on a phone', () => {
++  const d = diagnose(goal([]), frame, snap(), snap({ lines: [line('train-v-egg')] }))!;
++  assert.equal(d.kind, 'extra'); assert.equal(d.target, cartLineSpot('train-v-egg')); assert.equal(d.via, SPOT.cartOpen); assert.match(d.say, /Swipe/);
++});
++test('too many of one item is caught only when quantity changes are not allowed', () => {
++  const d = diagnose(goal(['add']), frame, snap(), snap({ lines: [line('train-v-egg', 2)] }))!; assert.equal(d.kind, 'qty'); assert.match(d.say, /one is enough/);
++  assert.equal(diagnose(goal(['add', 'qty']), frame, snap(), snap({ lines: [line('train-v-egg', 2)] })), null);
++  const b = snap({ lines: [line('train-v-bee', 2)] }); assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee', 3)] }))!.kind, 'qty');
++});
++test('discounts, price changes, customers, notes and payments the goal did not ask for', () => {
++  const b = snap({ lines: [line('train-v-bee')] });
++  assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee')], discount: true }))!.kind, 'discount');
++  assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee', 1, { discount: {} })] }))!.kind, 'discount');
++  assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee', 1, { overrideCents: 100 })] }))!.kind, 'adjust');
++  assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee')], customer: true }))!.kind, 'customer');
++  assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee')], note: 'hi' }))!.kind, 'note');
++  const t = diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee')], tenders: 1 }))!; assert.equal(t.kind, 'tender'); assert.equal(t.fix, 'restart');
++  for (const a of ['discount', 'adjust', 'customer', 'note', 'tender'] as const) assert.ok(goal([a]).allow.includes(a));
++  assert.equal(diagnose(goal(['discount']), frame, b, snap({ lines: [line('train-v-bee')], discount: true })), null);
++});
++test('the wrong tab, page or window', () => {
++  const b = snap();
++  const tab = diagnose(goal([]), { tabs: ['checkout', 'more'], routes: [] }, b, snap({ tab: 'more' }), )!; assert.equal(tab, null);
++  const t2 = diagnose(goal([], { at: { tabs: ['checkout'] } }), { tabs: ['checkout', 'more'], routes: [] }, b, snap({ tab: 'more' }))!; assert.equal(t2.kind, 'place'); assert.equal(t2.target, SPOT.tabCheckout);
++  const r = diagnose(goal([], { at: { routes: [] } }), frame, b, snap({ route: 'cart' }))!; assert.equal(r.target, SPOT.back);
++  const sh = diagnose(goal([], { at: { sheets: false } }), frame, b, snap({ sheets: 1 }))!; assert.equal(sh.kind, 'sheet'); assert.equal(sh.target, SPOT.sheetClose);
++  assert.equal(diagnose(goal([]), frame, b, snap({ sheets: 2 })), null, 'sheets are allowed unless the goal says otherwise');
++});
++test('a module author can name a mistake that is specific to a goal, and it wins over the generic ones', () => {
++  const w = { id: 'dup', when: (s: TrainSnap) => s.cart.some(l => l.qty > 1), say: 'The same item twice. Add a different one.', target: gridItemSpot('train-v-key') };
++  const d = diagnose(goal(['add'], { watch: [w] }), frame, snap(), snap({ lines: [line('train-v-egg', 2)] }))!; assert.equal(d.kind, 'watch'); assert.equal(d.say, w.say);
++  const bad = diagnose(goal(['add'], { watch: [{ id: 'x', when: () => { throw new Error('no'); }, say: 's' }] }), frame, snap(), snap())!; assert.equal(bad, null, 'a broken watch is never a deviation');
++});
++test('the person is told only after a deviation lasts, the same mistake keeps its clock, and a fix clears it', () => {
++  const d = diagnose(goal([]), frame, snap(), snap({ lines: [line('train-v-egg')] }))!;
++  let r = trackStray(freshStray(), d, 1000); assert.equal(r.show, null);
++  r = trackStray(r.tracker, d, 1000 + STRAY_GRACE_MS); assert.equal(r.show?.id, d.id); assert.equal(r.offerRestart, false);
++  r = trackStray(r.tracker, d, 1000 + STRAY_OFFER_RESTART_MS); assert.equal(r.offerRestart, true, 'stuck for a while: offer starting again');
++  r = trackStray(r.tracker, null, 20000); assert.equal(r.show, null); assert.equal(r.tracker.id, null);
++  const sale = diagnose(goal([]), frame, snap(), snap({ sales: 1 }))!; assert.equal(trackStray(freshStray(), sale, 5).offerRestart, true, 'a finished sale always offers it');
++  const other = diagnose(goal([]), frame, snap(), snap({ lines: [line('train-v-key')] }))!; const r2 = trackStray(trackStray(freshStray(), d, 0).tracker, other, 5000); assert.equal(r2.show, null, 'a different mistake starts a new clock');
++});
++test('the welcome course declares what may change and its mistakes are specific', () => {
++  assert.deepEqual(validateModule(welcome, isKnownSpot), []);
++  const g = welcome.check2[0]; const start = snap({ lines: [line('train-v-bee'), line('train-v-dragon')] });
++  assert.equal(g.until.kind === 'state' && g.until.test(snap({ lines: [line('train-v-bee')] })), true);
++  assert.equal(g.until.kind === 'state' && g.until.test(snap({ lines: [line('train-v-dragon')] })), false, 'taking out the wrong item does not pass');
++  assert.equal(diagnose(g, { tabs: welcome.tabs, routes: welcome.routes }, start, snap({ lines: [line('train-v-dragon')] }))!.kind, 'watch');
++});
++test('the validator insists on allow, and on known tabs, pages and spots', () => {
++  const m = JSON.parse(JSON.stringify(welcome, (_k, v) => (typeof v === 'function' ? undefined : v)));
++  const clone = { ...welcome, check1: [{ ...welcome.check1[0], allow: undefined as any }], check2: welcome.check2 };
++  assert.ok(validateModule(clone, isKnownSpot).some(e => e.includes('must say what may change')));
++  const c2 = { ...welcome, check1: [{ ...welcome.check1[0], allow: ['fly' as any], at: { tabs: ['more'], routes: ['pay'] } }] };
++  const errs = validateModule(c2, isKnownSpot); assert.ok(errs.some(e => e.includes('"fly"')) && errs.some(e => e.includes('"more"')) && errs.some(e => e.includes('"pay"')));
++  void m;
++});

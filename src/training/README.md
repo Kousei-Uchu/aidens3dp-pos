@@ -41,6 +41,16 @@ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`
 
 A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
 
+## Going off course (Checks)
+
+A person in a Check is free to tap anything the course allows, so the app watches for mistakes and guides them back. When a goal starts, the app remembers the practice till as it began. From then on it compares. Each goal says what may change:
+
+- `allow` (required, may be empty): any of `add`, `remove`, `qty`, `discount`, `adjust`, `customer`, `note`, `tender`, `sale`. Changing anything not listed is off course. Removing something the person added themselves is never a mistake.
+- `at` (optional): `{ tabs, routes, sheets }`, where the work happens. Another tab or page is off course, and `sheets: false` means any open window is. Left out, it is the course's own tabs and pages with windows allowed.
+- `watch` (optional): mistakes specific to this goal, `{ id, when(snap), say, target?, via? }`. These are checked before the general ones, so use them for a wrong choice that looks like progress (for example taking out the wrong item).
+
+Each deviation is explained in one plain sentence, with the control to tap ringed and pointed at. It appears after about a second, so a normal path is never flagged. If it can only be fixed by starting over (a sale went through, a payment was started), or the person is still stuck after 12 seconds, **Start this part again** is offered. A **Start again** button is always on the bar in a Check. It puts the practice till back exactly as the goal began, so nobody can get stuck. The rules are in `src/lib/trainingCourse.ts`.
+
 ## Injections
 
 - `cart`: start with these lines in the cart (practice item ids, see `src/lib/trainingSandbox.ts`)

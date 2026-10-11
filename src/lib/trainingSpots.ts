@@ -7,6 +7,8 @@ export const SPOT = {
   tabCheckout: 'tab.checkout',
   tabMore: 'tab.more',
   moreTraining: 'more.training',
+  back: 'page.back',           // the Back arrow at the top of every pushed page
+  sheetClose: 'sheet.close',   // the Close button of a sheet
 } as const;
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */

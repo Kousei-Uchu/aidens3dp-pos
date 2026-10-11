@@ -22,6 +22,7 @@ import AdjustmentReviewSheet from './AdjustmentReview';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import type { CartLine } from '../lib/types';
 import { useUi } from '../ui/uiProfile';
+import { Enter, TabPane } from '../ui/Motion';
 
 export default function GuidedCheckout() {
   const { c } = useTheme(); const nav = useNav(); const ui = useUi();
@@ -67,20 +68,20 @@ export default function GuidedCheckout() {
       </View>
 
       {/* The step. The item picker stays mounted (hidden) so the grid keeps its place while you are on other steps. */}
-      <View style={{ flex: 1, display: step === 'items' ? 'flex' : 'none' }}><Checkout guided active={step === 'items'} /></View>
+      <TabPane active={step === 'items'} style={{ flex: 1, display: step === 'items' ? 'flex' : 'none' }}><Checkout guided active={step === 'items'} /></TabPane>
 
       {step === 'customer' ? (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <Enter key="customer" style={{ flex: 1 }}><ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
           {cart.customer ? <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
             <Ionicons name="person-circle" size={32} color={c.text} />
             <View style={{ flex: 1 }}><Txt weight="700">{cart.customer.name || 'Customer'}</Txt>{cart.customer.email ? <Txt size={13} sub>{cart.customer.email}</Txt> : null}</View>
             <IconBtn icon="close-circle" label="Remove customer" color={c.sub} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} /></Card> : null}
           <Btn title={cart.customer ? 'Choose a different customer' : 'Yes, find or add the customer'} kind={cart.customer ? 'secondary' : 'primary'} icon="person-add-outline" onPress={() => setSheet('customer')} />
-        </ScrollView>
+        </ScrollView></Enter>
       ) : null}
 
       {step === 'discount' ? (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <Enter key="discount" style={{ flex: 1 }}><ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
           {priced.deals.length ? <Card style={{ padding: 14, gap: 6 }}>
             <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Already applied for you</Txt>
             {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><Txt color={c.good} style={{ flex: 1 }}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</Card>
@@ -89,11 +90,11 @@ export default function GuidedCheckout() {
             <Ionicons name="pricetag" size={22} color={c.good} /><Txt weight="700" style={{ flex: 1 }}>{cart.discount.label}</Txt>
             <IconBtn icon="close-circle" label="Remove discount" color={c.sub} onPress={() => setCart(cc => ops.setCartDiscount(cc, undefined))} /></Card> : null}
           <Btn title={cart.discount ? 'Change the discount' : 'Yes, add a discount'} kind={cart.discount ? 'secondary' : 'primary'} icon="pricetag-outline" onPress={() => setSheet('discount')} />
-        </ScrollView>
+        </ScrollView></Enter>
       ) : null}
 
       {step === 'review' ? (
-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+        <Enter key="review" style={{ flex: 1 }}><ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
           {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale. Finish the payment to change it.</Txt></View> : null}
           {priced.lines.map(pl => {
             const l = pl.line; const rows = invoiceRows(pl);
@@ -124,15 +125,15 @@ export default function GuidedCheckout() {
             {priced.bundles.filter(b => b.status !== 'other').map((b, i) => <BundleRow key={i} b={b} />)}</View> : null}
           {cart.customer ? <Row icon="person-circle-outline" title={cart.customer.name || 'Customer'} sub="Customer on this sale" /> : null}
           {cart.discount ? <Row icon="pricetag-outline" title={cart.discount.label} sub="Discount on the whole cart" last /> : null}
-        </ScrollView>
+        </ScrollView></Enter>
       ) : null}
 
       {step === 'pay' ? (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 }}>
+        <Enter key="pay" style={{ flex: 1 }}><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 }}>
           <Txt size={15} sub>{count} item{count === 1 ? '' : 's'}{cart.customer ? ` · ${cart.customer.name || 'customer'}` : ''}</Txt>
           <Money cents={priced.netCents} size={54} weight="700" />
           {locked ? <Txt sub style={{ textAlign: 'center' }}>Part of this sale is already paid. Carry on with the rest.</Txt> : null}
-        </View>
+        </View></Enter>
       ) : null}
 
       {/* Back / Next, always in the same place */}

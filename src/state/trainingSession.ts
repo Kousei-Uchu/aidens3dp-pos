@@ -16,7 +16,9 @@ import type { Rect } from '../lib/trainingGeometry';
 /** Everything the overlay and dock need, worked out by the driver (TrainingHost) and drawn by both. */
 export type DockView = {
   mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
-  hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage;
+  hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
+  /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
+  stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean };
 };
 type Sess = {
   run: Run | null; sandbox: boolean; hint: HintState; view: DockView | null; progress: Progress; loaded: boolean;
@@ -30,8 +32,11 @@ type Sess = {
   pressHint: (goalId: string, ladder: readonly string[]) => void;
   setView: (v: DockView | null) => void;
   patchRun: (f: (r: Run) => Run) => void;
+  captureGoalStart: () => void;                  // remember the practice till as a goal began
+  restartGoal: (inj: readonly Injection[] | undefined) => boolean;  // put it back exactly as it was
 };
 let real: Swap | null = null;
+let goalStart: Swap | null = null;
 
 export const useTraining = create<Sess>((set, get) => ({
   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false,
@@ -54,6 +59,7 @@ export const useTraining = create<Sess>((set, get) => ({
     useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj));
   },
   leave: () => {
+    goalStart = null;
     if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); } // restore first, then drop the guard
     set({ sandbox: false, view: null });
   },
@@ -66,5 +72,10 @@ export const useTraining = create<Sess>((set, get) => ({
   },
   pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
   setView: v => set({ view: v }),
+  captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
+  restartGoal: inj => {
+    if (!goalStart) return false;
+    resetTrainingTerminal(); useApp.setState(goalStart); setDeclines(declinesOf(inj)); set({ hint: freshHints(), view: null }); return true;
+  },
 }));
 export const isPractising = (): boolean => real !== null;

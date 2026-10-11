@@ -1,13 +1,13 @@
 // Location: src/ui/RouteTransition.tsx
-// Page changes for Training pages (and the pages a running course allows): the new page slides in while the old one drifts away, instead of
-// the old page vanishing the instant the new one starts. Every other page is drawn exactly as before.
+// Page changes for every pushed page: the new page slides in while the old one drifts away (when it is safe to draw it again, see canLeaveDrawn),
+// instead of the old page vanishing the instant the new one starts.
 // The change is worked out DURING render (state derived from the route stack), so the new page mounts already knowing it is entering. If it
 // worked this out in an effect, the page would be on screen for one frame before it knew to animate.
 import React, { useEffect, useRef, useState } from 'react';
 import { StyleSheet, useWindowDimensions } from 'react-native';
 import type { Route } from './nav';
 import { Pane, useReduceMotion } from './Motion';
-import { ROUTE_ENTER_MS, isAnimatedRoute, leavingOnTop, slideDistance, transitionDir, transitionNeeded, type From } from '../lib/motion';
+import { ROUTE_ENTER_MS, canLeaveDrawn, isAnimatedRoute, leavingOnTop, slideDistance, transitionDir, transitionNeeded, type From } from '../lib/motion';
 
 /** `route` is the page that stays drawn while it leaves (null: nothing to keep, or it was a tab screen). `enter` is whether the new page slides in. */
 export type RoutePlan = { route: Route | null; dir: From; enter: boolean; id: number };
@@ -20,7 +20,7 @@ export function useRouteTransition(stack: Route[], practice?: readonly string[])
   if (snap.top !== top || snap.depth !== depth) {
     // A page that only animated because a course was running (the cart, Pay) does not stay drawn once the course has ended: it would be showing the real till.
     const animate = !reduce && transitionNeeded(snap.top?.name, top?.name, practice);
-    setSnap({ top, depth, plan: animate ? { route: isAnimatedRoute(snap.top?.name, practice) ? snap.top : null, dir: transitionDir(snap.top ? { name: snap.top.name, depth: snap.depth } : null, top ? { name: top.name, depth } : null), enter: isAnimatedRoute(top?.name, practice), id: ++seq.current } : null });
+    setSnap({ top, depth, plan: animate ? { route: canLeaveDrawn(snap.top?.name, practice) ? snap.top : null, dir: transitionDir(snap.top ? { name: snap.top.name, depth: snap.depth } : null, top ? { name: top.name, depth } : null), enter: isAnimatedRoute(top?.name, practice), id: ++seq.current } : null });
   }
   const id = snap.plan?.id;
   useEffect(() => {

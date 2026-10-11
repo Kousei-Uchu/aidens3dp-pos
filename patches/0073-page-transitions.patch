@@ -1,0 +1,293 @@
+diff --git a/App.tsx b/App.tsx
+index e067301..b9535b0 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -39,6 +39,7 @@ import { isTraining } from './src/lib/trainingGuard';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
+ import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
++import { Enter, TabPane } from './src/ui/Motion';
+ import { isLockScreen } from './src/lib/posLock';
+ import { UiProvider, useUi } from './src/ui/uiProfile';
+ import { effectiveTab } from './src/lib/uiMode';
+@@ -97,8 +98,8 @@ function Shell() {
+       <StatusBar style={c.bg === '#0B0B0C' ? 'light' : 'dark'} />
+       <View style={{ flex: 1 }}>
+         <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
+-          <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
+-          {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
++          <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane>
++          {nav.tab !== 'checkout' ? <Enter key={nav.tab} from="up" distance={10} duration={280} style={{ flex: 1 }}>{nav.tab === 'inventory' ? <Inventory /> : nav.tab === 'transactions' ? <Transactions /> : nav.tab === 'notifications' ? <Notifications /> : <More />}</Enter> : null}
+         </View>
+         {hasPage || moving ? <RouteStage stack={nav.stack} plan={plan} render={r => <Routes route={r} />} /> : null}
+       </View>
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 57503f5..f813c98 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -75,6 +75,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0070 | 2026-10-12 | Training mode (B6), correction 5 of 8: the whole Show and Info screen is visible at once, no scrolling. The picture is fitted (same shape, never cropped) into the space left on the page, and the words and buttons are always on screen with it: beside the picture on a wide window, underneath on a tall one. `fitBox` and `demoLayout` are pure and tested | B6 |
+ | 0071 | 2026-10-12 | Training corrections (list of 7), 1 of 7: smoother page transitions. Training pages (and the cart and Pay while a course runs) slide in while the old page drifts or slides away instead of vanishing; going back reads as back even at the same depth; starting and leaving practice dips through the page colour instead of cutting. Ordinary pages are unchanged. New `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`; helpers in `src/lib/motion.ts` | B6 |
+ | 0072 | 2026-10-12 | Docs only: adds the **F. Final Touches** list (F1 to F9), records that the domains are done and only the Gift-card and Receipt Workers still need styling (E1), answers the screenshots question for B7e, ticks the typecheck item (N3), and adds `docs/DEVICE_TESTS.md` with exact steps for every open device test | E1, B7e, B8, F1 to F9, N3, N32 |
++| 0073 | 2026-10-12 | Training corrections (new list of 7), 1 of 7: smoother transitions on **most pages**, not just Training. Every pushed page now slides in (and the old page drifts away when it is safe to draw it again: lists and read-only screens, never Pay or the item forms), switching tabs fades and rises the new tab (Checkout stays mounted, so it keeps its cart and scanner), and the guided checkout's steps fade and rise. New `TabPane` in `src/ui/Motion.tsx`, `canLeaveDrawn` and `LEAVE_DRAWN` in `src/lib/motion.ts`. Reduce Motion still turns it all off | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0073-plan.md b/docs/patches/0073-plan.md
+new file mode 100644
+index 0000000..1cb1d0a
+--- /dev/null
++++ b/docs/patches/0073-plan.md
+@@ -0,0 +1,26 @@
++# Patch 0073: smoother transitions on most pages (new Training list, 1 of 7)
++
++Stacks on 0072. Your new list of seven corrections is numbered **0073 to 0079**, one patch each, in your order: 1 page transitions, 2 animated Guide, 3 off-course handling in the Checks, 4 themed highlight, 5 smoother stage and step changes, 6 hint feedback, 7 virtual terminal. (The first list, Info style, sharp Show, cropped text and one-screen Show, was already done in 0066 to 0070 and 0071.)
++
++## What you asked for
++- Smoother transitions on most pages.
++
++## Where 0071 stopped
++0071 made Training pages (and the cart and Pay while a course runs) slide, and said the rest was "one line". Everything else still cut: pages, tabs and the guided checkout's steps.
++
++## Fix
++1. **Every pushed page slides in** (`isAnimatedRoute` is now true for any named page). Forward arrives from the right, back from the left, anything else rises. Unchanged: Reduce Motion turns it off.
++2. **The old page leaves too, only where that is safe** (`canLeaveDrawn`, `LEAVE_DRAWN` in `src/lib/motion.ts`). The leaving page is drawn again as a fresh copy, so it has to look right from stored data alone. Lists and read-only screens (Saved carts, Orders, Items, Customers, Reports, Gift cards, Drawer, Settings, Staff, Diagnostics, Help, Training, the cart) leave smoothly. **Pay, Create item and Edit item never do**: Pay depends on a sale in flight and the item forms on unsaved text, so redrawing them would flash blank or wrong content. They simply give way to the page that arrives, which still slides in.
++3. **Tabs fade and rise** when you switch (`Enter` keyed by tab for Inventory, Transactions, Notifications and More; `TabPane` for Checkout). Checkout is not remounted, so the cart and scanner state survive exactly as before; `TabPane` only replays the animation when the tab becomes active.
++4. **Guided checkout steps fade and rise** (Customer, Discount, Review, Pay each wrapped in `Enter`; the item picker uses `TabPane` because it stays mounted so the grid keeps its place).
++
++## Tests
++- `tests/motion.test.ts`: every named page animates, a change needs only one side, which pages may be redrawn while leaving (and that Pay and the item forms may not, unless a course is running), and the tab fade is shorter than the page slide.
++
++## Steps
++1. [x] `motion.ts`: `LEAVE_DRAWN`, `canLeaveDrawn`, `isAnimatedRoute` for every page, `TAB_ENTER_MS`.
++2. [x] `RouteTransition.tsx` keeps the old page only when `canLeaveDrawn`.
++3. [x] `Motion.tsx` `TabPane`; `App.tsx` uses it and `Enter` for the tabs.
++4. [x] `GuidedCheckout.tsx` steps wrapped.
++5. [ ] You: on the iPad, open Settings, Orders, Reports and come back; switch every tab; take a card payment (Pay should slide in and then give way, never flash blank); in a Simple or Minimal staff mode step through the guided checkout. Tell me anything that flashes, feels too slow (a slide is 380 ms, a tab fade 280 ms) or fights the scanner.
++6. [ ] You: if a page you use a lot looks wrong while it leaves, tell me its name and I will take it off `LEAVE_DRAWN`.
+diff --git a/src/lib/motion.ts b/src/lib/motion.ts
+index 99c0f68..b4869c5 100644
+--- a/src/lib/motion.ts
++++ b/src/lib/motion.ts
+@@ -21,7 +21,13 @@ export function pageDirection(prevDepth: number, depth: number): From {
+   return depth > prevDepth ? 'right' : depth < prevDepth ? 'left' : 'up';
+ }
+ 
+-/** The routes that get a page transition. Training only, for now: the rest of the app is left exactly as it was. */
++/**
++ * Pages that may be drawn a second time while they slide away. The leaving page is a fresh copy of the screen, so it must look right from the data alone:
++ * lists and read-only screens do. Pages that depend on a sale in flight or an unsaved form (Pay, the item forms) are never redrawn: they simply give way
++ * to the page that arrives, which still slides in. (0073)
++ */
++export const LEAVE_DRAWN: ReadonlySet<string> = new Set(['saved', 'orders', 'items', 'customers', 'reports', 'giftcards', 'drawer', 'settings', 'staff', 'diagnostics', 'help', 'training', 'trainingRun', 'cart']);
++/** The Training pages, which are always safe and are ranked for direction (below). */
+ export const TRANSITION_ROUTES: ReadonlySet<string> = new Set(['training', 'trainingRun']);
+ 
+ // ---- Page changes with the old page leaving as the new one arrives (0071) ----
+@@ -57,10 +63,15 @@ export function transitionDir(prev: Where, next: Where): From {
+   if (pr !== undefined && nr !== undefined && pr !== nr) return nr > pr ? 'right' : 'left';
+   return 'up';
+ }
+-/** A route gets a transition when it is a Training page, or a page the running course allows (the cart, Pay) while practice data is on. Everything else is drawn as before. */
+-export const isAnimatedRoute = (name: string | null | undefined, practice?: readonly string[]): boolean => !!name && (TRANSITION_ROUTES.has(name) || !!practice?.includes(name));
+-/** A change is animated when either page is one that animates, so leaving or arriving at a Training page is never half done. */
++/** Every named page animates its arrival (0073). `practice` is kept for older callers: it no longer decides anything. */
++export const isAnimatedRoute = (name: string | null | undefined, _practice?: readonly string[]): boolean => !!name;
++/** A change is animated when either side is a page, so leaving or arriving at a page is never half done. Tab to tab changes have their own fade (TabPane). */
+ export const transitionNeeded = (prev: string | null | undefined, next: string | null | undefined, practice?: readonly string[]): boolean => isAnimatedRoute(prev, practice) || isAnimatedRoute(next, practice);
++/** Whether the old page stays drawn while it leaves. A page the running course allows is safe too, because practice data is on and nothing real can show. */
++export const canLeaveDrawn = (name: string | null | undefined, practice?: readonly string[]): boolean => !!name && (LEAVE_DRAWN.has(name) || !!practice?.includes(name));
+ 
+ /** The dip to the page colour used when practice starts or ends and the whole screen changes underneath: fade up, switch, fade away. */
+ export const VEIL = { inMs: 160, holdMs: 90, outMs: 360 } as const;
++
++/** Tab to tab and guided-step changes: a short fade and rise. Shorter than a page change, because nothing moves across the screen. */
++export const TAB_ENTER_MS = 280; export const TAB_RISE = 10;
+diff --git a/src/screens/GuidedCheckout.tsx b/src/screens/GuidedCheckout.tsx
+index 7132955..2b7917e 100644
+--- a/src/screens/GuidedCheckout.tsx
++++ b/src/screens/GuidedCheckout.tsx
+@@ -22,6 +22,7 @@ import AdjustmentReviewSheet from './AdjustmentReview';
+ import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+ import type { CartLine } from '../lib/types';
+ import { useUi } from '../ui/uiProfile';
++import { Enter, TabPane } from '../ui/Motion';
+ 
+ export default function GuidedCheckout() {
+   const { c } = useTheme(); const nav = useNav(); const ui = useUi();
+@@ -67,20 +68,20 @@ export default function GuidedCheckout() {
+       </View>
+ 
+       {/* The step. The item picker stays mounted (hidden) so the grid keeps its place while you are on other steps. */}
+-      <View style={{ flex: 1, display: step === 'items' ? 'flex' : 'none' }}><Checkout guided active={step === 'items'} /></View>
++      <TabPane active={step === 'items'} style={{ flex: 1, display: step === 'items' ? 'flex' : 'none' }}><Checkout guided active={step === 'items'} /></TabPane>
+ 
+       {step === 'customer' ? (
+-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
++        <Enter key="customer" style={{ flex: 1 }}><ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+           {cart.customer ? <Card style={{ padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+             <Ionicons name="person-circle" size={32} color={c.text} />
+             <View style={{ flex: 1 }}><Txt weight="700">{cart.customer.name || 'Customer'}</Txt>{cart.customer.email ? <Txt size={13} sub>{cart.customer.email}</Txt> : null}</View>
+             <IconBtn icon="close-circle" label="Remove customer" color={c.sub} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} /></Card> : null}
+           <Btn title={cart.customer ? 'Choose a different customer' : 'Yes, find or add the customer'} kind={cart.customer ? 'secondary' : 'primary'} icon="person-add-outline" onPress={() => setSheet('customer')} />
+-        </ScrollView>
++        </ScrollView></Enter>
+       ) : null}
+ 
+       {step === 'discount' ? (
+-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
++        <Enter key="discount" style={{ flex: 1 }}><ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+           {priced.deals.length ? <Card style={{ padding: 14, gap: 6 }}>
+             <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Already applied for you</Txt>
+             {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><Txt color={c.good} style={{ flex: 1 }}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</Card>
+@@ -89,11 +90,11 @@ export default function GuidedCheckout() {
+             <Ionicons name="pricetag" size={22} color={c.good} /><Txt weight="700" style={{ flex: 1 }}>{cart.discount.label}</Txt>
+             <IconBtn icon="close-circle" label="Remove discount" color={c.sub} onPress={() => setCart(cc => ops.setCartDiscount(cc, undefined))} /></Card> : null}
+           <Btn title={cart.discount ? 'Change the discount' : 'Yes, add a discount'} kind={cart.discount ? 'secondary' : 'primary'} icon="pricetag-outline" onPress={() => setSheet('discount')} />
+-        </ScrollView>
++        </ScrollView></Enter>
+       ) : null}
+ 
+       {step === 'review' ? (
+-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
++        <Enter key="review" style={{ flex: 1 }}><ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
+           {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale. Finish the payment to change it.</Txt></View> : null}
+           {priced.lines.map(pl => {
+             const l = pl.line; const rows = invoiceRows(pl);
+@@ -124,15 +125,15 @@ export default function GuidedCheckout() {
+             {priced.bundles.filter(b => b.status !== 'other').map((b, i) => <BundleRow key={i} b={b} />)}</View> : null}
+           {cart.customer ? <Row icon="person-circle-outline" title={cart.customer.name || 'Customer'} sub="Customer on this sale" /> : null}
+           {cart.discount ? <Row icon="pricetag-outline" title={cart.discount.label} sub="Discount on the whole cart" last /> : null}
+-        </ScrollView>
++        </ScrollView></Enter>
+       ) : null}
+ 
+       {step === 'pay' ? (
+-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 }}>
++        <Enter key="pay" style={{ flex: 1 }}><View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, gap: 10 }}>
+           <Txt size={15} sub>{count} item{count === 1 ? '' : 's'}{cart.customer ? ` · ${cart.customer.name || 'customer'}` : ''}</Txt>
+           <Money cents={priced.netCents} size={54} weight="700" />
+           {locked ? <Txt sub style={{ textAlign: 'center' }}>Part of this sale is already paid. Carry on with the rest.</Txt> : null}
+-        </View>
++        </View></Enter>
+       ) : null}
+ 
+       {/* Back / Next, always in the same place */}
+diff --git a/src/ui/Motion.tsx b/src/ui/Motion.tsx
+index 63e49c8..e0f32d0 100644
+--- a/src/ui/Motion.tsx
++++ b/src/ui/Motion.tsx
+@@ -2,7 +2,7 @@
+ // Entrance animation for pages, cards and bars (B6 polish): fade in while sliding a short way. Skipped when the iPad's Reduce Motion is on.
+ import React, { useEffect, useRef, useState } from 'react';
+ import { AccessibilityInfo, Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
+-import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, enterOffset, leaveOffset, type From } from '../lib/motion';
++import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, TAB_ENTER_MS, TAB_RISE, enterOffset, leaveOffset, type From } from '../lib/motion';
+ 
+ export function useReduceMotion(): boolean {
+   const [on, setOn] = useState(false);
+@@ -50,3 +50,16 @@ export function Pane({ children, mode, dir, distance, style, pointerEvents }: Pa
+   const ty = mode === 'enter' ? v.interpolate({ inputRange: [0, 1], outputRange: [o.y, 0] }) : v.interpolate({ inputRange: [0, 1], outputRange: [0, o.y] });
+   return <Animated.View pointerEvents={pointerEvents} style={[style, { opacity, transform: [{ translateX: tx }, { translateY: ty }] }]}>{children}</Animated.View>;
+ }
++
++/**
++ * A screen that stays mounted (the Checkout tab keeps its cart and scanner state) but should still fade and rise each time it is switched to.
++ * It plays when `active` goes from false to true. It never remounts its children.
++ */
++export function TabPane({ active, children, style }: { active: boolean; children?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
++  const reduce = useReduceMotion(); const v = useRef(new Animated.Value(1)).current; const was = useRef(active);
++  useEffect(() => {
++    if (active && !was.current && !reduce) { v.setValue(0); Animated.timing(v, { toValue: 1, duration: TAB_ENTER_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
++    was.current = active;
++  }, [active, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
++  return <Animated.View style={[style, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [TAB_RISE, 0] }) }] }]}>{children}</Animated.View>;
++}
+diff --git a/src/ui/RouteTransition.tsx b/src/ui/RouteTransition.tsx
+index 9168581..9138477 100644
+--- a/src/ui/RouteTransition.tsx
++++ b/src/ui/RouteTransition.tsx
+@@ -1,13 +1,13 @@
+ // Location: src/ui/RouteTransition.tsx
+-// Page changes for Training pages (and the pages a running course allows): the new page slides in while the old one drifts away, instead of
+-// the old page vanishing the instant the new one starts. Every other page is drawn exactly as before.
++// Page changes for every pushed page: the new page slides in while the old one drifts away (when it is safe to draw it again, see canLeaveDrawn),
++// instead of the old page vanishing the instant the new one starts.
+ // The change is worked out DURING render (state derived from the route stack), so the new page mounts already knowing it is entering. If it
+ // worked this out in an effect, the page would be on screen for one frame before it knew to animate.
+ import React, { useEffect, useRef, useState } from 'react';
+ import { StyleSheet, useWindowDimensions } from 'react-native';
+ import type { Route } from './nav';
+ import { Pane, useReduceMotion } from './Motion';
+-import { ROUTE_ENTER_MS, isAnimatedRoute, leavingOnTop, slideDistance, transitionDir, transitionNeeded, type From } from '../lib/motion';
++import { ROUTE_ENTER_MS, canLeaveDrawn, isAnimatedRoute, leavingOnTop, slideDistance, transitionDir, transitionNeeded, type From } from '../lib/motion';
+ 
+ /** `route` is the page that stays drawn while it leaves (null: nothing to keep, or it was a tab screen). `enter` is whether the new page slides in. */
+ export type RoutePlan = { route: Route | null; dir: From; enter: boolean; id: number };
+@@ -20,7 +20,7 @@ export function useRouteTransition(stack: Route[], practice?: readonly string[])
+   if (snap.top !== top || snap.depth !== depth) {
+     // A page that only animated because a course was running (the cart, Pay) does not stay drawn once the course has ended: it would be showing the real till.
+     const animate = !reduce && transitionNeeded(snap.top?.name, top?.name, practice);
+-    setSnap({ top, depth, plan: animate ? { route: isAnimatedRoute(snap.top?.name, practice) ? snap.top : null, dir: transitionDir(snap.top ? { name: snap.top.name, depth: snap.depth } : null, top ? { name: top.name, depth } : null), enter: isAnimatedRoute(top?.name, practice), id: ++seq.current } : null });
++    setSnap({ top, depth, plan: animate ? { route: canLeaveDrawn(snap.top?.name, practice) ? snap.top : null, dir: transitionDir(snap.top ? { name: snap.top.name, depth: snap.depth } : null, top ? { name: top.name, depth } : null), enter: isAnimatedRoute(top?.name, practice), id: ++seq.current } : null });
+   }
+   const id = snap.plan?.id;
+   useEffect(() => {
+diff --git a/tests/motion.test.ts b/tests/motion.test.ts
+index 211a74e..fa891b8 100644
+--- a/tests/motion.test.ts
++++ b/tests/motion.test.ts
+@@ -1,6 +1,6 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, TRANSITION_ROUTES, VEIL, enterOffset, isAnimatedRoute, leaveOffset, leavingOnTop, pageDirection, slideDistance, stagger, transitionDir, transitionNeeded } from '../src/lib/motion';
++import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, TAB_ENTER_MS, TAB_RISE, TRANSITION_ROUTES, VEIL, canLeaveDrawn, enterOffset, isAnimatedRoute, leaveOffset, leavingOnTop, pageDirection, slideDistance, stagger, transitionDir, transitionNeeded } from '../src/lib/motion';
+ 
+ test('a thing starts where "from" says and ends where it belongs', () => {
+   assert.deepEqual(enterOffset('right', 30), { x: 30, y: 0 });
+@@ -19,8 +19,16 @@ test('a page change slides forward, back, or rises when the depth is unchanged',
+   assert.equal(pageDirection(0, 1), 'right'); assert.equal(pageDirection(2, 1), 'left'); assert.equal(pageDirection(1, 1), 'up');
+ });
+ 
+-test('only Training pages get a page transition', () => {
++test('the Training pages are ranked for direction, and are always safe to draw while leaving', () => {
+   assert.deepEqual([...TRANSITION_ROUTES].sort(), ['training', 'trainingRun']);
++  for (const r of TRANSITION_ROUTES) assert.equal(canLeaveDrawn(r), true);
++});
++
++test('pages that depend on a sale in flight or an unsaved form are never redrawn while they leave', () => {
++  for (const r of ['pay', 'createItem', 'editItem']) assert.equal(canLeaveDrawn(r), false, r);
++  for (const r of ['settings', 'orders', 'customers', 'help', 'cart']) assert.equal(canLeaveDrawn(r), true, r);
++  assert.equal(canLeaveDrawn('pay', ['cart', 'pay']), true, 'while a course runs, practice data is on, so its pages are safe');
++  assert.equal(canLeaveDrawn(null), false);
+ });
+ 
+ test('the slide distance scales with the window but stays between 48 and 140 points', () => {
+@@ -45,17 +53,19 @@ test('direction: depth decides, then the Training page order, and anything else
+   assert.equal(transitionDir(at('pay', 1), at('cart', 1)), 'up', 'unranked pages at one depth just rise');
+ });
+ 
+-test('a page animates when it is a Training page or a page the running course allows, and a change needs only one of the two', () => {
+-  assert.equal(isAnimatedRoute('training'), true); assert.equal(isAnimatedRoute('trainingRun'), true);
+-  assert.equal(isAnimatedRoute('pay'), false, 'ordinary pages are drawn exactly as before');
+-  assert.equal(isAnimatedRoute('pay', ['cart', 'pay']), true, 'while a course runs, its pages animate too');
+-  assert.equal(isAnimatedRoute(null), false); assert.equal(isAnimatedRoute(undefined, ['pay']), false);
+-  assert.equal(transitionNeeded('help', 'training'), true); assert.equal(transitionNeeded('training', null), true);
+-  assert.equal(transitionNeeded('settings', 'help'), false); assert.equal(transitionNeeded(null, null), false);
+-  assert.equal(transitionNeeded('cart', null, ['cart']), true); assert.equal(transitionNeeded('cart', null), false, 'once the course ends the cart page is not animated');
++test('every named page animates in, and a change needs only one of the two sides', () => {
++  for (const r of ['training', 'pay', 'settings', 'cart', 'help']) assert.equal(isAnimatedRoute(r), true, r);
++  assert.equal(isAnimatedRoute(null), false); assert.equal(isAnimatedRoute(undefined), false); assert.equal(isAnimatedRoute(''), false);
++  assert.equal(transitionNeeded('help', 'training'), true); assert.equal(transitionNeeded('settings', 'help'), true); assert.equal(transitionNeeded('training', null), true);
++  assert.equal(transitionNeeded(null, 'settings'), true, 'opening a page from a tab');
++  assert.equal(transitionNeeded(null, null), false, 'tab to tab has its own fade');
+ });
+ 
+ test('timings: the new page takes longer to settle than the old one takes to go, and the dip is short', () => {
+   assert.ok(ROUTE_ENTER_MS > ROUTE_LEAVE_MS); assert.ok(ROUTE_ENTER_MS <= 450);
+   assert.ok(VEIL.inMs + VEIL.holdMs + VEIL.outMs < 700, 'the whole dip is well under a second');
+ });
++
++test('a tab or step change is a short fade, shorter than a page slide', () => {
++  assert.ok(TAB_ENTER_MS < ROUTE_ENTER_MS); assert.ok(TAB_RISE > 0 && TAB_RISE <= 16);
++});

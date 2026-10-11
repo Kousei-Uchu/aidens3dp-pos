@@ -2,7 +2,7 @@
 // Entrance animation for pages, cards and bars (B6 polish): fade in while sliding a short way. Skipped when the iPad's Reduce Motion is on.
 import React, { useEffect, useRef, useState } from 'react';
 import { AccessibilityInfo, Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
-import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, enterOffset, leaveOffset, type From } from '../lib/motion';
+import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, TAB_ENTER_MS, TAB_RISE, enterOffset, leaveOffset, type From } from '../lib/motion';
 
 export function useReduceMotion(): boolean {
   const [on, setOn] = useState(false);
@@ -49,4 +49,17 @@ export function Pane({ children, mode, dir, distance, style, pointerEvents }: Pa
   const tx = mode === 'enter' ? v.interpolate({ inputRange: [0, 1], outputRange: [o.x, 0] }) : v.interpolate({ inputRange: [0, 1], outputRange: [0, o.x] });
   const ty = mode === 'enter' ? v.interpolate({ inputRange: [0, 1], outputRange: [o.y, 0] }) : v.interpolate({ inputRange: [0, 1], outputRange: [0, o.y] });
   return <Animated.View pointerEvents={pointerEvents} style={[style, { opacity, transform: [{ translateX: tx }, { translateY: ty }] }]}>{children}</Animated.View>;
+}
+
+/**
+ * A screen that stays mounted (the Checkout tab keeps its cart and scanner state) but should still fade and rise each time it is switched to.
+ * It plays when `active` goes from false to true. It never remounts its children.
+ */
+export function TabPane({ active, children, style }: { active: boolean; children?: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+  const reduce = useReduceMotion(); const v = useRef(new Animated.Value(1)).current; const was = useRef(active);
+  useEffect(() => {
+    if (active && !was.current && !reduce) { v.setValue(0); Animated.timing(v, { toValue: 1, duration: TAB_ENTER_MS, easing: Easing.out(Easing.cubic), useNativeDriver: true }).start(); }
+    was.current = active;
+  }, [active, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
+  return <Animated.View style={[style, { opacity: v, transform: [{ translateY: v.interpolate({ inputRange: [0, 1], outputRange: [TAB_RISE, 0] }) }] }]}>{children}</Animated.View>;
 }
