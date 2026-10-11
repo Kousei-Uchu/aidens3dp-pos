@@ -1,10 +1,10 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AppState, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
 import { ZellerRoot } from './src/zellerBridge';
 import { ThemeProvider, useTheme } from './src/ui/theme';
-import { NavProvider, useNav, type Tab } from './src/ui/nav';
+import { NavProvider, useNav, type Route, type Tab } from './src/ui/nav';
 import { Txt } from './src/ui/kit';
 import { useApp } from './src/state/store';
 import { loadCreds } from './src/lib/shopify/client';
@@ -38,6 +38,7 @@ import { getModule } from './src/training';
 import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { noteActivity } from './src/lib/idle';
+import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
 import { isLockScreen } from './src/lib/posLock';
 import { UiProvider, useUi } from './src/ui/uiProfile';
 import { effectiveTab } from './src/lib/uiMode';
@@ -48,8 +49,8 @@ const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons
   { id: 'notifications', label: 'Notifications', icon: 'notifications' }, { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
 ];
 
-function Routes() {
-  const nav = useNav(); const top = nav.stack[nav.stack.length - 1]; if (!top) return null;
+function Routes({ route: top }: { route: Route }) {
+  const nav = useNav();
   const p = top.params ?? {};
   switch (top.name) {
     case 'pay': return <Pay onBack={nav.pop} />;
@@ -77,6 +78,8 @@ function Shell() {
   const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
   const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined));
+  const practiceRoutes = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.routes : undefined));
+  const { plan } = useRouteTransition(nav.stack, practiceRoutes); // the page that is leaving stays drawn while the new one arrives
   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
   useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
@@ -88,16 +91,16 @@ function Shell() {
   }, [ready]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
   if (isLockScreen({ staffCount, unlocked }) && nav.stack[nav.stack.length - 1]?.name !== 'help') return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
-  const hasPage = nav.stack.length > 0;
+  const hasPage = nav.stack.length > 0; const moving = !!plan; // the tab screen stays drawn underneath while a page slides over it or away from it
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <StatusBar style={c.bg === '#0B0B0C' ? 'light' : 'dark'} />
       <View style={{ flex: 1 }}>
-        <View style={{ flex: 1, display: hasPage ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
+        <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
           <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
           {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
         </View>
-        {hasPage ? <Routes /> : null}
+        {hasPage || moving ? <RouteStage stack={nav.stack} plan={plan} render={r => <Routes route={r} />} /> : null}
       </View>
       {!hasPage ? (
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>

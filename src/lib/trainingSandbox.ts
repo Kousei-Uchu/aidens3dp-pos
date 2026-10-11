@@ -66,9 +66,19 @@ export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined)
   }
   return cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
 }
-/** Why training cannot start right now, or null. A real card payment or part-paid sale must be finished first. */
-export function trainingBlocker(s: { pos: { cart: Cart; attempts: { status: string }[] } }): string | null {
-  if (s.pos.attempts.some(a => a.status === 'started' || a.status === 'unknown')) return 'A card payment is still waiting on the reader. Finish or cancel it first, then start training.';
+/** A card attempt counts as "still waiting on the reader" for this long after it starts (the same window the screensaver and staff lock use). */
+export const WAITING_WINDOW_MS = 5 * 60_000;
+type BlockAttempt = { status: string; ts: string; saleUuid?: string };
+/**
+ * Why training cannot start right now, or null. A card payment that is genuinely in flight, or a part-paid sale, must be finished first.
+ * An attempt left at "started" by a closed app, or an old "unknown" for a sale that is no longer in the cart, is history and does not block:
+ * nothing can be finished for it from here, so blocking on it would lock training for good.
+ */
+export function trainingBlocker(s: { pos: { cart: Cart; attempts: BlockAttempt[] } }, nowMs = Date.now()): string | null {
+  const live = s.pos.attempts.some(a => a.status === 'started' && nowMs - Date.parse(a.ts) < WAITING_WINDOW_MS);
+  if (live) return 'A card payment is still waiting on the reader. Finish or cancel it first (or wait a few minutes), then start training.';
+  const sale = s.pos.cart.saleUuid;
+  if (sale && s.pos.attempts.some(a => a.status === 'unknown' && a.saleUuid === sale)) return 'A card payment on the sale in the cart has no result yet. Open Payment and settle it first, then start training.';
   if ((s.pos.cart.tenders?.length ?? 0) > 0) return 'There is a part-paid sale in the cart. Finish or cancel it first, then start training.';
   return null;
 }

@@ -1,0 +1,525 @@
+From 439900519bb2819dbbed6d1af7e1c0ec4f716cc6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 09:10:13 +1100
+Subject: [PATCH] 0071: Training transitions: old page leaves as the new one
+ arrives, dip through page colour
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01UXwmaeg6xeHmAxEpycXS6q
+---
+ App.tsx                     | 25 ++++++++--------------
+ docs/PROGRESS.md            |  1 +
+ docs/patches/0071-plan.md   | 27 ++++++++++++++++++++++++
+ help/help.json              |  8 +++----
+ help/staff/training.md      |  5 +++--
+ src/lib/motion.ts           | 41 ++++++++++++++++++++++++++++++++++++
+ src/screens/TrainingRun.tsx | 11 +++++++---
+ src/ui/Motion.tsx           | 25 +++++++++++++++++++++-
+ src/ui/RouteTransition.tsx  | 42 +++++++++++++++++++++++++++++++++++++
+ src/ui/TrainingHost.tsx     | 18 +++++++++-------
+ src/ui/Veil.tsx             | 28 +++++++++++++++++++++++++
+ tests/motion.test.ts        | 39 +++++++++++++++++++++++++++++++++-
+ 12 files changed, 236 insertions(+), 34 deletions(-)
+ create mode 100644 docs/patches/0071-plan.md
+ create mode 100644 src/ui/RouteTransition.tsx
+ create mode 100644 src/ui/Veil.tsx
+
+diff --git a/App.tsx b/App.tsx
+index c14dbc8..e067301 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
+ import { StatusBar } from 'expo-status-bar';
+ import { ZellerRoot } from './src/zellerBridge';
+ import { ThemeProvider, useTheme } from './src/ui/theme';
+-import { NavProvider, useNav, type Tab } from './src/ui/nav';
++import { NavProvider, useNav, type Route, type Tab } from './src/ui/nav';
+ import { Txt } from './src/ui/kit';
+ import { useApp } from './src/state/store';
+ import { loadCreds } from './src/lib/shopify/client';
+@@ -38,8 +38,7 @@ import { getModule } from './src/training';
+ import { isTraining } from './src/lib/trainingGuard';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
+-import { Enter } from './src/ui/Motion';
+-import { TRANSITION_ROUTES, pageDirection } from './src/lib/motion';
++import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
+ import { isLockScreen } from './src/lib/posLock';
+ import { UiProvider, useUi } from './src/ui/uiProfile';
+ import { effectiveTab } from './src/lib/uiMode';
+@@ -50,8 +49,8 @@ const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons
+   { id: 'notifications', label: 'Notifications', icon: 'notifications' }, { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
+ ];
+ 
+-function Routes() {
+-  const nav = useNav(); const top = nav.stack[nav.stack.length - 1]; if (!top) return null;
++function Routes({ route: top }: { route: Route }) {
++  const nav = useNav();
+   const p = top.params ?? {};
+   switch (top.name) {
+     case 'pay': return <Pay onBack={nav.pop} />;
+@@ -75,18 +74,12 @@ function Routes() {
+   }
+ }
+ 
+-/** Training pages slide in (forward from the right, back from the left). Every other page is drawn exactly as before. */
+-function RouteMotion() {
+-  const nav = useNav(); const top = nav.stack[nav.stack.length - 1]; const depth = nav.stack.length; const prev = useRef(depth); const dir = pageDirection(prev.current, depth);
+-  useEffect(() => { prev.current = depth; });
+-  if (!top || !TRANSITION_ROUTES.has(top.name)) return <Routes />;
+-  return <Enter key={`${top.name}:${depth}`} from={dir} distance={36} duration={300} style={{ flex: 1 }}><Routes /></Enter>;
+-}
+-
+ function Shell() {
+   const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
+   const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined));
++  const practiceRoutes = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.routes : undefined));
++  const { plan } = useRouteTransition(nav.stack, practiceRoutes); // the page that is leaving stays drawn while the new one arrives
+   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
+   useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+@@ -98,16 +91,16 @@ function Shell() {
+   }, [ready]);
+   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+   if (isLockScreen({ staffCount, unlocked }) && nav.stack[nav.stack.length - 1]?.name !== 'help') return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
+-  const hasPage = nav.stack.length > 0;
++  const hasPage = nav.stack.length > 0; const moving = !!plan; // the tab screen stays drawn underneath while a page slides over it or away from it
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <StatusBar style={c.bg === '#0B0B0C' ? 'light' : 'dark'} />
+       <View style={{ flex: 1 }}>
+-        <View style={{ flex: 1, display: hasPage ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
++        <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
+           <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
+           {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
+         </View>
+-        {hasPage ? <RouteMotion /> : null}
++        {hasPage || moving ? <RouteStage stack={nav.stack} plan={plan} render={r => <Routes route={r} />} /> : null}
+       </View>
+       {!hasPage ? (
+         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7bb5615..fd47dc5 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -73,6 +73,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0068 | 2026-10-12 | Training mode (B6), correction 3 of 8: the Show and Info picture is no longer pixelated. It was drawn at 1x and stretched up by the camera, which blurs text and edges. It is now laid out once at the biggest size it is ever shown (`renderScale`) and the camera only ever scales it down, so everything is drawn at full resolution. The animation is unchanged | B6 |
+ | 0069 | 2026-10-12 | Training mode (B6), correction 4 of 8: text is never cropped in the Show and Info window. The note bubble is now placed inside the part of the picture the zoomed camera can actually see (it could sit off screen before), on whichever of four sides has room, and the camera eases out if the target and note do not both fit. The camera always keeps the target fully in view, a single line shrinks a little rather than being cut off, and the course checker now estimates whether each label fits its box (it found a real overflow in the welcome Info, fixed) | B6 |
+ | 0070 | 2026-10-12 | Training mode (B6), correction 5 of 8: the whole Show and Info screen is visible at once, no scrolling. The picture is fitted (same shape, never cropped) into the space left on the page, and the words and buttons are always on screen with it: beside the picture on a wide window, underneath on a tall one. `fitBox` and `demoLayout` are pure and tested | B6 |
++| 0071 | 2026-10-12 | Training corrections (list of 7), 1 of 7: smoother page transitions. Training pages (and the cart and Pay while a course runs) slide in while the old page drifts or slides away instead of vanishing; going back reads as back even at the same depth; starting and leaving practice dips through the page colour instead of cutting. Ordinary pages are unchanged. New `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`; helpers in `src/lib/motion.ts` | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0071-plan.md b/docs/patches/0071-plan.md
+new file mode 100644
+index 0000000..377878a
+--- /dev/null
++++ b/docs/patches/0071-plan.md
+@@ -0,0 +1,27 @@
++# Patch 0071: smoother page transitions (Training corrections, 1 of 7)
++
++Stacks on 0070. This starts the new list of seven Training corrections (smoother transitions, animated Guide, off-course handling in the Checks, themed highlight, smoother stage and step changes, hint feedback, virtual terminal). They are numbered 0071 to 0077, one patch each, in that order.
++
++## What you asked for
++- Smoother transitions on most pages.
++
++## Cause
++Only the page that arrived was animated (0067). The page it replaced was removed in the same frame, so every change was a cut followed by a slide. Starting and ending practice swapped the whole screen in one frame as well, and inside a course the cart and Pay pages had no transition at all.
++
++## Fix
++- **The old page leaves as the new one arrives** (`src/ui/RouteTransition.tsx`). Going forward the old page drifts a little to the left under the new one. Going back, the page you are leaving slides off to the right over the one revealed. Pages fade as they move, with a fast-then-slow curve in and a gentle-then-quick curve out. The slide distance scales with the window (`slideDistance`).
++- **Worked out in render, not in an effect**, so the arriving page knows it is entering on its first frame (no one-frame flash). The tab screen stays drawn underneath while a page slides over it or away from it.
++- **Direction is right even at the same depth.** Training list to a course is forward, a course back to the list is back (`transitionDir`, `ROUTE_RANK`).
++- **Pages a running course allows (the cart, Pay) animate while practice is on.** When the course ends they go back to being ordinary pages, and a practice-only page is never kept drawn after the practice data has gone.
++- **A dip to the page colour** (`src/ui/Veil.tsx`, `dipThrough`) when practice starts (the course page becomes the real till), when you leave from the bar, and when a stage finishes and returns you to the course page. The screen fades to the page colour, the change happens unseen, then it fades up. The "cannot start yet" message is shown before the dip, not after it.
++- **Reduce Motion** still turns all of this off. Every page outside Training is drawn exactly as before (it is now inside a plain full-size wrapper, which looks the same).
++
++## Tests
++- `tests/motion.test.ts`: slide distance limits, where the leaving page goes forward and back, which layer is on top, direction by depth then by Training page order, which routes animate (with and without a running course), and the timings.
++
++## Steps
++1. [x] Pure helpers in `src/lib/motion.ts`, `Pane` in `src/ui/Motion.tsx`.
++2. [x] `RouteTransition.tsx`, `App.tsx` uses it (the old `RouteMotion` is gone).
++3. [x] `Veil.tsx`, used by `TrainingHost.tsx` and `TrainingRun.tsx`.
++4. [ ] You: on the iPad, open Training, a course, go back; start Guide (watch the dip), press Charge and Pay in a course, exit from the bar. Tell me if any change feels too slow (the slide is 380 ms, the dip about 600 ms in all) or if the old page ever flashes.
++5. [ ] You: I limited this to Training pages as the list is about Training. If you want the same for the rest of the app (Settings, Help, Reports and so on), it is one line: add their names to `TRANSITION_ROUTES`.
+diff --git a/help/help.json b/help/help.json
+index 174bbcc..f25a718 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "08ef34fb",
++ "version": "c28ec34c",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1669,12 +1669,12 @@
+     "pay",
+     "fix"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-10-12",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
+     "deep": "Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+-    "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
++    "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+   },
+   {
+diff --git a/help/staff/training.md b/help/staff/training.md
+index a36dcbc..d8b0a0d 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -5,7 +5,7 @@ parent: staff
+ summary: Learn app tasks through animated explanations, a process walkthrough, a spotlighted real interface and safe practice.
+ tags: [training, lessons, practice, learning, checkout, scenarios, tutorial]
+ related: [staff, sales, sales/scanners, pay, fix]
+-updated: 2026-10-11
++updated: 2026-10-12
+ ---
+ Open **More → Training** to learn a POS task. Courses can be started in any order.
+ 
+@@ -20,7 +20,7 @@ Each course has six parts:
+ 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
+ 6. **Done** recaps what you can do and marks the course complete.
+ 
+-During Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
++During Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
+ 
+ ### Progress
+ Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
+@@ -40,5 +40,6 @@ Info and Show are each a list of steps over a few mock screens or diagrams. Each
+ | Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |
+ | Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |
+ | Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |
++| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |
+ 
+ The starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs.
+diff --git a/src/lib/motion.ts b/src/lib/motion.ts
+index 6da8878..99c0f68 100644
+--- a/src/lib/motion.ts
++++ b/src/lib/motion.ts
+@@ -23,3 +23,44 @@ export function pageDirection(prevDepth: number, depth: number): From {
+ 
+ /** The routes that get a page transition. Training only, for now: the rest of the app is left exactly as it was. */
+ export const TRANSITION_ROUTES: ReadonlySet<string> = new Set(['training', 'trainingRun']);
++
++// ---- Page changes with the old page leaving as the new one arrives (0071) ----
++/** How long the new page takes to arrive, and how long the old page takes to leave. */
++export const ROUTE_ENTER_MS = 380; export const ROUTE_LEAVE_MS = 260;
++/** How far a page slides: a little over a tenth of the window, kept between 48 and 140 points, so it feels the same on a phone and on an iPad. */
++export const slideDistance = (width: number): number => Math.round(Math.max(48, Math.min(140, (Number.isFinite(width) ? width : 0) * 0.14)));
++
++/**
++ * Where the page that is going away ends up. `dir` is the direction the NEW page arrives from:
++ * going forward ('right') the old page drifts a little to the left, under the new one; going back ('left') it slides off to the right.
++ */
++export function leaveOffset(dir: From, distance: number): { x: number; y: number } {
++  switch (dir) {
++    case 'right': return { x: -Math.round(distance * 0.3), y: 0 };
++    case 'left': return { x: distance, y: 0 };
++    case 'up': return { x: 0, y: -Math.round(distance * 0.12) };
++    case 'down': return { x: 0, y: distance };
++    default: return { x: 0, y: 0 };
++  }
++}
++/** Going back, the old page is the one that slides away, so it has to be drawn on top. Going forward the new page is on top. */
++export const leavingOnTop = (dir: From): boolean => dir === 'left' || dir === 'down';
++
++/** Pages that sit one above the other in the Training area, so moving down the list goes forward and up the list goes back even at the same depth. */
++const ROUTE_RANK: Readonly<Record<string, number>> = { training: 0, trainingRun: 1 };
++type Where = { name: string; depth: number } | null;
++/** Which way a change from `prev` to `next` moves. Depth decides first (pushing is forward, popping is back); at the same depth the rank above decides. */
++export function transitionDir(prev: Where, next: Where): From {
++  const pd = prev ? prev.depth : 0; const nd = next ? next.depth : 0;
++  if (nd !== pd) return pageDirection(pd, nd);
++  const pr = prev ? ROUTE_RANK[prev.name] : undefined; const nr = next ? ROUTE_RANK[next.name] : undefined;
++  if (pr !== undefined && nr !== undefined && pr !== nr) return nr > pr ? 'right' : 'left';
++  return 'up';
++}
++/** A route gets a transition when it is a Training page, or a page the running course allows (the cart, Pay) while practice data is on. Everything else is drawn as before. */
++export const isAnimatedRoute = (name: string | null | undefined, practice?: readonly string[]): boolean => !!name && (TRANSITION_ROUTES.has(name) || !!practice?.includes(name));
++/** A change is animated when either page is one that animates, so leaving or arriving at a Training page is never half done. */
++export const transitionNeeded = (prev: string | null | undefined, next: string | null | undefined, practice?: readonly string[]): boolean => isAnimatedRoute(prev, practice) || isAnimatedRoute(next, practice);
++
++/** The dip to the page colour used when practice starts or ends and the whole screen changes underneath: fade up, switch, fade away. */
++export const VEIL = { inMs: 160, holdMs: 90, outMs: 360 } as const;
+diff --git a/src/screens/TrainingRun.tsx b/src/screens/TrainingRun.tsx
+index ea3377a..15e2bae 100644
+--- a/src/screens/TrainingRun.tsx
++++ b/src/screens/TrainingRun.tsx
+@@ -12,10 +12,12 @@ import { useApp } from '../state/store';
+ import { useTraining } from '../state/trainingSession';
+ import DemoView from '../ui/DemoView';
+ import { Enter } from '../ui/Motion';
++import { dipThrough } from '../ui/Veil';
+ import Confetti from '../ui/Confetti';
+ import { MODULES, getModule } from '../training';
+ import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
+ import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
++import { trainingBlocker } from '../lib/trainingSandbox';
+ import { demoLayout } from '../lib/trainingDemo';
+ import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
+ 
+@@ -88,9 +90,12 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
+   const { c } = useTheme(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
+   if (!t) return null;
+   const start = async () => {
+-    setBusy(true); const msg = await useTraining.getState().startPractice(); setBusy(false);
+-    if (msg) { alertMsg('Training cannot start yet', msg); return; }
+-    nav.setTab(mod.tabs[0] as Tab); // leaves this page and shows the real till; TrainingHost takes over from here
++    const early = trainingBlocker(useApp.getState()); if (early) { alertMsg('Training cannot start yet', early); return; } // say so before the screen dips, not after
++    setBusy(true);
++    // The whole screen changes here (this page becomes the real till), so it dips to the page colour instead of cutting.
++    const msg = await dipThrough(async () => { const m = await useTraining.getState().startPractice(); if (!m) nav.setTab(mod.tabs[0] as Tab); return m; }); // leaves this page and shows the real till; TrainingHost takes over from here
++    setBusy(false);
++    if (msg) alertMsg('Training cannot start yet', msg);
+   };
+   return (
+     <Enter style={{ gap: 14 }}>
+diff --git a/src/ui/Motion.tsx b/src/ui/Motion.tsx
+index ae1e1a0..63e49c8 100644
+--- a/src/ui/Motion.tsx
++++ b/src/ui/Motion.tsx
+@@ -2,7 +2,7 @@
+ // Entrance animation for pages, cards and bars (B6 polish): fade in while sliding a short way. Skipped when the iPad's Reduce Motion is on.
+ import React, { useEffect, useRef, useState } from 'react';
+ import { AccessibilityInfo, Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
+-import { enterOffset, type From } from '../lib/motion';
++import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, enterOffset, leaveOffset, type From } from '../lib/motion';
+ 
+ export function useReduceMotion(): boolean {
+   const [on, setOn] = useState(false);
+@@ -27,3 +27,26 @@ export function Enter({ children, from = 'up', distance = 14, delay = 0, duratio
+     <Animated.View pointerEvents={pointerEvents} style={[style, { opacity: v, transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [o.x, 0] }) }, { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [o.y, 0] }) }] }]}>{children}</Animated.View>
+   );
+ }
++
++type PaneProps = { children?: React.ReactNode; mode: 'enter' | 'leave' | 'still'; dir: From; distance: number; style?: StyleProp<ViewStyle>; pointerEvents?: 'auto' | 'none' | 'box-none' | 'box-only' };
++const EASE_IN_PAGE = Easing.bezier(0.22, 1, 0.36, 1);   // arrives fast and settles slowly
++const EASE_OUT_PAGE = Easing.bezier(0.4, 0, 0.9, 0.6);  // leaves gently, then speeds up
++/**
++ * One page during a page change. `enter` slides the page in from `dir` while it fades up (it is fully visible after about half the slide),
++ * `leave` drifts it away (see `leaveOffset`) while it fades out, `still` does nothing. The mode is read once, when the pane first appears,
++ * so give each page its own `key`. With Reduce Motion on, a pane simply is where it ends up.
++ */
++export function Pane({ children, mode, dir, distance, style, pointerEvents }: PaneProps) {
++  const reduce = useReduceMotion(); const v = useRef(new Animated.Value(mode === 'still' || reduce ? 1 : 0)).current;
++  useEffect(() => {
++    if (mode === 'still') return undefined;
++    if (reduce) { v.setValue(1); return undefined; }
++    const a = Animated.timing(v, { toValue: 1, duration: mode === 'enter' ? ROUTE_ENTER_MS : ROUTE_LEAVE_MS, easing: mode === 'enter' ? EASE_IN_PAGE : EASE_OUT_PAGE, useNativeDriver: true }); a.start(); return () => a.stop();
++  }, [reduce]); // eslint-disable-line react-hooks/exhaustive-deps
++  if (mode === 'still') return <Animated.View pointerEvents={pointerEvents} style={style}>{children}</Animated.View>;
++  const o = mode === 'enter' ? enterOffset(dir, distance) : leaveOffset(dir, distance);
++  const opacity = mode === 'enter' ? v.interpolate({ inputRange: [0, 0.55, 1], outputRange: [0, 1, 1] }) : v.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
++  const tx = mode === 'enter' ? v.interpolate({ inputRange: [0, 1], outputRange: [o.x, 0] }) : v.interpolate({ inputRange: [0, 1], outputRange: [0, o.x] });
++  const ty = mode === 'enter' ? v.interpolate({ inputRange: [0, 1], outputRange: [o.y, 0] }) : v.interpolate({ inputRange: [0, 1], outputRange: [0, o.y] });
++  return <Animated.View pointerEvents={pointerEvents} style={[style, { opacity, transform: [{ translateX: tx }, { translateY: ty }] }]}>{children}</Animated.View>;
++}
+diff --git a/src/ui/RouteTransition.tsx b/src/ui/RouteTransition.tsx
+new file mode 100644
+index 0000000..9168581
+--- /dev/null
++++ b/src/ui/RouteTransition.tsx
+@@ -0,0 +1,42 @@
++// Location: src/ui/RouteTransition.tsx
++// Page changes for Training pages (and the pages a running course allows): the new page slides in while the old one drifts away, instead of
++// the old page vanishing the instant the new one starts. Every other page is drawn exactly as before.
++// The change is worked out DURING render (state derived from the route stack), so the new page mounts already knowing it is entering. If it
++// worked this out in an effect, the page would be on screen for one frame before it knew to animate.
++import React, { useEffect, useRef, useState } from 'react';
++import { StyleSheet, useWindowDimensions } from 'react-native';
++import type { Route } from './nav';
++import { Pane, useReduceMotion } from './Motion';
++import { ROUTE_ENTER_MS, isAnimatedRoute, leavingOnTop, slideDistance, transitionDir, transitionNeeded, type From } from '../lib/motion';
++
++/** `route` is the page that stays drawn while it leaves (null: nothing to keep, or it was a tab screen). `enter` is whether the new page slides in. */
++export type RoutePlan = { route: Route | null; dir: From; enter: boolean; id: number };
++type Snap = { top: Route | null; depth: number; plan: RoutePlan | null };
++
++/** `plan` is set from the moment the top page changes until the animation has finished; it is null the rest of the time. `route` is the page that is leaving (null when it was a tab screen). */
++export function useRouteTransition(stack: Route[], practice?: readonly string[]): { plan: RoutePlan | null } {
++  const depth = stack.length; const top = stack[depth - 1] ?? null; const reduce = useReduceMotion(); const seq = useRef(0);
++  const [snap, setSnap] = useState<Snap>({ top, depth, plan: null });
++  if (snap.top !== top || snap.depth !== depth) {
++    // A page that only animated because a course was running (the cart, Pay) does not stay drawn once the course has ended: it would be showing the real till.
++    const animate = !reduce && transitionNeeded(snap.top?.name, top?.name, practice);
++    setSnap({ top, depth, plan: animate ? { route: isAnimatedRoute(snap.top?.name, practice) ? snap.top : null, dir: transitionDir(snap.top ? { name: snap.top.name, depth: snap.depth } : null, top ? { name: top.name, depth } : null), enter: isAnimatedRoute(top?.name, practice), id: ++seq.current } : null });
++  }
++  const id = snap.plan?.id;
++  useEffect(() => {
++    if (id === undefined) return undefined;
++    const t = setTimeout(() => setSnap(s => (s.plan?.id === id ? { ...s, plan: null } : s)), ROUTE_ENTER_MS + 80);
++    return () => clearTimeout(t);
++  }, [id]);
++  return { plan: snap.plan };
++}
++
++const fill = StyleSheet.absoluteFillObject;
++/** The page on top, and the page that is leaving while the plan lasts. Going back the leaving page is drawn above, going forward the new page is. */
++export function RouteStage({ stack, plan, render }: { stack: Route[]; plan: RoutePlan | null; render: (r: Route) => React.ReactNode }) {
++  const win = useWindowDimensions(); const distance = slideDistance(win.width); const depth = stack.length; const top = stack[depth - 1] ?? null;
++  const dir: From = plan?.dir ?? 'none';
++  const arriving = top ? <Pane key={`in:${top.name}:${depth}`} mode={plan?.enter ? 'enter' : 'still'} dir={dir} distance={distance} style={fill}>{render(top)}</Pane> : null;
++  const leaving = plan?.route ? <Pane key={`out:${plan.id}`} mode="leave" dir={dir} distance={distance} pointerEvents="none" style={fill}>{render(plan.route)}</Pane> : null;
++  return <>{plan && leavingOnTop(dir) ? <>{arriving}{leaving}</> : <>{leaving}{arriving}</>}</>;
++}
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 2f997a2..ea77e9d 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -13,6 +13,7 @@ import { confirm } from './kit';
+ import TrainingOverlay from './TrainingOverlay';
+ import TrainingDock from './TrainingDock';
+ import { Enter } from './Motion';
++import { Veil, dipThrough } from './Veil';
+ import { trainingActions } from './trainingActions';
+ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, type Rect } from '../lib/trainingGeometry';
+@@ -27,7 +28,7 @@ const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed
+ export default function TrainingHost({ children }: { children: React.ReactNode }) {
+   const nav = useNav(); const win = useWindowDimensions(); const sandbox = useTraining(s => s.sandbox);
+   const navRef = useRef(nav); navRef.current = nav; const winRef = useRef(win); winRef.current = win;
+-  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef('');
++  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef(''); const leaving = useRef(false);
+ 
+   useEffect(() => onSpotPressed(id => { ev.current.pressed.add(id); }), []);
+ 
+@@ -38,10 +39,12 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+       if (run.stage === 'check1' || run.stage === 'check2') { const list = run.stage === 'check1' ? mod.check1 : mod.check2; return { mod, goal: list[run.goalIndex], n: list.length, i: run.goalIndex }; }
+       return null;
+     };
+-    const finish = () => {
+-      const st = useTraining.getState(); st.completeStage(); st.leave(); key.current = ''; sig.current = '';
+-      navRef.current.reset(); navRef.current.push('trainingRun');
++    // Leaving practice changes the whole screen, so it dips to the page colour instead of cutting. `leaving` keeps the ticks quiet while it runs.
++    const leavePractice = (change: () => void) => {
++      if (leaving.current) return; leaving.current = true;
++      void dipThrough(() => { change(); key.current = ''; sig.current = ''; }).finally(() => { leaving.current = false; });
+     };
++    const finish = () => leavePractice(() => { const st = useTraining.getState(); st.completeStage(); st.leave(); navRef.current.reset(); navRef.current.push('trainingRun'); });
+     const advance = () => {
+       const st = useTraining.getState(); const run = st.run; const cur = current(); if (!run || !cur) return;
+       const r = cur.step ? advanceStep(run, cur.n) : advanceGoal(run, cur.n);
+@@ -52,14 +55,14 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+     trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
+     trainingActions.exit = () => {
+       void confirm('Leave training?', 'Your real till is exactly as you left it. You can pick this course up again from More, Training.', 'Leave', true).then(ok => {
+-        if (!ok) return; useTraining.getState().leave(); key.current = ''; sig.current = '';
+-        navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training');
++        if (!ok) return;
++        leavePractice(() => { useTraining.getState().leave(); navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training'); });
+       });
+     };
+     const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); return onScreen(r, { w: winRef.current.width, h: winRef.current.height }) ? r : null; };
+ 
+     const tick = async () => {
+-      if (busy.current) return; busy.current = true;
++      if (busy.current || leaving.current) return; busy.current = true;
+       try {
+         const st = useTraining.getState(); if (!st.sandbox || !st.run) return;
+         const cur = current(); if (!cur) return; const { mod } = cur; const n = navRef.current; const top = n.stack[n.stack.length - 1];
+@@ -97,6 +100,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+     <View style={{ flex: 1 }}>
+       <View style={{ flex: 1 }}>{children}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
+       {sandbox ? <TrainingDock /> : null}
++      <Veil />
+     </View>
+   );
+ }
+diff --git a/src/ui/Veil.tsx b/src/ui/Veil.tsx
+new file mode 100644
+index 0000000..eddf8f0
+--- /dev/null
++++ b/src/ui/Veil.tsx
+@@ -0,0 +1,28 @@
++// Location: src/ui/Veil.tsx
++// A dip to the page colour for the moments the whole screen changes underneath (practice starts, practice ends): the screen fades to the page colour,
++// the change happens while nothing can be seen, then the new screen fades up. Without it the old screen is simply replaced by the new one in one frame.
++// `dipThrough(change)` runs `change` at the darkest moment and gives back whatever it returned. With Reduce Motion on, it just runs `change`.
++import React, { useEffect, useRef } from 'react';
++import { AccessibilityInfo, Animated, Easing, StyleSheet } from 'react-native';
++import { useTheme } from './theme';
++import { VEIL } from '../lib/motion';
++
++type Dip = <T>(change: () => T | Promise<T>) => Promise<T>;
++let current: Dip | null = null;
++export const dipThrough: Dip = change => (current ? current(change) : Promise.resolve().then(change));
++
++export function Veil() {
++  const { c } = useTheme(); const o = useRef(new Animated.Value(0)).current; const live = useRef(false); const [blocking, setBlocking] = React.useState(false);
++  useEffect(() => {
++    const go = (to: number, ms: number, easing = Easing.inOut(Easing.quad)) => new Promise<void>(res => Animated.timing(o, { toValue: to, duration: ms, easing, useNativeDriver: true }).start(() => res()));
++    current = async change => {
++      let reduce = false; try { reduce = await AccessibilityInfo.isReduceMotionEnabled(); } catch {}
++      if (reduce || live.current) return change();                 // a second dip while one is running just changes what it must
++      live.current = true; setBlocking(true);
++      try { await go(1, VEIL.inMs); const r = await change(); await new Promise<void>(res => setTimeout(res, VEIL.holdMs)); await go(0, VEIL.outMs, Easing.out(Easing.cubic)); return r; }
++      finally { live.current = false; setBlocking(false); }
++    };
++    return () => { current = null; };
++  }, [o]);
++  return <Animated.View pointerEvents={blocking ? 'auto' : 'none'} style={[StyleSheet.absoluteFill, { backgroundColor: c.bg, opacity: o }]} />;
++}
+diff --git a/tests/motion.test.ts b/tests/motion.test.ts
+index 5a97b94..211a74e 100644
+--- a/tests/motion.test.ts
++++ b/tests/motion.test.ts
+@@ -1,6 +1,6 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { TRANSITION_ROUTES, enterOffset, pageDirection, stagger } from '../src/lib/motion';
++import { ROUTE_ENTER_MS, ROUTE_LEAVE_MS, TRANSITION_ROUTES, VEIL, enterOffset, isAnimatedRoute, leaveOffset, leavingOnTop, pageDirection, slideDistance, stagger, transitionDir, transitionNeeded } from '../src/lib/motion';
+ 
+ test('a thing starts where "from" says and ends where it belongs', () => {
+   assert.deepEqual(enterOffset('right', 30), { x: 30, y: 0 });
+@@ -22,3 +22,40 @@ test('a page change slides forward, back, or rises when the depth is unchanged',
+ test('only Training pages get a page transition', () => {
+   assert.deepEqual([...TRANSITION_ROUTES].sort(), ['training', 'trainingRun']);
+ });
++
++test('the slide distance scales with the window but stays between 48 and 140 points', () => {
++  assert.equal(slideDistance(0), 48); assert.equal(slideDistance(NaN), 48); assert.equal(slideDistance(390), 55); assert.equal(slideDistance(1024), 140); assert.equal(slideDistance(5000), 140);
++});
++
++test('the page that leaves drifts under the new one going forward, and slides off going back', () => {
++  assert.deepEqual(leaveOffset('right', 100), { x: -30, y: 0 }, 'forward: a little to the left');
++  assert.deepEqual(leaveOffset('left', 100), { x: 100, y: 0 }, 'back: all the way off to the right');
++  assert.deepEqual(leaveOffset('none', 100), { x: 0, y: 0 });
++  assert.equal(leavingOnTop('left'), true, 'going back the leaving page must be above the one revealed');
++  assert.equal(leavingOnTop('right'), false); assert.equal(leavingOnTop('up'), false);
++});
++
++test('direction: depth decides, then the Training page order, and anything else rises', () => {
++  const at = (name: string, depth: number) => ({ name, depth });
++  assert.equal(transitionDir(null, at('training', 1)), 'right', 'a page opened from a tab arrives from the right');
++  assert.equal(transitionDir(at('trainingRun', 1), null), 'left', 'closing back to a tab goes back');
++  assert.equal(transitionDir(at('training', 1), at('trainingRun', 2)), 'right');
++  assert.equal(transitionDir(at('trainingRun', 1), at('training', 1)), 'left', 'the course page back to the list at the same depth still reads as back');
++  assert.equal(transitionDir(at('training', 1), at('trainingRun', 1)), 'right');
++  assert.equal(transitionDir(at('pay', 1), at('cart', 1)), 'up', 'unranked pages at one depth just rise');
++});
++
++test('a page animates when it is a Training page or a page the running course allows, and a change needs only one of the two', () => {
++  assert.equal(isAnimatedRoute('training'), true); assert.equal(isAnimatedRoute('trainingRun'), true);
++  assert.equal(isAnimatedRoute('pay'), false, 'ordinary pages are drawn exactly as before');
++  assert.equal(isAnimatedRoute('pay', ['cart', 'pay']), true, 'while a course runs, its pages animate too');
++  assert.equal(isAnimatedRoute(null), false); assert.equal(isAnimatedRoute(undefined, ['pay']), false);
++  assert.equal(transitionNeeded('help', 'training'), true); assert.equal(transitionNeeded('training', null), true);
++  assert.equal(transitionNeeded('settings', 'help'), false); assert.equal(transitionNeeded(null, null), false);
++  assert.equal(transitionNeeded('cart', null, ['cart']), true); assert.equal(transitionNeeded('cart', null), false, 'once the course ends the cart page is not animated');
++});
++
++test('timings: the new page takes longer to settle than the old one takes to go, and the dip is short', () => {
++  assert.ok(ROUTE_ENTER_MS > ROUTE_LEAVE_MS); assert.ok(ROUTE_ENTER_MS <= 450);
++  assert.ok(VEIL.inMs + VEIL.holdMs + VEIL.outMs < 700, 'the whole dip is well under a second');
++});
+-- 
+2.43.0
+

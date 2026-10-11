@@ -79,10 +79,18 @@ test('the shared training terminal declines the number of times a goal asks for,
 });
 
 test('training will not start over a real card payment or a part-paid sale', () => {
-  const base = { pos: { cart: { id: 'c', lines: [] }, attempts: [] as { status: string }[] } };
-  assert.equal(trainingBlocker(base), null);
-  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'approved' }, { status: 'started' }] } }) ?? '', /card payment/);
-  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'unknown' }] } }) ?? '', /card payment/);
-  assert.match(trainingBlocker({ pos: { ...base.pos, cart: { id: 'c', lines: [], tenders: [{} as any] } } }) ?? '', /part-paid/);
-  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'declined' }, { status: 'resolved' }] } }), null);
+  const now = Date.parse('2026-10-12T10:00:00Z'); const at = (minAgo: number) => new Date(now - minAgo * 60_000).toISOString();
+  type A = { status: string; ts: string; saleUuid?: string };
+  const base = { pos: { cart: { id: 'c', lines: [] } as any, attempts: [] as A[] } };
+  assert.equal(trainingBlocker(base, now), null);
+  // a payment started a moment ago is genuinely waiting on the reader
+  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'approved', ts: at(1) }, { status: 'started', ts: at(1) }] } }, now) ?? '', /waiting on the reader/);
+  // an attempt left at "started" long ago (app closed mid payment) is history and must not lock training for good
+  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'started', ts: at(30) }, { status: 'started', ts: at(60 * 24 * 9) }] } }, now), null);
+  // an unresolved "unknown" only blocks while its sale is still the one in the cart
+  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'unknown', ts: at(90), saleUuid: 'old-sale' }] } }, now), null);
+  assert.equal(trainingBlocker({ pos: { cart: { id: 'c', lines: [], saleUuid: 'old-sale' } as any, attempts: [{ status: 'unknown', ts: at(90), saleUuid: 'other' }] } }, now), null);
+  assert.match(trainingBlocker({ pos: { cart: { id: 'c', lines: [], saleUuid: 'sale-1' } as any, attempts: [{ status: 'unknown', ts: at(90), saleUuid: 'sale-1' }] } }, now) ?? '', /no result yet/);
+  assert.match(trainingBlocker({ pos: { ...base.pos, cart: { id: 'c', lines: [], tenders: [{} as any] } as any } }, now) ?? '', /part-paid/);
+  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'declined', ts: at(1) }, { status: 'resolved', ts: at(1) }, { status: 'cancelled', ts: at(1) }] } }, now), null);
 });

@@ -1,0 +1,238 @@
+From 20b31401866f6aeace4fbc6c47eb5c457514c2b5 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sun, 11 Oct 2026 21:27:14 +0000
+Subject: [PATCH] 0070: Show and Info fit on one screen
+
+---
+ docs/PROGRESS.md            |  1 +
+ docs/patches/0070-plan.md   | 23 ++++++++++++++++++++++
+ src/lib/trainingDemo.ts     | 10 ++++++++++
+ src/screens/TrainingRun.tsx | 38 +++++++++++++++++++++++--------------
+ src/ui/DemoView.tsx         | 11 +++++++----
+ tests/trainingdemo.test.ts  | 14 +++++++++++++-
+ 6 files changed, 78 insertions(+), 19 deletions(-)
+ create mode 100644 docs/patches/0070-plan.md
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 73b33e8..7bb5615 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -72,6 +72,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0067 | 2026-10-12 | Training mode (B6), correction 2 of 8: smoother transitions on the Training pages. Training pages slide in (forward from the right, back from the left), the hub's intro and course cards come in one after another, the practice intro card rises in, the Guide and Check dock slides up and the spotlight layer fades in. Respects Reduce Motion. Only Training routes are changed; every other page is drawn exactly as before. New `src/lib/motion.ts` (pure, tested) and `src/ui/Motion.tsx` | B6 |
+ | 0068 | 2026-10-12 | Training mode (B6), correction 3 of 8: the Show and Info picture is no longer pixelated. It was drawn at 1x and stretched up by the camera, which blurs text and edges. It is now laid out once at the biggest size it is ever shown (`renderScale`) and the camera only ever scales it down, so everything is drawn at full resolution. The animation is unchanged | B6 |
+ | 0069 | 2026-10-12 | Training mode (B6), correction 4 of 8: text is never cropped in the Show and Info window. The note bubble is now placed inside the part of the picture the zoomed camera can actually see (it could sit off screen before), on whichever of four sides has room, and the camera eases out if the target and note do not both fit. The camera always keeps the target fully in view, a single line shrinks a little rather than being cut off, and the course checker now estimates whether each label fits its box (it found a real overflow in the welcome Info, fixed) | B6 |
++| 0070 | 2026-10-12 | Training mode (B6), correction 5 of 8: the whole Show and Info screen is visible at once, no scrolling. The picture is fitted (same shape, never cropped) into the space left on the page, and the words and buttons are always on screen with it: beside the picture on a wide window, underneath on a tall one. `fitBox` and `demoLayout` are pure and tested | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0070-plan.md b/docs/patches/0070-plan.md
+new file mode 100644
+index 0000000..6e50d9f
+--- /dev/null
++++ b/docs/patches/0070-plan.md
+@@ -0,0 +1,23 @@
++# Patch 0070: the whole Show and Info screen visible at once (correction 5 of 8)
++
++Stacks on 0069.
++
++## What you asked for
++- The bottom part of the Show screens is hidden and you have to scroll to see more. You should be able to see the entire screen (for that step) at once.
++
++## Cause
++Show and Info sat inside a scrolling page. The picture was sized from the window **width** alone (up to 760 wide, so up to about 475 tall), and then the words, step dots and buttons were stacked underneath, so on most iPads and any landscape window the total was taller than the screen.
++
++## Fix
++- Info and Show are no longer in a scrolling page. They use the whole space under the stage bar.
++- **The picture fits the room that is left.** `DemoView` now fills whatever space it is given and fits the canvas inside it with `fitBox`: the biggest copy of the same shape that fits, never cropped, centred.
++- **The words and buttons are always on screen with it.** `demoLayout` picks the arrangement: on a wide window (landscape) the step title, sentence, dots and Back, Replay and Next sit in a column beside the picture; on a tall window (portrait) they sit underneath. The sentence has its own small scroll area inside its box, only for the rare very long sentence, so the buttons never move off screen.
++- Guide, Check, the practice intro and the Done screen are unchanged (they still scroll if they need to).
++
++## Tests
++- `fitBox` (width-limited, height-limited, same shape, never bigger than the room, not measured yet) and `demoLayout` (iPad and iPhone, both ways round). 13 demo tests pass; `tsc` shows nothing for the files touched.
++
++## Steps
++1. [x] `fitBox`, `demoLayout`, `DemoView` fills its parent.
++2. [x] `Demo` in `TrainingRun.tsx` rearranged (side or stack, no page scroll).
++3. [ ] You: try Info and Show on the iPad in both orientations, and in Split View if you use it. In portrait on a small phone the picture will be small because the words and buttons need their room, and that is intended: say if you would rather it were bigger and the words smaller.
+diff --git a/src/lib/trainingDemo.ts b/src/lib/trainingDemo.ts
+index b9fd714..76d0355 100644
+--- a/src/lib/trainingDemo.ts
++++ b/src/lib/trainingDemo.ts
+@@ -55,6 +55,16 @@ export function cameraFor(canvas: { w: number; h: number }, rect: Rect | null, z
+   const hw = canvas.w / (2 * z); const hh = canvas.h / (2 * z);
+   return { zoom: z, cx: Math.max(hw, Math.min(canvas.w - hw, rect.x + rect.w / 2)), cy: Math.max(hh, Math.min(canvas.h - hh, rect.y + rect.h / 2)) };
+ }
++/** The biggest copy of the canvas, same shape, that fits in `avail`. Zero when nothing has been measured yet. */
++export function fitBox(avail: { w: number; h: number }, canvas: { w: number; h: number }): { w: number; h: number } {
++  if (!(avail.w > 0 && avail.h > 0 && canvas.w > 0 && canvas.h > 0)) return { w: 0, h: 0 };
++  const w = Math.min(avail.w, (avail.h * canvas.w) / canvas.h); return { w, h: (w * canvas.h) / canvas.w };
++}
++/**
++ * How the Info and Show page is arranged so the whole picture, the words and the buttons are on screen at once with no scrolling:
++ * wide windows (landscape) put the words and buttons in a column beside the picture, tall windows put them underneath.
++ */
++export const demoLayout = (win: { w: number; h: number }): 'side' | 'stack' => (win.w > win.h ? 'side' : 'stack');
+ /** The part of the canvas a camera can see. */
+ export const viewRect = (canvas: { w: number; h: number }, cam: Camera): Rect => ({ x: cam.cx - canvas.w / (2 * cam.zoom), y: cam.cy - canvas.h / (2 * cam.zoom), w: canvas.w / cam.zoom, h: canvas.h / cam.zoom });
+ 
+diff --git a/src/screens/TrainingRun.tsx b/src/screens/TrainingRun.tsx
+index ffa70fb..ea3377a 100644
+--- a/src/screens/TrainingRun.tsx
++++ b/src/screens/TrainingRun.tsx
+@@ -2,7 +2,7 @@
+ // One course run, outside the sandbox: the Info slideshow, the Show animation, the practice-data card before Guide and the Checks,
+ // and the Done screen. Guide and Check themselves happen on the real screens, driven by TrainingHost.
+ import React, { useEffect, useRef, useState } from 'react';
+-import { Animated, Pressable, ScrollView, View } from 'react-native';
++import { Animated, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import * as Haptics from 'expo-haptics';
+ import { Btn, Page, Txt, alertMsg } from '../ui/kit';
+@@ -16,6 +16,7 @@ import Confetti from '../ui/Confetti';
+ import { MODULES, getModule } from '../training';
+ import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
+ import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
++import { demoLayout } from '../lib/trainingDemo';
+ import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
+ 
+ const INTRO: Partial<Record<Stage, { title: string; body: string; button: string }>> = {
+@@ -39,12 +40,12 @@ export default function TrainingRun() {
+             style={{ flexDirection: 'row', gap: 4, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: on ? c.accent : d ? c.good : c.fill, opacity: can || on ? 1 : 0.4 }}>
+             {d && !on ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}<Txt size={12} weight="700" color={on ? c.onAccent : d ? '#fff' : c.text}>{STAGE_LABEL[s]}</Txt></Pressable>); })}
+       </View>
+-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+-        {run.stage === 'info' ? <Demo key={`i-${run.startedAt}`} mod={mod} scene="info" /> : null}
+-        {run.stage === 'show' ? <Demo key={`s-${run.startedAt}`} mod={mod} scene="show" /> : null}
++      {run.stage === 'info' ? <Demo key={`i-${run.startedAt}`} mod={mod} scene="info" /> : null}
++      {run.stage === 'show' ? <Demo key={`s-${run.startedAt}`} mod={mod} scene="show" /> : null}
++      {run.stage === 'info' || run.stage === 'show' ? null : <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+         {(run.stage === 'guide' || run.stage === 'check1' || run.stage === 'check2') ? <Intro mod={mod} run={run} /> : null}
+         {run.stage === 'gratify' ? <Gratify mod={mod} run={run} who={who} /> : null}
+-      </ScrollView>
++      </ScrollView>}
+     </Page>
+   );
+ }
+@@ -54,16 +55,19 @@ export default function TrainingRun() {
+  * Nothing moves on by itself: Next goes to the following step, Back returns to the one before, Replay plays the current step again.
+  */
+ function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
+-  const { c } = useTheme(); const demo = scene === 'info' ? mod.info : mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
++  const { c } = useTheme(); const win = useWindowDimensions(); const side = demoLayout({ w: win.width, h: win.height }) === 'side';
++  const demo = scene === 'info' ? mod.info : mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
+   const go = () => useTraining.getState().completeStage();
+-  return (
+-    <View style={{ gap: 16 }}>
+-      <Txt size={13} weight="700" sub>{scene === 'info' ? 'INFO' : 'SHOW THE PROCESS'}</Txt>
+-      <DemoView demo={demo} index={i} replay={replay} />
+-      <View style={{ gap: 6, minHeight: 104 }}>
+-        {step.title ? <Txt size={13} weight="700" sub>{step.title}</Txt> : null}
+-        <View accessibilityLiveRegion="polite"><Txt size={19} weight="600" style={{ lineHeight: 27 }}>{step.say}</Txt></View>
+-      </View>
++  // The picture takes whatever room is left and the words and buttons are always on screen with it, so nothing needs scrolling:
++  // beside the picture on a wide window, underneath it on a tall one.
++  const words = (
++    <ScrollView style={side ? { flex: 1 } : { maxHeight: 132, flexGrow: 0 }} contentContainerStyle={{ gap: 6 }} showsVerticalScrollIndicator={false}>
++      <Txt size={13} weight="700" sub>{scene === 'info' ? 'INFO' : 'SHOW THE PROCESS'}{step.title ? `  ·  ${step.title}` : ''}</Txt>
++      <View accessibilityLiveRegion="polite"><Txt size={side ? 18 : 19} weight="600" style={{ lineHeight: side ? 25 : 27 }}>{step.say}</Txt></View>
++    </ScrollView>
++  );
++  const controls = (
++    <View style={{ gap: 12 }}>
+       <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>{demo.steps.map((_, k) => <View key={k} style={{ width: k === i ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: k <= i ? c.text : c.line }} />)}</View>
+       <View style={{ flexDirection: 'row', gap: 10 }}>
+         <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
+@@ -72,6 +76,12 @@ function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
+       </View>
+     </View>
+   );
++  return (
++    <View style={{ flex: 1, padding: 16, gap: 14, flexDirection: side ? 'row' : 'column' }}>
++      <View style={{ flex: 1 }}><DemoView demo={demo} index={i} replay={replay} /></View>
++      {side ? <View style={{ width: Math.min(340, Math.max(260, win.width * 0.3)), gap: 14, justifyContent: 'space-between' }}>{words}{controls}</View> : <>{words}{controls}</>}
++    </View>
++  );
+ }
+ 
+ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
+diff --git a/src/ui/DemoView.tsx b/src/ui/DemoView.tsx
+index da6c0d8..184f8a9 100644
+--- a/src/ui/DemoView.tsx
++++ b/src/ui/DemoView.tsx
+@@ -1,6 +1,7 @@
+ // Location: src/ui/DemoView.tsx
+ // Draws the Show stage (B6): simplified copies of the real screens in a fixed canvas, with a camera that zooms and pans, a pointer that taps,
+ // a spotlight and a note. It plays one step at a time and then waits: the person moves on with Next. Nothing here advances by itself.
++// It fills whatever space its parent gives it and fits the picture inside (same shape, never cropped), so the whole screen is visible at once.
+ // What each step looks like is worked out by src/lib/trainingDemo.ts. This file only draws it and animates between steps.
+ // Sharpness: the picture is laid out once at the biggest size it is ever shown (render scale `k`) and the camera only ever scales it DOWN.
+ // Stretching a drawn view up makes text and edges pixelated, so zooming in never enlarges anything, it just shrinks less.
+@@ -9,7 +10,7 @@ import { AccessibilityInfo, Animated, Easing, Text, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { TILE_COLORS, useTheme, type Colors } from './theme';
+ import { tap } from './kit';
+-import { MAX_ZOOM, demoStateAfter, planStep, renderScale, type Note, type NodeView } from '../lib/trainingDemo';
++import { MAX_ZOOM, demoStateAfter, fitBox, planStep, renderScale, type Note, type NodeView } from '../lib/trainingDemo';
+ import type { Demo } from '../lib/trainingModule';
+ 
+ const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)'; const BIG = 3000;
+@@ -74,7 +75,7 @@ const ease = Easing.inOut(Easing.cubic);
+  */
+ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; index: number; replay?: number }) {
+   const { c } = useTheme(); const CW = demo.canvas.w; const CH = demo.canvas.h;
+-  const [vw, setVw] = useState(CW); const vh = vw * (CH / CW); const b = vw / CW; const k = renderScale(vw, CW);
++  const [area, setArea] = useState({ w: 0, h: 0 }); const box = fitBox(area, demo.canvas); const vw = box.w; const vh = box.h; const b = vw / CW; const k = renderScale(vw, CW);
+   const [applied, setApplied] = useState(-1); const [note, setNote] = useState<Note | null>(null); const [press, setPress] = useState({ id: '', n: 0 }); const [reduce, setReduce] = useState(false);
+   const zoom = useRef(new Animated.Value(1)).current; const cx = useRef(new Animated.Value(CW / 2)).current; const cy = useRef(new Animated.Value(CH / 2)).current;
+   const hx = useRef(new Animated.Value(0)).current; const hy = useRef(new Animated.Value(0)).current; const hw = useRef(new Animated.Value(CW)).current; const hh = useRef(new Animated.Value(CH)).current; const dim = useRef(new Animated.Value(0)).current;
+@@ -128,8 +129,9 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
+   const panel = { position: 'absolute' as const, backgroundColor: DIM };
+   const lbl = demo.steps[Math.max(0, Math.min(index, demo.steps.length - 1))];
+   return (
+-    <View onLayout={e => setVw(Math.max(200, e.nativeEvent.layout.width))} accessible accessibilityLabel={`Animated demonstration. ${lbl.say}`}
+-      style={{ width: '100%', maxWidth: 760, alignSelf: 'center', height: vh, borderRadius: 20, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line, overflow: 'hidden' }}>
++    <View onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
++    {vw > 0 ? <View accessible accessibilityLabel={`Animated demonstration. ${lbl.say}`}
++      style={{ width: vw, height: vh, borderRadius: 20, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line, overflow: 'hidden' }}>
+       <Animated.View style={{ position: 'absolute', left: (vw - CW * k) / 2, top: (vh - CH * k) / 2, width: CW * k, height: CH * k, transform: [{ translateX: tx }, { translateY: ty }, { scale: S }] }}>
+         {demo.screens.map(sc => <MockScreen key={sc.id} nodes={byScreen.get(sc.id) ?? []} on={sc.id === st.screen} press={press} k={k} />)}
+         <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: CW * k, height: CH * k, opacity: dim }}>
+@@ -145,6 +147,7 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
+           <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={26 * k} color="#111" style={{ textShadowColor: '#fff', textShadowRadius: 3 * k }} /></View>
+         </Animated.View>
+       </Animated.View>
++    </View> : null}
+     </View>
+   );
+ }
+diff --git a/tests/trainingdemo.test.ts b/tests/trainingdemo.test.ts
+index b22c89b..f6d9823 100644
+--- a/tests/trainingdemo.test.ts
++++ b/tests/trainingdemo.test.ts
+@@ -1,6 +1,6 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { MAX_ZOOM, cameraFor, demoStateAfter, noteFor, planStep, renderScale, settleOn, textProblems, validateDemo, viewRect } from '../src/lib/trainingDemo';
++import { MAX_ZOOM, cameraFor, demoLayout, demoStateAfter, fitBox, noteFor, planStep, renderScale, settleOn, textProblems, validateDemo, viewRect } from '../src/lib/trainingDemo';
+ import type { Demo, DemoNode } from '../src/lib/trainingModule';
+ import { MODULES } from '../src/training';
+ 
+@@ -139,3 +139,15 @@ test('the picture is laid out at the biggest size it is shown, so the camera onl
+   }
+   assert.ok(renderScale(0, 640) > 0, 'a not-yet-measured view does not break');
+ });
++
++test('the picture is fitted into the room that is left, whole and in shape', () => {
++  const canvas = { w: 640, h: 400 };
++  assert.deepEqual(fitBox({ w: 800, h: 1000 }, canvas), { w: 800, h: 500 }, 'width limits it');
++  assert.deepEqual(fitBox({ w: 1000, h: 250 }, canvas), { w: 400, h: 250 }, 'height limits it');
++  for (const a of [{ w: 320, h: 200 }, { w: 1180, h: 640 }, { w: 390, h: 300 }]) { const f = fitBox(a, canvas); assert.ok(f.w <= a.w + 1e-9 && f.h <= a.h + 1e-9, 'never bigger than the room'); assert.ok(Math.abs(f.w / f.h - 1.6) < 1e-9, 'same shape'); }
++  assert.deepEqual(fitBox({ w: 0, h: 500 }, canvas), { w: 0, h: 0 }, 'not measured yet');
++});
++
++test('wide windows put the words beside the picture, tall ones underneath', () => {
++  assert.equal(demoLayout({ w: 1180, h: 820 }), 'side'); assert.equal(demoLayout({ w: 820, h: 1180 }), 'stack'); assert.equal(demoLayout({ w: 390, h: 844 }), 'stack'); assert.equal(demoLayout({ w: 844, h: 390 }), 'side');
++});
+-- 
+2.43.0
+

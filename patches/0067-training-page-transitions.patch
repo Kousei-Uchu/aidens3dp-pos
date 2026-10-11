@@ -1,0 +1,328 @@
+From baa27d86964117f3b9d70ae3c98903ce6c07c043 Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sun, 11 Oct 2026 21:23:14 +0000
+Subject: [PATCH] 0067: smoother transitions on the Training pages
+
+---
+ App.tsx                     | 14 ++++++++++++--
+ docs/PROGRESS.md            |  1 +
+ docs/patches/0067-plan.md   | 27 +++++++++++++++++++++++++++
+ src/lib/motion.ts           | 25 +++++++++++++++++++++++++
+ src/screens/Training.tsx    | 12 +++++++-----
+ src/screens/TrainingRun.tsx |  5 +++--
+ src/ui/Motion.tsx           | 29 +++++++++++++++++++++++++++++
+ src/ui/TrainingDock.tsx     |  5 +++--
+ src/ui/TrainingHost.tsx     |  3 ++-
+ tests/motion.test.ts        | 24 ++++++++++++++++++++++++
+ 10 files changed, 133 insertions(+), 12 deletions(-)
+ create mode 100644 docs/patches/0067-plan.md
+ create mode 100644 src/lib/motion.ts
+ create mode 100644 src/ui/Motion.tsx
+ create mode 100644 tests/motion.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index cf407f0..c14dbc8 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -1,4 +1,4 @@
+-import React, { useEffect } from 'react';
++import React, { useEffect, useRef } from 'react';
+ import { AppState, Pressable, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { StatusBar } from 'expo-status-bar';
+@@ -38,6 +38,8 @@ import { getModule } from './src/training';
+ import { isTraining } from './src/lib/trainingGuard';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
++import { Enter } from './src/ui/Motion';
++import { TRANSITION_ROUTES, pageDirection } from './src/lib/motion';
+ import { isLockScreen } from './src/lib/posLock';
+ import { UiProvider, useUi } from './src/ui/uiProfile';
+ import { effectiveTab } from './src/lib/uiMode';
+@@ -73,6 +75,14 @@ function Routes() {
+   }
+ }
+ 
++/** Training pages slide in (forward from the right, back from the left). Every other page is drawn exactly as before. */
++function RouteMotion() {
++  const nav = useNav(); const top = nav.stack[nav.stack.length - 1]; const depth = nav.stack.length; const prev = useRef(depth); const dir = pageDirection(prev.current, depth);
++  useEffect(() => { prev.current = depth; });
++  if (!top || !TRANSITION_ROUTES.has(top.name)) return <Routes />;
++  return <Enter key={`${top.name}:${depth}`} from={dir} distance={36} duration={300} style={{ flex: 1 }}><Routes /></Enter>;
++}
++
+ function Shell() {
+   const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
+@@ -97,7 +107,7 @@ function Shell() {
+           <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
+           {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
+         </View>
+-        {hasPage ? <Routes /> : null}
++        {hasPage ? <RouteMotion /> : null}
+       </View>
+       {!hasPage ? (
+         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 422c808..3571ec5 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -69,6 +69,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0064 | 2026-10-12 | Quick Menu grid fits its pane: `tileSizeForPane` now picks the column count that changes the tile size least (grow when under about half a tile is spare, otherwise add a column and shrink), keeps the tile shape, and rounds the width down to a quarter point so a row can never wrap early and leave a column-sized gap. Updated `tests/gridlayout.test.ts` and the Tile size paragraph in `sales/grid` | B-grid |
+ | 0065 | 2026-10-12 | Training mode (B6): Show rebuilt as a user-paced animated UI demonstration. Mock screens in a fixed canvas, a camera that zooms and pans, a pointer that taps, spotlight, notes, Next, Back and Replay, nothing advances by itself (the old autoplay icon scene is gone). New pure engine `src/lib/trainingDemo.ts`, renderer `src/ui/DemoView.tsx`, the Show format and checks in `trainingModule.ts`, the welcome course's Show rewritten. Fixes the false "A card payment is still waiting on the reader" error: an attempt left at "started" by a closed app, or an old "unknown" for a sale no longer in the cart, no longer blocks starting practice. DEV_NOTES item 6, the writer's guide and the Training help page updated to the clarified Show | B6 |
+ | 0066 | 2026-10-12 | Training mode (B6), correction 1 of 8: **Info** now uses the same animated, graphical style as Show. `info` is the same `Demo` format (cards, chips, icons and panels that build up, notes, camera, Next, Back, Replay) so the two stages share one engine and renderer; the old actor-and-beat scene (`SceneView`, `trainingScene.ts`) is removed. The welcome course's Info rewritten. Writer's guide, DEV_NOTES item 6, help page updated | B6 |
++| 0067 | 2026-10-12 | Training mode (B6), correction 2 of 8: smoother transitions on the Training pages. Training pages slide in (forward from the right, back from the left), the hub's intro and course cards come in one after another, the practice intro card rises in, the Guide and Check dock slides up and the spotlight layer fades in. Respects Reduce Motion. Only Training routes are changed; every other page is drawn exactly as before. New `src/lib/motion.ts` (pure, tested) and `src/ui/Motion.tsx` | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0067-plan.md b/docs/patches/0067-plan.md
+new file mode 100644
+index 0000000..2d5da70
+--- /dev/null
++++ b/docs/patches/0067-plan.md
+@@ -0,0 +1,27 @@
++# Patch 0067: smoother transitions on the Training pages (correction 2 of 8)
++
++Stacks on 0066.
++
++## What you asked for
++- Smoother transitions on most pages.
++
++## How I read that
++You listed this under Training, so I made the Training pages smooth, and left every other page in the app exactly as it was. If you meant the whole app, say so: the same `Enter` wrapper can be put on the route renderer for all pages in one line, but that changes every screen, so I did not do it unasked.
++
++Two other corrections are separate patches and cover the rest of the movement: **0071** (Guide's spotlight, pointer and bubble) and **0073** (changing between stages and steps).
++
++## What changed
++- **Pages slide.** Opening Training, a course, or going back now slides the page in (from the right going forward, from the left going back) while fading, instead of cutting. `RouteMotion` in `App.tsx` does this for the routes listed in `TRANSITION_ROUTES` (`training`, `trainingRun`) only.
++- **The hub builds up.** The intro text, the count and each course card come in one after another (`stagger`, capped so a long list never makes anyone wait).
++- **The practice intro card** (the page before Guide, Check 1 and Check 2) rises in.
++- **The dock** at the bottom of Guide and Check slides up when practice starts, and the spotlight layer fades in rather than appearing.
++- **Reduce Motion.** If the iPad's Reduce Motion setting is on, all of this is skipped and things just appear.
++- New: `src/lib/motion.ts` (pure helpers) with `tests/motion.test.ts`, and `src/ui/Motion.tsx` (`Enter`, `useReduceMotion`).
++
++## Not changed
++- Leaving a page is still instant: the page being left disappears as the new one slides in. A true cross-over would mean keeping the old page mounted, which the navigation does not do today. Say if you want that.
++
++## Steps
++1. [x] Motion helpers and tests (4 tests).
++2. [x] Wired into the routes, hub, intro card, dock and overlay. `tsc` shows nothing new.
++3. [ ] You: try opening and closing Training, and starting a Guide, on the iPad.
+diff --git a/src/lib/motion.ts b/src/lib/motion.ts
+new file mode 100644
+index 0000000..6da8878
+--- /dev/null
++++ b/src/lib/motion.ts
+@@ -0,0 +1,25 @@
++// Location: src/lib/motion.ts
++// Small pure helpers for entrance animations (B6 polish). The drawing is in src/ui/Motion.tsx.
++export type From = 'up' | 'down' | 'left' | 'right' | 'none';
++
++/** Where a thing starts, relative to where it ends up. 'right' means it slides in from the right, 'up' means it rises from below. */
++export function enterOffset(from: From, distance: number): { x: number; y: number } {
++  switch (from) {
++    case 'right': return { x: distance, y: 0 };
++    case 'left': return { x: -distance, y: 0 };
++    case 'up': return { x: 0, y: distance };
++    case 'down': return { x: 0, y: -distance };
++    default: return { x: 0, y: 0 };
++  }
++}
++
++/** Delay for the i-th item of a list that comes in one after another. Later items are capped so a long list never makes anyone wait. */
++export const stagger = (i: number, base = 0, step = 60, cap = 420): number => base + Math.min(Math.max(0, i) * step, cap);
++
++/** Which way a page change moves: a new page slides in from the right, going back slides in from the left, anything else just rises. */
++export function pageDirection(prevDepth: number, depth: number): From {
++  return depth > prevDepth ? 'right' : depth < prevDepth ? 'left' : 'up';
++}
++
++/** The routes that get a page transition. Training only, for now: the rest of the app is left exactly as it was. */
++export const TRANSITION_ROUTES: ReadonlySet<string> = new Set(['training', 'trainingRun']);
+diff --git a/src/screens/Training.tsx b/src/screens/Training.tsx
+index 2f34a09..2a714e5 100644
+--- a/src/screens/Training.tsx
++++ b/src/screens/Training.tsx
+@@ -5,6 +5,8 @@ import { Pressable, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { Card, Page, Txt } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
++import { Enter } from '../ui/Motion';
++import { stagger } from '../lib/motion';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { useTraining } from '../state/trainingSession';
+@@ -23,12 +25,12 @@ export default function Training() {
+   return (
+     <Page title="Training" onBack={nav.pop}>
+       <View style={{ padding: 16, gap: 12 }}>
+-        <Txt sub>Short courses for each job at the till. Do them in any order. Practice data is used, so nothing is saved, sent or charged.</Txt>
+-        <Txt size={13} weight="700" sub>{n} of {MODULES.length} finished</Txt>
+-        {MODULES.map(m => {
++        <Enter delay={stagger(0, 120)}><Txt sub>Short courses for each job at the till. Do them in any order. Practice data is used, so nothing is saved, sent or charged.</Txt></Enter>
++        <Enter delay={stagger(1, 120)}><Txt size={13} weight="700" sub>{n} of {MODULES.length} finished</Txt></Enter>
++        {MODULES.map((m, mi) => {
+           const done = stagesDone(progress, who, m.id); const complete = isComplete(progress, who, m.id);
+           return (
+-            <Card key={m.id} style={{ padding: 16, gap: 10, borderColor: complete ? c.good : c.line, borderWidth: complete ? 2 : 1 }}>
++            <Enter key={m.id} delay={stagger(mi + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10, borderColor: complete ? c.good : c.line, borderWidth: complete ? 2 : 1 }}>
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                 {complete ? <Ionicons name="checkmark-circle" size={40} color={c.good} accessibilityLabel="Finished" /> : <Ionicons name="school-outline" size={34} color={c.sub} />}
+                 <View style={{ flex: 1 }}>
+@@ -45,7 +47,7 @@ export default function Training() {
+               </View>
+               <Pressable onPress={() => open(m.id, complete ? 'info' : firstOpenStage(done))} accessibilityRole="button" style={{ backgroundColor: c.accent, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}>
+                 <Txt weight="700" color={c.onAccent}>{complete ? 'Do it again' : done.length ? 'Continue' : 'Start'}</Txt></Pressable>
+-            </Card>);
++            </Card></Enter>);
+         })}
+       </View>
+     </Page>
+diff --git a/src/screens/TrainingRun.tsx b/src/screens/TrainingRun.tsx
+index fe9bb9c..ffa70fb 100644
+--- a/src/screens/TrainingRun.tsx
++++ b/src/screens/TrainingRun.tsx
+@@ -11,6 +11,7 @@ import { useNav, type Tab } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { useTraining } from '../state/trainingSession';
+ import DemoView from '../ui/DemoView';
++import { Enter } from '../ui/Motion';
+ import Confetti from '../ui/Confetti';
+ import { MODULES, getModule } from '../training';
+ import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
+@@ -82,7 +83,7 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
+     nav.setTab(mod.tabs[0] as Tab); // leaves this page and shows the real till; TrainingHost takes over from here
+   };
+   return (
+-    <View style={{ gap: 14 }}>
++    <Enter style={{ gap: 14 }}>
+       <View style={{ backgroundColor: '#F59E0B', alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color="#111">PRACTICE DATA</Txt></View>
+       <Txt size={22} weight="700">{t.title}</Txt>
+       <Txt>{t.body}</Txt>
+@@ -91,7 +92,7 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
+         <Txt size={14} sub>Your real cart, sales, drawer and settings are not touched. Nothing is sent to Shopify or the card reader. Exit at any time from the bar at the bottom.</Txt>
+       </View>
+       <Btn title={t.button} busy={busy} onPress={start} />
+-    </View>
++    </Enter>
+   );
+ }
+ 
+diff --git a/src/ui/Motion.tsx b/src/ui/Motion.tsx
+new file mode 100644
+index 0000000..ae1e1a0
+--- /dev/null
++++ b/src/ui/Motion.tsx
+@@ -0,0 +1,29 @@
++// Location: src/ui/Motion.tsx
++// Entrance animation for pages, cards and bars (B6 polish): fade in while sliding a short way. Skipped when the iPad's Reduce Motion is on.
++import React, { useEffect, useRef, useState } from 'react';
++import { AccessibilityInfo, Animated, Easing, type StyleProp, type ViewStyle } from 'react-native';
++import { enterOffset, type From } from '../lib/motion';
++
++export function useReduceMotion(): boolean {
++  const [on, setOn] = useState(false);
++  useEffect(() => {
++    let live = true; void AccessibilityInfo.isReduceMotionEnabled().then(v => { if (live) setOn(v); }).catch(() => {});
++    const sub = AccessibilityInfo.addEventListener('reduceMotionChanged', v => { if (live) setOn(v); });
++    return () => { live = false; sub.remove(); };
++  }, []);
++  return on;
++}
++
++type EnterProps = { children?: React.ReactNode; from?: From; distance?: number; delay?: number; duration?: number; style?: StyleProp<ViewStyle>; pointerEvents?: 'auto' | 'none' | 'box-none' | 'box-only' };
++/** Fades in and slides in from `from` when it first appears. Give it a changing `key` to play again. */
++export function Enter({ children, from = 'up', distance = 14, delay = 0, duration = 320, style, pointerEvents }: EnterProps) {
++  const reduce = useReduceMotion(); const v = useRef(new Animated.Value(reduce ? 1 : 0)).current;
++  useEffect(() => {
++    if (reduce) { v.setValue(1); return undefined; }
++    const a = Animated.timing(v, { toValue: 1, duration, delay, easing: Easing.out(Easing.cubic), useNativeDriver: true }); a.start(); return () => a.stop();
++  }, [reduce]); // eslint-disable-line react-hooks/exhaustive-deps
++  const o = enterOffset(from, distance);
++  return (
++    <Animated.View pointerEvents={pointerEvents} style={[style, { opacity: v, transform: [{ translateX: v.interpolate({ inputRange: [0, 1], outputRange: [o.x, 0] }) }, { translateY: v.interpolate({ inputRange: [0, 1], outputRange: [o.y, 0] }) }] }]}>{children}</Animated.View>
++  );
++}
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+index f5d8ede..65900f4 100644
+--- a/src/ui/TrainingDock.tsx
++++ b/src/ui/TrainingDock.tsx
+@@ -8,6 +8,7 @@ import { useTraining } from '../state/trainingSession';
+ import { getModule } from '../training';
+ import { STAGE_LABEL } from '../lib/trainingModule';
+ import { trainingActions } from './trainingActions';
++import { Enter } from './Motion';
+ 
+ export default function TrainingDock() {
+   const { c } = useTheme(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
+@@ -17,7 +18,7 @@ export default function TrainingDock() {
+   const check = view?.mode === 'check';
+   const btn = { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 };
+   return (
+-    <View style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 12, paddingTop: 10, paddingBottom: tablet ? 12 : 26, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
++    <Enter from="up" distance={56} duration={340}><View style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 12, paddingTop: 10, paddingBottom: tablet ? 12 : 26, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+       <View style={{ flex: 1, gap: 2 }}>
+         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+           <View style={{ backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: '#111', fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
+@@ -34,6 +35,6 @@ export default function TrainingDock() {
+       ) : null}
+       {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
+       <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
+-    </View>
++    </View></Enter>
+   );
+ }
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index bc210a4..2f997a2 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -12,6 +12,7 @@ import { measureSpot, onSpotPressed } from './Spot';
+ import { confirm } from './kit';
+ import TrainingOverlay from './TrainingOverlay';
+ import TrainingDock from './TrainingDock';
++import { Enter } from './Motion';
+ import { trainingActions } from './trainingActions';
+ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, type Rect } from '../lib/trainingGeometry';
+@@ -94,7 +95,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+ 
+   return (
+     <View style={{ flex: 1 }}>
+-      <View style={{ flex: 1 }}>{children}{sandbox ? <TrainingOverlay layer={ROOT_LAYER} /> : null}</View>
++      <View style={{ flex: 1 }}>{children}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
+       {sandbox ? <TrainingDock /> : null}
+     </View>
+   );
+diff --git a/tests/motion.test.ts b/tests/motion.test.ts
+new file mode 100644
+index 0000000..5a97b94
+--- /dev/null
++++ b/tests/motion.test.ts
+@@ -0,0 +1,24 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { TRANSITION_ROUTES, enterOffset, pageDirection, stagger } from '../src/lib/motion';
++
++test('a thing starts where "from" says and ends where it belongs', () => {
++  assert.deepEqual(enterOffset('right', 30), { x: 30, y: 0 });
++  assert.deepEqual(enterOffset('left', 30), { x: -30, y: 0 });
++  assert.deepEqual(enterOffset('up', 12), { x: 0, y: 12 }, 'up means it rises from below');
++  assert.deepEqual(enterOffset('down', 12), { x: 0, y: -12 });
++  assert.deepEqual(enterOffset('none', 99), { x: 0, y: 0 });
++});
++
++test('staggered lists wait longer for later items, but never more than the cap', () => {
++  assert.equal(stagger(0), 0); assert.equal(stagger(2, 100, 50), 200); assert.equal(stagger(-3, 10), 10);
++  assert.equal(stagger(500, 0, 60, 420), 420);
++});
++
++test('a page change slides forward, back, or rises when the depth is unchanged', () => {
++  assert.equal(pageDirection(0, 1), 'right'); assert.equal(pageDirection(2, 1), 'left'); assert.equal(pageDirection(1, 1), 'up');
++});
++
++test('only Training pages get a page transition', () => {
++  assert.deepEqual([...TRANSITION_ROUTES].sort(), ['training', 'trainingRun']);
++});
+-- 
+2.43.0
+

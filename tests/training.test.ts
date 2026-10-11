@@ -1,8 +1,7 @@
 // Location: tests/training.test.ts
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { validateModule, needsSandbox, STAGES, type Scene, type TrainingModule } from '../src/lib/trainingModule';
-import { sceneAt, beatMs } from '../src/lib/trainingScene';
+import { validateModule, needsSandbox, STAGES, type TrainingModule } from '../src/lib/trainingModule';
 import { freshHints, nextHint, hintView, shouldNudge, NUDGE_AFTER_MS } from '../src/lib/trainingHints';
 import { advanceGoal, advanceStep, canOpenStage, finishStage, seeIntro, showsIntro, skipStep, startRun, useHint as bumpHint } from '../src/lib/trainingRun';
 import { completeModule, completedCount, emptyProgress, isComplete, nextSuggested, readProgress, recordStage, resetModule, staffKey, stagesDone } from '../src/lib/trainingProgress';
@@ -12,18 +11,6 @@ import { makeConfetti } from '../src/lib/confetti';
 import { isKnownSpot, tileSpotId } from '../src/lib/trainingSpots';
 import { welcome } from '../src/training/modules/welcome';
 
-const scene: Scene = {
-  actors: [{ id: 'a', icon: 'person', x: 10, y: 50 }, { id: 'b', icon: 'cart', x: 80, y: 50, hidden: true }],
-  beats: [{ say: 'one', pulse: ['a'] }, { say: 'two', place: { a: { x: 50 } }, show: ['b'], tone: { b: 'good' } }, { say: 'three', hide: ['a'], place: { a: { y: 20 } } }],
-};
-test('a scene is replayed from the start to the beat asked for', () => {
-  const v0 = sceneAt(scene, 0); assert.equal(v0.say, 'one'); assert.equal(v0.actors[1].hidden, true); assert.equal(v0.actors[0].pulse, true); assert.equal(v0.last, false);
-  const v1 = sceneAt(scene, 1); assert.equal(v1.actors[0].x, 50); assert.equal(v1.actors[1].hidden, false); assert.equal(v1.actors[1].tone, 'good'); assert.equal(v1.actors[0].pulse, false);
-  const v2 = sceneAt(scene, 2); assert.equal(v2.actors[0].hidden, true); assert.equal(v2.actors[0].x, 50); assert.equal(v2.actors[0].y, 20); assert.equal(v2.last, true);
-  assert.equal(sceneAt(scene, 99).index, 2); assert.equal(sceneAt(scene, -3).index, 0);
-  assert.equal(scene.actors[0].x, 10, 'the module data is never changed');
-});
-test('beat hold time follows the sentence length with a floor', () => { assert.equal(beatMs('Hi'), 2200); assert.ok(beatMs('word '.repeat(30)) > 8000); });
 
 const ladder = ['pointer', 'clearer', 'specific'];
 test('hints climb one rung per press, then reveal, and restart on a new goal', () => {
@@ -101,8 +88,8 @@ test('the welcome module passes the checker', () => assert.deepEqual(ok(welcome)
 test('the checker refuses each kind of badly written module', () => {
   const m0 = clone(); assert.deepEqual(ok(m0), []);
   const bad = (f: (m: TrainingModule) => void) => { const m = clone(); f(m); return ok(m); };
-  assert.ok(bad(m => { m.id = 'Bad Id'; }).length); assert.ok(bad(m => { m.info.beats = m.info.beats.slice(0, 2); }).some(e => e.includes('3 beats')));
-  assert.ok(bad(m => { m.show.beats[0].pulse = ['ghost']; }).some(e => e.includes('ghost'))); assert.ok(bad(m => { m.guide = []; }).some(e => e.includes('needs steps')));
+  assert.ok(bad(m => { m.id = 'Bad Id'; }).length); assert.ok(bad(m => { m.info.steps = m.info.steps.slice(0, 2); }).some(e => e.includes('3 steps')));
+  assert.ok(bad(m => { m.show.steps[0].focus = 'ghost'; }).some(e => e.includes('ghost'))); assert.ok(bad(m => { m.guide = []; }).some(e => e.includes('needs steps')));
   assert.ok(bad(m => { m.guide[0] = { id: 'x', say: 'tap', until: { kind: 'press', id: 'cart.charge' } }; }).some(e => e.includes('points at nothing')));
   assert.ok(bad(m => { m.guide[1].target = 'nonsense.spot'; }).some(e => e.includes('unknown spot')));
   assert.ok(bad(m => { m.check1[0].ladder = ['only one']; }).some(e => e.includes('2 hints'))); assert.ok(bad(m => { m.check1[0].reveal = undefined; }).some(e => e.includes('highlight')));
