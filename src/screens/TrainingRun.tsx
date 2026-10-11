@@ -12,10 +12,12 @@ import { useApp } from '../state/store';
 import { useTraining } from '../state/trainingSession';
 import DemoView from '../ui/DemoView';
 import { Enter } from '../ui/Motion';
+import { dipThrough } from '../ui/Veil';
 import Confetti from '../ui/Confetti';
 import { MODULES, getModule } from '../training';
 import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
 import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
+import { trainingBlocker } from '../lib/trainingSandbox';
 import { demoLayout } from '../lib/trainingDemo';
 import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
 
@@ -88,9 +90,12 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
   const { c } = useTheme(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
   if (!t) return null;
   const start = async () => {
-    setBusy(true); const msg = await useTraining.getState().startPractice(); setBusy(false);
-    if (msg) { alertMsg('Training cannot start yet', msg); return; }
-    nav.setTab(mod.tabs[0] as Tab); // leaves this page and shows the real till; TrainingHost takes over from here
+    const early = trainingBlocker(useApp.getState()); if (early) { alertMsg('Training cannot start yet', early); return; } // say so before the screen dips, not after
+    setBusy(true);
+    // The whole screen changes here (this page becomes the real till), so it dips to the page colour instead of cutting.
+    const msg = await dipThrough(async () => { const m = await useTraining.getState().startPractice(); if (!m) nav.setTab(mod.tabs[0] as Tab); return m; }); // leaves this page and shows the real till; TrainingHost takes over from here
+    setBusy(false);
+    if (msg) alertMsg('Training cannot start yet', msg);
   };
   return (
     <Enter style={{ gap: 14 }}>

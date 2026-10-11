@@ -5,7 +5,7 @@ parent: staff
 summary: Learn app tasks through animated explanations, a process walkthrough, a spotlighted real interface and safe practice.
 tags: [training, lessons, practice, learning, checkout, scenarios, tutorial]
 related: [staff, sales, sales/scanners, pay, fix]
-updated: 2026-10-11
+updated: 2026-10-12
 ---
 Open **More → Training** to learn a POS task. Courses can be started in any order.
 
@@ -20,7 +20,7 @@ Each course has six parts:
 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
 6. **Done** recaps what you can do and marks the course complete.
 
-During Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
+During Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
 
 ### Progress
 Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
@@ -40,5 +40,6 @@ Info and Show are each a list of steps over a few mock screens or diagrams. Each
 | Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |
 | Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |
 | Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |
+| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |
 
 The starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs.

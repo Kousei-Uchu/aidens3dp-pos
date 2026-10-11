@@ -13,6 +13,7 @@ import { confirm } from './kit';
 import TrainingOverlay from './TrainingOverlay';
 import TrainingDock from './TrainingDock';
 import { Enter } from './Motion';
+import { Veil, dipThrough } from './Veil';
 import { trainingActions } from './trainingActions';
 import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, type Rect } from '../lib/trainingGeometry';
@@ -27,7 +28,7 @@ const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed
 export default function TrainingHost({ children }: { children: React.ReactNode }) {
   const nav = useNav(); const win = useWindowDimensions(); const sandbox = useTraining(s => s.sandbox);
   const navRef = useRef(nav); navRef.current = nav; const winRef = useRef(win); winRef.current = win;
-  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef('');
+  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef(''); const leaving = useRef(false);
 
   useEffect(() => onSpotPressed(id => { ev.current.pressed.add(id); }), []);
 
@@ -38,10 +39,12 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
       if (run.stage === 'check1' || run.stage === 'check2') { const list = run.stage === 'check1' ? mod.check1 : mod.check2; return { mod, goal: list[run.goalIndex], n: list.length, i: run.goalIndex }; }
       return null;
     };
-    const finish = () => {
-      const st = useTraining.getState(); st.completeStage(); st.leave(); key.current = ''; sig.current = '';
-      navRef.current.reset(); navRef.current.push('trainingRun');
+    // Leaving practice changes the whole screen, so it dips to the page colour instead of cutting. `leaving` keeps the ticks quiet while it runs.
+    const leavePractice = (change: () => void) => {
+      if (leaving.current) return; leaving.current = true;
+      void dipThrough(() => { change(); key.current = ''; sig.current = ''; }).finally(() => { leaving.current = false; });
     };
+    const finish = () => leavePractice(() => { const st = useTraining.getState(); st.completeStage(); st.leave(); navRef.current.reset(); navRef.current.push('trainingRun'); });
     const advance = () => {
       const st = useTraining.getState(); const run = st.run; const cur = current(); if (!run || !cur) return;
       const r = cur.step ? advanceStep(run, cur.n) : advanceGoal(run, cur.n);
@@ -52,14 +55,14 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
     trainingActions.exit = () => {
       void confirm('Leave training?', 'Your real till is exactly as you left it. You can pick this course up again from More, Training.', 'Leave', true).then(ok => {
-        if (!ok) return; useTraining.getState().leave(); key.current = ''; sig.current = '';
-        navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training');
+        if (!ok) return;
+        leavePractice(() => { useTraining.getState().leave(); navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training'); });
       });
     };
     const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); return onScreen(r, { w: winRef.current.width, h: winRef.current.height }) ? r : null; };
 
     const tick = async () => {
-      if (busy.current) return; busy.current = true;
+      if (busy.current || leaving.current) return; busy.current = true;
       try {
         const st = useTraining.getState(); if (!st.sandbox || !st.run) return;
         const cur = current(); if (!cur) return; const { mod } = cur; const n = navRef.current; const top = n.stack[n.stack.length - 1];
@@ -97,6 +100,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     <View style={{ flex: 1 }}>
       <View style={{ flex: 1 }}>{children}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
       {sandbox ? <TrainingDock /> : null}
+      <Veil />
     </View>
   );
 }
