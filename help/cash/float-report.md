@@ -60,7 +60,7 @@ flowchart TD
 `recommendFloat` limits the amount it recommends taking out to what the ledger says is present. With a usable profile, it compares candidate denomination combinations within $10 of takings and scores the drawer left behind; without a profile it uses largest notes first. The UI offers the best option and up to two alternatives. The cash report calculation is bounded, so an unusually large search can show that its result is good but not the only possible one.
 
 ### If the figures look wrong
-- **The ledger saw a different amount from sales.** Some cash was not tracked or the ledger needs a count. Use **Count & close (Z-report)** or **Correct contents** before relying on the suggestion.
+- **The ledger saw a different amount from sales.** Denominations may have been entered incorrectly, cash may have moved outside the POS, or the ledger needs a count. Use **Count & close (Z-report)** or **Correct contents** before relying on the suggestion.
 - **There is no amount to take out.** There may be no cash takings, or the ledger has no cash available to bank.
 - **The report asks for a top-up.** It cannot add cash itself; take the displayed denominations from your safe or bank and add them by hand.
 - **I took this out: record it** is missing. There is no positive amount in the suggested banking option to record.

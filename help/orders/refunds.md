@@ -16,10 +16,10 @@ Start a return from a Shopify order or a synced sale in Transactions. Choose the
 2. In **Items**, use **+** and **−** to choose quantities, up to the refundable amount. Or switch to **Amount** and enter a value.
 3. Add replacement items if this is an exchange. Their current prices and discounts are included.
 4. Choose a **Reason** and whether to **Restock returned items**.
-5. Choose where money goes: **Original**, **Cash** or **Gift card**, then tap the button showing the refund, charge or even exchange.
+5. Choose where money goes: **Original**, **Cash** or **Gift card**, then tap the button showing the refund, charge or even exchange. When the original sale used a gift card and you choose **Gift card**, choose whether to reload its original card(s) or issue a new gift card.
 6. Confirm. If the customer owes more for replacement items, the remaining amount goes to Payment. If cash is owed, the sheet tells you what to hand over.
 
-For **Original**, the screen shows the amounts still refundable by card, cash and gift card. A card refund needs the Zeller terminal.
+For **Original**, the screen shows the amounts still refundable by card, cash and gift card. Card refunds need the Zeller terminal; the gift-card part goes back to the same original gift card(s). For **Gift card**, the cashier chooses the original card(s) or a new card when the original sale used gift cards; a sale without an original gift-card tender creates a new card.
 
 ### What happens next
 - **Refund:** return value is greater than replacement value. The difference goes to the selected refund method.
@@ -37,7 +37,7 @@ For **Original**, the screen shows the amounts still refundable by card, cash an
 ## Deep
 
 ### Refund limits and methods
-The app reads successful sale and refund transactions from Shopify to calculate what remains refundable for each original tender. **Original** routes card value back through Zeller, gift card value to the original card when its id is available, and cash as cash. Choosing **Cash** or **Gift card** directs the refund to that method instead. Zeller card refunds are processed before the Shopify refund record is written.
+The app reads successful sale and refund transactions from Shopify to calculate what remains refundable for each original tender. **Original** routes card value back through Zeller, credits gift-card value to the original cards (up to what each card paid), and returns cash as cash. Choosing **Cash** directs the refund to cash. Choosing **Gift card** prompts the cashier to reload the original gift card(s) or issue a new one when the sale has an original gift-card tender; if not, it creates a new card. Zeller card refunds are processed before the Shopify refund record is written.
 
 The amount mode cannot exceed the remaining refundable total. The selected returned lines determine which Shopify order lines are included. The reason is saved with the POS refund; Shopify receives the reason with `(POS)` appended.
 
@@ -45,7 +45,7 @@ The amount mode cannot exceed the remaining refundable total. The selected retur
 Replacement products are added to a temporary cart and priced using the current catalogue and discounts. The value of returned goods is compared with the replacement total. If the replacement total is higher, the difference is paid as a normal sale using exchange credit first. If it is lower, the difference is refunded using the selected method.
 
 ### Cash and gift card refunds
-For a cash refund, the cashier physically hands over the money. The **Give cash refund** sheet can suggest notes and coins from the drawer or let the cashier enter the notes actually given. Confirming the denomination list updates the local ledger; **Done, but don't track it** does not. Gift-card refunds credit the original card when possible, or create a new gift card; the new code is shown when complete.
+For a cash refund, the cashier physically hands over the money. The **Give cash refund** sheet suggests an optimal denomination set from the drawer when possible; otherwise, tap the notes and coins actually given. Confirming the denomination list is required and updates the local ledger. An **Original** refund credits the same original gift card(s), capped at their unrefunded tendered amounts. For **Gift card**, the cashier chooses those same card(s) or a new card if the original sale used gift cards. A new card's code is shown when complete. Original-card credits use a stable operation reference so retrying the same refund does not credit twice.
 
 ## Advanced
 

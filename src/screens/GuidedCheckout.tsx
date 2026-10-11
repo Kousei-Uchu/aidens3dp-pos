@@ -1,5 +1,5 @@
 // Location: src/screens/GuidedCheckout.tsx
-// Minimal mode's checkout (B5b): one question per screen - Items, Customer, Discount, Check, Pay.
+// Minimal mode's checkout (B5b): one question per screen - Items, Discount, Check, Pay.
 // It reuses the normal cart, pricing, sheets and Pay screen, so nothing about how a sale is recorded changes.
 import React, { useEffect, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -13,7 +13,7 @@ import * as ops from '../lib/cartOps';
 import { fmt } from '../lib/money';
 import { invoiceRows, unitLine } from '../lib/invoiceRows';
 import { oddBundles } from '../lib/bundles';
-import { STEPS, barState, back, canAdvance, next, progress, settle, stepInfo, type FlowCtx, type StepId } from '../lib/guidedFlow';
+import { stepsFor, barState, back, canAdvance, next, progress, settle, stepInfo, type FlowCtx, type StepId } from '../lib/guidedFlow';
 import Checkout from './Checkout';
 import { BundleRow } from './CartPane';
 import { CheckChangeSheet } from './CheckChange';
@@ -21,9 +21,10 @@ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet, LineEdi
 import AdjustmentReviewSheet from './AdjustmentReview';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import type { CartLine } from '../lib/types';
+import { useUi } from '../ui/uiProfile';
 
 export default function GuidedCheckout() {
-  const { c } = useTheme(); const nav = useNav();
+  const { c } = useTheme(); const nav = useNav(); const ui = useUi();
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue();
   const [step, setStep] = useState<StepId>('items');
   const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change' | 'orderadj'>('none');
@@ -31,13 +32,15 @@ export default function GuidedCheckout() {
   const [edit, setEdit] = useState<CartLine | null>(null);
   const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
   const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };
+  const steps = stepsFor(ui.guidedCustomer);
 
   // An empty cart (a new sale, or the sale just finished) starts again at Items; a part-paid sale goes to Pay.
-  useEffect(() => { const s = settle(step, ctx); if (s !== step) setStep(s); }); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { const s = settle(step, ctx, ui.guidedCustomer); if (s !== step) setStep(s); }); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const info = stepInfo(step); const pr = progress(step); const bar = barState(step); const adv = canAdvance(step, ctx);
-  const goNext = () => { if (!adv.ok) { if (adv.why) alertMsg('Not yet', adv.why); return; } setStep(next(step)); };
-  const goBack = () => setStep(back(step, ctx));
+  const info = stepInfo(step); const pr = progress(step, ui.guidedCustomer); const bar = barState(step, ui.guidedCustomer); const adv = canAdvance(step, ctx);
+  const backTo = back(step, ctx, ui.guidedCustomer);
+  const goNext = () => { if (!adv.ok) { if (adv.why) alertMsg('Not yet', adv.why); return; } setStep(next(step, ui.guidedCustomer)); };
+  const goBack = () => setStep(backTo);
   const openMore = (s: typeof sheet) => { setSheet('none'); setTimeout(() => setSheet(s), 250); };
   const odd = oddBundles(priced.bundles);
   // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
@@ -50,12 +53,12 @@ export default function GuidedCheckout() {
       <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Txt size={13} sub weight="600" style={{ flex: 1 }}>Step {pr.n} of {pr.total}</Txt>
-          <HelpButton id={step === 'items' ? 'sales' : step === 'customer' ? 'sales/customers' : step === 'pay' ? 'pay' : 'sales/cart-and-prices'} label={`${info.label} help`} />
+          <HelpButton id={step === 'items' ? 'sales' : step === 'pay' ? 'pay' : 'sales/cart-and-prices'} label={`${info.label} help`} />
           <Pressable onPress={() => setSheet('more')} accessibilityRole="button" accessibilityLabel="More options" hitSlop={8} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
             <Ionicons name="ellipsis-horizontal-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600">More options</Txt></Pressable>
         </View>
         <View style={{ flexDirection: 'row', gap: 4 }} accessibilityRole="progressbar" accessibilityLabel={`Step ${pr.n} of ${pr.total}: ${info.label}`}>
-          {STEPS.map((st, i) => <View key={st.id} style={{ flex: 1, gap: 4 }}>
+          {steps.map((st, i) => <View key={st.id} style={{ flex: 1, gap: 4 }}>
             <View style={{ height: 6, borderRadius: 3, backgroundColor: bar[i] === 'todo' ? c.line : bar[i] === 'done' ? c.good : c.accent }} />
             <Txt size={11} weight={bar[i] === 'current' ? '700' : '500'} color={bar[i] === 'current' ? c.text : c.sub} numberOfLines={1}>{st.label}</Txt></View>)}
         </View>
@@ -137,10 +140,10 @@ export default function GuidedCheckout() {
         {step === 'items' ? <Txt weight="700" style={{ textAlign: 'center' }}>{count ? `${count} item${count === 1 ? '' : 's'} · ${fmt(priced.netCents)}` : 'Nothing added yet'}</Txt> : null}
         {step !== 'items' && step !== 'pay' ? <Txt weight="700" style={{ textAlign: 'center' }}>Total {fmt(priced.netCents)}</Txt> : null}
         <View style={{ flexDirection: 'row', gap: 10 }}>
-          {step !== 'items' && !(locked && step === 'pay') ? <Btn title="Back" kind="secondary" icon="chevron-back" onPress={goBack} style={{ flex: 1 }} /> : null}
+          {step !== 'items' && !(locked && step === 'pay') ? <Btn title={`Back to ${stepInfo(backTo).label}`} kind="secondary" icon="chevron-back" onPress={goBack} style={{ flex: 1 }} /> : null}
           {step === 'pay'
             ? <Btn title={`Take payment  ${fmt(priced.netCents)}`} icon="card-outline" onPress={takePayment} style={{ flex: 2 }} />
-            : <Btn title={step === 'review' ? 'Looks right' : step === 'customer' && !cart.customer ? 'No, carry on' : step === 'discount' && !cart.discount ? 'No, carry on' : 'Next'} disabled={!adv.ok} onPress={goNext} style={{ flex: 2 }} />}
+            : <Btn title={step === 'review' ? 'Looks right' : step === 'discount' && !cart.discount ? 'No, carry on' : 'Next'} disabled={!adv.ok} onPress={goNext} style={{ flex: 2 }} />}
         </View>
       </View>
 
@@ -159,6 +162,7 @@ export default function GuidedCheckout() {
 
       {/* Everything the full checkout can do is still here */}
       <Sheet visible={sheet === 'more'} onClose={() => setSheet('none')} title="More options">
+        <Row icon="person-add-outline" title={cart.customer ? 'Change customer' : 'Add a customer (optional)'} sub="Add a customer without making it a required checkout step." onPress={() => openMore('customer')} />
         <Row icon="calculator-outline" title="Add a custom amount" sub="For something that is not in the item list." onPress={() => openMore('custom')} />
         <Row icon="gift-outline" title="Sell a gift card" onPress={() => openMore('gift')} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this sale?" onPress={() => openMore('change')} />

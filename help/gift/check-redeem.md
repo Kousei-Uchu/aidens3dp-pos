@@ -37,7 +37,7 @@ The Gift cards screen shows the 30 most recent card transactions when available.
 ### Paying with a card
 At payment, **Use as payment** takes the lesser of the current payment amount and the card's balance. Shopify is charged immediately. If that does not cover the whole sale, the unpaid amount remains for another tender. A balance check alone does not reserve or debit the card.
 
-If a part-paid sale is cancelled after the card was charged, the POS cannot automatically put that amount back. Ask someone authorised to correct the card in Shopify. See [[pay/gift-card]] for the full payment steps.
+If a part-paid sale is cancelled after the card was charged, **Refund & cancel** credits the amount back to that same Shopify gift card. If the card cannot be identified or Shopify is unavailable, the sale remains in cancellation mode so you can retry or resolve it without charging the customer again. See [[pay/gift-card]] for the full payment steps.
 
 ## Advanced
 

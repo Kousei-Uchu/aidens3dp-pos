@@ -82,9 +82,34 @@ export async function creditGiftCard(id: string, cents: number, note: string) {
 }
 
 export type GiftCardTxn = { id: string; cents: number; at: string; note?: string; kind: 'credit' | 'debit' };
+type GiftCardTxnNode = { id: string; __typename: string; note?: string | null; processedAt: string; amount: { amount: string } };
+type GiftCardTxnPage = { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GiftCardTxnNode[] };
+const mapTransactions = (nodes: GiftCardTxnNode[]): GiftCardTxn[] => nodes.map(n => ({ id: n.id, cents: toCents(n.amount.amount), at: n.processedAt, note: n.note ?? undefined, kind: n.__typename.includes('Debit') ? 'debit' : 'credit' }));
 export async function giftCardHistory(id: string): Promise<GiftCardTxn[]> {
   const d = await gql(`query($id:ID!){ giftCard(id:$id){ transactions(first: 30) { nodes { __typename id note processedAt amount { amount } } } } }`, { id });
-  return d.giftCard.transactions.nodes.map((n: any) => ({ id: n.id, cents: toCents(n.amount.amount), at: n.processedAt, note: n.note ?? undefined, kind: n.__typename.includes('Debit') ? 'debit' : 'credit' }));
+  return mapTransactions(d.giftCard.transactions.nodes);
+}
+
+export async function allGiftCardTransactions(id: string): Promise<GiftCardTxn[]> {
+  let after: string | null = null; const transactions: GiftCardTxn[] = [];
+  for (;;) {
+    const d: { giftCard: { transactions: GiftCardTxnPage } } = await gql(`query($id:ID!,$after:String){ giftCard(id:$id){ transactions(first:250, after:$after) { pageInfo { hasNextPage endCursor } nodes { __typename id note processedAt amount { amount } } } } }`, { id, after });
+    const page: GiftCardTxnPage = d.giftCard.transactions;
+    transactions.push(...mapTransactions(page.nodes));
+    if (!page.pageInfo.hasNextPage) return transactions;
+    if (!page.pageInfo.endCursor) throw new Error('Shopify returned a gift-card transaction page without a cursor.');
+    after = page.pageInfo.endCursor;
+  }
+}
+
+/** Retry-safe credit for a specific operation. The caller's unique note is stored in Shopify's transaction history. */
+export async function creditGiftCardOnce(id: string, cents: number, note: string) {
+  const existing = (await allGiftCardTransactions(id)).find(t => t.kind === 'credit' && t.note === note);
+  if (existing) {
+    if (existing.cents !== cents) throw new Error('A gift-card credit with this reference already exists for a different amount.');
+    return;
+  }
+  await creditGiftCard(id, cents, note);
 }
 
 export async function outstandingBalance(): Promise<{ cards: number; cents: number }> {

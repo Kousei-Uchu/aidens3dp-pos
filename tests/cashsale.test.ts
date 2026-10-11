@@ -2,7 +2,7 @@
 // 0019: taking cash with the denomination pad: status, change plan from the ledger, ledger postings.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cashDue, cashStatus, greedyChange, piecesOf, planChange, postCashSale, reverseCashTender } from '../src/lib/cashSale';
+import { cashDue, cashStatus, greedyChange, piecesOf, planChange, postCashSale, recordCancelledCashTender } from '../src/lib/cashSale';
 import { emptyLedger, applyEntry, newEntry, totalOf } from '../src/lib/cashLedger';
 import { cashTender } from '../src/lib/saleBuilder';
 import { findCombinations } from '../src/lib/changeFinder';
@@ -49,19 +49,22 @@ test('planChange: a node cap falls back to greedy and says so', () => {
   const p = planChange(pool, 4735, 50); assert.equal(p.kind, 'exact'); if (p.kind === 'exact') { assert.equal(p.truncated, true); assert.equal(totalOf(p.counts), 4735); }
   assert.deepEqual(greedyChange({ '1000': 1, '500': 1 }, 700), null);
 });
-test('postCashSale: received goes in, change comes out; untracked sides are skipped', () => {
+test('postCashSale: received goes in and change comes out by denomination', () => {
   const l0 = applyEntry(emptyLedger(), newEntry('open', { '500': 2, '100': 3 }));
   const l1 = postCashSale(l0, { saleUuid: 'S1', received: { '2000': 1 }, given: { '500': 1, '100': 3 }, staff: 'Sam' });
   assert.deepEqual(l1.counts, { '2000': 1, '500': 1 }); assert.deepEqual(l1.entries.slice(0, 2).map(e => e.kind), ['sale_change', 'sale_in']); assert.equal(l1.entries[0].saleUuid, 'S1');
-  assert.equal(postCashSale(l0, { saleUuid: 'S2' }), l0); assert.equal(postCashSale(l0, { saleUuid: 'S2', received: {}, given: null }).entries.length, l0.entries.length);
-  assert.deepEqual(postCashSale(l0, { saleUuid: 'S3', received: { '1000': 1 } }).counts, { '1000': 1, '500': 2, '100': 3 });
+  const emptySale = postCashSale(l0, { saleUuid: 'S2', received: {}, given: {} });
+  assert.equal(emptySale, l0); assert.equal(emptySale.entries.length, l0.entries.length);
+  assert.deepEqual(postCashSale(l0, { saleUuid: 'S3', received: { '1000': 1 }, given: {} }).counts, { '1000': 1, '500': 2, '100': 3 });
 });
-test('reverseCashTender: cancelling hands the cash back; tenders without tracking change nothing', () => {
-  const l0 = applyEntry(emptyLedger(), newEntry('open', { '500': 2, '100': 3 }));
-  const sold = postCashSale(l0, { saleUuid: 'S1', received: { '2000': 1 }, given: { '500': 1, '100': 3 } });
-  const t: Tender = { id: 't', kind: 'cash', amountCents: 1000, at: '', cashIn: { '2000': 1 }, cashOut: { '500': 1, '100': 3 } };
-  assert.deepEqual(reverseCashTender(sold, t, { saleUuid: 'S1' }).counts, l0.counts);
-  assert.equal(reverseCashTender(sold, { id: 'u', kind: 'cash', amountCents: 5, at: '' }), sold); assert.equal(reverseCashTender(sold, { ...t, kind: 'card' }), sold);
+test('cancelling a cash tender records collected change and returns the exact received denominations', () => {
+  const opened = applyEntry(emptyLedger(), newEntry('open', { '500': 2, '100': 3 }));
+  const paid = postCashSale(opened, { saleUuid: 'S1', received: { '2000': 1 }, given: { '500': 1, '100': 3 } });
+  const tender: Tender = { id: 'cash-1', kind: 'cash', amountCents: 1000, tenderedCents: 2000, changeCents: 1000, at: '', cashIn: { '2000': 1 }, cashOut: { '500': 1, '100': 3 } };
+  const cancelled = recordCancelledCashTender(paid, tender, tender.cashIn!, tender.cashOut!, { saleUuid: 'S1' });
+  assert.deepEqual(cancelled.counts, opened.counts);
+  assert.deepEqual(cancelled.entries[0].delta, { '2000': -1, '500': 1, '100': 3 });
+  assert.match(cancelled.entries[0].note ?? '', /exact cash returned/);
 });
 test('a tendered amount from the pad still goes through cashTender: change, settling, part payments', () => {
   const full = cashTender(1235, 2000, true); assert.equal(full.settles, true); assert.equal(full.tender.changeCents, 765);
@@ -95,7 +98,7 @@ test('countsToDraft round-trips through the pad; ledgerEmpty; refunds leave the 
   assert.equal(ledgerEmpty({}), true); assert.equal(ledgerEmpty({ '500': 1 }), false);
   const l0 = applyEntry(emptyLedger(), newEntry('open', { '2000': 2, '500': 1 }));
   const l1 = postCashRefund(l0, { saleUuid: 'R', given: { '2000': 1, '500': 1 }, staff: 'Sam' });
-  assert.deepEqual(l1.counts, { '2000': 1 }); assert.equal(l1.entries[0].kind, 'refund_out'); assert.equal(postCashRefund(l0, { given: null }), l0);
+  assert.deepEqual(l1.counts, { '2000': 1 }); assert.equal(l1.entries[0].kind, 'refund_out'); assert.equal(postCashRefund(l0, { given: {} }), l0);
 });
 test('part cash through cashTender: taking X of a larger bill gives change on X, not on the bill', () => {
   const r = cashTender(3000, 5000, false); assert.equal(r.settles, true); assert.equal(r.tender.amountCents, 3000); assert.equal(r.tender.changeCents, 2000);

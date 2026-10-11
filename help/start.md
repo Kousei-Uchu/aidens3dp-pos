@@ -14,6 +14,7 @@ This help explains every part of the POS: what each screen is for, how to do eac
 - Tap the **?** in a screen header to open help for that screen. Some error alerts also have a **Help** button that opens the relevant troubleshooting page.
 - Use the search box at the top. Type a word or two ("refund", "card declined") and every word has to match.
 - A page ends with **Related pages**. Words in blue take you to another page.
+- Numbered instructions are shown as separate visual steps. On the docs website, choose **Guide me through these steps** to focus on one step at a time; in the app, numbered steps are presented as distinct cards.
 - For troubleshooting, start at [[fix]]. For the rules behind data, staff access and money, see [[concepts]].
 
 ### Choosing how much detail you want
@@ -36,7 +37,7 @@ Tell the person who looks after the POS. The pages are ordinary text files, so a
 The pages are Markdown files kept in one folder. The app has a copy built in, so it works with no internet, and the docs website serves the same files. Because both read the same source, they cannot drift apart. When a page changes, its fingerprint (a short code) changes too, so a device can tell whether it has the latest.
 
 ### How pages are organised
-Each page has a **parent**, which makes the folders-inside-folders shape you see on the Help screen. Pages also point at each other with links, and each page shows the pages that link to it. Nothing is listed by hand: the contents list is built from the parents, so a new page appears in the right place the moment it exists.
+Each page has a **parent**, which makes the folders-inside-folders shape in the website sidebar and the topic cards in the app. Pages also point at each other with links, and each page shows the pages that link to it. Nothing is listed by hand: the contents list is built from the parents, so a new page appears in the right place the moment it exists.
 
 ### Checks before a page is accepted
 A page cannot be added to the set unless its links all go somewhere, its parent exists, it has a Basic section, and its code blocks are closed. This is why you should not meet a dead link while reading.

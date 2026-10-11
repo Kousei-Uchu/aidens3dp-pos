@@ -45,3 +45,13 @@ export function splitAcrossCards(cents: number, tenders: Tender[]): { tender: Te
   return out;
 }
 
+/** Return gift-card money to the same cards that funded the sale, capped at each card's original tender. */
+export function splitAcrossGiftCards(cents: number, tenders: Tender[], alreadyRefunded: Record<string, number> = {}): { tender: Tender; cents: number; index: number }[] {
+  let left = cents; const out: { tender: Tender; cents: number; index: number }[] = [];
+  for (const [i, t] of tenders.filter(x => x.kind === 'gift_card').entries()) {
+    const available = Math.max(0, t.amountCents - (alreadyRefunded[`${t.id}:${i}`] ?? 0));
+    const take = Math.min(left, available);
+    if (take > 0) { out.push({ tender: t, cents: take, index: i }); left -= take; }
+  }
+  return out;
+}

@@ -66,7 +66,7 @@ export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove
 
 /** Width of one square-ish tile, from the pane width and the tile size setting. Shared by the grid and the variation picker so they line up. */
 export function useTileSize(): number {
-  const { width, tablet } = useLayout(); const tileSize = useApp(s => s.settings.tileSize);
+  const { width, tablet } = useLayout(); const tileSize = useApp(s => s.settings.staff.find(m => m.id === s.staffId)?.preferences?.tileSize ?? s.settings.tileSize);
   const pane = tablet ? width * 0.6 : width; const target = tileSize === 'S' ? 96 : tileSize === 'L' ? 160 : 124; const cols = Math.max(2, Math.floor((pane - 16) / target));
   return (pane - 16) / cols;
 }

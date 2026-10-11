@@ -37,7 +37,7 @@ You do not have to split first. A payment can simply be less than the bill:
 In every case the **Payment** screen then says **Remaining**, with *of $…* under it, and the payments so far are listed. Pay the rest any way you like.
 
 ### While part of the sale is paid
-The cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds the card payments to the customer's card through the terminal. Cash and gift card payments are **not** returned automatically. Hand the cash back yourself (the drawer record is put back for tracked cash) and deal with gift cards by hand. See [[pay]].
+The cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds card payments through the terminal and credits gift-card payments back to the same cards. For cash, the app asks you to collect any exact change previously given and return the exact denominations originally received; it does not optimize this exchange. If a cancellation step fails, the sale stays locked, records electronic returns already completed and offers a safe retry. Do not take another payment for that sale. See [[pay]].
 
 ### On the receipt
 The receipt lists every payment with its amount, and the sale is sent to Shopify with one payment per entry.
@@ -62,7 +62,7 @@ Cash rounding only applies to the payment that clears the whole of what remains.
 Every payment keeps its own method, amount, and for cards its own fee. The Shopify order gets one payment per entry, named **Zeller**, **Cash** or **Gift card**.
 
 ### Cancelling
-**Refund & cancel** refunds each card payment through the terminal, one after another. If a refund does not complete nothing is cancelled and you see **Refund did not complete**. Cash drawer entries for tracked cash are reversed. Gift cards stay charged.
+**Refund & cancel** refunds each card payment through the terminal and credits each gift-card tender back to its original Shopify card. A unique transaction note and per-tender progress prevent a retry from crediting the same card twice. After electronic returns finish, the cashier collects any change previously given and returns the original cash tender using the exact saved denominations (or enters a manual denomination count for older tenders). If any step fails, payment methods are disabled and the cancellation can be retried.
 
 ## Advanced
 

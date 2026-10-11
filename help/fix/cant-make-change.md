@@ -20,7 +20,7 @@ The sheet may offer:
 If the ledger is empty or out of date, count the drawer and correct the ledger first. You can use **The drawer has it (ledger is out of date)** only when you have physically checked that the drawer can provide the displayed change.
 
 ### If you have already taken the cash
-In **Give change**, the POS suggests notes and coins if it finds an exact combination. Check what you actually hand over, then tap **Gave this**. If needed, choose different denominations manually. You can choose **Done, but don't track it** if you do not want to record the notes and coins.
+In **Give change**, the POS suggests an optimal set of notes and coins if it finds an exact combination. Check what you actually hand over, then tap **Gave this**. If needed, choose different denominations manually; confirming the count is required so the drawer ledger stays accurate.
 
 For the normal cash flow and denominations, see [[pay/cash]] and [[cash/change]].
 
@@ -29,10 +29,10 @@ For the normal cash flow and denominations, see [[pay/cash]] and [[cash/change]]
 ### Ledger count versus physical drawer
 The suggestion uses the ledger's note and coin counts plus the notes the customer just handed over. If the actual drawer differs from the ledger, the suggestion can be impossible or not match the physical cash. Count or correct the ledger before relying on a suggestion.
 
-The override is a manual acknowledgement that the physical drawer can make the change despite the ledger. The **Give change** step records what was actually handed over when denominations are confirmed; choosing not to track leaves that cash out of the drawer record.
+The override is a manual acknowledgement that the physical drawer can make the change despite the ledger. The **Give change** step requires confirmation of the denominations actually handed over and records them in the drawer ledger.
 
 ### Do not promise change the drawer cannot make
-The POS blocks the normal overpayment path when it cannot make exact change. Ask for a different handover, use the suggested part-cash option, or use another tender. If the customer gives the exact amount, you can take it without tracking denominations.
+The POS blocks the normal overpayment path when it cannot make exact change. Ask for a different handover, use the suggested part-cash option, or use another tender. Even an exact-amount handover is entered by denomination so the drawer ledger stays current.
 
 ## Advanced
 

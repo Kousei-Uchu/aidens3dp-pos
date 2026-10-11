@@ -8,6 +8,7 @@ import { useCatalogue } from '../state/selectors';
 import { createItem, updateVariant } from '../lib/shopify/products';
 import { importFromShopify } from '../lib/sync';
 import { digitsToCents, fmt, toCents } from '../lib/money';
+import { parseStartingStock } from '../lib/startingStock';
 import type { Variant } from '../lib/types';
 
 export function ItemsList() {
@@ -28,9 +29,10 @@ export function CreateItem() {
   const [f, setF] = useState({ title: '', price: '', sku: '', barcode: '', cost: '', stock: '' }); const [col, setCol] = useState<string | undefined>(); const [busy, setBusy] = useState(false);
   const save = async () => {
     const price = money(f.price); if (!f.title.trim() || price === undefined) return alertMsg('Name and price are required');
+    const stock = parseStartingStock(f.stock); if (!stock.ok) return alertMsg('Invalid starting stock', stock.message);
     if (!loc) return alertMsg('Pick a location first', 'Settings ▸ Shopify', 'settings/shopify');
     setBusy(true);
-    try { await createItem({ title: f.title.trim(), priceCents: price, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost), stock: f.stock ? Number(f.stock) : undefined, collectionId: col }, loc); await importFromShopify(() => {}); nav.pop(); }
+    try { await createItem({ title: f.title.trim(), priceCents: price, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost), stock: stock.quantity, collectionId: col }, loc); await importFromShopify(() => {}); nav.pop(); }
     catch (e: any) { alertMsg('Could not create item', e.message, 'stock/items'); }
     setBusy(false);
   };

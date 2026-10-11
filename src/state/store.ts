@@ -19,7 +19,10 @@ export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
   registerId: string; registerName: string;
   cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), per device like the drawer ledger
-  theme: 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L';
+  theme: 'brand' | 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L';
+  themeSetupVersion: number;
+  glassSurfaces: boolean;
+  itemSpotlight: { name: boolean; image: boolean };
   staff: StaffMember[]; requirePin: boolean; passServerUrl: string; giftClaimUrl: string; autoReceipt: 'ask' | 'none';
   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
@@ -27,11 +30,11 @@ export type Settings = {
   inventory: InvPrefs; // Inventory screen filters / sort / grouping (per device)
   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
-  sharedVersion: number;
+  sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'light', accent: '#111111', tileSize: 'M', staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0,
+  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 'M', glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
@@ -90,11 +93,12 @@ export const useApp = create<App>((set, get) => ({
     const [settings, data, g, pos] = await Promise.all([
       kvGet<Settings | null>('settings', null), kvGet<Data | null>('data', null), kvGet<{ grid: Grid; version: number } | null>('grid', null), kvGet<Pos | null>('pos', null),
     ]);
+    const migrateTheme = !!settings && settings.themeSetupVersion !== 1;
     set({
-      settings: { ...defaultSettings(), ...(settings ?? {}), receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
+      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
     });
-    if (!settings) persist('settings', () => get().settings); // keep the generated registerId
+    if (!settings || migrateTheme) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme migration
   },
 }));
 

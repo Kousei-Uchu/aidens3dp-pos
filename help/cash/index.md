@@ -40,7 +40,7 @@ A cash sale updates the ledger whether or not a drawer is open. The shift figure
 The ledger and the shift live on the iPad you are using. Another iPad has its own, and they are not added together. They are also not in the backup file. If you use two registers, each one needs its own drawer opened and counted.
 
 ### Keeping it honest
-The ledger is only as right as what is tapped. If you skip the tapping for a rush (the **don't track** buttons on the cash screen), or hand out different change than you confirmed, or take a note out for lunch without telling the POS, the ledger will drift away from the real drawer. Two things put it right:
+The ledger is only as right as what is tapped and confirmed. If the denominations entered do not match the cash physically exchanged, or cash is taken out without telling the POS, the ledger will drift away from the real drawer. Two things put it right:
 - **Correct contents**, when you spot a mistake mid-shift.
 - **Count & close**, which resets the ledger to exactly what you counted.
 
@@ -52,7 +52,7 @@ The [[cash/float-report|Daily float report]] works out which notes and coins to 
 ## Deep
 
 ### Why two records
-The shift figures are plain sums of dollars: float, plus cash sales, plus paid in, minus paid out. They answer one question, "is the money all there?". The ledger is a count of each note and coin, and answers another, "what can I hand back as change?". They are kept apart on purpose. A sale where you skipped the tapping changes the first (the sale is still a sale) but not the ledger (the POS never saw the notes). That is why the closing count can show the right amount while the ledger was out of line, and why closing fixes the ledger without changing the day's figures.
+The shift figures are plain sums of dollars: float, plus cash sales, plus paid in, minus paid out. They answer one question, "is the money all there?". The ledger is a count of each note and coin, and answers another, "what can I hand back as change?". They are kept apart on purpose. Cash received and paid out are recorded by denomination, but a wrong tap or cash moved outside the POS can still make the count differ from the shift total. Closing fixes the denomination counts without changing the day's figures.
 
 ### How Expected is worked out
 **Expected in drawer** = Float + Cash sales + Paid in − Paid out.
@@ -69,7 +69,7 @@ If the ledger did not know about a note and you take it out, the count stops at 
 The history keeps the newest 1,000 entries and the screen shows the 15 newest. Entries made by a sale carry the sale's id and the person signed in. Opening, paid in, paid out and closing also add a line to the events history file (`events.csv`, in the app's `pos-data` folder, which shows in the Files app), which is never cleared automatically. **Correct contents** adds a ledger entry but no events line.
 
 ### Worked example
-A customer owes $35.00 and hands over a $50 note. You tap the $50, the POS works out $15 change, and you give a $10 note and a $5 note. The ledger records two entries for the sale: **Cash received** (+$50.00) and **Change given** (-$15.00). Its total has gone up by $35.00, and so has **Cash sales** on the shift. If you had used **Exact amount (don't track notes)** instead, Cash sales would still go up by $35.00 but the ledger would not move.
+A customer owes $35.00 and hands over a $50 note. You tap the $50, the POS works out $15 change, and you give a $10 note and a $5 note. The ledger records two entries for the sale: **Cash received** (+$50.00) and **Change given** (-$15.00). Its total has gone up by $35.00, and so has **Cash sales** on the shift.
 
 ## Advanced
 
@@ -77,15 +77,16 @@ A customer owes $35.00 and hands over a $50 note. You tap the $50, the POS works
 ```mermaid
 flowchart TD
   A[takeCash in Pay.tsx] --> B[postCashSale: sale_in and sale_change]
-  C[Cancel a part-paid sale] --> D[reverseCashTender]
-  E[Cash refund change step] --> F[postCashRefund: refund_out]
-  G[Drawer.tsx: open, paid in, paid out, correct, close] --> H[record then applyEntry]
-  I[FloatReport.tsx: record the banking] --> J[paid_out entry then applyEntry]
+  C[Cancel a part-paid sale] --> D[collect prior change + return exact tender]
+  D --> E[recordCancelledCashTender]
+  F[Cash refund change step] --> G[postCashRefund: refund_out]
+  H[Drawer.tsx: open, paid in, paid out, correct, close] --> I[record then applyEntry]
+  J[FloatReport.tsx: record the banking] --> K[paid_out entry then applyEntry]
   B --> L[pos.ledger]
-  D --> L
-  F --> L
-  H --> L
-  J --> L
+  E --> L
+  G --> L
+  I --> L
+  K --> L
   L --> M[planChange and planChangeSmart]
   L --> N[Check change]
   L --> O[Daily float report]
@@ -99,7 +100,7 @@ flowchart TD
 | Ledger rules (counts, entries, never below zero) | `src/lib/cashLedger.ts`: `applyEntry`, `newEntry`, `cleanCounts`, `diffCounts`, `readLedger` |
 | The notes and coins | `DENOMS` in `src/lib/cashLedger.ts` |
 | History wording | `LEDGER_LABEL` in `src/lib/cashLedger.ts` |
-| Writing sales, cancels and refunds | `postCashSale`, `reverseCashTender`, `postCashRefund` in `src/lib/cashSale.ts` |
+| Writing sales, cancels and refunds | `postCashSale`, `recordCancelledCashTender`, `postCashRefund` in `src/lib/cashSale.ts` |
 | Banking from the float report | `FloatReportSheet` in `src/screens/FloatReport.tsx` |
 | Where the data lives | `Shift` and `Pos` in `src/state/store.ts` (`pos.shift`, `pos.ledger`) |
 

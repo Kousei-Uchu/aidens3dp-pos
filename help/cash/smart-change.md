@@ -36,7 +36,7 @@ It **never** decides whether change can be made. If exact change is possible wit
 | *learned from about N recent cash sales plus your item prices* | A mix of both, and real sales take over as they build up. |
 
 ### Helping it learn
-It learns only from sales where you **tapped what the customer handed over and confirmed the change** (**Gave this**). The sales you skip with the **don't track** buttons teach it nothing about change. Give it a few days of tracked sales. See [[pay/cash]].
+It learns from denomination-recorded cash sales where you tapped what the customer handed over and confirmed the change (**Gave this**). Cancellation entries are excluded from demand learning. Give it a few days of cash sales. See [[pay/cash]].
 
 ### When a suggestion feels wrong
 Tap **Show another way**, or tap **I'll give different notes and coins**. Smart change is advice. If it keeps suggesting something you dislike, turn it off in Settings ▸ Payments.
@@ -52,7 +52,7 @@ Each time, the POS rebuilds a **profile** from three things:
 2. **The item library.** A customer buying a $12 item usually pays with a $20, so $8.00 back is likely. This is used while there are few real sales, and its weight fades as real sales build up, reaching equal weight at about 8 recent sales.
 3. **The sales list.** Used only to size how far ahead to plan: about half an average cash-sale day (counting the last 28 days), kept between 4 and 12 sales, or 6 when there is nothing to go on.
 
-Only sales you tracked count. Cancelled sales, cash refunds and untracked change are ignored when learning what change you give. Cash that customers hand over does count even if the change was not tracked.
+Cash sales with recorded denominations inform the model. Cancellation reversals, cash refunds, and cash drawer adjustments are not treated as customer change demand.
 
 ### How a choice is scored
 For every exact way of making the change, the POS imagines the drawer **after** giving it, and gives that a score. Higher is better:
@@ -137,6 +137,6 @@ flowchart TD
 - **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.
 - **The reason line is missing.** `smart` is false: the profile has no amounts yet, so the plain answer is shown.
 - **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.
-- **Suggestions do not change after many sales.** Only tracked sales count. If most sales use the **don't track** buttons, `fromLedger` sees almost nothing.
+- **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.
 - **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.
 - **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/checkchange.test.ts` covers the worth-it rules.

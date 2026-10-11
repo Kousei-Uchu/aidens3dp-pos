@@ -85,7 +85,7 @@ For **Spread over all items** the saving is divided between the units in proport
 The Starts date is the first moment of that day and the Ends date is the last moment of that day, both by the iPad's own clock and time zone. A deal is live when it is switched on and inside its dates. A wrong date or time on a register changes which deals it applies.
 
 ### Sharing between registers
-Deals are kept with the other shared settings (staff, fees, cash rounding, the PIN requirement and price adjustment limits). Saving a deal sends the whole set. A register that is offline when you save keeps the change **only on that register**, and there is no automatic retry: it is sent the next time someone saves one of those shared settings from it. If you save a deal while a register is offline, check the other registers afterwards.
+Deals are kept with the other shared settings (staff, fees, cash rounding, the PIN requirement and price adjustment limits). Saving a deal sends the whole set. If the upload fails, this register keeps the change pending and retries while the app is open, about every 25 seconds. Other registers receive it on a later poll after the upload succeeds. Check **Support & diagnostics ▸ Sync** if the shared-settings upload reports an error.
 
 ### Where deals sit in the price
 Bundles are worked out first, before Shopify automatic discounts, a line's own discount, the cart discount and any price adjustments. Units used by a bundle are not used by an automatic discount. See [[sales/cart-and-prices]] for the full order.
@@ -99,7 +99,7 @@ flowchart TD
   B --> C[stringifyBundleConfig then patchSettings bundlesJson]
   C --> D[pushSharedSettings in sync.ts]
   D -->|sent| E[other registers: pullSettings inside pollShared every 25 s]
-  D -->|offline or error| F[kept on this register only, no retry]
+  D -->|offline or error| F[keep change pending and retry on foreground poll]
   C --> G[usePriced in selectors.ts re-prices the cart]
   G --> H[priceCart step 1 calls matchBundles]
 ```

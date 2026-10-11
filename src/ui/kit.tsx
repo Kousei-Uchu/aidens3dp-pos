@@ -2,8 +2,10 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, InputAccessoryView, Keyboard, Modal, Platform, Pressable, StyleProp, Text, TextInput, TextInputProps, View, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { BlurView } from '@react-native-community/blur';
 import * as Haptics from 'expo-haptics';
 import { useTheme, useLayout } from './theme';
+import { useApp } from '../state/store';
 import { digitsToCents, fmt } from '../lib/money';
 import { NativeSegmented, NativeSwitch, hasSwiftUI } from './native';
 import { noteActivity } from '../lib/idle';
@@ -31,12 +33,13 @@ export const Money = ({ cents, size = 15, weight, color, style }: { cents: numbe
   <Txt size={size} weight={weight} color={color} style={[{ fontVariant: ['tabular-nums'] }, style]}>{fmt(cents)}</Txt>;
 
 export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, style, small }: { title: string; onPress?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'ghost'; icon?: IconName; disabled?: boolean; busy?: boolean; style?: StyleProp<ViewStyle>; small?: boolean }) {
-  const { c } = useTheme(); const k = useUi().textScale;
+  const { c, dark } = useTheme(); const k = useUi().textScale; const glass = useApp(s => s.settings.glassSurfaces);
   const bg = kind === 'primary' ? c.accent : kind === 'danger' ? c.bad : kind === 'secondary' ? c.fill : 'transparent';
   const fg = kind === 'primary' ? c.onAccent : kind === 'danger' ? '#fff' : c.text;
   return (
     <Pressable disabled={disabled || busy} onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityLabel={title}
-      style={({ pressed }) => [{ backgroundColor: bg, opacity: disabled ? 0.4 : pressed ? 0.75 : 1, paddingVertical: small ? 8 : 14, paddingHorizontal: small ? 14 : 20, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: Math.round((small ? 36 : 50) * k) }, style]}>
+      style={({ pressed }) => [{ overflow: 'hidden', backgroundColor: glass ? (dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.48)') : bg, borderColor: glass ? (dark ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)') : 'transparent', borderWidth: glass ? 1 : 0, opacity: disabled ? 0.4 : pressed ? 0.75 : 1, paddingVertical: small ? 8 : 14, paddingHorizontal: small ? 14 : 20, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: Math.round((small ? 36 : 50) * k) }, style]}>
+      {glass ? <BlurView blurType={dark ? 'dark' : 'light'} blurAmount={18} pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} /> : null}
       {busy ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
       <Text style={{ color: fg, fontWeight: '600', fontSize: Math.round((small ? 14 : 16) * k * 2) / 2 }}>{title}</Text>
     </Pressable>
@@ -47,7 +50,11 @@ export function IconBtn({ icon, onPress, label, color, size = 22 }: { icon: Icon
   return <Pressable onPress={() => { tap(); onPress(); }} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={{ width: Math.round(40 * k), height: Math.round(40 * k), alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={Math.round(size * k)} color={color ?? c.text} /></Pressable>;
 }
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
-  const { c } = useTheme(); return <View style={[{ backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.line, overflow: 'hidden' }, style]}>{children}</View>;
+  const { c, dark } = useTheme(); const glass = useApp(s => s.settings.glassSurfaces);
+  return <View style={[{ backgroundColor: glass ? (dark ? 'rgba(28,25,36,0.52)' : 'rgba(255,255,255,0.52)') : c.card, borderRadius: 16, borderWidth: 1, borderColor: glass ? (dark ? 'rgba(239,216,201,0.3)' : 'rgba(255,255,255,0.8)') : c.line, overflow: 'hidden' }, style]}>
+    {glass ? <BlurView blurType={dark ? 'dark' : 'light'} blurAmount={22} pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} /> : null}
+    {children}
+  </View>;
 }
 /** Product thumbnail with a neutral placeholder when there is no image (or it fails to load). */
 export function Thumb({ uri, size = 44, radius = 10 }: { uri?: string | null; size?: number; radius?: number }) {
