@@ -82,9 +82,10 @@ export const welcome: TrainingModule = {
   },
   guide: [
     { id: 'g-dock', say: 'The bar at the bottom stays with you in practice. It shows what you are doing, and has Hint and Exit buttons.', until: { kind: 'next' } },
-    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout } },
-    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen } },
-    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
+    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false } },
+    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen },
+      watch: [{ id: 'bee-gone', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The Bumble Bee has gone from the cart. Tap its tile to add it back.', target: gridItemSpot('train-v-bee'), how: ['Find the Bumble Bee tile on the grid.', 'Tap it once.'] }] },
+    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, allow: ['remove'], at: { tabs: ['checkout'], routes: ['cart'] }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
   ],
   check1: [
     { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg'),
@@ -94,7 +95,7 @@ export const welcome: TrainingModule = {
     { id: 'change-mind', title: 'The customer changed their mind. Take the Red Dragon out of the cart', until: { kind: 'state', test: s => !s.cart.some(l => l.variantId === 'train-v-dragon') && s.cart.some(l => l.variantId === 'train-v-bee') }, inject: [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 1 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-remove',
       ladder: ['The cart lists everything that has been added.', 'A line can be removed from the cart.', 'Swipe the Red Dragon line to the left, then tap Remove.'], reveal: cartLineSpot('train-v-dragon'), via: SPOT.cartOpen,
       allow: ['remove'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true },
-      watch: [{ id: 'bee-removed', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The customer is keeping the Bumble Bee. Tap its tile to add it back, then take out the Red Dragon.', target: gridItemSpot('train-v-bee') }] },
+      watch: [{ id: 'bee-removed', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The customer is keeping the Bumble Bee. Tap its tile to add it back, then take out the Red Dragon.', target: gridItemSpot('train-v-bee'), how: ['Find the Bumble Bee tile on the grid.', 'Tap it once to add it back.', 'Then take the Red Dragon out of the cart.'] }] },
   ],
   recap: ['You can add items to a sale from the grid.', 'You can take an item out of the cart.', 'You know where Hint and Exit are when you get stuck.'],
 };

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, trackStray } from '../src/lib/trainingCourse';
+import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, stepRules, trackStray } from '../src/lib/trainingCourse';
 import { snapOf } from '../src/lib/trainingConds';
 import { SPOT, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
 import { validateModule, type Goal, type TrainSnap } from '../src/lib/trainingModule';
@@ -84,5 +84,36 @@ test('the validator insists on allow, and on known tabs, pages and spots', () =>
   assert.ok(validateModule(clone, isKnownSpot).some(e => e.includes('must say what may change')));
   const c2 = { ...welcome, check1: [{ ...welcome.check1[0], allow: ['fly' as any], at: { tabs: ['more'], routes: ['pay'] } }] };
   const errs = validateModule(c2, isKnownSpot); assert.ok(errs.some(e => e.includes('"fly"')) && errs.some(e => e.includes('"more"')) && errs.some(e => e.includes('"pay"')));
-  void m;
+});
+
+test('a Guide step is checked with the same rules as a Check goal', () => {
+  const press = stepRules({ until: { kind: 'press', id: gridItemSpot('train-v-bee') } });
+  assert.deepEqual(press.allow, ['add']);
+  assert.deepEqual(stepRules({ until: { kind: 'press', id: cartLineSpot('train-v-bee') } }).allow, ['remove']);
+  assert.deepEqual(stepRules({ until: { kind: 'next' } }).allow, []);
+  assert.deepEqual(stepRules({ until: { kind: 'press', id: gridItemSpot('x') }, allow: [] }).allow, [], 'an explicit allow always wins');
+  // On the "tap the bee" step, adding the bee is fine, but a second one, a discount or a window is not.
+  const at = { tabs: ['checkout'], routes: [], sheets: false };
+  const rules = stepRules({ until: { kind: 'press', id: gridItemSpot('train-v-bee') }, at });
+  assert.equal(diagnose(rules, frame, snap(), snap({ lines: [line('train-v-bee')] })), null);
+  assert.equal(diagnose(rules, frame, snap(), snap({ lines: [line('train-v-bee', 2)] }))!.kind, 'qty');
+  assert.equal(diagnose(rules, frame, snap(), snap({ sheets: 1 }))!.kind, 'sheet');
+  // On a Next-only step nothing may change at all.
+  const next = stepRules({ until: { kind: 'next' } }); const b = snap({ lines: [line('train-v-bee')] });
+  assert.equal(diagnose(next, frame, b, b), null);
+  assert.equal(diagnose(next, frame, b, snap())!.kind, 'lost');
+  assert.equal(diagnose(next, frame, b, snap({ lines: [line('train-v-bee'), line('train-v-egg')] }))!.kind, 'extra');
+});
+test('a step can carry its own watch rule', () => {
+  const rules = stepRules({ until: { kind: 'next' }, watch: [{ id: 'bee-gone', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'Add the bee back.', target: gridItemSpot('train-v-bee') }] });
+  const d = diagnose(rules, frame, snap(), snap())!; assert.equal(d.kind, 'watch'); assert.equal(d.target, gridItemSpot('train-v-bee'));
+});
+test('the validator holds Guide steps to the same rules as goals', () => {
+  const ok = () => isKnownSpot;
+  const good = { ...welcome }; assert.deepEqual(validateModule(good, ok()), []);
+  const bad = (f: (g: typeof welcome.guide) => void) => { const g = welcome.guide.map(s => ({ ...s })); f(g); return validateModule({ ...welcome, guide: g }, ok()); };
+  assert.match(bad(g => { delete g[3].allow; }).join('\n'), /must say what may change/);
+  assert.match(bad(g => { g[1].allow = ['explode' as never]; }).join('\n'), /unknown change/);
+  assert.match(bad(g => { g[1].at = { tabs: ['more'] }; }).join('\n'), /does not allow/);
+  assert.match(bad(g => { g[2].watch = [{ id: 'a', when: () => false, say: '', target: 'nope' }]; }).join('\n'), /says nothing/);
 });

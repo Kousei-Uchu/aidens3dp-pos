@@ -1,0 +1,217 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 46713d3..f1de21a 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -79,6 +79,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0074 | 2026-10-12 | Training corrections (new list of 7), 2 of 7: the **Guide is animated** and reacts at once. The driver no longer waits for a poll (a tap, any app state change or a page change asks for an immediate check; a new step no longer wastes a tick), the spotlight glides between targets and closes in the first time, the ring pulses with a glow, a pointer glides to the target and taps it, the bubble glides and swaps its words, a green burst marks each finished step, a progress bar shows how far along you are, and a missing target holds the last spotlight instead of flashing dark. New `src/lib/guideMotion.ts` (pure, tested) and `src/ui/Swap.tsx`. Reduce Motion turns it off | B6 |
+ | 0075 | 2026-10-12 | Training corrections (new list of 7), 3 of 7: **going off course in the Checks is handled**. The till is compared with where the goal began, and a finished sale, a wrong place or window, something taken out or added that the sale did not need, too many of an item, a stray discount, price change, customer, note or payment are each explained in one sentence with the fix ringed and pointed at. **Start this part again** puts the practice till back exactly (always on the bar). Goals now declare `allow`, `at` and `watch`; the welcome course's second goal no longer passes if you remove the wrong item. New `src/lib/trainingCourse.ts` (pure, tested), spots `page.back` and `sheet.close` | B6 |
+ | 0076 | 2026-10-12 | Training corrections (list of 5), 1a: **going off course in the Guide** is handled the same way as in the Checks. Each Guide step now compares the till with where the step began, using the same `allow`, `at` and `watch` rules (worked out for you when a step only waits for a tap on a tile or a line), so a window opened, a wrong page, a removed or extra item, a stray discount, price change, customer, note or payment each get explained and ringed. The dimming lifts while off course so the fix can be tapped, Skip is hidden, and **Start again** restores the step. New `stepRules` in `src/lib/trainingCourse.ts`; the checker refuses a step that waits on the till without saying what may change | B6 |
++| 0077 | 2026-10-12 | Training corrections (list of 5), 1b: the **off-course card moves out of the way** of what you need to tap. It sits at the top or bottom edge, or in a corner on a wide screen (narrower and taller), keeps its place while that is still clear, glides to a new one when the target moves under it, and never covers the Hint and Exit buttons of a window. The Check's goal bar over windows does the same. New pure `placeNotice` in `src/lib/trainingGeometry.ts` and a `Floating` card in `src/ui/TrainingOverlay.tsx` | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0077-plan.md b/docs/patches/0077-plan.md
+new file mode 100644
+index 0000000..0ff8bde
+--- /dev/null
++++ b/docs/patches/0077-plan.md
+@@ -0,0 +1,22 @@
++# Patch 0077: the off-course card stays out of the way (list of 5, point 1b)
++
++Stacks on 0076.
++
++## What you asked for
++The "off course" toast sometimes blocks the part of the screen you need. It should know where you need to tap and move itself somewhere around the edges.
++
++## How it works
++- `placeNotice` (pure, `src/lib/trainingGeometry.ts`) chooses from six places: top, bottom, and (on a screen wide enough for a narrower card) the four corners. It takes the first place that does not overlap the control to tap (plus 10 units of margin) and the Hint/Exit buttons a window carries. If nothing is clear it takes the least covered place.
++- A corner card is narrower, so its height is scaled up for the extra wrapping.
++- It keeps its last place while that place is still clear, so a target that moves a little does not make the card hop about.
++- `Floating` (in `TrainingOverlay.tsx`) measures the card, asks `placeNotice`, and glides to the new place (about 0.36 s, off with Reduce Motion).
++- Used for the off-course card (Guide and Check) and for the Check's goal bar over windows (which prefers the bottom).
++- The Guide's own bubble already places itself against its target, so it is unchanged.
++
++## Tests
++`tests/trainingnotice.test.ts` (9): default places, target at the top or bottom, never overlapping across a grid of positions on a phone and a tablet, stays on screen, corners on a wide screen, taller corner card, keeps its place, avoids the buttons, least-covered fallback.
++
++## Steps
++1. [x] Pure placement and tests.
++2. [x] `Floating` card, used for both notices.
++3. [ ] You: on the iPad and a phone, go off course while the target is near the top, then the bottom, then the middle (for example an extra item whose line is at the top of the cart). The card should move to a clear edge and not sit on the ring.
+diff --git a/src/lib/trainingGeometry.ts b/src/lib/trainingGeometry.ts
+index 7576ddd..4b6fbc1 100644
+--- a/src/lib/trainingGeometry.ts
++++ b/src/lib/trainingGeometry.ts
+@@ -31,3 +31,36 @@ export function placeBubble(hole: Rect, screen: Size, b: Size, gap = 14, edge =
+ /** Centre of the screen, for steps with nothing to point at. */
+ export const centred = (screen: Size, b: Size): { x: number; y: number } => ({ x: (screen.w - b.w) / 2, y: Math.max(12, (screen.h - b.h) / 2) });
+ export const same = (a: Rect | null, b: Rect | null): boolean => (!a || !b ? a === b : Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.w - b.w) < 1 && Math.abs(a.h - b.h) < 1);
++
++// Where a floating notice (the "off course" card, the Check's goal bar) sits so it never covers what the person needs to tap.
++export type Slot = 'top' | 'bottom' | 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right';
++export type Placed = { slot: Slot; x: number; y: number; w: number; h: number };
++const overlapArea = (a: Rect, b: Rect): number => Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
++/**
++ * Picks a place around the edges of the screen for a notice, away from `avoid` (the control to tap, the buttons that are always on screen).
++ * `size` is the notice as last measured. Where it is narrower than the full width its height is scaled up, because the words wrap more.
++ * The first place with no overlap wins, in the order `prefer` gives (top or bottom first, then the four corners when the screen is wide enough for a narrower card).
++ * `stick` is the place used last time: it is kept while it is still clear, so the notice does not hop around as the target moves a little.
++ * When nowhere is clear, the place with the least overlap is used.
++ */
++export function placeNotice(o: { screen: Size; size: Size; avoid: readonly Rect[]; prefer?: 'top' | 'bottom'; top?: number; bottom?: number; edge?: number; margin?: number; maxW?: number; stick?: Slot }): Placed {
++  const { screen, size } = o; const edge = o.edge ?? 12; const margin = o.margin ?? 10; const top = o.top ?? edge; const bottom = o.bottom ?? edge;
++  const full = Math.max(120, Math.min(o.maxW ?? 520, screen.w - edge * 2));
++  const narrow = Math.max(240, Math.min(full, 360, Math.floor(screen.w / 2 - edge * 1.5)));
++  const area = size.w * size.h; const hAt = (w: number): number => Math.min(screen.h / 2, Math.ceil(area / Math.max(1, w)));
++  const fullH = hAt(full); const narrowH = hAt(narrow);
++  const cx = Math.round((screen.w - full) / 2);
++  const make = (slot: Slot): Placed => {
++    const t = slot.startsWith('top'); const isNarrow = slot.includes('-'); const w = isNarrow ? narrow : full; const h = isNarrow ? narrowH : fullH;
++    const x = slot.endsWith('left') ? edge : slot.endsWith('right') ? screen.w - edge - w : cx;
++    return { slot, x, y: t ? top : Math.max(top, screen.h - bottom - h), w, h };
++  };
++  const wide = narrow < full - 40 && narrow * 2 + edge * 3 <= screen.w;
++  const order: Slot[] = o.prefer === 'bottom' ? ['bottom', 'top', ...(wide ? (['bottom-left', 'bottom-right', 'top-left', 'top-right'] as Slot[]) : [])] : ['top', 'bottom', ...(wide ? (['top-left', 'top-right', 'bottom-left', 'bottom-right'] as Slot[]) : [])];
++  const grown = o.avoid.map(r => grow(r, margin));
++  const cost = (p: Placed): number => grown.reduce((n, r) => n + overlapArea(p, r), 0);
++  if (o.stick && order.includes(o.stick)) { const s = make(o.stick); if (cost(s) === 0) return s; }
++  let best = make(order[0]); let bestCost = cost(best);
++  for (const slot of order) { const p = make(slot); const c = cost(p); if (c === 0) return p; if (c < bestCost) { best = p; bestCost = c; } }
++  return best;
++}
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index 51a37b2..40d5732 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -15,7 +15,7 @@ import { useTheme } from './theme';
+ import Swap from './Swap';
+ import { useReduceMotion } from './Motion';
+ import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
+-import { centred, grow, onScreen, placeBubble, type Rect, type Size } from '../lib/trainingGeometry';
++import { centred, grow, onScreen, placeBubble, placeNotice, type Rect, type Size, type Slot } from '../lib/trainingGeometry';
+ import { HOLD_MS, glideMs, irisStart, isTinyMove, pointerRest, pointerTap, segments } from '../lib/guideMotion';
+ import { useTraining } from '../state/trainingSession';
+ import { trainingActions } from './trainingActions';
+@@ -97,6 +97,28 @@ function Burst({ rect, good }: { rect: Rect; good: string }) {
+   );
+ }
+ 
++/**
++ * A card that floats at the edge of the screen and moves itself out of the way of what the person needs to tap (`avoid`).
++ * It keeps its place while that stays clear, and glides to a new one when the target moves under it.
++ */
++function Floating({ avoid, screen, top, bottom, prefer, maxW = 520, pointerEvents, children }: { avoid: Rect[]; screen: Size; top?: number; bottom?: number; prefer?: 'top' | 'bottom'; maxW?: number; pointerEvents: 'box-none' | 'none'; children: React.ReactNode }) {
++  // The measured area stays about the same while the width glides, so the 600 threshold below stops it re-rendering every frame.
++  const reduce = useReduceMotion(); const [m, setM] = useState<Size>({ w: Math.min(maxW, screen.w - 24), h: 110 }); const stick = useRef<Slot | undefined>(undefined);
++  const p = placeNotice({ screen, size: m, avoid, prefer, top, bottom, maxW, stick: stick.current }); stick.current = p.slot;
++  const ax = useRef(new Animated.Value(p.x)).current; const ay = useRef(new Animated.Value(p.y)).current; const aw = useRef(new Animated.Value(p.w)).current; const placed = useRef(false);
++  useEffect(() => {
++    if (!placed.current || reduce) { ax.setValue(p.x); ay.setValue(p.y); aw.setValue(p.w); placed.current = true; return undefined; }
++    const e = Easing.bezier(0.22, 1, 0.36, 1);
++    const a = Animated.parallel([ax, ay, aw].map((v, i) => Animated.timing(v, { toValue: [p.x, p.y, p.w][i], duration: 360, easing: e, useNativeDriver: false })));
++    a.start(); return () => a.stop();
++  }, [Math.round(p.x), Math.round(p.y), Math.round(p.w), reduce]); // eslint-disable-line react-hooks/exhaustive-deps
++  return (
++    <Animated.View pointerEvents={pointerEvents} onLayout={e => { const { width, height } = e.nativeEvent.layout; if (width > 0 && height > 0 && Math.abs(width * height - m.w * m.h) > 600) setM({ w: width, h: height }); }} style={{ position: 'absolute', left: ax, top: ay, width: aw }}>
++      {children}
++    </Animated.View>
++  );
++}
++
+ export default function TrainingOverlay({ layer }: { layer: string }) {
+   const { c } = useTheme(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
+   const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(150);
+@@ -143,6 +165,8 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+   }), [vals, size.w, size.h]);
+   if (!view || !top) return null;
+   const isRoot = layer === ROOT_LAYER; const seg = segments(view.index, view.total);
++  // What a floating card must never cover: the control to tap (and the pointer that sits on it), and the Hint and Exit buttons a sheet carries.
++  const avoid: Rect[] = [...(hole ? [grow(hole, 6)] : []), ...(!isRoot ? [{ x: size.w - 200, y: 6, w: 194, h: 48 }] : [])];
+   return (
+     <View ref={box} onLayout={measure} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+       {dim ? (
+@@ -171,15 +195,15 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+         </Animated.View>
+       ) : null}
+       {view.stray ? (
+-        <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, top: isRoot ? 12 : 56, alignItems: 'center' }}>
+-          <Swap k={view.stray.title} dy={-10} appear style={{ width: '100%', maxWidth: 520 }}>
++        <Floating avoid={avoid} screen={size} top={isRoot ? 12 : 56} pointerEvents="box-none">
++          <Swap k={view.stray.title} dy={-10} appear style={{ width: '100%' }}>
+             <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 2, borderColor: c.warn, padding: 14, gap: 8, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Ionicons name="compass" size={20} color={c.warn} /><Text style={{ color: c.warn, fontSize: 13, fontWeight: '800', textTransform: 'uppercase' }}>Off course: {view.stray.title}</Text></View>
+               <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.stray.say}</Text>
+               {view.stray.offerRestart ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 }}><Text style={{ color: c.onAccent, fontWeight: '700' }}>Start this part again</Text></Pressable> : null}
+             </View>
+           </Swap>
+-        </View>
++        </Floating>
+       ) : null}
+       {!isRoot ? (
+         <View pointerEvents="box-none" style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 8 }}>
+@@ -187,7 +211,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+           <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={{ backgroundColor: c.fill, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
+         </View>
+       ) : null}
+-      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <View pointerEvents="none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View> : null}
++      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <Floating avoid={avoid} screen={size} top={56} prefer="bottom" pointerEvents="none"><View style={{ backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View></Floating> : null}
+     </View>
+   );
+ }
+diff --git a/tests/trainingnotice.test.ts b/tests/trainingnotice.test.ts
+new file mode 100644
+index 0000000..d67076e
+--- /dev/null
++++ b/tests/trainingnotice.test.ts
+@@ -0,0 +1,51 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { placeNotice, type Rect } from '../src/lib/trainingGeometry';
++
++const phone = { w: 390, h: 760 }; const tablet = { w: 1180, h: 820 };
++const card = { w: 360, h: 110 };
++const at = (x: number, y: number, w = 80, h = 50): Rect => ({ x, y, w, h });
++
++test('with nothing in the way the notice goes where it was asked to', () => {
++  assert.equal(placeNotice({ screen: phone, size: card, avoid: [] }).slot, 'top');
++  assert.equal(placeNotice({ screen: phone, size: card, avoid: [], prefer: 'bottom' }).slot, 'bottom');
++});
++test('a target at the top sends the notice to the bottom, and the other way round', () => {
++  assert.equal(placeNotice({ screen: phone, size: card, avoid: [at(150, 20)] }).slot, 'bottom');
++  assert.equal(placeNotice({ screen: phone, size: card, avoid: [at(150, 690)], prefer: 'bottom' }).slot, 'top');
++});
++test('the notice is never drawn over the target when somewhere else is free', () => {
++  for (const y of [0, 100, 300, 380, 500, 700]) for (const x of [0, 150, 310]) for (const scr of [phone, tablet]) {
++    const hole = at(Math.min(x, scr.w - 80), y); const p = placeNotice({ screen: scr, size: card, avoid: [hole] });
++    const hit = !(p.x + p.w <= hole.x - 10 || hole.x + hole.w + 10 <= p.x || p.y + p.h <= hole.y - 10 || hole.y + hole.h + 10 <= p.y);
++    // the middle of a phone has the target in neither band, so top or bottom is always free
++    assert.equal(hit, false, `${scr.w}x${scr.h} hole at ${hole.x},${hole.y} -> ${p.slot}`);
++  }
++});
++test('it stays inside the screen', () => {
++  for (const scr of [phone, tablet]) for (const s of ['top', 'bottom', 'top-left', 'top-right', 'bottom-left', 'bottom-right'] as const) {
++    const p = placeNotice({ screen: scr, size: card, avoid: [], stick: s }); assert.ok(p.x >= 0 && p.y >= 0 && p.x + p.w <= scr.w && p.y + p.h <= scr.h, s);
++  }
++});
++test('on a wide screen, a target spanning the top and bottom bands sends it to a corner', () => {
++  const tall = at(480, 0, 220, 820); // a tall pane in the middle
++  const p = placeNotice({ screen: tablet, size: card, avoid: [tall] }); assert.match(p.slot, /-(left|right)$/); assert.ok(p.w < 520);
++});
++test('a corner card is taller, because the words wrap', () => {
++  const tall = at(480, 0, 220, 820); const p = placeNotice({ screen: tablet, size: card, avoid: [tall] }); const full = placeNotice({ screen: tablet, size: card, avoid: [] });
++  assert.ok(p.h > full.h);
++});
++test('it keeps its last place while that is still clear, so it does not hop about', () => {
++  const p = placeNotice({ screen: phone, size: card, avoid: [at(150, 690)], prefer: 'top', stick: 'bottom' });
++  assert.equal(p.slot, 'top', 'bottom is blocked, so it must move');
++  const q = placeNotice({ screen: phone, size: card, avoid: [at(150, 300)], prefer: 'top', stick: 'bottom' }); assert.equal(q.slot, 'bottom', 'bottom is still clear, so it stays');
++});
++test('buttons that are always on screen are avoided too', () => {
++  const buttons = at(200, 6, 184, 44); const p = placeNotice({ screen: phone, size: card, avoid: [buttons, at(150, 400)], top: 56 });
++  assert.equal(p.slot === 'top' ? p.y >= 56 : true, true);
++  const only = placeNotice({ screen: phone, size: card, avoid: [buttons] }); assert.equal(only.slot, 'bottom');
++});
++test('with nowhere clear it picks the least covered place', () => {
++  const everything = at(0, 0, 390, 760); const p = placeNotice({ screen: phone, size: card, avoid: [everything] }); assert.ok(['top', 'bottom'].includes(p.slot));
++  const mostlyTop = at(0, 0, 390, 500); assert.equal(placeNotice({ screen: phone, size: card, avoid: [mostlyTop] }).slot, 'bottom');
++});

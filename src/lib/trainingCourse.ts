@@ -6,8 +6,9 @@
 // its own `watch` rules for mistakes specific to one goal. Every deviation says what happened, how to undo it, and which control to point at.
 // Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
 // practice till back exactly as the goal began. So nobody can ever get stuck.
-import type { Allow, Goal, SnapLine, TrainSnap } from './trainingModule';
+import type { Allow, Goal, SnapLine, Step, TrainSnap } from './trainingModule';
 import { SPOT, cartLineSpot, gridItemSpot } from './trainingSpots';
+import { remedyOf } from './trainingRemedies';
 
 export type DeviationKind = 'sale' | 'watch' | 'place' | 'sheet' | 'lost' | 'extra' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender';
 export type Deviation = {
@@ -18,7 +19,19 @@ export type Deviation = {
   target?: string; via?: string;
   /** `undo`: the person can put it right with the control pointed at. `restart`: only starting this part again fixes it. */
   fix: 'undo' | 'restart';
+  /** The plain steps to put it right, and the module that teaches them (see trainingRemedies.ts). Filled in by `diagnose`. */
+  how?: string[]; taughtIn?: string;
 };
+
+/**
+ * The rules for a Guide step, in the same shape as a Check goal's, so one `diagnose` serves both.
+ * When the step does not say what may change, it is worked out from what the person is asked to do: tapping a grid tile adds an item, a cart line takes one out.
+ */
+export function stepRules(step: Pick<Step, 'until' | 'allow' | 'at' | 'watch'>): Pick<Goal, 'allow' | 'at' | 'watch'> {
+  let allow: Allow[] = step.allow ?? [];
+  if (!step.allow && step.until.kind === 'press') allow = step.until.id.startsWith('grid.item:') ? ['add'] : step.until.id.startsWith('cart.line:') ? ['remove'] : [];
+  return { allow, at: step.at, watch: step.watch };
+}
 
 /** The tabs and pages a goal's work happens on, falling back to the module's own. */
 export type CourseFrame = { tabs: readonly string[]; routes: readonly string[] };
@@ -32,8 +45,13 @@ const tally = (lines: readonly SnapLine[]): Map<string, { qty: number; line: Sna
 const name = (l: SnapLine): string => l.title || 'item';
 const plural = (n: number, w: string): string => `${n} ${w}${n === 1 ? '' : 's'}`;
 
-/** The first thing wrong with where the person is now, compared with where the goal began. Null means they are on course. Pure. */
+/** The first thing wrong with where the person is now, compared with where the goal began. Null means they are on course. Each answer carries the steps that fix it. Pure. */
 export function diagnose(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
+  const d = firstStray(goal, frame, base, now); if (!d) return null;
+  const own = d.kind === 'watch' ? goal.watch?.find(w => `watch:${w.id}` === d.id) : undefined;
+  return { ...d, ...remedyOf(d.kind, own) };
+}
+function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
   const allow = new Set<Allow>(goal.allow ?? []);
 
   // A finished sale cannot be undone.

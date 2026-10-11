@@ -1,0 +1,365 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 9986785..46713d3 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -78,6 +78,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0073 | 2026-10-12 | Training corrections (new list of 7), 1 of 7: smoother transitions on **most pages**, not just Training. Every pushed page now slides in (and the old page drifts away when it is safe to draw it again: lists and read-only screens, never Pay or the item forms), switching tabs fades and rises the new tab (Checkout stays mounted, so it keeps its cart and scanner), and the guided checkout's steps fade and rise. New `TabPane` in `src/ui/Motion.tsx`, `canLeaveDrawn` and `LEAVE_DRAWN` in `src/lib/motion.ts`. Reduce Motion still turns it all off | B6 |
+ | 0074 | 2026-10-12 | Training corrections (new list of 7), 2 of 7: the **Guide is animated** and reacts at once. The driver no longer waits for a poll (a tap, any app state change or a page change asks for an immediate check; a new step no longer wastes a tick), the spotlight glides between targets and closes in the first time, the ring pulses with a glow, a pointer glides to the target and taps it, the bubble glides and swaps its words, a green burst marks each finished step, a progress bar shows how far along you are, and a missing target holds the last spotlight instead of flashing dark. New `src/lib/guideMotion.ts` (pure, tested) and `src/ui/Swap.tsx`. Reduce Motion turns it off | B6 |
+ | 0075 | 2026-10-12 | Training corrections (new list of 7), 3 of 7: **going off course in the Checks is handled**. The till is compared with where the goal began, and a finished sale, a wrong place or window, something taken out or added that the sale did not need, too many of an item, a stray discount, price change, customer, note or payment are each explained in one sentence with the fix ringed and pointed at. **Start this part again** puts the practice till back exactly (always on the bar). Goals now declare `allow`, `at` and `watch`; the welcome course's second goal no longer passes if you remove the wrong item. New `src/lib/trainingCourse.ts` (pure, tested), spots `page.back` and `sheet.close` | B6 |
++| 0076 | 2026-10-12 | Training corrections (list of 5), 1a: **going off course in the Guide** is handled the same way as in the Checks. Each Guide step now compares the till with where the step began, using the same `allow`, `at` and `watch` rules (worked out for you when a step only waits for a tap on a tile or a line), so a window opened, a wrong page, a removed or extra item, a stray discount, price change, customer, note or payment each get explained and ringed. The dimming lifts while off course so the fix can be tapped, Skip is hidden, and **Start again** restores the step. New `stepRules` in `src/lib/trainingCourse.ts`; the checker refuses a step that waits on the till without saying what may change | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0076-plan.md b/docs/patches/0076-plan.md
+new file mode 100644
+index 0000000..42358f4
+--- /dev/null
++++ b/docs/patches/0076-plan.md
+@@ -0,0 +1,28 @@
++# Patch 0076: going off course in the Guide (list of 5, point 1a)
++
++Stacks on 0075.
++
++## What you asked for
++- Off-course handling (already in the Checks) should also apply to Guide.
++
++## Cause
++In the Guide the dimmed screen only lets taps through the ringed hole, so most strays were impossible. The rest (a window opened by the target, a swipe-back, an item removed in an earlier step, a stray discount from a Next-only step) were never compared against anything, because the baseline and `diagnose` only ran for Check goals.
++
++## How it works
++- Every Guide step now takes a baseline when it starts (the same `captureGoalStart` snapshot the Checks use) and runs `diagnose` each tick with its own rules.
++- `Step` gains optional `allow`, `at` and `watch`, the same as a goal. `stepRules(step)` fills in `allow` when it is left out: a tap on a grid tile allows `add`, a tap on a cart line allows `remove`, anything else allows nothing.
++- A step that waits on the till changing (`until: state`) must say `allow`; the checker refuses it otherwise.
++- While a Guide step is off course: the card "Off course: ..." shows, the fix is ringed with the pointer, the dim lifts (the fix can be anywhere), Next-only blocking is dropped, Skip is hidden, and the bar offers **Start again**, which puts the till back exactly as the step began.
++- With nothing to point at, no stale spotlight from the previous step is shown.
++
++## Welcome course
++- `g-tile`: no window, no other page. `g-charge`: a watch rule if the bee is taken out. `g-remove`: allows `remove`, on the cart.
++
++## Tests
++`tests/trainingcourse.test.ts` (+3): step rule defaults, the same stray kinds on a step, a step's own watch rule, validator.
++
++## Known gaps (not yet covered by a rule)
++- Locking the POS from the grid and a staff switch: not in the till snapshot, so not flagged by `diagnose`. Say if you want these added.
++
++## Still to do on point 1
++1b the card moves out of the way of what you need to tap; 1c the "where is this taught" help and Hint button on a stray; 1d the cursor's swipe, scroll, multi-click and hold.
+diff --git a/help/help.json b/help/help.json
+index 4e6a39c..102de60 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "34fa998e",
++ "version": "b17ef1f4",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1672,7 +1672,7 @@
+    "updated": "2026-10-12",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen) the app says what happened, rings the control that puts it right and points at it. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
+     "deep": "Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+     "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+diff --git a/help/staff/training.md b/help/staff/training.md
+index bd744b5..26cff32 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -20,7 +20,7 @@ Each course has six parts:
+ 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
+ 6. **Done** recaps what you can do and marks the course complete.
+ 
+-During Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen) the app says what happened, rings the control that puts it right and points at it. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
++In the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
+ 
+ ### Progress
+ Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
+diff --git a/src/lib/trainingCourse.ts b/src/lib/trainingCourse.ts
+index 9a68958..42ff830 100644
+--- a/src/lib/trainingCourse.ts
++++ b/src/lib/trainingCourse.ts
+@@ -6,7 +6,7 @@
+ // its own `watch` rules for mistakes specific to one goal. Every deviation says what happened, how to undo it, and which control to point at.
+ // Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
+ // practice till back exactly as the goal began. So nobody can ever get stuck.
+-import type { Allow, Goal, SnapLine, TrainSnap } from './trainingModule';
++import type { Allow, Goal, SnapLine, Step, TrainSnap } from './trainingModule';
+ import { SPOT, cartLineSpot, gridItemSpot } from './trainingSpots';
+ 
+ export type DeviationKind = 'sale' | 'watch' | 'place' | 'sheet' | 'lost' | 'extra' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender';
+@@ -20,6 +20,16 @@ export type Deviation = {
+   fix: 'undo' | 'restart';
+ };
+ 
++/**
++ * The rules for a Guide step, in the same shape as a Check goal's, so one `diagnose` serves both.
++ * When the step does not say what may change, it is worked out from what the person is asked to do: tapping a grid tile adds an item, a cart line takes one out.
++ */
++export function stepRules(step: Pick<Step, 'until' | 'allow' | 'at' | 'watch'>): Pick<Goal, 'allow' | 'at' | 'watch'> {
++  let allow: Allow[] = step.allow ?? [];
++  if (!step.allow && step.until.kind === 'press') allow = step.until.id.startsWith('grid.item:') ? ['add'] : step.until.id.startsWith('cart.line:') ? ['remove'] : [];
++  return { allow, at: step.at, watch: step.watch };
++}
++
+ /** The tabs and pages a goal's work happens on, falling back to the module's own. */
+ export type CourseFrame = { tabs: readonly string[]; routes: readonly string[] };
+ 
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index c160e08..c1c4291 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -48,7 +48,12 @@ export type Until =
+   | { kind: 'press'; id: string }                     // the person taps this spot
+   | { kind: 'visible'; id: string }                   // this spot is on screen (for example a sheet opened)
+   | { kind: 'state'; test: (s: TrainSnap) => boolean };
+-export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string } };
++/**
++ * One Guide step. `allow`, `at` and `watch` work exactly as they do on a Check goal (see `Goal`): what may change during the step without being off course,
++ * where it happens, and mistakes specific to this step. Left out, `allow` is worked out from the step (tapping a grid tile allows adding, a cart line allows removing),
++ * and the step happens anywhere the course allows. A step that waits on the till changing (`until: state`) must say `allow` itself.
++ */
++export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[] };
+ 
+ /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
+ export type Injection =
+@@ -96,6 +101,16 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+     if (!s.say.trim()) at('guide', `step ${s.id} says nothing`);
+     if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
+     for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
++    if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
++    for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
++    for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
++    for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
++    const swi = new Set<string>();
++    for (const w of s.watch ?? []) {
++      if (swi.has(w.id)) at('guide', `step ${s.id} has two watches called "${w.id}"`); swi.add(w.id);
++      if (!w.say.trim()) at('guide', `step ${s.id} watch ${w.id} says nothing`);
++      for (const t of [w.target, w.via]) if (t && !spotOk(t)) at('guide', `step ${s.id} watch ${w.id} uses the unknown spot "${t}"`);
++    }
+   }
+   const taught = new Set<string>([...stepIds, ...m.info.steps.map(b => b.id ?? ''), ...m.show.steps.map(b => b.id ?? '')].filter(Boolean));
+   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) {
+diff --git a/src/training/README.md b/src/training/README.md
+index 301243a..88d7a0b 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -41,14 +41,16 @@ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`
+ 
+ A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
+ 
+-## Going off course (Checks)
++## Going off course (Guide and Checks)
+ 
+-A person in a Check is free to tap anything the course allows, so the app watches for mistakes and guides them back. When a goal starts, the app remembers the practice till as it began. From then on it compares. Each goal says what may change:
++A person in a Check is free to tap anything the course allows, so the app watches for mistakes and guides them back. The Guide does the same, one step at a time, with the same three rules. When a goal (or Guide step) starts, the app remembers the practice till as it began. From then on it compares. Each goal or step says what may change:
+ 
+ - `allow` (required, may be empty): any of `add`, `remove`, `qty`, `discount`, `adjust`, `customer`, `note`, `tender`, `sale`. Changing anything not listed is off course. Removing something the person added themselves is never a mistake.
+ - `at` (optional): `{ tabs, routes, sheets }`, where the work happens. Another tab or page is off course, and `sheets: false` means any open window is. Left out, it is the course's own tabs and pages with windows allowed.
+ - `watch` (optional): mistakes specific to this goal, `{ id, when(snap), say, target?, via? }`. These are checked before the general ones, so use them for a wrong choice that looks like progress (for example taking out the wrong item).
+ 
++For a Guide step the three rules are optional. `allow` is worked out when left out: a step that waits for a tap on a grid tile allows `add`, one that waits for a tap on a cart line allows `remove`, and any other step allows nothing. A step that waits on the till changing (`until: state`) must say `allow` itself, and the checker refuses it if it does not. While a Guide step is off course the dimming lifts, so the fix can be tapped wherever it is, and Skip is hidden.
++
+ Each deviation is explained in one plain sentence, with the control to tap ringed and pointed at. It appears after about a second, so a normal path is never flagged. If it can only be fixed by starting over (a sale went through, a payment was started), or the person is still stuck after 12 seconds, **Start this part again** is offered. A **Start again** button is always on the bar in a Check. It puts the practice till back exactly as the goal began, so nobody can get stuck. The rules are in `src/lib/trainingCourse.ts`.
+ 
+ ## Injections
+diff --git a/src/training/modules/welcome.ts b/src/training/modules/welcome.ts
+index a70866c..2fcd8e6 100644
+--- a/src/training/modules/welcome.ts
++++ b/src/training/modules/welcome.ts
+@@ -82,9 +82,10 @@ export const welcome: TrainingModule = {
+   },
+   guide: [
+     { id: 'g-dock', say: 'The bar at the bottom stays with you in practice. It shows what you are doing, and has Hint and Exit buttons.', until: { kind: 'next' } },
+-    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout } },
+-    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen } },
+-    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
++    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false } },
++    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen },
++      watch: [{ id: 'bee-gone', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The Bumble Bee has gone from the cart. Tap its tile to add it back.', target: gridItemSpot('train-v-bee') }] },
++    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, allow: ['remove'], at: { tabs: ['checkout'], routes: ['cart'] }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
+   ],
+   check1: [
+     { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg'),
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+index d098ab1..9264057 100644
+--- a/src/ui/TrainingDock.tsx
++++ b/src/ui/TrainingDock.tsx
+@@ -33,7 +33,7 @@ export default function TrainingDock() {
+           <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={[btn, { backgroundColor: c.accent }]}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable>
+         </Animated.View>
+       ) : null}
+-      {check ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="refresh" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Start again</Text></Pressable> : null}
++      {check || view?.stray ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="refresh" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Start again</Text></Pressable> : null}
+       {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
+       <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
+     </View></Enter>
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index cbd1d43..616462c 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -20,7 +20,7 @@ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, type Rect } from '../lib/trainingGeometry';
+ import { isMet, snapOf, type Events } from '../lib/trainingConds';
+ import { hintView, shouldNudge } from '../lib/trainingHints';
+-import { diagnose, freshStray, trackStray, type StrayTracker } from '../lib/trainingCourse';
++import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+ import { layerDepth } from '../lib/trainingLayers';
+ import { advanceGoal, advanceStep } from '../lib/trainingRun';
+ import { idleMs } from '../lib/idle';
+@@ -58,8 +58,8 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+     trainingActions.next = () => { nextTap.current = true; };
+     trainingActions.hint = () => { const cur = current(); if (cur?.goal) useTraining.getState().pressHint(cur.goal.id, cur.goal.ladder); };
+     trainingActions.restart = () => {
+-      const cur = current(); if (!cur?.goal) return; const st = useTraining.getState();
+-      if (!st.restartGoal(cur.goal.inject)) return;
++      const cur = current(); if (!cur?.goal && !cur?.step) return; const st = useTraining.getState();
++      if (!st.restartGoal(cur.goal?.inject)) return;
+       ev.current = mutable(); stray.current = freshStray(); sig.current = ''; navRef.current.reset(); navRef.current.setTab(cur.mod.tabs[0] as Tab); kickRef.current?.();
+     };
+     trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
+@@ -84,27 +84,32 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
+         const app = useApp.getState();
+         const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+-        if (cur.goal && (fresh || !base.current)) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this goal began, for spotting and undoing a stray
++        if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+         const until = item.until;
+         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
+         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
+         if (met) { advance(); return; }
++        // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
++        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray'] } | null> => {
++          const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
++          let rect = await spot(tr.show.target); let sayNow = tr.show.say;
++          if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
++          return { rect, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart } };
++        };
+         let view: DockView;
+         if (cur.step) {
+           const step = cur.step; let say = step.say; let rect = await spot(step.target);
+           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
+-          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next', reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: true, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n };
++          const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
++          if (off) { rect = off.rect; say = off.view!.say; }
++          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+         } else {
+           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
+           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
+-          // Off course? Compare with where this goal began. The person is told only after it has lasted a moment, and a hint never hides it.
+-          const dev = base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null;
+-          const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; let strayView: DockView['stray'];
+-          if (tr.show) {
+-            rect = await spot(tr.show.target); let sayNow = tr.show.say;
+-            if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
+-            say = sayNow; strayView = { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart };
+-          }
++          // A hint never hides an off-course notice.
++          const off = await strayOf(base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
++          let strayView: DockView['stray'];
++          if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
+           view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+         }
+         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index b5541e3..51a37b2 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -107,13 +107,16 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+   // A target that is not there for a moment (a page still opening) keeps the last spotlight instead of flashing to a fully dark screen.
+   const lastHole = useRef<Rect | null>(null); const [expired, setExpired] = useState(false);
+   useEffect(() => { if (fresh) { lastHole.current = fresh; setExpired(false); return undefined; } const t = setTimeout(() => setExpired(true), HOLD_MS); return () => clearTimeout(t); }, [fresh ? `${Math.round(fresh.x)},${Math.round(fresh.y)},${Math.round(fresh.w)},${Math.round(fresh.h)}` : '']); // eslint-disable-line react-hooks/exhaustive-deps
+-  const hole = fresh ?? (!expired ? lastHole.current : null);
++  // Off course with nothing to point at: no stale spotlight from the last step.
++  const hole = view?.stray && !view.rect ? null : fresh ?? (!expired ? lastHole.current : null);
+   const vals = useRectGlide(hole, size, reduce);
+   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
++  // In Guide the screen dims and only the target takes taps. While off course the dim lifts, because the fix may be anywhere (a window to close, a line to swipe).
++  const dim = guide && !view?.stray;
+ 
+   // Dim fades in the first time guide mode shows, and out when it ends.
+   const dimO = useRef(new Animated.Value(0)).current;
+-  useEffect(() => { const a = Animated.timing(dimO, { toValue: guide ? 1 : 0, duration: reduce ? 0 : 320, useNativeDriver: true }); a.start(); return () => a.stop(); }, [guide, reduce, dimO]);
++  useEffect(() => { const a = Animated.timing(dimO, { toValue: dim ? 1 : 0, duration: reduce ? 0 : 320, useNativeDriver: true }); a.start(); return () => a.stop(); }, [dim, reduce, dimO]);
+ 
+   // The bubble glides to its place and swaps its words with a fade. A step change plays a haptic tick and a green burst where the old target was.
+   const bw = Math.min(360, size.w - 24);
+@@ -142,7 +145,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+   const isRoot = layer === ROOT_LAYER; const seg = segments(view.index, view.total);
+   return (
+     <View ref={box} onLayout={measure} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
+-      {guide ? (
++      {dim ? (
+         <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: dimO }]}>
+           {hole ? <>
+             <Animated.View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: dimBlocks.top, backgroundColor: DIM }} />
+@@ -156,7 +159,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+       {showRing && hole ? <Ring vals={vals} color={RING} /> : null}
+       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
+       {showRing && hole && !view.next ? <Pointer hole={hole} color={RING} reduce={reduce} /> : null}
+-      {guide ? (
++      {guide && !view.stray ? (
+         <Animated.View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bx, top: by, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+           {hole ? <Animated.View style={{ position: 'absolute', [bub.side === 'below' ? 'top' : 'bottom']: -8, left: Animated.subtract(ax, 8), width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bub.side === 'below' ? 1 : 0, borderLeftWidth: bub.side === 'below' ? 1 : 0, borderBottomWidth: bub.side === 'above' ? 1 : 0, borderRightWidth: bub.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
+           <View style={{ flexDirection: 'row', gap: 4 }}>{seg.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? c.line : s === 'done' ? c.good : RING }} />)}</View>
+@@ -167,7 +170,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+           {view.next ? <Pressable onPress={() => trainingActions.next()} accessibilityRole="button" accessibilityLabel="Next" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
+         </Animated.View>
+       ) : null}
+-      {view.mode === 'check' && view.stray ? (
++      {view.stray ? (
+         <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, top: isRoot ? 12 : 56, alignItems: 'center' }}>
+           <Swap k={view.stray.title} dy={-10} appear style={{ width: '100%', maxWidth: 520 }}>
+             <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 2, borderColor: c.warn, padding: 14, gap: 8, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+diff --git a/tests/trainingcourse.test.ts b/tests/trainingcourse.test.ts
+index 62026e0..fd8805d 100644
+--- a/tests/trainingcourse.test.ts
++++ b/tests/trainingcourse.test.ts
+@@ -1,6 +1,6 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, trackStray } from '../src/lib/trainingCourse';
++import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, stepRules, trackStray } from '../src/lib/trainingCourse';
+ import { snapOf } from '../src/lib/trainingConds';
+ import { SPOT, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
+ import { validateModule, type Goal, type TrainSnap } from '../src/lib/trainingModule';
+@@ -84,5 +84,36 @@ test('the validator insists on allow, and on known tabs, pages and spots', () =>
+   assert.ok(validateModule(clone, isKnownSpot).some(e => e.includes('must say what may change')));
+   const c2 = { ...welcome, check1: [{ ...welcome.check1[0], allow: ['fly' as any], at: { tabs: ['more'], routes: ['pay'] } }] };
+   const errs = validateModule(c2, isKnownSpot); assert.ok(errs.some(e => e.includes('"fly"')) && errs.some(e => e.includes('"more"')) && errs.some(e => e.includes('"pay"')));
+-  void m;
++});
++
++test('a Guide step is checked with the same rules as a Check goal', () => {
++  const press = stepRules({ until: { kind: 'press', id: gridItemSpot('train-v-bee') } });
++  assert.deepEqual(press.allow, ['add']);
++  assert.deepEqual(stepRules({ until: { kind: 'press', id: cartLineSpot('train-v-bee') } }).allow, ['remove']);
++  assert.deepEqual(stepRules({ until: { kind: 'next' } }).allow, []);
++  assert.deepEqual(stepRules({ until: { kind: 'press', id: gridItemSpot('x') }, allow: [] }).allow, [], 'an explicit allow always wins');
++  // On the "tap the bee" step, adding the bee is fine, but a second one, a discount or a window is not.
++  const at = { tabs: ['checkout'], routes: [], sheets: false };
++  const rules = stepRules({ until: { kind: 'press', id: gridItemSpot('train-v-bee') }, at });
++  assert.equal(diagnose(rules, frame, snap(), snap({ lines: [line('train-v-bee')] })), null);
++  assert.equal(diagnose(rules, frame, snap(), snap({ lines: [line('train-v-bee', 2)] }))!.kind, 'qty');
++  assert.equal(diagnose(rules, frame, snap(), snap({ sheets: 1 }))!.kind, 'sheet');
++  // On a Next-only step nothing may change at all.
++  const next = stepRules({ until: { kind: 'next' } }); const b = snap({ lines: [line('train-v-bee')] });
++  assert.equal(diagnose(next, frame, b, b), null);
++  assert.equal(diagnose(next, frame, b, snap())!.kind, 'lost');
++  assert.equal(diagnose(next, frame, b, snap({ lines: [line('train-v-bee'), line('train-v-egg')] }))!.kind, 'extra');
++});
++test('a step can carry its own watch rule', () => {
++  const rules = stepRules({ until: { kind: 'next' }, watch: [{ id: 'bee-gone', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'Add the bee back.', target: gridItemSpot('train-v-bee') }] });
++  const d = diagnose(rules, frame, snap(), snap())!; assert.equal(d.kind, 'watch'); assert.equal(d.target, gridItemSpot('train-v-bee'));
++});
++test('the validator holds Guide steps to the same rules as goals', () => {
++  const ok = () => isKnownSpot;
++  const good = { ...welcome }; assert.deepEqual(validateModule(good, ok()), []);
++  const bad = (f: (g: typeof welcome.guide) => void) => { const g = welcome.guide.map(s => ({ ...s })); f(g); return validateModule({ ...welcome, guide: g }, ok()); };
++  assert.match(bad(g => { delete g[3].allow; }).join('\n'), /must say what may change/);
++  assert.match(bad(g => { g[1].allow = ['explode' as never]; }).join('\n'), /unknown change/);
++  assert.match(bad(g => { g[1].at = { tabs: ['more'] }; }).join('\n'), /does not allow/);
++  assert.match(bad(g => { g[2].watch = [{ id: 'a', when: () => false, say: '', target: 'nope' }]; }).join('\n'), /says nothing/);
+ });

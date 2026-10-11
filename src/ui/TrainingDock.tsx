@@ -33,7 +33,7 @@ export default function TrainingDock() {
           <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={[btn, { backgroundColor: c.accent }]}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable>
         </Animated.View>
       ) : null}
-      {check ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="refresh" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Start again</Text></Pressable> : null}
+      {check || view?.stray ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="refresh" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Start again</Text></Pressable> : null}
       {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
       <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
     </View></Enter>

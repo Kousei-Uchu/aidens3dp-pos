@@ -15,9 +15,9 @@ import { useTheme } from './theme';
 import Swap from './Swap';
 import { useReduceMotion } from './Motion';
 import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
-import { centred, grow, onScreen, placeBubble, type Rect, type Size } from '../lib/trainingGeometry';
+import { centred, grow, onScreen, placeBubble, placeNotice, type Rect, type Size, type Slot } from '../lib/trainingGeometry';
 import { HOLD_MS, glideMs, irisStart, isTinyMove, pointerRest, pointerTap, segments } from '../lib/guideMotion';
-import { useTraining } from '../state/trainingSession';
+import { useTraining, type DockView } from '../state/trainingSession';
 import { trainingActions } from './trainingActions';
 
 const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)';
@@ -97,6 +97,62 @@ function Burst({ rect, good }: { rect: Rect; good: string }) {
   );
 }
 
+/**
+ * A card that floats at the edge of the screen and moves itself out of the way of what the person needs to tap (`avoid`).
+ * It keeps its place while that stays clear, and glides to a new one when the target moves under it.
+ */
+function Floating({ avoid, screen, top, bottom, prefer, maxW = 520, pointerEvents, children }: { avoid: Rect[]; screen: Size; top?: number; bottom?: number; prefer?: 'top' | 'bottom'; maxW?: number; pointerEvents: 'box-none' | 'none'; children: React.ReactNode }) {
+  // The measured area stays about the same while the width glides, so the 600 threshold below stops it re-rendering every frame.
+  const reduce = useReduceMotion(); const [m, setM] = useState<Size>({ w: Math.min(maxW, screen.w - 24), h: 110 }); const stick = useRef<Slot | undefined>(undefined);
+  const p = placeNotice({ screen, size: m, avoid, prefer, top, bottom, maxW, stick: stick.current }); stick.current = p.slot;
+  const ax = useRef(new Animated.Value(p.x)).current; const ay = useRef(new Animated.Value(p.y)).current; const aw = useRef(new Animated.Value(p.w)).current; const placed = useRef(false);
+  useEffect(() => {
+    if (!placed.current || reduce) { ax.setValue(p.x); ay.setValue(p.y); aw.setValue(p.w); placed.current = true; return undefined; }
+    const e = Easing.bezier(0.22, 1, 0.36, 1);
+    const a = Animated.parallel([ax, ay, aw].map((v, i) => Animated.timing(v, { toValue: [p.x, p.y, p.w][i], duration: 360, easing: e, useNativeDriver: false })));
+    a.start(); return () => a.stop();
+  }, [Math.round(p.x), Math.round(p.y), Math.round(p.w), reduce]); // eslint-disable-line react-hooks/exhaustive-deps
+  return (
+    <Animated.View pointerEvents={pointerEvents} onLayout={e => { const { width, height } = e.nativeEvent.layout; if (width > 0 && height > 0 && Math.abs(width * height - m.w * m.h) > 600) setM({ w: width, h: height }); }} style={{ position: 'absolute', left: ax, top: ay, width: aw }}>
+      {children}
+    </Animated.View>
+  );
+}
+
+type StrayView = NonNullable<DockView['stray']>;
+/**
+ * The off-course card. It says what happened and, when this person has not finished the module that teaches the fix, shows the steps at once.
+ * If they have finished it, the steps wait behind a small "?" button (and Hint opens them too), so nobody who did the module a while ago is left stuck.
+ */
+function StrayCard({ stray }: { stray: StrayView }) {
+  const { c } = useTheme(); const [open, setOpen] = useState(stray.showHow); const nonce = useTraining(s => s.howNonce); const seen = useRef(nonce);
+  useEffect(() => { if (nonce !== seen.current) { seen.current = nonce; setOpen(true); } }, [nonce]);
+  const canHelp = stray.how.length > 0;
+  return (
+    <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 2, borderColor: c.warn, padding: 14, gap: 8, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <Ionicons name="compass" size={20} color={c.warn} />
+        <Text style={{ color: c.warn, fontSize: 13, fontWeight: '800', textTransform: 'uppercase', flex: 1 }}>Off course: {stray.title}</Text>
+        {canHelp ? <Pressable onPress={() => setOpen(o => !o)} hitSlop={8} accessibilityRole="button" accessibilityLabel={open ? 'Hide the steps' : 'How do I do this?'} accessibilityState={{ expanded: open }} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}><Ionicons name={open ? 'chevron-up-circle' : 'help-circle'} size={24} color={c.warn} />{open ? null : <Text style={{ color: c.warn, fontSize: 12, fontWeight: '700' }}>How?</Text>}</Pressable> : null}
+      </View>
+      <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{stray.say}</Text>
+      {canHelp && open ? (
+        <View style={{ gap: 6, borderTopWidth: 1, borderTopColor: c.line, paddingTop: 8 }}>
+          <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>How to put it right</Text>
+          {stray.how.map((h, i) => (
+            <View key={i} style={{ flexDirection: 'row', gap: 8, alignItems: 'flex-start' }}>
+              <View style={{ width: 22, height: 22, borderRadius: 11, backgroundColor: c.warn, alignItems: 'center', justifyContent: 'center', marginTop: 1 }}><Text style={{ color: '#111', fontSize: 12, fontWeight: '800' }}>{i + 1}</Text></View>
+              <Text style={{ color: c.text, fontSize: 15, lineHeight: 21, flex: 1 }}>{h}</Text>
+            </View>
+          ))}
+          {stray.taught ? <Text style={{ color: c.sub, fontSize: 12 }}>{stray.taught.done ? `You have finished ${stray.taught.title}, where this is taught.` : `This is taught in ${stray.taught.title}.`}</Text> : null}
+        </View>
+      ) : null}
+      {stray.offerRestart ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 }}><Text style={{ color: c.onAccent, fontWeight: '700' }}>Start this part again</Text></Pressable> : null}
+    </View>
+  );
+}
+
 export default function TrainingOverlay({ layer }: { layer: string }) {
   const { c } = useTheme(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
   const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(150);
@@ -107,13 +163,16 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
   // A target that is not there for a moment (a page still opening) keeps the last spotlight instead of flashing to a fully dark screen.
   const lastHole = useRef<Rect | null>(null); const [expired, setExpired] = useState(false);
   useEffect(() => { if (fresh) { lastHole.current = fresh; setExpired(false); return undefined; } const t = setTimeout(() => setExpired(true), HOLD_MS); return () => clearTimeout(t); }, [fresh ? `${Math.round(fresh.x)},${Math.round(fresh.y)},${Math.round(fresh.w)},${Math.round(fresh.h)}` : '']); // eslint-disable-line react-hooks/exhaustive-deps
-  const hole = fresh ?? (!expired ? lastHole.current : null);
+  // Off course with nothing to point at: no stale spotlight from the last step.
+  const hole = view?.stray && !view.rect ? null : fresh ?? (!expired ? lastHole.current : null);
   const vals = useRectGlide(hole, size, reduce);
   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
+  // In Guide the screen dims and only the target takes taps. While off course the dim lifts, because the fix may be anywhere (a window to close, a line to swipe).
+  const dim = guide && !view?.stray;
 
   // Dim fades in the first time guide mode shows, and out when it ends.
   const dimO = useRef(new Animated.Value(0)).current;
-  useEffect(() => { const a = Animated.timing(dimO, { toValue: guide ? 1 : 0, duration: reduce ? 0 : 320, useNativeDriver: true }); a.start(); return () => a.stop(); }, [guide, reduce, dimO]);
+  useEffect(() => { const a = Animated.timing(dimO, { toValue: dim ? 1 : 0, duration: reduce ? 0 : 320, useNativeDriver: true }); a.start(); return () => a.stop(); }, [dim, reduce, dimO]);
 
   // The bubble glides to its place and swaps its words with a fade. A step change plays a haptic tick and a green burst where the old target was.
   const bw = Math.min(360, size.w - 24);
@@ -140,9 +199,11 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
   }), [vals, size.w, size.h]);
   if (!view || !top) return null;
   const isRoot = layer === ROOT_LAYER; const seg = segments(view.index, view.total);
+  // What a floating card must never cover: the control to tap (and the pointer that sits on it), and the Hint and Exit buttons a sheet carries.
+  const avoid: Rect[] = [...(hole ? [grow(hole, 6)] : []), ...(!isRoot ? [{ x: size.w - 200, y: 6, w: 194, h: 48 }] : [])];
   return (
     <View ref={box} onLayout={measure} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
-      {guide ? (
+      {dim ? (
         <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: dimO }]}>
           {hole ? <>
             <Animated.View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: dimBlocks.top, backgroundColor: DIM }} />
@@ -156,7 +217,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
       {showRing && hole ? <Ring vals={vals} color={RING} /> : null}
       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
       {showRing && hole && !view.next ? <Pointer hole={hole} color={RING} reduce={reduce} /> : null}
-      {guide ? (
+      {guide && !view.stray ? (
         <Animated.View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bx, top: by, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
           {hole ? <Animated.View style={{ position: 'absolute', [bub.side === 'below' ? 'top' : 'bottom']: -8, left: Animated.subtract(ax, 8), width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bub.side === 'below' ? 1 : 0, borderLeftWidth: bub.side === 'below' ? 1 : 0, borderBottomWidth: bub.side === 'above' ? 1 : 0, borderRightWidth: bub.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
           <View style={{ flexDirection: 'row', gap: 4 }}>{seg.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? c.line : s === 'done' ? c.good : RING }} />)}</View>
@@ -167,16 +228,12 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
           {view.next ? <Pressable onPress={() => trainingActions.next()} accessibilityRole="button" accessibilityLabel="Next" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
         </Animated.View>
       ) : null}
-      {view.mode === 'check' && view.stray ? (
-        <View pointerEvents="box-none" style={{ position: 'absolute', left: 12, right: 12, top: isRoot ? 12 : 56, alignItems: 'center' }}>
-          <Swap k={view.stray.title} dy={-10} appear style={{ width: '100%', maxWidth: 520 }}>
-            <View style={{ backgroundColor: c.card, borderRadius: 16, borderWidth: 2, borderColor: c.warn, padding: 14, gap: 8, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
-              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><Ionicons name="compass" size={20} color={c.warn} /><Text style={{ color: c.warn, fontSize: 13, fontWeight: '800', textTransform: 'uppercase' }}>Off course: {view.stray.title}</Text></View>
-              <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.stray.say}</Text>
-              {view.stray.offerRestart ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 18, paddingVertical: 9 }}><Text style={{ color: c.onAccent, fontWeight: '700' }}>Start this part again</Text></Pressable> : null}
-            </View>
+      {view.stray ? (
+        <Floating avoid={avoid} screen={size} top={isRoot ? 12 : 56} pointerEvents="box-none">
+          <Swap k={view.stray.title} dy={-10} appear style={{ width: '100%' }}>
+            <StrayCard stray={view.stray} />
           </Swap>
-        </View>
+        </Floating>
       ) : null}
       {!isRoot ? (
         <View pointerEvents="box-none" style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 8 }}>
@@ -184,7 +241,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
           <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={{ backgroundColor: c.fill, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
         </View>
       ) : null}
-      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <View pointerEvents="none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View> : null}
+      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <Floating avoid={avoid} screen={size} top={56} prefer="bottom" pointerEvents="none"><View style={{ backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View></Floating> : null}
     </View>
   );
 }

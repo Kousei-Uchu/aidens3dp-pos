@@ -18,10 +18,12 @@ export type DockView = {
   mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
-  stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean };
+  stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean; how: string[]; taught?: { id: string; title: string; done: boolean }; showHow: boolean };
 };
 type Sess = {
   run: Run | null; sandbox: boolean; hint: HintState; view: DockView | null; progress: Progress; loaded: boolean;
+  /** Goes up each time the person asks "how do I do this?" while off course, so the card opens its steps. */
+  howNonce: number; openHow: () => void;
   loadProgress: () => Promise<void>;
   begin: (moduleId: string, stage?: Stage) => void;
   setRun: (r: Run) => void;
@@ -39,7 +41,8 @@ let real: Swap | null = null;
 let goalStart: Swap | null = null;
 
 export const useTraining = create<Sess>((set, get) => ({
-  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false,
+  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, howNonce: 0,
+  openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
   loadProgress: async () => { if (get().loaded) return; set({ progress: readProgress(await kvGet(TRAINING_PROGRESS_KEY, null)), loaded: true }); },
   begin: (moduleId, stage = 'info') => set({ run: startRun(moduleId, stage), hint: freshHints(), view: null }),
   setRun: r => set({ run: r, hint: freshHints(), view: null }),

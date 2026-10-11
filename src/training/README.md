@@ -41,15 +41,17 @@ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`
 
 A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
 
-## Going off course (Checks)
+## Going off course (Guide and Checks)
 
-A person in a Check is free to tap anything the course allows, so the app watches for mistakes and guides them back. When a goal starts, the app remembers the practice till as it began. From then on it compares. Each goal says what may change:
+A person in a Check is free to tap anything the course allows, so the app watches for mistakes and guides them back. The Guide does the same, one step at a time, with the same three rules. When a goal (or Guide step) starts, the app remembers the practice till as it began. From then on it compares. Each goal or step says what may change:
 
 - `allow` (required, may be empty): any of `add`, `remove`, `qty`, `discount`, `adjust`, `customer`, `note`, `tender`, `sale`. Changing anything not listed is off course. Removing something the person added themselves is never a mistake.
 - `at` (optional): `{ tabs, routes, sheets }`, where the work happens. Another tab or page is off course, and `sheets: false` means any open window is. Left out, it is the course's own tabs and pages with windows allowed.
-- `watch` (optional): mistakes specific to this goal, `{ id, when(snap), say, target?, via? }`. These are checked before the general ones, so use them for a wrong choice that looks like progress (for example taking out the wrong item).
+- `watch` (optional): mistakes specific to this goal, `{ id, when(snap), say, target?, via?, how?, taughtIn? }`. `how` is the plain steps to put it right and `taughtIn` the module that teaches them (left out, this module). These are checked before the general ones, so use them for a wrong choice that looks like progress (for example taking out the wrong item).
 
-Each deviation is explained in one plain sentence, with the control to tap ringed and pointed at. It appears after about a second, so a normal path is never flagged. If it can only be fixed by starting over (a sale went through, a payment was started), or the person is still stuck after 12 seconds, **Start this part again** is offered. A **Start again** button is always on the bar in a Check. It puts the practice till back exactly as the goal began, so nobody can get stuck. The rules are in `src/lib/trainingCourse.ts`.
+For a Guide step the three rules are optional. `allow` is worked out when left out: a step that waits for a tap on a grid tile allows `add`, one that waits for a tap on a cart line allows `remove`, and any other step allows nothing. A step that waits on the till changing (`until: state`) must say `allow` itself, and the checker refuses it if it does not. While a Guide step is off course the dimming lifts, so the fix can be tapped wherever it is, and Skip is hidden.
+
+Each deviation is explained in one plain sentence, with the control to tap ringed and pointed at. It appears after about a second, so a normal path is never flagged. If it can only be fixed by starting over (a sale went through, a payment was started), or the person is still stuck after 12 seconds, **Start this part again** is offered. Each deviation also carries the steps that put it right and the module that teaches them, from the table in `src/lib/trainingRemedies.ts`. The card shows the steps at once when the person has not finished that module, and keeps them behind a small "?" button when they have (Hint opens them too while the card is showing), so nobody is stuck on a fix they have forgotten. **If you build a module, use the ids that table names** (`cart`, `discounts`, `price-adjust`, `customer`, and so on), so "taught in" points at it. A **Start again** button is always on the bar in a Check. It puts the practice till back exactly as the goal began, so nobody can get stuck. The rules are in `src/lib/trainingCourse.ts`.
 
 ## Injections
 

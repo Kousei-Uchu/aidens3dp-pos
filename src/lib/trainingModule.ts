@@ -48,7 +48,12 @@ export type Until =
   | { kind: 'press'; id: string }                     // the person taps this spot
   | { kind: 'visible'; id: string }                   // this spot is on screen (for example a sheet opened)
   | { kind: 'state'; test: (s: TrainSnap) => boolean };
-export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string } };
+/**
+ * One Guide step. `allow`, `at` and `watch` work exactly as they do on a Check goal (see `Goal`): what may change during the step without being off course,
+ * where it happens, and mistakes specific to this step. Left out, `allow` is worked out from the step (tapping a grid tile allows adding, a cart line allows removing),
+ * and the step happens anywhere the course allows. A step that waits on the till changing (`until: state`) must say `allow` itself.
+ */
+export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[] };
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
@@ -61,7 +66,8 @@ export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'ad
 /** Where the work for a goal happens. Anywhere else is off course. Left out, it is the module's own tabs and routes, with sheets allowed. */
 export type Place = { tabs?: string[]; routes?: string[]; sheets?: boolean };
 /** A mistake specific to one goal, in the module author's words: when it is true, the person is told `say` and pointed at `target`. */
-export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string };
+/** `how` is the plain steps to put it right, and `taughtIn` the module that teaches them (left out, the module the person is in). */
+export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string; how?: string[]; taughtIn?: string };
 export type Goal = {
   id: string; title: string;                  // what the person has to achieve, shown in the dock
   until: Until;                               // how the app knows they did it (never 'next')
@@ -96,6 +102,17 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (!s.say.trim()) at('guide', `step ${s.id} says nothing`);
     if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
     for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
+    if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
+    for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
+    for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
+    for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
+    const swi = new Set<string>();
+    for (const w of s.watch ?? []) {
+      if (swi.has(w.id)) at('guide', `step ${s.id} has two watches called "${w.id}"`); swi.add(w.id);
+      if (!w.say.trim()) at('guide', `step ${s.id} watch ${w.id} says nothing`);
+      if (w.how?.some(h => !h.trim())) at('guide', `step ${s.id} watch ${w.id} has an empty step in how`);
+      for (const t of [w.target, w.via]) if (t && !spotOk(t)) at('guide', `step ${s.id} watch ${w.id} uses the unknown spot "${t}"`);
+    }
   }
   const taught = new Set<string>([...stepIds, ...m.info.steps.map(b => b.id ?? ''), ...m.show.steps.map(b => b.id ?? '')].filter(Boolean));
   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) {
@@ -115,6 +132,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
       for (const w of g.watch ?? []) {
         if (wi.has(w.id)) at(name, `goal ${g.id} has two watches called "${w.id}"`); wi.add(w.id);
         if (!w.say.trim()) at(name, `goal ${g.id} watch ${w.id} says nothing`);
+        if (w.how?.some(h => !h.trim())) at(name, `goal ${g.id} watch ${w.id} has an empty step in how`);
         for (const t of [w.target, w.via]) if (t && !spotOk(t)) at(name, `goal ${g.id} watch ${w.id} uses the unknown spot "${t}"`);
       }
     }

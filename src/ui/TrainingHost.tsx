@@ -20,8 +20,10 @@ import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, type Rect } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
 import { hintView, shouldNudge } from '../lib/trainingHints';
-import { diagnose, freshStray, trackStray, type StrayTracker } from '../lib/trainingCourse';
+import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
 import { layerDepth } from '../lib/trainingLayers';
+import { moduleTitle, showHowAtOnce } from '../lib/trainingRemedies';
+import { isComplete, staffKey } from '../lib/trainingProgress';
 import { advanceGoal, advanceStep } from '../lib/trainingRun';
 import { idleMs } from '../lib/idle';
 import type { Goal, Step, TrainSnap, TrainingModule } from '../lib/trainingModule';
@@ -56,10 +58,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
       if (r.done) finish(); else st.patchRun(() => r.run);
     };
     trainingActions.next = () => { nextTap.current = true; };
-    trainingActions.hint = () => { const cur = current(); if (cur?.goal) useTraining.getState().pressHint(cur.goal.id, cur.goal.ladder); };
+    // While off course the card is what is on screen, so Hint opens its steps instead of spending a hint the person cannot see.
+    trainingActions.hint = () => { const t = useTraining.getState(); if (t.view?.stray?.how.length) { t.openHow(); return; } const cur = current(); if (cur?.goal) t.pressHint(cur.goal.id, cur.goal.ladder); };
     trainingActions.restart = () => {
-      const cur = current(); if (!cur?.goal) return; const st = useTraining.getState();
-      if (!st.restartGoal(cur.goal.inject)) return;
+      const cur = current(); if (!cur?.goal && !cur?.step) return; const st = useTraining.getState();
+      if (!st.restartGoal(cur.goal?.inject)) return;
       ev.current = mutable(); stray.current = freshStray(); sig.current = ''; navRef.current.reset(); navRef.current.setTab(cur.mod.tabs[0] as Tab); kickRef.current?.();
     };
     trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
@@ -84,27 +87,36 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
         const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
-        if (cur.goal && (fresh || !base.current)) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this goal began, for spotting and undoing a stray
+        if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
         if (met) { advance(); return; }
+        // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
+        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray'] } | null> => {
+          const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
+          let rect = await spot(tr.show.target); let sayNow = tr.show.say;
+          if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
+          // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
+          const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
+          const done = taughtIn ? isComplete(st.progress, staffKey(useApp.getState().staffId), taughtIn) : false;
+          const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
+          return { rect, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
+        };
         let view: DockView;
         if (cur.step) {
           const step = cur.step; let say = step.say; let rect = await spot(step.target);
           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
-          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next', reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: true, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n };
+          const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
+          if (off) { rect = off.rect; say = off.view!.say; }
+          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
         } else {
           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
-          // Off course? Compare with where this goal began. The person is told only after it has lasted a moment, and a hint never hides it.
-          const dev = base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null;
-          const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; let strayView: DockView['stray'];
-          if (tr.show) {
-            rect = await spot(tr.show.target); let sayNow = tr.show.say;
-            if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
-            say = sayNow; strayView = { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart };
-          }
+          // A hint never hides an off-course notice.
+          const off = await strayOf(base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
+          let strayView: DockView['stray'];
+          if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
           view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
