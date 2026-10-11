@@ -1,6 +1,7 @@
 // Location: src/lib/csvStore.ts
 // Local CSV history (spec: every sale/refund/event is appended, NEVER auto-cleared).
 // Files live in the app's Documents folder, which is exposed in Files.app via UIFileSharingEnabled.
+import { isTraining } from './trainingGuard';
 import * as FS from 'expo-file-system/legacy';
 import { EVENTS_HEADER, LINES_HEADER, SALES_HEADER, eventRow, linesRows, line, salesRow, type EventKind } from './csvFormat';
 import type { SaleRecord } from './types';
@@ -13,6 +14,7 @@ let chain: Promise<unknown> = Promise.resolve(); // serialise appends so rows ne
 const serial = <T,>(fn: () => Promise<T>): Promise<T> => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
 
 async function append(which: Which, text: string) {
+  if (isTraining()) return; // training sales never reach the history files
   const [name, header] = FILES[which];
   const path = dir() + name;
   await FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(() => {});

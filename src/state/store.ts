@@ -14,6 +14,7 @@ import type { Depth } from '../lib/helpDocs';
 import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 import type { AdjustPerms } from '../lib/adjustPerms';
+import { isTraining } from '../lib/trainingGuard';
 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
@@ -23,7 +24,6 @@ export type Settings = {
   themeSetupVersion: number;
   glassSurfaces: boolean;
   itemSpotlight: { name: boolean; image: boolean };
-  trainingProgress: Record<string, string[]>;
   staff: StaffMember[]; requirePin: boolean; passServerUrl: string; giftClaimUrl: string; autoReceipt: 'ask' | 'none';
   receipt: ReceiptProfile; // Settings ▸ Receipts (business details printed on receipts + receipt server URL)
   bundlesJson: string; // BundleConfig JSON text (edited in Settings ▸ Discounts & bundles)
@@ -35,7 +35,7 @@ export type Settings = {
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 'M', glassSurfaces: false, itemSpotlight: { name: false, image: false }, trainingProgress: {}, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false,
+  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 'M', glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
@@ -73,7 +73,16 @@ const emptyData = (): Data => ({ variants: {}, collections: [], customers: [], a
 const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: emptyLedger() });
 
 const timers: Record<string, any> = {};
-const persist = (key: string, get: () => unknown) => { clearTimeout(timers[key]); timers[key] = setTimeout(() => kvSet(key, get()), 400); };
+const pending: Record<string, () => unknown> = {};
+const persist = (key: string, get: () => unknown) => {
+  if (isTraining()) return; // practice data is never saved
+  clearTimeout(timers[key]); pending[key] = get;
+  timers[key] = setTimeout(() => { delete pending[key]; void kvSet(key, get()); }, 400);
+};
+/** Writes every save that is still waiting for its 400 ms timer. Training calls this before it swaps in practice data. */
+export async function flushPersist(): Promise<void> {
+  for (const key of Object.keys(pending)) { clearTimeout(timers[key]); const get = pending[key]; delete pending[key]; await kvSet(key, get()); }
+}
 
 export const useApp = create<App>((set, get) => ({
   ready: false, settings: defaultSettings(), data: emptyData(), grid: defaultGrid(), gridVersion: 0, pos: emptyPos(),
@@ -96,7 +105,7 @@ export const useApp = create<App>((set, get) => ({
     ]);
     const migrateTheme = !!settings && settings.themeSetupVersion !== 1;
     set({
-      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, trainingProgress: settings?.trainingProgress && typeof settings.trainingProgress === 'object' ? settings.trainingProgress : {}, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
+      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
     });
     if (!settings || migrateTheme) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme migration

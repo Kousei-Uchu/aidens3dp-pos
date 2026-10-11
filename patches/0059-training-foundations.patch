@@ -1,0 +1,2094 @@
+diff --git a/App.tsx b/App.tsx
+index 4b00b8c..a30fb4f 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -28,11 +28,19 @@ import Settings from './src/screens/Settings';
+ import Staff, { PinLock } from './src/screens/Staff';
+ import Diagnostics from './src/screens/Diagnostics';
+ import Help from './src/screens/Help';
++import Training from './src/screens/Training';
++import TrainingRun from './src/screens/TrainingRun';
++import TrainingHost from './src/ui/TrainingHost';
++import { Spot } from './src/ui/Spot';
++import { SPOT } from './src/lib/trainingSpots';
++import { useTraining } from './src/state/trainingSession';
++import { getModule } from './src/training';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { noteActivity } from './src/lib/idle';
+ import { isLockScreen } from './src/lib/posLock';
+ import { UiProvider, useUi } from './src/ui/uiProfile';
+ import { effectiveTab } from './src/lib/uiMode';
++import { isTraining } from './src/lib/trainingGuard';
+ 
+ const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+   { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
+@@ -58,6 +66,8 @@ function Routes() {
+     case 'staff': return <Staff />;
+     case 'diagnostics': return <Diagnostics />;
+     case 'help': return <Help id={p.id} />;
++    case 'training': return <Training />;
++    case 'trainingRun': return <TrainingRun />;
+     default: return null;
+   }
+ }
+@@ -65,12 +75,13 @@ function Routes() {
+ function Shell() {
+   const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
++  const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined)); // training: only the tabs the module uses
+   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
+   useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+   useEffect(() => {
+     if (!ready) return;
+-    const tick = () => { void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
++    const tick = () => { if (isTraining()) return; void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
+     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
+     return () => { clearInterval(t); sub.remove(); };
+   }, [ready]);
+@@ -89,10 +100,10 @@ function Shell() {
+       </View>
+       {!hasPage ? (
+         <View style={{ flexDirection: 'row', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingBottom: tablet ? 8 : 22, paddingTop: 6 }}>
+-          {TABS.filter(t => ui.tabs.includes(t.id)).map(t => { const on = nav.tab === t.id; return (
+-            <Pressable key={t.id} onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
++          {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
++            <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
+               <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
+-              <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable>); })}
++              <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}
+         </View>
+       ) : null}
+     </View>
+@@ -103,7 +114,7 @@ export default function App() {
+   return (
+     <ZellerRoot>
+       <ThemeProvider><UiProvider><NavProvider>
+-        <View style={{ flex: 1 }} onTouchStart={noteActivity}><Shell /></View>
++        <View style={{ flex: 1 }} onTouchStart={noteActivity}><TrainingHost><Shell /></TrainingHost></View>
+         <KeepAwake /><ScreensaverLayer />
+       </NavProvider></UiProvider></ThemeProvider>
+     </ZellerRoot>
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 9afa092..f1c4138 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -65,6 +65,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0056 | 2026-10-11 | Copilot-authored; review pending. Apply Starting stock on item creation; persist and retry shared-settings uploads; restore Gift Card value with retry protection and prompt the cashier to reload original card(s) or issue a new one on gift-card returns; reduce Simple/Minimal sizing, skip Customer in guided checkout by default, clarify Back destinations, and add per-tab/per-entry Custom controls. User device verification remains pending. | B5, B7, B8, N29, N31 |
+ | 0057 | 2026-10-11 | Copilot-authored; review pending. Require denomination counts for cash received, change and cash refunds; use the smart optimal change suggestion for customer payouts; on cancellation, collect previously given change and return exactly the original denominations without optimizing. Update cash Help and What’s Next status/default responses. Device verification remains pending. | B1, B7 |
+ | 0058 | 2026-10-11 | Copilot-authored; review pending. Improve Help presentation without changing its content model: visual ordered-step cards in the app and web, a one-step-at-a-time web guide, and visual topic cards in the app. Style the Docs site locally using the supplied storefront's dark plum/purple direction. Prepare—but do not execute—Cloudflare custom-domain/release steps for the proposed `help.aidens3dp.com`; refresh roadmap status/export with device-dependent items clearly pending. | B7, E1 |
++| 0059 | 2026-10-11 | Training mode, part 1 (B6a foundations): practice data swap with every write and send blocked, spot system, spotlight overlay and dock inside pages and sheets, hint ladder, course runner (Info, Show, Guide, Check 1, Check 2, Done with confetti), More ▸ Training hub, and one small course ("How training works") that uses every stage. Real courses start in 0055 | B6a |
+ 
+ ---
+ 
+@@ -273,7 +274,13 @@ Current implementation and validation status are recorded here. Device and live-
+   - [x] B5b (0026, refined 0056) Guided checkout asks Items → Discount → Check → Pay by default. Customer is not a separate required step; Add/change customer is in More options. Custom can explicitly enable the separate Customer step. Back buttons identify their destination. Part-paid sales still go to Pay and cannot be edited.
+   - [x] B5c (0027) Simple-mode wording, helper copy and adjustable tap-target sizing remain; defaults no longer force larger text/tap targets.
+   - [ ] B5d **Device test deferred until your test device is available:** try Simple and Minimal on the iPad, especially the simpler views/grid density, Back from guided Discount to Items, More options, and a complete sale. Check that Custom tab and More switches persist and that permissions remain correct. You had reported an ineffective Back arrow; the button now names its destination, but hardware confirmation is still needed.
+-- [ ] B6 Training mode (Info → Show → Guide → Check → Gratify), explicitly deferred until after device checks. When started, implement the complete animated/professional flow in `DEV_NOTES.md`: animated Show Process, guided actual UI with progressive hints/highlighting, realistic pass/fail understanding checks, and celebratory Gratify feedback.
++- [~] B6 Training mode (Info → Show → Guide → Check → Gratify). Started now at your request (it was deferred until after device checks). Built in small patches. Writer's guide: `src/training/README.md`. Design: `docs/patches/0059-plan.md`.
++  - [x] B6a (0059) Foundations + the `welcome` course. Code complete, **not run on a device** (only the pure logic and types are tested).
++  - [ ] B6b (0060) First real course(s): sell items and take a card payment (declined card in Check 2) / take a cash payment (no right change in Check 2).
++  - [ ] B6c.. One course per patch, covering every process in the app (this list is the plan, so "every process is covered" can be ticked): cart and prices, price adjustments, customers and saved carts, discounts and bundles, gift cards (sell, redeem, claim), split and part payments, receipts, refunds and exchanges, cash drawer (open, paid in/out, count and close), Check Change, float report, orders and transactions, reports, inventory and items, grid editing, lock and staff switching, scanning and lookups (price check, stock check), guided checkout variants (Minimal), fixing problems (reader, offline, declined).
++  - How line 43 is met: modules in any order (never locked); Info/Show/Guide/Check 1/Check 2/Done per course; Guide highlights the real UI with arrows and the person taps the real thing (Next on informational steps); Check 2 makes customer side failures happen and the checker requires each to name where it was taught; Hint ladder ends by ringing the answer; Done has confetti, a big green tick kept per staff member, and a short adult recap.
++  - **Bends, told plainly:** (1) progress is per device, not synced or in backups (shared sync would let older registers overwrite it); (2) modules are written for one checkout flow at a time, Minimal's guided flow gets its own courses; (3) Info's "feedback for everything said" is a pulse and a soft tick per sentence, not quiz questions; (4) system alerts (confirm boxes) cannot be highlighted, so their moments are explained in the bubble text beforehand; (5) Show never draws real screens, as asked; (6) Guide has a Skip button and Check gets a Skip only after the answer has been shown, as an escape hatch because I cannot test every course on a device; skips are counted and shown on the Done screen; (7) Settings, Staff and Diagnostics are closed during training unless a course lists them; (8) practice data uses open price-adjustment permissions and a fixed 5c cash rounding so courses behave the same for every role.
++  - [ ] B6d **You:** device test, see N32.
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker. **Started in 0028.** Three pages per patch, as you asked. Design: `docs/patches/0028-plan.md`; writer's guide: `help/README.md`.
+   - **How it works.** Pages are Markdown files in `help/` (`help/<folder>/<name>.md`, a folder's own page is its `index.md`). Each has a header (id, title, parent, summary, tags, related) and up to three sections, `## Basic`, `## Deep`, `## Advanced`. Choosing a depth shows it **plus the levels above it**. `[[page-id]]` links pages together; contents lists come from each page's `parent`. `npm run help:build` checks every page (dead links, missing parent or Basic section, loops, unclosed code, stray headings, bad mermaid) and writes `help/help.json`, which the app and the docs Worker both read. Code: `src/lib/helpDocs.ts` (pure, tested), `scripts/build-help.ts`. The Advanced flowcharts are Mermaid; the in-app drawing supports a simple subset (see the guide) and the website draws the full thing.
+   - [x] B7a (0028) foundation: format, checker, build, guide, tests, first three pages.
+@@ -365,6 +372,7 @@ Ordered by priority, highest first.
+ - [~] N31 **User chose fix:** create-item now applies a supplied nonnegative whole-number Starting stock quantity at the selected location; blank leaves the count unset. Help updated; verify against Shopify when the device/location is available.
+ - [~] N29 **User chose yes:** shared-setting changes are marked pending before upload, remain pending on offline/failure, avoid being overwritten by a settings pull while pending, and are retried from the foreground shared poll. A successful push clears pending only if the local settings still match the uploaded snapshot. Live offline/reconnect verification remains.
+ - [~] N28 **Policy answered; device check pending:** restrictions should apply to manual Item, Line and Whole-order price adjustments only. Cart discounts, line discounts and discount presets remain unaffected. An adjustment is a staff-entered price override; a discount is a promotional/voucher reduction, so the same permission switch should not silently block both. Device verification remains in N28's originally requested role-flow checks.
++- [ ] N32 **Non-blocking (B6a):** after applying 0059, open More ▸ Training ▸ How training works and go through every part. Check: the Info slides and Show animation play and the sentences are readable; Start the guide shows the real Checkout with a dock marked PRACTICE; the dim and ring land on the right tile (try phone and iPad, portrait and landscape); tapping the lit tile adds the bee; Next steps work; the Charge and Remove steps point at the right things on a phone (via the cart bar); Check 1 ends when two items are in; Hint walks pointer, clearer, specific, then rings the egg tile; Check 2 starts with two items and ends when the dragon is removed; the Done screen shows confetti and a green tick, and the hub shows the tick. Then confirm nothing real changed: your real cart is back as you left it, no sale or order appeared, nothing in Shopify. Also try Exit mid-way, and opening a sheet (the customer picker) during a Guide step to see the overlay above it. Tell me what is off, especially overlay alignment inside sheets and on iPad, and whether the screensaver or PIN lock interrupts a course.
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+ 
+ ### Priority 3
+diff --git a/docs/patches/0059-plan.md b/docs/patches/0059-plan.md
+new file mode 100644
+index 0000000..fac51a9
+--- /dev/null
++++ b/docs/patches/0059-plan.md
+@@ -0,0 +1,14 @@
++# Patch 0059: Training mode foundations (B6a)
++
++Everything the course format needs, plus one small course ("How training works", `welcome`) that uses every stage, so the engine can be tried on the iPad before real courses arrive in 0060.
++
++## What it does
++- **Practice data** (`trainingSandbox`, `trainingSession`): on Start, pending saves are written, the real state is kept in memory, and a practice store (6 items, 2 collections, 3 customers, an open shift, a stocked drawer) is swapped in. On exit the real state is put back. Disk is never written during training, so a crash just reopens the normal till.
++- **Guards** (`trainingGuard`): storage (`kv`), Shopify (`hasCreds`, `gql`, `getToken`, login and secret setters), the history CSVs, receipt upload, badge storage, the card reader (a practice terminal replaces it, `checkReader` short-circuits) and the 25 second sync tick all stop while training.
++- **Spots**: `spot` prop on Btn, Chip, Row, IconBtn; tiles, cart lines, tabs, More row, cart bar carry ids.
++- **Overlay and dock**: spotlight with a bubble and arrow (taps pass through the hole), a bottom dock (Hint, Skip, Exit) that shrinks the app, and the same overlay inside every Sheet via a layer registry (a native Modal covers anything else).
++- **Hints**: ladder per goal, last rung rings the answer, a nudge after 40 seconds idle.
++- **Stages**: Info slideshow, Show autoplay, practice-data card, Guide, Check 1, Check 2, Done (confetti, green tick, recap). Stages go in order inside a module, modules are never locked. Progress is per staff member on this device.
++
++## Bends from DEV_NOTES line 43 (also in PROGRESS.md)
++See B6 in PROGRESS.md.
+diff --git a/src/lib/badgeStore.ts b/src/lib/badgeStore.ts
+index 722f05a..06bcdb9 100644
+--- a/src/lib/badgeStore.ts
++++ b/src/lib/badgeStore.ts
+@@ -1,9 +1,10 @@
+ // Location: src/lib/badgeStore.ts
+ // The iPad that issues a cashier pass keeps its code in the Keychain so the pass can be printed or sent again without cancelling it.
+ // Other iPads only ever hold the hash (in the staff list), so they can check a pass but not recreate one.
++import { isTraining } from './trainingGuard';
+ import * as SecureStore from 'expo-secure-store';
+ 
+ const key = (staffId: string) => `pos.badge.${staffId.replace(/[^a-zA-Z0-9._-]/g, '')}`;
+-export const rememberBadge = async (staffId: string, code: string) => { try { await SecureStore.setItemAsync(key(staffId), code); } catch { /* keychain unavailable */ } };
++export const rememberBadge = async (staffId: string, code: string) => { if (isTraining()) return; try { await SecureStore.setItemAsync(key(staffId), code); } catch { /* keychain unavailable */ } };
+ export const recallBadge = async (staffId: string): Promise<string> => { try { return (await SecureStore.getItemAsync(key(staffId))) ?? ''; } catch { return ''; } };
+-export const forgetBadge = async (staffId: string) => { try { await SecureStore.deleteItemAsync(key(staffId)); } catch { /* ignore */ } };
++export const forgetBadge = async (staffId: string) => { if (isTraining()) return; try { await SecureStore.deleteItemAsync(key(staffId)); } catch { /* ignore */ } };
+diff --git a/src/lib/confetti.ts b/src/lib/confetti.ts
+new file mode 100644
+index 0000000..f983122
+--- /dev/null
++++ b/src/lib/confetti.ts
+@@ -0,0 +1,10 @@
++// Location: src/lib/confetti.ts
++// Confetti pieces for the Done screen. Seeded so it is the same every time for the same seed (and testable).
++export type Piece = { x: number; delay: number; dur: number; drift: number; spin: number; color: number; w: number; h: number };
++const rng = (seed: number) => () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
++/** x is 0 to 1 across the screen, delay and dur are in ms, drift is sideways travel as a share of width, spin is turns. */
++export function makeConfetti(count: number, seed: number, colours: number): Piece[] {
++  const r = rng(seed); const n = Math.max(0, Math.min(200, Math.floor(count)));
++  return Array.from({ length: n }, () => ({ x: r(), delay: Math.round(r() * 700), dur: 1800 + Math.round(r() * 1400), drift: (r() - 0.5) * 0.3, spin: 1 + Math.round(r() * 4), color: Math.floor(r() * Math.max(1, colours)), w: 6 + Math.round(r() * 6), h: 10 + Math.round(r() * 8) }));
++}
++export const CONFETTI_COLOURS = ['#16A34A', '#F59E0B', '#2563EB', '#DB2777', '#7C3AED', '#0EA5E9'];
+diff --git a/src/lib/csvStore.ts b/src/lib/csvStore.ts
+index 4501a51..91471b8 100644
+--- a/src/lib/csvStore.ts
++++ b/src/lib/csvStore.ts
+@@ -1,6 +1,7 @@
+ // Location: src/lib/csvStore.ts
+ // Local CSV history (spec: every sale/refund/event is appended, NEVER auto-cleared).
+ // Files live in the app's Documents folder, which is exposed in Files.app via UIFileSharingEnabled.
++import { isTraining } from './trainingGuard';
+ import * as FS from 'expo-file-system/legacy';
+ import { EVENTS_HEADER, LINES_HEADER, SALES_HEADER, eventRow, linesRows, line, salesRow, type EventKind } from './csvFormat';
+ import type { SaleRecord } from './types';
+@@ -13,6 +14,7 @@ let chain: Promise<unknown> = Promise.resolve(); // serialise appends so rows ne
+ const serial = <T,>(fn: () => Promise<T>): Promise<T> => { const p = chain.then(fn, fn); chain = p.catch(() => {}); return p; };
+ 
+ async function append(which: Which, text: string) {
++  if (isTraining()) return; // training sales never reach the history files
+   const [name, header] = FILES[which];
+   const path = dir() + name;
+   await FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(() => {});
+diff --git a/src/lib/kv.ts b/src/lib/kv.ts
+index 939a0f8..64b98d0 100644
+--- a/src/lib/kv.ts
++++ b/src/lib/kv.ts
+@@ -1,12 +1,16 @@
+ // Tiny JSON key/value store over AsyncStorage (falls back to memory so tests/node never crash).
++import { kvWriteAllowed } from './trainingGuard';
+ let AS: any = null;
+ try { AS = require('@react-native-async-storage/async-storage').default; } catch { AS = null; }
+ const mem = new Map<string, string>();
++/** Tests only: keep everything in memory even where AsyncStorage can be loaded. */
++export const kvUseMemory = (): void => { AS = null; };
+ export async function kvGet<T>(key: string, fallback: T): Promise<T> {
+   try { const s = AS ? await AS.getItem(key) : mem.get(key) ?? null; return s ? (JSON.parse(s) as T) : fallback; } catch { return fallback; }
+ }
+ export async function kvSet(key: string, value: unknown): Promise<void> {
++  if (!kvWriteAllowed(key)) return; // training: nothing real is written
+   const s = JSON.stringify(value);
+   try { if (AS) await AS.setItem(key, s); else mem.set(key, s); } catch { /* storage full – next write retries */ }
+ }
+-export async function kvDel(key: string): Promise<void> { try { if (AS) await AS.removeItem(key); else mem.delete(key); } catch {} }
++export async function kvDel(key: string): Promise<void> { if (!kvWriteAllowed(key)) return; try { if (AS) await AS.removeItem(key); else mem.delete(key); } catch {} }
+diff --git a/src/lib/receiptSync.ts b/src/lib/receiptSync.ts
+index 2b7dae0..5242b7a 100644
+--- a/src/lib/receiptSync.ts
++++ b/src/lib/receiptSync.ts
+@@ -1,5 +1,6 @@
+ // Location: src/lib/receiptSync.ts
+ // Uploads receipt snapshots to the receipt server. Idempotent (PUT overwrites), so retries and the "final" upload (adds the Shopify order number) are safe.
++import { isTraining } from './trainingGuard';
+ import { useApp } from '../state/store';
+ import { ShopifyNetworkError, getReceiptSecret } from './shopify/client';
+ import { buildReceiptDoc, receiptId, receiptUrl } from './receiptDoc';
+@@ -11,6 +12,7 @@ export const receiptsEnabled = () => !!useApp.getState().settings.receipt.server
+ const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } };
+ 
+ export async function uploadReceipt(sale: SaleRecord): Promise<string> {
++  if (isTraining()) throw new ReceiptConfigError('Receipts are not uploaded in training.');
+   const s = useApp.getState().settings; const base = s.receipt.serverUrl.trim();
+   if (!base) throw new ReceiptConfigError('Receipt server URL is not set (Settings ▸ Receipts).');
+   const secret = await getReceiptSecret();
+diff --git a/src/lib/shopify/client.ts b/src/lib/shopify/client.ts
+index b2ec2ba..50eab65 100644
+--- a/src/lib/shopify/client.ts
++++ b/src/lib/shopify/client.ts
+@@ -3,6 +3,7 @@
+ // Auth: Dev Dashboard app → client-credentials grant, token valid 24 h, refreshed automatically.
+ // Client secret + token live in the iOS Keychain (expo-secure-store).
+ import * as SecureStore from 'expo-secure-store';
++import { TrainingBlockedError, isTraining } from '../trainingGuard';
+ import { sleep } from '../ids';
+ 
+ export const API_VERSION = '2026-07'; // pin one version, bump quarterly (research doc §4.2)
+@@ -37,6 +38,7 @@ export async function loadCreds(): Promise<ShopifyCreds | null> {
+   return creds;
+ }
+ export async function saveCreds(c: ShopifyCreds) {
++  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
+   creds = { domain: normaliseDomain(c.domain), clientId: c.clientId.trim(), clientSecret: c.clientSecret.trim() };
+   token = null;
+   await Promise.all([
+@@ -45,14 +47,16 @@ export async function saveCreds(c: ShopifyCreds) {
+   ]);
+ }
+ export async function clearCreds() {
++  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
+   creds = null; token = null;
+   await Promise.all(Object.values(K).map(k => SecureStore.deleteItemAsync(k)));
+ }
+-export const hasCreds = () => !!creds;
++export const hasCreds = () => !isTraining() && !!creds; // training: every sync path stops here
+ export const shopDomain = () => creds?.domain ?? '';
+ export const tokenScopes = () => (token?.scope ? token.scope.split(',') : []);
+ 
+ export async function getToken(force = false): Promise<string> {
++  if (isTraining()) throw new TrainingBlockedError('Shopify');
+   if (!creds) throw new ShopifyUserError('Shopify is not set up — open More ▸ Settings ▸ Shopify.');
+   if (!force && token && token.exp - Date.now() > 5 * 60_000) return token.value;
+   if (inflight) return inflight;
+@@ -85,6 +89,7 @@ export async function getToken(force = false): Promise<string> {
+ let notBefore = 0;
+ 
+ export async function gql<T = any>(query: string, variables: Record<string, any> = {}): Promise<T> {
++  if (isTraining()) throw new TrainingBlockedError('Shopify');
+   if (!creds) throw new ShopifyUserError('Shopify is not set up — open More ▸ Settings ▸ Shopify.');
+   let authRetried = false;
+   for (let attempt = 0; ; attempt++) {
+@@ -127,12 +132,12 @@ export const isNetworkError = (e: unknown) => e instanceof ShopifyNetworkError;
+ 
+ // Wallet pass server shared secret (signs pass links). Keychain only.
+ export const getPassSecret = async () => { try { return (await SecureStore.getItemAsync('pos.passSecret')) ?? ''; } catch { return ''; } };
+-export const setPassSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
++export const setPassSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
+ 
+ // Gift card claim page shared secret (signs claim links). Keychain only.
+ export const getClaimSecret = async () => { try { return (await SecureStore.getItemAsync('pos.claimSecret')) ?? ''; } catch { return ''; } };
+-export const setClaimSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
++export const setClaimSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
+ 
+ // Receipt server shared secret (authorises receipt uploads). Keychain only.
+ export const getReceiptSecret = async () => { try { return (await SecureStore.getItemAsync('pos.receiptSecret')) ?? ''; } catch { return ''; } };
+-export const setReceiptSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
++export const setReceiptSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+new file mode 100644
+index 0000000..77faafe
+--- /dev/null
++++ b/src/lib/trainingConds.ts
+@@ -0,0 +1,19 @@
++// Location: src/lib/trainingConds.ts
++// Decides whether a Guide step or a Check goal is finished. Pure.
++import type { TrainSnap, Until } from './trainingModule';
++
++/** What happened since the step began: spots tapped, and spots currently on screen. */
++export type Events = { pressed: ReadonlySet<string>; visible: ReadonlySet<string> };
++export const noEvents = (): Events => ({ pressed: new Set(), visible: new Set() });
++export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
++  switch (u.kind) {
++    case 'next': return false;
++    case 'press': return ev.pressed.has(u.id);
++    case 'visible': return ev.visible.has(u.id);
++    case 'state': try { return !!u.test(snap); } catch { return false; }
++  }
++}
++/** What the driver reads of the real app state. */
++export function snapOf(s: { tab: string; route: string; cart: { lines: { qty: number }[]; customer?: unknown; tenders?: unknown[] }; sales: number; paying: boolean }): TrainSnap {
++  return { tab: s.tab, route: s.route, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales, hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying };
++}
+diff --git a/src/lib/trainingGeometry.ts b/src/lib/trainingGeometry.ts
+new file mode 100644
+index 0000000..7576ddd
+--- /dev/null
++++ b/src/lib/trainingGeometry.ts
+@@ -0,0 +1,33 @@
++// Location: src/lib/trainingGeometry.ts
++// Spotlight maths: the four dim blocks around a hole, and where the bubble goes. Pure.
++export type Rect = { x: number; y: number; w: number; h: number };
++export type Size = { w: number; h: number };
++export const grow = (r: Rect, p: number): Rect => ({ x: r.x - p, y: r.y - p, w: r.w + p * 2, h: r.h + p * 2 });
++/** A hidden screen (display none) or an unmounted spot measures as 0 by 0. Off screen counts as not visible. */
++export function onScreen(r: Rect | null | undefined, screen: Size): r is Rect {
++  return !!r && r.w > 1 && r.h > 1 && r.x + r.w > 0 && r.y + r.h > 0 && r.x < screen.w && r.y < screen.h;
++}
++const clip = (r: Rect, s: Size): Rect => { const x = Math.max(0, r.x), y = Math.max(0, r.y); return { x, y, w: Math.max(0, Math.min(s.w, r.x + r.w) - x), h: Math.max(0, Math.min(s.h, r.y + r.h) - y) }; };
++/** Four rectangles that cover the whole screen except the hole. They swallow touches; the hole lets them through. */
++export function blockers(hole: Rect, screen: Size): Rect[] {
++  const h = clip(hole, screen);
++  return [
++    { x: 0, y: 0, w: screen.w, h: h.y },
++    { x: 0, y: h.y + h.h, w: screen.w, h: Math.max(0, screen.h - (h.y + h.h)) },
++    { x: 0, y: h.y, w: h.x, h: h.h },
++    { x: h.x + h.w, y: h.y, w: Math.max(0, screen.w - (h.x + h.w)), h: h.h },
++  ];
++}
++export type Bubble = { x: number; y: number; side: 'above' | 'below'; arrowX: number };
++/** Puts a bubble of size `b` under the hole (or over it when there is no room), kept on screen, with the arrow pointing at the hole's centre. */
++export function placeBubble(hole: Rect, screen: Size, b: Size, gap = 14, edge = 12): Bubble {
++  const below = hole.y + hole.h + gap + b.h <= screen.h - edge; const above = hole.y - gap - b.h >= edge;
++  const side: 'above' | 'below' = below || !above ? 'below' : 'above';
++  const rawY = side === 'below' ? hole.y + hole.h + gap : hole.y - gap - b.h;
++  const y = Math.max(edge, Math.min(rawY, screen.h - b.h - edge));
++  const cx = hole.x + hole.w / 2; const x = Math.max(edge, Math.min(cx - b.w / 2, screen.w - b.w - edge));
++  return { x, y, side, arrowX: Math.max(18, Math.min(cx - x, b.w - 18)) };
++}
++/** Centre of the screen, for steps with nothing to point at. */
++export const centred = (screen: Size, b: Size): { x: number; y: number } => ({ x: (screen.w - b.w) / 2, y: Math.max(12, (screen.h - b.h) / 2) });
++export const same = (a: Rect | null, b: Rect | null): boolean => (!a || !b ? a === b : Math.abs(a.x - b.x) < 1 && Math.abs(a.y - b.y) < 1 && Math.abs(a.w - b.w) < 1 && Math.abs(a.h - b.h) < 1);
+diff --git a/src/lib/trainingGuard.ts b/src/lib/trainingGuard.ts
+new file mode 100644
+index 0000000..8be8843
+--- /dev/null
++++ b/src/lib/trainingGuard.ts
+@@ -0,0 +1,10 @@
++// Location: src/lib/trainingGuard.ts
++// One flag that says "the till is running on practice data". While it is on, nothing real may be written or sent.
++// Every seam that touches storage, Shopify, files or the card reader asks this file first. No imports, so it can be used anywhere.
++export const TRAINING_PROGRESS_KEY = 'training.progress.v1';
++let on = false;
++export const isTraining = (): boolean => on;
++export const setTrainingGuard = (v: boolean): void => { on = v; };
++/** The only key that may be written during training is the person's own training progress. */
++export const kvWriteAllowed = (key: string): boolean => !on || key === TRAINING_PROGRESS_KEY;
++export class TrainingBlockedError extends Error { constructor(what: string) { super(`Training mode: ${what} is switched off.`); this.name = 'TrainingBlockedError'; } }
+diff --git a/src/lib/trainingHints.ts b/src/lib/trainingHints.ts
+new file mode 100644
+index 0000000..ce4ef29
+--- /dev/null
++++ b/src/lib/trainingHints.ts
+@@ -0,0 +1,21 @@
++// Location: src/lib/trainingHints.ts
++// The hint ladder for Check stages. Each press of Hint goes one rung up: pointer, more specific, ..., then the answer is shown.
++export type HintState = { goal: string; level: number };
++export const freshHints = (goal = ''): HintState => ({ goal, level: 0 });
++/** Press Hint. A different goal starts again from the bottom. The level stops one past the last written hint (= reveal). */
++export function nextHint(st: HintState, goalId: string, ladder: readonly string[]): HintState {
++  const level = st.goal === goalId ? st.level : 0;
++  return { goal: goalId, level: Math.min(level + 1, ladder.length + 1) };
++}
++export type HintView = { level: number; text?: string; reveal: boolean; left: number };
++export function hintView(st: HintState, goalId: string, ladder: readonly string[]): HintView {
++  const level = st.goal === goalId ? st.level : 0;
++  if (level === 0) return { level, reveal: false, left: ladder.length };
++  if (level > ladder.length) return { level, reveal: true, text: 'Here it is. Tap the highlighted spot.', left: 0 };
++  return { level, text: ladder[level - 1], reveal: false, left: ladder.length - level };
++}
++/** After this long with no touch and no hint used, the dock gently points at the Hint button. */
++export const NUDGE_AFTER_MS = 40_000;
++export const shouldNudge = (idleMs: number, level: number): boolean => level === 0 && idleMs >= NUDGE_AFTER_MS;
++/** How many hints the person actually used on a goal (the reveal counts as one). */
++export const hintsUsed = (st: HintState, goalId: string): number => (st.goal === goalId ? st.level : 0);
+diff --git a/src/lib/trainingLayers.ts b/src/lib/trainingLayers.ts
+new file mode 100644
+index 0000000..8a95695
+--- /dev/null
++++ b/src/lib/trainingLayers.ts
+@@ -0,0 +1,12 @@
++// Location: src/lib/trainingLayers.ts
++// A native Modal (our Sheet) is drawn above everything, including the training overlay in App.tsx.
++// So every layer that can show the overlay registers here, and only the newest one draws it.
++const stack: string[] = []; const subs = new Set<() => void>(); let version = 0;
++const bump = () => { version++; subs.forEach(f => f()); };
++export const ROOT_LAYER = 'root';
++export function pushLayer(id: string): void { if (!stack.includes(id)) { stack.push(id); bump(); } }
++export function popLayer(id: string): void { const i = stack.indexOf(id); if (i >= 0) { stack.splice(i, 1); bump(); } }
++export const topLayer = (): string => stack[stack.length - 1] ?? ROOT_LAYER;
++export const layerDepth = (): number => stack.length;
++export const subscribeLayers = (f: () => void): (() => void) => { subs.add(f); return () => { subs.delete(f); }; };
++export const layersVersion = (): number => version;
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+new file mode 100644
+index 0000000..ee570cc
+--- /dev/null
++++ b/src/lib/trainingModule.ts
+@@ -0,0 +1,86 @@
++// Location: src/lib/trainingModule.ts
++// The shape of a training module (B6) and the checker that refuses a badly written one. Pure, tested.
++// Writer's guide: src/training/README.md
++export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
++export const STAGES: readonly Stage[] = ['info', 'show', 'guide', 'check1', 'check2', 'gratify'];
++export const STAGE_LABEL: Record<Stage, string> = { info: 'Info', show: 'Show', guide: 'Guide', check1: 'Check 1', check2: 'Check 2', gratify: 'Done' };
++export const SANDBOX_STAGES: readonly Stage[] = ['guide', 'check1', 'check2'];
++export const needsSandbox = (s: Stage): boolean => SANDBOX_STAGES.includes(s);
++
++export type Tone = 'neutral' | 'good' | 'bad' | 'accent';
++/** A thing in a scene. x and y are percentages of the scene box (0 to 100). */
++export type Actor = { id: string; icon: string; label?: string; x: number; y: number; hidden?: boolean; tone?: Tone };
++/** One sentence plus what happens on screen while it is said. */
++export type Beat = { id?: string; say: string; place?: Record<string, { x?: number; y?: number }>; show?: string[]; hide?: string[]; pulse?: string[]; tone?: Record<string, Tone> };
++export type Scene = { actors: Actor[]; beats: Beat[] };
++
++/** What the training driver can see of the app. Kept small on purpose. */
++export type TrainSnap = { tab: string; route: string; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean };
++export type Until =
++  | { kind: 'next' }                                  // an informational step: the Next button moves on
++  | { kind: 'press'; id: string }                     // the person taps this spot
++  | { kind: 'visible'; id: string }                   // this spot is on screen (for example a sheet opened)
++  | { kind: 'state'; test: (s: TrainSnap) => boolean };
++export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string } };
++
++/** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
++export type Injection =
++  | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
++  | { kind: 'decline'; times: number }                                  // the fake terminal declines the card this many times (code 51)
++  | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
++export type Goal = {
++  id: string; title: string;                  // what the person has to achieve, shown in the dock
++  until: Until;                               // how the app knows they did it (never 'next')
++  ladder: string[];                           // hints from vague to specific; the answer is revealed after the last one
++  reveal?: string;                            // spot to highlight when the hints are used up
++  via?: string;                               // spot to point at first when `reveal` is not on screen (for example the bar that opens the cart on a phone)
++  inject?: Injection[];
++  taughtBy?: string;                          // Check 2 only: the id of the info beat, show beat or guide step that taught the fix
++};
++export type TrainingModule = {
++  id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
++  flow: 'standard' | 'guided';                // which checkout the sandbox forces
++  tabs: string[]; routes: string[];           // where the person may go during Guide and Check
++  info: Scene; show: Scene; guide: Step[];
++  check1: Goal[]; check2: Goal[];
++  recap: string[];                            // short adult lines on the Done screen: what they can now do
++};
++
++/** Every problem with a module, as plain sentences. Empty list = fine. `spotOk` says whether a spot id exists in the UI. */
++export function validateModule(m: TrainingModule, spotOk: (id: string) => boolean): string[] {
++  const bad: string[] = []; const at = (w: string, t: string) => bad.push(`${m.id}: ${w}: ${t}`);
++  if (!/^[a-z0-9][a-z0-9-]*$/.test(m.id)) bad.push(`${m.id}: id must be lower case letters, digits and hyphens`);
++  if (!m.title.trim() || !m.summary.trim()) at('header', 'needs a title and a summary');
++  for (const [name, sc] of [['info', m.info], ['show', m.show]] as const) {
++    if (sc.beats.length < 3) at(name, 'needs at least 3 beats');
++    const ids = new Set(sc.actors.map(a => a.id)); if (ids.size !== sc.actors.length) at(name, 'actor ids repeat');
++    sc.beats.forEach((b, i) => {
++      if (!b.say.trim()) at(name, `beat ${i + 1} says nothing`);
++      for (const k of [...Object.keys(b.place ?? {}), ...(b.show ?? []), ...(b.hide ?? []), ...(b.pulse ?? []), ...Object.keys(b.tone ?? {})]) if (!ids.has(k)) at(name, `beat ${i + 1} mentions the unknown actor "${k}"`);
++    });
++  }
++  if (!m.guide.length) at('guide', 'needs steps');
++  const stepIds = new Set(m.guide.map(s => s.id)); if (stepIds.size !== m.guide.length) at('guide', 'step ids repeat');
++  for (const s of m.guide) {
++    if (!s.say.trim()) at('guide', `step ${s.id} says nothing`);
++    if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
++    for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
++  }
++  const taught = new Set<string>([...stepIds, ...m.info.beats.map(b => b.id ?? ''), ...m.show.beats.map(b => b.id ?? '')].filter(Boolean));
++  for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) {
++    if (!goals.length) at(name, 'needs at least one goal');
++    const gi = new Set(goals.map(g => g.id)); if (gi.size !== goals.length) at(name, 'goal ids repeat');
++    for (const g of goals) {
++      if (g.until.kind === 'next') at(name, `goal ${g.id} cannot use a Next button`);
++      if (g.ladder.length < 2) at(name, `goal ${g.id} needs at least 2 hints before the answer is shown`);
++      if (g.ladder.some(h => !h.trim())) at(name, `goal ${g.id} has an empty hint`);
++      if (!g.reveal) at(name, `goal ${g.id} has nothing to highlight when the hints run out`);
++      for (const t of [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined]) if (t && !spotOk(t)) at(name, `goal ${g.id} uses the unknown spot "${t}"`);
++    }
++  }
++  if (!m.check2.some(g => g.inject?.length)) at('check2', 'must make something go wrong (needs at least one goal with an injection)');
++  for (const g of m.check2) { if (g.inject?.length && !g.taughtBy) at('check2', `goal ${g.id} injects a problem but does not say where it was taught`); if (g.taughtBy && !taught.has(g.taughtBy)) at('check2', `goal ${g.id} says it was taught by "${g.taughtBy}", which does not exist`); }
++  if (!m.recap.length) at('recap', 'needs at least one line');
++  if (!m.tabs.includes('checkout')) at('header', 'tabs must include checkout');
++  return bad;
++}
+diff --git a/src/lib/trainingProgress.ts b/src/lib/trainingProgress.ts
+new file mode 100644
+index 0000000..b7c0e68
+--- /dev/null
++++ b/src/lib/trainingProgress.ts
+@@ -0,0 +1,46 @@
++// Location: src/lib/trainingProgress.ts
++// Who has finished which module. Stored on this device only, keyed by staff id. Pure; the store reads and writes it.
++import { STAGES, type Stage } from './trainingModule';
++
++export type ModProg = { stages: Stage[]; done?: string; hints: number; secs: number; runs: number };
++export type Progress = { v: 1; by: Record<string, Record<string, ModProg>> };
++/** With no staff set up there is one shared record. */
++export const SHARED_KEY = '_shared';
++export const staffKey = (staffId?: string): string => staffId || SHARED_KEY;
++export const emptyProgress = (): Progress => ({ v: 1, by: {} });
++
++/** Anything read from storage is untrusted: bad shapes are dropped, never thrown. */
++export function readProgress(raw: unknown): Progress {
++  const out = emptyProgress(); if (!raw || typeof raw !== 'object') return out;
++  const by = (raw as any).by; if (!by || typeof by !== 'object') return out;
++  for (const [who, mods] of Object.entries(by)) {
++    if (!mods || typeof mods !== 'object') continue; out.by[who] = {};
++    for (const [id, m] of Object.entries(mods as Record<string, any>)) {
++      if (!m || typeof m !== 'object') continue;
++      const stages = (Array.isArray(m.stages) ? m.stages : []).filter((s: unknown): s is Stage => STAGES.includes(s as Stage));
++      out.by[who][id] = { stages: [...new Set<Stage>(stages)], done: typeof m.done === 'string' ? m.done : undefined, hints: Number.isFinite(m.hints) ? m.hints : 0, secs: Number.isFinite(m.secs) ? m.secs : 0, runs: Number.isFinite(m.runs) ? m.runs : 0 };
++    }
++  }
++  return out;
++}
++const get = (p: Progress, who: string, id: string): ModProg => p.by[who]?.[id] ?? { stages: [], hints: 0, secs: 0, runs: 0 };
++const put = (p: Progress, who: string, id: string, m: ModProg): Progress => ({ ...p, by: { ...p.by, [who]: { ...(p.by[who] ?? {}), [id]: m } } });
++export const stagesDone = (p: Progress, who: string, id: string): Stage[] => get(p, who, id).stages;
++export const isComplete = (p: Progress, who: string, id: string): boolean => !!get(p, who, id).done;
++export const completedCount = (p: Progress, who: string): number => Object.values(p.by[who] ?? {}).filter(m => m.done).length;
++export function recordStage(p: Progress, who: string, id: string, stage: Stage): Progress {
++  const m = get(p, who, id); return m.stages.includes(stage) ? p : put(p, who, id, { ...m, stages: [...m.stages, stage] });
++}
++/** The tick is earned by finishing both checks. Asking for it any other way changes nothing. */
++export function completeModule(p: Progress, who: string, id: string, extra: { hints: number; secs: number }, now = new Date()): Progress {
++  const m = get(p, who, id); if (!m.stages.includes('check1') || !m.stages.includes('check2')) return p;
++  const stages = m.stages.includes('gratify') ? m.stages : [...m.stages, 'gratify' as Stage];
++  return put(p, who, id, { stages, done: m.done ?? now.toISOString(), hints: extra.hints, secs: extra.secs, runs: m.runs + 1 });
++}
++/** Start over for this person (the tick stays until they finish again). */
++export const resetModule = (p: Progress, who: string, id: string): Progress => { const m = get(p, who, id); return put(p, who, id, { ...m, stages: m.done ? m.stages : [] }); };
++/** The module to suggest after `exceptId`: the first one not finished, with "suggested first" modules ahead of the rest. */
++export function nextSuggested(mods: readonly { id: string; suggestedFirst?: boolean }[], p: Progress, who: string, exceptId?: string): string | undefined {
++  const open = mods.filter(m => m.id !== exceptId && !isComplete(p, who, m.id));
++  return (open.find(m => m.suggestedFirst) ?? open[0])?.id;
++}
+diff --git a/src/lib/trainingRun.ts b/src/lib/trainingRun.ts
+new file mode 100644
+index 0000000..6f72533
+--- /dev/null
++++ b/src/lib/trainingRun.ts
+@@ -0,0 +1,24 @@
++// Location: src/lib/trainingRun.ts
++// The run state machine: info, show, guide, check 1, check 2, done. Modules are never locked, but inside one module the stages go in order.
++import { STAGES, needsSandbox, type Stage } from './trainingModule';
++
++export type Run = { moduleId: string; stage: Stage; introSeen: boolean; startedAt: number; hints: number; skips: number; stepIndex: number; goalIndex: number };
++export const startRun = (moduleId: string, stage: Stage = 'info', now = Date.now()): Run => ({ moduleId, stage, introSeen: false, startedAt: now, hints: 0, skips: 0, stepIndex: 0, goalIndex: 0 });
++export const stageIndex = (s: Stage): number => STAGES.indexOf(s);
++/** The furthest stage a person may open: the one after their last finished stage. Finished stages can always be replayed. */
++export function canOpenStage(done: readonly Stage[], s: Stage): boolean {
++  const best = done.reduce((m, d) => Math.max(m, stageIndex(d)), -1);
++  return stageIndex(s) <= best + 1;
++}
++export const nextStage = (s: Stage): Stage | null => STAGES[stageIndex(s) + 1] ?? null;
++/** Moves to the next stage and resets the per-stage counters. Returns the same run at the end. */
++export function finishStage(r: Run): Run { const n = nextStage(r.stage); return n ? { ...r, stage: n, stepIndex: 0, goalIndex: 0 } : r; }
++export const seeIntro = (r: Run): Run => ({ ...r, introSeen: true });
++/** True when this run is showing the practice-data card before a sandbox stage. */
++export const showsIntro = (r: Run): boolean => needsSandbox(r.stage) && !r.introSeen;
++export const useHint = (r: Run): Run => ({ ...r, hints: r.hints + 1 });
++export const skipStep = (r: Run): Run => ({ ...r, skips: r.skips + 1, stepIndex: r.stepIndex + 1 });
++export const advanceStep = (r: Run, total: number): { run: Run; done: boolean } => (r.stepIndex + 1 >= total ? { run: r, done: true } : { run: { ...r, stepIndex: r.stepIndex + 1 }, done: false });
++export const advanceGoal = (r: Run, total: number): { run: Run; done: boolean } => (r.goalIndex + 1 >= total ? { run: r, done: true } : { run: { ...r, goalIndex: r.goalIndex + 1 }, done: false });
++/** Whole seconds since the run started, for the recap. */
++export const elapsedSecs = (r: Run, now = Date.now()): number => Math.max(0, Math.round((now - r.startedAt) / 1000));
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+new file mode 100644
+index 0000000..9f6e660
+--- /dev/null
++++ b/src/lib/trainingSandbox.ts
+@@ -0,0 +1,75 @@
++// Location: src/lib/trainingSandbox.ts
++// Practice data for the Guide and Check stages, and the swap in and out. Pure: no store imports except types.
++// Every id starts with "train-" so practice data can never be mistaken for the real thing.
++import type { App, Settings } from '../state/store';
++import type { Variant, Collection, Customer, ManualPreset, Cart } from './types';
++import type { Grid, Tile } from './grid';
++import { addVariant, emptyCart } from './cartOps';
++import { emptyLedger, type CashLedger } from './cashLedger';
++import type { Injection } from './trainingModule';
++
++export const TRAIN_PREFIX = 'train-';
++export const isTrainId = (id: string | undefined): boolean => !!id && id.includes(TRAIN_PREFIX);
++
++const v = (id: string, productId: string, product: string, variant: string, cents: number, stock: number, sku: string): Variant => ({
++  id: `${TRAIN_PREFIX}v-${id}`, productId: `${TRAIN_PREFIX}p-${productId}`, productTitle: product, variantTitle: variant, sku, priceCents: cents, tracked: true, stock, tags: [], active: true, status: 'ACTIVE',
++});
++export const FIXTURE_VARIANTS: Variant[] = [
++  v('cow-s', 'cow', 'Highland Cow', 'Small', 1200, 20, 'TR-COW-S'), v('cow-l', 'cow', 'Highland Cow', 'Large', 1800, 12, 'TR-COW-L'),
++  v('bee', 'bee', 'Bumble Bee', '', 800, 30, 'TR-BEE'), v('dragon', 'dragon', 'Red Dragon', '', 2500, 8, 'TR-DRG'),
++  v('egg', 'egg', 'Dragon Egg', '', 600, 25, 'TR-EGG'), v('key', 'key', 'Keyring', '', 500, 40, 'TR-KEY'),
++];
++export const FIXTURE_COLLECTIONS: Collection[] = [
++  { id: `${TRAIN_PREFIX}c-animals`, title: 'Animals', productIds: [`${TRAIN_PREFIX}p-cow`, `${TRAIN_PREFIX}p-bee`] },
++  { id: `${TRAIN_PREFIX}c-dragons`, title: 'Dragons', productIds: [`${TRAIN_PREFIX}p-dragon`, `${TRAIN_PREFIX}p-egg`] },
++];
++export const FIXTURE_CUSTOMERS: Customer[] = [
++  { id: `${TRAIN_PREFIX}cu-1`, name: 'Sam Rivera', email: 'sam@example.com', orders: 3, spentCents: 6400 },
++  { id: `${TRAIN_PREFIX}cu-2`, name: 'Priya Patel', phone: '0400 000 111', orders: 1, spentCents: 1200 },
++  { id: `${TRAIN_PREFIX}cu-3`, name: 'Alex Chen', email: 'alex@example.com', orders: 0, spentCents: 0 },
++];
++export const FIXTURE_PRESETS: ManualPreset[] = [{ id: `${TRAIN_PREFIX}pre-10`, kind: 'pct', value: 10, label: 'Practice 10% off' }];
++const HOME_TILES: Tile[] = [
++  { type: 'item', productId: `${TRAIN_PREFIX}p-cow` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-bee` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-dragon` },
++  { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
++  { type: 'action', action: 'custom_amount' }, { type: 'action', action: 'clear_cart' },
++];
++export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: `${TRAIN_PREFIX}page-home`, name: 'Home', tiles: HOME_TILES }] });
++/** A normal drawer with plenty of change. Check 2 can replace it with an injection. */
++export const FIXTURE_DRAWER: Record<string, number> = { '5000': 2, '2000': 5, '1000': 5, '500': 6, '200': 10, '100': 10, '50': 10, '20': 10, '10': 10, '5': 10 };
++export const fixtureLedger = (): CashLedger => ({ ...emptyLedger(), counts: { ...FIXTURE_DRAWER } });
++
++/** Settings for the sandbox: the real staff list and display mode stay (so roles and text size apply); everything that points outside the till is blanked. */
++export function sandboxSettings(real: Settings): Settings {
++  return { ...real, receipt: { ...real.receipt, serverUrl: '' }, passServerUrl: '', giftClaimUrl: '', bundlesJson: '', adjustPerms: {}, smartChange: false, cashRounding: true };
++}
++export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
++/** The real state to put back afterwards. */
++export const takeSnapshot = (s: App): Swap => ({ settings: s.settings, data: s.data, grid: s.grid, gridVersion: s.gridVersion, pos: s.pos, sync: s.sync, zeller: s.zeller, staffId: s.staffId, unlocked: s.unlocked });
++/** The practice state. The signed in person stays signed in. */
++export function buildSandbox(real: Swap): Swap {
++  const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, x]));
++  return {
++    settings: sandboxSettings(real.settings),
++    data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: [], presets: FIXTURE_PRESETS },
++    grid: fixtureGrid(), gridVersion: 0,
++    pos: { saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
++    sync: { state: 'idle' }, zeller: { ready: true }, staffId: real.staffId, unlocked: true,
++  };
++}
++/** What each injection does to the practice state: a cart injection replaces the cart, a ledger injection replaces the drawer. Card declines are not state: the session hands them to the fake terminal. Nothing else changes. */
++export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined): Swap {
++  let cart: Cart | undefined; let ledger: CashLedger | undefined;
++  for (const i of inj ?? []) {
++    if (i.kind === 'cart') { cart = cart ?? emptyCart(); for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } }
++    else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
++  }
++  return cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
++}
++/** Why training cannot start right now, or null. A real card payment or part-paid sale must be finished first. */
++export function trainingBlocker(s: { pos: { cart: Cart; attempts: { status: string }[] } }): string | null {
++  if (s.pos.attempts.some(a => a.status === 'started' || a.status === 'unknown')) return 'A card payment is still waiting on the reader. Finish or cancel it first, then start training.';
++  if ((s.pos.cart.tenders?.length ?? 0) > 0) return 'There is a part-paid sale in the cart. Finish or cancel it first, then start training.';
++  return null;
++}
++export const declinesOf = (inj: readonly Injection[] | undefined): number => (inj ?? []).reduce((n, i) => n + (i.kind === 'decline' ? i.times : 0), 0);
+diff --git a/src/lib/trainingScene.ts b/src/lib/trainingScene.ts
+new file mode 100644
+index 0000000..101b47d
+--- /dev/null
++++ b/src/lib/trainingScene.ts
+@@ -0,0 +1,23 @@
++// Location: src/lib/trainingScene.ts
++// Plays a scene (Info and Show stages) one beat at a time. Pure: the view just draws what this returns.
++import type { Actor, Scene, Tone } from './trainingModule';
++
++export type ActorView = { id: string; icon: string; label?: string; x: number; y: number; hidden: boolean; tone: Tone; pulse: boolean };
++export type SceneView = { index: number; total: number; say: string; actors: ActorView[]; last: boolean };
++
++/** What the scene looks like after beat `index` (0 based) has played. Out of range indexes are clamped. */
++export function sceneAt(scene: Scene, index: number): SceneView {
++  const total = scene.beats.length; const n = Math.max(0, Math.min(index, total - 1));
++  const state = new Map<string, Actor & { tone: Tone }>(scene.actors.map(a => [a.id, { ...a, tone: a.tone ?? 'neutral' }]));
++  let pulse = new Set<string>(); let say = '';
++  for (let i = 0; i <= n && i < total; i++) {
++    const b = scene.beats[i]; say = b.say; pulse = new Set(b.pulse ?? []);
++    for (const [id, p] of Object.entries(b.place ?? {})) { const a = state.get(id); if (a) { if (p.x !== undefined) a.x = p.x; if (p.y !== undefined) a.y = p.y; } }
++    for (const id of b.show ?? []) { const a = state.get(id); if (a) a.hidden = false; }
++    for (const id of b.hide ?? []) { const a = state.get(id); if (a) a.hidden = true; }
++    for (const [id, t] of Object.entries(b.tone ?? {})) { const a = state.get(id); if (a) a.tone = t; }
++  }
++  return { index: n, total, say, last: n >= total - 1, actors: [...state.values()].map(a => ({ id: a.id, icon: a.icon, label: a.label, x: a.x, y: a.y, hidden: !!a.hidden, tone: a.tone, pulse: pulse.has(a.id) })) };
++}
++/** Milliseconds to hold a beat in autoplay: reading time for the sentence, never shorter than 2.2 s. */
++export const beatMs = (say: string): number => Math.max(2200, 900 + say.split(/\s+/).filter(Boolean).length * 330);
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+new file mode 100644
+index 0000000..26bdf8e
+--- /dev/null
++++ b/src/lib/trainingSpots.ts
+@@ -0,0 +1,25 @@
++// Location: src/lib/trainingSpots.ts
++// Names for the things training can point at. A spot is any button, tile or row that carries `spot="..."` in the UI.
++// tests/trainingspots.test.ts scans the source, so a module can never point at a spot that is not really there.
++export const SPOT = {
++  cartCharge: 'cart.charge', // the Charge button (cart pane, or the bar on a phone)
++  cartOpen: 'cart.open',     // the bar that opens the cart on a phone
++  tabCheckout: 'tab.checkout',
++  tabMore: 'tab.more',
++  moreTraining: 'more.training',
++} as const;
++export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
++/** Spots whose id ends in a record id: a grid tile, or a cart line. */
++export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:'] as const;
++export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
++export const gridItemSpot = (id: string): string => `grid.item:${id}`;
++export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
++export const gridActionSpot = (action: string): string => `grid.action:${action}`;
++export const cartLineSpot = (variantId: string): string => `cart.line:${variantId}`;
++/** The spot id a grid tile carries, or undefined for tile types training does not point at. */
++export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
++  if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }
++  if (t.type === 'category' && t.collectionId) return gridCatSpot(t.collectionId);
++  if (t.type === 'action' && t.action) return gridActionSpot(t.action);
++  return undefined;
++}
+diff --git a/src/lib/trainingTerminal.ts b/src/lib/trainingTerminal.ts
+new file mode 100644
+index 0000000..32b6bc5
+--- /dev/null
++++ b/src/lib/trainingTerminal.ts
+@@ -0,0 +1,40 @@
++// Location: src/lib/trainingTerminal.ts
++// A pretend Zeller terminal for training. It sends the same event names as the real one and either approves or declines (code 51).
++// It plugs in wherever a TerminalLike is expected, so Pay and startCharge run exactly as they do in production.
++import type { TerminalLike, ZellerEvent, ZellerTxn } from './zeller';
++
++export type Outcome = 'approve' | 'decline';
++type Op<T> = Promise<T | (Error & { type: string })> & { cancel?: () => void; onEvent?: (cb: (e: ZellerEvent) => void) => unknown };
++const err = (type: string): Error & { type: string } => Object.assign(new Error(type), { type });
++
++export const timing = { stepMs: 600 };
++export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: number }): TerminalLike & { approved: ZellerTxn[] } {
++  const ms = () => opts.stepMs ?? timing.stepMs; const approved: ZellerTxn[] = []; let n = 0;
++  const run = (o: { amount: number; reference?: string }, kind: 'PURCHASE' | 'REFUND'): Op<ZellerTxn> => {
++    const subs: ((e: ZellerEvent) => void)[] = []; let timers: ReturnType<typeof setTimeout>[] = []; let finish: (v: ZellerTxn | (Error & { type: string })) => void = () => {};
++    const emit = (type: string) => subs.forEach(cb => cb({ type }));
++    const p = new Promise<ZellerTxn | (Error & { type: string })>(res => { finish = res; }) as Op<ZellerTxn>;
++    const outcome = opts.next();
++    const txn = (): ZellerTxn => ({
++      type: kind, amount: o.amount, currency: 'AUD', externalReference: o.reference, transactionUuid: `train-txn-${++n}`, timestampLocal: new Date().toISOString(), scheme: 'Visa', cardMedia: 'TAP', panMasked: 'XXXXXXXXXXXX0000',
++      ...(outcome === 'approve' ? { $type: 'Approved' as const, status: 'APPROVED' as const, approvalCode: 'TRAIN1', responseCode: '00' } : { $type: 'Declined' as const, status: 'DECLINED' as const, responseCode: '51', responseText: 'Insufficient funds' }),
++    });
++    timers = [setTimeout(() => emit('AWAITING_PAYMENT_METHOD'), 0), setTimeout(() => emit('PROCESSING'), ms()), setTimeout(() => { const t = txn(); if (t.status === 'APPROVED') approved.push(t); finish(t); }, ms() * 2)];
++    p.onEvent = cb => { subs.push(cb); };
++    p.cancel = () => { timers.forEach(clearTimeout); finish(err('Cancelled')); };
++    return p;
++  };
++  return {
++    approved,
++    initialise: () => Promise.resolve(true) as Op<true>, setup: () => Promise.resolve(true) as Op<true>, configure: () => Promise.resolve(true) as Op<true>,
++    purchase: o => run(o, 'PURCHASE'), refund: o => run(o, 'REFUND'),
++    // Only approved payments are listed, as a real terminal would: a declined card never shows up here.
++    getTransactions: (o) => Promise.resolve(approved.filter(t => !o?.reference || t.externalReference === o.reference)) as Op<ZellerTxn[]>,
++  };
++}
++
++/** The one terminal training uses. Check 2 sets how many cards it declines before it approves. */
++const queue: Outcome[] = [];
++export const trainingTerminal = makeTrainingTerminal({ next: () => queue.shift() ?? 'approve' });
++export const setDeclines = (times: number): void => { queue.length = 0; for (let i = 0; i < Math.max(0, Math.min(5, times)); i++) queue.push('decline'); };
++export const resetTrainingTerminal = (): void => { queue.length = 0; trainingTerminal.approved.length = 0; };
+diff --git a/src/lib/uiMode.ts b/src/lib/uiMode.ts
+index 0ec3b24..67c6e23 100644
+--- a/src/lib/uiMode.ts
++++ b/src/lib/uiMode.ts
+@@ -8,7 +8,7 @@ export type TextSize = 'normal' | 'large' | 'xlarge';
+ export type TabLevel = 'all' | 'core' | 'basic';
+ export type MoreLevel = 'all' | 'everyday' | 'essential';
+ export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
+-export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'help' | 'lock';
++export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'help' | 'training' | 'lock';
+ 
+ /** The four dials a Custom mode exposes. */
+ export type CustomUi = {
+@@ -31,10 +31,10 @@ export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
+ /** Rows in the More screen, in three groups (the screen draws a card per group). */
+ export const MORE_GROUPS: MoreRowId[][] = [
+   ['orders', 'items', 'customers', 'saved', 'giftcards'],
+-  ['reports', 'drawer', 'staff', 'settings', 'diagnostics', 'help'],
++  ['reports', 'drawer', 'staff', 'settings', 'diagnostics', 'help', 'training'],
+   ['lock'],
+ ];
+-const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'help', 'lock'];
++const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'help', 'training', 'lock'];
+ const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
+ export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
+ const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
+@@ -132,6 +132,7 @@ export const MORE_EXPLAIN: Record<MoreRowId, string> = {
+   settings: 'Payments, receipts and everything else.',
+   diagnostics: 'Check the card reader and fix problems.',
+   help: 'How every part of the till works, in as much detail as you like.',
++  training: 'Short courses that show you each job at the till, with practice data.',
+   lock: 'Lock the till so nobody else can use it. Your cart stays as it is.',
+ };
+ 
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 9423dac..2ba0031 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -1,4 +1,6 @@
+ // Location: src/screens/CartPane.tsx
++import { Spot } from '../ui/Spot';
++import { SPOT, cartLineSpot } from '../lib/trainingSpots';
+ import React, { useState } from 'react';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -61,7 +63,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+             const l = pl.line; const struck = pl.discountCents > 0; const rows = invoiceRows(pl); const flag = flagged.find(f => f.lineId === l.id);
+             return (
+               // A13: swipe left to remove the line. A12.8: invoice-style rows, one per discount with its own amount.
+-              <SwipeRow key={l.id} disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
++              <Spot key={l.id} id={l.variantId ? cartLineSpot(l.variantId) : undefined}><SwipeRow disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
+                 <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
+                   style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line, ...(flag ? { borderLeftWidth: 4, borderLeftColor: c.warn } : {}) })}>
+                   <View style={{ flexDirection: 'row', gap: 10 }}>
+@@ -85,7 +87,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+                   ))}
+                   {flag ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', paddingLeft: l.kind === 'item' ? 58 : 0 }}><Ionicons name="alert-circle" size={15} color={c.warn} /><Txt size={12} weight="600" color={c.warn} style={{ flex: 1 }}>{flag.reasons.join(' · ')}</Txt></View> : null}
+                 </Pressable>
+-              </SwipeRow>
++              </SwipeRow></Spot>
+             );
+           })}
+           {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
+@@ -99,7 +101,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         {priced.discountCents > 0 ? <><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt sub>Items</Txt><Money cents={priced.itemsCents} /></View>
+           {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt color={c.good}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</> : null}
+         {cart.discount ? <Txt size={13} sub>{cart.discount.label} applied to the cart</Txt> : null}
+-        <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
++        <Btn spot={SPOT.cartCharge} title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
+         {!empty ? <Txt size={12} sub style={{ textAlign: 'center' }}>{qty} item{qty === 1 ? '' : 's'}{!consolidate ? '' : ''}</Txt> : null}
+         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
+       </View>
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index 06c3cd8..1cdc05f 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -1,4 +1,6 @@
+ // Location: src/screens/Checkout.tsx
++import { spotPressed, useSpotRef } from '../ui/Spot';
++import { SPOT } from '../lib/trainingSpots';
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { FlatList, Image, Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -51,7 +53,7 @@ const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicon
+ 
+ /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
+ export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi();
++  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const chargeRef = useSpotRef(SPOT.cartCharge);
+   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
+   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
+   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
+@@ -220,9 +222,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+       <View style={{ flex: tablet && !guided ? 6 : 1 }}>
+         {left}
+         {!tablet && !guided && n > 0 ? (
+-          <Pressable onPress={() => nav.push('cart')} accessibilityRole="button" accessibilityLabel={`Cart, ${n} items, ${fmt(priced.netCents)}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, padding: 12, paddingHorizontal: 16, gap: 12 }}>
++          <Pressable ref={openRef} onPress={() => { spotPressed(SPOT.cartOpen); nav.push('cart'); }} accessibilityRole="button" accessibilityLabel={`Cart, ${n} items, ${fmt(priced.netCents)}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, padding: 12, paddingHorizontal: 16, gap: 12 }}>
+             <Ionicons name="cart" size={22} color={c.text} /><Txt weight="700" style={{ flex: 1 }}>{n} item{n === 1 ? '' : 's'} · {fmt(priced.netCents)}</Txt>
+-            <View style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Txt weight="700" color={c.onAccent}>Charge</Txt></View>
++            <View ref={chargeRef} collapsable={false} style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Txt weight="700" color={c.onAccent}>Charge</Txt></View>
+           </Pressable>
+         ) : null}
+       </View>
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index fca9362..9932714 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -5,6 +5,7 @@ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useUi } from '../ui/uiProfile';
+ import { useApp, currentStaff } from '../state/store';
++import { SPOT } from '../lib/trainingSpots';
+ import { actingRole } from '../lib/adjustPerms';
+ import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
+ 
+@@ -13,7 +14,7 @@ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }>
+   customers: { icon: 'people-outline', title: 'Customers', route: 'customers' }, saved: { icon: 'bookmarks-outline', title: 'Saved carts', route: 'saved' },
+   giftcards: { icon: 'gift-outline', title: 'Gift cards', route: 'giftcards' }, reports: { icon: 'stats-chart-outline', title: 'Reports', route: 'reports' },
+   drawer: { icon: 'cash-outline', title: 'Cash drawer', route: 'drawer' }, staff: { icon: 'id-card-outline', title: 'Staff', route: 'staff' },
+-  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' },
++  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' }, training: { icon: 'school-outline', title: 'Training', route: 'training' },
+   lock: { icon: 'lock-closed-outline', title: 'Lock register' },
+ };
+ /** What the row says underneath when explanations are off. */
+@@ -35,7 +36,7 @@ export default function More() {
+           <Section key={gi}>
+             {g.map((id, i) => {
+               const r = ROWS[id];
+-              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} last={i === g.length - 1}
++              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : undefined} last={i === g.length - 1}
+                 onPress={() => (r.route ? nav.push(r.route) : useApp.getState().set({ unlocked: false, staffId: undefined }))} />;
+             })}
+           </Section>
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index 2650321..c92e22e 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -71,7 +71,7 @@ export default function Staff() {
+ function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: Partial<CustomUi>) => void }) {
+   const label = (t: string) => <Txt size={13} weight="600" style={{ marginTop: 6 }}>{t}</Txt>;
+   const tabNames: Record<TabId, string> = { checkout: 'Checkout tab', inventory: 'Inventory tab', transactions: 'Transactions tab', notifications: 'Notifications tab', more: 'More tab' };
+-  const moreNames: Record<MoreRowId, string> = { orders: 'Orders', items: 'Items', customers: 'Customers', saved: 'Saved carts', giftcards: 'Gift cards', reports: 'Reports', drawer: 'Cash drawer', staff: 'Staff', settings: 'Settings', diagnostics: 'Diagnostics', help: 'Help', lock: 'Lock register' };
++  const moreNames: Record<MoreRowId, string> = { orders: 'Orders', items: 'Items', customers: 'Customers', saved: 'Saved carts', giftcards: 'Gift cards', reports: 'Reports', drawer: 'Cash drawer', staff: 'Staff', settings: 'Settings', diagnostics: 'Diagnostics', help: 'Help', training: 'Training', lock: 'Lock register' };
+   const flipTab = (id: TabId, shown: boolean) => onChange({ tabOverrides: { ...value.tabOverrides, [id]: shown } });
+   const flipMore = (id: MoreRowId, shown: boolean) => onChange({ moreOverrides: { ...value.moreOverrides, [id]: shown } });
+   return (
+diff --git a/src/screens/Tiles.tsx b/src/screens/Tiles.tsx
+index 5bab28b..0982b0b 100644
+--- a/src/screens/Tiles.tsx
++++ b/src/screens/Tiles.tsx
+@@ -1,4 +1,6 @@
+ // Location: src/screens/Tiles.tsx
++import { spotPressed, useSpotRef } from '../ui/Spot';
++import { tileSpotId } from '../lib/trainingSpots';
+ import React, { useMemo, useState } from 'react';
+ import { Ionicons } from '@expo/vector-icons';
+ import { Image, Pressable, ScrollView, View } from 'react-native';
+@@ -41,11 +43,12 @@ export function useTileLabel() {
+ 
+ export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove, color, size, count }: { tile: Tile; idx: number; editing: boolean; onPress: () => void; onEdit?: () => void; onRemove: () => void; onMove: (d: -1 | 1) => void; color: string; size: number; count: number }) {
+   const { c } = useTheme(); const info = useTileLabel()(tile); const cat = useCatalogue();
++  const sref = useSpotRef(tileSpotId(tile as any)); const spotId = tileSpotId(tile as any);
+   const v = tile.type === 'item' ? (tile.variantId ? cat.variants[tile.variantId] : cat.byProduct[tile.productId!]?.[0]) : undefined;
+   const img = !info.missing ? (v?.image ?? info.image) : undefined; // item photo, or the collection image on category and group tiles
+   return (
+     <View style={{ width: size, height: size * 0.82, padding: 4 }}>
+-      <Pressable onPress={() => { tap(); if (editing) onEdit?.(); else onPress(); }} accessibilityRole="button" accessibilityLabel={`${info.label}${info.sub ? ', ' + info.sub : ''}`}
++      <Pressable ref={sref} onPress={() => { if (!editing) spotPressed(spotId); tap(); if (editing) onEdit?.(); else onPress(); }} accessibilityRole="button" accessibilityLabel={`${info.label}${info.sub ? ', ' + info.sub : ''}`}
+         style={({ pressed }) => ({ flex: 1, overflow: "hidden", borderRadius: 14, backgroundColor: info.missing ? c.fill : color, padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1, borderWidth: editing ? 1.5 : 0, borderColor: c.sub, borderStyle: editing ? 'dashed' : 'solid' })}>
+         {img ? <Image source={{ uri: img }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
+         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+diff --git a/src/screens/Training.tsx b/src/screens/Training.tsx
+new file mode 100644
+index 0000000..2f34a09
+--- /dev/null
++++ b/src/screens/Training.tsx
+@@ -0,0 +1,53 @@
++// Location: src/screens/Training.tsx
++// More > Training: every course, with a dot per stage and a big green tick once both Checks are passed. Courses are never locked.
++import React, { useEffect } from 'react';
++import { Pressable, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { Card, Page, Txt } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useNav } from '../ui/nav';
++import { useApp } from '../state/store';
++import { useTraining } from '../state/trainingSession';
++import { MODULES } from '../training';
++import { STAGES, STAGE_LABEL, type Stage } from '../lib/trainingModule';
++import { completedCount, isComplete, staffKey, stagesDone } from '../lib/trainingProgress';
++import { canOpenStage, startRun } from '../lib/trainingRun';
++
++export const firstOpenStage = (done: readonly Stage[]): Stage => STAGES.find(s => !done.includes(s) && s !== 'gratify') ?? 'info';
++
++export default function Training() {
++  const { c } = useTheme(); const nav = useNav(); const progress = useTraining(s => s.progress); const staffId = useApp(s => s.staffId); const who = staffKey(staffId);
++  useEffect(() => { void useTraining.getState().loadProgress(); }, []);
++  const open = (id: string, stage: Stage) => { useTraining.getState().setRun(startRun(id, stage)); nav.push('trainingRun'); };
++  const n = completedCount(progress, who);
++  return (
++    <Page title="Training" onBack={nav.pop}>
++      <View style={{ padding: 16, gap: 12 }}>
++        <Txt sub>Short courses for each job at the till. Do them in any order. Practice data is used, so nothing is saved, sent or charged.</Txt>
++        <Txt size={13} weight="700" sub>{n} of {MODULES.length} finished</Txt>
++        {MODULES.map(m => {
++          const done = stagesDone(progress, who, m.id); const complete = isComplete(progress, who, m.id);
++          return (
++            <Card key={m.id} style={{ padding: 16, gap: 10, borderColor: complete ? c.good : c.line, borderWidth: complete ? 2 : 1 }}>
++              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
++                {complete ? <Ionicons name="checkmark-circle" size={40} color={c.good} accessibilityLabel="Finished" /> : <Ionicons name="school-outline" size={34} color={c.sub} />}
++                <View style={{ flex: 1 }}>
++                  <Txt size={17} weight="700">{m.title}</Txt>
++                  <Txt size={13} sub>{m.minutes} min{m.suggestedFirst && !complete ? ' · Suggested first' : ''}</Txt>
++                </View>
++              </View>
++              <Txt sub>{m.summary}</Txt>
++              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
++                {STAGES.filter(s => s !== 'gratify').map(s => { const d = done.includes(s); const can = canOpenStage(done, s); return (
++                  <Pressable key={s} disabled={!can} onPress={() => open(m.id, s)} accessibilityRole="button" accessibilityLabel={`${STAGE_LABEL[s]}${d ? ', done' : ''}`}
++                    style={{ flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: d ? c.good : c.fill, opacity: can ? 1 : 0.45 }}>
++                    {d ? <Ionicons name="checkmark" size={14} color="#fff" /> : null}<Txt size={13} weight="700" color={d ? '#fff' : c.text}>{STAGE_LABEL[s]}</Txt></Pressable>); })}
++              </View>
++              <Pressable onPress={() => open(m.id, complete ? 'info' : firstOpenStage(done))} accessibilityRole="button" style={{ backgroundColor: c.accent, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}>
++                <Txt weight="700" color={c.onAccent}>{complete ? 'Do it again' : done.length ? 'Continue' : 'Start'}</Txt></Pressable>
++            </Card>);
++        })}
++      </View>
++    </Page>
++  );
++}
+diff --git a/src/screens/TrainingRun.tsx b/src/screens/TrainingRun.tsx
+new file mode 100644
+index 0000000..a2ef9a4
+--- /dev/null
++++ b/src/screens/TrainingRun.tsx
+@@ -0,0 +1,117 @@
++// Location: src/screens/TrainingRun.tsx
++// One course run, outside the sandbox: the Info slideshow, the Show animation, the practice-data card before Guide and the Checks,
++// and the Done screen. Guide and Check themselves happen on the real screens, driven by TrainingHost.
++import React, { useEffect, useRef, useState } from 'react';
++import { Animated, Pressable, ScrollView, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import * as Haptics from 'expo-haptics';
++import { Btn, Page, Txt, alertMsg } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useNav, type Tab } from '../ui/nav';
++import { useApp } from '../state/store';
++import { useTraining } from '../state/trainingSession';
++import SceneView from '../ui/SceneView';
++import Confetti from '../ui/Confetti';
++import { MODULES, getModule } from '../training';
++import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
++import { beatMs } from '../lib/trainingScene';
++import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
++import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
++
++const INTRO: Partial<Record<Stage, { title: string; body: string; button: string }>> = {
++  guide: { title: 'Guide: do it on the real till', body: 'You will use the real screens with practice data. Nothing is saved, sent or charged, and your real cart is kept exactly as it is. Arrows show you where to tap.', button: 'Start the guide' },
++  check1: { title: 'Check 1: now you do it', body: 'The guide is done. Same job, no arrows, and everything goes right this time. Tap Hint if you get stuck.', button: 'Start Check 1' },
++  check2: { title: 'Check 2: now things go wrong', body: 'This time the problems that happen at a real counter will happen here. You were shown how to deal with them earlier. Tap Hint if you get stuck.', button: 'Start Check 2' },
++};
++const clock = (secs: number) => `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}`;
++
++export default function TrainingRun() {
++  const { c } = useTheme(); const nav = useNav(); const run = useTraining(s => s.run); const progress = useTraining(s => s.progress); const who = staffKey(useApp(s => s.staffId));
++  const mod = run ? getModule(run.moduleId) : undefined;
++  const leave = () => { nav.reset(); nav.setTab('more'); nav.push('training'); };
++  if (!run || !mod) return <Page title="Training" onBack={leave}><View style={{ padding: 24 }}><Txt sub>This course is not available. Go back to Training and pick one.</Txt></View></Page>;
++  const done = stagesDone(progress, who, mod.id);
++  return (
++    <Page title={mod.title} onBack={leave} scroll={false}>
++      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, padding: 12, borderBottomWidth: 1, borderBottomColor: c.line, backgroundColor: c.card }}>
++        {STAGES.map(s => { const d = done.includes(s); const on = run.stage === s; const can = canOpenStage(done, s); return (
++          <Pressable key={s} disabled={!can || on} onPress={() => useTraining.getState().setRun(startRun(mod.id, s))} accessibilityRole="button" accessibilityLabel={`${STAGE_LABEL[s]}${d ? ', done' : ''}`}
++            style={{ flexDirection: 'row', gap: 4, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: on ? c.accent : d ? c.good : c.fill, opacity: can || on ? 1 : 0.4 }}>
++            {d && !on ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}<Txt size={12} weight="700" color={on ? c.onAccent : d ? '#fff' : c.text}>{STAGE_LABEL[s]}</Txt></Pressable>); })}
++      </View>
++      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
++        {run.stage === 'info' ? <Slides key={`i-${run.startedAt}`} mod={mod} scene="info" /> : null}
++        {run.stage === 'show' ? <Slides key={`s-${run.startedAt}`} mod={mod} scene="show" /> : null}
++        {(run.stage === 'guide' || run.stage === 'check1' || run.stage === 'check2') ? <Intro mod={mod} run={run} /> : null}
++        {run.stage === 'gratify' ? <Gratify mod={mod} run={run} who={who} /> : null}
++      </ScrollView>
++    </Page>
++  );
++}
++
++/** Info is stepped by the person (Back and Next). Show plays by itself, with pause and replay. */
++function Slides({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
++  const sc = scene === 'info' ? mod.info : mod.show; const last = sc.beats.length - 1; const [i, setI] = useState(0); const [playing, setPlaying] = useState(scene === 'show'); const [seenEnd, setSeenEnd] = useState(false);
++  useEffect(() => { if (i >= last) setSeenEnd(true); }, [i, last]);
++  useEffect(() => { if (!playing) return undefined; const t = setTimeout(() => { if (i < last) setI(i + 1); else setPlaying(false); }, beatMs(sc.beats[i].say)); return () => clearTimeout(t); }, [playing, i, last, sc]);
++  const ready = seenEnd; const go = () => useTraining.getState().completeStage();
++  return (
++    <View style={{ gap: 16 }}>
++      <Txt size={13} weight="700" sub>{scene === 'info' ? 'INFO' : 'SHOW THE PROCESS'}</Txt>
++      <SceneView scene={sc} index={i} />
++      <View style={{ flexDirection: 'row', gap: 10 }}>
++        {scene === 'info' ? <>
++          <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
++          {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
++        </> : <>
++          <Btn title={playing ? 'Pause' : 'Play'} kind="secondary" icon={playing ? 'pause' : 'play'} onPress={() => { if (!playing && i >= last) setI(0); setPlaying(!playing); }} style={{ flex: 1 }} />
++          <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => { setI(0); setPlaying(true); }} style={{ flex: 1 }} />
++          <Btn title="Continue" disabled={!ready} onPress={go} style={{ flex: 1 }} />
++        </>}
++      </View>
++      {scene === 'show' && !ready ? <Txt size={13} sub style={{ textAlign: 'center' }}>Watch it through once, then you can continue.</Txt> : null}
++    </View>
++  );
++}
++
++function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
++  const { c } = useTheme(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
++  if (!t) return null;
++  const start = async () => {
++    setBusy(true); const msg = await useTraining.getState().startPractice(); setBusy(false);
++    if (msg) { alertMsg('Training cannot start yet', msg); return; }
++    nav.setTab(mod.tabs[0] as Tab); // leaves this page and shows the real till; TrainingHost takes over from here
++  };
++  return (
++    <View style={{ gap: 14 }}>
++      <View style={{ backgroundColor: '#F59E0B', alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color="#111">PRACTICE DATA</Txt></View>
++      <Txt size={22} weight="700">{t.title}</Txt>
++      <Txt>{t.body}</Txt>
++      <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, gap: 6 }}>
++        <Txt size={13} weight="700">What stays safe</Txt>
++        <Txt size={14} sub>Your real cart, sales, drawer and settings are not touched. Nothing is sent to Shopify or the card reader. Exit at any time from the bar at the bottom.</Txt>
++      </View>
++      <Btn title={t.button} busy={busy} onPress={start} />
++    </View>
++  );
++}
++
++function Gratify({ mod, run, who }: { mod: TrainingModule; run: Run; who: string }) {
++  const { c } = useTheme(); const nav = useNav(); const progress = useTraining(s => s.progress); const pop = useRef(new Animated.Value(0)).current;
++  useEffect(() => { try { void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); } catch {} Animated.spring(pop, { toValue: 1, friction: 5, tension: 90, useNativeDriver: true }).start(); }, [pop]);
++  const next = nextSuggested(MODULES, progress, who, mod.id); const nextMod = next ? getModule(next) : undefined; const secs = elapsedSecs(run);
++  return (
++    <View style={{ gap: 18, alignItems: 'center', paddingTop: 12 }}>
++      <Confetti seed={run.startedAt % 9973} />
++      <Animated.View style={{ transform: [{ scale: pop.interpolate({ inputRange: [0, 1], outputRange: [0.2, 1] }) }], opacity: pop }}><Ionicons name="checkmark-circle" size={140} color={c.good} accessibilityLabel="Course complete" /></Animated.View>
++      <View style={{ alignItems: 'center', gap: 4 }}><Txt size={26} weight="700">Course complete</Txt><Txt sub>{mod.title}</Txt></View>
++      <View style={{ alignSelf: 'stretch', backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.line, padding: 16, gap: 10 }}>
++        <Txt size={13} weight="700" sub>YOU CAN NOW</Txt>
++        {mod.recap.map((l, i) => <View key={i} style={{ flexDirection: 'row', gap: 10 }}><Ionicons name="checkmark" size={20} color={c.good} /><Txt style={{ flex: 1 }}>{l}</Txt></View>)}
++        <Txt size={13} sub style={{ marginTop: 6 }}>Time {clock(secs)} · Hints used {run.hints}{run.skips ? ` · ${run.skips} step${run.skips === 1 ? '' : 's'} skipped` : ''}</Txt>
++      </View>
++      {nextMod ? <Btn title={`Next: ${nextMod.title}`} style={{ alignSelf: 'stretch' }} onPress={() => { useTraining.getState().setRun(startRun(nextMod.id)); }} /> : null}
++      <Btn title="Back to training" kind="secondary" style={{ alignSelf: 'stretch' }} onPress={() => { nav.reset(); nav.setTab('more'); nav.push('training'); }} />
++    </View>
++  );
++}
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 24ecc78..6fe7127 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -14,6 +14,7 @@ import type { Depth } from '../lib/helpDocs';
+ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+ import type { AdjustPerms } from '../lib/adjustPerms';
++import { isTraining } from '../lib/trainingGuard';
+ 
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+@@ -72,7 +73,16 @@ const emptyData = (): Data => ({ variants: {}, collections: [], customers: [], a
+ const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: emptyLedger() });
+ 
+ const timers: Record<string, any> = {};
+-const persist = (key: string, get: () => unknown) => { clearTimeout(timers[key]); timers[key] = setTimeout(() => kvSet(key, get()), 400); };
++const pending: Record<string, () => unknown> = {};
++const persist = (key: string, get: () => unknown) => {
++  if (isTraining()) return; // practice data is never saved
++  clearTimeout(timers[key]); pending[key] = get;
++  timers[key] = setTimeout(() => { delete pending[key]; void kvSet(key, get()); }, 400);
++};
++/** Writes every save that is still waiting for its 400 ms timer. Training calls this before it swaps in practice data. */
++export async function flushPersist(): Promise<void> {
++  for (const key of Object.keys(pending)) { clearTimeout(timers[key]); const get = pending[key]; delete pending[key]; await kvSet(key, get()); }
++}
+ 
+ export const useApp = create<App>((set, get) => ({
+   ready: false, settings: defaultSettings(), data: emptyData(), grid: defaultGrid(), gridVersion: 0, pos: emptyPos(),
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+new file mode 100644
+index 0000000..3a84314
+--- /dev/null
++++ b/src/state/trainingSession.ts
+@@ -0,0 +1,70 @@
++// Location: src/state/trainingSession.ts
++// The training session: which course run is open, the practice-data swap, hints, and what the overlay should draw.
++// The swap keeps the real state in memory only. Nothing real is changed on disk, so a crash mid-training just reopens the normal till.
++import { create } from 'zustand';
++import { useApp, flushPersist } from './store';
++import { kvGet, kvSet } from '../lib/kv';
++import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
++import { applyInjections, buildSandbox, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
++import { resetTrainingTerminal, setDeclines } from '../lib/trainingTerminal';
++import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
++import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
++import { completeModule, emptyProgress, readProgress, recordStage, staffKey, type Progress } from '../lib/trainingProgress';
++import type { Injection, Stage } from '../lib/trainingModule';
++import type { Rect } from '../lib/trainingGeometry';
++
++/** Everything the overlay and dock need, worked out by the driver (TrainingHost) and drawn by both. */
++export type DockView = {
++  mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
++  hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage;
++};
++type Sess = {
++  run: Run | null; sandbox: boolean; hint: HintState; view: DockView | null; progress: Progress; loaded: boolean;
++  loadProgress: () => Promise<void>;
++  begin: (moduleId: string, stage?: Stage) => void;
++  setRun: (r: Run) => void;
++  startPractice: () => Promise<string | null>;   // returns a message when it cannot start
++  inject: (inj: readonly Injection[] | undefined) => void;
++  leave: () => void;
++  completeStage: () => Run | null;
++  pressHint: (goalId: string, ladder: readonly string[]) => void;
++  setView: (v: DockView | null) => void;
++  patchRun: (f: (r: Run) => Run) => void;
++};
++let real: Swap | null = null;
++
++export const useTraining = create<Sess>((set, get) => ({
++  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false,
++  loadProgress: async () => { if (get().loaded) return; set({ progress: readProgress(await kvGet(TRAINING_PROGRESS_KEY, null)), loaded: true }); },
++  begin: (moduleId, stage = 'info') => set({ run: startRun(moduleId, stage), hint: freshHints(), view: null }),
++  setRun: r => set({ run: r, hint: freshHints(), view: null }),
++  patchRun: f => { const r = get().run; if (r) set({ run: f(r) }); },
++  startPractice: async () => {
++    const blocked = trainingBlocker(useApp.getState()); if (blocked) return blocked;
++    if (!real) {
++      await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
++      real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
++    }
++    resetTrainingTerminal(); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
++    const r = get().run; if (r) set({ run: seeIntro(r) });
++    return null;
++  },
++  inject: inj => {
++    if (!real) return; const s = useApp.getState();
++    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj));
++  },
++  leave: () => {
++    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); } // restore first, then drop the guard
++    set({ sandbox: false, view: null });
++  },
++  completeStage: () => {
++    const run = get().run; if (!run) return null; const who = staffKey(useApp.getState().staffId);
++    let p = recordStage(get().progress, who, run.moduleId, run.stage);
++    if (run.stage === 'check2') p = completeModule(p, who, run.moduleId, { hints: run.hints, secs: elapsedSecs(run) });
++    set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p);
++    const next = finishStage(run); const r: Run = { ...next, introSeen: false }; set({ run: r, hint: freshHints(), view: null }); return r;
++  },
++  pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
++  setView: v => set({ view: v }),
++}));
++export const isPractising = (): boolean => real !== null;
+diff --git a/src/training/README.md b/src/training/README.md
+new file mode 100644
+index 0000000..5068407
+--- /dev/null
++++ b/src/training/README.md
+@@ -0,0 +1,34 @@
++# Writing a training module
++
++A module is one TypeScript file in `src/training/modules/`, added to the list in `src/training/index.ts`. The checker (`validateModule`, run by `npm test`) refuses a module that breaks the rules below, so a mistake shows up before anyone sees it.
++
++## The six parts
++
++1. **Info** (`info`): a scene with at least 3 beats. Each beat is one sentence plus what moves, appears or pulses while it is read. Say what the job is, when you need it, and roughly how it works inside.
++2. **Show** (`show`): the same format, but the beats show the flow as a simple picture: a token travelling between stages. Never draw the real screens here.
++3. **Guide** (`guide`): steps on the real till. A step has a `target` (a spot), a sentence, and `until`: `next` (a Next button, for pure information), `press` (the person taps the spot), `visible` (a spot appears) or `state` (a test on the app state). Give a `recover` for steps whose target may be on another screen or tab.
++4. **Check 1** (`check1`): goals, no arrows, everything goes right.
++5. **Check 2** (`check2`): goals where customer side problems happen on purpose (`inject`). Every goal with an injection must name `taughtBy`: the id of the Info beat, Show beat or Guide step that told the person how to handle it. No admin problems.
++6. **Done**: made from `recap`, a few short adult lines on what the person can now do.
++
++## Spots
++
++A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`, `Chip`, `Row` or `IconBtn`, or wrap a view in `<Spot id=...>`. Static ids live in `src/lib/trainingSpots.ts`. Grid tiles and cart lines get ids from the item (`grid.item:<id>`, `cart.line:<variantId>`). `tests/trainingspots.test.ts` reads the source, so a module cannot name a spot that is not there.
++
++## Goals and hints
++
++A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
++
++## Injections
++
++- `cart`: start with these lines in the cart (practice item ids, see `src/lib/trainingSandbox.ts`)
++- `decline`: the practice terminal declines the card this many times (code 51), then approves
++- `ledger`: replace the drawer contents (for example no small change)
++
++## Practice data
++
++Guide and Check run on fake data (ids start with `train-`). Nothing is written to storage, Shopify, the history files or the card reader. The real state is held in memory and put back on exit. Settings, Staff and Diagnostics are not available unless a module lists the route.
++
++## Rules for the words
++
++Plain, adult, short. No em dashes, no emoji, no ASCII art. Say what to do, not how it feels.
+diff --git a/src/training/index.ts b/src/training/index.ts
+new file mode 100644
+index 0000000..a27c050
+--- /dev/null
++++ b/src/training/index.ts
+@@ -0,0 +1,7 @@
++// Location: src/training/index.ts
++// Every training module the app knows about, in the order the hub lists them. Add a module here once its file exists.
++import type { TrainingModule } from '../lib/trainingModule';
++import { welcome } from './modules/welcome';
++
++export const MODULES: TrainingModule[] = [welcome];
++export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
+diff --git a/src/training/modules/welcome.ts b/src/training/modules/welcome.ts
+new file mode 100644
+index 0000000..2ae23d3
+--- /dev/null
++++ b/src/training/modules/welcome.ts
+@@ -0,0 +1,50 @@
++// Location: src/training/modules/welcome.ts
++// "How training works": small, but it uses every stage, so the whole engine can be tried before the real courses arrive.
++import type { TrainingModule } from '../../lib/trainingModule';
++import { SPOT, cartLineSpot, gridItemSpot } from '../../lib/trainingSpots';
++
++export const welcome: TrainingModule = {
++  id: 'welcome', title: 'How training works', summary: 'A five minute tour of the course format. Start here if you have never used training before.', minutes: 5, suggestedFirst: true,
++  flow: 'standard', tabs: ['checkout'], routes: ['cart'],
++  info: {
++    actors: [
++      { id: 'you', icon: 'person', label: 'You', x: 12, y: 62 }, { id: 'course', icon: 'school', label: 'A course', x: 50, y: 28 },
++      { id: 'parts', icon: 'list', label: 'Six parts', x: 50, y: 62, hidden: true }, { id: 'hint', icon: 'help-circle', label: 'Hint', x: 30, y: 62, hidden: true },
++      { id: 'tick', icon: 'checkmark-circle', label: 'Green tick', x: 88, y: 62, hidden: true },
++    ],
++    beats: [
++      { id: 'what', say: 'Training is a short course for one job at the till, like taking a payment. Pick any course, in any order.', pulse: ['course'] },
++      { id: 'parts', say: 'Each course has six parts: Info, Show, Guide, two Checks, and a finish.', show: ['parts'], pulse: ['parts'] },
++      { id: 'practice', say: 'In Guide and Check you use the real till with practice data. Nothing is saved, sent or charged.', place: { you: { x: 40 } }, pulse: ['you'] },
++      { id: 'hints', say: 'Stuck in a Check? Tap Hint. You get a small pointer first, then a clearer one, and in the end the answer is shown.', show: ['hint'], pulse: ['hint'] },
++      { id: 'tick', say: 'Finish both Checks and the course gets a green tick next to your name.', show: ['tick'], tone: { tick: 'good' }, pulse: ['tick'] },
++    ],
++  },
++  show: {
++    actors: [
++      { id: 'a1', icon: 'book', label: 'Info', x: 10, y: 55 }, { id: 'a2', icon: 'eye', label: 'Show', x: 30, y: 55 }, { id: 'a3', icon: 'hand-left', label: 'Guide', x: 50, y: 55 },
++      { id: 'a4', icon: 'checkbox', label: 'Checks', x: 70, y: 55 }, { id: 'a5', icon: 'trophy', label: 'Done', x: 90, y: 55 }, { id: 'dot', icon: 'ellipse', x: 10, y: 28, tone: 'accent' },
++    ],
++    beats: [
++      { say: 'You start by reading what the job is and when you need it.', place: { dot: { x: 10 } }, pulse: ['a1'] },
++      { say: 'Then you watch it happen as a simple picture.', place: { dot: { x: 30 } }, pulse: ['a2'] },
++      { say: 'Then you do it on the real till, with arrows showing you where to tap.', place: { dot: { x: 50 } }, pulse: ['a3'] },
++      { say: 'Then you do it alone, once when everything goes right and once when things go wrong.', place: { dot: { x: 70 } }, pulse: ['a4'] },
++      { say: 'Get through both and you are done.', place: { dot: { x: 90 } }, tone: { dot: 'good', a5: 'good' }, pulse: ['a5'] },
++    ],
++  },
++  guide: [
++    { id: 'g-dock', say: 'The bar at the bottom stays with you in practice. It shows what you are doing, and has Hint and Exit buttons.', until: { kind: 'next' } },
++    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout } },
++    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen } },
++    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'To take an item out, swipe its line to the left and tap Remove. Tap Next when you have seen how.', until: { kind: 'next' }, recover: { say: 'Open the cart from the bar at the bottom. Swipe a line to the left and tap Remove. Tap Next when you have seen how.', target: SPOT.cartOpen } },
++  ],
++  check1: [
++    { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg') },
++  ],
++  check2: [
++    { id: 'change-mind', title: 'The customer changed their mind. Take the Red Dragon out of the cart', until: { kind: 'state', test: s => s.lines <= 1 }, inject: [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 1 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-remove',
++      ladder: ['The cart lists everything that has been added.', 'A line can be removed from the cart.', 'Swipe the Red Dragon line to the left, then tap Remove.'], reveal: cartLineSpot('train-v-dragon'), via: SPOT.cartOpen },
++  ],
++  recap: ['You can add items to a sale from the grid.', 'You can take an item out of the cart.', 'You know where Hint and Exit are when you get stuck.'],
++};
+diff --git a/src/ui/Confetti.tsx b/src/ui/Confetti.tsx
+new file mode 100644
+index 0000000..7c04e30
+--- /dev/null
++++ b/src/ui/Confetti.tsx
+@@ -0,0 +1,15 @@
++// Location: src/ui/Confetti.tsx
++// Plain React Native Animated, no extra package. Pieces fall once from above the screen and are gone.
++import React, { useEffect, useMemo } from 'react';
++import { Animated, Easing, View, useWindowDimensions } from 'react-native';
++import { CONFETTI_COLOURS, makeConfetti, type Piece } from '../lib/confetti';
++
++function Bit({ p, w, h }: { p: Piece; w: number; h: number }) {
++  const t = React.useRef(new Animated.Value(0)).current;
++  useEffect(() => { Animated.timing(t, { toValue: 1, duration: p.dur, delay: p.delay, easing: Easing.in(Easing.quad), useNativeDriver: true }).start(); }, [t, p.dur, p.delay]);
++  return <Animated.View style={{ position: 'absolute', left: p.x * w, top: -30, width: p.w, height: p.h, borderRadius: 2, backgroundColor: CONFETTI_COLOURS[p.color], opacity: t.interpolate({ inputRange: [0, 0.05, 0.85, 1], outputRange: [0, 1, 1, 0] }), transform: [{ translateY: t.interpolate({ inputRange: [0, 1], outputRange: [0, h + 60] }) }, { translateX: t.interpolate({ inputRange: [0, 1], outputRange: [0, p.drift * w] }) }, { rotate: t.interpolate({ inputRange: [0, 1], outputRange: ['0deg', `${p.spin * 360}deg`] }) }] }} />;
++}
++export default function Confetti({ seed = 1, count = 70 }: { seed?: number; count?: number }) {
++  const { width, height } = useWindowDimensions(); const pieces = useMemo(() => makeConfetti(count, seed, CONFETTI_COLOURS.length), [count, seed]);
++  return <View pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden' }}>{pieces.map((p, i) => <Bit key={i} p={p} w={width} h={height} />)}</View>;
++}
+diff --git a/src/ui/SceneView.tsx b/src/ui/SceneView.tsx
+new file mode 100644
+index 0000000..66df723
+--- /dev/null
++++ b/src/ui/SceneView.tsx
+@@ -0,0 +1,37 @@
++// Location: src/ui/SceneView.tsx
++// Draws one scene (Info and Show stages). Each actor glides to where the current beat puts it, fades in or out, and pulses when the beat is about it.
++import React, { useEffect, useRef, useState } from 'react';
++import { Animated, Easing, Text, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { useTheme } from './theme';
++import { tap } from './kit';
++import { sceneAt, type ActorView } from '../lib/trainingScene';
++import type { Scene } from '../lib/trainingModule';
++
++function Actor({ a, w, h }: { a: ActorView; w: number; h: number }) {
++  const { c } = useTheme(); const x = useRef(new Animated.Value(a.x)).current; const y = useRef(new Animated.Value(a.y)).current; const o = useRef(new Animated.Value(a.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current;
++  useEffect(() => { Animated.parallel([Animated.timing(x, { toValue: a.x, duration: 700, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }), Animated.timing(y, { toValue: a.y, duration: 700, easing: Easing.inOut(Easing.cubic), useNativeDriver: false }), Animated.timing(o, { toValue: a.hidden ? 0 : 1, duration: 450, useNativeDriver: false })]).start(); }, [a.x, a.y, a.hidden]); // eslint-disable-line react-hooks/exhaustive-deps
++  useEffect(() => { if (a.pulse) Animated.sequence([Animated.timing(s, { toValue: 1.3, duration: 220, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 4, useNativeDriver: false })]).start(); }, [a.pulse]); // eslint-disable-line react-hooks/exhaustive-deps
++  const tone = a.tone === 'good' ? c.good : a.tone === 'bad' ? c.bad : a.tone === 'accent' ? c.accent : c.text; const size = Math.min(w, h) * 0.2;
++  return (
++    <Animated.View style={{ position: 'absolute', left: x.interpolate({ inputRange: [0, 100], outputRange: [-size / 2, w - size / 2] }), top: y.interpolate({ inputRange: [0, 100], outputRange: [-size / 2, h - size / 2] }), width: size, alignItems: 'center', opacity: o, transform: [{ scale: s }] }}>
++      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.fill, borderWidth: 2, borderColor: tone, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={a.icon as any} size={size * 0.5} color={tone} /></View>
++      {a.label ? <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', marginTop: 4 }} numberOfLines={1}>{a.label}</Text> : null}
++    </Animated.View>
++  );
++}
++
++/** `index` is the beat to show. The sentence sits under the picture, and a soft tick plays whenever the beat changes. */
++export default function SceneView({ scene, index }: { scene: Scene; index: number }) {
++  const { c } = useTheme(); const v = sceneAt(scene, index); const [box, setBox] = useState({ w: 300, h: 220 }); const first = useRef(true);
++  useEffect(() => { if (first.current) { first.current = false; return; } tap(); }, [v.index]);
++  return (
++    <View style={{ gap: 14 }}>
++      <View onLayout={e => setBox({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} style={{ height: 230, borderRadius: 20, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, overflow: 'hidden' }}>
++        {v.actors.map(a => <Actor key={a.id} a={a} w={box.w} h={box.h} />)}
++      </View>
++      <Text style={{ color: c.text, fontSize: 19, lineHeight: 27, fontWeight: '600', minHeight: 84 }} accessibilityLiveRegion="polite">{v.say}</Text>
++      <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>{Array.from({ length: v.total }, (_, i) => <View key={i} style={{ width: i === v.index ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: i <= v.index ? c.text : c.line }} />)}</View>
++    </View>
++  );
++}
+diff --git a/src/ui/Spot.tsx b/src/ui/Spot.tsx
+new file mode 100644
+index 0000000..db85339
+--- /dev/null
++++ b/src/ui/Spot.tsx
+@@ -0,0 +1,36 @@
++// Location: src/ui/Spot.tsx
++// Spots: buttons, tiles and rows training can point at. A spot registers its view under an id, can be measured on screen,
++// and tells training when it is tapped. Nothing here changes how anything looks or behaves.
++import React, { useCallback, useRef } from 'react';
++import { View, type StyleProp, type ViewStyle } from 'react-native';
++import type { Rect } from '../lib/trainingGeometry';
++
++const refs = new Map<string, Set<any>>();
++const presses = new Set<(id: string) => void>();
++
++/** Attach to any view's `ref`. With no id it does nothing. */
++export function useSpotRef(id?: string): (node: any) => void {
++  const last = useRef<{ id?: string; node: any }>({ node: null });
++  return useCallback((node: any) => {
++    const p = last.current; if (p.id && p.node) { refs.get(p.id)?.delete(p.node); if (!refs.get(p.id)?.size) refs.delete(p.id); }
++    last.current = { id, node };
++    if (id && node) { let set = refs.get(id); if (!set) { set = new Set(); refs.set(id, set); } set.add(node); }
++  }, [id]);
++}
++/** Call from an onPress. Cheap when training is not listening. */
++export const spotPressed = (id?: string): void => { if (id) presses.forEach(f => f(id)); };
++export const onSpotPressed = (f: (id: string) => void): (() => void) => { presses.add(f); return () => { presses.delete(f); }; };
++export const spotMounted = (id: string): boolean => (refs.get(id)?.size ?? 0) > 0;
++
++const measure = (node: any): Promise<Rect | null> => new Promise(res => { try { node.measureInWindow((x: number, y: number, w: number, h: number) => res(w > 0 && h > 0 ? { x, y, w, h } : null)); } catch { res(null); } });
++/** Where this spot is in the window right now. A hidden or unmounted spot gives null. If several share an id, the first one on screen wins. */
++export async function measureSpot(id: string): Promise<Rect | null> {
++  const nodes = [...(refs.get(id) ?? [])]; if (!nodes.length) return null;
++  for (const r of await Promise.all(nodes.map(measure))) if (r) return r;
++  return null;
++}
++/** A plain wrapper for things that cannot take a ref themselves (a swipe row, a tab). */
++export function Spot({ id, style, children }: { id?: string; style?: StyleProp<ViewStyle>; children: React.ReactNode }) {
++  const ref = useSpotRef(id);
++  return <View ref={ref} collapsable={false} style={style}>{children}</View>;
++}
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+new file mode 100644
+index 0000000..f5d8ede
+--- /dev/null
++++ b/src/ui/TrainingDock.tsx
+@@ -0,0 +1,39 @@
++// Location: src/ui/TrainingDock.tsx
++// The bar under the app during Guide and Check. It is in the layout (not floating), so the app above it shrinks and nothing is hidden behind it.
++import React, { useEffect, useRef } from 'react';
++import { Animated, Pressable, Text, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { useLayout, useTheme } from './theme';
++import { useTraining } from '../state/trainingSession';
++import { getModule } from '../training';
++import { STAGE_LABEL } from '../lib/trainingModule';
++import { trainingActions } from './trainingActions';
++
++export default function TrainingDock() {
++  const { c } = useTheme(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
++  const pulse = useRef(new Animated.Value(0)).current; const nudge = !!view?.nudge;
++  useEffect(() => { if (!nudge) { pulse.setValue(0); return undefined; } const l = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: false }), Animated.timing(pulse, { toValue: 0, duration: 600, useNativeDriver: false })])); l.start(); return () => l.stop(); }, [nudge, pulse]);
++  if (!run) return null;
++  const check = view?.mode === 'check';
++  const btn = { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 };
++  return (
++    <View style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 12, paddingTop: 10, paddingBottom: tablet ? 12 : 26, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
++      <View style={{ flex: 1, gap: 2 }}>
++        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
++          <View style={{ backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: '#111', fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
++          <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{mod?.title ?? 'Training'} · {STAGE_LABEL[run.stage]}{view ? ` · ${view.counter}` : ''}</Text>
++        </View>
++        <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{check ? (view?.say ? view.say : view?.objective) : view?.title === mod?.title ? 'Follow the arrows.' : view?.title ?? ''}</Text>
++        {check && view?.say ? <Text style={{ color: c.sub, fontSize: 12 }} numberOfLines={2}>Goal: {view.objective}</Text> : null}
++        {nudge ? <Text style={{ color: c.warn, fontSize: 12, fontWeight: '700' }}>Stuck? Tap Hint.</Text> : null}
++      </View>
++      {check ? (
++        <Animated.View style={{ borderRadius: 999, borderWidth: 2, borderColor: pulse.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#F59E0B'] }) }}>
++          <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={[btn, { backgroundColor: c.accent }]}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable>
++        </Animated.View>
++      ) : null}
++      {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
++      <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
++    </View>
++  );
++}
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+new file mode 100644
+index 0000000..bc210a4
+--- /dev/null
++++ b/src/ui/TrainingHost.tsx
+@@ -0,0 +1,101 @@
++// Location: src/ui/TrainingHost.tsx
++// Wraps the whole app. Outside training it renders its children and nothing else.
++// During Guide and Check it keeps the person inside the module's screens, watches the real app state about every 300 ms
++// (advancing at most one step per tick), measures the spot to point at, and hands the overlay and dock what to draw.
++import React, { useEffect, useRef } from 'react';
++import { View, useWindowDimensions } from 'react-native';
++import { useNav, type Tab } from './nav';
++import { useApp } from '../state/store';
++import { useTraining, type DockView } from '../state/trainingSession';
++import { getModule } from '../training';
++import { measureSpot, onSpotPressed } from './Spot';
++import { confirm } from './kit';
++import TrainingOverlay from './TrainingOverlay';
++import TrainingDock from './TrainingDock';
++import { trainingActions } from './trainingActions';
++import { ROOT_LAYER } from '../lib/trainingLayers';
++import { onScreen, type Rect } from '../lib/trainingGeometry';
++import { isMet, snapOf, type Events } from '../lib/trainingConds';
++import { hintView, shouldNudge } from '../lib/trainingHints';
++import { advanceGoal, advanceStep } from '../lib/trainingRun';
++import { idleMs } from '../lib/idle';
++import type { Goal, Step, TrainingModule } from '../lib/trainingModule';
++
++const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed: new Set(), visible: new Set() });
++
++export default function TrainingHost({ children }: { children: React.ReactNode }) {
++  const nav = useNav(); const win = useWindowDimensions(); const sandbox = useTraining(s => s.sandbox);
++  const navRef = useRef(nav); navRef.current = nav; const winRef = useRef(win); winRef.current = win;
++  const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef('');
++
++  useEffect(() => onSpotPressed(id => { ev.current.pressed.add(id); }), []);
++
++  useEffect(() => {
++    const current = (): { mod: TrainingModule; step?: Step; goal?: Goal; n: number; i: number } | null => {
++      const st = useTraining.getState(); const run = st.run; const mod = run && getModule(run.moduleId); if (!run || !mod) return null;
++      if (run.stage === 'guide') return { mod, step: mod.guide[run.stepIndex], n: mod.guide.length, i: run.stepIndex };
++      if (run.stage === 'check1' || run.stage === 'check2') { const list = run.stage === 'check1' ? mod.check1 : mod.check2; return { mod, goal: list[run.goalIndex], n: list.length, i: run.goalIndex }; }
++      return null;
++    };
++    const finish = () => {
++      const st = useTraining.getState(); st.completeStage(); st.leave(); key.current = ''; sig.current = '';
++      navRef.current.reset(); navRef.current.push('trainingRun');
++    };
++    const advance = () => {
++      const st = useTraining.getState(); const run = st.run; const cur = current(); if (!run || !cur) return;
++      const r = cur.step ? advanceStep(run, cur.n) : advanceGoal(run, cur.n);
++      if (r.done) finish(); else st.patchRun(() => r.run);
++    };
++    trainingActions.next = () => { nextTap.current = true; };
++    trainingActions.hint = () => { const cur = current(); if (cur?.goal) useTraining.getState().pressHint(cur.goal.id, cur.goal.ladder); };
++    trainingActions.skip = () => { const st = useTraining.getState(); st.patchRun(r => ({ ...r, skips: r.skips + 1 })); advance(); };
++    trainingActions.exit = () => {
++      void confirm('Leave training?', 'Your real till is exactly as you left it. You can pick this course up again from More, Training.', 'Leave', true).then(ok => {
++        if (!ok) return; useTraining.getState().leave(); key.current = ''; sig.current = '';
++        navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training');
++      });
++    };
++    const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); return onScreen(r, { w: winRef.current.width, h: winRef.current.height }) ? r : null; };
++
++    const tick = async () => {
++      if (busy.current) return; busy.current = true;
++      try {
++        const st = useTraining.getState(); if (!st.sandbox || !st.run) return;
++        const cur = current(); if (!cur) return; const { mod } = cur; const n = navRef.current; const top = n.stack[n.stack.length - 1];
++        if (!mod.tabs.includes(n.tab)) { n.setTab(mod.tabs[0] as Tab); return; }          // stay inside the module's screens
++        if (top && !mod.routes.includes(top.name)) { n.pop(); return; }
++        const item = cur.step ?? cur.goal; if (!item) return;
++        const k = `${st.run.stage}:${cur.i}`;
++        if (key.current !== k) { key.current = k; ev.current = mutable(); nextTap.current = false; if (cur.goal) st.inject(cur.goal.inject); return; } // a new step or goal starts from a clean slate
++        const app = useApp.getState();
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        const until = item.until;
++        if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
++        const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
++        if (met) { advance(); return; }
++        let view: DockView;
++        if (cur.step) {
++          const step = cur.step; let say = step.say; let rect = await spot(step.target);
++          if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
++          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next', reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: true, counter: `Step ${cur.i + 1} of ${cur.n}` };
++        } else {
++          const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
++          if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
++          view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: hv.reveal && !!rect, nudge: shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}` };
++        }
++        const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
++        if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
++      } finally { busy.current = false; }
++    };
++    if (!sandbox) return undefined;
++    const t = setInterval(() => void tick(), 300); void tick();
++    return () => clearInterval(t);
++  }, [sandbox]);
++
++  return (
++    <View style={{ flex: 1 }}>
++      <View style={{ flex: 1 }}>{children}{sandbox ? <TrainingOverlay layer={ROOT_LAYER} /> : null}</View>
++      {sandbox ? <TrainingDock /> : null}
++    </View>
++  );
++}
+diff --git a/src/ui/TrainingLayer.tsx b/src/ui/TrainingLayer.tsx
+new file mode 100644
+index 0000000..ca9cb17
+--- /dev/null
++++ b/src/ui/TrainingLayer.tsx
+@@ -0,0 +1,13 @@
++// Location: src/ui/TrainingLayer.tsx
++// Put inside a native Modal (our Sheet) so the training overlay can be drawn above it. Does nothing when training is off.
++import React, { useEffect, useId } from 'react';
++import { popLayer, pushLayer } from '../lib/trainingLayers';
++import { useTraining } from '../state/trainingSession';
++import TrainingOverlay from './TrainingOverlay';
++
++export function TrainingLayer({ visible }: { visible: boolean }) {
++  const sandbox = useTraining(s => s.sandbox); const id = useId();
++  useEffect(() => { if (visible && sandbox) { pushLayer(id); return () => popLayer(id); } return undefined; }, [visible, sandbox, id]);
++  if (!visible || !sandbox) return null;
++  return <TrainingOverlay layer={id} />;
++}
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+new file mode 100644
+index 0000000..09a6286
+--- /dev/null
++++ b/src/ui/TrainingOverlay.tsx
+@@ -0,0 +1,62 @@
++// Location: src/ui/TrainingOverlay.tsx
++// Draws the spotlight, the ring and the speech bubble. Guide dims everything but the target (taps pass through the hole).
++// Check never dims: it only rings the answer when the hints run out. Only the topmost layer (the page, or the newest sheet) draws.
++// Uses plain React Native views, not ../ui/kit, because kit imports this file.
++import React, { useEffect, useRef, useState, useSyncExternalStore } from 'react';
++import { Animated, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import * as Haptics from 'expo-haptics';
++import { useTheme } from './theme';
++import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
++import { blockers, centred, grow, onScreen, placeBubble, type Rect } from '../lib/trainingGeometry';
++import { useTraining } from '../state/trainingSession';
++import { trainingActions } from './trainingActions';
++
++const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)';
++export const useIsTopLayer = (layer: string): boolean => { useSyncExternalStore(subscribeLayers, layersVersion, layersVersion); return topLayer() === layer; };
++
++function Ring({ r }: { r: Rect }) {
++  const a = useRef(new Animated.Value(0.45)).current;
++  useEffect(() => { const l = Animated.loop(Animated.sequence([Animated.timing(a, { toValue: 1, duration: 650, useNativeDriver: true }), Animated.timing(a, { toValue: 0.45, duration: 650, useNativeDriver: true })])); l.start(); return () => l.stop(); }, [a]);
++  const g = grow(r, 6);
++  return <Animated.View pointerEvents="none" style={{ position: 'absolute', left: g.x, top: g.y, width: g.w, height: g.h, borderRadius: 14, borderWidth: 3, borderColor: RING, opacity: a }} />;
++}
++
++export default function TrainingOverlay({ layer }: { layer: string }) {
++  const { c } = useTheme(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions();
++  const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(140);
++  const measure = () => box.current?.measureInWindow((x, y, w, h) => { setOrigin({ x, y }); if (w > 0 && h > 0) setSize({ w, h }); });
++  useEffect(() => { if (view?.next) { try { void Haptics.selectionAsync(); } catch {} } }, [view?.title]); // eslint-disable-line react-hooks/exhaustive-deps
++  if (!view || !top) return null;
++  const isRoot = layer === ROOT_LAYER;
++  // Window coordinates from the driver become local to this layer, and a target outside this layer's frame counts as not there.
++  const local: Rect | null = view.rect ? { x: view.rect.x - origin.x, y: view.rect.y - origin.y, w: view.rect.w, h: view.rect.h } : null;
++  const hole = onScreen(local, size) ? local : null;
++  const showRing = !!hole && (view.mode === 'guide' || view.reveal);
++  const bw = Math.min(360, size.w - 24); const bubble = hole ? placeBubble(grow(hole, 6), size, { w: bw, h: bh }) : { ...centred(size, { w: bw, h: bh }), side: 'below' as const, arrowX: bw / 2 };
++  const showBubble = view.mode === 'guide';
++  return (
++    <View ref={box} onLayout={measure} pointerEvents="box-none" style={StyleSheet.absoluteFill}>
++      {view.mode === 'guide' ? (hole ? <>
++        {blockers(grow(hole, 6), size).map((b, i) => <View key={i} style={{ position: 'absolute', left: b.x, top: b.y, width: b.w, height: b.h, backgroundColor: DIM }} />)}
++        {view.next ? <View style={{ position: 'absolute', left: hole.x - 6, top: hole.y - 6, width: hole.w + 12, height: hole.h + 12 }} /> : null}
++      </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />) : null}
++      {showRing && hole ? <Ring r={hole} /> : null}
++      {showBubble ? (
++        <View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bubble.x, top: bubble.y, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
++          {hole ? <View style={{ position: 'absolute', [bubble.side === 'below' ? 'top' : 'bottom']: -8, left: bubble.arrowX - 8, width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bubble.side === 'below' ? 1 : 0, borderLeftWidth: bubble.side === 'below' ? 1 : 0, borderBottomWidth: bubble.side === 'above' ? 1 : 0, borderRightWidth: bubble.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
++          <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{view.counter}</Text>
++          <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.say}</Text>
++          {view.next ? <Pressable onPress={() => trainingActions.next()} accessibilityRole="button" accessibilityLabel="Next" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
++        </View>
++      ) : null}
++      {!isRoot ? (
++        <View pointerEvents="box-none" style={{ position: 'absolute', top: 10, right: 10, flexDirection: 'row', gap: 8 }}>
++          {view.mode === 'check' ? <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={{ flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable> : null}
++          <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={{ backgroundColor: c.fill, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
++        </View>
++      ) : null}
++      {!isRoot && view.mode === 'check' && view.say ? <View pointerEvents="none" style={{ position: 'absolute', left: 12, right: 12, bottom: 12, backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></View> : null}
++    </View>
++  );
++}
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 1e18abe..1771a74 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -16,6 +16,8 @@ import { sheetMaxHeight } from '../lib/keyboardMath';
+ import { useUi } from './uiProfile';
+ import { openHelpPage, useNav } from './nav';
+ import { helpForError } from '../lib/helpContext';
++import { spotPressed, useSpotRef } from './Spot';
++import { TrainingLayer } from './TrainingLayer';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+ export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+@@ -32,12 +34,12 @@ export function Txt({ style, children, size = 15, weight, color, sub, numberOfLi
+ export const Money = ({ cents, size = 15, weight, color, style }: { cents: number; size?: number; weight?: '400' | '500' | '600' | '700'; color?: string; style?: any }) =>
+   <Txt size={size} weight={weight} color={color} style={[{ fontVariant: ['tabular-nums'] }, style]}>{fmt(cents)}</Txt>;
+ 
+-export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, style, small }: { title: string; onPress?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'ghost'; icon?: IconName; disabled?: boolean; busy?: boolean; style?: StyleProp<ViewStyle>; small?: boolean }) {
+-  const { c, dark } = useTheme(); const k = useUi().textScale; const glass = useApp(s => s.settings.glassSurfaces);
++export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, style, small, spot }: { title: string; onPress?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'ghost'; icon?: IconName; disabled?: boolean; busy?: boolean; style?: StyleProp<ViewStyle>; small?: boolean; spot?: string }) {
++  const { c, dark } = useTheme(); const k = useUi().textScale; const glass = useApp(s => s.settings.glassSurfaces); const sref = useSpotRef(spot);
+   const bg = kind === 'primary' ? c.accent : kind === 'danger' ? c.bad : kind === 'secondary' ? c.fill : 'transparent';
+   const fg = kind === 'primary' ? c.onAccent : kind === 'danger' ? '#fff' : c.text;
+   return (
+-    <Pressable disabled={disabled || busy} onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityLabel={title}
++    <Pressable ref={sref} disabled={disabled || busy} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole="button" accessibilityLabel={title}
+       style={({ pressed }) => [{ overflow: 'hidden', backgroundColor: glass ? (dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.48)') : bg, borderColor: glass ? (dark ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)') : 'transparent', borderWidth: glass ? 1 : 0, opacity: disabled ? 0.4 : pressed ? 0.75 : 1, paddingVertical: small ? 8 : 14, paddingHorizontal: small ? 14 : 20, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: Math.round((small ? 36 : 50) * k) }, style]}>
+       {glass ? <BlurView blurType={dark ? 'dark' : 'light'} blurAmount={18} pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} /> : null}
+       {busy ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
+@@ -45,9 +47,9 @@ export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, st
+     </Pressable>
+   );
+ }
+-export function IconBtn({ icon, onPress, label, color, size = 22 }: { icon: IconName; onPress: () => void; label: string; color?: string; size?: number }) {
+-  const { c } = useTheme(); const k = useUi().textScale;
+-  return <Pressable onPress={() => { tap(); onPress(); }} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={{ width: Math.round(40 * k), height: Math.round(40 * k), alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={Math.round(size * k)} color={color ?? c.text} /></Pressable>;
++export function IconBtn({ icon, onPress, label, color, size = 22, spot }: { icon: IconName; onPress: () => void; label: string; color?: string; size?: number; spot?: string }) {
++  const { c } = useTheme(); const k = useUi().textScale; const sref = useSpotRef(spot);
++  return <Pressable ref={sref} onPress={() => { spotPressed(spot); tap(); onPress(); }} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={{ width: Math.round(40 * k), height: Math.round(40 * k), alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={Math.round(size * k)} color={color ?? c.text} /></Pressable>;
+ }
+ export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
+   const { c, dark } = useTheme(); const glass = useApp(s => s.settings.glassSurfaces);
+@@ -66,10 +68,10 @@ export function Thumb({ uri, size = 44, radius = 10 }: { uri?: string | null; si
+   );
+ }
+ /** image: undefined = no thumbnail column; null = placeholder; string = picture. */
+-export function Row({ title, sub, right, onPress, icon, danger, last, badge, image }: { title: string; sub?: string; right?: React.ReactNode; onPress?: () => void; icon?: IconName; danger?: boolean; last?: boolean; badge?: string; image?: string | null }) {
+-  const { c } = useTheme(); const k = useUi().textScale;
++export function Row({ title, sub, right, onPress, icon, danger, last, badge, image, spot }: { title: string; sub?: string; right?: React.ReactNode; onPress?: () => void; icon?: IconName; danger?: boolean; last?: boolean; badge?: string; image?: string | null; spot?: string }) {
++  const { c } = useTheme(); const k = useUi().textScale; const sref = useSpotRef(spot);
+   return (
+-    <Pressable disabled={!onPress} onPress={() => { tap(); onPress?.(); }} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: Math.round(13 * k), gap: 12, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: last ? 0 : 1, borderBottomColor: c.line })}>
++    <Pressable ref={sref} disabled={!onPress} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: Math.round(13 * k), gap: 12, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: last ? 0 : 1, borderBottomColor: c.line })}>
+       {image !== undefined ? <Thumb uri={image} /> : null}
+       {icon ? <Ionicons name={icon} size={Math.round(20 * k)} color={danger ? c.bad : c.sub} /> : null}
+       <View style={{ flex: 1 }}>
+@@ -85,9 +87,9 @@ export function Row({ title, sub, right, onPress, icon, danger, last, badge, ima
+ export function Section({ title, children, footer }: { title?: string; children: React.ReactNode; footer?: string }) {
+   return <View style={{ marginTop: 18 }}>{title ? <Txt size={13} sub weight="600" style={{ marginHorizontal: 20, marginBottom: 6, textTransform: 'uppercase' }}>{title}</Txt> : null}<Card style={{ marginHorizontal: 16 }}>{children}</Card>{footer ? <Txt size={12} sub style={{ marginHorizontal: 20, marginTop: 6 }}>{footer}</Txt> : null}</View>;
+ }
+-export function Chip({ label, active, onPress, icon }: { label: string; active?: boolean; onPress?: () => void; icon?: IconName }) {
+-  const { c } = useTheme(); const k = useUi().textScale;
+-  return <Pressable onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={{ paddingHorizontal: 14, paddingVertical: Math.round(8 * k), borderRadius: 999, backgroundColor: active ? c.accent : c.fill, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
++export function Chip({ label, active, onPress, icon, spot }: { label: string; active?: boolean; onPress?: () => void; icon?: IconName; spot?: string }) {
++  const { c } = useTheme(); const k = useUi().textScale; const sref = useSpotRef(spot);
++  return <Pressable ref={sref} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={{ paddingHorizontal: 14, paddingVertical: Math.round(8 * k), borderRadius: 999, backgroundColor: active ? c.accent : c.fill, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+     {icon ? <Ionicons name={icon} size={14} color={active ? c.onAccent : c.text} /> : null}<Text style={{ color: active ? c.onAccent : c.text, fontWeight: '600', fontSize: Math.round(14 * k * 2) / 2 }}>{label}</Text></Pressable>;
+ }
+ export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void }) {
+@@ -147,6 +149,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
+           </View>
+           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
+         </View>
++        <TrainingLayer visible={visible} />
+       </View>
+     </Modal>
+   );
+diff --git a/src/ui/trainingActions.ts b/src/ui/trainingActions.ts
+new file mode 100644
+index 0000000..30f7d21
+--- /dev/null
++++ b/src/ui/trainingActions.ts
+@@ -0,0 +1,3 @@
++// Location: src/ui/trainingActions.ts
++// The buttons on the dock and bubble call these. TrainingHost fills them in (it owns navigation), so the overlay never imports it.
++export const trainingActions: { next: () => void; hint: () => void; skip: () => void; exit: () => void } = { next: () => {}, hint: () => {}, skip: () => {}, exit: () => {} };
+diff --git a/src/ui/uiProfile.tsx b/src/ui/uiProfile.tsx
+index 9371ebb..41f4421 100644
+--- a/src/ui/uiProfile.tsx
++++ b/src/ui/uiProfile.tsx
+@@ -2,15 +2,19 @@
+ // Hands the signed-in person's display mode (text size, tabs, explanations) to every screen.
+ import React, { createContext, useContext, useMemo } from 'react';
+ import { useApp } from '../state/store';
++import { useTraining } from '../state/trainingSession';
++import { getModule } from '../training';
+ import { STANDARD_PROFILE, isSoleAdmin, resolveUi, type UiProfile } from '../lib/uiMode';
+ 
+ const Ctx = createContext<UiProfile>(STANDARD_PROFILE);
+ export function UiProvider({ children }: { children: React.ReactNode }) {
+   const staff = useApp(s => s.settings.staff); const id = useApp(s => s.staffId);
++  const forced = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.flow : undefined)); // training: the module picks which checkout flow it is written for
+   const profile = useMemo(() => {
+     const m = staff.find(x => x.id === id);
+-    return m ? resolveUi(m.ui, { soleAdmin: isSoleAdmin(staff, m.id) }) : STANDARD_PROFILE;
+-  }, [staff, id]);
++    const p = m ? resolveUi(m.ui, { soleAdmin: isSoleAdmin(staff, m.id) }) : STANDARD_PROFILE;
++    return forced ? { ...p, guided: forced === 'guided' } : p;
++  }, [staff, id, forced]);
+   return <Ctx.Provider value={profile}>{children}</Ctx.Provider>;
+ }
+ export const useUi = () => useContext(Ctx);
+diff --git a/src/zellerBridge.tsx b/src/zellerBridge.tsx
+index 3ea6ff5..e51a015 100644
+--- a/src/zellerBridge.tsx
++++ b/src/zellerBridge.tsx
+@@ -3,9 +3,11 @@ import React, { useEffect } from 'react';
+ import * as Zeller from '@zeller-public/payments-sdk-react-native';
+ import { useApp } from './state/store';
+ import type { TerminalLike } from './lib/zeller';
++import { isTraining } from './lib/trainingGuard';
++import { trainingTerminal } from './lib/trainingTerminal';
+ 
+ let handle: TerminalLike | null = null;
+-export const getTerminal = () => handle;
++export const getTerminal = (): TerminalLike | null => (isTraining() ? trainingTerminal : handle); // training: the pretend terminal
+ 
+ export const ZellerRoot = ({ children }: { children: React.ReactNode }) => (
+   <Zeller.Provider vendorName="Kousei" vendorApplicationName="ShopifyZellerPOS" vendorApplicationVersion="1.0.0" vendorDeviceType="POS">
+@@ -15,6 +17,7 @@ export const ZellerRoot = ({ children }: { children: React.ReactNode }) => (
+ );
+ 
+ export async function checkReader(): Promise<boolean> {
++  if (isTraining()) return true; // the practice reader is always ready, and the real one must not overwrite the practice status
+   const set = useApp.getState().set;
+   if (!handle) { set({ zeller: { ready: false, message: 'Reader starting…' } }); return false; }
+   const r: any = await handle.initialise();
+diff --git a/tests/training.test.ts b/tests/training.test.ts
+new file mode 100644
+index 0000000..8a7f70a
+--- /dev/null
++++ b/tests/training.test.ts
+@@ -0,0 +1,113 @@
++// Location: tests/training.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { validateModule, needsSandbox, STAGES, type Scene, type TrainingModule } from '../src/lib/trainingModule';
++import { sceneAt, beatMs } from '../src/lib/trainingScene';
++import { freshHints, nextHint, hintView, shouldNudge, NUDGE_AFTER_MS } from '../src/lib/trainingHints';
++import { advanceGoal, advanceStep, canOpenStage, finishStage, seeIntro, showsIntro, skipStep, startRun, useHint as bumpHint } from '../src/lib/trainingRun';
++import { completeModule, completedCount, emptyProgress, isComplete, nextSuggested, readProgress, recordStage, resetModule, staffKey, stagesDone } from '../src/lib/trainingProgress';
++import { isMet, noEvents, snapOf } from '../src/lib/trainingConds';
++import { blockers, grow, onScreen, placeBubble, same } from '../src/lib/trainingGeometry';
++import { makeConfetti } from '../src/lib/confetti';
++import { isKnownSpot, tileSpotId } from '../src/lib/trainingSpots';
++import { welcome } from '../src/training/modules/welcome';
++
++const scene: Scene = {
++  actors: [{ id: 'a', icon: 'person', x: 10, y: 50 }, { id: 'b', icon: 'cart', x: 80, y: 50, hidden: true }],
++  beats: [{ say: 'one', pulse: ['a'] }, { say: 'two', place: { a: { x: 50 } }, show: ['b'], tone: { b: 'good' } }, { say: 'three', hide: ['a'], place: { a: { y: 20 } } }],
++};
++test('a scene is replayed from the start to the beat asked for', () => {
++  const v0 = sceneAt(scene, 0); assert.equal(v0.say, 'one'); assert.equal(v0.actors[1].hidden, true); assert.equal(v0.actors[0].pulse, true); assert.equal(v0.last, false);
++  const v1 = sceneAt(scene, 1); assert.equal(v1.actors[0].x, 50); assert.equal(v1.actors[1].hidden, false); assert.equal(v1.actors[1].tone, 'good'); assert.equal(v1.actors[0].pulse, false);
++  const v2 = sceneAt(scene, 2); assert.equal(v2.actors[0].hidden, true); assert.equal(v2.actors[0].x, 50); assert.equal(v2.actors[0].y, 20); assert.equal(v2.last, true);
++  assert.equal(sceneAt(scene, 99).index, 2); assert.equal(sceneAt(scene, -3).index, 0);
++  assert.equal(scene.actors[0].x, 10, 'the module data is never changed');
++});
++test('beat hold time follows the sentence length with a floor', () => { assert.equal(beatMs('Hi'), 2200); assert.ok(beatMs('word '.repeat(30)) > 8000); });
++
++const ladder = ['pointer', 'clearer', 'specific'];
++test('hints climb one rung per press, then reveal, and restart on a new goal', () => {
++  let h = freshHints(); assert.deepEqual(hintView(h, 'g', ladder), { level: 0, reveal: false, left: 3 });
++  h = nextHint(h, 'g', ladder); assert.equal(hintView(h, 'g', ladder).text, 'pointer');
++  h = nextHint(h, 'g', ladder); assert.equal(hintView(h, 'g', ladder).text, 'clearer');
++  h = nextHint(h, 'g', ladder); assert.equal(hintView(h, 'g', ladder).text, 'specific'); assert.equal(hintView(h, 'g', ladder).reveal, false);
++  h = nextHint(h, 'g', ladder); assert.equal(hintView(h, 'g', ladder).reveal, true);
++  h = nextHint(h, 'g', ladder); assert.equal(h.level, 4, 'stops at the reveal');
++  assert.equal(hintView(h, 'other', ladder).level, 0); assert.equal(nextHint(h, 'other', ladder).level, 1);
++});
++test('the idle nudge only shows before any hint was used', () => { assert.equal(shouldNudge(NUDGE_AFTER_MS, 0), true); assert.equal(shouldNudge(NUDGE_AFTER_MS - 1, 0), false); assert.equal(shouldNudge(NUDGE_AFTER_MS * 3, 1), false); });
++
++test('stages open in order, finished ones can be replayed, modules are never locked', () => {
++  assert.equal(canOpenStage([], 'info'), true); assert.equal(canOpenStage([], 'show'), false); assert.equal(canOpenStage(['info'], 'show'), true); assert.equal(canOpenStage(['info'], 'guide'), false);
++  assert.equal(canOpenStage(['info', 'show', 'guide', 'check1'], 'info'), true); assert.equal(canOpenStage(['info', 'show', 'guide', 'check1'], 'gratify'), false); assert.equal(canOpenStage(['info', 'show', 'guide', 'check1', 'check2'], 'gratify'), true);
++});
++test('run steps, goals, intro and counters', () => {
++  let r = startRun('m', 'guide', 1000); assert.equal(showsIntro(r), true); r = seeIntro(r); assert.equal(showsIntro(r), false);
++  assert.equal(showsIntro(startRun('m', 'info')), false, 'info has no practice-data card');
++  assert.deepEqual(advanceStep(r, 2).done, false); assert.equal(advanceStep(advanceStep(r, 2).run, 2).done, true);
++  assert.equal(advanceGoal(r, 1).done, true); assert.equal(skipStep(r).skips, 1); assert.equal(bumpHint(r).hints, 1);
++  const f = finishStage({ ...r, stepIndex: 3, goalIndex: 2 }); assert.equal(f.stage, 'check1'); assert.equal(f.stepIndex, 0); assert.equal(finishStage({ ...r, stage: 'gratify' }).stage, 'gratify');
++  assert.deepEqual(STAGES.filter(needsSandbox), ['guide', 'check1', 'check2']);
++});
++
++test('progress is per person, earned only by finishing both checks, and survives bad data', () => {
++  let p = emptyProgress(); const who = staffKey('s1');
++  p = recordStage(p, who, 'm', 'info'); p = completeModule(p, who, 'm', { hints: 1, secs: 9 }); assert.equal(isComplete(p, who, 'm'), false, 'no tick without the checks');
++  p = recordStage(recordStage(p, who, 'm', 'check1'), who, 'm', 'check2'); p = completeModule(p, who, 'm', { hints: 2, secs: 60 }, new Date('2026-10-11T00:00:00Z'));
++  assert.equal(isComplete(p, who, 'm'), true); assert.equal(isComplete(p, staffKey('s2'), 'm'), false); assert.equal(completedCount(p, who), 1); assert.ok(stagesDone(p, who, 'm').includes('gratify'));
++  assert.equal(staffKey(undefined), '_shared'); assert.equal(staffKey(''), '_shared');
++  assert.equal(completeModule(p, who, 'm', { hints: 9, secs: 9 }).by[who].m.done, '2026-10-11T00:00:00.000Z', 'the first finish date is kept');
++  assert.deepEqual(readProgress({ by: { s: { m: { stages: ['info', 'nope', 'info'], hints: 'x', done: 5 } }, bad: 4 } }).by.s.m, { stages: ['info'], done: undefined, hints: 0, secs: 0, runs: 0 });
++  for (const junk of [null, 3, 'x', { by: 3 }, {}]) assert.deepEqual(readProgress(junk), emptyProgress());
++  assert.equal(resetModule(recordStage(emptyProgress(), who, 'z', 'info'), who, 'z').by[who].z.stages.length, 0);
++  const mods = [{ id: 'a' }, { id: 'b', suggestedFirst: true }, { id: 'c' }]; assert.equal(nextSuggested(mods, emptyProgress(), who), 'b'); assert.equal(nextSuggested(mods, emptyProgress(), who, 'b'), 'a');
++});
++
++test('step conditions: press, visible, state, and next never completes by itself', () => {
++  const snap = snapOf({ tab: 'checkout', route: '', cart: { lines: [{ qty: 2 }, { qty: 1 }], customer: undefined, tenders: [] }, sales: 0, paying: false });
++  assert.equal(snap.lines, 2); assert.equal(snap.qty, 3); assert.equal(snap.hasCustomer, false);
++  const ev = { pressed: new Set(['x']), visible: new Set(['y']) };
++  assert.equal(isMet({ kind: 'press', id: 'x' }, snap, ev), true); assert.equal(isMet({ kind: 'press', id: 'z' }, snap, ev), false); assert.equal(isMet({ kind: 'visible', id: 'y' }, snap, ev), true);
++  assert.equal(isMet({ kind: 'next' }, snap, ev), false); assert.equal(isMet({ kind: 'state', test: s => s.lines === 2 }, snap, noEvents()), true);
++  assert.equal(isMet({ kind: 'state', test: () => { throw new Error('x'); } }, snap, noEvents()), false, 'a broken test is never "done"');
++});
++
++test('spotlight maths: blockers tile the screen minus the hole, bubble stays on screen', () => {
++  const screen = { w: 800, h: 600 }; const hole = { x: 100, y: 200, w: 200, h: 100 };
++  const area = (rs: { w: number; h: number }[]) => rs.reduce((a, r) => a + r.w * r.h, 0); assert.equal(area(blockers(hole, screen)), 800 * 600 - 200 * 100);
++  const edge = { x: -50, y: 550, w: 200, h: 100 }; assert.equal(area(blockers(edge, screen)), 800 * 600 - 150 * 50, 'a hole that hangs off the screen is clipped');
++  const b = placeBubble(hole, screen, { w: 300, h: 120 }); assert.equal(b.side, 'below'); assert.ok(b.y >= hole.y + hole.h);
++  const low = placeBubble({ x: 100, y: 540, w: 100, h: 50 }, screen, { w: 300, h: 120 }); assert.equal(low.side, 'above'); assert.ok(low.y + 120 <= 590);
++  const right = placeBubble({ x: 760, y: 100, w: 40, h: 40 }, screen, { w: 300, h: 120 }); assert.ok(right.x + 300 <= 800 - 12); assert.ok(right.arrowX >= 18 && right.arrowX <= 282);
++  assert.equal(onScreen({ x: 0, y: 0, w: 0, h: 0 }, screen), false, 'a hidden screen measures 0 by 0'); assert.equal(onScreen({ x: 900, y: 0, w: 50, h: 50 }, screen), false); assert.equal(onScreen(hole, screen), true); assert.equal(onScreen(null, screen), false);
++  assert.deepEqual(grow({ x: 10, y: 10, w: 10, h: 10 }, 4), { x: 6, y: 6, w: 18, h: 18 }); assert.equal(same({ x: 1, y: 1, w: 5, h: 5 }, { x: 1.4, y: 1, w: 5, h: 5 }), true); assert.equal(same(null, null), true);
++});
++
++test('confetti is repeatable and bounded', () => {
++  assert.deepEqual(makeConfetti(40, 7, 6), makeConfetti(40, 7, 6)); assert.notDeepEqual(makeConfetti(40, 7, 6), makeConfetti(40, 8, 6));
++  const ps = makeConfetti(500, 1, 6); assert.equal(ps.length, 200); for (const p of ps) { assert.ok(p.x >= 0 && p.x <= 1 && p.color >= 0 && p.color < 6 && p.dur >= 1800); }
++  assert.equal(makeConfetti(-3, 1, 6).length, 0);
++});
++
++test('spot ids: static and per-record', () => {
++  assert.equal(isKnownSpot('cart.charge'), true); assert.equal(isKnownSpot('grid.item:abc'), true); assert.equal(isKnownSpot('grid.item:'), false); assert.equal(isKnownSpot('nope'), false);
++  assert.equal(tileSpotId({ type: 'item', variantId: 'v1', productId: 'p1' }), 'grid.item:v1'); assert.equal(tileSpotId({ type: 'item', productId: 'p1' }), 'grid.item:p1');
++  assert.equal(tileSpotId({ type: 'category', collectionId: 'c' }), 'grid.cat:c'); assert.equal(tileSpotId({ type: 'action', action: 'lock_pos' }), 'grid.action:lock_pos'); assert.equal(tileSpotId({ type: 'group' }), undefined);
++});
++
++const ok = (m: TrainingModule) => validateModule(m, isKnownSpot);
++const clone = (): TrainingModule => JSON.parse(JSON.stringify({ ...welcome, check1: welcome.check1.map(g => ({ ...g, until: { kind: 'press', id: 'grid.item:x' } })), check2: welcome.check2.map(g => ({ ...g, until: { kind: 'press', id: 'grid.item:x' } })), guide: welcome.guide.map(s => ({ ...s, until: s.until.kind === 'state' ? { kind: 'next' } : s.until })) }));
++test('the welcome module passes the checker', () => assert.deepEqual(ok(welcome), []));
++test('the checker refuses each kind of badly written module', () => {
++  const m0 = clone(); assert.deepEqual(ok(m0), []);
++  const bad = (f: (m: TrainingModule) => void) => { const m = clone(); f(m); return ok(m); };
++  assert.ok(bad(m => { m.id = 'Bad Id'; }).length); assert.ok(bad(m => { m.info.beats = m.info.beats.slice(0, 2); }).some(e => e.includes('3 beats')));
++  assert.ok(bad(m => { m.show.beats[0].pulse = ['ghost']; }).some(e => e.includes('ghost'))); assert.ok(bad(m => { m.guide = []; }).some(e => e.includes('needs steps')));
++  assert.ok(bad(m => { m.guide[0] = { id: 'x', say: 'tap', until: { kind: 'press', id: 'cart.charge' } }; }).some(e => e.includes('points at nothing')));
++  assert.ok(bad(m => { m.guide[1].target = 'nonsense.spot'; }).some(e => e.includes('unknown spot')));
++  assert.ok(bad(m => { m.check1[0].ladder = ['only one']; }).some(e => e.includes('2 hints'))); assert.ok(bad(m => { m.check1[0].reveal = undefined; }).some(e => e.includes('highlight')));
++  assert.ok(bad(m => { m.check1[0].until = { kind: 'next' }; }).some(e => e.includes('Next button')));
++  assert.ok(bad(m => { m.check2[0].inject = undefined; }).some(e => e.includes('go wrong'))); assert.ok(bad(m => { m.check2[0].taughtBy = undefined; }).some(e => e.includes('where it was taught')));
++  assert.ok(bad(m => { m.check2[0].taughtBy = 'nowhere'; }).some(e => e.includes('does not exist'))); assert.ok(bad(m => { m.recap = []; }).some(e => e.includes('recap')));
++  assert.ok(bad(m => { m.tabs = ['more']; }).some(e => e.includes('checkout')));
++});
+diff --git a/tests/trainingsandbox.test.ts b/tests/trainingsandbox.test.ts
+new file mode 100644
+index 0000000..d5b53a0
+--- /dev/null
++++ b/tests/trainingsandbox.test.ts
+@@ -0,0 +1,88 @@
++// Location: tests/trainingsandbox.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { useApp, flushPersist } from '../src/state/store';
++import { kvGet, kvSet, kvDel, kvUseMemory } from '../src/lib/kv';
++import { TRAINING_PROGRESS_KEY, isTraining, kvWriteAllowed, setTrainingGuard } from '../src/lib/trainingGuard';
++import { FIXTURE_VARIANTS, FIXTURE_CUSTOMERS, FIXTURE_COLLECTIONS, applyInjections, buildSandbox, declinesOf, fixtureGrid, isTrainId, takeSnapshot, trainingBlocker } from '../src/lib/trainingSandbox';
++import { makeTrainingTerminal, resetTrainingTerminal, setDeclines, timing, trainingTerminal } from '../src/lib/trainingTerminal';
++import { startCharge } from '../src/lib/zeller';
++import { totalOf } from '../src/lib/cashLedger';
++
++kvUseMemory();
++test('the guard blocks every storage write except training progress', async () => {
++  assert.equal(isTraining(), false); await kvSet('t.real', { a: 1 }); assert.deepEqual(await kvGet('t.real', null), { a: 1 });
++  setTrainingGuard(true);
++  try {
++    assert.equal(kvWriteAllowed('settings'), false); assert.equal(kvWriteAllowed(TRAINING_PROGRESS_KEY), true);
++    await kvSet('t.real', { a: 2 }); await kvDel('t.real'); assert.deepEqual(await kvGet('t.real', null), { a: 1 }, 'neither a write nor a delete got through');
++    await kvSet(TRAINING_PROGRESS_KEY, { ok: true }); assert.deepEqual(await kvGet(TRAINING_PROGRESS_KEY, null), { ok: true });
++  } finally { setTrainingGuard(false); }
++  await kvDel('t.real'); await kvDel(TRAINING_PROGRESS_KEY);
++});
++
++test('state saves that were waiting are written before the swap, and none are scheduled during training', async () => {
++  await kvDel('settings'); useApp.getState().patchSettings({ shopName: 'Real Shop' }); await flushPersist();
++  assert.equal(((await kvGet<any>('settings', null)) ?? {}).shopName, 'Real Shop');
++  setTrainingGuard(true);
++  try { useApp.getState().patchSettings({ shopName: 'Practice' }); await new Promise(r => setTimeout(r, 500)); await flushPersist(); } finally { setTrainingGuard(false); }
++  assert.equal(((await kvGet<any>('settings', null)) ?? {}).shopName, 'Real Shop', 'practice changes never reach storage');
++  useApp.getState().patchSettings({ shopName: '' }); await flushPersist(); await kvDel('settings');
++});
++
++test('the sandbox is practice data only, keeps the signed-in person, blanks outside links, and restores exactly', () => {
++  const s = useApp.getState();
++  useApp.setState({ staffId: 's1', settings: { ...s.settings, staff: [{ id: 's1', name: 'Jo', role: 'cashier', salt: '', pinHash: '' }], requirePin: true, receipt: { ...s.settings.receipt, serverUrl: 'https://r.example' }, passServerUrl: 'https://p.example', giftClaimUrl: 'https://g.example', bundlesJson: '{"x":1}', adjustPerms: { cashier: { line: false } } as any }, unlocked: true });
++  const real = takeSnapshot(useApp.getState()); const sb = buildSandbox(real);
++  assert.equal(sb.staffId, 's1'); assert.equal(sb.settings.staff[0].name, 'Jo'); assert.equal(sb.unlocked, true);
++  assert.equal(sb.settings.receipt.serverUrl, ''); assert.equal(sb.settings.passServerUrl, ''); assert.equal(sb.settings.giftClaimUrl, ''); assert.equal(sb.settings.bundlesJson, ''); assert.deepEqual(sb.settings.adjustPerms, {});
++  assert.equal(real.settings.receipt.serverUrl, 'https://r.example', 'the real settings object is untouched');
++  for (const v of Object.values(sb.data.variants)) { assert.ok(isTrainId(v.id) && isTrainId(v.productId), v.id); }
++  for (const c of [...sb.data.collections, ...sb.data.customers, ...sb.data.presets]) assert.ok(isTrainId(c.id), c.id);
++  assert.equal(sb.pos.outbox.length, 0); assert.equal(sb.pos.sales.length, 0); assert.equal(sb.pos.shift.open, true); assert.ok(totalOf(sb.pos.ledger.counts) > 20000);
++  assert.equal(sb.zeller.ready, true); assert.equal(sb.sync.state, 'idle');
++  useApp.setState(sb); assert.equal(Object.keys(useApp.getState().data.variants).length, FIXTURE_VARIANTS.length);
++  useApp.setState(real); assert.equal(useApp.getState().settings.receipt.serverUrl, 'https://r.example'); assert.equal(useApp.getState().pos, real.pos);
++  useApp.setState({ staffId: undefined, settings: { ...s.settings } });
++});
++test('every grid tile of the fixture points at something that exists', () => {
++  const ids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const prods = new Set(FIXTURE_VARIANTS.map(v => v.productId));
++  for (const t of fixtureGrid().pages[0].tiles) if (t.type === 'item') assert.ok((t.variantId && ids.has(t.variantId)) || (t.productId && prods.has(t.productId)));
++  for (const c of FIXTURE_COLLECTIONS) for (const p of c.productIds) assert.ok(prods.has(p)); assert.ok(FIXTURE_CUSTOMERS.length >= 3);
++  assert.equal(isTrainId('gid://shopify/Product/1'), false);
++});
++test('injections seed the cart and the drawer, and count card declines', () => {
++  const sb = buildSandbox(takeSnapshot(useApp.getState()));
++  const seeded = applyInjections(sb, [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 2 }, { variantId: 'train-v-dragon', qty: 1 }] }, { kind: 'ledger', counts: { '2000': 3 } }, { kind: 'decline', times: 2 }, { kind: 'ghost' } as any]);
++  assert.equal(seeded.pos.cart.lines.length, 2); assert.equal(seeded.pos.cart.lines[0].qty, 2); assert.deepEqual(seeded.pos.ledger.counts, { '2000': 3 }); assert.equal(declinesOf([{ kind: 'decline', times: 2 }, { kind: 'decline', times: 1 }]), 3);
++  assert.equal(applyInjections(seeded, undefined), seeded, 'no injection changes nothing'); assert.equal(applyInjections(seeded, [{ kind: 'decline', times: 1 }]), seeded);
++  assert.ok(totalOf(sb.pos.ledger.counts) > 20000, 'the base sandbox has a normal drawer');
++  assert.equal(applyInjections(sb, [{ kind: 'cart', items: [{ variantId: 'real-variant', qty: 1 }] }]).pos.cart.lines.length, 0, 'unknown variants are ignored');
++});
++
++test('the pretend terminal approves and declines through the real startCharge, and lists approved payments only', async () => {
++  resetTrainingTerminal(); const fast = makeTrainingTerminal({ next: () => 'approve', stepMs: 5 });
++  const events: string[] = []; const ok = await startCharge(fast, { amountCents: 1250, reference: 'sale-1' }, { onEvent: e => events.push(e.type) }).promise;
++  assert.equal(ok.kind, 'APPROVED'); assert.deepEqual(events, ['AWAITING_PAYMENT_METHOD', 'PROCESSING']); assert.equal(fast.approved.length, 1);
++  const outcomes: ('approve' | 'decline')[] = ['decline', 'approve']; const t2 = makeTrainingTerminal({ next: () => outcomes.shift() ?? 'approve', stepMs: 5 });
++  const bad = await startCharge(t2, { amountCents: 500, reference: 'sale-2' }).promise; assert.equal(bad.kind, 'DECLINED'); if (bad.kind === 'DECLINED') { assert.equal(bad.code, '51'); assert.match(bad.text, /Insufficient funds/); }
++  assert.equal(t2.approved.length, 0, 'a declined card is not in the terminal history'); assert.equal((await startCharge(t2, { amountCents: 500, reference: 'sale-2' }).promise).kind, 'APPROVED');
++  const slow = makeTrainingTerminal({ next: () => 'approve', stepMs: 50 }); const c = startCharge(slow, { amountCents: 100, reference: 'sale-3' }); setTimeout(() => c.cancel(), 10); assert.equal((await c.promise).kind, 'CANCELLED');
++});
++test('the shared training terminal declines the number of times a goal asks for, then approves', async () => {
++  resetTrainingTerminal(); timing.stepMs = 3; setDeclines(2);
++  try {
++    const kinds: string[] = []; for (const ref of ['a', 'b', 'c']) kinds.push((await startCharge(trainingTerminal, { amountCents: 100, reference: ref }).promise).kind);
++    assert.deepEqual(kinds, ['DECLINED', 'DECLINED', 'APPROVED']); assert.equal(trainingTerminal.approved.length, 1);
++    setDeclines(9); resetTrainingTerminal(); assert.equal((await startCharge(trainingTerminal, { amountCents: 100, reference: 'd' }).promise).kind, 'APPROVED', 'resetting clears queued declines');
++  } finally { timing.stepMs = 600; resetTrainingTerminal(); }
++});
++
++test('training will not start over a real card payment or a part-paid sale', () => {
++  const base = { pos: { cart: { id: 'c', lines: [] }, attempts: [] as { status: string }[] } };
++  assert.equal(trainingBlocker(base), null);
++  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'approved' }, { status: 'started' }] } }) ?? '', /card payment/);
++  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'unknown' }] } }) ?? '', /card payment/);
++  assert.match(trainingBlocker({ pos: { ...base.pos, cart: { id: 'c', lines: [], tenders: [{} as any] } } }) ?? '', /part-paid/);
++  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'declined' }, { status: 'resolved' }] } }), null);
++});
+diff --git a/tests/trainingspots.test.ts b/tests/trainingspots.test.ts
+new file mode 100644
+index 0000000..c02c644
+--- /dev/null
++++ b/tests/trainingspots.test.ts
+@@ -0,0 +1,43 @@
++// Location: tests/trainingspots.test.ts
++// Reads the source so a module can never point at a spot that is not in the UI, or use an icon that does not exist.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import { SPOT, STATIC_SPOTS, isKnownSpot } from '../src/lib/trainingSpots';
++import { MODULES } from '../src/training';
++import { validateModule, type Goal, type Step } from '../src/lib/trainingModule';
++import { FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
++
++const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
++const ui = [...walk('src/screens'), ...walk('src/ui'), 'App.tsx'].filter(f => !f.includes('Training')).map(f => fs.readFileSync(f, 'utf8')).join('\n');
++
++test('every static spot is attached to something in the UI', () => {
++  for (const [name, id] of Object.entries(SPOT)) assert.ok(ui.includes(`SPOT.${name}`), `${id} (SPOT.${name}) is not used by any screen`);
++  assert.equal(new Set(STATIC_SPOTS).size, STATIC_SPOTS.length, 'spot ids are unique');
++});
++test('the dynamic spot kinds are really attached (grid tiles, cart lines)', () => {
++  assert.ok(ui.includes('tileSpotId('), 'grid tiles carry spots'); assert.ok(ui.includes('cartLineSpot('), 'cart lines carry spots');
++});
++test('every module is valid, and every record spot it names exists in the practice data', () => {
++  const vids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const tiles = fixtureGrid().pages[0].tiles;
++  const tileIds = new Set(tiles.flatMap(t => (t.type === 'item' ? [t.variantId ?? t.productId!] : [])));
++  const spots = (m: (typeof MODULES)[number]): string[] => [...m.guide.flatMap((s: Step) => [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]), ...[...m.check1, ...m.check2].flatMap((g: Goal) => [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined])].filter((x): x is string => !!x);
++  const ids = new Set(MODULES.map(m => m.id)); assert.equal(ids.size, MODULES.length, 'module ids are unique');
++  for (const m of MODULES) {
++    assert.deepEqual(validateModule(m, isKnownSpot), []);
++    for (const s of spots(m)) {
++      if (s.startsWith('grid.item:')) assert.ok(tileIds.has(s.slice(10)), `${m.id}: no grid tile for ${s}`);
++      if (s.startsWith('cart.line:')) assert.ok(vids.has(s.slice(10)), `${m.id}: no practice item for ${s}`);
++    }
++    for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'cart') for (const it of i.items) assert.ok(vids.has(it.variantId), `${m.id}: unknown practice item ${it.variantId}`);
++  }
++});
++test('every icon a scene uses exists in Ionicons', () => {
++  const map = JSON.parse(fs.readFileSync('node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json', 'utf8'));
++  for (const m of MODULES) for (const a of [...m.info.actors, ...m.show.actors]) assert.ok(a.icon in map, `${m.id}: icon "${a.icon}" does not exist`);
++});
++test('copy has no em dashes, and no emoji, in any module', () => {
++  const text = (m: (typeof MODULES)[number]) => JSON.stringify(m, (_k, v) => (typeof v === 'function' ? '' : v));
++  for (const m of MODULES) { const t = text(m); assert.ok(!/[\u2014\u2013]/.test(t), `${m.id} has a dash used as punctuation`); assert.ok(!/\p{Extended_Pictographic}/u.test(t), `${m.id} has an emoji`); }
++});
+diff --git a/tests/uimode.test.ts b/tests/uimode.test.ts
+index 1e7d3aa..d8aa583 100644
+--- a/tests/uimode.test.ts
++++ b/tests/uimode.test.ts
+@@ -18,7 +18,7 @@ test('Simple keeps every tab and every row, with restrained text sizing and expl
+ test('Minimal: three tabs, essentials only, standard-sized text', () => {
+   const p = resolveUi({ mode: 'minimal' });
+   assert.deepEqual(p.tabs, ['checkout', 'transactions', 'more']);
+-  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'help', 'lock', 'orders', 'saved']);
++  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'help', 'lock', 'orders', 'saved', 'training']);
+   assert.equal(p.textScale, resolveUi({ mode: 'simple' }).textScale);
+ });
+ test('a mode never widens what a role allows', () => {

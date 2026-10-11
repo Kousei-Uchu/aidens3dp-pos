@@ -1,5 +1,6 @@
 // Location: src/lib/receiptSync.ts
 // Uploads receipt snapshots to the receipt server. Idempotent (PUT overwrites), so retries and the "final" upload (adds the Shopify order number) are safe.
+import { isTraining } from './trainingGuard';
 import { useApp } from '../state/store';
 import { ShopifyNetworkError, getReceiptSecret } from './shopify/client';
 import { buildReceiptDoc, receiptId, receiptUrl } from './receiptDoc';
@@ -11,6 +12,7 @@ export const receiptsEnabled = () => !!useApp.getState().settings.receipt.server
 const tz = () => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone; } catch { return undefined; } };
 
 export async function uploadReceipt(sale: SaleRecord): Promise<string> {
+  if (isTraining()) throw new ReceiptConfigError('Receipts are not uploaded in training.');
   const s = useApp.getState().settings; const base = s.receipt.serverUrl.trim();
   if (!base) throw new ReceiptConfigError('Receipt server URL is not set (Settings ▸ Receipts).');
   const secret = await getReceiptSecret();

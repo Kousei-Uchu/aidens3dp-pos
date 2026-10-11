@@ -16,6 +16,8 @@ import { sheetMaxHeight } from '../lib/keyboardMath';
 import { useUi } from './uiProfile';
 import { openHelpPage, useNav } from './nav';
 import { helpForError } from '../lib/helpContext';
+import { spotPressed, useSpotRef } from './Spot';
+import { TrainingLayer } from './TrainingLayer';
 
 export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -32,12 +34,12 @@ export function Txt({ style, children, size = 15, weight, color, sub, numberOfLi
 export const Money = ({ cents, size = 15, weight, color, style }: { cents: number; size?: number; weight?: '400' | '500' | '600' | '700'; color?: string; style?: any }) =>
   <Txt size={size} weight={weight} color={color} style={[{ fontVariant: ['tabular-nums'] }, style]}>{fmt(cents)}</Txt>;
 
-export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, style, small }: { title: string; onPress?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'ghost'; icon?: IconName; disabled?: boolean; busy?: boolean; style?: StyleProp<ViewStyle>; small?: boolean }) {
-  const { c, dark } = useTheme(); const k = useUi().textScale; const glass = useApp(s => s.settings.glassSurfaces);
+export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, style, small, spot }: { title: string; onPress?: () => void; kind?: 'primary' | 'secondary' | 'danger' | 'ghost'; icon?: IconName; disabled?: boolean; busy?: boolean; style?: StyleProp<ViewStyle>; small?: boolean; spot?: string }) {
+  const { c, dark } = useTheme(); const k = useUi().textScale; const glass = useApp(s => s.settings.glassSurfaces); const sref = useSpotRef(spot);
   const bg = kind === 'primary' ? c.accent : kind === 'danger' ? c.bad : kind === 'secondary' ? c.fill : 'transparent';
   const fg = kind === 'primary' ? c.onAccent : kind === 'danger' ? '#fff' : c.text;
   return (
-    <Pressable disabled={disabled || busy} onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityLabel={title}
+    <Pressable ref={sref} disabled={disabled || busy} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole="button" accessibilityLabel={title}
       style={({ pressed }) => [{ overflow: 'hidden', backgroundColor: glass ? (dark ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.48)') : bg, borderColor: glass ? (dark ? 'rgba(255,255,255,0.3)' : 'rgba(255,255,255,0.8)') : 'transparent', borderWidth: glass ? 1 : 0, opacity: disabled ? 0.4 : pressed ? 0.75 : 1, paddingVertical: small ? 8 : 14, paddingHorizontal: small ? 14 : 20, borderRadius: 999, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: Math.round((small ? 36 : 50) * k) }, style]}>
       {glass ? <BlurView blurType={dark ? 'dark' : 'light'} blurAmount={18} pointerEvents="none" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} /> : null}
       {busy ? <ActivityIndicator color={fg} /> : icon ? <Ionicons name={icon} size={18} color={fg} /> : null}
@@ -45,9 +47,9 @@ export function Btn({ title, onPress, kind = 'primary', icon, disabled, busy, st
     </Pressable>
   );
 }
-export function IconBtn({ icon, onPress, label, color, size = 22 }: { icon: IconName; onPress: () => void; label: string; color?: string; size?: number }) {
-  const { c } = useTheme(); const k = useUi().textScale;
-  return <Pressable onPress={() => { tap(); onPress(); }} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={{ width: Math.round(40 * k), height: Math.round(40 * k), alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={Math.round(size * k)} color={color ?? c.text} /></Pressable>;
+export function IconBtn({ icon, onPress, label, color, size = 22, spot }: { icon: IconName; onPress: () => void; label: string; color?: string; size?: number; spot?: string }) {
+  const { c } = useTheme(); const k = useUi().textScale; const sref = useSpotRef(spot);
+  return <Pressable ref={sref} onPress={() => { spotPressed(spot); tap(); onPress(); }} accessibilityRole="button" accessibilityLabel={label} hitSlop={8} style={{ width: Math.round(40 * k), height: Math.round(40 * k), alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={Math.round(size * k)} color={color ?? c.text} /></Pressable>;
 }
 export function Card({ children, style }: { children: React.ReactNode; style?: StyleProp<ViewStyle> }) {
   const { c, dark } = useTheme(); const glass = useApp(s => s.settings.glassSurfaces);
@@ -66,10 +68,10 @@ export function Thumb({ uri, size = 44, radius = 10 }: { uri?: string | null; si
   );
 }
 /** image: undefined = no thumbnail column; null = placeholder; string = picture. */
-export function Row({ title, sub, right, onPress, icon, danger, last, badge, image }: { title: string; sub?: string; right?: React.ReactNode; onPress?: () => void; icon?: IconName; danger?: boolean; last?: boolean; badge?: string; image?: string | null }) {
-  const { c } = useTheme(); const k = useUi().textScale;
+export function Row({ title, sub, right, onPress, icon, danger, last, badge, image, spot }: { title: string; sub?: string; right?: React.ReactNode; onPress?: () => void; icon?: IconName; danger?: boolean; last?: boolean; badge?: string; image?: string | null; spot?: string }) {
+  const { c } = useTheme(); const k = useUi().textScale; const sref = useSpotRef(spot);
   return (
-    <Pressable disabled={!onPress} onPress={() => { tap(); onPress?.(); }} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: Math.round(13 * k), gap: 12, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: last ? 0 : 1, borderBottomColor: c.line })}>
+    <Pressable ref={sref} disabled={!onPress} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole={onPress ? 'button' : undefined} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: Math.round(13 * k), gap: 12, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: last ? 0 : 1, borderBottomColor: c.line })}>
       {image !== undefined ? <Thumb uri={image} /> : null}
       {icon ? <Ionicons name={icon} size={Math.round(20 * k)} color={danger ? c.bad : c.sub} /> : null}
       <View style={{ flex: 1 }}>
@@ -85,9 +87,9 @@ export function Row({ title, sub, right, onPress, icon, danger, last, badge, ima
 export function Section({ title, children, footer }: { title?: string; children: React.ReactNode; footer?: string }) {
   return <View style={{ marginTop: 18 }}>{title ? <Txt size={13} sub weight="600" style={{ marginHorizontal: 20, marginBottom: 6, textTransform: 'uppercase' }}>{title}</Txt> : null}<Card style={{ marginHorizontal: 16 }}>{children}</Card>{footer ? <Txt size={12} sub style={{ marginHorizontal: 20, marginTop: 6 }}>{footer}</Txt> : null}</View>;
 }
-export function Chip({ label, active, onPress, icon }: { label: string; active?: boolean; onPress?: () => void; icon?: IconName }) {
-  const { c } = useTheme(); const k = useUi().textScale;
-  return <Pressable onPress={() => { tap(); onPress?.(); }} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={{ paddingHorizontal: 14, paddingVertical: Math.round(8 * k), borderRadius: 999, backgroundColor: active ? c.accent : c.fill, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
+export function Chip({ label, active, onPress, icon, spot }: { label: string; active?: boolean; onPress?: () => void; icon?: IconName; spot?: string }) {
+  const { c } = useTheme(); const k = useUi().textScale; const sref = useSpotRef(spot);
+  return <Pressable ref={sref} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={{ paddingHorizontal: 14, paddingVertical: Math.round(8 * k), borderRadius: 999, backgroundColor: active ? c.accent : c.fill, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
     {icon ? <Ionicons name={icon} size={14} color={active ? c.onAccent : c.text} /> : null}<Text style={{ color: active ? c.onAccent : c.text, fontWeight: '600', fontSize: Math.round(14 * k * 2) / 2 }}>{label}</Text></Pressable>;
 }
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void }) {
@@ -147,6 +149,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
           </View>
           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
         </View>
+        <TrainingLayer visible={visible} />
       </View>
     </Modal>
   );

@@ -5,6 +5,7 @@ import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useUi } from '../ui/uiProfile';
 import { useApp, currentStaff } from '../state/store';
+import { SPOT } from '../lib/trainingSpots';
 import { actingRole } from '../lib/adjustPerms';
 import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
 
@@ -13,7 +14,7 @@ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }>
   customers: { icon: 'people-outline', title: 'Customers', route: 'customers' }, saved: { icon: 'bookmarks-outline', title: 'Saved carts', route: 'saved' },
   giftcards: { icon: 'gift-outline', title: 'Gift cards', route: 'giftcards' }, reports: { icon: 'stats-chart-outline', title: 'Reports', route: 'reports' },
   drawer: { icon: 'cash-outline', title: 'Cash drawer', route: 'drawer' }, staff: { icon: 'id-card-outline', title: 'Staff', route: 'staff' },
-  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' },
+  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' }, training: { icon: 'school-outline', title: 'Training', route: 'training' },
   lock: { icon: 'lock-closed-outline', title: 'Lock register' },
 };
 /** What the row says underneath when explanations are off. */
@@ -31,14 +32,11 @@ export default function More() {
         <HelpButton id="concepts/roles" label="Role and access help" />
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
-        <Section title="Learn">
-          <Row icon="school-outline" title="Training mode" sub="Short, interactive lessons and safe practice scenarios" onPress={() => nav.push('training')} last />
-        </Section>
         {groups.map((g, gi) => (
           <Section key={gi}>
             {g.map((id, i) => {
               const r = ROWS[id];
-              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} last={i === g.length - 1}
+              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : undefined} last={i === g.length - 1}
                 onPress={() => (r.route ? nav.push(r.route) : useApp.getState().set({ unlocked: false, staffId: undefined }))} />;
             })}
           </Section>

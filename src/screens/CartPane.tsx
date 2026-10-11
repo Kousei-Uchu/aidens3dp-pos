@@ -1,4 +1,6 @@
 // Location: src/screens/CartPane.tsx
+import { Spot } from '../ui/Spot';
+import { SPOT, cartLineSpot } from '../lib/trainingSpots';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -61,7 +63,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
             const l = pl.line; const struck = pl.discountCents > 0; const rows = invoiceRows(pl); const flag = flagged.find(f => f.lineId === l.id);
             return (
               // A13: swipe left to remove the line. A12.8: invoice-style rows, one per discount with its own amount.
-              <SwipeRow key={l.id} disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
+              <Spot key={l.id} id={l.variantId ? cartLineSpot(l.variantId) : undefined}><SwipeRow disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
                 <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
                   style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line, ...(flag ? { borderLeftWidth: 4, borderLeftColor: c.warn } : {}) })}>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -85,7 +87,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
                   ))}
                   {flag ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', paddingLeft: l.kind === 'item' ? 58 : 0 }}><Ionicons name="alert-circle" size={15} color={c.warn} /><Txt size={12} weight="600" color={c.warn} style={{ flex: 1 }}>{flag.reasons.join(' · ')}</Txt></View> : null}
                 </Pressable>
-              </SwipeRow>
+              </SwipeRow></Spot>
             );
           })}
           {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
@@ -99,7 +101,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {priced.discountCents > 0 ? <><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt sub>Items</Txt><Money cents={priced.itemsCents} /></View>
           {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt color={c.good}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</> : null}
         {cart.discount ? <Txt size={13} sub>{cart.discount.label} applied to the cart</Txt> : null}
-        <Btn title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
+        <Btn spot={SPOT.cartCharge} title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
         {!empty ? <Txt size={12} sub style={{ textAlign: 'center' }}>{qty} item{qty === 1 ? '' : 's'}{!consolidate ? '' : ''}</Txt> : null}
         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
       </View>

@@ -1,4 +1,6 @@
 // Location: src/screens/Tiles.tsx
+import { spotPressed, useSpotRef } from '../ui/Spot';
+import { tileSpotId } from '../lib/trainingSpots';
 import React, { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, View } from 'react-native';
@@ -41,11 +43,12 @@ export function useTileLabel() {
 
 export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove, color, size, count }: { tile: Tile; idx: number; editing: boolean; onPress: () => void; onEdit?: () => void; onRemove: () => void; onMove: (d: -1 | 1) => void; color: string; size: number; count: number }) {
   const { c } = useTheme(); const info = useTileLabel()(tile); const cat = useCatalogue();
+  const sref = useSpotRef(tileSpotId(tile as any)); const spotId = tileSpotId(tile as any);
   const v = tile.type === 'item' ? (tile.variantId ? cat.variants[tile.variantId] : cat.byProduct[tile.productId!]?.[0]) : undefined;
   const img = !info.missing ? (v?.image ?? info.image) : undefined; // item photo, or the collection image on category and group tiles
   return (
     <View style={{ width: size, height: size * 0.82, padding: 4 }}>
-      <Pressable onPress={() => { tap(); if (editing) onEdit?.(); else onPress(); }} accessibilityRole="button" accessibilityLabel={`${info.label}${info.sub ? ', ' + info.sub : ''}`}
+      <Pressable ref={sref} onPress={() => { if (!editing) spotPressed(spotId); tap(); if (editing) onEdit?.(); else onPress(); }} accessibilityRole="button" accessibilityLabel={`${info.label}${info.sub ? ', ' + info.sub : ''}`}
         style={({ pressed }) => ({ flex: 1, overflow: "hidden", borderRadius: 14, backgroundColor: info.missing ? c.fill : color, padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1, borderWidth: editing ? 1.5 : 0, borderColor: c.sub, borderStyle: editing ? 'dashed' : 'solid' })}>
         {img ? <Image source={{ uri: img }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
         <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

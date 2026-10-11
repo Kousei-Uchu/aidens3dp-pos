@@ -3,9 +3,11 @@ import React, { useEffect } from 'react';
 import * as Zeller from '@zeller-public/payments-sdk-react-native';
 import { useApp } from './state/store';
 import type { TerminalLike } from './lib/zeller';
+import { isTraining } from './lib/trainingGuard';
+import { trainingTerminal } from './lib/trainingTerminal';
 
 let handle: TerminalLike | null = null;
-export const getTerminal = () => handle;
+export const getTerminal = (): TerminalLike | null => (isTraining() ? trainingTerminal : handle); // training: the pretend terminal
 
 export const ZellerRoot = ({ children }: { children: React.ReactNode }) => (
   <Zeller.Provider vendorName="Kousei" vendorApplicationName="ShopifyZellerPOS" vendorApplicationVersion="1.0.0" vendorDeviceType="POS">
@@ -15,6 +17,7 @@ export const ZellerRoot = ({ children }: { children: React.ReactNode }) => (
 );
 
 export async function checkReader(): Promise<boolean> {
+  if (isTraining()) return true; // the practice reader is always ready, and the real one must not overwrite the practice status
   const set = useApp.getState().set;
   if (!handle) { set({ zeller: { ready: false, message: 'Reader starting…' } }); return false; }
   const r: any = await handle.initialise();
