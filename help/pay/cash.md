@@ -4,7 +4,7 @@ title: Paying by cash
 parent: pay
 summary: Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.
 tags: [cash, change, notes, coins, drawer, ledger, rounding, short, part payment, denomination, tap pad]
-related: [pay, pay/card, sales/cart-and-prices]
+related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, sales/cart-and-prices]
 updated: 2026-10-11
 ---
 Cash is taken by tapping the notes and coins the customer hands over. The POS works out the change, shows which notes and coins to take from the drawer, and keeps a record of what is in the drawer as it goes.
@@ -33,18 +33,18 @@ Cash is taken by tapping the notes and coins the customer hands over. The POS wo
 - **Change to give:** tap **Next: give $… change**. The **Give change** screen shows **Take from the drawer** with the notes and coins to hand back.
   - **Gave this** confirms you handed over exactly that.
   - **I'll give different notes and coins** lets you tap what you really gave. The total must match the change owed.
-  - **Show another way** appears only when Smart change is on in Settings ▸ Payments and there is more than one good option. It steps through them.
+  - **Show another way** appears only when Smart change is on in Settings ▸ Payments and there is more than one good option. It steps through them. See [[cash/smart-change]].
   - **Back** returns to the notes you tapped.
 
 ### When the drawer cannot make the change
-A red box says **Can't make $… change** and **Next** is greyed out. It lists what could work:
+A red box says **Can't make $… change** and **Next** is greyed out. See [[cash/change]] for what that means and how each option is found. It lists what could work:
 - **Ask for less:** take a smaller part of what they handed over and give the rest straight back. Tap **Use that smaller handover** to do it.
 - **Cash $… + the rest another way:** take part of the bill in cash (the most the drawer can make change for) and put the remainder on card or another method.
 - **Or take the full amount by card.**
 
-If the box says **No cash in the ledger**, the drawer was never opened or counted, so the POS has no idea what is in it. Open the drawer from More ▸ Cash drawer first.
+If the box says **No cash in the ledger**, the drawer was never opened or counted, so the POS has no idea what is in it. Open the drawer from More ▸ Cash drawer first. See [[cash/open-close]].
 
-If you can see the drawer really does have the change and the record is out of date, tap **The drawer has it (ledger is out of date)**. You then tap the notes and coins you give. Fix the record later with **Correct contents** or **Count & close** in the cash drawer.
+If you can see the drawer really does have the change and the record is out of date, tap **The drawer has it (ledger is out of date)**. You then tap the notes and coins you give. Fix the record later with **Correct contents** or **Count & close** in the cash drawer. See [[cash/open-close]].
 
 ### Skipping the tracking
 Sometimes the queue is long and you just want to finish.
@@ -65,7 +65,7 @@ If you back out of a part-paid sale, hand the cash back yourself. The drawer rec
 ## Deep
 
 ### Where the change comes from
-The change is made from the notes and coins in the drawer record **plus what the customer just handed over**. So the customer's own notes can go straight back as change, and a drawer with no small notes can still change a $20 if the customer handed over a $10 and a $5 as well. Among all the exact ways to make the change, the POS picks the one with the fewest pieces, which is quickest to count out. With **Smart change** on it picks the way that leaves the drawer best stocked for the next sales instead.
+The change is made from the notes and coins in the drawer record **plus what the customer just handed over**. So the customer's own notes can go straight back as change, and a drawer with no small notes can still change a $20 if the customer handed over a $10 and a $5 as well. Among all the exact ways to make the change, the POS picks the one with the fewest pieces, which is quickest to count out. With **Smart change** on it picks the way that leaves the drawer best stocked for the next sales instead (see [[cash/smart-change]]). The full story of how change is found is on [[cash/change]], and you can check a customer's notes before taking them with [[cash/check-change]].
 
 ### How rounding is worked out
 Rounding is applied to the cash **due**, not to what was handed over, and only when that cash payment clears the whole of what remains. The sale keeps the real amount and records the rounding separately, so receipts and reports can show it. Rounding down means the customer paid up to 2c less than the bill, rounding up means up to 2c more. If the cash is only part of the bill, nothing is rounded.
@@ -87,7 +87,7 @@ If the customer hands over less than is due, the payment is recorded as the amou
 - **Part in cash** looks for the largest cash amount below the bill, in 5c steps, whose change can be made. Example: the drawer has one $20, the customer hands you a $50 for a $37 bill. The $13 change cannot be made, but $30 in cash works ($20 change from the drawer), leaving $7 for card.
 
 ### The record can drift
-The record is only as good as what is tapped. It lives on each iPad separately. Count & close, Correct contents, and the skip buttons above are the ways it gets reset or knocked out of line.
+The record is only as good as what is tapped. It lives on each iPad separately. See [[cash]]. Count & close, Correct contents, and the skip buttons above are the ways it gets reset or knocked out of line.
 
 ## Advanced
 
