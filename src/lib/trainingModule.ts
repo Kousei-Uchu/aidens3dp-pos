@@ -2,6 +2,9 @@
 // The shape of a training module (B6) and the checker that refuses a badly written one. Pure, tested.
 // Writer's guide: src/training/README.md
 import { validateDemo } from './trainingDemo';
+import { isGesture, type Gesture } from './pointerGesture';
+import { WINDOW_SPOTS } from './trainingSpots';
+export type { Gesture } from './pointerGesture';
 export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
 export const STAGES: readonly Stage[] = ['info', 'show', 'guide', 'check1', 'check2', 'gratify'];
 export const STAGE_LABEL: Record<Stage, string> = { info: 'Info', show: 'Show', guide: 'Guide', check1: 'Check 1', check2: 'Check 2', gratify: 'Done' };
@@ -31,6 +34,7 @@ export type DemoScreen = { id: string; nodes: DemoNode[] };
 export type DemoStep = {
   id?: string; say: string; title?: string;
   screen?: string; focus?: string; tap?: string; zoom?: number;
+  gesture?: Gesture;                              // how the cursor reaches `tap`: a tap (the default), double or triple tap, press and hold, a swipe or a scroll
   note?: string;                                  // a short label with an arrow, drawn next to the focus
   set?: Record<string, DemoEffect>;
 };
@@ -53,7 +57,9 @@ export type Until =
  * where it happens, and mistakes specific to this step. Left out, `allow` is worked out from the step (tapping a grid tile allows adding, a cart line allows removing),
  * and the step happens anywhere the course allows. A step that waits on the till changing (`until: state`) must say `allow` itself.
  */
-export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[] };
+export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[];
+  /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
+  gesture?: Gesture };
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
@@ -73,6 +79,7 @@ export type Goal = {
   until: Until;                               // how the app knows they did it (never 'next')
   ladder: string[];                           // hints from vague to specific; the answer is revealed after the last one
   reveal?: string;                            // spot to highlight when the hints are used up
+  gesture?: Gesture;                          // how the answer is reached, shown by the cursor when it is revealed (left out: a tap)
   via?: string;                               // spot to point at first when `reveal` is not on screen (for example the bar that opens the cart on a phone)
   inject?: Injection[];
   taughtBy?: string;                          // Check 2 only: the id of the info step, show step or guide step that taught the fix
@@ -103,6 +110,9 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
     for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
+    if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
+    if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
+    for (const t of [s.target, s.recover?.target]) if (t && WINDOW_SPOTS.includes(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
     for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
     for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
@@ -123,6 +133,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
       if (g.ladder.length < 2) at(name, `goal ${g.id} needs at least 2 hints before the answer is shown`);
       if (g.ladder.some(h => !h.trim())) at(name, `goal ${g.id} has an empty hint`);
       if (!g.reveal) at(name, `goal ${g.id} has nothing to highlight when the hints run out`);
+      if (g.gesture !== undefined && !isGesture(g.gesture)) at(name, `goal ${g.id} has the unknown gesture "${String(g.gesture)}"`);
       for (const t of [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined]) if (t && !spotOk(t)) at(name, `goal ${g.id} uses the unknown spot "${t}"`);
       if (!Array.isArray(g.allow)) at(name, `goal ${g.id} must say what may change (allow), even if that is an empty list`);
       else for (const a of g.allow) if (!ALLOWS.includes(a)) at(name, `goal ${g.id} allows the unknown change "${a}"`);

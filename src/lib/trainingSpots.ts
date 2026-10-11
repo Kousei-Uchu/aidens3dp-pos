@@ -9,7 +9,11 @@ export const SPOT = {
   moreTraining: 'more.training',
   back: 'page.back',           // the Back arrow at the top of every pushed page
   sheetClose: 'sheet.close',   // the Close button of a sheet
+  lineMinus: 'line.minus',     // the minus button in the line window
+  lineRemove: 'line.remove',   // the Remove item button in the line window
 } as const;
+/** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove];
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
 export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:'] as const;

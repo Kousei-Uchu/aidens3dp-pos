@@ -3,6 +3,7 @@
 // A demo is simplified copies of real screens in a fixed canvas. Steps change them and a camera, a pointer and a spotlight guide the eye.
 import type { Demo, DemoNode } from './trainingModule';
 import { grow, placeBubble, type Rect } from './trainingGeometry';
+import { isGesture, type Gesture } from './pointerGesture';
 
 export type NodeView = DemoNode & { hidden: boolean; screen: string };
 export type DemoState = { screen: string; nodes: Map<string, NodeView> };
@@ -120,6 +121,8 @@ export type StepPlan = {
   look: Rect | null; lookCam: Camera;
   /** The control the pointer taps, and the point it moves to. */
   tap: Rect | null; tapId: string | null; tapPoint: { x: number; y: number } | null;
+  /** How the pointer reaches the control: a tap unless the step says otherwise. */
+  gesture: Gesture;
   /** Where the camera and ring settle once the step has happened, or null for the whole screen. */
   focus: Rect | null; focusCam: Camera;
   note: Note | null;
@@ -135,7 +138,7 @@ export function planStep(demo: Demo, i: number): StepPlan {
   const look = tap ?? focus; const settled = settleOn(demo.canvas, focus, st.note, st.zoom);
   return {
     index, say: st.say, title: st.title,
-    look, lookCam: cameraFor(demo.canvas, look, st.zoom), tap, tapId: tapN ? tapN.id : null, tapPoint: tap ? { x: tap.x + tap.w / 2, y: tap.y + tap.h / 2 } : null,
+    look, lookCam: cameraFor(demo.canvas, look, st.zoom), tap, tapId: tapN ? tapN.id : null, tapPoint: tap ? { x: tap.x + tap.w / 2, y: tap.y + tap.h / 2 } : null, gesture: st.gesture ?? 'tap',
     focus, focusCam: settled.cam,
     note: settled.note,
     changes: !!st.screen || Object.keys(st.set ?? {}).length > 0,
@@ -196,6 +199,8 @@ export function validateDemo(demo: Demo, isIcon: (name: string) => boolean = () 
     for (const id of Object.keys(st.set ?? {})) if (!seen.has(id)) at(`${w8} changes the unknown item "${id}"`);
     if (st.zoom !== undefined && !(st.zoom >= 1 && st.zoom <= MAX_ZOOM)) at(`${w8} zoom must be between 1 and ${MAX_ZOOM}`);
     if (st.note && !st.focus && !st.tap) at(`${w8} has a note but nothing to point at`);
+    if (st.gesture !== undefined && !isGesture(st.gesture)) at(`${w8} has the unknown gesture "${String(st.gesture)}"`);
+    if (st.gesture !== undefined && !st.tap) at(`${w8} has a gesture but nothing to do it on (add a tap)`);
     // What is on screen when the step plays: the pointer taps before the step's changes, the ring settles after them.
     const before = demoStateAfter(demo, i - 1); const after = demoStateAfter(demo, i);
     const t = st.tap ? before.nodes.get(st.tap) : undefined;

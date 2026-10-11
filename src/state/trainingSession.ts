@@ -10,13 +10,16 @@ import { resetTrainingTerminal, setDeclines } from '../lib/trainingTerminal';
 import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
 import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
 import { completeModule, emptyProgress, readProgress, recordStage, staffKey, type Progress } from '../lib/trainingProgress';
-import type { Injection, Stage } from '../lib/trainingModule';
+import type { Gesture, Injection, Stage } from '../lib/trainingModule';
+import { setGate } from '../lib/trainingGate';
 import type { Rect } from '../lib/trainingGeometry';
 
 /** Everything the overlay and dock need, worked out by the driver (TrainingHost) and drawn by both. */
 export type DockView = {
   mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
+  /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
+  gesture?: Gesture;
   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
   stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean; how: string[]; taught?: { id: string; title: string; done: boolean }; showHow: boolean };
 };
@@ -62,7 +65,7 @@ export const useTraining = create<Sess>((set, get) => ({
     useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj));
   },
   leave: () => {
-    goalStart = null;
+    goalStart = null; setGate(null);
     if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); } // restore first, then drop the guard
     set({ sandbox: false, view: null });
   },

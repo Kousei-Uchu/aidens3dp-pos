@@ -22,6 +22,8 @@ Each course has six parts:
 
 In the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
 
+The moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.
+
 ### Progress
 Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
 

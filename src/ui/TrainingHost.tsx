@@ -20,7 +20,9 @@ import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, type Rect } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
 import { hintView, shouldNudge } from '../lib/trainingHints';
-import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+import { gateFor, type Gesture } from '../lib/pointerGesture';
+import { setGate } from '../lib/trainingGate';
 import { layerDepth } from '../lib/trainingLayers';
 import { moduleTitle, showHowAtOnce } from '../lib/trainingRemedies';
 import { isComplete, staffKey } from '../lib/trainingProgress';
@@ -93,15 +95,16 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
         if (met) { advance(); return; }
         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
-        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray'] } | null> => {
+        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture } | null> => {
           const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
-          let rect = await spot(tr.show.target); let sayNow = tr.show.say;
-          if (!rect && tr.show.via) { rect = await spot(tr.show.via); if (rect) sayNow = tr.show.via === SPOT.cartOpen ? 'Open the cart first. ' + tr.show.say : tr.show.say; }
+          // Point at the first place that is really on screen, in the words that fit what is open now (see fixCandidates), so the card never contradicts itself.
+          const cands = fixCandidates(tr.show, snap.sheets > 0); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
+          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
           const done = taughtIn ? isComplete(st.progress, staffKey(useApp.getState().staffId), taughtIn) : false;
           const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
-          return { rect, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
+          return { rect, gesture, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
         };
         let view: DockView;
         if (cur.step) {
@@ -109,7 +112,10 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
           if (off) { rect = off.rect; say = off.view!.say; }
-          view = { mode: 'guide', stage: 'guide', title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+          const gesture: Gesture = off ? off.gesture : step.gesture ?? 'tap';
+          // Inside the ringed box only what this step asks for works: a swipe step never lets a tap open the line underneath (see lib/trainingGate.ts).
+          setGate(!off && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
+          view = { mode: 'guide', stage: 'guide', gesture, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
         } else {
           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
@@ -117,7 +123,8 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           const off = await strayOf(base.current ? diagnose(goal, { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
           let strayView: DockView['stray'];
           if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
-          view = { mode: 'check', stage: st.run.stage, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+          setGate(null);
+          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
@@ -130,7 +137,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     const kick = () => { if (busy.current) { again = true; return; } if (pending) return; pending = setTimeout(() => { pending = null; void tick().then(() => { if (again) { again = false; kick(); } }); }, 30); };
     kickRef.current = kick; const unsub = useApp.subscribe(kick);
     const t = setInterval(() => void tick(), 120); void tick();
-    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; };
+    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; setGate(null); };
   }, [sandbox]);
 
   return (

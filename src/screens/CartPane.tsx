@@ -1,6 +1,7 @@
 // Location: src/screens/CartPane.tsx
 import { Spot } from '../ui/Spot';
 import { SPOT, cartLineSpot } from '../lib/trainingSpots';
+import { gateAllowsTap } from '../lib/trainingGate';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -64,7 +65,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
             return (
               // A13: swipe left to remove the line. A12.8: invoice-style rows, one per discount with its own amount.
               <Spot key={l.id} id={l.variantId ? cartLineSpot(l.variantId) : undefined}><SwipeRow disabled={locked} label="Remove" onDelete={() => setCart(cc => ops.removeLine(cc, l.id))}>
-                <Pressable disabled={locked} onPress={() => setEdit(l)} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
+                <Pressable disabled={locked} onPress={() => { if (!gateAllowsTap(l.variantId ? cartLineSpot(l.variantId) : undefined)) return; setEdit(l); }} accessibilityRole="button" accessibilityLabel={`${l.title}, quantity ${l.qty}`}
                   style={({ pressed }) => ({ padding: 14, gap: 6, backgroundColor: pressed ? c.fill : 'transparent', borderBottomWidth: 1, borderBottomColor: c.line, ...(flag ? { borderLeftWidth: 4, borderLeftColor: c.warn } : {}) })}>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
                     {l.kind === 'item' ? <Thumb uri={l.variantId ? cat.variants[l.variantId]?.image : undefined} size={48} /> : null}

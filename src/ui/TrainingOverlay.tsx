@@ -12,15 +12,16 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimension
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from './theme';
+import { useSpotlight } from './spotlight';
 import Swap from './Swap';
 import { useReduceMotion } from './Motion';
 import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
 import { centred, grow, onScreen, placeBubble, placeNotice, type Rect, type Size, type Slot } from '../lib/trainingGeometry';
-import { HOLD_MS, glideMs, irisStart, isTinyMove, pointerRest, pointerTap, segments } from '../lib/guideMotion';
+import { HOLD_MS, glideMs, irisStart, isTinyMove, segments } from '../lib/guideMotion';
+import { GESTURE_LABEL, gesturePlan, tapCount, type Gesture } from '../lib/pointerGesture';
 import { useTraining, type DockView } from '../state/trainingSession';
 import { trainingActions } from './trainingActions';
 
-const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)';
 export const useIsTopLayer = (layer: string): boolean => { useSyncExternalStore(subscribeLayers, layersVersion, layersVersion); return topLayer() === layer; };
 const clampPos = (v: Animated.AnimatedInterpolation<number> | Animated.AnimatedSubtraction<number> | Animated.AnimatedAddition<number> | Animated.Value) => v.interpolate({ inputRange: [0, 100000], outputRange: [0, 100000], extrapolate: 'clamp' });
 type RectVals = { x: Animated.Value; y: Animated.Value; w: Animated.Value; h: Animated.Value };
@@ -54,33 +55,41 @@ function Ring({ vals, color }: { vals: RectVals; color: string }) {
   );
 }
 
-/** A pointer that glides to the target and taps it in a loop. Native driven: the position is set by `px`/`py`, the tap by `bob`. */
-function Pointer({ hole, color, reduce }: { hole: Rect; color: string; reduce: boolean }) {
-  const rest = pointerRest(hole); const tapAt = pointerTap(hole);
-  const px = useRef(new Animated.Value(rest.x + 60)).current; const py = useRef(new Animated.Value(rest.y + 60)).current; const o = useRef(new Animated.Value(0)).current;
-  const bob = useRef(new Animated.Value(0)).current; const rip = useRef(new Animated.Value(0)).current;
+/**
+ * The animated cursor. It glides in and then loops the gesture the step asks for (see src/lib/pointerGesture.ts): a tap, a double or triple tap
+ * with a count by the cursor, press and hold with a ring that fills, a swipe that drags across the target, or a two-stroke scroll.
+ * All native driven. The ripple and the hold ring ride with the cursor, so they always land where the finger is.
+ */
+function Pointer({ hole, color, on, reduce, gesture }: { hole: Rect; color: string; on: string; reduce: boolean; gesture: Gesture }) {
+  const key = `${gesture}|${Math.round(hole.x)},${Math.round(hole.y)},${Math.round(hole.w)},${Math.round(hole.h)}`;
+  const plan = useMemo(() => gesturePlan(gesture, hole), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+  const px = useRef(new Animated.Value(plan.start.x)).current; const py = useRef(new Animated.Value(plan.start.y)).current; const o = useRef(new Animated.Value(0)).current;
+  const down = useRef(new Animated.Value(0)).current; const rip = useRef(new Animated.Value(0)).current; const ring = useRef(new Animated.Value(0)).current;
   useEffect(() => {
-    const t = Animated.parallel([Animated.timing(px, { toValue: rest.x, duration: reduce ? 0 : 480, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }), Animated.timing(py, { toValue: rest.y, duration: reduce ? 0 : 480, easing: Easing.bezier(0.22, 1, 0.36, 1), useNativeDriver: true }), Animated.timing(o, { toValue: 1, duration: 220, useNativeDriver: true })]);
-    t.start(); return () => t.stop();
-  }, [Math.round(rest.x), Math.round(rest.y)]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (reduce) return undefined;
-    const l = Animated.loop(Animated.sequence([
-      Animated.delay(700),
-      Animated.timing(bob, { toValue: 1, duration: 260, easing: Easing.out(Easing.quad), useNativeDriver: true }),
-      Animated.parallel([Animated.timing(rip, { toValue: 1, duration: 520, easing: Easing.out(Easing.quad), useNativeDriver: true }), Animated.sequence([Animated.delay(120), Animated.timing(bob, { toValue: 0, duration: 260, useNativeDriver: true })])]),
-      Animated.timing(rip, { toValue: 0, duration: 1, useNativeDriver: true }),
-      Animated.delay(500),
-    ])); l.start(); return () => l.stop();
-  }, [reduce, bob, rip]);
-  const dx = tapAt.x - rest.x; const dy = tapAt.y - rest.y;
+    const quick = (v: Animated.Value, to: number, ms: number, easing?: (t: number) => number) => Animated.timing(v, { toValue: to, duration: ms, easing, useNativeDriver: true });
+    const fade = quick(o, 1, 220);
+    if (reduce) { const c = plan.moves[plan.moves.length - 1] ?? plan.start; px.setValue(c.x); py.setValue(c.y); down.setValue(0); fade.start(); return () => fade.stop(); }
+    const move = Easing.bezier(0.22, 1, 0.36, 1);
+    const seq: Animated.CompositeAnimation[] = [Animated.parallel([quick(px, plan.start.x, 1), quick(py, plan.start.y, 1), quick(down, 0, 1), quick(rip, 0, 1), quick(ring, 0, 1)])];
+    for (const m of plan.moves) {
+      const par: Animated.CompositeAnimation[] = [quick(px, m.x, m.ms, m.drag ? Easing.inOut(Easing.quad) : move), quick(py, m.y, m.ms, m.drag ? Easing.inOut(Easing.quad) : move), quick(down, m.down ? 1 : 0, Math.min(m.ms, 140))];
+      if (m.ripple) par.push(Animated.sequence([quick(rip, 0, 1), quick(rip, 1, 460, Easing.out(Easing.quad))]));
+      if (m.hold) par.push(Animated.sequence([quick(ring, 0, 1), quick(ring, 1, m.ms, Easing.linear)]));
+      seq.push(Animated.parallel(par));
+    }
+    seq.push(Animated.delay(plan.restMs));
+    const loop = Animated.loop(Animated.sequence(seq)); fade.start(); loop.start(); return () => { fade.stop(); loop.stop(); };
+  }, [plan, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
+  const n = tapCount(gesture);
   return (
-    <>
-      <Animated.View pointerEvents="none" style={{ position: 'absolute', left: tapAt.x - 22, top: tapAt.y - 22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: color, opacity: rip.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }), transform: [{ scale: rip.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.6] }) }] }} />
-      <Animated.View pointerEvents="none" style={{ position: 'absolute', left: -14, top: -14, width: 28, height: 28, opacity: o, transform: [{ translateX: px }, { translateY: py }, { translateX: bob.interpolate({ inputRange: [0, 1], outputRange: [0, dx] }) }, { translateY: bob.interpolate({ inputRange: [0, 1], outputRange: [0, dy] }) }, { scale: bob.interpolate({ inputRange: [0, 1], outputRange: [1, 0.86] }) }] }}>
+    <Animated.View accessibilityLabel={GESTURE_LABEL[gesture]} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, opacity: o, transform: [{ translateX: px }, { translateY: py }] }}>
+      <Animated.View style={{ position: 'absolute', left: -22, top: -22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: color, opacity: rip.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }), transform: [{ scale: rip.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.6] }) }] }} />
+      {gesture === 'hold' ? <Animated.View style={{ position: 'absolute', left: -26, top: -26, width: 52, height: 52, borderRadius: 26, borderWidth: 4, borderColor: color, opacity: ring.interpolate({ inputRange: [0, 0.05, 1], outputRange: [0, 0.9, 0.9] }), transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.15] }) }] }} /> : null}
+      <Animated.View style={{ position: 'absolute', left: -12, top: -12, width: 28, height: 28, transform: [{ scale: down.interpolate({ inputRange: [0, 1], outputRange: [1, 0.84] }) }] }}>
         <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={28} color="#111" style={{ textShadowColor: '#fff', textShadowRadius: 4 }} /></View>
       </Animated.View>
-    </>
+      {n > 1 ? <View style={{ position: 'absolute', left: 14, top: -30, backgroundColor: color, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: on, fontSize: 12, fontWeight: '800' }}>×{n}</Text></View> : null}
+    </Animated.View>
   );
 }
 
@@ -154,7 +163,7 @@ function StrayCard({ stray }: { stray: StrayView }) {
 }
 
 export default function TrainingOverlay({ layer }: { layer: string }) {
-  const { c } = useTheme(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
+  const { c } = useTheme(); const sp = useSpotlight(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
   const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(150);
   const measure = () => box.current?.measureInWindow((x, y, w, h) => { setOrigin({ x, y }); if (w > 0 && h > 0) setSize({ w, h }); });
   // Window coordinates from the driver become local to this layer, and a target outside this layer's frame counts as not there.
@@ -167,8 +176,9 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
   const hole = view?.stray && !view.rect ? null : fresh ?? (!expired ? lastHole.current : null);
   const vals = useRectGlide(hole, size, reduce);
   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
-  // In Guide the screen dims and only the target takes taps. While off course the dim lifts, because the fix may be anywhere (a window to close, a line to swipe).
-  const dim = guide && !view?.stray;
+  // In Guide the screen dims and only the target takes taps. While off course the dim stays when there is a fix to point at (only that takes taps, so nothing else can be
+  // opened by accident); it lifts only when there is nothing to point at, because then the fix could be anywhere.
+  const dim = guide && (!view?.stray || !!hole);
 
   // Dim fades in the first time guide mode shows, and out when it ends.
   const dimO = useRef(new Animated.Value(0)).current;
@@ -206,21 +216,21 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
       {dim ? (
         <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: dimO }]}>
           {hole ? <>
-            <Animated.View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: dimBlocks.top, backgroundColor: DIM }} />
-            <Animated.View style={{ position: 'absolute', left: 0, top: dimBlocks.below, right: 0, height: dimBlocks.bottom, backgroundColor: DIM }} />
-            <Animated.View style={{ position: 'absolute', left: 0, top: vals.y, width: dimBlocks.left, height: vals.h, backgroundColor: DIM }} />
-            <Animated.View style={{ position: 'absolute', left: dimBlocks.after, top: vals.y, width: dimBlocks.right, height: vals.h, backgroundColor: DIM }} />
+            <Animated.View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: dimBlocks.top, backgroundColor: sp.dim }} />
+            <Animated.View style={{ position: 'absolute', left: 0, top: dimBlocks.below, right: 0, height: dimBlocks.bottom, backgroundColor: sp.dim }} />
+            <Animated.View style={{ position: 'absolute', left: 0, top: vals.y, width: dimBlocks.left, height: vals.h, backgroundColor: sp.dim }} />
+            <Animated.View style={{ position: 'absolute', left: dimBlocks.after, top: vals.y, width: dimBlocks.right, height: vals.h, backgroundColor: sp.dim }} />
             {view.next ? <Animated.View style={{ position: 'absolute', left: vals.x, top: vals.y, width: vals.w, height: vals.h }} /> : null}
-          </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />}
+          </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: sp.dim }]} />}
         </Animated.View>
       ) : null}
-      {showRing && hole ? <Ring vals={vals} color={RING} /> : null}
+      {showRing && hole ? <Ring vals={vals} color={sp.ring} /> : null}
       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
-      {showRing && hole && !view.next ? <Pointer hole={hole} color={RING} reduce={reduce} /> : null}
+      {showRing && hole && !view.next ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
       {guide && !view.stray ? (
         <Animated.View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bx, top: by, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
           {hole ? <Animated.View style={{ position: 'absolute', [bub.side === 'below' ? 'top' : 'bottom']: -8, left: Animated.subtract(ax, 8), width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bub.side === 'below' ? 1 : 0, borderLeftWidth: bub.side === 'below' ? 1 : 0, borderBottomWidth: bub.side === 'above' ? 1 : 0, borderRightWidth: bub.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
-          <View style={{ flexDirection: 'row', gap: 4 }}>{seg.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? c.line : s === 'done' ? c.good : RING }} />)}</View>
+          <View style={{ flexDirection: 'row', gap: 4 }}>{seg.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? c.line : s === 'done' ? c.good : sp.ring }} />)}</View>
           <Swap k={`${view.counter}|${view.say}`} dy={8} out={120} inn={260} appear style={{ gap: 8 }}>
             <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{view.counter}</Text>
             <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.say}</Text>
