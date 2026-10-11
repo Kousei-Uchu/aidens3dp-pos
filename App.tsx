@@ -28,6 +28,7 @@ import Settings from './src/screens/Settings';
 import Staff, { PinLock } from './src/screens/Staff';
 import Diagnostics from './src/screens/Diagnostics';
 import Help from './src/screens/Help';
+import Training from './src/screens/Training';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { noteActivity } from './src/lib/idle';
 import { isLockScreen } from './src/lib/posLock';
@@ -58,6 +59,7 @@ function Routes() {
     case 'staff': return <Staff />;
     case 'diagnostics': return <Diagnostics />;
     case 'help': return <Help id={p.id} />;
+    case 'training': return <Training moduleId={p.moduleId} />;
     default: return null;
   }
 }

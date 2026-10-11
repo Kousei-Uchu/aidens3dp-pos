@@ -24,11 +24,13 @@ cd docs-server
 npm run typecheck
 ```
 
-## Prepared production setup (not deployed)
+## Production status
+
+The Docs Worker is published at **https://pos-docs.kouseicomms.workers.dev**. The `help.aidens3dp.com` custom domain is not configured or confirmed. Do not add or change production DNS without confirming the intended hostname and Cloudflare zone.
 
 The supplied storefront is `https://aidens3dp.com`; Cloudflare manages the `aidens3dp.com` DNS zone. The local Help site now uses the storefront's dark plum/purple direction and the public shop name. A proposed Docs Help address is **`https://help.aidens3dp.com`**. This is a preparation target, not a published or confirmed hostname.
 
-**Do not run `npm run deploy`, `npx wrangler deploy`, or configure a production custom domain until Help feedback is approved and deployment is explicitly authorized.** The deploy command publishes this Worker to Cloudflare; it is not a dry run. Do not share account tokens or credentials in project files or chat.
+**Publishing a Worker update is a production change, not a dry run.** Obtain approval before future deployments or any custom-domain/DNS changes. Do not share account tokens or credentials in project files or chat.
 
 When publication is approved:
 
