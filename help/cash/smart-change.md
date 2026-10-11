@@ -4,7 +4,7 @@ title: Smart change
 parent: cash
 summary: The setting that picks the notes and coins for change so the drawer stays stocked for the next sales, what it learns from, and how to read its reasons.
 tags: [smart change, change, learned, weighted, score, profile, settings, payments, show another way, coverage, stocked]
-related: [cash, cash/change, cash/check-change, pay/cash]
+related: [cash, cash/change, cash/check-change, cash/float-report, pay/cash]
 updated: 2026-10-11
 ---
 **Smart change** chooses which notes and coins to give as change so the drawer is still well stocked for the next customers, instead of just using the fewest pieces. It is off until you turn it on.
@@ -22,6 +22,7 @@ With it off, nothing changes: change is the fewest pieces, and Check change uses
 - **In Check change**, the amber "may not be worth it" warning is based on what your next sales are likely to need. See [[cash/check-change]].
 
 You can always ignore the suggestion and tap what you really give. See [[cash/change]].
+The [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.
 
 ### What it never does
 It **never** decides whether change can be made. If exact change is possible without Smart change, it is possible with it, and the other way round. It only chooses between the ways that are already exact.

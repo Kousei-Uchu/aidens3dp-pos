@@ -12,7 +12,7 @@ A bundle deal changes the price when a customer buys certain items together, for
 ## Basic
 
 ### Who can make them, and where
-Open **More ▸ Settings ▸ Discounts & bundles**. Managers and owners can open Settings. When staff accounts and the PIN requirement are in use, a signed-in cashier cannot, so they only ever see the deals working in the cart. With no accounts set up, the till acts as the owner and anyone can.
+Open **More ▸ Settings ▸ Discounts & bundles**. Managers and owners can open Settings. When staff accounts and the PIN requirement are in use, a signed-in cashier cannot, so they only ever see the deals working in the cart. With no accounts set up, the till acts as the owner and anyone can. See [[staff]] for how staff roles work.
 
 The list shows every deal with its name, whether it is **Live**, **Scheduled**, **Ended** or **Off**, and a one-line summary such as *2 × Highland Cow → $2.00 off*. The switch on the right turns a deal on or off without deleting it. Tap a row to change it.
 

@@ -4,7 +4,7 @@ title: Paying with a gift card
 parent: pay
 summary: Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.
 tags: [gift card, gift, code, qr, scan, balance, redeem, shopify, disabled, expired, not found]
-related: [pay, pay/card, pay/cash]
+related: [pay, pay/card, pay/cash, gift/check-redeem]
 updated: 2026-10-11
 ---
 A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.
@@ -36,6 +36,7 @@ The amount taken is the card's balance or the next payment amount, whichever is 
 - You cannot pay for a gift card with itself. A gift card sold in the same sale does not exist until that sale is paid.
 - If you cancel a part-paid sale, the money is **not** put back on the gift card. The POS tells you to deal with it by hand. Ask someone who can edit gift cards in Shopify.
 - To check a balance without paying, use the **Check gift card** option in the cart menu or More ▸ Gift cards.
+For a balance check, redemption history, and the difference between a card QR and a claim QR, see [[gift/check-redeem]].
 
 ## Deep
 

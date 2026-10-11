@@ -27,7 +27,7 @@ The buttons are:
 Selling a gift card adds a few extra buttons for that card (a QR for the customer to claim it, and a QR for scanning it at a register). They are covered with the gift card pages.
 
 ### If the receipt page is not set up
-The buttons read **Email receipt**, **Text receipt**, **Share…** and **No receipt**. What is sent is a plain text receipt: shop name, date and time, the order number, each line with its price, discounts, the total, how it was paid, and *Thank you!*. There is no QR code, PDF or tax invoice. The receipt page is set up in Settings ▸ Receipts. The **Receipts** row in Settings says **Not set up** until a server address is entered.
+The buttons read **Email receipt**, **Text receipt**, **Share…** and **No receipt**. What is sent is a plain text receipt: shop name, date and time, the order number, each line with its price, discounts, the total, how it was paid, and *Thank you!*. There is no QR code, PDF or tax invoice. The receipt page is set up in Settings ▸ Receipts. The **Receipts** row in Settings says **Not set up** until a server address is entered. For configuration, see [[settings/receipts]].
 
 ### What the customer sees
 The page lists your business name, ABN, address and contact details, then the receipt number (it looks like `R-1A2B3C4D`), the order number, the date and time, and who served them. Below that are the items with any discounts, then the totals, then how it was paid. Card payments show the card type, the last four digits, the approval code and the terminal reference. Cash shows what was handed over and the change. If your return policy is filled in, it is at the bottom.

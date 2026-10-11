@@ -4,7 +4,7 @@ title: The cash drawer and ledger
 parent: start
 summary: What More ▸ Cash drawer shows, the difference between the shift figures and the notes-and-coins ledger, what updates the ledger, and why it can drift.
 tags: [cash, drawer, ledger, float, notes, coins, expected, paid in, paid out, history, z-report, per register]
-related: [cash/open-close, cash/change, cash/check-change, cash/smart-change, pay/cash, pay]
+related: [cash/open-close, cash/change, cash/check-change, cash/smart-change, cash/float-report, cash/tender-machine, pay/cash, pay]
 updated: 2026-10-11
 ---
 The **Cash drawer** screen (More ▸ Cash drawer) keeps track of the cash in the till: which notes and coins are in the drawer right now, and the shift figures for the day. Every role can open it.
@@ -47,7 +47,7 @@ The ledger is only as right as what is tapped. If you skip the tapping for a rus
 If **Can't make change** shows when you know you have the notes, the ledger has drifted. See [[pay/cash]].
 
 ### Other things on this screen
-The **Daily float report** works out which notes and coins to bank at the end of the day and the float to leave. **Check change** (a grid tile and a cart menu entry) tells you whether you can make change for a customer's notes before you take them: see [[cash/check-change]]. **Smart change** (Settings ▸ Payments, off until you turn it on) picks the change that keeps the drawer well stocked: see [[cash/smart-change]]. How the change itself is worked out, and what "Can't make change" means, is on [[cash/change]]. A cash-tender machine setting is greyed out and marked **Under Construction**.
+The [[cash/float-report|Daily float report]] works out which notes and coins to bank at the end of the day and the float to leave. **Check change** (a grid tile and a cart menu entry) tells you whether you can make change for a customer's notes before you take them: see [[cash/check-change]]. **Smart change** (Settings ▸ Payments, off until you turn it on) picks the change that keeps the drawer well stocked: see [[cash/smart-change]]. How the change itself is worked out, and what "Can't make change" means, is on [[cash/change]]. The cash-tender machine switch is greyed out and marked **Under Construction**; see [[cash/tender-machine]].
 
 ## Deep
 
