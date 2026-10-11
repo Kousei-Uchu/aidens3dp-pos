@@ -11,10 +11,10 @@ import { useNav, type Tab } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useTraining } from '../state/trainingSession';
 import SceneView from '../ui/SceneView';
+import DemoView from '../ui/DemoView';
 import Confetti from '../ui/Confetti';
 import { MODULES, getModule } from '../training';
 import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
-import { beatMs } from '../lib/trainingScene';
 import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
 import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
 
@@ -40,8 +40,8 @@ export default function TrainingRun() {
             {d && !on ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}<Txt size={12} weight="700" color={on ? c.onAccent : d ? '#fff' : c.text}>{STAGE_LABEL[s]}</Txt></Pressable>); })}
       </View>
       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        {run.stage === 'info' ? <Slides key={`i-${run.startedAt}`} mod={mod} scene="info" /> : null}
-        {run.stage === 'show' ? <Slides key={`s-${run.startedAt}`} mod={mod} scene="show" /> : null}
+        {run.stage === 'info' ? <Slides key={`i-${run.startedAt}`} mod={mod} /> : null}
+        {run.stage === 'show' ? <Demo key={`s-${run.startedAt}`} mod={mod} /> : null}
         {(run.stage === 'guide' || run.stage === 'check1' || run.stage === 'check2') ? <Intro mod={mod} run={run} /> : null}
         {run.stage === 'gratify' ? <Gratify mod={mod} run={run} who={who} /> : null}
       </ScrollView>
@@ -49,27 +49,42 @@ export default function TrainingRun() {
   );
 }
 
-/** Info is stepped by the person (Back and Next). Show plays by itself, with pause and replay. */
-function Slides({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
-  const sc = scene === 'info' ? mod.info : mod.show; const last = sc.beats.length - 1; const [i, setI] = useState(0); const [playing, setPlaying] = useState(scene === 'show'); const [seenEnd, setSeenEnd] = useState(false);
-  useEffect(() => { if (i >= last) setSeenEnd(true); }, [i, last]);
-  useEffect(() => { if (!playing) return undefined; const t = setTimeout(() => { if (i < last) setI(i + 1); else setPlaying(false); }, beatMs(sc.beats[i].say)); return () => clearTimeout(t); }, [playing, i, last, sc]);
-  const ready = seenEnd; const go = () => useTraining.getState().completeStage();
+/** Info is a slideshow the person steps through with Back and Next. */
+function Slides({ mod }: { mod: TrainingModule }) {
+  const sc = mod.info; const last = sc.beats.length - 1; const [i, setI] = useState(0); const go = () => useTraining.getState().completeStage();
   return (
     <View style={{ gap: 16 }}>
-      <Txt size={13} weight="700" sub>{scene === 'info' ? 'INFO' : 'SHOW THE PROCESS'}</Txt>
+      <Txt size={13} weight="700" sub>INFO</Txt>
       <SceneView scene={sc} index={i} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
-        {scene === 'info' ? <>
-          <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
-          {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
-        </> : <>
-          <Btn title={playing ? 'Pause' : 'Play'} kind="secondary" icon={playing ? 'pause' : 'play'} onPress={() => { if (!playing && i >= last) setI(0); setPlaying(!playing); }} style={{ flex: 1 }} />
-          <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => { setI(0); setPlaying(true); }} style={{ flex: 1 }} />
-          <Btn title="Continue" disabled={!ready} onPress={go} style={{ flex: 1 }} />
-        </>}
+        <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
+        {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
       </View>
-      {scene === 'show' && !ready ? <Txt size={13} sub style={{ textAlign: 'center' }}>Watch it through once, then you can continue.</Txt> : null}
+    </View>
+  );
+}
+
+/**
+ * Show is an animated demonstration the person watches at their own pace. Each step plays once when it opens and then waits.
+ * Nothing moves on by itself: Next goes to the following step, Back returns to the one before, Replay plays the current step again.
+ */
+function Demo({ mod }: { mod: TrainingModule }) {
+  const { c } = useTheme(); const demo = mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
+  const go = () => useTraining.getState().completeStage();
+  return (
+    <View style={{ gap: 16 }}>
+      <Txt size={13} weight="700" sub>SHOW THE PROCESS</Txt>
+      <DemoView demo={demo} index={i} replay={replay} />
+      <View style={{ gap: 6, minHeight: 104 }}>
+        {step.title ? <Txt size={13} weight="700" sub>{step.title}</Txt> : null}
+        <View accessibilityLiveRegion="polite"><Txt size={19} weight="600" style={{ lineHeight: 27 }}>{step.say}</Txt></View>
+      </View>
+      <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>{demo.steps.map((_, k) => <View key={k} style={{ width: k === i ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: k <= i ? c.text : c.line }} />)}</View>
+      <View style={{ flexDirection: 'row', gap: 10 }}>
+        <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
+        <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => setReplay(replay + 1)} style={{ flex: 1 }} />
+        {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
+      </View>
     </View>
   );
 }

@@ -19,5 +19,3 @@ export function sceneAt(scene: Scene, index: number): SceneView {
   }
   return { index: n, total, say, last: n >= total - 1, actors: [...state.values()].map(a => ({ id: a.id, icon: a.icon, label: a.label, x: a.x, y: a.y, hidden: !!a.hidden, tone: a.tone, pulse: pulse.has(a.id) })) };
 }
-/** Milliseconds to hold a beat in autoplay: reading time for the sentence, never shorter than 2.2 s. */
-export const beatMs = (say: string): number => Math.max(2200, 900 + say.split(/\s+/).filter(Boolean).length * 330);

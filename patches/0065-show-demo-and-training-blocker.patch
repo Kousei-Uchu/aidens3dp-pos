@@ -1,0 +1,936 @@
+From 03c93ec82251c2b79825092d783a5903b547df5a Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sun, 11 Oct 2026 15:13:58 +0000
+Subject: [PATCH] 0065: Show rebuilt as a user-paced animated UI demonstration;
+ fix false card-payment-waiting block on training
+
+---
+ DEV_NOTES.md                    |   2 +-
+ docs/PROGRESS.md                |   3 +-
+ docs/next-steps.html            |   4 +-
+ docs/patches/0065-plan.md       |  44 ++++++++++
+ help/help.json                  |   8 +-
+ help/staff/training.md          |   7 +-
+ src/lib/trainingDemo.ts         | 119 +++++++++++++++++++++++++++
+ src/lib/trainingModule.ts       |  37 ++++++++-
+ src/lib/trainingSandbox.ts      |  16 +++-
+ src/lib/trainingScene.ts        |   2 -
+ src/screens/TrainingRun.tsx     |  53 +++++++-----
+ src/training/README.md          |  23 +++++-
+ src/training/modules/welcome.ts |  45 ++++++++--
+ src/ui/DemoView.tsx             | 140 ++++++++++++++++++++++++++++++++
+ tests/training.test.ts          |   5 +-
+ tests/trainingdemo.test.ts      |  84 +++++++++++++++++++
+ tests/trainingsandbox.test.ts   |  20 +++--
+ tests/trainingspots.test.ts     |   6 +-
+ 18 files changed, 559 insertions(+), 59 deletions(-)
+ create mode 100644 docs/patches/0065-plan.md
+ create mode 100644 src/lib/trainingDemo.ts
+ create mode 100644 src/ui/DemoView.tsx
+ create mode 100644 tests/trainingdemo.test.ts
+
+diff --git a/DEV_NOTES.md b/DEV_NOTES.md
+index 3fbfc2e..d2de56b 100644
+--- a/DEV_NOTES.md
++++ b/DEV_NOTES.md
+@@ -40,7 +40,7 @@ Also allow the ability to either undo last entry (and inform what value was remo
+ 3. Include a screensaver with the business’ logo (load from URL, or upload) and a background colour (colour pick or enter hex code) for when an iPad has been idle (not interacted with in any way, and no attention detected using Apple’s attention awareness feature if possible) for a while, or when not logged into a staff account. Use some method to keep the device from falling asleep or locking (the device, not the app) from idle. A way I’ve seen this done is telling the device that you’re playing a video of some kind, or another way that’s less of a pain in the ass workaround if one exists.
+ 4. Add a GUI based way to create bundles alongside programmatic JSON methods.
+ 5. Add a flag you can enable on staff accounts called ‘Simple Mode’, making the UI as unconfusing, straight forward, simplistic, and easy to understand/navigate as physically possible. Perhaps make it a 3 position toggle, between Standard, Simple, and Minimal. Simple still gives every option, just explained more, a little less complicated, easier to see, and slightly easier for non-technically-minded people to navigate, and Minimal is a super locked down, guided, flow based thing, basically training wheels. The full checkout process is entirely available, but make it as cut down and simple and visually unconfusing as possible, perhaps in a more flow, step based, question and answer format. If possible, allow a custom mode to customise the accessibility/training/simplification features enabled, and their levels, like so if you don’t want it super basic, you can find an inbetween you like, and stuff.
+-6. Add a ‘Training Mode’, where it automatically guides the user through each process in a training course style module format, where the user is shown and guided through each and every process in the app. They should be able to do these out of order. Modules should be formatted as the following structure: Info (information about what process this is, when you’d need it, a basic synopsis of the inner workings, all accompanied by pleasing visual representations of what’s being said, perhaps formatted in a semi-visual style too. By semi-visual style I mean like an animated slideshow that shows an actual physical progression, and feedback for everything said.), Show the Process (show how the flow goes in a visual style, not the actual UI yet, perhaps just a simplified and stylistic version of such, animated to actually show how this all happens.), Guide (Now the actual UI, highlight buttons and text, have little bits of text with arrows and stuff, and have the user actually click what’s needed, or a next button if it’s purely informational, drawing attention to something, or in general when there’s nothing specifically to be pressed, to progress.), Check Understanding (have the user run though it twice, once where everything goes perfectly, once where every failure point they’re likely to face actually does occur (not admin stuff, just things like ‘uh oh, the customer’s card declined!’ Or ‘oh no! We don’t have the right change for that!’ And the user has to handle that themselves (they should have been informed of how to handle these things in the earlier steps of the module). At any point they should be able to press a help button to get a little bit of a pointer on where to go next, and if they’re still stuck after a hint, give a little more specific of a hint, again and again until they either get it, or the hints are obviously not helping, in which case the answer should be highlighted (or heavily guided to).), and the final stage for the module is Gratify (they got it! Confetti! Big green tick on the module for that user! Just reward them and make them feel like they actually got something out of it, like a little dopamine hit to make them feel good, to break up the monotony of the guidance and testing, even though they’re designed not to feel boring and unengaging, but just as a little ‘woohoo I did it! I’ll do the next one now!’. However be careful not to baby them.)
++6. Add a ‘Training Mode’, where it automatically guides the user through each process in a training course style module format, where the user is shown and guided through each and every process in the app. They should be able to do these out of order. Modules should be formatted as the following structure: Info (information about what process this is, when you’d need it, a basic synopsis of the inner workings, all accompanied by pleasing visual representations of what’s being said, perhaps formatted in a semi-visual style too. By semi-visual style I mean like an animated slideshow that shows an actual physical progression, and feedback for everything said.), Show the Process (a polished, animated, step-by-step UI demonstration of how to complete the process: think an animated product walkthrough with cinematic UI transitions, simulated interactions and guided visual focus. It draws simplified, stylised copies of the relevant app screens, not the live UI yet. It can smoothly zoom into particular areas, pan across a screen, transition between views, simulate taps on buttons, animate toggles and use spotlight effects on the relevant control, with guidance text, arrows, pointers and other visual indicators at each stage. The user controls the pace: each step has clear guidance text and a Next button, and the animation never rushes them or skips ahead by itself before they have had a chance to understand what is shown. It is a demonstration, not an interactive practice session: the user watches the interface perform the actions rather than performing them. The goal is that transitions, simulated interactions, camera movement, highlights and text work together as one cohesive, engaging, easy-to-follow experience, rather than a sequence of static screenshots or text instructions. Clarification: this is a rough description of the experience, not an exact specification or a literal checklist. The implementation should fit the project, its architecture and its design language, and may refine the approach, as long as it stays a user-controlled, animated visual demonstration.), Guide (Now the actual UI, highlight buttons and text, have little bits of text with arrows and stuff, and have the user actually click what’s needed, or a next button if it’s purely informational, drawing attention to something, or in general when there’s nothing specifically to be pressed, to progress.), Check Understanding (have the user run though it twice, once where everything goes perfectly, once where every failure point they’re likely to face actually does occur (not admin stuff, just things like ‘uh oh, the customer’s card declined!’ Or ‘oh no! We don’t have the right change for that!’ And the user has to handle that themselves (they should have been informed of how to handle these things in the earlier steps of the module). At any point they should be able to press a help button to get a little bit of a pointer on where to go next, and if they’re still stuck after a hint, give a little more specific of a hint, again and again until they either get it, or the hints are obviously not helping, in which case the answer should be highlighted (or heavily guided to).), and the final stage for the module is Gratify (they got it! Confetti! Big green tick on the module for that user! Just reward them and make them feel like they actually got something out of it, like a little dopamine hit to make them feel good, to break up the monotony of the guidance and testing, even though they’re designed not to feel boring and unengaging, but just as a little ‘woohoo I did it! I’ll do the next one now!’. However be careful not to baby them.)
+ 7. Add in-app nested and interlinked documentation for every single feature within the app, even the boring shit, as well as how to fix errors that come up, what different things mean, how to do certain things, and what to do if something happens. Have the ability to specify the depth you’d like to know, on a scale of: Basic (what matters to the staff member), Deep (a reasonably easy to understand explanation of the inner workings), and Advanced (a deep explanation of the inner workings. With references to the code that makes things work, flowcharts showing how functions flow and interact, what calls what to make what work, how to trace deep-set code errors that can’t be easily patched via the UI.). Store these as MD, so a documentation webpage can also access these, and that also makes them easier to update, so a single source (perhaps via a web service with an API) can be pulled into both viewing platforms, edited together, versioned, and everything else handy like that. 
+ 8. Have a fair think of literally anything else you can think to add to what we already have. Like literally anything at all. 
+ 
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 38f2206..4d2d2c7 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -67,6 +67,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0058 | 2026-10-11 | Copilot-authored; review pending. Improve Help presentation without changing its content model: visual ordered-step cards in the app and web, a one-step-at-a-time web guide, and visual topic cards in the app. Style the Docs site locally using the supplied storefront's dark plum/purple direction. Prepare—but do not execute—Cloudflare custom-domain/release steps for the proposed `help.aidens3dp.com`; refresh roadmap status/export with device-dependent items clearly pending. | B7, E1 |
+ | 0063 | 2026-10-11 | Copilot-authored; review pending. Adapt the supplied old-repo `0059-training-foundations.patch` to the current app: animated Info and Show scenes, spotlighted interaction with the real POS screens over isolated fixture state, staged Guide/Check flow, escalating hints, fake card terminal, persistence/network guards, and a "How training works" demonstration course. Assumption: never expose a live sale or reader during training; restore the real app state on exit. Device verification remains outstanding. | B6 |
+ | 0064 | 2026-10-12 | Quick Menu grid fits its pane: `tileSizeForPane` now picks the column count that changes the tile size least (grow when under about half a tile is spare, otherwise add a column and shrink), keeps the tile shape, and rounds the width down to a quarter point so a row can never wrap early and leave a column-sized gap. Updated `tests/gridlayout.test.ts` and the Tile size paragraph in `sales/grid` | B-grid |
++| 0065 | 2026-10-12 | Training mode (B6): Show rebuilt as a user-paced animated UI demonstration. Mock screens in a fixed canvas, a camera that zooms and pans, a pointer that taps, spotlight, notes, Next, Back and Replay, nothing advances by itself (the old autoplay icon scene is gone). New pure engine `src/lib/trainingDemo.ts`, renderer `src/ui/DemoView.tsx`, the Show format and checks in `trainingModule.ts`, the welcome course's Show rewritten. Fixes the false "A card payment is still waiting on the reader" error: an attempt left at "started" by a closed app, or an old "unknown" for a sale no longer in the cart, no longer blocks starting practice. DEV_NOTES item 6, the writer's guide and the Training help page updated to the clarified Show | B6 |
+ 
+ ---
+ 
+@@ -275,7 +276,7 @@ Current implementation and validation status are recorded here. Device and live-
+   - [x] B5b (0026, refined 0056) Guided checkout asks Items → Discount → Check → Pay by default. Customer is not a separate required step; Add/change customer is in More options. Custom can explicitly enable the separate Customer step. Back buttons identify their destination. Part-paid sales still go to Pay and cannot be edited.
+   - [x] B5c (0027) Simple-mode wording, helper copy and adjustable tap-target sizing remain; defaults no longer force larger text/tap targets.
+   - [ ] B5d **Device test deferred until your test device is available:** try Simple and Minimal on the iPad, especially the simpler views/grid density, Back from guided Discount to Items, More options, and a complete sale. Check that Custom tab and More switches persist and that permissions remain correct. You had reported an ineffective Back arrow; the button now names its destination, but hardware confirmation is still needed.
+-- [~] B6 Training mode (Info → Show → Guide → Check 1 → Check 2 → Gratify). Patch 0063 replaces the earlier 0061 training attempt with foundations adapted from the supplied, older-repository `0059-training-foundations.patch`: animated Info and process scenes; actual Checkout/cart screens spotlighted by an animated dim/ring/bubble overlay; working Guide actions and two checks against isolated fixture data; progressive hints, fake card terminal and confetti; module-specific declarative course definitions and per-staff progress. The starter **How training works** course exercises the runner, not a full operational task course. Assumption: training is isolated from live sales, storage, Shopify and the card reader; live state is restored when exiting. Remaining: task-specific modules for the app's processes and device validation.
++- [~] B6 Training mode (Info → Show → Guide → Check 1 → Check 2 → Gratify). Patch 0063 replaces the earlier 0061 training attempt with foundations adapted from the supplied, older-repository `0059-training-foundations.patch`: an animated Info slideshow and a **Show** that is a user-paced animated UI demonstration (simplified copies of the real screens, a camera that zooms and pans, a pointer that taps, spotlight, notes, Next and Back, never autoplay; clarified and rebuilt in 0065); actual Checkout/cart screens spotlighted by an animated dim/ring/bubble overlay; working Guide actions and two checks against isolated fixture data; progressive hints, fake card terminal and confetti; module-specific declarative course definitions and per-staff progress. The starter **How training works** course exercises the runner, not a full operational task course. Assumption: training is isolated from live sales, storage, Shopify and the card reader; live state is restored when exiting. Remaining: task-specific modules for the app's processes (each with its own Show demonstration) and device validation, including how sharp and smooth the Show camera looks on the iPad.
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker. **Started in 0028.** Three pages per patch, as you asked. Design: `docs/patches/0028-plan.md`; writer's guide: `help/README.md`.
+   - **How it works.** Pages are Markdown files in `help/` (`help/<folder>/<name>.md`, a folder's own page is its `index.md`). Each has a header (id, title, parent, summary, tags, related) and up to three sections, `## Basic`, `## Deep`, `## Advanced`. Choosing a depth shows it **plus the levels above it**. `[[page-id]]` links pages together; contents lists come from each page's `parent`. `npm run help:build` checks every page (dead links, missing parent or Basic section, loops, unclosed code, stray headings, bad mermaid) and writes `help/help.json`, which the app and the docs Worker both read. Code: `src/lib/helpDocs.ts` (pure, tested), `scripts/build-help.ts`. The Advanced flowcharts are Mermaid; the in-app drawing supports a simple subset (see the guide) and the website draws the full thing.
+   - [x] B7a (0028) foundation: format, checker, build, guide, tests, first three pages.
+diff --git a/docs/next-steps.html b/docs/next-steps.html
+index b86ce88..af7c9fd 100644
+--- a/docs/next-steps.html
++++ b/docs/next-steps.html
+@@ -451,7 +451,7 @@
+             <article class="card build" data-response="training-mode">
+               <span class="badge">B6 · patch 0063 (Copilot) · foundations adapted</span>
+               <h3>Build the training flow</h3>
+-              <p>Training now has animated <strong>Info → Show → Guide → Check 1 → Check 2 → Gratify</strong> stages. Guide and Check use the actual POS screens with dimmed, spotlighted controls over isolated fixture data; the live register is restored on exit. The "How training works" course demonstrates the engine.</p>
++              <p>Training now has <strong>Info → Show → Guide → Check 1 → Check 2 → Gratify</strong> stages. Show is an animated UI demonstration (mock screens, a zooming camera, a tapping pointer, spotlight and notes) that you step through yourself with Next; it never advances by itself. Guide and Check use the actual POS screens with dimmed, spotlighted controls over isolated fixture data; the live register is restored on exit. The "How training works" course demonstrates the engine.</p>
+               <p>Still to build: task-specific courses for the app's processes and device checks, especially overlay alignment and confirmation that the practice-state safety barriers work on hardware.</p>
+               <p><a href="./PROGRESS.md">See B6 in the progress tracker</a>.</p>
+             </article>
+@@ -566,7 +566,7 @@
+         'starting-stock': { answer: 'Can’t test yet', details: 'The requested fix was implemented in 0056; verify the Shopify inventory update when the device/location is available.' },
+         'settings-retry': { answer: 'Can’t test yet', details: 'The requested queue/retry behavior was implemented in 0056; verify offline/reconnect behavior when practical.' },
+         'discount-permissions': { answer: 'Not tested yet', details: 'The agreed policy is manual price adjustments only; promotional discounts remain unaffected. Device verification remains.' },
+-        'training-mode': { answer: 'Started · patch 0063', details: 'The earlier simulated lesson attempt was replaced with adapted foundations from the provided old-repo patch: animated Info and Show scenes, real Checkout/cart screens with dimmed spotlight controls, Guide actions, two checks over isolated fixture data, escalating hints, a fake reader and confetti completion. The starter course demonstrates the engine; task-specific courses and device verification remain.' },
++        'training-mode': { answer: 'Started · patches 0063, 0065', details: 'The earlier simulated lesson attempt was replaced with adapted foundations from the provided old-repo patch: an animated Info slideshow, a user-paced animated UI demonstration for Show, real Checkout/cart screens with dimmed spotlight controls, Guide actions, two checks over isolated fixture data, escalating hints, a fake reader and confetti completion. The starter course demonstrates the engine; task-specific courses and device verification remain.' },
+         'worker-domains': { field0: 'https://aidens3dp.com', field1: 'aidens3dp.com', field2: 'Cloudflare', details: 'Details supplied. Style and prepare domain setup, but do not publish until the Help feedback is addressed.' },
+         'worker-deploy': { answer: 'Help me prepare deployment steps', details: 'Prepare Cloudflare deployment steps after the Help/documentation improvements; do not publish yet.' },
+         'future-ideas': { details: 'Patch 0059 (Copilot) added optional name/image spotlights after item scans or taps (off by default), per-staff theme/accent/tile-size preferences, and stronger storefront branding on checkout, receipt confirmation and screensaver defaults. Gift-card cancellation/refund value restoration was implemented in 0056. Still verify gift cards against live Shopify and test the scanner/visual fit on the iPad; neither check has been completed.' },
+diff --git a/docs/patches/0065-plan.md b/docs/patches/0065-plan.md
+new file mode 100644
+index 0000000..6876853
+--- /dev/null
++++ b/docs/patches/0065-plan.md
+@@ -0,0 +1,44 @@
++# Patch 0065: Show rebuilt as an animated UI demonstration, and the false "card payment waiting" error
++
++This patch applies on top of 0064 (the grid fit). Apply 0064 first.
++
++## What you asked for
++1. The **Show** stage should work like the explanatory document: a polished, user-paced, animated demonstration of a process using representations of the app's screens, with zooms, pans, transitions, simulated taps, toggles, spotlights and guidance text. Watched, not practised. Not a literal spec, so use judgement.
++2. Starting **Guide** said "A card payment is still waiting on the reader" when nothing was waiting.
++3. Update the spec docs to reflect the clarification.
++
++## What was wrong with the error (2)
++`trainingBlocker` refused to start practice if **any** card attempt anywhere in the history had the status `started` or `unknown`, with no time limit. An attempt is left at `started` whenever the app is closed or loses the iPad mid-payment, and nothing ever clears it, so one such attempt blocked training for good. Now:
++- `started` only blocks for 5 minutes after it began (the same window the screensaver and staff lock already use for "a payment is in flight").
++- `unknown` only blocks while its sale is still the one in the cart. For any other sale there is nothing you could finish from here.
++- A part-paid cart still blocks, as before.
++- The messages now say which case it is.
++
++## How Show works now (1)
++- **Mock screens in a canvas.** A demo is one or more screens made of simple nodes (panel, bar, text, button, tile, row, toggle, field, chip, icon) placed in a fixed canvas, drawn in the app's own colours so it looks like the till. The welcome course's Show is a mock Checkout with the Guide dock, then a "Course complete" screen.
++- **Camera.** It zooms in on the control a step is about (up to 2.2 times, picked automatically to fit unless the step says otherwise), pans, and never slides past the canvas edge.
++- **Pointer.** A pointer glides to a control and taps it with a ripple, a small press on the control and a tick.
++- **The screen responds.** After the tap, nodes appear, disappear, change text, flip a toggle or take a highlight, and a change of screen is a cross-fade.
++- **Spotlight and notes.** The picture dims around the ringed control (same amber ring as Guide), and a short note with an arrow sits beside it.
++- **Your pace.** Each step plays once when it opens and then waits. **Next**, **Back** and **Replay** are the only ways it moves. There is no autoplay, no Pause, and no "watch it through first" gate. Going Back or jumping shows the finished picture straight away. If the iPad's Reduce Motion setting is on, the movement is skipped and each step just appears.
++- **Order inside a step:** camera to the target, pointer taps, the screen changes, camera settles and the note appears.
++- **Authoring.** `validateModule` now checks every Show: ids, screens, nodes that fit the canvas, a `tap` on something that is not on screen at that moment, a `focus` that is not on screen afterwards, missing icons, zoom limits. The old Show format (icons sliding about) is gone. Info keeps its slideshow.
++
++## Files
++- New: `src/lib/trainingDemo.ts` (pure: state after each step, camera, step plan, note placement, checker), `src/ui/DemoView.tsx` (drawing and animation), `tests/trainingdemo.test.ts`.
++- Changed: `src/lib/trainingModule.ts` (the `Demo` types, `show: Demo`, checker), `src/lib/trainingSandbox.ts` (the blocker), `src/screens/TrainingRun.tsx` (Info slideshow and the new Show runner; autoplay removed), `src/lib/trainingScene.ts` (dead autoplay timing removed), `src/training/modules/welcome.ts` (new Show), `tests/training.test.ts`, `tests/trainingspots.test.ts`, `tests/trainingsandbox.test.ts`.
++- Docs: `DEV_NOTES.md` item 6 (your Show clause, with the clarification), `docs/PROGRESS.md` (B6 text and patch log row), `src/training/README.md` (new "Writing a Show" section), `help/staff/training.md` and `help/help.json`, `docs/next-steps.html`.
++
++## Steps
++1. [x] Re-fetched the repo (HEAD "Fixed Tab Bar & Worker Migration") and stacked this on 0064.
++2. [x] Fixed the blocker, with tests for each case (fresh, old, other sale, same sale, part-paid).
++3. [x] Pure demo engine and its tests (camera limits, step plans, note placement, every checker rule, and a test that every course Show taps, changes and directs the eye).
++4. [x] `DemoView` and the Show runner.
++5. [x] Welcome course Show rewritten as a real demonstration.
++6. [x] Spec docs updated. 31 training tests, plus the help tests, pass. `tsc` reports nothing for the files I changed.
++7. [ ] You: run it on the iPad. I could not run the animation here, only the logic around it, so please check: smoothness, that the zoomed text is sharp enough (the canvas is scaled, so very large zooms can look soft; the cap is 2.2 times), the pointer and ring landing on the right controls, Replay, and Reduce Motion.
++
++## Things to know
++- DEV_NOTES.md was edited, at your request: only the Show clause in item 6, keeping your wording and adding the clarification. Please take the new version if you keep your own copy.
++- Task courses you add later each need their own Show: a mock of the real screens for that job (tiles, sheets, keypad and so on), written with the node kinds above. If a screen needs a control the node kinds do not cover, add a kind rather than faking it.
++- Still open from before: an attempt left at `started` is never cleaned up (it just stops mattering after 5 minutes). Nothing needs it cleaned, but the attempts list in Support & diagnostics will keep showing it as started.
+diff --git a/help/help.json b/help/help.json
+index 9b17b12..4dbb8bb 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "7e8fc54f",
++ "version": "fc181967",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1672,9 +1672,9 @@
+    "updated": "2026-10-11",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it.\n2. **Show** animates the process as a simple diagram, not a screenshot of the app.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
+-    "deep": "Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+-    "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Scene and course runner | `src/screens/TrainingRun.tsx`, `src/ui/SceneView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nDuring Checks, tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "deep": "A Show is a list of steps over a few mock screens. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
++    "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner and the Info slideshow | `src/screens/TrainingRun.tsx`, `src/ui/SceneView.tsx` |\n| The Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+   },
+   {
+diff --git a/help/staff/training.md b/help/staff/training.md
+index 58519ed..24aa5c7 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -14,7 +14,7 @@ Open **More → Training** to learn a POS task. Courses can be started in any or
+ ### How a course works
+ Each course has six parts:
+ 1. **Info** is an animated visual explanation of what the task is for and when you need it.
+-2. **Show** animates the process as a simple diagram, not a screenshot of the app.
++2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.
+ 3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.
+ 4. **Check 1** asks you to complete the task without the arrows, with practice data.
+ 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
+@@ -27,7 +27,7 @@ Completion and stage progress are saved on this device for the signed-in staff m
+ 
+ ## Deep
+ 
+-Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.
++A Show is a list of steps over a few mock screens. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.
+ 
+ ## Advanced
+ 
+@@ -35,7 +35,8 @@ Course scenes, spotlight targets, Guide steps, Checks, recovery injections and h
+ |---|---|
+ | Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |
+ | Course schema and validation | `src/lib/trainingModule.ts` |
+-| Scene and course runner | `src/screens/TrainingRun.tsx`, `src/ui/SceneView.tsx` |
++| Course runner and the Info slideshow | `src/screens/TrainingRun.tsx`, `src/ui/SceneView.tsx` |
++| The Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |
+ | Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |
+ | Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |
+ | Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |
+diff --git a/src/lib/trainingDemo.ts b/src/lib/trainingDemo.ts
+new file mode 100644
+index 0000000..aa69a59
+--- /dev/null
++++ b/src/lib/trainingDemo.ts
+@@ -0,0 +1,119 @@
++// Location: src/lib/trainingDemo.ts
++// The Show stage (B6): works out what an animated demonstration looks like at each step. Pure: DemoView just draws and animates what this returns.
++// A demo is simplified copies of real screens in a fixed canvas. Steps change them and a camera, a pointer and a spotlight guide the eye.
++import type { Demo, DemoNode } from './trainingModule';
++import { grow, placeBubble, type Rect } from './trainingGeometry';
++
++export type NodeView = DemoNode & { hidden: boolean; screen: string };
++export type DemoState = { screen: string; nodes: Map<string, NodeView> };
++
++/** The deepest the camera zooms. Beyond this the mock turns soft and the surroundings are lost. */
++export const MAX_ZOOM = 2.2;
++/** How much of the view a zoomed-in target may fill. */
++const FILL = 0.5;
++
++/** Every node by id, with the screen it lives on. */
++export function nodeIndex(demo: Demo): Map<string, NodeView> {
++  const m = new Map<string, NodeView>();
++  for (const sc of demo.screens) for (const n of sc.nodes) m.set(n.id, { ...n, hidden: !!n.hidden, screen: sc.id });
++  return m;
++}
++
++/** The demo after steps 0 to `upto` (inclusive) have happened. -1 means none: the starting picture. Out of range is clamped. */
++export function demoStateAfter(demo: Demo, upto: number): DemoState {
++  const nodes = nodeIndex(demo); let screen = demo.screens[0]?.id ?? '';
++  const last = Math.min(upto, demo.steps.length - 1);
++  for (let i = 0; i <= last; i++) {
++    const st = demo.steps[i];
++    if (st.screen) screen = st.screen;
++    for (const [id, fx] of Object.entries(st.set ?? {})) { const n = nodes.get(id); if (n) nodes.set(id, { ...n, ...fx, hidden: fx.hidden ?? n.hidden }); }
++  }
++  return { screen, nodes };
++}
++
++const rectOf = (n: DemoNode): Rect => ({ x: n.x, y: n.y, w: n.w, h: n.h });
++export type Camera = { zoom: number; cx: number; cy: number };
++
++/**
++ * Where the camera should be to look at `rect` (or the whole canvas when there is none): how far in, and which canvas point sits in the middle.
++ * The view never slides past the edge of the canvas, so there is never empty space around the mock.
++ */
++export function cameraFor(canvas: { w: number; h: number }, rect: Rect | null, zoom?: number): Camera {
++  if (!rect) return { zoom: 1, cx: canvas.w / 2, cy: canvas.h / 2 };
++  const auto = Math.min((canvas.w * FILL) / Math.max(1, rect.w), (canvas.h * FILL) / Math.max(1, rect.h));
++  const z = Math.max(1, Math.min(MAX_ZOOM, zoom ?? auto));
++  const hw = canvas.w / (2 * z); const hh = canvas.h / (2 * z);
++  return { zoom: z, cx: Math.max(hw, Math.min(canvas.w - hw, rect.x + rect.w / 2)), cy: Math.max(hh, Math.min(canvas.h - hh, rect.y + rect.h / 2)) };
++}
++
++export type Note = { text: string; x: number; y: number; w: number; h: number; side: 'above' | 'below'; arrowX: number };
++const NOTE_W = 150;
++/** A small label with an arrow, put next to the ringed area, kept inside the canvas. */
++export function noteFor(canvas: { w: number; h: number }, focus: Rect, text: string): Note {
++  const lines = Math.max(1, Math.ceil(text.length / 20)); const h = 18 + lines * 17;
++  const b = placeBubble(grow(focus, 6), canvas, { w: NOTE_W, h }, 10, 6);
++  return { text, x: b.x, y: b.y, w: NOTE_W, h, side: b.side, arrowX: b.arrowX };
++}
++
++export type StepPlan = {
++  index: number; say: string; title?: string;
++  /** Where the camera and ring go first (the tapped control, else the focus), or null for the whole screen. */
++  look: Rect | null; lookCam: Camera;
++  /** The control the pointer taps, and the point it moves to. */
++  tap: Rect | null; tapId: string | null; tapPoint: { x: number; y: number } | null;
++  /** Where the camera and ring settle once the step has happened, or null for the whole screen. */
++  focus: Rect | null; focusCam: Camera;
++  note: Note | null;
++  /** True when the step changes the screen or any node, so there is something to wait for after the tap. */
++  changes: boolean;
++};
++
++/** Everything DemoView needs to play step `i`. Out of range indexes are clamped. */
++export function planStep(demo: Demo, i: number): StepPlan {
++  const index = Math.max(0, Math.min(i, demo.steps.length - 1)); const st = demo.steps[index]; const nodes = nodeIndex(demo);
++  const tapN = st.tap ? nodes.get(st.tap) : undefined; const focusN = st.focus ? nodes.get(st.focus) : undefined;
++  const tap = tapN ? rectOf(tapN) : null; const focus = focusN ? rectOf(focusN) : tap;
++  const look = tap ?? focus;
++  return {
++    index, say: st.say, title: st.title,
++    look, lookCam: cameraFor(demo.canvas, look, st.zoom), tap, tapId: tapN ? tapN.id : null, tapPoint: tap ? { x: tap.x + tap.w / 2, y: tap.y + tap.h / 2 } : null,
++    focus, focusCam: cameraFor(demo.canvas, focus, st.zoom),
++    note: st.note && focus ? noteFor(demo.canvas, focus, st.note) : null,
++    changes: !!st.screen || Object.keys(st.set ?? {}).length > 0,
++  };
++}
++
++/** Every problem with a demo, as plain sentences (the module checker adds the module id). Empty list = fine. */
++export function validateDemo(demo: Demo, isIcon: (name: string) => boolean = () => true): string[] {
++  const bad: string[] = []; const at = (t: string) => bad.push(t);
++  const { w, h } = demo.canvas;
++  if (!(w > 0 && h > 0)) at('the canvas needs a width and a height');
++  if (!demo.screens.length) at('needs at least one screen');
++  const screenIds = new Set(demo.screens.map(s => s.id)); if (screenIds.size !== demo.screens.length) at('screen ids repeat');
++  const seen = new Set<string>();
++  for (const sc of demo.screens) for (const n of sc.nodes) {
++    if (seen.has(n.id)) at(`the id "${n.id}" is used twice (ids are shared by every screen)`); seen.add(n.id);
++    if (n.x < 0 || n.y < 0 || n.x + n.w > w + 0.5 || n.y + n.h > h + 0.5) at(`"${n.id}" does not fit inside the canvas`);
++    if (n.icon && !isIcon(n.icon)) at(`"${n.id}" uses the icon "${n.icon}", which does not exist`);
++  }
++  if (demo.steps.length < 3) at('needs at least 3 steps');
++  const ids = new Set<string>();
++  demo.steps.forEach((st, i) => {
++    const n = i + 1; const w8 = `step ${n}`;
++    if (!st.say.trim()) at(`${w8} says nothing`);
++    if (st.id) { if (ids.has(st.id)) at(`${w8} repeats the id "${st.id}"`); ids.add(st.id); }
++    if (st.screen && !screenIds.has(st.screen)) at(`${w8} goes to the unknown screen "${st.screen}"`);
++    for (const [what, id] of [['focus', st.focus], ['tap', st.tap]] as const) if (id && !seen.has(id)) at(`${w8} has a ${what} on the unknown item "${id}"`);
++    for (const id of Object.keys(st.set ?? {})) if (!seen.has(id)) at(`${w8} changes the unknown item "${id}"`);
++    if (st.zoom !== undefined && !(st.zoom >= 1 && st.zoom <= MAX_ZOOM)) at(`${w8} zoom must be between 1 and ${MAX_ZOOM}`);
++    if (st.note && !st.focus && !st.tap) at(`${w8} has a note but nothing to point at`);
++    // What is on screen when the step plays: the pointer taps before the step's changes, the ring settles after them.
++    const before = demoStateAfter(demo, i - 1); const after = demoStateAfter(demo, i);
++    const t = st.tap ? before.nodes.get(st.tap) : undefined;
++    if (t && (t.screen !== before.screen || t.hidden)) at(`${w8} taps "${st.tap}", which is not on screen at that moment`);
++    const f = st.focus ? after.nodes.get(st.focus) : undefined;
++    if (f && (f.screen !== after.screen || f.hidden)) at(`${w8} focuses "${st.focus}", which is not on screen once the step has happened`);
++    for (const [id, fx] of Object.entries(st.set ?? {})) { if (fx.icon && !isIcon(fx.icon)) at(`${w8} gives "${id}" the icon "${fx.icon}", which does not exist`); }
++  });
++  return bad;
++}
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index ee570cc..8ab06ee 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -1,6 +1,7 @@
+ // Location: src/lib/trainingModule.ts
+ // The shape of a training module (B6) and the checker that refuses a badly written one. Pure, tested.
+ // Writer's guide: src/training/README.md
++import { validateDemo } from './trainingDemo';
+ export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
+ export const STAGES: readonly Stage[] = ['info', 'show', 'guide', 'check1', 'check2', 'gratify'];
+ export const STAGE_LABEL: Record<Stage, string> = { info: 'Info', show: 'Show', guide: 'Guide', check1: 'Check 1', check2: 'Check 2', gratify: 'Done' };
+@@ -14,6 +15,33 @@ export type Actor = { id: string; icon: string; label?: string; x: number; y: nu
+ export type Beat = { id?: string; say: string; place?: Record<string, { x?: number; y?: number }>; show?: string[]; hide?: string[]; pulse?: string[]; tone?: Record<string, Tone> };
+ export type Scene = { actors: Actor[]; beats: Beat[] };
+ 
++/**
++ * The Show stage: an animated demonstration drawn with simplified copies of the real screens (a "mock"), in a fixed canvas.
++ * A camera zooms and pans over the canvas, a pointer taps controls, and the picture changes as the steps play.
++ * It is watched, not played: the person moves through it with Next and Back. Ids are unique across the whole demo.
++ */
++export type DemoKind = 'panel' | 'bar' | 'text' | 'button' | 'tile' | 'row' | 'toggle' | 'field' | 'chip' | 'icon';
++/** x, y, w, h are canvas units (the canvas is demo.canvas.w by demo.canvas.h). Nodes draw in list order, so later ones sit on top. */
++export type DemoNode = {
++  id: string; kind: DemoKind; x: number; y: number; w: number; h: number;
++  label?: string; sub?: string; value?: string; icon?: string;
++  tone?: Tone; color?: string; on?: boolean; hidden?: boolean; size?: number; align?: 'left' | 'center' | 'right';
++};
++/** What a step changes on a node. Only these fields can change. */
++export type DemoEffect = Partial<Pick<DemoNode, 'hidden' | 'label' | 'sub' | 'value' | 'icon' | 'tone' | 'color' | 'on'>>;
++export type DemoScreen = { id: string; nodes: DemoNode[] };
++/**
++ * One step. In order, when it plays: the camera goes to `tap` (or `focus`), the pointer moves to `tap` and taps it,
++ * then `screen` and `set` happen, then the camera settles on `focus` and the spotlight rings it. With neither `tap` nor `focus` the camera shows the whole screen.
++ */
++export type DemoStep = {
++  id?: string; say: string; title?: string;
++  screen?: string; focus?: string; tap?: string; zoom?: number;
++  note?: string;                                  // a short label with an arrow, drawn next to the focus
++  set?: Record<string, DemoEffect>;
++};
++export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
++
+ /** What the training driver can see of the app. Kept small on purpose. */
+ export type TrainSnap = { tab: string; route: string; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean };
+ export type Until =
+@@ -41,17 +69,17 @@ export type TrainingModule = {
+   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
+   flow: 'standard' | 'guided';                // which checkout the sandbox forces
+   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
+-  info: Scene; show: Scene; guide: Step[];
++  info: Scene; show: Demo; guide: Step[];
+   check1: Goal[]; check2: Goal[];
+   recap: string[];                            // short adult lines on the Done screen: what they can now do
+ };
+ 
+ /** Every problem with a module, as plain sentences. Empty list = fine. `spotOk` says whether a spot id exists in the UI. */
+-export function validateModule(m: TrainingModule, spotOk: (id: string) => boolean): string[] {
++export function validateModule(m: TrainingModule, spotOk: (id: string) => boolean, spotIcon: (name: string) => boolean = () => true): string[] {
+   const bad: string[] = []; const at = (w: string, t: string) => bad.push(`${m.id}: ${w}: ${t}`);
+   if (!/^[a-z0-9][a-z0-9-]*$/.test(m.id)) bad.push(`${m.id}: id must be lower case letters, digits and hyphens`);
+   if (!m.title.trim() || !m.summary.trim()) at('header', 'needs a title and a summary');
+-  for (const [name, sc] of [['info', m.info], ['show', m.show]] as const) {
++  for (const [name, sc] of [['info', m.info]] as const) {
+     if (sc.beats.length < 3) at(name, 'needs at least 3 beats');
+     const ids = new Set(sc.actors.map(a => a.id)); if (ids.size !== sc.actors.length) at(name, 'actor ids repeat');
+     sc.beats.forEach((b, i) => {
+@@ -59,6 +87,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+       for (const k of [...Object.keys(b.place ?? {}), ...(b.show ?? []), ...(b.hide ?? []), ...(b.pulse ?? []), ...Object.keys(b.tone ?? {})]) if (!ids.has(k)) at(name, `beat ${i + 1} mentions the unknown actor "${k}"`);
+     });
+   }
++  for (const e of validateDemo(m.show, spotIcon)) at('show', e);
+   if (!m.guide.length) at('guide', 'needs steps');
+   const stepIds = new Set(m.guide.map(s => s.id)); if (stepIds.size !== m.guide.length) at('guide', 'step ids repeat');
+   for (const s of m.guide) {
+@@ -66,7 +95,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+     if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
+     for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
+   }
+-  const taught = new Set<string>([...stepIds, ...m.info.beats.map(b => b.id ?? ''), ...m.show.beats.map(b => b.id ?? '')].filter(Boolean));
++  const taught = new Set<string>([...stepIds, ...m.info.beats.map(b => b.id ?? ''), ...m.show.steps.map(b => b.id ?? '')].filter(Boolean));
+   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) {
+     if (!goals.length) at(name, 'needs at least one goal');
+     const gi = new Set(goals.map(g => g.id)); if (gi.size !== goals.length) at(name, 'goal ids repeat');
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+index 9f6e660..79ac1ea 100644
+--- a/src/lib/trainingSandbox.ts
++++ b/src/lib/trainingSandbox.ts
+@@ -66,9 +66,19 @@ export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined)
+   }
+   return cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
+ }
+-/** Why training cannot start right now, or null. A real card payment or part-paid sale must be finished first. */
+-export function trainingBlocker(s: { pos: { cart: Cart; attempts: { status: string }[] } }): string | null {
+-  if (s.pos.attempts.some(a => a.status === 'started' || a.status === 'unknown')) return 'A card payment is still waiting on the reader. Finish or cancel it first, then start training.';
++/** A card attempt counts as "still waiting on the reader" for this long after it starts (the same window the screensaver and staff lock use). */
++export const WAITING_WINDOW_MS = 5 * 60_000;
++type BlockAttempt = { status: string; ts: string; saleUuid?: string };
++/**
++ * Why training cannot start right now, or null. A card payment that is genuinely in flight, or a part-paid sale, must be finished first.
++ * An attempt left at "started" by a closed app, or an old "unknown" for a sale that is no longer in the cart, is history and does not block:
++ * nothing can be finished for it from here, so blocking on it would lock training for good.
++ */
++export function trainingBlocker(s: { pos: { cart: Cart; attempts: BlockAttempt[] } }, nowMs = Date.now()): string | null {
++  const live = s.pos.attempts.some(a => a.status === 'started' && nowMs - Date.parse(a.ts) < WAITING_WINDOW_MS);
++  if (live) return 'A card payment is still waiting on the reader. Finish or cancel it first (or wait a few minutes), then start training.';
++  const sale = s.pos.cart.saleUuid;
++  if (sale && s.pos.attempts.some(a => a.status === 'unknown' && a.saleUuid === sale)) return 'A card payment on the sale in the cart has no result yet. Open Payment and settle it first, then start training.';
+   if ((s.pos.cart.tenders?.length ?? 0) > 0) return 'There is a part-paid sale in the cart. Finish or cancel it first, then start training.';
+   return null;
+ }
+diff --git a/src/lib/trainingScene.ts b/src/lib/trainingScene.ts
+index 101b47d..7ba7fba 100644
+--- a/src/lib/trainingScene.ts
++++ b/src/lib/trainingScene.ts
+@@ -19,5 +19,3 @@ export function sceneAt(scene: Scene, index: number): SceneView {
+   }
+   return { index: n, total, say, last: n >= total - 1, actors: [...state.values()].map(a => ({ id: a.id, icon: a.icon, label: a.label, x: a.x, y: a.y, hidden: !!a.hidden, tone: a.tone, pulse: pulse.has(a.id) })) };
+ }
+-/** Milliseconds to hold a beat in autoplay: reading time for the sentence, never shorter than 2.2 s. */
+-export const beatMs = (say: string): number => Math.max(2200, 900 + say.split(/\s+/).filter(Boolean).length * 330);
+diff --git a/src/screens/TrainingRun.tsx b/src/screens/TrainingRun.tsx
+index a2ef9a4..23b9755 100644
+--- a/src/screens/TrainingRun.tsx
++++ b/src/screens/TrainingRun.tsx
+@@ -11,10 +11,10 @@ import { useNav, type Tab } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { useTraining } from '../state/trainingSession';
+ import SceneView from '../ui/SceneView';
++import DemoView from '../ui/DemoView';
+ import Confetti from '../ui/Confetti';
+ import { MODULES, getModule } from '../training';
+ import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
+-import { beatMs } from '../lib/trainingScene';
+ import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
+ import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
+ 
+@@ -40,8 +40,8 @@ export default function TrainingRun() {
+             {d && !on ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}<Txt size={12} weight="700" color={on ? c.onAccent : d ? '#fff' : c.text}>{STAGE_LABEL[s]}</Txt></Pressable>); })}
+       </View>
+       <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
+-        {run.stage === 'info' ? <Slides key={`i-${run.startedAt}`} mod={mod} scene="info" /> : null}
+-        {run.stage === 'show' ? <Slides key={`s-${run.startedAt}`} mod={mod} scene="show" /> : null}
++        {run.stage === 'info' ? <Slides key={`i-${run.startedAt}`} mod={mod} /> : null}
++        {run.stage === 'show' ? <Demo key={`s-${run.startedAt}`} mod={mod} /> : null}
+         {(run.stage === 'guide' || run.stage === 'check1' || run.stage === 'check2') ? <Intro mod={mod} run={run} /> : null}
+         {run.stage === 'gratify' ? <Gratify mod={mod} run={run} who={who} /> : null}
+       </ScrollView>
+@@ -49,27 +49,42 @@ export default function TrainingRun() {
+   );
+ }
+ 
+-/** Info is stepped by the person (Back and Next). Show plays by itself, with pause and replay. */
+-function Slides({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
+-  const sc = scene === 'info' ? mod.info : mod.show; const last = sc.beats.length - 1; const [i, setI] = useState(0); const [playing, setPlaying] = useState(scene === 'show'); const [seenEnd, setSeenEnd] = useState(false);
+-  useEffect(() => { if (i >= last) setSeenEnd(true); }, [i, last]);
+-  useEffect(() => { if (!playing) return undefined; const t = setTimeout(() => { if (i < last) setI(i + 1); else setPlaying(false); }, beatMs(sc.beats[i].say)); return () => clearTimeout(t); }, [playing, i, last, sc]);
+-  const ready = seenEnd; const go = () => useTraining.getState().completeStage();
++/** Info is a slideshow the person steps through with Back and Next. */
++function Slides({ mod }: { mod: TrainingModule }) {
++  const sc = mod.info; const last = sc.beats.length - 1; const [i, setI] = useState(0); const go = () => useTraining.getState().completeStage();
+   return (
+     <View style={{ gap: 16 }}>
+-      <Txt size={13} weight="700" sub>{scene === 'info' ? 'INFO' : 'SHOW THE PROCESS'}</Txt>
++      <Txt size={13} weight="700" sub>INFO</Txt>
+       <SceneView scene={sc} index={i} />
+       <View style={{ flexDirection: 'row', gap: 10 }}>
+-        {scene === 'info' ? <>
+-          <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
+-          {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
+-        </> : <>
+-          <Btn title={playing ? 'Pause' : 'Play'} kind="secondary" icon={playing ? 'pause' : 'play'} onPress={() => { if (!playing && i >= last) setI(0); setPlaying(!playing); }} style={{ flex: 1 }} />
+-          <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => { setI(0); setPlaying(true); }} style={{ flex: 1 }} />
+-          <Btn title="Continue" disabled={!ready} onPress={go} style={{ flex: 1 }} />
+-        </>}
++        <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
++        {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
++      </View>
++    </View>
++  );
++}
++
++/**
++ * Show is an animated demonstration the person watches at their own pace. Each step plays once when it opens and then waits.
++ * Nothing moves on by itself: Next goes to the following step, Back returns to the one before, Replay plays the current step again.
++ */
++function Demo({ mod }: { mod: TrainingModule }) {
++  const { c } = useTheme(); const demo = mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
++  const go = () => useTraining.getState().completeStage();
++  return (
++    <View style={{ gap: 16 }}>
++      <Txt size={13} weight="700" sub>SHOW THE PROCESS</Txt>
++      <DemoView demo={demo} index={i} replay={replay} />
++      <View style={{ gap: 6, minHeight: 104 }}>
++        {step.title ? <Txt size={13} weight="700" sub>{step.title}</Txt> : null}
++        <View accessibilityLiveRegion="polite"><Txt size={19} weight="600" style={{ lineHeight: 27 }}>{step.say}</Txt></View>
++      </View>
++      <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>{demo.steps.map((_, k) => <View key={k} style={{ width: k === i ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: k <= i ? c.text : c.line }} />)}</View>
++      <View style={{ flexDirection: 'row', gap: 10 }}>
++        <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
++        <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => setReplay(replay + 1)} style={{ flex: 1 }} />
++        {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
+       </View>
+-      {scene === 'show' && !ready ? <Txt size={13} sub style={{ textAlign: 'center' }}>Watch it through once, then you can continue.</Txt> : null}
+     </View>
+   );
+ }
+diff --git a/src/training/README.md b/src/training/README.md
+index 5068407..2d38695 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -5,12 +5,33 @@ A module is one TypeScript file in `src/training/modules/`, added to the list in
+ ## The six parts
+ 
+ 1. **Info** (`info`): a scene with at least 3 beats. Each beat is one sentence plus what moves, appears or pulses while it is read. Say what the job is, when you need it, and roughly how it works inside.
+-2. **Show** (`show`): the same format, but the beats show the flow as a simple picture: a token travelling between stages. Never draw the real screens here.
++2. **Show** (`show`): an animated demonstration the person watches at their own pace. See "Writing a Show" below. It is drawn with simplified copies of the real screens (a mock), never the live UI, and it never advances by itself.
+ 3. **Guide** (`guide`): steps on the real till. A step has a `target` (a spot), a sentence, and `until`: `next` (a Next button, for pure information), `press` (the person taps the spot), `visible` (a spot appears) or `state` (a test on the app state). Give a `recover` for steps whose target may be on another screen or tab.
+ 4. **Check 1** (`check1`): goals, no arrows, everything goes right.
+ 5. **Check 2** (`check2`): goals where customer side problems happen on purpose (`inject`). Every goal with an injection must name `taughtBy`: the id of the Info beat, Show beat or Guide step that told the person how to handle it. No admin problems.
+ 6. **Done**: made from `recap`, a few short adult lines on what the person can now do.
+ 
++## Writing a Show
++
++A Show is a `Demo`: a fixed canvas, one or more **screens** made of **nodes**, and a list of **steps**. Think of a short product walkthrough: the camera moves in on a control, a pointer taps it, the screen responds, the camera settles on the result, and a note points at it. The person watches and presses Next when ready. Nothing moves on by itself, and they never have to do anything in it.
++
++- **Canvas**: `canvas: { w, h }` in canvas units (the welcome course uses 640 by 400, a landscape till). Every node is placed with `x`, `y`, `w`, `h` in those units, and must fit inside it.
++- **Nodes** (`kind`): `panel`, `bar`, `text`, `button`, `tile`, `row`, `toggle`, `field`, `chip`, `icon`. They draw in list order, so later ones sit on top. Give each an `id`. Ids are unique across every screen of the demo. Use `hidden: true` for things a step will reveal, such as a cart line.
++- **Make it look like the real thing**: copy the real label, price and layout. The mock should be recognisable the moment the person reaches Guide.
++- **Steps**: each has `say` (one plain sentence, the same rules as everywhere), an optional short `title`, and any of:
++  - `tap`: the pointer glides to this node and taps it. The node must be on screen and visible at that moment.
++  - `set`: what changes when the tap lands, as `{ nodeId: { hidden, label, sub, value, icon, tone, color, on } }`. Use `on` to flip a toggle, `hidden: false` to reveal a line, `tone: 'accent'` on a tile to ring it.
++  - `screen`: switch to another screen of the demo (a cross-fade).
++  - `focus`: where the camera settles and the spotlight rings once the step has happened. With no `focus` and no `tap` the camera shows the whole screen.
++  - `zoom`: override how far in the camera goes (1 to 2.2). Leave it out and the camera picks a size that fits the target.
++  - `note`: a short label with an arrow beside the ringed area, for example `Tap here`.
++- **Order inside a step**: the camera goes to the `tap` (or `focus`), the pointer moves and taps, then `screen` and `set` happen, then the camera settles on `focus` and the note appears. Going Back shows the finished picture. Replay plays the step again.
++- **Length**: at least 3 steps. Aim for 5 to 8, one idea each. Do not teach a second process in the same Show.
++- **Teach the failures here**: the Show is where the person is told how to handle what will go wrong in Check 2 (a declined card, no change). Give those steps an `id` and name it in the goal's `taughtBy`.
++- **Not the real screens**: the Show is a picture. Real screens, real data and real tapping start at Guide.
++
++`npm test` checks every Show: ids, screens, nodes that fit the canvas, taps on things that are not on screen, icons that do not exist, zoom limits. The pure maths (what the picture looks like after step N, where the camera goes) is in `src/lib/trainingDemo.ts`; the drawing and animation are in `src/ui/DemoView.tsx`.
++
+ ## Spots
+ 
+ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`, `Chip`, `Row` or `IconBtn`, or wrap a view in `<Spot id=...>`. Static ids live in `src/lib/trainingSpots.ts`. Grid tiles and cart lines get ids from the item (`grid.item:<id>`, `cart.line:<variantId>`). `tests/trainingspots.test.ts` reads the source, so a module cannot name a spot that is not there.
+diff --git a/src/training/modules/welcome.ts b/src/training/modules/welcome.ts
+index f886368..f03141a 100644
+--- a/src/training/modules/welcome.ts
++++ b/src/training/modules/welcome.ts
+@@ -21,16 +21,43 @@ export const welcome: TrainingModule = {
+     ],
+   },
+   show: {
+-    actors: [
+-      { id: 'a1', icon: 'book', label: 'Info', x: 10, y: 55 }, { id: 'a2', icon: 'eye', label: 'Show', x: 30, y: 55 }, { id: 'a3', icon: 'hand-left', label: 'Guide', x: 50, y: 55 },
+-      { id: 'a4', icon: 'checkbox', label: 'Checks', x: 70, y: 55 }, { id: 'a5', icon: 'trophy', label: 'Done', x: 90, y: 55 }, { id: 'dot', icon: 'ellipse', x: 10, y: 28, tone: 'accent' },
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'checkout', nodes: [
++        { id: 'co-bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Checkout', sub: 'Practice data' },
++        { id: 'tile-bee', kind: 'tile', x: 14, y: 56, w: 104, h: 82, icon: 'bug', label: 'Bumble Bee', sub: '$8.00', color: '#FEF08A' },
++        { id: 'tile-dragon', kind: 'tile', x: 126, y: 56, w: 104, h: 82, icon: 'flame', label: 'Red Dragon', sub: '$25.00', color: '#FED7AA' },
++        { id: 'tile-egg', kind: 'tile', x: 238, y: 56, w: 104, h: 82, icon: 'egg', label: 'Dragon Egg', sub: '$6.00', color: '#BBF7D0' },
++        { id: 'tile-key', kind: 'tile', x: 14, y: 146, w: 104, h: 82, icon: 'key', label: 'Keyring', sub: '$5.00', color: '#BFDBFE' },
++        { id: 'tile-cow', kind: 'tile', x: 126, y: 146, w: 104, h: 82, icon: 'paw', label: 'Highland Cow', sub: '$12.00', color: '#DDD6FE' },
++        { id: 'tile-custom', kind: 'tile', x: 238, y: 146, w: 104, h: 82, icon: 'create', label: 'Custom amount', color: '#E5E7EB' },
++        { id: 'cart', kind: 'panel', x: 372, y: 52, w: 254, h: 250, label: 'CART' },
++        { id: 'line-bee', kind: 'row', x: 380, y: 76, w: 238, h: 40, label: 'Bumble Bee', sub: '1 x $8.00', value: '$8.00', hidden: true },
++        { id: 'line-dragon', kind: 'row', x: 380, y: 116, w: 238, h: 40, label: 'Red Dragon', sub: '1 x $25.00', value: '$25.00', hidden: true },
++        { id: 'total', kind: 'row', x: 380, y: 224, w: 238, h: 34, label: 'Total', value: '$0.00' },
++        { id: 'charge', kind: 'button', x: 380, y: 264, w: 238, h: 30, label: 'Charge', icon: 'card' },
++        { id: 'hint-box', kind: 'panel', x: 14, y: 240, w: 328, h: 52, hidden: true },
++        { id: 'hint-text', kind: 'text', x: 24, y: 244, w: 308, h: 44, label: 'Items are added from the grid on the Checkout screen.', size: 12, hidden: true },
++        { id: 'dock', kind: 'panel', x: 0, y: 340, w: 640, h: 60 },
++        { id: 'dock-say', kind: 'text', x: 14, y: 346, w: 400, h: 48, label: 'Tap the Bumble Bee tile.', sub: 'Step 1 of 3', size: 14 },
++        { id: 'hint', kind: 'button', x: 432, y: 351, w: 96, h: 38, label: 'Hint', icon: 'help-circle', tone: 'neutral' },
++        { id: 'exit', kind: 'button', x: 536, y: 351, w: 90, h: 38, label: 'Exit', icon: 'close', tone: 'neutral' },
++      ] },
++      { id: 'done', nodes: [
++        { id: 'dn-bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Course complete' },
++        { id: 'dn-tick', kind: 'icon', x: 270, y: 70, w: 100, h: 100, icon: 'checkmark-circle', tone: 'good', size: 96 },
++        { id: 'dn-title', kind: 'text', x: 120, y: 184, w: 400, h: 34, label: 'Course complete', size: 22, align: 'center' },
++        { id: 'dn-sub', kind: 'text', x: 120, y: 220, w: 400, h: 22, label: 'How training works', size: 13, align: 'center', tone: 'neutral' },
++        { id: 'name-row', kind: 'row', x: 190, y: 270, w: 260, h: 44, icon: 'person', label: 'Your name', sub: 'How training works', value: 'Done', tone: 'good', hidden: true },
++      ] },
+     ],
+-    beats: [
+-      { say: 'You start by reading what the job is and when you need it.', place: { dot: { x: 10 } }, pulse: ['a1'] },
+-      { say: 'Then you watch it happen as a simple picture.', place: { dot: { x: 30 } }, pulse: ['a2'] },
+-      { say: 'Then you do it on the real till, with arrows showing you where to tap.', place: { dot: { x: 50 } }, pulse: ['a3'] },
+-      { say: 'Then you do it alone, once when everything goes right and once when things go wrong.', place: { dot: { x: 70 } }, pulse: ['a4'] },
+-      { say: 'Get through both and you are done.', place: { dot: { x: 90 } }, tone: { dot: 'good', a5: 'good' }, pulse: ['a5'] },
++    steps: [
++      { id: 'ring', title: 'Guide: the real till', say: 'In Guide you use the real till with practice data. This is a picture of it. The screen dims, and a ring shows the one thing to touch.', focus: 'tile-bee', note: 'The ring shows where to tap' },
++      { id: 'tap', title: 'You tap, it responds', say: 'You tap the ringed tile, the same as at a real sale. The item lands in the cart and the total changes.', tap: 'tile-bee', focus: 'cart', set: { 'line-bee': { hidden: false }, total: { value: '$8.00' }, 'dock-say': { label: 'Now add a second item.', sub: 'Step 2 of 3' } }, note: 'The cart updates' },
++      { id: 'bar', title: 'The bar at the bottom', say: 'The bar at the bottom says what you are doing. When its words change, you have moved on to the next step.', focus: 'dock-say', zoom: 1.7, note: 'Your current job' },
++      { id: 'hint1', title: 'Stuck? Tap Hint', say: 'Stuck in a Check? Tap Hint. The first one only tells you where to look.', tap: 'hint', focus: 'hint-text', set: { 'hint-box': { hidden: false }, 'hint-text': { hidden: false } }, note: 'A small pointer' },
++      { id: 'hint2', title: 'Each hint is clearer', say: 'Tap again for a clearer pointer. After the last hint, the answer is ringed for you.', tap: 'hint', focus: 'tile-egg', set: { 'hint-text': { label: 'Tap one product tile, then tap a different one.' }, 'tile-egg': { tone: 'accent' } }, note: 'The answer, ringed' },
++      { id: 'tick', title: 'Done', say: 'Finish both Checks and the course gets a green tick next to your name.', screen: 'done', focus: 'name-row', set: { 'name-row': { hidden: false } }, note: 'Your green tick' },
+     ],
+   },
+   guide: [
+diff --git a/src/ui/DemoView.tsx b/src/ui/DemoView.tsx
+new file mode 100644
+index 0000000..5042caa
+--- /dev/null
++++ b/src/ui/DemoView.tsx
+@@ -0,0 +1,140 @@
++// Location: src/ui/DemoView.tsx
++// Draws the Show stage (B6): simplified copies of the real screens in a fixed canvas, with a camera that zooms and pans, a pointer that taps,
++// a spotlight and a note. It plays one step at a time and then waits: the person moves on with Next. Nothing here advances by itself.
++// What each step looks like is worked out by src/lib/trainingDemo.ts. This file only draws it and animates between steps.
++import React, { useEffect, useRef, useState } from 'react';
++import { AccessibilityInfo, Animated, Easing, Text, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { TILE_COLORS, useTheme, type Colors } from './theme';
++import { tap } from './kit';
++import { demoStateAfter, planStep, type Note, type NodeView } from '../lib/trainingDemo';
++import type { Demo } from '../lib/trainingModule';
++
++const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)'; const BIG = 3000;
++const toneColor = (c: Colors, t?: string, fallback?: string) => (t === 'good' ? c.good : t === 'bad' ? c.bad : t === 'accent' ? c.accent : fallback ?? c.text);
++
++/** Fades a node in or out when a step shows or hides it, dips it when the pointer taps it, and draws it by kind. */
++function MockNode({ n, press }: { n: NodeView; press: number }) {
++  const { c } = useTheme(); const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const k = useRef(new Animated.Value(n.on ? 1 : 0)).current;
++  useEffect(() => { Animated.timing(o, { toValue: n.hidden ? 0 : 1, duration: 280, useNativeDriver: false }).start(); }, [n.hidden]); // eslint-disable-line react-hooks/exhaustive-deps
++  useEffect(() => { Animated.timing(k, { toValue: n.on ? 1 : 0, duration: 260, useNativeDriver: false }).start(); }, [n.on]); // eslint-disable-line react-hooks/exhaustive-deps
++  useEffect(() => { if (press > 0) Animated.sequence([Animated.timing(s, { toValue: 0.93, duration: 110, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 5, useNativeDriver: false })]).start(); }, [press]); // eslint-disable-line react-hooks/exhaustive-deps
++  const box = { position: 'absolute' as const, left: n.x, top: n.y, width: n.w, height: n.h, opacity: o, transform: [{ scale: s }] };
++  const txt = { allowFontScaling: false as const };
++  let body: React.ReactNode = null;
++  switch (n.kind) {
++    case 'panel': body = <View style={{ flex: 1, backgroundColor: c.card, borderRadius: 12, borderWidth: 1, borderColor: c.line, padding: 8 }}>{n.label ? <Text {...txt} style={{ color: c.sub, fontSize: 10, fontWeight: '700' }}>{n.label}</Text> : null}</View>; break;
++    case 'bar': body = <View style={{ flex: 1, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12 }}><Text {...txt} style={{ color: c.text, fontSize: 15, fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: 11 }}>{n.sub}</Text> : null}</View>; break;
++    case 'text': body = <View style={{ flex: 1, justifyContent: 'center' }}><Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: n.size ?? 13, fontWeight: '600', textAlign: n.align ?? 'left' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: Math.max(9, (n.size ?? 13) - 2), textAlign: n.align ?? 'left' }}>{n.sub}</Text> : null}</View>; break;
++    case 'button': { const solid = n.tone === undefined || n.tone === 'accent'; const bg = solid ? c.accent : n.tone === 'good' ? c.good : n.tone === 'bad' ? c.bad : c.fill; const fg = solid ? c.onAccent : n.tone === 'good' || n.tone === 'bad' ? '#FFFFFF' : c.text;
++      body = <View style={{ flex: 1, backgroundColor: bg, borderRadius: 10, flexDirection: 'row', gap: 5, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }}>{n.icon ? <Ionicons name={n.icon as any} size={14} color={fg} /> : null}<Text {...txt} numberOfLines={1} style={{ color: fg, fontSize: n.size ?? 12, fontWeight: '700' }}>{n.label}</Text></View>; break; }
++    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: 10, padding: 7, justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? 3 : 0, borderColor: RING }}>{n.icon ? <Ionicons name={n.icon as any} size={16} color="#111" /> : <View />}<View><Text {...txt} numberOfLines={1} style={{ color: '#111', fontSize: 11, fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: 10 }}>{n.sub}</Text> : null}</View></View>; break;
++    case 'row': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 8, borderBottomWidth: 1, borderBottomColor: c.line }}>{n.icon ? <Ionicons name={n.icon as any} size={16} color={c.sub} /> : null}<View style={{ flex: 1 }}><Text {...txt} numberOfLines={1} style={{ color: c.text, fontSize: 12, fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} numberOfLines={1} style={{ color: c.sub, fontSize: 10 }}>{n.sub}</Text> : null}</View>{n.value ? <Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: 12, fontWeight: '700' }}>{n.value}</Text> : null}</View>; break;
++    case 'toggle': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 8 }}><Text {...txt} style={{ color: c.text, fontSize: 12, fontWeight: '600', flex: 1 }}>{n.label}</Text>
++      <Animated.View style={{ width: 38, height: 22, borderRadius: 11, backgroundColor: k.interpolate({ inputRange: [0, 1], outputRange: [c.line, c.good] }), justifyContent: 'center' }}><Animated.View style={{ width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', transform: [{ translateX: k.interpolate({ inputRange: [0, 1], outputRange: [2, 18] }) }] }} /></Animated.View></View>; break;
++    case 'field': body = <View style={{ flex: 1, backgroundColor: c.fill, borderRadius: 8, borderWidth: 1, borderColor: c.line, paddingHorizontal: 8, justifyContent: 'center' }}><Text {...txt} numberOfLines={1} style={{ color: n.value ? c.text : c.sub, fontSize: n.size ?? 12 }}>{n.value ?? n.label}</Text></View>; break;
++    case 'chip': body = <View style={{ flex: 1, borderRadius: 999, backgroundColor: n.tone === 'accent' ? c.accent : c.fill, alignItems: 'center', justifyContent: 'center' }}><Text {...txt} numberOfLines={1} style={{ color: n.tone === 'accent' ? c.onAccent : c.text, fontSize: 11, fontWeight: '700' }}>{n.label}</Text></View>; break;
++    case 'icon': body = <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={(n.icon ?? 'ellipse') as any} size={n.size ?? Math.min(n.w, n.h)} color={toneColor(c, n.tone)} /></View>; break;
++  }
++  return <Animated.View pointerEvents="none" style={box}>{body}</Animated.View>;
++}
++
++/** One screen of the mock. All screens stay mounted and cross-fade, so a change of screen is a dissolve rather than a jump. */
++function MockScreen({ nodes, on, press }: { nodes: NodeView[]; on: boolean; press: { id: string; n: number } }) {
++  const o = useRef(new Animated.Value(on ? 1 : 0)).current;
++  useEffect(() => { Animated.timing(o, { toValue: on ? 1 : 0, duration: 380, useNativeDriver: false }).start(); }, [on]); // eslint-disable-line react-hooks/exhaustive-deps
++  return <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0, opacity: o }}>{nodes.map(n => <MockNode key={n.id} n={n} press={press.id === n.id ? press.n : 0} />)}</Animated.View>;
++}
++
++function NoteBubble({ note }: { note: Note }) {
++  const { c } = useTheme(); const o = useRef(new Animated.Value(0)).current;
++  useEffect(() => { Animated.timing(o, { toValue: 1, duration: 300, useNativeDriver: false }).start(); }, [o]);
++  const arrow = { position: 'absolute' as const, left: note.arrowX - 6, width: 12, height: 12, backgroundColor: c.card, borderColor: RING, transform: [{ rotate: '45deg' }] };
++  return (
++    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: note.x, top: note.y, width: note.w, minHeight: note.h, opacity: o, backgroundColor: c.card, borderRadius: 10, borderWidth: 2, borderColor: RING, padding: 7, justifyContent: 'center' }}>
++      <View style={[arrow, note.side === 'below' ? { top: -7, borderLeftWidth: 2, borderTopWidth: 2 } : { bottom: -7, borderRightWidth: 2, borderBottomWidth: 2 }]} />
++      <Text allowFontScaling={false} style={{ color: c.text, fontSize: 12, fontWeight: '700', textAlign: 'center' }}>{note.text}</Text>
++    </Animated.View>
++  );
++}
++
++const ease = Easing.inOut(Easing.cubic);
++/**
++ * `index` is the step to show. Moving forward one step plays it (camera, pointer, tap, change, settle). Going back, jumping, or a new `replay`
++ * count: back and jumps settle straight on the finished picture, and a replay plays the step again from the one before it.
++ */
++export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; index: number; replay?: number }) {
++  const { c } = useTheme(); const CW = demo.canvas.w; const CH = demo.canvas.h;
++  const [vw, setVw] = useState(CW); const vh = vw * (CH / CW); const b = vw / CW;
++  const [applied, setApplied] = useState(-1); const [note, setNote] = useState<Note | null>(null); const [press, setPress] = useState({ id: '', n: 0 }); const [reduce, setReduce] = useState(false);
++  const zoom = useRef(new Animated.Value(1)).current; const cx = useRef(new Animated.Value(CW / 2)).current; const cy = useRef(new Animated.Value(CH / 2)).current;
++  const hx = useRef(new Animated.Value(0)).current; const hy = useRef(new Animated.Value(0)).current; const hw = useRef(new Animated.Value(CW)).current; const hh = useRef(new Animated.Value(CH)).current; const dim = useRef(new Animated.Value(0)).current;
++  const px = useRef(new Animated.Value(CW / 2)).current; const py = useRef(new Animated.Value(CH / 2)).current; const po = useRef(new Animated.Value(0)).current; const rip = useRef(new Animated.Value(0)).current;
++  const pulse = useRef(new Animated.Value(0.5)).current;
++  const token = useRef(0); const prev = useRef(-1); const lastReplay = useRef(replay); const cursorShown = useRef(false);
++  useEffect(() => { void AccessibilityInfo.isReduceMotionEnabled().then(setReduce).catch(() => {}); }, []);
++  useEffect(() => { const l = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 650, useNativeDriver: false }), Animated.timing(pulse, { toValue: 0.5, duration: 650, useNativeDriver: false })])); l.start(); return () => l.stop(); }, [pulse]);
++
++  useEffect(() => {
++    const me = ++token.current; const dead = () => token.current !== me; const plan = planStep(demo, index);
++    const replaying = replay !== lastReplay.current; lastReplay.current = replay;
++    const forward = replaying || index === prev.current + 1; prev.current = index;
++    const d = (ms: number) => (reduce ? 0 : ms);
++    const go = (v: Animated.Value, to: number, ms: number, e = ease) => new Promise<void>(res => { if (ms <= 0) { v.setValue(to); res(); } else Animated.timing(v, { toValue: to, duration: ms, easing: e, useNativeDriver: false }).start(() => res()); });
++    const wait = (ms: number) => new Promise<void>(res => setTimeout(res, d(ms)));
++    const camTo = (cam: { zoom: number; cx: number; cy: number }, hole: { x: number; y: number; w: number; h: number } | null, ms: number) => Promise.all([
++      go(zoom, cam.zoom, ms), go(cx, cam.cx, ms), go(cy, cam.cy, ms),
++      ...(hole ? [go(hx, hole.x - 5, ms), go(hy, hole.y - 5, ms), go(hw, hole.w + 10, ms), go(hh, hole.h + 10, ms), go(dim, 1, ms)] : [go(dim, 0, ms)]),
++    ]);
++    void (async () => {
++      setNote(null);
++      if (!forward) { // going back or jumping: show the finished picture, no pointer
++        setApplied(index); void go(po, 0, 150); cursorShown.current = false;
++        await camTo(plan.focusCam, plan.focus, d(500)); if (dead()) return; setNote(plan.note); return;
++      }
++      setApplied(index - 1); // the picture before this step (also what a replay starts from)
++      await camTo(plan.lookCam, plan.look, d(750)); if (dead()) return;
++      if (plan.tapPoint) {
++        if (!cursorShown.current) { px.setValue(plan.tapPoint.x + 70); py.setValue(plan.tapPoint.y + 55); }
++        void go(po, 1, 200); cursorShown.current = true;
++        await Promise.all([go(px, plan.tapPoint.x, d(700)), go(py, plan.tapPoint.y, d(700))]); if (dead()) return;
++        await wait(150); if (dead()) return;
++        rip.setValue(0); void go(rip, 1, d(450), Easing.out(Easing.quad)); tap(); setPress(p => ({ id: plan.tapId ?? '', n: p.n + 1 }));
++        await wait(220); if (dead()) return;
++      } else { void go(po, 0, 200); cursorShown.current = false; await wait(plan.changes ? 150 : 0); if (dead()) return; }
++      setApplied(index); // the step's changes happen here (a new screen, a line appearing, a switch flipping)
++      await wait(plan.changes ? 520 : 0); if (dead()) return;
++      await camTo(plan.focusCam, plan.focus, d(750)); if (dead()) return;
++      setNote(plan.note);
++    })();
++    return () => { token.current += 1; };
++  }, [demo, index, replay, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
++
++  const st = demoStateAfter(demo, applied); const byScreen = new Map<string, NodeView[]>(demo.screens.map(sc => [sc.id, []]));
++  for (const n of st.nodes.values()) byScreen.get(n.screen)?.push(n);
++  const order = new Map(demo.screens.flatMap(sc => sc.nodes.map((n, i) => [n.id, i] as const))); for (const l of byScreen.values()) l.sort((a, z) => (order.get(a.id) ?? 0) - (order.get(z.id) ?? 0));
++  const S = Animated.multiply(zoom, b);
++  const tx = Animated.multiply(Animated.subtract(CW / 2, cx), S); const ty = Animated.multiply(Animated.subtract(CH / 2, cy), S);
++  const panel = { position: 'absolute' as const, backgroundColor: DIM };
++  const lbl = demo.steps[Math.max(0, Math.min(index, demo.steps.length - 1))];
++  return (
++    <View onLayout={e => setVw(Math.max(200, e.nativeEvent.layout.width))} accessible accessibilityLabel={`Animated demonstration. ${lbl.say}`}
++      style={{ width: '100%', maxWidth: 760, alignSelf: 'center', height: vh, borderRadius: 20, backgroundColor: c.bg, borderWidth: 1, borderColor: c.line, overflow: 'hidden' }}>
++      <Animated.View style={{ position: 'absolute', left: (vw - CW) / 2, top: (vh - CH) / 2, width: CW, height: CH, transform: [{ translateX: tx }, { translateY: ty }, { scale: S }] }}>
++        {demo.screens.map(sc => <MockScreen key={sc.id} nodes={byScreen.get(sc.id) ?? []} on={sc.id === st.screen} press={press} />)}
++        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: CW, height: CH, opacity: dim }}>
++          <Animated.View style={[panel, { left: -BIG, top: -BIG, width: CW + BIG * 2, height: Animated.add(hy, BIG) }]} />
++          <Animated.View style={[panel, { left: -BIG, top: Animated.add(hy, hh), width: CW + BIG * 2, height: BIG * 2 }]} />
++          <Animated.View style={[panel, { left: -BIG, top: hy, width: Animated.add(hx, BIG), height: hh }]} />
++          <Animated.View style={[panel, { left: Animated.add(hx, hw), top: hy, width: BIG * 2, height: hh }]} />
++          <Animated.View style={{ position: 'absolute', left: hx, top: hy, width: hw, height: hh, borderRadius: 12, borderWidth: 3, borderColor: RING, opacity: pulse }} />
++        </Animated.View>
++        {note ? <NoteBubble key={`${index}-${replay}`} note={note} /> : null}
++        <Animated.View pointerEvents="none" style={{ position: 'absolute', left: Animated.subtract(px, 22), top: Animated.subtract(py, 22), width: 44, height: 44, alignItems: 'center', justifyContent: 'center', opacity: po }}>
++          <Animated.View style={{ position: 'absolute', width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: '#FFFFFF', backgroundColor: 'rgba(245,158,11,0.35)', opacity: rip.interpolate({ inputRange: [0, 0.2, 1], outputRange: [0, 0.9, 0] }), transform: [{ scale: rip.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.5] }) }] }} />
++          <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={26} color="#111" style={{ textShadowColor: '#fff', textShadowRadius: 3 }} /></View>
++        </Animated.View>
++      </Animated.View>
++    </View>
++  );
++}
+diff --git a/tests/training.test.ts b/tests/training.test.ts
+index 8a7f70a..89a44ad 100644
+--- a/tests/training.test.ts
++++ b/tests/training.test.ts
+@@ -2,7 +2,7 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import { validateModule, needsSandbox, STAGES, type Scene, type TrainingModule } from '../src/lib/trainingModule';
+-import { sceneAt, beatMs } from '../src/lib/trainingScene';
++import { sceneAt } from '../src/lib/trainingScene';
+ import { freshHints, nextHint, hintView, shouldNudge, NUDGE_AFTER_MS } from '../src/lib/trainingHints';
+ import { advanceGoal, advanceStep, canOpenStage, finishStage, seeIntro, showsIntro, skipStep, startRun, useHint as bumpHint } from '../src/lib/trainingRun';
+ import { completeModule, completedCount, emptyProgress, isComplete, nextSuggested, readProgress, recordStage, resetModule, staffKey, stagesDone } from '../src/lib/trainingProgress';
+@@ -23,7 +23,6 @@ test('a scene is replayed from the start to the beat asked for', () => {
+   assert.equal(sceneAt(scene, 99).index, 2); assert.equal(sceneAt(scene, -3).index, 0);
+   assert.equal(scene.actors[0].x, 10, 'the module data is never changed');
+ });
+-test('beat hold time follows the sentence length with a floor', () => { assert.equal(beatMs('Hi'), 2200); assert.ok(beatMs('word '.repeat(30)) > 8000); });
+ 
+ const ladder = ['pointer', 'clearer', 'specific'];
+ test('hints climb one rung per press, then reveal, and restart on a new goal', () => {
+@@ -102,7 +101,7 @@ test('the checker refuses each kind of badly written module', () => {
+   const m0 = clone(); assert.deepEqual(ok(m0), []);
+   const bad = (f: (m: TrainingModule) => void) => { const m = clone(); f(m); return ok(m); };
+   assert.ok(bad(m => { m.id = 'Bad Id'; }).length); assert.ok(bad(m => { m.info.beats = m.info.beats.slice(0, 2); }).some(e => e.includes('3 beats')));
+-  assert.ok(bad(m => { m.show.beats[0].pulse = ['ghost']; }).some(e => e.includes('ghost'))); assert.ok(bad(m => { m.guide = []; }).some(e => e.includes('needs steps')));
++  assert.ok(bad(m => { m.show.steps[0].focus = 'ghost'; }).some(e => e.includes('ghost'))); assert.ok(bad(m => { m.guide = []; }).some(e => e.includes('needs steps')));
+   assert.ok(bad(m => { m.guide[0] = { id: 'x', say: 'tap', until: { kind: 'press', id: 'cart.charge' } }; }).some(e => e.includes('points at nothing')));
+   assert.ok(bad(m => { m.guide[1].target = 'nonsense.spot'; }).some(e => e.includes('unknown spot')));
+   assert.ok(bad(m => { m.check1[0].ladder = ['only one']; }).some(e => e.includes('2 hints'))); assert.ok(bad(m => { m.check1[0].reveal = undefined; }).some(e => e.includes('highlight')));
+diff --git a/tests/trainingdemo.test.ts b/tests/trainingdemo.test.ts
+new file mode 100644
+index 0000000..3fc33b0
+--- /dev/null
++++ b/tests/trainingdemo.test.ts
+@@ -0,0 +1,84 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { MAX_ZOOM, cameraFor, demoStateAfter, noteFor, planStep, validateDemo } from '../src/lib/trainingDemo';
++import type { Demo } from '../src/lib/trainingModule';
++import { MODULES } from '../src/training';
++
++const demo = (): Demo => ({
++  canvas: { w: 600, h: 400 },
++  screens: [
++    { id: 'a', nodes: [
++      { id: 'btn', kind: 'button', x: 20, y: 20, w: 80, h: 30, label: 'Go' },
++      { id: 'row', kind: 'row', x: 300, y: 300, w: 200, h: 40, label: 'Item', hidden: true },
++      { id: 'big', kind: 'panel', x: 0, y: 0, w: 600, h: 400 },
++    ] },
++    { id: 'b', nodes: [{ id: 'ok', kind: 'text', x: 250, y: 150, w: 100, h: 30, label: 'Saved' }] },
++  ],
++  steps: [
++    { say: 'one', focus: 'btn' },
++    { say: 'two', tap: 'btn', focus: 'row', set: { row: { hidden: false, value: '$5' } } },
++    { say: 'three', screen: 'b', focus: 'ok' },
++  ],
++});
++
++test('the picture after each step is built from the changes so far', () => {
++  const d = demo();
++  const s0 = demoStateAfter(d, -1); assert.equal(s0.screen, 'a'); assert.equal(s0.nodes.get('row')!.hidden, true);
++  const s1 = demoStateAfter(d, 1); assert.equal(s1.nodes.get('row')!.hidden, false); assert.equal(s1.nodes.get('row')!.value, '$5'); assert.equal(s1.screen, 'a');
++  assert.equal(demoStateAfter(d, 2).screen, 'b'); assert.equal(demoStateAfter(d, 99).screen, 'b');
++  assert.equal(d.screens[0].nodes[1].hidden, true, 'the demo itself is never changed');
++});
++
++test('the camera zooms in on small targets, stays out for big ones, and never leaves the canvas', () => {
++  const c = { w: 600, h: 400 };
++  assert.deepEqual(cameraFor(c, null), { zoom: 1, cx: 300, cy: 200 });
++  const small = cameraFor(c, { x: 20, y: 20, w: 80, h: 30 });
++  assert.ok(small.zoom > 1.5 && small.zoom <= MAX_ZOOM);
++  assert.ok(small.cx >= 300 / small.zoom && small.cy >= 200 / small.zoom, 'a target in the corner is pulled back so no empty space shows');
++  assert.equal(cameraFor(c, { x: 0, y: 0, w: 600, h: 400 }).zoom, 1);
++  assert.equal(cameraFor(c, { x: 100, y: 100, w: 10, h: 10 }, 5).zoom, MAX_ZOOM, 'a requested zoom is capped');
++  assert.equal(cameraFor(c, { x: 100, y: 100, w: 300, h: 300 }, 0.2).zoom, 1);
++});
++
++test('a step plan says where to look, where to tap and where to settle', () => {
++  const d = demo();
++  const p0 = planStep(d, 0); assert.equal(p0.tap, null); assert.equal(p0.tapPoint, null); assert.deepEqual(p0.look, p0.focus); assert.equal(p0.changes, false);
++  const p1 = planStep(d, 1); assert.deepEqual(p1.tapPoint, { x: 60, y: 35 }); assert.equal(p1.tapId, 'btn'); assert.deepEqual(p1.look, { x: 20, y: 20, w: 80, h: 30 }); assert.deepEqual(p1.focus, { x: 300, y: 300, w: 200, h: 40 }); assert.equal(p1.changes, true);
++  assert.equal(planStep(d, 2).changes, true); assert.equal(planStep(d, 99).index, 2); assert.equal(planStep(d, -4).index, 0);
++  assert.equal(planStep({ ...d, steps: [{ say: 'whole screen' }, ...d.steps] }, 0).focus, null);
++});
++
++test('a note sits beside the ringed area and stays inside the canvas', () => {
++  const c = { w: 600, h: 400 };
++  for (const r of [{ x: 10, y: 10, w: 60, h: 30 }, { x: 540, y: 360, w: 50, h: 30 }, { x: 280, y: 180, w: 40, h: 40 }]) {
++    const n = noteFor(c, r, 'Tap here to add the item');
++    assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.w <= c.w && n.y + n.h <= c.h, JSON.stringify(n));
++    const clear = n.side === 'below' ? n.y >= r.y + r.h : n.y + n.h <= r.y; assert.ok(clear, 'the note does not cover what it points at');
++  }
++});
++
++test('the demo checker names each kind of mistake', () => {
++  const bad = (f: (d: Demo) => void) => { const d = demo(); f(d); return validateDemo(d); };
++  assert.deepEqual(validateDemo(demo()), []);
++  assert.ok(bad(d => { d.steps = d.steps.slice(0, 2); }).some(e => e.includes('at least 3 steps')));
++  assert.ok(bad(d => { d.steps[0].focus = 'ghost'; }).some(e => e.includes('ghost')));
++  assert.ok(bad(d => { d.steps[1].set = { ghost: { hidden: false } }; }).some(e => e.includes('ghost')));
++  assert.ok(bad(d => { d.steps[2].screen = 'nowhere'; }).some(e => e.includes('nowhere')));
++  assert.ok(bad(d => { d.steps[0].say = ' '; }).some(e => e.includes('says nothing')));
++  assert.ok(bad(d => { d.screens[1].nodes[0].id = 'btn'; }).some(e => e.includes('used twice')));
++  assert.ok(bad(d => { d.screens[0].nodes[0].x = 590; }).some(e => e.includes('inside the canvas')));
++  assert.ok(bad(d => { d.steps[0].tap = 'row'; }).some(e => e.includes('not on screen')), 'tapping something that is still hidden');
++  assert.ok(bad(d => { d.steps[2].focus = 'btn'; }).some(e => e.includes('not on screen')), 'ringing something on the screen that was just left');
++  assert.ok(bad(d => { d.steps[0].zoom = 9; }).some(e => e.includes('zoom')));
++  assert.ok(bad(d => { d.steps[0] = { say: 'x', note: 'hi' }; }).some(e => e.includes('nothing to point at')));
++  assert.ok(validateDemo((() => { const d = demo(); d.screens[0].nodes[0].icon = 'nope'; return d; })(), () => false).some(e => e.includes('icon')));
++});
++
++test('every course demo is a real demonstration: it taps something, changes something, and has no autoplay', () => {
++  for (const m of MODULES) {
++    assert.deepEqual(validateDemo(m.show), [], m.id);
++    assert.ok(m.show.steps.some(s => s.tap), `${m.id}: the Show never taps anything`);
++    assert.ok(m.show.steps.some(s => s.set || s.screen), `${m.id}: the Show never changes anything`);
++    assert.ok(m.show.steps.some(s => s.zoom || s.focus), `${m.id}: the Show never directs the eye`);
++  }
++});
+diff --git a/tests/trainingsandbox.test.ts b/tests/trainingsandbox.test.ts
+index d5b53a0..6d825bb 100644
+--- a/tests/trainingsandbox.test.ts
++++ b/tests/trainingsandbox.test.ts
+@@ -79,10 +79,18 @@ test('the shared training terminal declines the number of times a goal asks for,
+ });
+ 
+ test('training will not start over a real card payment or a part-paid sale', () => {
+-  const base = { pos: { cart: { id: 'c', lines: [] }, attempts: [] as { status: string }[] } };
+-  assert.equal(trainingBlocker(base), null);
+-  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'approved' }, { status: 'started' }] } }) ?? '', /card payment/);
+-  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'unknown' }] } }) ?? '', /card payment/);
+-  assert.match(trainingBlocker({ pos: { ...base.pos, cart: { id: 'c', lines: [], tenders: [{} as any] } } }) ?? '', /part-paid/);
+-  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'declined' }, { status: 'resolved' }] } }), null);
++  const now = Date.parse('2026-10-12T10:00:00Z'); const at = (minAgo: number) => new Date(now - minAgo * 60_000).toISOString();
++  type A = { status: string; ts: string; saleUuid?: string };
++  const base = { pos: { cart: { id: 'c', lines: [] } as any, attempts: [] as A[] } };
++  assert.equal(trainingBlocker(base, now), null);
++  // a payment started a moment ago is genuinely waiting on the reader
++  assert.match(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'approved', ts: at(1) }, { status: 'started', ts: at(1) }] } }, now) ?? '', /waiting on the reader/);
++  // an attempt left at "started" long ago (app closed mid payment) is history and must not lock training for good
++  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'started', ts: at(30) }, { status: 'started', ts: at(60 * 24 * 9) }] } }, now), null);
++  // an unresolved "unknown" only blocks while its sale is still the one in the cart
++  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'unknown', ts: at(90), saleUuid: 'old-sale' }] } }, now), null);
++  assert.equal(trainingBlocker({ pos: { cart: { id: 'c', lines: [], saleUuid: 'old-sale' } as any, attempts: [{ status: 'unknown', ts: at(90), saleUuid: 'other' }] } }, now), null);
++  assert.match(trainingBlocker({ pos: { cart: { id: 'c', lines: [], saleUuid: 'sale-1' } as any, attempts: [{ status: 'unknown', ts: at(90), saleUuid: 'sale-1' }] } }, now) ?? '', /no result yet/);
++  assert.match(trainingBlocker({ pos: { ...base.pos, cart: { id: 'c', lines: [], tenders: [{} as any] } as any } }, now) ?? '', /part-paid/);
++  assert.equal(trainingBlocker({ pos: { ...base.pos, attempts: [{ status: 'declined', ts: at(1) }, { status: 'resolved', ts: at(1) }, { status: 'cancelled', ts: at(1) }] } }, now), null);
+ });
+diff --git a/tests/trainingspots.test.ts b/tests/trainingspots.test.ts
+index c02c644..9acfd13 100644
+--- a/tests/trainingspots.test.ts
++++ b/tests/trainingspots.test.ts
+@@ -35,7 +35,11 @@ test('every module is valid, and every record spot it names exists in the practi
+ });
+ test('every icon a scene uses exists in Ionicons', () => {
+   const map = JSON.parse(fs.readFileSync('node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json', 'utf8'));
+-  for (const m of MODULES) for (const a of [...m.info.actors, ...m.show.actors]) assert.ok(a.icon in map, `${m.id}: icon "${a.icon}" does not exist`);
++  for (const m of MODULES) {
++    for (const a of m.info.actors) assert.ok(a.icon in map, `${m.id}: icon "${a.icon}" does not exist`);
++    for (const n of m.show.screens.flatMap(sc => sc.nodes)) if (n.icon) assert.ok(n.icon in map, `${m.id}: demo icon "${n.icon}" does not exist`);
++    for (const st of m.show.steps) for (const fx of Object.values(st.set ?? {})) if (fx.icon) assert.ok(fx.icon in map, `${m.id}: demo icon "${fx.icon}" does not exist`);
++  }
+ });
+ test('copy has no em dashes, and no emoji, in any module', () => {
+   const text = (m: (typeof MODULES)[number]) => JSON.stringify(m, (_k, v) => (typeof v === 'function' ? '' : v));
+-- 
+2.43.0
+
