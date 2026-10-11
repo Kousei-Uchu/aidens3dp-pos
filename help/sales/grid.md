@@ -36,7 +36,7 @@ You are editing the level you are standing in. Open a category first to change w
 If you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.
 
 ### Tile size
-Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) changes how many tiles fit across.
+Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size the grid aims for. The tiles are then stretched or squeezed a little, keeping their shape, so the columns fill the width beside the cart with no gap at the edge. If less than about half a tile of space would be left over, the tiles grow to use it. If more, the grid adds another column and the tiles shrink a little to fit it. The grid always has at least two columns.
 
 ### Missing tiles
 A greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.
@@ -105,9 +105,11 @@ flowchart TD
 | Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |
 | Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |
 | Import and export | `GridSettings` in `Settings.tsx` |
-| Tests | `tests/gridnav.test.ts` |
+| Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |
+| Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |
 
 ### Reading the code for a fault
+- **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.
 - **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
 - **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).
 - **Import said "N unsupported tiles skipped".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`.
