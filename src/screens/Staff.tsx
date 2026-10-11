@@ -71,7 +71,7 @@ export default function Staff() {
 function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: Partial<CustomUi>) => void }) {
   const label = (t: string) => <Txt size={13} weight="600" style={{ marginTop: 6 }}>{t}</Txt>;
   const tabNames: Record<TabId, string> = { checkout: 'Checkout tab', inventory: 'Inventory tab', transactions: 'Transactions tab', notifications: 'Notifications tab', more: 'More tab' };
-  const moreNames: Record<MoreRowId, string> = { orders: 'Orders', items: 'Items', customers: 'Customers', saved: 'Saved carts', giftcards: 'Gift cards', reports: 'Reports', drawer: 'Cash drawer', staff: 'Staff', settings: 'Settings', diagnostics: 'Diagnostics', help: 'Help', lock: 'Lock register' };
+  const moreNames: Record<MoreRowId, string> = { orders: 'Orders', items: 'Items', customers: 'Customers', saved: 'Saved carts', giftcards: 'Gift cards', reports: 'Reports', drawer: 'Cash drawer', staff: 'Staff', settings: 'Settings', diagnostics: 'Diagnostics', help: 'Help', training: 'Training', lock: 'Lock register' };
   const flipTab = (id: TabId, shown: boolean) => onChange({ tabOverrides: { ...value.tabOverrides, [id]: shown } });
   const flipMore = (id: MoreRowId, shown: boolean) => onChange({ moreOverrides: { ...value.moreOverrides, [id]: shown } });
   return (

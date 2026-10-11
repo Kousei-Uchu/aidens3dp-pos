@@ -1,4 +1,6 @@
 // Location: src/screens/Checkout.tsx
+import { spotPressed, useSpotRef } from '../ui/Spot';
+import { SPOT } from '../lib/trainingSpots';
 import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, Image, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -51,7 +53,7 @@ const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicon
 
 /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
 export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi();
+  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const chargeRef = useSpotRef(SPOT.cartCharge);
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
@@ -220,9 +222,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
       <View style={{ flex: tablet && !guided ? 6 : 1 }}>
         {left}
         {!tablet && !guided && n > 0 ? (
-          <Pressable onPress={() => nav.push('cart')} accessibilityRole="button" accessibilityLabel={`Cart, ${n} items, ${fmt(priced.netCents)}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, padding: 12, paddingHorizontal: 16, gap: 12 }}>
+          <Pressable ref={openRef} onPress={() => { spotPressed(SPOT.cartOpen); nav.push('cart'); }} accessibilityRole="button" accessibilityLabel={`Cart, ${n} items, ${fmt(priced.netCents)}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, padding: 12, paddingHorizontal: 16, gap: 12 }}>
             <Ionicons name="cart" size={22} color={c.text} /><Txt weight="700" style={{ flex: 1 }}>{n} item{n === 1 ? '' : 's'} · {fmt(priced.netCents)}</Txt>
-            <View style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Txt weight="700" color={c.onAccent}>Charge</Txt></View>
+            <View ref={chargeRef} collapsable={false} style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Txt weight="700" color={c.onAccent}>Charge</Txt></View>
           </Pressable>
         ) : null}
       </View>

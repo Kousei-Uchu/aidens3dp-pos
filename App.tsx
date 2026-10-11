@@ -29,6 +29,13 @@ import Staff, { PinLock } from './src/screens/Staff';
 import Diagnostics from './src/screens/Diagnostics';
 import Help from './src/screens/Help';
 import Training from './src/screens/Training';
+import TrainingRun from './src/screens/TrainingRun';
+import TrainingHost from './src/ui/TrainingHost';
+import { Spot } from './src/ui/Spot';
+import { SPOT } from './src/lib/trainingSpots';
+import { useTraining } from './src/state/trainingSession';
+import { getModule } from './src/training';
+import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { noteActivity } from './src/lib/idle';
 import { isLockScreen } from './src/lib/posLock';
@@ -59,7 +66,8 @@ function Routes() {
     case 'staff': return <Staff />;
     case 'diagnostics': return <Diagnostics />;
     case 'help': return <Help id={p.id} />;
-    case 'training': return <Training moduleId={p.moduleId} />;
+    case 'training': return <Training />;
+    case 'trainingRun': return <TrainingRun />;
     default: return null;
   }
 }
@@ -67,12 +75,13 @@ function Routes() {
 function Shell() {
   const { c } = useTheme(); const nav = useNav(); const { tablet } = useLayout(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
+  const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined));
   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
   useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
   useEffect(() => {
     if (!ready) return;
-    const tick = () => { void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
+    const tick = () => { if (isTraining()) return; void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [ready]);
@@ -91,10 +100,10 @@ function Shell() {
       </View>
       {!hasPage ? (
         <View style={{ flexDirection: 'row', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingBottom: tablet ? 8 : 22, paddingTop: 6 }}>
-          {TABS.filter(t => ui.tabs.includes(t.id)).map(t => { const on = nav.tab === t.id; return (
-            <Pressable key={t.id} onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
+          {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
+            <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ flex: 1, alignItems: 'center', gap: 2 }}>
               <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
-              <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable>); })}
+              <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}
         </View>
       ) : null}
     </View>
@@ -105,7 +114,7 @@ export default function App() {
   return (
     <ZellerRoot>
       <ThemeProvider><UiProvider><NavProvider>
-        <View style={{ flex: 1 }} onTouchStart={noteActivity}><Shell /></View>
+        <View style={{ flex: 1 }} onTouchStart={noteActivity}><TrainingHost><Shell /></TrainingHost></View>
         <KeepAwake /><ScreensaverLayer />
       </NavProvider></UiProvider></ThemeProvider>
     </ZellerRoot>

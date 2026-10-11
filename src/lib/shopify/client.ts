@@ -3,6 +3,7 @@
 // Auth: Dev Dashboard app → client-credentials grant, token valid 24 h, refreshed automatically.
 // Client secret + token live in the iOS Keychain (expo-secure-store).
 import * as SecureStore from 'expo-secure-store';
+import { TrainingBlockedError, isTraining } from '../trainingGuard';
 import { sleep } from '../ids';
 
 export const API_VERSION = '2026-07'; // pin one version, bump quarterly (research doc §4.2)
@@ -37,6 +38,7 @@ export async function loadCreds(): Promise<ShopifyCreds | null> {
   return creds;
 }
 export async function saveCreds(c: ShopifyCreds) {
+  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
   creds = { domain: normaliseDomain(c.domain), clientId: c.clientId.trim(), clientSecret: c.clientSecret.trim() };
   token = null;
   await Promise.all([
@@ -45,14 +47,16 @@ export async function saveCreds(c: ShopifyCreds) {
   ]);
 }
 export async function clearCreds() {
+  if (isTraining()) throw new TrainingBlockedError('changing the Shopify login');
   creds = null; token = null;
   await Promise.all(Object.values(K).map(k => SecureStore.deleteItemAsync(k)));
 }
-export const hasCreds = () => !!creds;
+export const hasCreds = () => !isTraining() && !!creds; // training: every sync path stops here
 export const shopDomain = () => creds?.domain ?? '';
 export const tokenScopes = () => (token?.scope ? token.scope.split(',') : []);
 
 export async function getToken(force = false): Promise<string> {
+  if (isTraining()) throw new TrainingBlockedError('Shopify');
   if (!creds) throw new ShopifyUserError('Shopify is not set up — open More ▸ Settings ▸ Shopify.');
   if (!force && token && token.exp - Date.now() > 5 * 60_000) return token.value;
   if (inflight) return inflight;
@@ -85,6 +89,7 @@ export async function getToken(force = false): Promise<string> {
 let notBefore = 0;
 
 export async function gql<T = any>(query: string, variables: Record<string, any> = {}): Promise<T> {
+  if (isTraining()) throw new TrainingBlockedError('Shopify');
   if (!creds) throw new ShopifyUserError('Shopify is not set up — open More ▸ Settings ▸ Shopify.');
   let authRetried = false;
   for (let attempt = 0; ; attempt++) {
@@ -127,12 +132,12 @@ export const isNetworkError = (e: unknown) => e instanceof ShopifyNetworkError;
 
 // Wallet pass server shared secret (signs pass links). Keychain only.
 export const getPassSecret = async () => { try { return (await SecureStore.getItemAsync('pos.passSecret')) ?? ''; } catch { return ''; } };
-export const setPassSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
+export const setPassSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.passSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.passSecret'); } catch {} };
 
 // Gift card claim page shared secret (signs claim links). Keychain only.
 export const getClaimSecret = async () => { try { return (await SecureStore.getItemAsync('pos.claimSecret')) ?? ''; } catch { return ''; } };
-export const setClaimSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
+export const setClaimSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.claimSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.claimSecret'); } catch {} };
 
 // Receipt server shared secret (authorises receipt uploads). Keychain only.
 export const getReceiptSecret = async () => { try { return (await SecureStore.getItemAsync('pos.receiptSecret')) ?? ''; } catch { return ''; } };
-export const setReceiptSecret = async (v: string) => { try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
+export const setReceiptSecret = async (v: string) => { if (isTraining()) return; try { if (v) await SecureStore.setItemAsync('pos.receiptSecret', v.trim()); else await SecureStore.deleteItemAsync('pos.receiptSecret'); } catch {} };
