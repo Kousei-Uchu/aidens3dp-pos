@@ -13,7 +13,7 @@ Open **More → Training** to learn a POS task. Courses can be started in any or
 
 ### How a course works
 Each course has six parts:
-1. **Info** is an animated visual explanation of what the task is for and when you need it.
+1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.
 2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.
 3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.
 4. **Check 1** asks you to complete the task without the arrows, with practice data.
@@ -27,7 +27,7 @@ Completion and stage progress are saved on this device for the signed-in staff m
 
 ## Deep
 
-A Show is a list of steps over a few mock screens. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.
+Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.
 
 ## Advanced
 
@@ -35,8 +35,8 @@ A Show is a list of steps over a few mock screens. Each step can zoom the camera
 |---|---|
 | Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |
 | Course schema and validation | `src/lib/trainingModule.ts` |
-| Course runner and the Info slideshow | `src/screens/TrainingRun.tsx`, `src/ui/SceneView.tsx` |
-| The Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |
+| Course runner | `src/screens/TrainingRun.tsx` |
+| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |
 | Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |
 | Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |
 | Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |

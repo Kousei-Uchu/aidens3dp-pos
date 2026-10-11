@@ -1,0 +1,355 @@
+From aa9222449f701401b619a18a6ad0e2318cd9916e Mon Sep 17 00:00:00 2001
+From: Claude <claude@example.com>
+Date: Sun, 11 Oct 2026 21:26:09 +0000
+Subject: [PATCH] 0069: text never cropped in Show and Info
+
+---
+ docs/PROGRESS.md                |   1 +
+ docs/patches/0069-plan.md       |  24 ++++++++
+ src/lib/trainingDemo.ts         | 100 ++++++++++++++++++++++++++++----
+ src/training/README.md          |   1 +
+ src/training/modules/welcome.ts |   2 +-
+ src/ui/DemoView.tsx             |  24 +++++---
+ tests/trainingdemo.test.ts      |  51 +++++++++++++---
+ 7 files changed, 173 insertions(+), 30 deletions(-)
+ create mode 100644 docs/patches/0069-plan.md
+
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index e691b10..73b33e8 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -71,6 +71,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0066 | 2026-10-12 | Training mode (B6), correction 1 of 8: **Info** now uses the same animated, graphical style as Show. `info` is the same `Demo` format (cards, chips, icons and panels that build up, notes, camera, Next, Back, Replay) so the two stages share one engine and renderer; the old actor-and-beat scene (`SceneView`, `trainingScene.ts`) is removed. The welcome course's Info rewritten. Writer's guide, DEV_NOTES item 6, help page updated | B6 |
+ | 0067 | 2026-10-12 | Training mode (B6), correction 2 of 8: smoother transitions on the Training pages. Training pages slide in (forward from the right, back from the left), the hub's intro and course cards come in one after another, the practice intro card rises in, the Guide and Check dock slides up and the spotlight layer fades in. Respects Reduce Motion. Only Training routes are changed; every other page is drawn exactly as before. New `src/lib/motion.ts` (pure, tested) and `src/ui/Motion.tsx` | B6 |
+ | 0068 | 2026-10-12 | Training mode (B6), correction 3 of 8: the Show and Info picture is no longer pixelated. It was drawn at 1x and stretched up by the camera, which blurs text and edges. It is now laid out once at the biggest size it is ever shown (`renderScale`) and the camera only ever scales it down, so everything is drawn at full resolution. The animation is unchanged | B6 |
++| 0069 | 2026-10-12 | Training mode (B6), correction 4 of 8: text is never cropped in the Show and Info window. The note bubble is now placed inside the part of the picture the zoomed camera can actually see (it could sit off screen before), on whichever of four sides has room, and the camera eases out if the target and note do not both fit. The camera always keeps the target fully in view, a single line shrinks a little rather than being cut off, and the course checker now estimates whether each label fits its box (it found a real overflow in the welcome Info, fixed) | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0069-plan.md b/docs/patches/0069-plan.md
+new file mode 100644
+index 0000000..7b9979a
+--- /dev/null
++++ b/docs/patches/0069-plan.md
+@@ -0,0 +1,24 @@
++# Patch 0069: text never cropped in Show and Info (correction 4 of 8)
++
++Stacks on 0068.
++
++## What you asked for
++- Sometimes the text is cropped off the screen in Show's animated window.
++
++## Causes found, and fixes
++1. **The note was placed against the whole canvas, not what the camera shows.** Zoomed in, the camera sees only part of the canvas, so a note placed below or beside the ringed area could be completely outside the window. Now the note is placed inside the camera's actual view (`viewRect`), trying below, above, right, then left. If no side has room, the camera eases out a little (`settleOn`) until the target and its note both fit. At zoom 1 the whole canvas is visible, so there is always a place for it.
++2. **A deep zoom could crop the target itself.** A step's `zoom` was taken literally. The camera now never zooms in so far that the target, with a small margin, would be cut off. A requested zoom is treated as a maximum.
++3. **Long labels were clipped inside their boxes** (single line with `numberOfLines`, no way out). A single line now shrinks up to 30 percent to fit instead of being cut, and notes get arrows on any of four sides.
++4. **Nothing caught labels that were too long when a course was written.** The checker now estimates each label's width against its box (and wrapping text against its height, including text a step changes) and names the node. It found a real one straight away: the card text in the welcome Info needed about 57 of height in a 48 box. Fixed by shortening the line.
++
++## Tests
++- Every case above, plus a test over every real course picture that at every step the target and the note are fully inside the camera's view and the note does not cover the target. 35 training tests pass; `tsc` shows nothing for the files touched.
++
++## Steps
++1. [x] Camera, note placement and zoom-out in `src/lib/trainingDemo.ts`.
++2. [x] `DemoView`: arrows on four sides, single lines shrink instead of clipping.
++3. [x] Text-fit checker and tests; welcome Info shortened.
++4. [ ] You: check on the iPad that nothing is cut, including on a phone-width window. The estimate of text width is a rule of thumb (a little generous), so if you ever see a label that is cut off, tell me which and I will tighten it.
++
++## Not in this patch
++- The bottom of the Show window being off screen so you have to scroll is the next patch (0070).
+diff --git a/src/lib/trainingDemo.ts b/src/lib/trainingDemo.ts
+index 337ce67..b9fd714 100644
+--- a/src/lib/trainingDemo.ts
++++ b/src/lib/trainingDemo.ts
+@@ -17,6 +17,8 @@ export const MAX_ZOOM = 2.2;
+ export const renderScale = (viewW: number, canvasW: number): number => Math.max(0.25, (viewW / Math.max(1, canvasW)) * MAX_ZOOM);
+ /** How much of the view a zoomed-in target may fill. */
+ const FILL = 0.5;
++/** Room kept round a target inside the view, in canvas units. */
++const VIEW_MARGIN = 14;
+ 
+ /** Every node by id, with the screen it lives on. */
+ export function nodeIndex(demo: Demo): Map<string, NodeView> {
+@@ -47,18 +49,59 @@ export type Camera = { zoom: number; cx: number; cy: number };
+ export function cameraFor(canvas: { w: number; h: number }, rect: Rect | null, zoom?: number): Camera {
+   if (!rect) return { zoom: 1, cx: canvas.w / 2, cy: canvas.h / 2 };
+   const auto = Math.min((canvas.w * FILL) / Math.max(1, rect.w), (canvas.h * FILL) / Math.max(1, rect.h));
+-  const z = Math.max(1, Math.min(MAX_ZOOM, zoom ?? auto));
++  // Whatever zoom was asked for, the target itself must stay fully in view with a little room round it.
++  const fits = Math.min(canvas.w / (rect.w + 2 * VIEW_MARGIN), canvas.h / (rect.h + 2 * VIEW_MARGIN));
++  const z = Math.max(1, Math.min(MAX_ZOOM, zoom ?? auto, fits));
+   const hw = canvas.w / (2 * z); const hh = canvas.h / (2 * z);
+   return { zoom: z, cx: Math.max(hw, Math.min(canvas.w - hw, rect.x + rect.w / 2)), cy: Math.max(hh, Math.min(canvas.h - hh, rect.y + rect.h / 2)) };
+ }
++/** The part of the canvas a camera can see. */
++export const viewRect = (canvas: { w: number; h: number }, cam: Camera): Rect => ({ x: cam.cx - canvas.w / (2 * cam.zoom), y: cam.cy - canvas.h / (2 * cam.zoom), w: canvas.w / cam.zoom, h: canvas.h / cam.zoom });
+ 
+-export type Note = { text: string; x: number; y: number; w: number; h: number; side: 'above' | 'below'; arrowX: number };
+-const NOTE_W = 150;
+-/** A small label with an arrow, put next to the ringed area, kept inside the canvas. */
+-export function noteFor(canvas: { w: number; h: number }, focus: Rect, text: string): Note {
+-  const lines = Math.max(1, Math.ceil(text.length / 20)); const h = 18 + lines * 17;
+-  const b = placeBubble(grow(focus, 6), canvas, { w: NOTE_W, h }, 10, 6);
+-  return { text, x: b.x, y: b.y, w: NOTE_W, h, side: b.side, arrowX: b.arrowX };
++export type NoteSide = 'above' | 'below' | 'left' | 'right';
++/** `arrow` is how far along the note's edge the arrow sits: across for above and below, down for left and right. */
++export type Note = { text: string; x: number; y: number; w: number; h: number; side: NoteSide; arrow: number };
++const NOTE_W = 150; const NOTE_GAP = 10; const NOTE_EDGE = 6;
++/** Room for `text` at the note's size (canvas units): about 20 characters to a line. */
++export const noteSize = (text: string): { w: number; h: number } => ({ w: NOTE_W, h: 18 + Math.max(1, Math.ceil(text.length / 20)) * 17 });
++const inside = (r: Rect, v: Rect, e: number): boolean => r.x >= v.x + e && r.y >= v.y + e && r.x + r.w <= v.x + v.w - e && r.y + r.h <= v.y + v.h - e;
++/**
++ * A small label with an arrow, put beside the ringed area where it is fully inside `view` (the part of the canvas the camera can see,
++ * not the whole canvas). Tries below, above, right, then left. Returns null when no side has room, so the caller can zoom out a little.
++ */
++export function noteFor(view: Rect, focus: Rect, text: string): Note | null {
++  const { w, h } = noteSize(text); const f = grow(focus, 6); const cx = focus.x + focus.w / 2; const cy = focus.y + focus.h / 2;
++  const clampX = (x: number) => Math.max(view.x + NOTE_EDGE, Math.min(x, view.x + view.w - w - NOTE_EDGE)); const clampY = (y: number) => Math.max(view.y + NOTE_EDGE, Math.min(y, view.y + view.h - h - NOTE_EDGE));
++  const tries: { side: NoteSide; x: number; y: number }[] = [
++    { side: 'below', x: clampX(cx - w / 2), y: f.y + f.h + NOTE_GAP }, { side: 'above', x: clampX(cx - w / 2), y: f.y - NOTE_GAP - h },
++    { side: 'right', x: f.x + f.w + NOTE_GAP, y: clampY(cy - h / 2) }, { side: 'left', x: f.x - NOTE_GAP - w, y: clampY(cy - h / 2) },
++  ];
++  for (const t of tries) {
++    const r = { x: t.x, y: t.y, w, h }; if (!inside(r, view, NOTE_EDGE)) continue;
++    const across = t.side === 'above' || t.side === 'below';
++    return { text, x: t.x, y: t.y, w, h, side: t.side, arrow: across ? Math.max(14, Math.min(cx - t.x, w - 14)) : Math.max(14, Math.min(cy - t.y, h - 14)) };
++  }
++  return null;
++}
++
++/**
++ * Where the camera settles on `focus` so that the target AND its note are both fully visible: starts at the wanted zoom and eases out until both fit.
++ * At zoom 1 the whole canvas is visible, so a note always fits there; the last resort puts it in the nearest corner of the canvas.
++ */
++export function settleOn(canvas: { w: number; h: number }, focus: Rect | null, text: string | undefined, zoom?: number): { cam: Camera; note: Note | null } {
++  if (!focus) return { cam: cameraFor(canvas, null), note: null };
++  let z = cameraFor(canvas, focus, zoom).zoom;
++  for (;;) {
++    const cam = cameraFor(canvas, focus, z);
++    if (!text) return { cam, note: null };
++    const note = noteFor(viewRect(canvas, cam), focus, text);
++    if (note) return { cam, note };
++    if (cam.zoom <= 1) break;
++    z = Math.max(1, cam.zoom - 0.1);
++  }
++  const cam = cameraFor(canvas, focus, 1); const { w, h } = noteSize(text!); const cx = focus.x + focus.w / 2;
++  const x = Math.max(NOTE_EDGE, Math.min(cx - w / 2, canvas.w - w - NOTE_EDGE)); const below = focus.y + focus.h / 2 < canvas.h / 2;
++  return { cam, note: { text: text!, x, y: below ? canvas.h - h - NOTE_EDGE : NOTE_EDGE, w, h, side: below ? 'above' : 'below', arrow: Math.max(14, Math.min(cx - x, w - 14)) } };
+ }
+ 
+ export type StepPlan = {
+@@ -79,16 +122,45 @@ export function planStep(demo: Demo, i: number): StepPlan {
+   const index = Math.max(0, Math.min(i, demo.steps.length - 1)); const st = demo.steps[index]; const nodes = nodeIndex(demo);
+   const tapN = st.tap ? nodes.get(st.tap) : undefined; const focusN = st.focus ? nodes.get(st.focus) : undefined;
+   const tap = tapN ? rectOf(tapN) : null; const focus = focusN ? rectOf(focusN) : tap;
+-  const look = tap ?? focus;
++  const look = tap ?? focus; const settled = settleOn(demo.canvas, focus, st.note, st.zoom);
+   return {
+     index, say: st.say, title: st.title,
+     look, lookCam: cameraFor(demo.canvas, look, st.zoom), tap, tapId: tapN ? tapN.id : null, tapPoint: tap ? { x: tap.x + tap.w / 2, y: tap.y + tap.h / 2 } : null,
+-    focus, focusCam: cameraFor(demo.canvas, focus, st.zoom),
+-    note: st.note && focus ? noteFor(demo.canvas, focus, st.note) : null,
++    focus, focusCam: settled.cam,
++    note: settled.note,
+     changes: !!st.screen || Object.keys(st.set ?? {}).length > 0,
+   };
+ }
+ 
++/** Average width of a glyph as a share of the font size, for the bold UI text used in the mock. A little generous on purpose. */
++const GLYPH = 0.58; const LINE = 1.3;
++const tw = (t: string | undefined, size: number): number => (t ? t.length * size * GLYPH : 0);
++/**
++ * Where text will not fit its box, as plain sentences. This is an estimate (real widths depend on the font), checked when a course is written
++ * so a label is never cut off on screen: one line labels must fit their width, wrapping text must fit its height.
++ */
++export function textProblems(n: DemoNode): string[] {
++  const out: string[] = []; const one = (what: string, text: string | undefined, size: number, avail: number) => { if (text && tw(text, size) > avail) out.push(`"${n.id}": the ${what} "${text}" is too long for its box (about ${Math.round(tw(text, size))} wide, ${Math.max(0, Math.round(avail))} available)`); };
++  const sz = n.size;
++  switch (n.kind) {
++    case 'button': one('label', n.label, sz ?? 12, n.w - 12 - (n.icon ? 19 : 0)); break;
++    case 'tile': one('label', n.label, 11, n.w - 14); one('second line', n.sub, 10, n.w - 14); break;
++    case 'row': { const avail = n.w - 16 - (n.icon ? 24 : 0) - (n.value ? tw(n.value, 12) + 8 : 0); one('label', n.label, 12, avail); one('second line', n.sub, 10, avail); if (n.sub && n.h < 30) out.push(`"${n.id}": a row with a second line needs a height of at least 30`); break; }
++    case 'bar': one('title', n.label, 15, n.w - 24 - tw(n.sub, 11) - 12); break;
++    case 'chip': one('label', n.label, 11, n.w - 12); break;
++    case 'field': one('text', n.value ?? n.label, sz ?? 12, n.w - 18); break;
++    case 'toggle': one('label', n.label, 12, n.w - 16 - 46); break;
++    case 'panel': one('label', n.label, 10, n.w - 16); break;
++    case 'text': {
++      const size = sz ?? 13; const lines = (t: string | undefined, fs: number) => (t ? Math.max(1, Math.ceil(tw(t, fs) / Math.max(1, n.w))) * fs * LINE : 0);
++      const need = lines(n.label, size) + lines(n.sub, Math.max(9, size - 2));
++      if (need > n.h + 2) out.push(`"${n.id}": the text needs about ${Math.round(need)} of height but the box is ${n.h}`);
++      break;
++    }
++  }
++  return out;
++}
++
+ /** Every problem with a demo, as plain sentences (the module checker adds the module id). Empty list = fine. */
+ export function validateDemo(demo: Demo, isIcon: (name: string) => boolean = () => true): string[] {
+   const bad: string[] = []; const at = (t: string) => bad.push(t);
+@@ -101,6 +173,7 @@ export function validateDemo(demo: Demo, isIcon: (name: string) => boolean = ()
+     if (seen.has(n.id)) at(`the id "${n.id}" is used twice (ids are shared by every screen)`); seen.add(n.id);
+     if (n.x < 0 || n.y < 0 || n.x + n.w > w + 0.5 || n.y + n.h > h + 0.5) at(`"${n.id}" does not fit inside the canvas`);
+     if (n.icon && !isIcon(n.icon)) at(`"${n.id}" uses the icon "${n.icon}", which does not exist`);
++    for (const e of textProblems(n)) at(e);
+   }
+   if (demo.steps.length < 3) at('needs at least 3 steps');
+   const ids = new Set<string>();
+@@ -119,7 +192,10 @@ export function validateDemo(demo: Demo, isIcon: (name: string) => boolean = ()
+     if (t && (t.screen !== before.screen || t.hidden)) at(`${w8} taps "${st.tap}", which is not on screen at that moment`);
+     const f = st.focus ? after.nodes.get(st.focus) : undefined;
+     if (f && (f.screen !== after.screen || f.hidden)) at(`${w8} focuses "${st.focus}", which is not on screen once the step has happened`);
+-    for (const [id, fx] of Object.entries(st.set ?? {})) { if (fx.icon && !isIcon(fx.icon)) at(`${w8} gives "${id}" the icon "${fx.icon}", which does not exist`); }
++    for (const [id, fx] of Object.entries(st.set ?? {})) {
++      if (fx.icon && !isIcon(fx.icon)) at(`${w8} gives "${id}" the icon "${fx.icon}", which does not exist`);
++      const nv = after.nodes.get(id); if (nv && (fx.label !== undefined || fx.sub !== undefined || fx.value !== undefined)) for (const e of textProblems(nv)) at(`${w8} makes ${e}`);
++    }
+   });
+   return bad;
+ }
+diff --git a/src/training/README.md b/src/training/README.md
+index 801ba39..a7ba182 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -26,6 +26,7 @@ Both stages are a `Demo`. Show demonstrates the job on mock screens; Info explai
+   - `zoom`: override how far in the camera goes (1 to 2.2). Leave it out and the camera picks a size that fits the target.
+   - `note`: a short label with an arrow beside the ringed area, for example `Tap here`.
+ - **Order inside a step**: the camera goes to the `tap` (or `focus`), the pointer moves and taps, then `screen` and `set` happen, then the camera settles on `focus` and the note appears. Going Back shows the finished picture. Replay plays the step again.
++- **Text must fit**: labels are checked against their box (a single line must fit its width, a wrapping `text` node its height) and `npm test` names the node that is too long. Shorten the label or make the box bigger. The note is placed beside the ringed area inside what the camera can see, and the camera eases out if it has to, so a note is never cut off; keep notes short (about 20 characters a line, two lines at most).
+ - **Length**: at least 3 steps. Aim for 5 to 8, one idea each. Do not teach a second process in the same Show.
+ - **Teach the failures here**: the Show is where the person is told how to handle what will go wrong in Check 2 (a declined card, no change). Give those steps an `id` and name it in the goal's `taughtBy`.
+ - **Not the real screens**: the Show is a picture. Real screens, real data and real tapping start at Guide.
+diff --git a/src/training/modules/welcome.ts b/src/training/modules/welcome.ts
+index 6b2109d..7014db9 100644
+--- a/src/training/modules/welcome.ts
++++ b/src/training/modules/welcome.ts
+@@ -13,7 +13,7 @@ export const welcome: TrainingModule = {
+         { id: 'in-title', kind: 'text', x: 40, y: 22, w: 560, h: 34, label: 'How training works', size: 22, align: 'center' },
+         { id: 'card', kind: 'panel', x: 150, y: 76, w: 340, h: 84, label: 'COURSE', hidden: true },
+         { id: 'card-icon', kind: 'icon', x: 166, y: 96, w: 48, h: 48, icon: 'school', tone: 'accent', hidden: true },
+-        { id: 'card-text', kind: 'text', x: 226, y: 98, w: 252, h: 48, label: 'Take a payment', sub: 'Six short parts, in any course order', size: 16, hidden: true },
++        { id: 'card-text', kind: 'text', x: 226, y: 98, w: 252, h: 48, label: 'Take a payment', sub: 'Six short parts, in any order', size: 16, hidden: true },
+         { id: 'stages', kind: 'panel', x: 24, y: 184, w: 592, h: 124, label: 'THE SIX PARTS, IN ORDER', hidden: true },
+         { id: 'c-info', kind: 'chip', x: 40, y: 212, w: 86, h: 28, label: 'Info', hidden: true },
+         { id: 'i-info', kind: 'icon', x: 40, y: 250, w: 86, h: 44, icon: 'book', size: 32, hidden: true },
+diff --git a/src/ui/DemoView.tsx b/src/ui/DemoView.tsx
+index ea326c3..da6c0d8 100644
+--- a/src/ui/DemoView.tsx
++++ b/src/ui/DemoView.tsx
+@@ -23,20 +23,21 @@ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
+   useEffect(() => { if (press > 0) Animated.sequence([Animated.timing(s, { toValue: 0.93, duration: 110, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 5, useNativeDriver: false })]).start(); }, [press]); // eslint-disable-line react-hooks/exhaustive-deps
+   const box = { position: 'absolute' as const, left: u(n.x), top: u(n.y), width: u(n.w), height: u(n.h), opacity: o, transform: [{ scale: s }] };
+   const txt = { allowFontScaling: false as const };
++  const one = { allowFontScaling: false as const, numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }; // a single line shrinks a little rather than being cut off
+   let body: React.ReactNode = null;
+   switch (n.kind) {
+-    case 'panel': body = <View style={{ flex: 1, backgroundColor: c.card, borderRadius: u(12), borderWidth: u(1), borderColor: c.line, padding: u(8) }}>{n.label ? <Text {...txt} style={{ color: c.sub, fontSize: u(10), fontWeight: '700' }}>{n.label}</Text> : null}</View>; break;
+-    case 'bar': body = <View style={{ flex: 1, backgroundColor: c.card, borderBottomWidth: u(1), borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(12) }}><Text {...txt} style={{ color: c.text, fontSize: u(15), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(11) }}>{n.sub}</Text> : null}</View>; break;
++    case 'panel': body = <View style={{ flex: 1, backgroundColor: c.card, borderRadius: u(12), borderWidth: u(1), borderColor: c.line, padding: u(8) }}>{n.label ? <Text {...one} style={{ color: c.sub, fontSize: u(10), fontWeight: '700' }}>{n.label}</Text> : null}</View>; break;
++    case 'bar': body = <View style={{ flex: 1, backgroundColor: c.card, borderBottomWidth: u(1), borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(12) }}><Text {...one} style={{ color: c.text, fontSize: u(15), fontWeight: '700', flexShrink: 1 }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(11) }}>{n.sub}</Text> : null}</View>; break;
+     case 'text': body = <View style={{ flex: 1, justifyContent: 'center' }}><Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(n.size ?? 13), fontWeight: '600', textAlign: n.align ?? 'left' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(Math.max(9, (n.size ?? 13) - 2)), textAlign: n.align ?? 'left' }}>{n.sub}</Text> : null}</View>; break;
+     case 'button': { const solid = n.tone === undefined || n.tone === 'accent'; const bg = solid ? c.accent : n.tone === 'good' ? c.good : n.tone === 'bad' ? c.bad : c.fill; const fg = solid ? c.onAccent : n.tone === 'good' || n.tone === 'bad' ? '#FFFFFF' : c.text;
+-      body = <View style={{ flex: 1, backgroundColor: bg, borderRadius: u(10), flexDirection: 'row', gap: u(5), alignItems: 'center', justifyContent: 'center', paddingHorizontal: u(6) }}>{n.icon ? <Ionicons name={n.icon as any} size={u(14)} color={fg} /> : null}<Text {...txt} numberOfLines={1} style={{ color: fg, fontSize: u(n.size ?? 12), fontWeight: '700' }}>{n.label}</Text></View>; break; }
+-    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: u(10), padding: u(7), justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? u(3) : 0, borderColor: RING }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color="#111" /> : <View />}<View><Text {...txt} numberOfLines={1} style={{ color: '#111', fontSize: u(11), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: u(10) }}>{n.sub}</Text> : null}</View></View>; break;
+-    case 'row': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: u(8), paddingHorizontal: u(8), borderBottomWidth: u(1), borderBottomColor: c.line }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color={c.sub} /> : null}<View style={{ flex: 1 }}><Text {...txt} numberOfLines={1} style={{ color: c.text, fontSize: u(12), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} numberOfLines={1} style={{ color: c.sub, fontSize: u(10) }}>{n.sub}</Text> : null}</View>{n.value ? <Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(12), fontWeight: '700' }}>{n.value}</Text> : null}</View>; break;
++      body = <View style={{ flex: 1, backgroundColor: bg, borderRadius: u(10), flexDirection: 'row', gap: u(5), alignItems: 'center', justifyContent: 'center', paddingHorizontal: u(6) }}>{n.icon ? <Ionicons name={n.icon as any} size={u(14)} color={fg} /> : null}<Text {...one} style={{ color: fg, fontSize: u(n.size ?? 12), fontWeight: '700' }}>{n.label}</Text></View>; break; }
++    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: u(10), padding: u(7), justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? u(3) : 0, borderColor: RING }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color="#111" /> : <View />}<View><Text {...one} style={{ color: '#111', fontSize: u(11), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: u(10) }}>{n.sub}</Text> : null}</View></View>; break;
++    case 'row': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: u(8), paddingHorizontal: u(8), borderBottomWidth: u(1), borderBottomColor: c.line }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color={c.sub} /> : null}<View style={{ flex: 1 }}><Text {...one} style={{ color: c.text, fontSize: u(12), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...one} style={{ color: c.sub, fontSize: u(10) }}>{n.sub}</Text> : null}</View>{n.value ? <Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(12), fontWeight: '700' }}>{n.value}</Text> : null}</View>; break;
+     case 'toggle': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(8) }}><Text {...txt} style={{ color: c.text, fontSize: u(12), fontWeight: '600', flex: 1 }}>{n.label}</Text>
+       <Animated.View style={{ width: u(38), height: u(22), borderRadius: u(11), backgroundColor: knob.interpolate({ inputRange: [0, 1], outputRange: [c.line, c.good] }), justifyContent: 'center' }}><Animated.View style={{ width: u(18), height: u(18), borderRadius: u(9), backgroundColor: '#fff', transform: [{ translateX: knob.interpolate({ inputRange: [0, 1], outputRange: [u(2), u(18)] }) }] }} /></Animated.View></View>; break;
+-    case 'field': body = <View style={{ flex: 1, backgroundColor: c.fill, borderRadius: u(8), borderWidth: u(1), borderColor: c.line, paddingHorizontal: u(8), justifyContent: 'center' }}><Text {...txt} numberOfLines={1} style={{ color: n.value ? c.text : c.sub, fontSize: u(n.size ?? 12) }}>{n.value ?? n.label}</Text></View>; break;
++    case 'field': body = <View style={{ flex: 1, backgroundColor: c.fill, borderRadius: u(8), borderWidth: u(1), borderColor: c.line, paddingHorizontal: u(8), justifyContent: 'center' }}><Text {...one} style={{ color: n.value ? c.text : c.sub, fontSize: u(n.size ?? 12) }}>{n.value ?? n.label}</Text></View>; break;
+     case 'chip': { const solid = n.tone === 'accent' || n.tone === 'good'; const bg = n.tone === 'good' ? c.good : n.tone === 'accent' ? c.accent : c.fill; const fg = n.tone === 'good' ? '#FFFFFF' : n.tone === 'accent' ? c.onAccent : c.text;
+-      body = <View style={{ flex: 1, borderRadius: u(999), backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Text {...txt} numberOfLines={1} style={{ color: fg, fontSize: u(11), fontWeight: solid ? '800' : '700' }}>{n.label}</Text></View>; break; }
++      body = <View style={{ flex: 1, borderRadius: u(999), backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Text {...one} style={{ color: fg, fontSize: u(11), fontWeight: solid ? '800' : '700' }}>{n.label}</Text></View>; break; }
+     case 'icon': body = <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={(n.icon ?? 'ellipse') as any} size={u(n.size ?? Math.min(n.w, n.h))} color={toneColor(c, n.tone)} /></View>; break;
+   }
+   return <Animated.View pointerEvents="none" style={box}>{body}</Animated.View>;
+@@ -52,10 +53,15 @@ function MockScreen({ nodes, on, press, k }: { nodes: NodeView[]; on: boolean; p
+ function NoteBubble({ note, k }: { note: Note; k: number }) {
+   const { c } = useTheme(); const o = useRef(new Animated.Value(0)).current; const u = (v: number) => v * k;
+   useEffect(() => { Animated.timing(o, { toValue: 1, duration: 300, useNativeDriver: false }).start(); }, [o]);
+-  const arrow = { position: 'absolute' as const, left: u(note.arrowX - 6), width: u(12), height: u(12), backgroundColor: c.card, borderColor: RING, transform: [{ rotate: '45deg' }] };
++  const bw = u(2);
++  const arrow = { position: 'absolute' as const, width: u(12), height: u(12), backgroundColor: c.card, borderColor: RING, transform: [{ rotate: '45deg' }] };
++  const place = note.side === 'below' ? { left: u(note.arrow - 6), top: u(-7), borderLeftWidth: bw, borderTopWidth: bw }
++    : note.side === 'above' ? { left: u(note.arrow - 6), bottom: u(-7), borderRightWidth: bw, borderBottomWidth: bw }
++    : note.side === 'right' ? { top: u(note.arrow - 6), left: u(-7), borderLeftWidth: bw, borderBottomWidth: bw }
++    : { top: u(note.arrow - 6), right: u(-7), borderRightWidth: bw, borderTopWidth: bw };
+   return (
+     <Animated.View pointerEvents="none" style={{ position: 'absolute', left: u(note.x), top: u(note.y), width: u(note.w), minHeight: u(note.h), opacity: o, backgroundColor: c.card, borderRadius: u(10), borderWidth: u(2), borderColor: RING, padding: u(7), justifyContent: 'center' }}>
+-      <View style={[arrow, note.side === 'below' ? { top: u(-7), borderLeftWidth: u(2), borderTopWidth: u(2) } : { bottom: u(-7), borderRightWidth: u(2), borderBottomWidth: u(2) }]} />
++      <View style={[arrow, place]} />
+       <Text allowFontScaling={false} style={{ color: c.text, fontSize: u(12), fontWeight: '700', textAlign: 'center' }}>{note.text}</Text>
+     </Animated.View>
+   );
+diff --git a/tests/trainingdemo.test.ts b/tests/trainingdemo.test.ts
+index c1184c7..b22c89b 100644
+--- a/tests/trainingdemo.test.ts
++++ b/tests/trainingdemo.test.ts
+@@ -1,7 +1,7 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { MAX_ZOOM, cameraFor, demoStateAfter, noteFor, planStep, renderScale, validateDemo } from '../src/lib/trainingDemo';
+-import type { Demo } from '../src/lib/trainingModule';
++import { MAX_ZOOM, cameraFor, demoStateAfter, noteFor, planStep, renderScale, settleOn, textProblems, validateDemo, viewRect } from '../src/lib/trainingDemo';
++import type { Demo, DemoNode } from '../src/lib/trainingModule';
+ import { MODULES } from '../src/training';
+ 
+ const demo = (): Demo => ({
+@@ -48,12 +48,47 @@ test('a step plan says where to look, where to tap and where to settle', () => {
+   assert.equal(planStep({ ...d, steps: [{ say: 'whole screen' }, ...d.steps] }, 0).focus, null);
+ });
+ 
+-test('a note sits beside the ringed area and stays inside the canvas', () => {
+-  const c = { w: 600, h: 400 };
+-  for (const r of [{ x: 10, y: 10, w: 60, h: 30 }, { x: 540, y: 360, w: 50, h: 30 }, { x: 280, y: 180, w: 40, h: 40 }]) {
+-    const n = noteFor(c, r, 'Tap here to add the item');
+-    assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.w <= c.w && n.y + n.h <= c.h, JSON.stringify(n));
+-    const clear = n.side === 'below' ? n.y >= r.y + r.h : n.y + n.h <= r.y; assert.ok(clear, 'the note does not cover what it points at');
++test('a note sits beside the ringed area, never on it, and always inside what the camera can see', () => {
++  const canvas = { w: 600, h: 400 };
++  for (const r of [{ x: 10, y: 10, w: 60, h: 30 }, { x: 540, y: 360, w: 50, h: 30 }, { x: 280, y: 180, w: 40, h: 40 }, { x: 20, y: 170, w: 90, h: 60 }]) {
++    for (const zoom of [undefined, 1, 1.5, 2.2]) {
++      const { cam, note } = settleOn(canvas, r, 'Tap here to add the item', zoom); const v = viewRect(canvas, cam);
++      assert.ok(note, JSON.stringify({ r, zoom }));
++      assert.ok(note!.x >= v.x && note!.y >= v.y && note!.x + note!.w <= v.x + v.w && note!.y + note!.h <= v.y + v.h, `note outside the view: ${JSON.stringify({ r, zoom, note, v })}`);
++      assert.ok(r.x >= v.x && r.y >= v.y && r.x + r.w <= v.x + v.w && r.y + r.h <= v.y + v.h, `target outside the view: ${JSON.stringify({ r, zoom, v })}`);
++      const overlap = note!.x < r.x + r.w && note!.x + note!.w > r.x && note!.y < r.y + r.h && note!.y + note!.h > r.y; assert.ok(!overlap, `note covers its target: ${JSON.stringify({ r, zoom, note })}`);
++    }
++  }
++  assert.equal(noteFor({ x: 0, y: 0, w: 100, h: 60 }, { x: 40, y: 20, w: 20, h: 20 }, 'A long note that cannot possibly fit in here'), null, 'no room means null, so the camera can zoom out');
++});
++
++test('the camera never crops the thing it is pointing at, even when a deep zoom was asked for', () => {
++  const canvas = { w: 640, h: 400 };
++  for (const r of [{ x: 14, y: 56, w: 104, h: 82 }, { x: 372, y: 52, w: 254, h: 250 }, { x: 0, y: 340, w: 640, h: 60 }]) {
++    const cam = cameraFor(canvas, r, MAX_ZOOM); const v = viewRect(canvas, cam);
++    assert.ok(r.x >= v.x - 1e-6 && r.y >= v.y - 1e-6 && r.x + r.w <= v.x + v.w + 1e-6 && r.y + r.h <= v.y + v.h + 1e-6, JSON.stringify({ r, cam }));
++  }
++});
++
++test('text that will not fit its box is caught when the course is written', () => {
++  const n = (o: Partial<DemoNode>): DemoNode => ({ id: 'n', kind: 'button', x: 0, y: 0, w: 80, h: 30, ...o });
++  assert.deepEqual(textProblems(n({ label: 'Charge' })), []);
++  assert.ok(textProblems(n({ label: 'Take payment now please' })).some(e => e.includes('too long')));
++  assert.ok(textProblems(n({ kind: 'tile', w: 100, h: 80, label: 'Highland Cow', sub: '$12.00' })).length === 0);
++  assert.ok(textProblems(n({ kind: 'tile', w: 70, h: 80, label: 'Extra Large Dragon' })).length > 0);
++  assert.ok(textProblems(n({ kind: 'text', w: 100, h: 20, size: 13, label: 'This sentence is far too long to wrap into one short line of text' })).some(e => e.includes('height')));
++  assert.deepEqual(textProblems(n({ kind: 'text', w: 300, h: 40, size: 13, label: 'Short and sweet' })), []);
++  assert.ok(textProblems(n({ kind: 'row', w: 200, h: 24, label: 'Item', sub: 'two lines' })).some(e => e.includes('at least 30')));
++  const d = demo(); d.steps[1].set = { row: { hidden: false, label: 'A name that is much too long to fit in its row at all' } };
++  assert.ok(validateDemo(d).some(e => e.includes('step 2') && e.includes('too long')), 'a step that makes text too long is caught');
++});
++
++test('every course picture keeps its target and its note fully visible at every step', () => {
++  for (const m of MODULES) for (const d of [m.info, m.show]) for (let i = 0; i < d.steps.length; i++) {
++    const p = planStep(d, i); const v = viewRect(d.canvas, p.focusCam);
++    if (p.focus) assert.ok(p.focus.x >= v.x - 1e-6 && p.focus.y >= v.y - 1e-6 && p.focus.x + p.focus.w <= v.x + v.w + 1e-6 && p.focus.y + p.focus.h <= v.y + v.h + 1e-6, `${m.id} step ${i + 1}: target cropped`);
++    if (p.note) assert.ok(p.note.x >= v.x - 1e-6 && p.note.y >= v.y - 1e-6 && p.note.x + p.note.w <= v.x + v.w + 1e-6 && p.note.y + p.note.h <= v.y + v.h + 1e-6, `${m.id} step ${i + 1}: note cropped`);
++    if (d.steps[i].note) assert.ok(p.note, `${m.id} step ${i + 1}: the note was dropped`);
+   }
+ });
+ 
+-- 
+2.43.0
+

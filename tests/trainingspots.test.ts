@@ -35,10 +35,9 @@ test('every module is valid, and every record spot it names exists in the practi
 });
 test('every icon a scene uses exists in Ionicons', () => {
   const map = JSON.parse(fs.readFileSync('node_modules/@expo/vector-icons/build/vendor/react-native-vector-icons/glyphmaps/Ionicons.json', 'utf8'));
-  for (const m of MODULES) {
-    for (const a of m.info.actors) assert.ok(a.icon in map, `${m.id}: icon "${a.icon}" does not exist`);
-    for (const n of m.show.screens.flatMap(sc => sc.nodes)) if (n.icon) assert.ok(n.icon in map, `${m.id}: demo icon "${n.icon}" does not exist`);
-    for (const st of m.show.steps) for (const fx of Object.values(st.set ?? {})) if (fx.icon) assert.ok(fx.icon in map, `${m.id}: demo icon "${fx.icon}" does not exist`);
+  for (const m of MODULES) for (const [which, d] of [['info', m.info], ['show', m.show]] as const) {
+    for (const n of d.screens.flatMap(sc => sc.nodes)) if (n.icon) assert.ok(n.icon in map, `${m.id}: ${which} icon "${n.icon}" does not exist`);
+    for (const st of d.steps) for (const fx of Object.values(st.set ?? {})) if (fx.icon) assert.ok(fx.icon in map, `${m.id}: ${which} icon "${fx.icon}" does not exist`);
   }
 });
 test('copy has no em dashes, and no emoji, in any module', () => {

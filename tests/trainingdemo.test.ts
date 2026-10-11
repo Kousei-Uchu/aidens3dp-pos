@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_ZOOM, cameraFor, demoStateAfter, noteFor, planStep, validateDemo } from '../src/lib/trainingDemo';
-import type { Demo } from '../src/lib/trainingModule';
+import { MAX_ZOOM, cameraFor, demoLayout, demoStateAfter, fitBox, noteFor, planStep, renderScale, settleOn, textProblems, validateDemo, viewRect } from '../src/lib/trainingDemo';
+import type { Demo, DemoNode } from '../src/lib/trainingModule';
 import { MODULES } from '../src/training';
 
 const demo = (): Demo => ({
@@ -48,12 +48,47 @@ test('a step plan says where to look, where to tap and where to settle', () => {
   assert.equal(planStep({ ...d, steps: [{ say: 'whole screen' }, ...d.steps] }, 0).focus, null);
 });
 
-test('a note sits beside the ringed area and stays inside the canvas', () => {
-  const c = { w: 600, h: 400 };
-  for (const r of [{ x: 10, y: 10, w: 60, h: 30 }, { x: 540, y: 360, w: 50, h: 30 }, { x: 280, y: 180, w: 40, h: 40 }]) {
-    const n = noteFor(c, r, 'Tap here to add the item');
-    assert.ok(n.x >= 0 && n.y >= 0 && n.x + n.w <= c.w && n.y + n.h <= c.h, JSON.stringify(n));
-    const clear = n.side === 'below' ? n.y >= r.y + r.h : n.y + n.h <= r.y; assert.ok(clear, 'the note does not cover what it points at');
+test('a note sits beside the ringed area, never on it, and always inside what the camera can see', () => {
+  const canvas = { w: 600, h: 400 };
+  for (const r of [{ x: 10, y: 10, w: 60, h: 30 }, { x: 540, y: 360, w: 50, h: 30 }, { x: 280, y: 180, w: 40, h: 40 }, { x: 20, y: 170, w: 90, h: 60 }]) {
+    for (const zoom of [undefined, 1, 1.5, 2.2]) {
+      const { cam, note } = settleOn(canvas, r, 'Tap here to add the item', zoom); const v = viewRect(canvas, cam);
+      assert.ok(note, JSON.stringify({ r, zoom }));
+      assert.ok(note!.x >= v.x && note!.y >= v.y && note!.x + note!.w <= v.x + v.w && note!.y + note!.h <= v.y + v.h, `note outside the view: ${JSON.stringify({ r, zoom, note, v })}`);
+      assert.ok(r.x >= v.x && r.y >= v.y && r.x + r.w <= v.x + v.w && r.y + r.h <= v.y + v.h, `target outside the view: ${JSON.stringify({ r, zoom, v })}`);
+      const overlap = note!.x < r.x + r.w && note!.x + note!.w > r.x && note!.y < r.y + r.h && note!.y + note!.h > r.y; assert.ok(!overlap, `note covers its target: ${JSON.stringify({ r, zoom, note })}`);
+    }
+  }
+  assert.equal(noteFor({ x: 0, y: 0, w: 100, h: 60 }, { x: 40, y: 20, w: 20, h: 20 }, 'A long note that cannot possibly fit in here'), null, 'no room means null, so the camera can zoom out');
+});
+
+test('the camera never crops the thing it is pointing at, even when a deep zoom was asked for', () => {
+  const canvas = { w: 640, h: 400 };
+  for (const r of [{ x: 14, y: 56, w: 104, h: 82 }, { x: 372, y: 52, w: 254, h: 250 }, { x: 0, y: 340, w: 640, h: 60 }]) {
+    const cam = cameraFor(canvas, r, MAX_ZOOM); const v = viewRect(canvas, cam);
+    assert.ok(r.x >= v.x - 1e-6 && r.y >= v.y - 1e-6 && r.x + r.w <= v.x + v.w + 1e-6 && r.y + r.h <= v.y + v.h + 1e-6, JSON.stringify({ r, cam }));
+  }
+});
+
+test('text that will not fit its box is caught when the course is written', () => {
+  const n = (o: Partial<DemoNode>): DemoNode => ({ id: 'n', kind: 'button', x: 0, y: 0, w: 80, h: 30, ...o });
+  assert.deepEqual(textProblems(n({ label: 'Charge' })), []);
+  assert.ok(textProblems(n({ label: 'Take payment now please' })).some(e => e.includes('too long')));
+  assert.ok(textProblems(n({ kind: 'tile', w: 100, h: 80, label: 'Highland Cow', sub: '$12.00' })).length === 0);
+  assert.ok(textProblems(n({ kind: 'tile', w: 70, h: 80, label: 'Extra Large Dragon' })).length > 0);
+  assert.ok(textProblems(n({ kind: 'text', w: 100, h: 20, size: 13, label: 'This sentence is far too long to wrap into one short line of text' })).some(e => e.includes('height')));
+  assert.deepEqual(textProblems(n({ kind: 'text', w: 300, h: 40, size: 13, label: 'Short and sweet' })), []);
+  assert.ok(textProblems(n({ kind: 'row', w: 200, h: 24, label: 'Item', sub: 'two lines' })).some(e => e.includes('at least 30')));
+  const d = demo(); d.steps[1].set = { row: { hidden: false, label: 'A name that is much too long to fit in its row at all' } };
+  assert.ok(validateDemo(d).some(e => e.includes('step 2') && e.includes('too long')), 'a step that makes text too long is caught');
+});
+
+test('every course picture keeps its target and its note fully visible at every step', () => {
+  for (const m of MODULES) for (const d of [m.info, m.show]) for (let i = 0; i < d.steps.length; i++) {
+    const p = planStep(d, i); const v = viewRect(d.canvas, p.focusCam);
+    if (p.focus) assert.ok(p.focus.x >= v.x - 1e-6 && p.focus.y >= v.y - 1e-6 && p.focus.x + p.focus.w <= v.x + v.w + 1e-6 && p.focus.y + p.focus.h <= v.y + v.h + 1e-6, `${m.id} step ${i + 1}: target cropped`);
+    if (p.note) assert.ok(p.note.x >= v.x - 1e-6 && p.note.y >= v.y - 1e-6 && p.note.x + p.note.w <= v.x + v.w + 1e-6 && p.note.y + p.note.h <= v.y + v.h + 1e-6, `${m.id} step ${i + 1}: note cropped`);
+    if (d.steps[i].note) assert.ok(p.note, `${m.id} step ${i + 1}: the note was dropped`);
   }
 });
 
@@ -74,11 +109,45 @@ test('the demo checker names each kind of mistake', () => {
   assert.ok(validateDemo((() => { const d = demo(); d.screens[0].nodes[0].icon = 'nope'; return d; })(), () => false).some(e => e.includes('icon')));
 });
 
-test('every course demo is a real demonstration: it taps something, changes something, and has no autoplay', () => {
+test('every course Info is a valid animated picture that changes as it goes', () => {
+  for (const m of MODULES) {
+    assert.deepEqual(validateDemo(m.info), [], m.id);
+    assert.ok(m.info.steps.some(s => s.set || s.screen), `${m.id}: the Info never changes anything`);
+    assert.ok(m.info.steps.filter(s => s.focus || s.tap).length >= 2, `${m.id}: the Info never directs the eye`);
+  }
+});
+
+test('every course Show is a real demonstration: it taps something, changes something, and directs the eye', () => {
   for (const m of MODULES) {
     assert.deepEqual(validateDemo(m.show), [], m.id);
     assert.ok(m.show.steps.some(s => s.tap), `${m.id}: the Show never taps anything`);
     assert.ok(m.show.steps.some(s => s.set || s.screen), `${m.id}: the Show never changes anything`);
     assert.ok(m.show.steps.some(s => s.zoom || s.focus), `${m.id}: the Show never directs the eye`);
   }
+});
+
+test('the picture is laid out at the biggest size it is shown, so the camera only ever shrinks it', () => {
+  const canvas = { w: 640, h: 400 };
+  for (const vw of [260, 340, 480, 760]) {
+    const k = renderScale(vw, canvas.w); const fit = vw / canvas.w;
+    assert.ok(Math.abs(k - fit * MAX_ZOOM) < 1e-9, 'layout scale is the fit times the deepest zoom');
+    for (const rect of [null, { x: 20, y: 20, w: 80, h: 30 }, { x: 300, y: 200, w: 10, h: 10 }, { x: 0, y: 0, w: 640, h: 400 }]) {
+      const cam = cameraFor(canvas, rect); const onScreenScale = k * (cam.zoom / MAX_ZOOM);
+      assert.ok(cam.zoom / MAX_ZOOM <= 1 + 1e-9, 'never scaled up after layout');
+      assert.ok(Math.abs(onScreenScale - fit * cam.zoom) < 1e-9, 'what you see is still the zoom the camera asked for');
+    }
+  }
+  assert.ok(renderScale(0, 640) > 0, 'a not-yet-measured view does not break');
+});
+
+test('the picture is fitted into the room that is left, whole and in shape', () => {
+  const canvas = { w: 640, h: 400 };
+  assert.deepEqual(fitBox({ w: 800, h: 1000 }, canvas), { w: 800, h: 500 }, 'width limits it');
+  assert.deepEqual(fitBox({ w: 1000, h: 250 }, canvas), { w: 400, h: 250 }, 'height limits it');
+  for (const a of [{ w: 320, h: 200 }, { w: 1180, h: 640 }, { w: 390, h: 300 }]) { const f = fitBox(a, canvas); assert.ok(f.w <= a.w + 1e-9 && f.h <= a.h + 1e-9, 'never bigger than the room'); assert.ok(Math.abs(f.w / f.h - 1.6) < 1e-9, 'same shape'); }
+  assert.deepEqual(fitBox({ w: 0, h: 500 }, canvas), { w: 0, h: 0 }, 'not measured yet');
+});
+
+test('wide windows put the words beside the picture, tall ones underneath', () => {
+  assert.equal(demoLayout({ w: 1180, h: 820 }), 'side'); assert.equal(demoLayout({ w: 820, h: 1180 }), 'stack'); assert.equal(demoLayout({ w: 390, h: 844 }), 'stack'); assert.equal(demoLayout({ w: 844, h: 390 }), 'side');
 });

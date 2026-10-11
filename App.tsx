@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import { AppState, Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StatusBar } from 'expo-status-bar';
@@ -38,6 +38,8 @@ import { getModule } from './src/training';
 import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { noteActivity } from './src/lib/idle';
+import { Enter } from './src/ui/Motion';
+import { TRANSITION_ROUTES, pageDirection } from './src/lib/motion';
 import { isLockScreen } from './src/lib/posLock';
 import { UiProvider, useUi } from './src/ui/uiProfile';
 import { effectiveTab } from './src/lib/uiMode';
@@ -73,6 +75,14 @@ function Routes() {
   }
 }
 
+/** Training pages slide in (forward from the right, back from the left). Every other page is drawn exactly as before. */
+function RouteMotion() {
+  const nav = useNav(); const top = nav.stack[nav.stack.length - 1]; const depth = nav.stack.length; const prev = useRef(depth); const dir = pageDirection(prev.current, depth);
+  useEffect(() => { prev.current = depth; });
+  if (!top || !TRANSITION_ROUTES.has(top.name)) return <Routes />;
+  return <Enter key={`${top.name}:${depth}`} from={dir} distance={36} duration={300} style={{ flex: 1 }}><Routes /></Enter>;
+}
+
 function Shell() {
   const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
@@ -97,7 +107,7 @@ function Shell() {
           <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
           {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
         </View>
-        {hasPage ? <Routes /> : null}
+        {hasPage ? <RouteMotion /> : null}
       </View>
       {!hasPage ? (
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>

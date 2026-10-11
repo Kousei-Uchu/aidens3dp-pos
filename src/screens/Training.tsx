@@ -5,6 +5,8 @@ import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Page, Txt } from '../ui/kit';
 import { useTheme } from '../ui/theme';
+import { Enter } from '../ui/Motion';
+import { stagger } from '../lib/motion';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useTraining } from '../state/trainingSession';
@@ -23,12 +25,12 @@ export default function Training() {
   return (
     <Page title="Training" onBack={nav.pop}>
       <View style={{ padding: 16, gap: 12 }}>
-        <Txt sub>Short courses for each job at the till. Do them in any order. Practice data is used, so nothing is saved, sent or charged.</Txt>
-        <Txt size={13} weight="700" sub>{n} of {MODULES.length} finished</Txt>
-        {MODULES.map(m => {
+        <Enter delay={stagger(0, 120)}><Txt sub>Short courses for each job at the till. Do them in any order. Practice data is used, so nothing is saved, sent or charged.</Txt></Enter>
+        <Enter delay={stagger(1, 120)}><Txt size={13} weight="700" sub>{n} of {MODULES.length} finished</Txt></Enter>
+        {MODULES.map((m, mi) => {
           const done = stagesDone(progress, who, m.id); const complete = isComplete(progress, who, m.id);
           return (
-            <Card key={m.id} style={{ padding: 16, gap: 10, borderColor: complete ? c.good : c.line, borderWidth: complete ? 2 : 1 }}>
+            <Enter key={m.id} delay={stagger(mi + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10, borderColor: complete ? c.good : c.line, borderWidth: complete ? 2 : 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                 {complete ? <Ionicons name="checkmark-circle" size={40} color={c.good} accessibilityLabel="Finished" /> : <Ionicons name="school-outline" size={34} color={c.sub} />}
                 <View style={{ flex: 1 }}>
@@ -45,7 +47,7 @@ export default function Training() {
               </View>
               <Pressable onPress={() => open(m.id, complete ? 'info' : firstOpenStage(done))} accessibilityRole="button" style={{ backgroundColor: c.accent, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}>
                 <Txt weight="700" color={c.onAccent}>{complete ? 'Do it again' : done.length ? 'Continue' : 'Start'}</Txt></Pressable>
-            </Card>);
+            </Card></Enter>);
         })}
       </View>
     </Page>

@@ -12,6 +12,7 @@ import { measureSpot, onSpotPressed } from './Spot';
 import { confirm } from './kit';
 import TrainingOverlay from './TrainingOverlay';
 import TrainingDock from './TrainingDock';
+import { Enter } from './Motion';
 import { trainingActions } from './trainingActions';
 import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, type Rect } from '../lib/trainingGeometry';
@@ -94,7 +95,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flex: 1 }}>{children}{sandbox ? <TrainingOverlay layer={ROOT_LAYER} /> : null}</View>
+      <View style={{ flex: 1 }}>{children}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
       {sandbox ? <TrainingDock /> : null}
     </View>
   );

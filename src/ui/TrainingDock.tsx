@@ -8,6 +8,7 @@ import { useTraining } from '../state/trainingSession';
 import { getModule } from '../training';
 import { STAGE_LABEL } from '../lib/trainingModule';
 import { trainingActions } from './trainingActions';
+import { Enter } from './Motion';
 
 export default function TrainingDock() {
   const { c } = useTheme(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
@@ -17,7 +18,7 @@ export default function TrainingDock() {
   const check = view?.mode === 'check';
   const btn = { borderRadius: 999, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row' as const, alignItems: 'center' as const, gap: 6 };
   return (
-    <View style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 12, paddingTop: 10, paddingBottom: tablet ? 12 : 26, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+    <Enter from="up" distance={56} duration={340}><View style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 12, paddingTop: 10, paddingBottom: tablet ? 12 : 26, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <View style={{ flex: 1, gap: 2 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: '#111', fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
@@ -34,6 +35,6 @@ export default function TrainingDock() {
       ) : null}
       {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
       <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
-    </View>
+    </View></Enter>
   );
 }

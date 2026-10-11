@@ -2,7 +2,7 @@
 // One course run, outside the sandbox: the Info slideshow, the Show animation, the practice-data card before Guide and the Checks,
 // and the Done screen. Guide and Check themselves happen on the real screens, driven by TrainingHost.
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, ScrollView, View } from 'react-native';
+import { Animated, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Btn, Page, Txt, alertMsg } from '../ui/kit';
@@ -10,12 +10,13 @@ import { useTheme } from '../ui/theme';
 import { useNav, type Tab } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useTraining } from '../state/trainingSession';
-import SceneView from '../ui/SceneView';
 import DemoView from '../ui/DemoView';
+import { Enter } from '../ui/Motion';
 import Confetti from '../ui/Confetti';
 import { MODULES, getModule } from '../training';
 import { STAGES, STAGE_LABEL, type Stage, type TrainingModule } from '../lib/trainingModule';
 import { canOpenStage, elapsedSecs, startRun, type Run } from '../lib/trainingRun';
+import { demoLayout } from '../lib/trainingDemo';
 import { nextSuggested, staffKey, stagesDone } from '../lib/trainingProgress';
 
 const INTRO: Partial<Record<Stage, { title: string; body: string; button: string }>> = {
@@ -39,52 +40,46 @@ export default function TrainingRun() {
             style={{ flexDirection: 'row', gap: 4, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 999, backgroundColor: on ? c.accent : d ? c.good : c.fill, opacity: can || on ? 1 : 0.4 }}>
             {d && !on ? <Ionicons name="checkmark" size={13} color="#fff" /> : null}<Txt size={12} weight="700" color={on ? c.onAccent : d ? '#fff' : c.text}>{STAGE_LABEL[s]}</Txt></Pressable>); })}
       </View>
-      <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
-        {run.stage === 'info' ? <Slides key={`i-${run.startedAt}`} mod={mod} /> : null}
-        {run.stage === 'show' ? <Demo key={`s-${run.startedAt}`} mod={mod} /> : null}
+      {run.stage === 'info' ? <Demo key={`i-${run.startedAt}`} mod={mod} scene="info" /> : null}
+      {run.stage === 'show' ? <Demo key={`s-${run.startedAt}`} mod={mod} scene="show" /> : null}
+      {run.stage === 'info' || run.stage === 'show' ? null : <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 40, gap: 16 }}>
         {(run.stage === 'guide' || run.stage === 'check1' || run.stage === 'check2') ? <Intro mod={mod} run={run} /> : null}
         {run.stage === 'gratify' ? <Gratify mod={mod} run={run} who={who} /> : null}
-      </ScrollView>
+      </ScrollView>}
     </Page>
   );
 }
 
-/** Info is a slideshow the person steps through with Back and Next. */
-function Slides({ mod }: { mod: TrainingModule }) {
-  const sc = mod.info; const last = sc.beats.length - 1; const [i, setI] = useState(0); const go = () => useTraining.getState().completeStage();
-  return (
-    <View style={{ gap: 16 }}>
-      <Txt size={13} weight="700" sub>INFO</Txt>
-      <SceneView scene={sc} index={i} />
-      <View style={{ flexDirection: 'row', gap: 10 }}>
-        <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
-        {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
-      </View>
-    </View>
-  );
-}
-
 /**
- * Show is an animated demonstration the person watches at their own pace. Each step plays once when it opens and then waits.
+ * Info and Show are animated demonstrations the person watches at their own pace, in the same style. Each step plays once when it opens and then waits.
  * Nothing moves on by itself: Next goes to the following step, Back returns to the one before, Replay plays the current step again.
  */
-function Demo({ mod }: { mod: TrainingModule }) {
-  const { c } = useTheme(); const demo = mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
+function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
+  const { c } = useTheme(); const win = useWindowDimensions(); const side = demoLayout({ w: win.width, h: win.height }) === 'side';
+  const demo = scene === 'info' ? mod.info : mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
   const go = () => useTraining.getState().completeStage();
-  return (
-    <View style={{ gap: 16 }}>
-      <Txt size={13} weight="700" sub>SHOW THE PROCESS</Txt>
-      <DemoView demo={demo} index={i} replay={replay} />
-      <View style={{ gap: 6, minHeight: 104 }}>
-        {step.title ? <Txt size={13} weight="700" sub>{step.title}</Txt> : null}
-        <View accessibilityLiveRegion="polite"><Txt size={19} weight="600" style={{ lineHeight: 27 }}>{step.say}</Txt></View>
-      </View>
+  // The picture takes whatever room is left and the words and buttons are always on screen with it, so nothing needs scrolling:
+  // beside the picture on a wide window, underneath it on a tall one.
+  const words = (
+    <ScrollView style={side ? { flex: 1 } : { maxHeight: 132, flexGrow: 0 }} contentContainerStyle={{ gap: 6 }} showsVerticalScrollIndicator={false}>
+      <Txt size={13} weight="700" sub>{scene === 'info' ? 'INFO' : 'SHOW THE PROCESS'}{step.title ? `  ·  ${step.title}` : ''}</Txt>
+      <View accessibilityLiveRegion="polite"><Txt size={side ? 18 : 19} weight="600" style={{ lineHeight: side ? 25 : 27 }}>{step.say}</Txt></View>
+    </ScrollView>
+  );
+  const controls = (
+    <View style={{ gap: 12 }}>
       <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>{demo.steps.map((_, k) => <View key={k} style={{ width: k === i ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: k <= i ? c.text : c.line }} />)}</View>
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
         <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => setReplay(replay + 1)} style={{ flex: 1 }} />
         {i < last ? <Btn title="Next" onPress={() => setI(i + 1)} style={{ flex: 2 }} /> : <Btn title="Continue" onPress={go} style={{ flex: 2 }} />}
       </View>
+    </View>
+  );
+  return (
+    <View style={{ flex: 1, padding: 16, gap: 14, flexDirection: side ? 'row' : 'column' }}>
+      <View style={{ flex: 1 }}><DemoView demo={demo} index={i} replay={replay} /></View>
+      {side ? <View style={{ width: Math.min(340, Math.max(260, win.width * 0.3)), gap: 14, justifyContent: 'space-between' }}>{words}{controls}</View> : <>{words}{controls}</>}
     </View>
   );
 }
@@ -98,7 +93,7 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
     nav.setTab(mod.tabs[0] as Tab); // leaves this page and shows the real till; TrainingHost takes over from here
   };
   return (
-    <View style={{ gap: 14 }}>
+    <Enter style={{ gap: 14 }}>
       <View style={{ backgroundColor: '#F59E0B', alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color="#111">PRACTICE DATA</Txt></View>
       <Txt size={22} weight="700">{t.title}</Txt>
       <Txt>{t.body}</Txt>
@@ -107,7 +102,7 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
         <Txt size={14} sub>Your real cart, sales, drawer and settings are not touched. Nothing is sent to Shopify or the card reader. Exit at any time from the bar at the bottom.</Txt>
       </View>
       <Btn title={t.button} busy={busy} onPress={start} />
-    </View>
+    </Enter>
   );
 }
 

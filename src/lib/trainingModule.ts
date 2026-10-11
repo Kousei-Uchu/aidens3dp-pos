@@ -9,14 +9,8 @@ export const SANDBOX_STAGES: readonly Stage[] = ['guide', 'check1', 'check2'];
 export const needsSandbox = (s: Stage): boolean => SANDBOX_STAGES.includes(s);
 
 export type Tone = 'neutral' | 'good' | 'bad' | 'accent';
-/** A thing in a scene. x and y are percentages of the scene box (0 to 100). */
-export type Actor = { id: string; icon: string; label?: string; x: number; y: number; hidden?: boolean; tone?: Tone };
-/** One sentence plus what happens on screen while it is said. */
-export type Beat = { id?: string; say: string; place?: Record<string, { x?: number; y?: number }>; show?: string[]; hide?: string[]; pulse?: string[]; tone?: Record<string, Tone> };
-export type Scene = { actors: Actor[]; beats: Beat[] };
-
 /**
- * The Show stage: an animated demonstration drawn with simplified copies of the real screens (a "mock"), in a fixed canvas.
+ * The Info and Show stages (B6) share one format: an animated demonstration drawn with simplified copies of the real screens (a "mock"), in a fixed canvas.
  * A camera zooms and pans over the canvas, a pointer taps controls, and the picture changes as the steps play.
  * It is watched, not played: the person moves through it with Next and Back. Ids are unique across the whole demo.
  */
@@ -69,7 +63,7 @@ export type TrainingModule = {
   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
   flow: 'standard' | 'guided';                // which checkout the sandbox forces
   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
-  info: Scene; show: Demo; guide: Step[];
+  info: Demo; show: Demo; guide: Step[];
   check1: Goal[]; check2: Goal[];
   recap: string[];                            // short adult lines on the Done screen: what they can now do
 };
@@ -79,14 +73,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
   const bad: string[] = []; const at = (w: string, t: string) => bad.push(`${m.id}: ${w}: ${t}`);
   if (!/^[a-z0-9][a-z0-9-]*$/.test(m.id)) bad.push(`${m.id}: id must be lower case letters, digits and hyphens`);
   if (!m.title.trim() || !m.summary.trim()) at('header', 'needs a title and a summary');
-  for (const [name, sc] of [['info', m.info]] as const) {
-    if (sc.beats.length < 3) at(name, 'needs at least 3 beats');
-    const ids = new Set(sc.actors.map(a => a.id)); if (ids.size !== sc.actors.length) at(name, 'actor ids repeat');
-    sc.beats.forEach((b, i) => {
-      if (!b.say.trim()) at(name, `beat ${i + 1} says nothing`);
-      for (const k of [...Object.keys(b.place ?? {}), ...(b.show ?? []), ...(b.hide ?? []), ...(b.pulse ?? []), ...Object.keys(b.tone ?? {})]) if (!ids.has(k)) at(name, `beat ${i + 1} mentions the unknown actor "${k}"`);
-    });
-  }
+  for (const e of validateDemo(m.info, spotIcon)) at('info', e);
   for (const e of validateDemo(m.show, spotIcon)) at('show', e);
   if (!m.guide.length) at('guide', 'needs steps');
   const stepIds = new Set(m.guide.map(s => s.id)); if (stepIds.size !== m.guide.length) at('guide', 'step ids repeat');
@@ -95,7 +82,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
     for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
   }
-  const taught = new Set<string>([...stepIds, ...m.info.beats.map(b => b.id ?? ''), ...m.show.steps.map(b => b.id ?? '')].filter(Boolean));
+  const taught = new Set<string>([...stepIds, ...m.info.steps.map(b => b.id ?? ''), ...m.show.steps.map(b => b.id ?? '')].filter(Boolean));
   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) {
     if (!goals.length) at(name, 'needs at least one goal');
     const gi = new Set(goals.map(g => g.id)); if (gi.size !== goals.length) at(name, 'goal ids repeat');
