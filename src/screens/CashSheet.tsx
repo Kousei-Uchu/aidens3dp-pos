@@ -10,7 +10,7 @@ import { Btn, HelpButton, Money, Sheet, Txt } from '../ui/kit';
 import { DenomPad } from '../ui/DenomPad';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
-import { addCounts, draftCounts, summariseCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
+import { addCounts, DENOMS, denomLabel, draftCounts, summariseCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
 import { cashStatus, countsToDraft, handBackOptions, ledgerEmpty, partCashOption, planChange } from '../lib/cashSale';
 import { planChangeSmart } from '../lib/changeScore';
 import { useCashProfile } from '../state/cashProfile';
@@ -19,6 +19,26 @@ import type { Tender } from '../lib/types';
 
 /** The denominations physically received and given; `applyCents` marks a part-cash payment. */
 export type CashResult = { tendered: number; received: Counts; given: Counts; applyCents?: number };
+
+function ChangeBreakdown({ counts }: { counts: Counts }) {
+  const { c } = useTheme();
+  const present = DENOMS.filter(d => (counts[String(d.cents)] ?? 0) > 0);
+  return (
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, paddingVertical: 4 }}>
+      {present.map(d => {
+        const count = counts[String(d.cents)];
+        return (
+          <View key={d.cents} accessibilityLabel={`${denomLabel(d.cents)}, ${count}`} style={{ width: 70, height: 66, borderRadius: 14, backgroundColor: c.fill, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
+            <Txt size={22} weight="700">{denomLabel(d.cents)}</Txt>
+            <View style={{ position: 'absolute', right: -5, bottom: -5, minWidth: 30, height: 24, borderRadius: 12, paddingHorizontal: 6, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
+              <Txt size={12} weight="700" color={c.onAccent}>x{count}</Txt>
+            </View>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
 
 /** Notes and coins to hand to the customer: the suggestion from `pool`, or tap what is really given. */
 export function GiveCash({ pool, owed, headline = 'Give the customer', detail, onConfirm }: { pool: Counts; owed: number; headline?: string; detail?: string; onConfirm: (given: Counts) => void }) {
@@ -34,7 +54,7 @@ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, o
         <>
           <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, alignItems: 'center' }}>
             <Txt size={13} sub weight="600">Take from the drawer</Txt>
-            <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{summariseCounts(shown)}</Txt>
+            <ChangeBreakdown counts={shown} />
             {plan.smart ? <Txt size={12} sub style={{ textAlign: 'center' }}>{alt === 0 ? plan.why : 'Another way to make the same change.'}</Txt> : null}
             {plan.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
           </View>

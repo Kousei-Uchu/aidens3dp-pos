@@ -2,7 +2,7 @@
 // A8: GUI for bundle deals (Settings ▸ Discounts & bundles). Writes the same JSON the pricing engine reads
 // (`settings.bundlesJson`); the old JSON editor stays as the "Advanced" view.
 import React, { useMemo, useState } from 'react';
-import { Pressable, View } from 'react-native';
+import { Pressable, Share, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Card, Chip, Empty, Field, Row, Section, Segmented, Sheet, Toggle, Txt, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
@@ -11,7 +11,7 @@ import { pushSharedSettings } from '../lib/sync';
 import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
 import { fmt, toCents, toDecimal } from '../lib/money';
 import {
-  dealSummary, dealToForm, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, idName, makeDealId, removeDeal, setDealEnabled,
+  dealSummary, dealToForm, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, idName, importRecommendedPairs, makeDealId, recommendedPairsExport, removeDeal, setDealEnabled,
   slotLabel, slotVariants, stringifyBundleConfig, totalUnits, unitSlots, upsertDeal, variantName, type DealForm, type DealMode, type SlotForm,
 } from '../lib/bundleForm';
 import type { BundleConfig, Variant } from '../lib/types';
@@ -71,6 +71,7 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete 
   const [f, setF] = useState<DealForm>(initial);
   const [amountText, setAmountText] = useState(initial.mode === 'percent' ? String(initial.percent) : initial.amountCents ? toDecimal(initial.amountCents) : '');
   const [picking, setPicking] = useState<number | null>(null); const [pairing, setPairing] = useState(false); const [tried, setTried] = useState(false);
+  const [showPairImport, setShowPairImport] = useState(false); const [pairImportText, setPairImportText] = useState(''); const [pairImportMessage, setPairImportMessage] = useState('');
   const set = (p: Partial<DealForm>) => setF(cur => ({ ...cur, ...p }));
   const units = totalUnits(f); const problems = formProblems(f);
   const setMode = (mode: DealMode) => { set({ mode }); setAmountText(''); };
@@ -142,11 +143,29 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete 
       </View>
 
       <Txt weight="700" size={16} style={{ marginTop: 10, marginBottom: 2 }}>Recommended pairs (optional)</Txt>
-      <Txt size={13} sub style={{ marginBottom: 8 }}>Mark the variation combinations you’d like customers to buy together, like matching colours. Any variation still gets the deal. If the cashier rings up a different combination they’re asked to check it before payment, and recommended pairs are matched first when the saving is the same.</Txt>
+      <Txt size={13} sub style={{ marginBottom: 8 }}>Mark the variation combinations you’d like customers to buy together, like matching colours. Any variation still gets the deal. The matcher prefers these combinations when choosing which eligible items to bundle; other combinations are flagged for the cashier to check before payment.</Txt>
       {f.recommended.length ? <Section>{f.recommended.map((r, i) => (
         <Row key={i} title={r.map(id => idName(id, variants)).join('  +  ')} last={i === f.recommended.length - 1}
           right={<Pressable hitSlop={10} onPress={() => set({ recommended: f.recommended.filter((_, k) => k !== i) })} accessibilityRole="button" accessibilityLabel="Remove this pair"><Ionicons name="close-circle" size={22} color={c.sub} /></Pressable>} />))}</Section> : null}
       <Btn title="Add a recommended pair" kind="secondary" icon="heart-outline" style={{ marginTop: 8 }} disabled={f.slots.some(s => !s.ids.length)} onPress={() => setPairing(true)} />
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        <Btn title="Export variation JSON" kind="secondary" small style={{ flex: 1 }} onPress={() => void Share.share({ message: recommendedPairsExport(f, variants), title: `${f.label || f.id} variations` })} />
+        <Btn title={showPairImport ? 'Hide import' : 'Import pairs JSON'} kind="secondary" small style={{ flex: 1 }} onPress={() => { setShowPairImport(v => !v); setPairImportMessage(''); }} />
+      </View>
+      {showPairImport ? <Card style={{ marginTop: 8, padding: 12, gap: 8 }}>
+        <Txt size={13} sub>Share the exported JSON with an LLM and ask it to fill the recommended array. Paste its JSON response here; every ID is checked against the variations allowed for its item position.</Txt>
+        <Field kind="json" value={pairImportText} onChangeText={setPairImportText} style={{ minHeight: 140, fontFamily: 'Menlo', fontSize: 12 }} placeholder="Paste the completed JSON" />
+        <View style={{ flexDirection: 'row', gap: 8 }}>
+          <Btn title="Import pairs" disabled={!pairImportText.trim()} style={{ flex: 1 }} onPress={() => {
+            const result = importRecommendedPairs(pairImportText, f, variants);
+            if (result.error) { setPairImportMessage(result.error); return; }
+            set({ recommended: result.pairs ?? [] });
+            setPairImportMessage(`Imported ${(result.pairs ?? []).length} recommended pair${result.pairs?.length === 1 ? '' : 's'}.`);
+          }} />
+          <Btn title="Cancel" kind="ghost" style={{ flex: 1 }} onPress={() => { setShowPairImport(false); setPairImportMessage(''); }} />
+        </View>
+        {pairImportMessage ? <Txt size={13} color={pairImportMessage.startsWith('Imported') ? c.good : c.bad}>{pairImportMessage}</Txt> : null}
+      </Card> : null}
 
       {warnings.length ? <View style={{ marginTop: 14, gap: 4 }}>{warnings.map((x, i) => <Txt key={i} size={13} color={c.warn}>⚠ {x}</Txt>)}</View> : null}
       {tried && problems.length ? <View style={{ marginTop: 14, gap: 4 }}>{problems.map((x, i) => <Txt key={i} size={13} color={c.bad}>• {x}</Txt>)}</View> : null}
@@ -252,4 +271,3 @@ function JsonEditor({ initial, reason, onDone }: { initial: string; reason?: str
     </View>
   );
 }
-

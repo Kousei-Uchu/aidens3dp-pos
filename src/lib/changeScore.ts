@@ -163,10 +163,25 @@ export type SmartPlan =
   | { kind: 'exact'; counts: Counts; truncated: boolean; alternatives: Counts[]; why: string; smart: boolean };
 
 const MAX_CANDIDATES = 400;
+type ChangeCandidate = { counts: Counts; pieces: number };
+
+/** Keep a small quickest-change baseline, then sample across the full piece-count/search range. */
+export function selectSmartCandidates<T extends { pieces: number }>(candidates: T[], limit: number): T[] {
+  const ordered = [...candidates].sort((a, b) => a.pieces - b.pieces);
+  if (limit <= 0) return [];
+  if (ordered.length <= limit) return ordered;
+  if (limit === 1) return [ordered[0]];
+  const baselineCount = Math.max(1, Math.floor(limit / 10));
+  const spreadCount = limit - baselineCount;
+  const rest = ordered.slice(baselineCount);
+  const spread = spreadCount === 1 ? [rest[rest.length - 1]] : Array.from({ length: spreadCount }, (_, i) => rest[Math.round(i * (rest.length - 1) / (spreadCount - 1))]);
+  return [...ordered.slice(0, baselineCount), ...spread];
+}
 /**
  * Same job as `planChange` (exact change from `pool`, which is the drawer plus what was just handed over), but picks the best-scoring exact
- * combination for the profile. It never changes WHETHER change can be made, only which notes and coins. With no usable profile it returns
- * the same answer as planChange (fewest pieces). `alternatives` are the next best, for a "show me another way" button.
+ * combination for the profile. The bounded candidate set retains the quickest options and samples across the full search, so higher-piece
+ * combinations are not silently excluded from smart scoring. It never changes WHETHER change can be made, only which notes and coins.
+ * With no usable profile it returns the same answer as planChange (fewest pieces). `alternatives` are the next best, for a "show me another way" button.
  */
 export function planChangeSmart(pool: Counts, owed: number, profile: CashProfile | null | undefined, maxNodes = 150000, keep = 3): SmartPlan {
   const quick = planChange(pool, owed, maxNodes);
@@ -181,7 +196,7 @@ export function planChangeSmart(pool: Counts, owed: number, profile: CashProfile
     cands.push({ counts, pieces });
   }
   if (!cands.length) return { ...quick, alternatives: [], why: '', smart: false }; // search was cut short: keep the plain answer
-  cands.sort((a, b) => a.pieces - b.pieces); const pool2 = cands.slice(0, MAX_CANDIDATES);
+  const pool2 = selectSmartCandidates(cands, MAX_CANDIDATES);
   const scored = pool2.map(c => ({ ...c, score: scoreAfter(cleanCounts(diffCounts(avail, c.counts)), c.pieces, profile) })).sort((a, b) => b.score - a.score || a.pieces - b.pieces);
   const best = scored[0]; const fewest = quick.counts;
   return { kind: 'exact', counts: best.counts, truncated: quick.truncated || truncated, alternatives: scored.slice(1, 1 + keep).map(s => s.counts), why: explainChoice(avail, best.counts, fewest), smart: true };
