@@ -44,13 +44,16 @@ export type DemoStep = {
 export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
 
 /** One cart line as training sees it. */
-export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean };
+export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
 export type TrainSnap = {
   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
   cart: SnapLine[]; cartDiscount: boolean; orderAdjusted: boolean; hasNote: boolean;
   /** Who is signed in (a practice staff id such as `train-staff-casey`) and whether the Sign in screen is up. Left out by plain tests. */
   staffId?: string; locked?: boolean;
+  /** What is typed in Search and on the Keypad, and where Checkout is (tab, how many levels deep, whether sizes are open). Left out by plain tests. */
+  /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
+  typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
 export type Until =
   | { kind: 'next' }                                  // an informational step: the Next button moves on
@@ -64,7 +67,9 @@ export type Until =
  */
 export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[];
   /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
-  gesture?: Gesture };
+  gesture?: Gesture;
+  /** Looked at on every check, before `target`. Returns what to say and point at right now (the next key to tap, the way back to the grid), or null to use `say` and `target` as written. */
+  aim?: (s: TrainSnap) => { say: string; target: string } | null };
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =

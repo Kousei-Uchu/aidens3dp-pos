@@ -19,8 +19,9 @@ import { Veil, dipThrough } from './Veil';
 import { trainingActions } from './trainingActions';
 import { SPOT } from '../lib/trainingSpots';
 import { ROOT_LAYER } from '../lib/trainingLayers';
-import { onScreen, type Rect } from '../lib/trainingGeometry';
+import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
+import { getOpenLine, getTyped, getWhere } from '../lib/trainingProbe';
 import { hintView, shouldNudge } from '../lib/trainingHints';
 import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
 import { gateFor, type Gesture } from '../lib/pointerGesture';
@@ -77,7 +78,9 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         leavePractice(() => { useTraining.getState().leave(); navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training'); });
       });
     };
-    const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); return onScreen(r, { w: winRef.current.width, h: winRef.current.height }) ? r : null; };
+    // The last spot measured says whether the person has to scroll: it can be wholly off screen (no ring, a cue at the edge) or cut off at the edge (ringed, with a cue).
+    const need: { current: ScrollNeed | null } = { current: null };
+    const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); const scr = { w: winRef.current.width, h: winRef.current.height }; need.current = scrollNeed(r, scr); return onScreen(r, scr) ? r : null; };
 
     const tick = async () => {
       if (busy.current || leaving.current) return; busy.current = true;
@@ -87,11 +90,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         if (!mod.tabs.includes(n.tab)) { n.setTab(mod.tabs[0] as Tab); return; }          // stay inside the module's screens
         if (top && !mod.routes.includes(top.name)) { n.pop(); return; }
         const item = cur.step ?? cur.goal; if (!item) return;
-        const k = `${st.run.stage}:${cur.i}`;
+        need.current = null; const k = `${st.run.stage}:${cur.i}`;
         const fresh = key.current !== k;
         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
@@ -111,7 +114,10 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         };
         let view: DockView;
         if (cur.step) {
-          const step = cur.step; let say = step.say; let rect = await spot(step.target);
+          const step = cur.step; let say = step.say; let rect: Rect | null = null;
+          // `aim` says what to point at right now (the next key, the way back to the grid). It wins when what it points at is on screen.
+          const aimed = step.aim?.(snap) ?? null; if (aimed) { rect = await spot(aimed.target); if (rect) say = aimed.say; }
+          if (!rect) rect = await spot(step.target);
           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
           if (off) { rect = off.rect; say = off.view!.say; }
@@ -129,6 +135,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           setGate(null);
           view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
+        if (need.current) view = { ...view, scroll: need.current, say: scrollSay(view.say, need.current) };
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
       } finally { busy.current = false; }

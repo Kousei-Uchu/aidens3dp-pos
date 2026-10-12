@@ -3,7 +3,7 @@
 // and tells training when it is tapped. Nothing here changes how anything looks or behaves.
 import React, { useCallback, useRef } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
-import type { Rect } from '../lib/trainingGeometry';
+import { sliceRect, type Rect } from '../lib/trainingGeometry';
 
 const refs = new Map<string, Set<any>>();
 const presses = new Set<(id: string) => void>();
@@ -27,12 +27,22 @@ export function spotRefFor(id: string): (node: any) => void {
 /** Call from an onPress. Cheap when training is not listening. */
 export const spotPressed = (id?: string): void => { if (id) presses.forEach(f => f(id)); };
 export const onSpotPressed = (f: (id: string) => void): (() => void) => { presses.add(f); return () => { presses.delete(f); }; };
-export const spotMounted = (id: string): boolean => (refs.get(id)?.size ?? 0) > 0;
+/** A spot that is one equal part of another spot (one tab of a native segmented control, which cannot carry a ref on each part). */
+const slices = new Map<string, { parent: string; index: number; count: number }>();
+export function registerSlice(id: string, parent: string, index: number, count: number): () => void {
+  slices.set(id, { parent, index, count }); return () => { slices.delete(id); };
+}
+export const spotMounted = (id: string): boolean => (refs.get(id)?.size ?? 0) > 0 || (slices.has(id) && spotMounted(slices.get(id)!.parent));
 
 const measure = (node: any): Promise<Rect | null> => new Promise(res => { try { node.measureInWindow((x: number, y: number, w: number, h: number) => res(w > 0 && h > 0 ? { x, y, w, h } : null)); } catch { res(null); } });
 /** Where this spot is in the window right now. A hidden or unmounted spot gives null. If several share an id, the first one on screen wins. */
 export async function measureSpot(id: string): Promise<Rect | null> {
-  const nodes = [...(refs.get(id) ?? [])]; if (!nodes.length) return null;
+  const nodes = [...(refs.get(id) ?? [])];
+  if (!nodes.length) {
+    const sl = slices.get(id); if (!sl) return null;
+    const r = await measureSpot(sl.parent); if (!r) return null;
+    return sliceRect(r, sl.index, sl.count);
+  }
   for (const r of await Promise.all(nodes.map(measure))) if (r) return r;
   return null;
 }

@@ -7,7 +7,7 @@
 // Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
 // practice till back exactly as the goal began. So nobody can ever get stuck.
 import type { Allow, Goal, Place, SnapLine, Step, TrainSnap } from './trainingModule';
-import { SPOT, cartLineSpot, gridItemSpot } from './trainingSpots';
+import { SPOT, cartLineSpot, gridItemSpot, lineKeyOf, lineMinusSpot, lineRemoveSpot } from './trainingSpots';
 import { remedyOf } from './trainingRemedies';
 import type { Gesture } from './pointerGesture';
 
@@ -92,13 +92,13 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
     const b = was.get(k)?.qty ?? 0; const l = c.line; const target = l.variantId ? cartLineSpot(l.variantId) : undefined;
     if (b === 0 && !allow.has('add')) {
       return { id: `extra:${k}`, kind: 'extra', fix: 'undo', title: `${name(l)} was added`, say: `The ${name(l)} is not part of this task. Swipe its line to the left, then tap Remove.`, target, via: SPOT.cartOpen, gesture: 'swipe-left',
-        window: { say: `The ${name(l)} is not part of this task. Tap Remove item in this window.`, target: SPOT.lineRemove } };
+        window: lineKeyOf(l) ? { say: `The ${name(l)} is not part of this task. Tap Remove item in this window.`, target: lineRemoveSpot(lineKeyOf(l)!) } : undefined };
     }
     const wanted = b === 0 ? 1 : b;
     if (c.qty > wanted && !allow.has('qty')) {
       const extra = c.qty - wanted; const take = extra === 1 ? 'one' : plural(extra, 'unit');
       return { id: `qty:${k}`, kind: 'qty', fix: 'undo', title: `Too many ${name(l)}`, say: b === 0 ? `You have ${c.qty} of the ${name(l)}, and one is enough here. Take ${take} out.` : `The ${name(l)} was only meant to be ${b}. Take ${take} out.`, target, via: SPOT.cartOpen,
-        window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: SPOT.lineMinus } };
+        ...(lineKeyOf(l) ? { window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: lineMinusSpot(lineKeyOf(l)!) } } : {}) };
     }
   }
 

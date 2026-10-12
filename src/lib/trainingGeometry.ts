@@ -64,3 +64,22 @@ export function placeNotice(o: { screen: Size; size: Size; avoid: readonly Rect[
   for (const slot of order) { const p = make(slot); const c = cost(p); if (c === 0) return p; if (c < bestCost) { best = p; bestCost = c; } }
   return best;
 }
+
+/** One equal part of a box, counting from 0 along its width (one tab of a segmented control). */
+export const sliceRect = (r: Rect, index: number, count: number): Rect => { const w = r.w / count; return { x: r.x + w * index, y: r.y, w, h: r.h }; };
+
+/** Does the person have to scroll to reach this spot? `fully`: it is wholly off screen. Otherwise it is cut off at the edge. Null when all of it is in view (or it cannot be measured). Vertical only. */
+export type ScrollNeed = { dir: 'up' | 'down'; fully: boolean };
+export function scrollNeed(r: Rect | null | undefined, screen: Size, edge = 6): ScrollNeed | null {
+  if (!r || r.w <= 1 || r.h <= 1) return null;
+  if (r.y >= screen.h) return { dir: 'down', fully: true };
+  if (r.y + r.h <= 0) return { dir: 'up', fully: true };
+  if (r.x + r.w <= 0 || r.x >= screen.w) return null; // sideways is not something a scroll fixes
+  if (r.y + r.h > screen.h - edge && r.y < screen.h - edge) return { dir: 'down', fully: false };
+  if (r.y < edge && r.y + r.h > edge) return { dir: 'up', fully: false };
+  return null;
+}
+/** The words that go with a scroll need: where the spot is and which way to scroll, added to what the step already says. */
+export function scrollSay(say: string, need: ScrollNeed): string {
+  return need.fully ? `Scroll ${need.dir} until you can see it. ${say}` : `${say} Scroll ${need.dir} a little so all of it is on screen.`;
+}

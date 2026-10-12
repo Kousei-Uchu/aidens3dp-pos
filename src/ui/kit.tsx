@@ -16,8 +16,8 @@ import { sheetMaxHeight } from '../lib/keyboardMath';
 import { useUi } from './uiProfile';
 import { openHelpPage, useNav } from './nav';
 import { helpForError } from '../lib/helpContext';
-import { Spot, spotPressed, useSpotRef } from './Spot';
-import { SPOT } from '../lib/trainingSpots';
+import { Spot, spotPressed, spotRefFor, useSpotRef } from './Spot';
+import { SPOT, findKeySpot } from '../lib/trainingSpots';
 import { TrainingLayer } from './TrainingLayer';
 
 export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
@@ -170,12 +170,13 @@ export const alertMsg = (title: string, message?: string, helpId?: string) => {
 /** Calculator-style keypad: digits shift in from the right as cents (Square behaviour). */
 export function Keypad({ value, onChange, onSubmit, submitLabel, decimal = true, big, keysSpot, submitSpot }: { value: string; onChange: (digits: string) => void; onSubmit?: () => void; submitLabel?: string; decimal?: boolean; big?: boolean; keysSpot?: string; submitSpot?: string }) {
   const { c } = useTheme();
-  const key = (k: string) => { spotPressed(keysSpot); tap(); if (k === '⌫') onChange(value.slice(0, -1)); else if (k === 'C') onChange(''); else onChange((value + k).replace(/^0+(?=\d)/, '').slice(0, 9)); };
+  const keyId = (k: string): string | undefined => (keysSpot ? findKeySpot(k === '⌫' ? 'del' : k) : undefined);
+  const key = (k: string) => { spotPressed(keysSpot); spotPressed(keyId(k)); tap(); if (k === '⌫') onChange(value.slice(0, -1)); else if (k === 'C') onChange(''); else onChange((value + k).replace(/^0+(?=\d)/, '').slice(0, 9)); };
   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'];
   return (
     <View style={{ gap: 8 }}>
       <Spot id={keysSpot} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{keys.map(k => (
-        <Pressable key={k} onPress={() => key(k)} accessibilityRole="button" accessibilityLabel={k === '⌫' ? 'Delete' : k === 'C' ? 'Clear' : k} style={({ pressed }) => ({ width: '31.5%', height: big ? 72 : 60, borderRadius: 14, backgroundColor: pressed ? c.line : c.fill, alignItems: 'center', justifyContent: 'center' })}>
+        <Pressable key={k} ref={keyId(k) ? spotRefFor(keyId(k)!) : undefined} collapsable={false} onPress={() => key(k)} accessibilityRole="button" accessibilityLabel={k === '⌫' ? 'Delete' : k === 'C' ? 'Clear' : k} style={({ pressed }) => ({ width: '31.5%', height: big ? 72 : 60, borderRadius: 14, backgroundColor: pressed ? c.line : c.fill, alignItems: 'center', justifyContent: 'center' })}>
           <Text style={{ fontSize: 24, fontWeight: '500', color: c.text }}>{k}</Text></Pressable>))}</Spot>
       {onSubmit ? <Btn spot={submitSpot} title={submitLabel ?? 'Add'} onPress={onSubmit} disabled={!value || (decimal && digitsToCents(value) <= 0)} /> : null}
     </View>

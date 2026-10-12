@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { diagnose, fixCandidates, stepRules } from '../src/lib/trainingCourse';
 import { snapOf } from '../src/lib/trainingConds';
-import { SPOT, WINDOW_SPOTS, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
+import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot } from '../src/lib/trainingSpots';
 import { validateModule, type Step, type TrainingModule } from '../src/lib/trainingModule';
 import { isKnownSpot } from '../src/lib/trainingSpots';
 import { welcome } from '../src/training/modules/welcome';
@@ -20,7 +20,7 @@ test('the reported bug: too many of an item, then the line window opens. One mes
   const page = diagnose({ ...goal, allow: ['add', 'remove'] }, frame, base, tooMany)!; assert.equal(page.kind, 'qty');
   const open = diagnose({ ...goal, allow: ['add', 'remove'] }, frame, base, snap({ lines: [line('train-v-bee', 3)], sheets: 1 }))!;
   assert.equal(open.kind, 'qty', 'opening the window to fix it is not a new mistake (it used to flip to "not needed, close it")');
-  const c = fixCandidates(open, true); assert.equal(c[0].target, SPOT.lineMinus); assert.match(c[0].say, /minus/i); assert.doesNotMatch(c[0].say, /does not need this window/i);
+  const c = fixCandidates(open, true); assert.equal(c[0].target, lineMinusSpot('train-v-bee')); assert.match(c[0].say, /minus/i); assert.doesNotMatch(c[0].say, /does not need this window/i);
   assert.equal(c[0].gesture, 'tap');
 });
 
@@ -37,7 +37,7 @@ test('page first, then the bar that opens the cart, when no window is open', () 
 
 test('an extra item with the line window open points at Remove item in that window', () => {
   const d = diagnose({ allow: [] }, frame, snap(), snap({ lines: [line('train-v-egg')], sheets: 1 }))!; const c = fixCandidates(d, true);
-  assert.equal(c[0].target, SPOT.lineRemove); assert.match(c[0].say, /Remove item/); assert.equal(c[1].target, SPOT.sheetClose, 'falls back to closing a window that is not the line window');
+  assert.equal(c[0].target, lineRemoveSpot('train-v-egg')); assert.match(c[0].say, /Remove item/); assert.equal(c[1].target, SPOT.sheetClose, 'falls back to closing a window that is not the line window');
   assert.match(c[1].say, /^Close this window first\./);
 });
 
@@ -52,7 +52,7 @@ test('no candidate ever tells the person to close the window that holds the fix'
     diagnose({ allow: [] }, frame, snap(), snap({ lines: [line('train-v-egg')], sheets: 1 })), diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-egg')] }), snap({ lines: [line('train-v-egg', 4)], sheets: 1 })),
     diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-egg')] }), snap({ sheets: 1 })),
   ];
-  for (const d of cases) { assert.ok(d); const c = fixCandidates(d!, true)[0]; if (d!.window && d!.window.target !== SPOT.sheetClose) assert.ok(WINDOW_SPOTS.includes(c.target!) && c.target !== SPOT.sheetClose, `${d!.kind}: the first thing shown is the fix inside the window`); }
+  for (const d of cases) { assert.ok(d); const c = fixCandidates(d!, true)[0]; if (d!.window && d!.window.target !== SPOT.sheetClose) assert.ok(isWindowSpot(c.target!) && c.target !== SPOT.sheetClose, `${d!.kind}: the first thing shown is the fix inside the window`); }
 });
 
 test('a Guide step does not allow windows unless it says so, or waits for one to open', () => {
@@ -71,7 +71,14 @@ test('the checker: gestures are known, a state step says how to reach its target
   const remove = welcome.guide.find(s => s.id === 'g-remove')!;
   assert.ok(validateModule(withStep({ ...remove, gesture: undefined }), isKnownSpot).some(e => /how to reach it \(gesture\)/.test(e)));
   assert.ok(validateModule(withStep({ ...remove, gesture: 'pinch' as never }), isKnownSpot).some(e => /unknown gesture/.test(e)));
-  const win: Step = { id: 'g-minus', say: 'x', target: SPOT.lineMinus, until: { kind: 'press', id: SPOT.lineMinus } };
+  const win: Step = { id: 'g-minus', say: 'x', target: lineMinusSpot('train-v-bee'), until: { kind: 'press', id: lineMinusSpot('train-v-bee') } };
   assert.ok(validateModule(withStep(win), isKnownSpot).some(e => /inside a window/.test(e)));
   assert.ok(!validateModule(withStep({ ...win, at: { sheets: true, tabs: ['checkout'], routes: [] } }), isKnownSpot).some(e => /inside a window/.test(e)));
+});
+
+test('each line has its own window buttons, so the guide can tell which item is open', () => {
+  assert.notEqual(lineRemoveSpot('train-v-egg'), lineRemoveSpot('train-v-bee')); assert.ok(isKnownSpot(lineRemoveSpot('train-v-egg'))); assert.ok(WINDOW_SPOTS.includes(SPOT.sheetClose));
+  // The extra item is the egg. With the BEE's window open, the egg's Remove button does not exist, so the person is told to close this window first, naming the egg.
+  const d = diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-bee')] }), snap({ lines: [line('train-v-bee'), line('train-v-egg')], sheets: 1 }))!; const c = fixCandidates(d, true);
+  assert.equal(c[0].target, lineRemoveSpot('train-v-egg')); assert.equal(c[1].target, SPOT.sheetClose); assert.match(c[1].say, /^Close this window first\./); assert.match(c[1].say, /egg|train-v-egg/i);
 });

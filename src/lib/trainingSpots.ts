@@ -9,8 +9,6 @@ export const SPOT = {
   moreTraining: 'more.training',
   back: 'page.back',           // the Back arrow at the top of every pushed page
   sheetClose: 'sheet.close',   // the Close button of a sheet
-  lineMinus: 'line.minus',     // the minus button in the line window
-  lineRemove: 'line.remove',   // the Remove item button in the line window
   terminalTap: 'terminal.tap',         // the customer's Tap card button under the practice terminal (manual mode)
   terminalInsert: 'terminal.insert',   // Insert card
   terminalRemove: 'terminal.remove',   // Take card out
@@ -37,12 +35,12 @@ export const SPOT = {
   receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:'] as const;
+export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -52,6 +50,12 @@ export const cartLineSpot = (variantId: string): string => `cart.line:${variantI
 export const gridPageSpot = (pageId: string): string => `grid.page:${pageId}`;
 /** One part of the Keypad | Quick Menu | All products switch: 'keypad', 'quick' or 'all'. */
 export const findTabSpot = (tab: 'keypad' | 'quick' | 'all'): string => `find.tab:${tab}`;
+/** The minus and Remove item buttons in ONE line's window. Each line has its own, so the guide can tell which item's window is open. The key is the variant, or the line's own id for a custom amount. */
+export const lineMinusSpot = (key: string): string => `line.minus:${key}`;
+export const lineRemoveSpot = (key: string): string => `line.remove:${key}`;
+export const lineKeyOf = (l: { variantId?: string; lineId?: string }): string | undefined => l.variantId ?? l.lineId;
+/** One key on the Keypad tab: a digit, 'C' (clear) or 'del' (delete). */
+export const findKeySpot = (key: string): string => `find.key:${key}`;
 /** A product row on All products. */
 export const allProductSpot = (productId: string): string => `all.product:${productId}`;
 /** A variation tile in the variation picker. */
