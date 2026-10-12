@@ -71,7 +71,9 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
   /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
   gesture?: Gesture;
   /** Looked at on every check, before `target`. Returns what to say and point at right now (the next key to tap, the way back to the grid), or null to use `say` and `target` as written. */
-  aim?: (s: TrainSnap) => { say: string; target: string } | null };
+  aim?: (s: TrainSnap) => { say: string; target: string } | null;
+  /** Where to point, deepest first, when the target is gone because the person closed a window or backed out. The first one that is on screen wins, and `recover` (the shallowest) is the last resort. */
+  recoverFrom?: { say: string; target: string }[] };
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
@@ -132,6 +134,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
     if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
     if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
+    for (const t of (s.recoverFrom ?? []).map(r => r.target)) if (t && !spotOk(t)) at('guide', `step ${s.id} falls back to the unknown spot "${t}"`);
     for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
     for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);

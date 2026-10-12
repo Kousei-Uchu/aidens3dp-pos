@@ -55,3 +55,13 @@ test('Check 2 problems are customer or staff side, and each says where it was ta
   for (const g of signIn.check2) { assert.ok(g.inject?.length, g.id); assert.ok(g.taughtBy, g.id); }
   assert.ok(signIn.check2.some(g => g.inject?.some(i => i.kind === 'pass')));
 });
+
+test('the sign in steps fall back to the tile that opens the window, deepest first, instead of a dead end', async () => {
+  const { SPOT, gridActionSpot } = await import('../src/lib/trainingSpots'); const { signIn } = await import('../src/training/modules/sign-in');
+  const step = (id: string) => signIn.guide.find(s => s.id === id)!; const SWITCH = gridActionSpot('switch_staff');
+  assert.deepEqual(step('g-pass-open').recoverFrom!.map(r => r.target), [SWITCH]);
+  assert.deepEqual(step('g-pass-scan').recoverFrom!.map(r => r.target), [SPOT.loginScanPass, SWITCH]);
+  assert.deepEqual(step('g-pin').recoverFrom!.map(r => r.target), [SWITCH], 'signed in as someone else: reopen the switch window');
+  assert.equal(typeof step('g-lock').aim, 'function'); assert.equal(step('g-lock').recover!.target, SPOT.tabCheckout);
+  for (const id of ['g-pass-open', 'g-pass-scan', 'g-lock', 'g-pin']) assert.ok(step(id).gesture, `${id} says how to reach its target`);
+});

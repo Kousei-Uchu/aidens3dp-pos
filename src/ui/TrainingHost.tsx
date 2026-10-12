@@ -118,6 +118,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           // `aim` says what to point at right now (the next key, the way back to the grid). It wins when what it points at is on screen.
           const aimed = step.aim?.(snap) ?? null; if (aimed) { rect = await spot(aimed.target); if (rect) say = aimed.say; }
           if (!rect) rect = await spot(step.target);
+          if (step.target && !rect) for (const r of step.recoverFrom ?? []) { rect = await spot(r.target); if (rect) { say = r.say; break; } }
           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
           if (off) { rect = off.rect; say = off.view!.say; }

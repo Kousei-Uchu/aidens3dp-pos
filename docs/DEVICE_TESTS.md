@@ -229,3 +229,13 @@ On the iPad and on a phone, in a Check that does not use discounts, prices or no
 4. In Find the right item, open the sizes and look at the tab steps: the ring should point at the back arrow first.
 
 Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
+
+## T19. Training: the last fallbacks (B6, 0104)
+
+On the iPad and on a phone.
+
+1. **Sign in and lock and switch staff:** at Scan pass, close the sign in window: the ring should point at the tile that names who is signed in. At Scan this pass, close the pass window (then the sign in window too): it should point at Scan pass, then the tile. At the PIN step, sign in as Morgan instead: it should point at the tile and say Casey needs to sign in.
+2. **Take a card payment:** at the customer's terminal step, cancel the payment from the Payment page: the ring should point at Card. Go back to the cart: it should point at Charge. At the Receipt step, close the Receipt window another way (swipe it away): the step should still finish.
+3. **Find the right item:** at the search step, switch to another tab: the ring should point at the Checkout tab.
+
+Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
