@@ -7,7 +7,7 @@ import path from 'node:path';
 import { SPOT, STATIC_SPOTS, isKnownSpot } from '../src/lib/trainingSpots';
 import { MODULES } from '../src/training';
 import { validateModule, type Goal, type Step } from '../src/lib/trainingModule';
-import { FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
+import { FIXTURE_COLLECTIONS, FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
 
 const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
 const ui = [...walk('src/screens'), ...walk('src/ui'), 'App.tsx'].filter(f => !f.includes('Training')).map(f => fs.readFileSync(f, 'utf8')).join('\n');
@@ -18,10 +18,14 @@ test('every static spot is attached to something in the UI', () => {
 });
 test('the dynamic spot kinds are really attached (grid tiles, cart lines)', () => {
   assert.ok(ui.includes('tileSpotId('), 'grid tiles carry spots'); assert.ok(ui.includes('cartLineSpot('), 'cart lines carry spots');
+  for (const fn of ['gridPageSpot(', 'findTabSpot(', 'allProductSpot(', 'pickVariantSpot(', 'searchResultSpot(']) assert.ok(ui.includes(fn), `${fn} is attached to something in the UI`);
 });
 test('every module is valid, and every record spot it names exists in the practice data', () => {
-  const vids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const tiles = fixtureGrid().pages[0].tiles;
+  const vids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const grid = fixtureGrid(); const tiles = grid.pages.flatMap(p => p.tiles);
   const tileIds = new Set(tiles.flatMap(t => (t.type === 'item' ? [t.variantId ?? t.productId!] : [])));
+  // The items a category shows are its collection's products, so they carry product spots too.
+  for (const t of tiles) if (t.type === 'category') for (const p of FIXTURE_COLLECTIONS.find(c => c.id === t.collectionId)?.productIds ?? []) tileIds.add(p);
+  const pageIds = new Set(grid.pages.map(p => p.id)); const collectionIds = new Set(FIXTURE_COLLECTIONS.map(c => c.id)); const productIds = new Set(FIXTURE_VARIANTS.map(v => v.productId));
   const spots = (m: (typeof MODULES)[number]): string[] => [...m.guide.flatMap((s: Step) => [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]), ...[...m.check1, ...m.check2].flatMap((g: Goal) => [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined])].filter((x): x is string => !!x);
   const ids = new Set(MODULES.map(m => m.id)); assert.equal(ids.size, MODULES.length, 'module ids are unique');
   for (const m of MODULES) {
@@ -29,6 +33,10 @@ test('every module is valid, and every record spot it names exists in the practi
     for (const s of spots(m)) {
       if (s.startsWith('grid.item:')) assert.ok(tileIds.has(s.slice(10)), `${m.id}: no grid tile for ${s}`);
       if (s.startsWith('cart.line:')) assert.ok(vids.has(s.slice(10)), `${m.id}: no practice item for ${s}`);
+      if (s.startsWith('grid.page:')) assert.ok(pageIds.has(s.slice(10)), `${m.id}: no practice page for ${s}`);
+      if (s.startsWith('grid.cat:')) assert.ok(collectionIds.has(s.slice(9)), `${m.id}: no practice category for ${s}`);
+      if (s.startsWith('pick.variant:') || s.startsWith('search.result:')) assert.ok(vids.has(s.slice(s.indexOf(':') + 1)), `${m.id}: no practice item for ${s}`);
+      if (s.startsWith('all.product:')) assert.ok(productIds.has(s.slice(12)), `${m.id}: no practice product for ${s}`);
     }
     for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'cart') for (const it of i.items) assert.ok(vids.has(it.variantId), `${m.id}: unknown practice item ${it.variantId}`);
   }

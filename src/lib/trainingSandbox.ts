@@ -22,6 +22,7 @@ export const FIXTURE_VARIANTS: Variant[] = [
   v('cow-s', 'cow', 'Highland Cow', 'Small', 1200, 20, 'TR-COW-S'), v('cow-l', 'cow', 'Highland Cow', 'Large', 1800, 12, 'TR-COW-L'),
   v('bee', 'bee', 'Bumble Bee', '', 800, 30, 'TR-BEE'), v('dragon', 'dragon', 'Red Dragon', '', 2500, 8, 'TR-DRG'),
   v('egg', 'egg', 'Dragon Egg', '', 600, 25, 'TR-EGG'), v('key', 'key', 'Keyring', '', 500, 40, 'TR-KEY'),
+  v('sticker', 'sticker', 'Sticker Pack', '', 300, 50, 'TR-STK'),
 ];
 export const FIXTURE_COLLECTIONS: Collection[] = [
   { id: `${TRAIN_PREFIX}c-animals`, title: 'Animals', productIds: [`${TRAIN_PREFIX}p-cow`, `${TRAIN_PREFIX}p-bee`] },
@@ -38,8 +39,12 @@ const HOME_TILES: Tile[] = [
   { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
   { type: 'action', action: 'custom_amount' }, { type: 'action', action: 'clear_cart' },
   { type: 'action', action: 'switch_staff' }, { type: 'action', action: 'lock_pos' },
+  { type: 'category', collectionId: `${TRAIN_PREFIX}c-animals` }, { type: 'category', collectionId: `${TRAIN_PREFIX}c-dragons` },
 ];
-export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: `${TRAIN_PREFIX}page-home`, name: 'Home', tiles: HOME_TILES }] });
+/** A second page, so changing page can be practised. */
+const EXTRA_TILES: Tile[] = [{ type: 'item', variantId: `${TRAIN_PREFIX}v-sticker` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` }];
+export const PRACTICE_PAGE_HOME = `${TRAIN_PREFIX}page-home`; export const PRACTICE_PAGE_EXTRAS = `${TRAIN_PREFIX}page-extras`;
+export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: PRACTICE_PAGE_HOME, name: 'Home', tiles: HOME_TILES }, { id: PRACTICE_PAGE_EXTRAS, name: 'Extras', tiles: EXTRA_TILES }] });
 /** A normal drawer with plenty of change. Check 2 can replace it with an injection. */
 export const FIXTURE_DRAWER: Record<string, number> = { '5000': 2, '2000': 5, '1000': 5, '500': 6, '200': 10, '100': 10, '50': 10, '20': 10, '10': 10, '5': 10 };
 export const fixtureLedger = (): CashLedger => ({ ...emptyLedger(), counts: { ...FIXTURE_DRAWER } });

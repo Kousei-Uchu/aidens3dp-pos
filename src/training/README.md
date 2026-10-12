@@ -36,7 +36,7 @@ Both stages are a `Demo`. Show demonstrates the job on mock screens; Info explai
 
 ## Spots
 
-A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`, `Chip`, `Row` or `IconBtn`, or wrap a view in `<Spot id=...>`. Static ids live in `src/lib/trainingSpots.ts`. Grid tiles and cart lines get ids from the item (`grid.item:<id>`, `cart.line:<variantId>`). `tests/trainingspots.test.ts` reads the source, so a module cannot name a spot that is not there.
+A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`, `Chip`, `Row` or `IconBtn`, or wrap a view in `<Spot id=...>`. Static ids live in `src/lib/trainingSpots.ts`. Grid tiles and cart lines get ids from the item (`grid.item:<id>`, `cart.line:<variantId>`). Other record spots: a page chip (`grid.page:<pageId>`), a part of the Keypad | Quick Menu | All products switch (`find.tab:<keypad|quick|all>`, while the whole switch is `find.tabs`), a product row on All products (`all.product:<productId>`), a size in the variation picker (`pick.variant:<variantId>`) and an item row in the Search window (`search.result:<variantId>`, a window spot). `isWindowSpot` says which spots live in a window. `tests/trainingspots.test.ts` reads the source, so a module cannot name a spot that is not there.
 
 ## Goals and hints
 

@@ -1,0 +1,631 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 08278e1..acee117 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -100,6 +100,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0095 | 2026-10-12 | Docs only: the training module plan is now `docs/TRAINING_PLAN.md`, the ordered list of all 50 planned courses in five tiers (what each covers, its Guide steps, its Check 2 failure), with what is built so far marked. | B6 |
+ | 0096 | 2026-10-12 | Virtual Zeller Terminal 2: **screens redone from your photos and screenshots**, as seven small commits. The terminal is **dark mode only** (the Dark screen switch on the Virtual terminal page is gone). **Idle** is the screensaver logo on the screensaver colour with the small zeller wordmark. **Tap Now** is the blue panel with the contactless symbol over a dark amount sheet with a small Cancel link (it was a sideways label). **Processing** is the blue smile on dark. **Approved** is a green ring and tick on dark with no Note / Contact / Receipt / New Sale buttons. **Declined** is a red ring, the amount, a bold response line and the explanation, with no eReceipt button. Receipt (QR on a white card), Cancelled and Not available are restyled to match. Wording in `COPY` was already right. | B6, N34 |
+ | 0097 | 2026-10-12 | Device report, Sign in course: **soft lock at Guide step 5** (after scanning Morgan's pass, nothing could be pressed, not even Skip or Exit). Cause: a scanned pass closed the scan window and the Switch staff sheet under it in the same moment, and iOS can leave an invisible window over the screen when two windows dismiss together. The scan window now slides away first and the sheet closes 0.5 s later (`SCAN_CLOSE_MS` in `src/screens/StaffLogin.tsx`). This also covers the real till's Switch staff and camera pass scan. Found by reading the code, **not reproduced** (no device here): T11 must be run again. | B6 |
++| 0098 | 2026-10-12 | Training (B6), task course 4 of the plan: **Find the right item** (`find-items`). Info, Show, Guide (18 steps: change page, open a category, pick a size, go back, Search, Keypad custom amount, All products), Check 1 (4 goals) and Check 2 (swap a Small cow for the Large, a search with two matches, two items on the Extras page). Real screens gained spots: the Search bar and its box and result rows, the Keypad | Quick Menu | All products switch (and each part of it), page chips, the grid back arrow, the All products filter and rows, the variation picker's tiles, the Keypad's keys and Add. The practice grid gained an **Extras** page, **Animals** and **Dragons** category tiles, and a Sticker Pack. Also removes an unused `weight` from three nodes in `cart.ts` (a type error with no effect on screen). Not fixed: `tests/virtualterminal.test.ts` still expects the terminal's "unavailable" screen to move on by itself, but `DWELL_MS` says it waits for a person | B6 |
+ 
+ ---
+ 
+diff --git a/docs/TRAINING_PLAN.md b/docs/TRAINING_PLAN.md
+index 1685a11..676fb60 100644
+--- a/docs/TRAINING_PLAN.md
++++ b/docs/TRAINING_PLAN.md
+@@ -6,8 +6,8 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
+ 
+ ## State of play
+ 
+-- **Built:** `welcome` (earlier patches), `sign-in` (0093) and `cart` (0094).
+-- **Next:** `find-items`, then `pay-card`, `pay-cash`, `receipts`.
++- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094) and `find-items` (0098).
++- **Next:** `pay-card`, then `pay-cash`, `receipts`.
+ - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
+ - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
+ 
+@@ -22,8 +22,9 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
+ 3. **`cart`: Build a cart** (done, 0094). Tiles, quantity, swipe to remove, the total.
+    - Guide: tap a tile, tap it again, swipe-remove.
+    - Check 2: the customer swaps one item for another, so you remove one and add one.
+-4. **`find-items`: Find the right item.** Quick Menu pages, categories, All products, keypad and custom amount, search, and the variation picker.
++4. **`find-items`: Find the right item** (done, 0098). Quick Menu pages, categories, All products, keypad and custom amount, search, and the variation picker.
+    - Guide: change page, drill into a category, search, pick a variation, enter a custom amount.
++   - Check 2: the customer swaps a Small Highland Cow for the Large, a search that shows two matches (the dragon, not the egg), and two items that sit together on the Extras page.
+ 5. **`pay-card`: Take a card payment.** The Charge screen and the Zeller terminal, including the customer side using the virtual terminal in manual mode.
+    - Guide: Charge, Card, customer taps, approved, receipt prompt.
+    - Check 2: a declined card (51), then retry or switch method. Also reader not ready, and a result that comes back unknown ("Checking...", never re-charge).
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index a070366..1d71294 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -3,7 +3,7 @@
+ // Writer's guide: src/training/README.md
+ import { validateDemo } from './trainingDemo';
+ import { isGesture, type Gesture } from './pointerGesture';
+-import { WINDOW_SPOTS } from './trainingSpots';
++import { isWindowSpot } from './trainingSpots';
+ import { RESPONSE_CODES } from './responseCodes';
+ export type { Gesture } from './pointerGesture';
+ export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
+@@ -123,7 +123,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
+     if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
+     if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
+-    for (const t of [s.target, s.recover?.target]) if (t && WINDOW_SPOTS.includes(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
++    for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
+     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
+     for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
+     for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
+diff --git a/src/lib/trainingRemedies.ts b/src/lib/trainingRemedies.ts
+index b92d52f..7112869 100644
+--- a/src/lib/trainingRemedies.ts
++++ b/src/lib/trainingRemedies.ts
+@@ -9,6 +9,7 @@ export const PLANNED_TITLES: Record<string, string> = {
+   welcome: 'How training works',
+   'sign-in': 'Sign in, lock and switch staff',
+   cart: 'Build a cart',
++  'find-items': 'Find the right item',
+   discounts: 'Discounts',
+   'price-adjust': 'Change a price',
+   customer: 'Customers and notes',
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+index a5d7118..3bd29c2 100644
+--- a/src/lib/trainingSandbox.ts
++++ b/src/lib/trainingSandbox.ts
+@@ -22,6 +22,7 @@ export const FIXTURE_VARIANTS: Variant[] = [
+   v('cow-s', 'cow', 'Highland Cow', 'Small', 1200, 20, 'TR-COW-S'), v('cow-l', 'cow', 'Highland Cow', 'Large', 1800, 12, 'TR-COW-L'),
+   v('bee', 'bee', 'Bumble Bee', '', 800, 30, 'TR-BEE'), v('dragon', 'dragon', 'Red Dragon', '', 2500, 8, 'TR-DRG'),
+   v('egg', 'egg', 'Dragon Egg', '', 600, 25, 'TR-EGG'), v('key', 'key', 'Keyring', '', 500, 40, 'TR-KEY'),
++  v('sticker', 'sticker', 'Sticker Pack', '', 300, 50, 'TR-STK'),
+ ];
+ export const FIXTURE_COLLECTIONS: Collection[] = [
+   { id: `${TRAIN_PREFIX}c-animals`, title: 'Animals', productIds: [`${TRAIN_PREFIX}p-cow`, `${TRAIN_PREFIX}p-bee`] },
+@@ -38,8 +39,12 @@ const HOME_TILES: Tile[] = [
+   { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
+   { type: 'action', action: 'custom_amount' }, { type: 'action', action: 'clear_cart' },
+   { type: 'action', action: 'switch_staff' }, { type: 'action', action: 'lock_pos' },
++  { type: 'category', collectionId: `${TRAIN_PREFIX}c-animals` }, { type: 'category', collectionId: `${TRAIN_PREFIX}c-dragons` },
+ ];
+-export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: `${TRAIN_PREFIX}page-home`, name: 'Home', tiles: HOME_TILES }] });
++/** A second page, so changing page can be practised. */
++const EXTRA_TILES: Tile[] = [{ type: 'item', variantId: `${TRAIN_PREFIX}v-sticker` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` }];
++export const PRACTICE_PAGE_HOME = `${TRAIN_PREFIX}page-home`; export const PRACTICE_PAGE_EXTRAS = `${TRAIN_PREFIX}page-extras`;
++export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: PRACTICE_PAGE_HOME, name: 'Home', tiles: HOME_TILES }, { id: PRACTICE_PAGE_EXTRAS, name: 'Extras', tiles: EXTRA_TILES }] });
+ /** A normal drawer with plenty of change. Check 2 can replace it with an injection. */
+ export const FIXTURE_DRAWER: Record<string, number> = { '5000': 2, '2000': 5, '1000': 5, '500': 6, '200': 10, '100': 10, '50': 10, '20': 10, '10': 10, '5': 10 };
+ export const fixtureLedger = (): CashLedger => ({ ...emptyLedger(), counts: { ...FIXTURE_DRAWER } });
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index fcf55a7..9673d39 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -23,17 +23,36 @@ export const SPOT = {
+   loginScanPass: 'login.scanpass',     // Scan pass under the PIN keys
+   switchLock: 'switch.lock',           // Lock register inside the Switch staff window
+   passScan: 'pass.scan',               // the practice pass sheet's Scan this pass button (only in training)
++  findSearch: 'find.search',           // the Search bar at the top of Checkout (opens the Search window)
++  findTabs: 'find.tabs',               // the Keypad | Quick Menu | All products switch (ring the whole switch; a tap on a part of it is `find.tab:<keypad|quick|all>`)
++  findBack: 'find.back',               // the back arrow above the grid (one level up, or out of the variation picker)
++  findFilter: 'find.filter',           // the Filter products box on All products
++  findKeypad: 'find.keypad',           // the number keys on the Keypad tab (any key)
++  findKeypadAdd: 'find.keypad.add',    // the Add button under the Keypad tab's keys
++  searchField: 'search.field',         // the box in the Search window
+ } as const;
+ /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan];
++export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan, SPOT.searchField];
++/** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
++export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:');
+ export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
+ /** Spots whose id ends in a record id: a grid tile, or a cart line. */
+-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:'] as const;
++export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:'] as const;
+ export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
+ export const gridItemSpot = (id: string): string => `grid.item:${id}`;
+ export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
+ export const gridActionSpot = (action: string): string => `grid.action:${action}`;
+ export const cartLineSpot = (variantId: string): string => `cart.line:${variantId}`;
++/** A page chip above the grid. */
++export const gridPageSpot = (pageId: string): string => `grid.page:${pageId}`;
++/** One part of the Keypad | Quick Menu | All products switch: 'keypad', 'quick' or 'all'. */
++export const findTabSpot = (tab: 'keypad' | 'quick' | 'all'): string => `find.tab:${tab}`;
++/** A product row on All products. */
++export const allProductSpot = (productId: string): string => `all.product:${productId}`;
++/** A variation tile in the variation picker. */
++export const pickVariantSpot = (variantId: string): string => `pick.variant:${variantId}`;
++/** An item row in the Search window. */
++export const searchResultSpot = (variantId: string): string => `search.result:${variantId}`;
+ /** The spot id a grid tile carries, or undefined for tile types training does not point at. */
+ export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
+   if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index f5438f3..898475a 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -1,6 +1,7 @@
+ // Location: src/screens/Checkout.tsx
+ import { spotPressed, useSpotRef } from '../ui/Spot';
+-import { SPOT } from '../lib/trainingSpots';
++import { SPOT, allProductSpot, findTabSpot, gridPageSpot, searchResultSpot } from '../lib/trainingSpots';
++import { Spot } from '../ui/Spot';
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { FlatList, Image, Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -53,7 +54,7 @@ const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicon
+ 
+ /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
+ export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const insets = useSafeAreaInsets(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const chargeRef = useSpotRef(SPOT.cartCharge);
++  const { c } = useTheme(); const { tablet } = useLayout(); const insets = useSafeAreaInsets(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
+   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
+   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
+   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
+@@ -156,7 +157,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+           {shopName ? <Txt size={13} weight="600" sub numberOfLines={1}>{shopName}</Txt> : null}
+         </View> : null}
+         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
+-          <Pressable onPress={() => setSheet('search')} accessibilityRole="search" accessibilityLabel="Search" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 12, height: 40 }}>
++          <Pressable ref={searchRef} onPress={() => { spotPressed(SPOT.findSearch); setSheet('search'); }} accessibilityRole="search" accessibilityLabel="Search" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 12, height: 40 }}>
+             <Ionicons name="search" size={18} color={c.sub} /><Txt sub>Search items, customers, discounts</Txt></Pressable>
+           {staffList.length && !guided ? <Pressable onPress={() => setSheet('staff')} accessibilityRole="button" accessibilityLabel={curStaff ? `Signed in as ${curStaff.name}. Switch staff` : 'Sign in'} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 140 }}>
+             <Ionicons name="person-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>{curStaff?.name ?? 'Sign in'}</Txt></Pressable> : null}
+@@ -164,7 +165,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+           {!guided ? <HelpButton id="sales" label="Checkout help" /> : null}
+           {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
+         </View>
+-        <View style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}><Segmented value={tab} onChange={t => { setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></View>
++        <Spot id={SPOT.findTabs} style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}><Segmented value={tab} onChange={t => { spotPressed(findTabSpot(t)); setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></Spot>
+         <StatusStrip />
+       </View>
+ 
+@@ -175,21 +176,21 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+       {tab === 'keypad' ? (
+         <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+           <Txt size={46} weight="700" style={{ textAlign: 'center', paddingVertical: 12 }}>{fmt(digitsToCents(digits))}</Txt>
+-          <Keypad big value={digits} onChange={setDigits} submitLabel={`Add ${fmt(digitsToCents(digits))}`} onSubmit={() => { if (locked) return alertMsg('Payment in progress'); setCart(cc => ops.addCustom(cc, digitsToCents(digits))); setDigits(''); toast.show('Custom amount added'); }} />
++          <Keypad big keysSpot={SPOT.findKeypad} submitSpot={SPOT.findKeypadAdd} value={digits} onChange={setDigits} submitLabel={`Add ${fmt(digitsToCents(digits))}`} onSubmit={() => { if (locked) return alertMsg('Payment in progress'); setCart(cc => ops.addCustom(cc, digitsToCents(digits))); setDigits(''); toast.show('Custom amount added'); }} />
+         </ScrollView>
+       ) : null}
+ 
+       {tab === 'quick' ? (
+         <ScrollView>
+           {node || variants ? <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 4, paddingLeft: 8, gap: 4 }}>
+-            <IconBtn icon="chevron-back" label={variants ? 'Back to the grid' : 'Back one level'} onPress={() => (variants ? setVariants(null) : setPath(valid.slice(0, -1)))} />
++            <IconBtn icon="chevron-back" label={variants ? 'Back to the grid' : 'Back one level'} spot={SPOT.findBack} onPress={() => (variants ? setVariants(null) : setPath(valid.slice(0, -1)))} />
+             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ alignItems: 'center', gap: 6, paddingRight: 16 }} accessibilityRole="menu">
+               {trail.map((cr, i) => i === trail.length - 1
+                 ? <Txt key={i} size={18} weight="700">{cr.label}</Txt>
+                 : <React.Fragment key={i}><Pressable onPress={() => { setVariants(null); setPath((cr as { path: Path }).path); }} hitSlop={8} accessibilityRole="button" accessibilityLabel={`Go to ${cr.label}`}><Txt size={16} color={c.accent}>{cr.label}</Txt></Pressable><Txt size={16} sub>{'>'}</Txt></React.Fragment>)}
+             </ScrollView></View>
+             : grid.pages.length > 1 || editing ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, padding: 12 }}>
+-              {grid.pages.map((p, i) => <Chip key={p.id} label={p.name} active={i === pageIdx} onPress={() => (editing && i === pageIdx ? setSheet('pages') : (setPageIdx(i), setPath([])))} />)}
++              {grid.pages.map((p, i) => <Chip key={p.id} label={p.name} spot={gridPageSpot(p.id)} active={i === pageIdx} onPress={() => (editing && i === pageIdx ? setSheet('pages') : (setPageIdx(i), setPath([])))} />)}
+               {editing ? <Chip label="Pages" icon="settings-outline" onPress={() => setSheet('pages')} /> : null}</ScrollView> : null}
+           {variants ? <VariantPicker variants={variants} onPick={pick} /> : <TileGrid tiles={tiles} editing={editing} handlers={handlers} onOpen={onOpen} onEdit={i => setEditIdx(i)}
+             onRemove={onRemove} onMove={onMove} onAdd={() => setSheet('add')} emptyHint={node ? 'This one has no tiles or items yet. Tap the pencil to add some.' : undefined} />}
+@@ -201,15 +202,15 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+       {tab === 'all' ? (
+         variants ? <ScrollView>
+           <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8, paddingLeft: 8, gap: 4 }}>
+-            <IconBtn icon="chevron-back" label="Back to all products" onPress={() => setVariants(null)} />
++            <IconBtn icon="chevron-back" label="Back to all products" spot={SPOT.findBack} onPress={() => setVariants(null)} />
+             <Txt size={16} sub>All products {'>'}</Txt><Txt size={18} weight="700" numberOfLines={1} style={{ flexShrink: 1 }}>{pickerTitle(variants)}</Txt>
+           </View>
+           <VariantPicker variants={variants} onPick={pick} />
+         </ScrollView> : <View style={{ flex: 1 }}>
+-          <View style={{ paddingHorizontal: 12 }}><Field kind="search" placeholder="Filter products" value={allQ} onChangeText={setAllQ} style={{ marginBottom: 0 }} /></View>
++          <Spot id={SPOT.findFilter} style={{ paddingHorizontal: 12 }}><Field kind="search" placeholder="Filter products" value={allQ} onChangeText={setAllQ} style={{ marginBottom: 0 }} /></Spot>
+           <FlatList data={allList} keyExtractor={v => v.productId} style={{ marginTop: 8 }} ListEmptyComponent={<Empty title="No products" sub="Import from Shopify in More ▸ Settings ▸ Shopify." />}
+             renderItem={({ item: v }) => { const many = (cat.byProduct[v.productId]?.length ?? 1) > 1; const tone = stockTone(v); return (
+-              <Row image={v.image ?? null} title={v.productTitle} sub={many ? `${cat.byProduct[v.productId].length} variations` : v.stock === null ? undefined : `${v.stock} in stock`} onPress={() => addItems(many ? cat.byProduct[v.productId] : [v])}
++              <Row spot={allProductSpot(v.productId)} image={v.image ?? null} title={v.productTitle} sub={many ? `${cat.byProduct[v.productId].length} variations` : v.stock === null ? undefined : `${v.stock} in stock`} onPress={() => addItems(many ? cat.byProduct[v.productId] : [v])}
+                 right={<View style={{ alignItems: 'flex-end' }}>{many ? <Txt sub size={13}>from</Txt> : null}<Money cents={Math.min(...cat.byProduct[v.productId].map(x => x.priceCents))} weight="600" color={tone === 'neg' ? c.bad : undefined} /></View>} />); }} />
+         </View>
+       ) : null}
+@@ -256,10 +257,10 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+       </Sheet>
+ 
+       <Sheet visible={sheet === 'search'} onClose={() => { setSheet('none'); setQ(''); }} title="Search" full>
+-        <Field kind="search" placeholder="Search items, customers, discounts, saved carts" value={q} onChangeText={setQ} autoFocus />
++        <Spot id={SPOT.searchField}><Field kind="search" placeholder="Search items, customers, discounts, saved carts" value={q} onChangeText={setQ} autoFocus /></Spot>
+         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
+           {([['all', 'All'], ['items', 'Items'], ['customers', 'Customers'], ['discounts', 'Discounts'], ['carts', 'Saved carts']] as const).map(([k, l]) => <Chip key={k} label={l} active={filter === k} onPress={() => setFilter(k)} />)}</ScrollView>
+-        {show('items') && results.items.map(v => <Row key={v.id} image={v.image ?? null} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} sub={[v.sku, v.barcode].filter(Boolean).join(' · ')} right={<Money cents={v.priceCents} weight="600" />} onPress={() => { add(v); setSheet('none'); setQ(''); }} />)}
++        {show('items') && results.items.map(v => <Row key={v.id} spot={searchResultSpot(v.id)} image={v.image ?? null} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} sub={[v.sku, v.barcode].filter(Boolean).join(' · ')} right={<Money cents={v.priceCents} weight="600" />} onPress={() => { add(v); setSheet('none'); setQ(''); }} />)}
+         {show('customers') && results.customers.map(cu => <Row key={cu.id} icon="person-outline" title={cu.name || cu.email || 'Customer'} sub={[cu.email, cu.phone].filter(Boolean).join(' · ')} onPress={() => { setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } })); setSheet('none'); setQ(''); }} />)}
+         {show('discounts') && results.discounts.map(d => <Row key={d.id} icon="pricetag-outline" title={d.label} onPress={() => { setCart(cc => ops.setCartDiscount(cc, { kind: d.kind, value: d.value, label: d.label })); setSheet('none'); setQ(''); }} />)}
+         {show('carts') && results.carts.map(sc => <Row key={sc.id} icon="bookmark-outline" title={sc.name} sub={`${ops.itemCount(sc.cart)} items`} onPress={async () => { if (await openSavedCart(sc)) { setSheet('none'); setQ(''); } }} />)}
+diff --git a/src/screens/Tiles.tsx b/src/screens/Tiles.tsx
+index 0713c25..4f5ce58 100644
+--- a/src/screens/Tiles.tsx
++++ b/src/screens/Tiles.tsx
+@@ -1,6 +1,6 @@
+ // Location: src/screens/Tiles.tsx
+-import { spotPressed, useSpotRef } from '../ui/Spot';
+-import { tileSpotId } from '../lib/trainingSpots';
++import { Spot, spotPressed, useSpotRef } from '../ui/Spot';
++import { pickVariantSpot, tileSpotId } from '../lib/trainingSpots';
+ import React, { useMemo, useState } from 'react';
+ import { Ionicons } from '@expo/vector-icons';
+ import { Image, Pressable, ScrollView, View } from 'react-native';
+@@ -85,8 +85,8 @@ export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPic
+   return (
+     <View onLayout={e => onLayout(e.nativeEvent.layout.width)} style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingTop: 2, paddingBottom: 8 }}>
+       {vs.map(v => { const tone = stockToneOf(v.stock); const dot = TONE_DOT[tone]; const name = v.variantTitle || 'Default'; return (
+-        <View key={v.id} style={{ width: size, height: size * 0.9, padding: 4 }}>
+-          <Pressable onPress={() => { tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
++        <Spot key={v.id} id={pickVariantSpot(v.id)} style={{ width: size, height: size * 0.9, padding: 4 }}>
++          <Pressable onPress={() => { spotPressed(pickVariantSpot(v.id)); tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
+             style={({ pressed }) => ({ flex: 1, overflow: 'hidden', borderRadius: 14, backgroundColor: TILE_COLORS[3], padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 })}>
+             {v.image ? <Image source={{ uri: v.image }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
+             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', minHeight: 9 }}>{dot ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dot }} /> : null}</View>
+@@ -96,7 +96,7 @@ export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPic
+               <Txt size={12} color={tone === 'neg' ? '#B91C1C' : tone === 'out' || tone === 'low' ? '#B45309' : '#374151'} numberOfLines={1}>{stockText(v.stock)}</Txt>
+             </View>
+           </Pressable>
+-        </View>); })}
++        </Spot>); })}
+       {!vs.length ? <Empty title="No variations" sub="This product has nothing to choose from." /> : null}
+     </View>
+   );
+diff --git a/src/training/README.md b/src/training/README.md
+index c2d4c96..1a527a8 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -36,7 +36,7 @@ Both stages are a `Demo`. Show demonstrates the job on mock screens; Info explai
+ 
+ ## Spots
+ 
+-A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`, `Chip`, `Row` or `IconBtn`, or wrap a view in `<Spot id=...>`. Static ids live in `src/lib/trainingSpots.ts`. Grid tiles and cart lines get ids from the item (`grid.item:<id>`, `cart.line:<variantId>`). `tests/trainingspots.test.ts` reads the source, so a module cannot name a spot that is not there.
++A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`, `Chip`, `Row` or `IconBtn`, or wrap a view in `<Spot id=...>`. Static ids live in `src/lib/trainingSpots.ts`. Grid tiles and cart lines get ids from the item (`grid.item:<id>`, `cart.line:<variantId>`). Other record spots: a page chip (`grid.page:<pageId>`), a part of the Keypad | Quick Menu | All products switch (`find.tab:<keypad|quick|all>`, while the whole switch is `find.tabs`), a product row on All products (`all.product:<productId>`), a size in the variation picker (`pick.variant:<variantId>`) and an item row in the Search window (`search.result:<variantId>`, a window spot). `isWindowSpot` says which spots live in a window. `tests/trainingspots.test.ts` reads the source, so a module cannot name a spot that is not there.
+ 
+ ## Goals and hints
+ 
+diff --git a/src/training/index.ts b/src/training/index.ts
+index 2c31d2f..512d706 100644
+--- a/src/training/index.ts
++++ b/src/training/index.ts
+@@ -4,6 +4,7 @@ import type { TrainingModule } from '../lib/trainingModule';
+ import { welcome } from './modules/welcome';
+ import { signIn } from './modules/sign-in';
+ import { cart } from './modules/cart';
++import { findItems } from './modules/find-items';
+ 
+-export const MODULES: TrainingModule[] = [welcome, signIn, cart];
++export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems];
+ export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
+diff --git a/src/training/modules/cart.ts b/src/training/modules/cart.ts
+index 8349afe..b8684e2 100644
+--- a/src/training/modules/cart.ts
++++ b/src/training/modules/cart.ts
+@@ -16,13 +16,13 @@ export const cart: TrainingModule = {
+       { id: 'overview', nodes: [
+         { id: 'in-title', kind: 'text', x: 40, y: 22, w: 560, h: 34, label: 'Build a cart', size: 22, align: 'center' },
+         { id: 'sub', kind: 'text', x: 40, y: 62, w: 560, h: 40, label: 'A cart holds the items the customer is buying. You add them from the grid and change them in the cart.', size: 13, hidden: true },
+-        { id: 'grid-title', kind: 'text', x: 40, y: 112, w: 560, h: 20, label: 'The grid shows items you can add', size: 13, weight: '700', hidden: true },
++        { id: 'grid-title', kind: 'text', x: 40, y: 112, w: 560, h: 20, label: 'The grid shows items you can add', size: 13, hidden: true },
+         { id: 'tile-sample', kind: 'tile', x: 40, y: 138, w: 100, h: 82, icon: 'bug', label: 'Item', sub: '$8.00', color: '#FEF08A', hidden: true },
+         { id: 'tile-note', kind: 'text', x: 150, y: 156, w: 420, h: 40, label: 'Tap a tile once to add it. Tap it again to add another. The total goes up.', size: 12, hidden: true },
+-        { id: 'cart-title', kind: 'text', x: 40, y: 232, w: 560, h: 20, label: 'The cart lists what is being sold', size: 13, weight: '700', hidden: true },
++        { id: 'cart-title', kind: 'text', x: 40, y: 232, w: 560, h: 20, label: 'The cart lists what is being sold', size: 13, hidden: true },
+         { id: 'line-sample', kind: 'row', x: 40, y: 258, w: 560, h: 40, label: 'Item name', sub: '2 x $8.00', value: '$16.00', hidden: true },
+         { id: 'line-note', kind: 'text', x: 40, y: 306, w: 560, h: 32, label: 'To take an item out, swipe its line to the left, then tap Remove.', size: 12, hidden: true },
+-        { id: 'total', kind: 'row', x: 40, y: 346, w: 560, h: 30, label: 'Total', value: '$16.00', weight: '700', hidden: true },
++        { id: 'total', kind: 'row', x: 40, y: 346, w: 560, h: 30, label: 'Total', value: '$16.00', hidden: true },
+       ] },
+     ],
+     steps: [
+diff --git a/src/training/modules/find-items.ts b/src/training/modules/find-items.ts
+new file mode 100644
+index 0000000..98a1750
+--- /dev/null
++++ b/src/training/modules/find-items.ts
+@@ -0,0 +1,134 @@
++// Location: src/training/modules/find-items.ts
++// "Find the right item": pages, categories, the variation picker, Search, and the Keypad for a price with no tile.
++// Practice data: Home and Extras pages, Animals and Dragons categories, a Highland Cow in two sizes (see trainingSandbox.ts).
++import type { TrainingModule } from '../../lib/trainingModule';
++import { SPOT, cartLineSpot, findTabSpot, gridCatSpot, gridItemSpot, gridPageSpot, pickVariantSpot, searchResultSpot } from '../../lib/trainingSpots';
++import { PRACTICE_PAGE_EXTRAS, PRACTICE_PAGE_HOME } from '../../lib/trainingSandbox';
++
++const COW_P = 'train-p-cow'; const COW_S = 'train-v-cow-s'; const COW_L = 'train-v-cow-l'; const DRAGON = 'train-v-dragon'; const EGG = 'train-v-egg'; const KEY = 'train-v-key'; const STICKER = 'train-v-sticker';
++const ANIMALS = 'train-c-animals';
++const has = (s: { cart: { variantId?: string }[] }, id: string): boolean => s.cart.some(l => l.variantId === id);
++const custom = (s: { cart: { kind: string }[] }): boolean => s.cart.some(l => l.kind === 'custom');
++const at = { tabs: ['checkout'], routes: ['cart'], sheets: false };
++
++export const findItems: TrainingModule = {
++  id: 'find-items', title: 'Find the right item', summary: 'Pages, categories, sizes, Search and the Keypad, so you can always reach the item a customer asks for. Ten minutes with practice data.', minutes: 10,
++  flow: 'standard', tabs: ['checkout'], routes: ['cart'],
++  info: {
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'overview', nodes: [
++        { id: 'in-title', kind: 'text', x: 40, y: 20, w: 560, h: 34, label: 'Find the right item', size: 22, align: 'center' },
++        { id: 'in-sub', kind: 'text', x: 60, y: 58, w: 520, h: 40, label: 'An item can be reached more than one way. Use whichever is quickest for the customer in front of you.', size: 13, align: 'center', hidden: true },
++        { id: 'c-pages', kind: 'panel', x: 40, y: 108, w: 270, h: 96, label: 'PAGES', hidden: true },
++        { id: 'i-pages', kind: 'icon', x: 52, y: 138, w: 44, h: 44, icon: 'albums', tone: 'accent', size: 34, hidden: true },
++        { id: 't-pages', kind: 'text', x: 104, y: 130, w: 198, h: 66, label: 'Pages', sub: 'Chips above the grid. Each page has its own tiles.', size: 15, hidden: true },
++        { id: 'c-cats', kind: 'panel', x: 330, y: 108, w: 270, h: 96, label: 'CATEGORIES', hidden: true },
++        { id: 'i-cats', kind: 'icon', x: 342, y: 138, w: 44, h: 44, icon: 'folder-open', tone: 'accent', size: 34, hidden: true },
++        { id: 't-cats', kind: 'text', x: 394, y: 130, w: 198, h: 66, label: 'Categories', sub: 'A tile that opens a group. The arrow goes back.', size: 15, hidden: true },
++        { id: 'c-search', kind: 'panel', x: 40, y: 216, w: 270, h: 96, label: 'SEARCH', hidden: true },
++        { id: 'i-search', kind: 'icon', x: 52, y: 246, w: 44, h: 44, icon: 'search', tone: 'accent', size: 34, hidden: true },
++        { id: 't-search', kind: 'text', x: 104, y: 238, w: 198, h: 66, label: 'Search', sub: 'Type part of a name, SKU or barcode.', size: 15, hidden: true },
++        { id: 'c-keypad', kind: 'panel', x: 330, y: 216, w: 270, h: 96, label: 'KEYPAD', hidden: true },
++        { id: 'i-keypad', kind: 'icon', x: 342, y: 246, w: 44, h: 44, icon: 'calculator', tone: 'accent', size: 34, hidden: true },
++        { id: 't-keypad', kind: 'text', x: 394, y: 238, w: 198, h: 66, label: 'Keypad', sub: 'Key in a price for something with no tile.', size: 15, hidden: true },
++        { id: 'c-sizes', kind: 'panel', x: 40, y: 324, w: 560, h: 60, label: 'SOME ITEMS HAVE CHOICES', hidden: true },
++        { id: 'i-sizes', kind: 'icon', x: 52, y: 338, w: 36, h: 36, icon: 'layers', tone: 'accent', size: 28, hidden: true },
++        { id: 't-sizes', kind: 'text', x: 98, y: 338, w: 490, h: 40, label: 'Tap the item and pick the size or colour from what opens.', size: 13, hidden: true },
++      ] },
++    ],
++    steps: [
++      { id: 'what', title: 'Many ways to one item', say: 'Customers ask for things in different ways. The till gives you four ways to reach an item, and you can mix them in one sale.', set: { 'in-sub': { hidden: false } }, focus: 'in-sub', note: 'Four ways in' },
++      { id: 'pages', title: 'Pages', say: 'The grid has pages, shown as chips above the tiles. The items you sell most are on the first page and others can live on the next.', set: { 'c-pages': { hidden: false }, 'i-pages': { hidden: false }, 't-pages': { hidden: false } }, focus: 'c-pages', note: 'Change page' },
++      { id: 'categories', title: 'Categories', say: 'A category tile opens a smaller grid. The path above it shows where you are, and the back arrow takes you up one level.', set: { 'c-cats': { hidden: false }, 'i-cats': { hidden: false }, 't-cats': { hidden: false } }, focus: 'c-cats', note: 'Open and go back' },
++      { id: 'search', title: 'Search', say: 'When you cannot see it, search. Type a few letters of the name, a SKU or a barcode and tap the match.', set: { 'c-search': { hidden: false }, 'i-search': { hidden: false }, 't-search': { hidden: false } }, focus: 'c-search', note: 'Find anything' },
++      { id: 'keypad', title: 'Keypad', say: 'For something with no tile, such as a repair, key in the price on the Keypad. It joins the cart as a custom amount.', set: { 'c-keypad': { hidden: false }, 'i-keypad': { hidden: false }, 't-keypad': { hidden: false } }, focus: 'c-keypad', note: 'Any price' },
++      { id: 'sizes', title: 'Sizes and colours', say: 'If an item has choices, tapping it opens them as tiles. Pick one and it is added. The stock under each one tells you what is left.', set: { 'c-sizes': { hidden: false }, 'i-sizes': { hidden: false }, 't-sizes': { hidden: false } }, focus: 'c-sizes', note: 'Pick a size' },
++    ],
++  },
++  show: {
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'checkout', nodes: [
++        { id: 'co-bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Checkout', sub: 'Practice data' },
++        { id: 'search', kind: 'field', x: 14, y: 48, w: 340, h: 30, label: 'Search items, customers, discounts' },
++        { id: 'tab-keypad', kind: 'chip', x: 14, y: 86, w: 100, h: 26, label: 'Keypad' },
++        { id: 'tab-quick', kind: 'chip', x: 120, y: 86, w: 110, h: 26, label: 'Quick Menu', tone: 'accent' },
++        { id: 'tab-all', kind: 'chip', x: 236, y: 86, w: 118, h: 26, label: 'All products' },
++        { id: 'pg-home', kind: 'chip', x: 14, y: 120, w: 76, h: 24, label: 'Home', tone: 'accent' },
++        { id: 'pg-extras', kind: 'chip', x: 96, y: 120, w: 76, h: 24, label: 'Extras' },
++        { id: 'back', kind: 'button', x: 14, y: 120, w: 40, h: 24, icon: 'chevron-back', tone: 'neutral', hidden: true },
++        { id: 'crumb', kind: 'text', x: 62, y: 120, w: 290, h: 24, label: 'Home > Animals', size: 13, hidden: true },
++        { id: 'tile-bee', kind: 'tile', x: 14, y: 156, w: 104, h: 82, icon: 'bug', label: 'Bumble Bee', sub: '$8.00', color: '#FEF08A' },
++        { id: 'tile-cow', kind: 'tile', x: 126, y: 156, w: 104, h: 82, icon: 'paw', label: 'Highland Cow', sub: 'from $12.00', color: '#DDD6FE' },
++        { id: 'tile-animals', kind: 'tile', x: 238, y: 156, w: 104, h: 82, icon: 'folder', label: 'Animals', color: '#BBF7D0' },
++        { id: 'tile-sticker', kind: 'tile', x: 14, y: 156, w: 104, h: 82, icon: 'pricetag', label: 'Sticker Pack', sub: '$3.00', color: '#BFDBFE', hidden: true },
++        { id: 'in-cow', kind: 'tile', x: 14, y: 156, w: 104, h: 82, icon: 'paw', label: 'Highland Cow', sub: 'from $12.00', color: '#DDD6FE', hidden: true },
++        { id: 'in-bee', kind: 'tile', x: 126, y: 156, w: 104, h: 82, icon: 'bug', label: 'Bumble Bee', sub: '$8.00', color: '#FEF08A', hidden: true },
++        { id: 'v-small', kind: 'tile', x: 14, y: 156, w: 104, h: 82, label: 'Small', sub: '$12.00', color: '#FEF08A', hidden: true },
++        { id: 'v-large', kind: 'tile', x: 126, y: 156, w: 104, h: 82, label: 'Large', sub: '$18.00', color: '#FEF08A', hidden: true },
++        { id: 'kp-amount', kind: 'text', x: 14, y: 156, w: 340, h: 44, label: '$4.50', size: 30, align: 'center', hidden: true },
++        { id: 'kp-add', kind: 'button', x: 14, y: 210, w: 340, h: 34, label: 'Add $4.50', hidden: true },
++        { id: 'cart', kind: 'panel', x: 372, y: 52, w: 254, h: 250, label: 'CART' },
++        { id: 'line-cow', kind: 'row', x: 380, y: 76, w: 238, h: 40, label: 'Highland Cow', sub: 'Large, 1 x $18.00', value: '$18.00', hidden: true },
++        { id: 'line-egg', kind: 'row', x: 380, y: 116, w: 238, h: 40, label: 'Dragon Egg', sub: '1 x $6.00', value: '$6.00', hidden: true },
++        { id: 'line-custom', kind: 'row', x: 380, y: 156, w: 238, h: 40, label: 'Custom amount', sub: '1 x $4.50', value: '$4.50', hidden: true },
++        { id: 'total', kind: 'row', x: 380, y: 224, w: 238, h: 34, label: 'Total', value: '$0.00' },
++        { id: 'charge', kind: 'button', x: 380, y: 264, w: 238, h: 30, label: 'Charge', icon: 'card' },
++        { id: 'sheet', kind: 'panel', x: 60, y: 56, w: 520, h: 190, label: 'SEARCH', hidden: true },
++        { id: 'sheet-field', kind: 'field', x: 76, y: 82, w: 488, h: 32, label: 'Search', value: 'egg', hidden: true },
++        { id: 'sheet-result', kind: 'row', x: 76, y: 124, w: 488, h: 44, icon: 'image-outline', label: 'Dragon Egg', sub: 'TR-EGG', value: '$6.00', hidden: true },
++        { id: 'dock', kind: 'panel', x: 0, y: 340, w: 640, h: 60 },
++        { id: 'dock-say', kind: 'text', x: 14, y: 346, w: 612, h: 48, label: 'Tap the Extras page to see more tiles.', size: 14 },
++      ] },
++    ],
++    steps: [
++      { id: 'pages', title: 'Change page', say: 'Not every item is on the first page. Tap Extras to see the tiles on the next page.', tap: 'pg-extras', set: { 'tile-bee': { hidden: true }, 'tile-cow': { hidden: true }, 'tile-animals': { hidden: true }, 'tile-sticker': { hidden: false }, 'pg-home': { tone: 'neutral' }, 'pg-extras': { tone: 'accent' }, 'dock-say': { label: 'Tap Home to go back to the first page.' } }, focus: 'tile-sticker', note: 'A different page' },
++      { id: 'home', title: 'Back to the first page', say: 'Tap Home to go back. Each page keeps its own tiles.', tap: 'pg-home', set: { 'tile-sticker': { hidden: true }, 'tile-bee': { hidden: false }, 'tile-cow': { hidden: false }, 'tile-animals': { hidden: false }, 'pg-home': { tone: 'accent' }, 'pg-extras': { tone: 'neutral' }, 'dock-say': { label: 'A tile with a folder opens a category.' } }, focus: 'pg-home', note: 'Home again' },
++      { id: 'category', title: 'Open a category', say: 'The Animals tile opens a category. Its items show, and the path above them says where you are.', tap: 'tile-animals', set: { 'tile-bee': { hidden: true }, 'tile-cow': { hidden: true }, 'tile-animals': { hidden: true }, 'pg-home': { hidden: true }, 'pg-extras': { hidden: true }, back: { hidden: false }, crumb: { hidden: false }, 'in-cow': { hidden: false }, 'in-bee': { hidden: false }, 'dock-say': { label: 'The Highland Cow has more than one size.' } }, focus: 'crumb', note: 'Where you are' },
++      { id: 'sizes', title: 'Items with choices', say: 'The Highland Cow comes in sizes. Tapping it opens one tile per size, with the price on each.', tap: 'in-cow', set: { 'in-cow': { hidden: true }, 'in-bee': { hidden: true }, 'v-small': { hidden: false }, 'v-large': { hidden: false }, crumb: { label: 'Home > Animals > Highland Cow' }, 'dock-say': { label: 'Tap the size the customer wants.' } }, focus: 'v-large', note: 'Pick a size' },
++      { id: 'pick', title: 'Pick one', say: 'Tap Large. It goes into the cart. The sizes stay open, so you can add another size straight away.', tap: 'v-large', set: { 'line-cow': { hidden: false }, total: { value: '$18.00' }, 'dock-say': { label: 'Tap the back arrow to leave the sizes.' } }, focus: 'line-cow', note: 'Large added' },
++      { id: 'back', title: 'Go back', say: 'Tap the back arrow to leave the sizes and return to the category. Tap it again to go up another level.', tap: 'back', set: { 'v-small': { hidden: true }, 'v-large': { hidden: true }, 'in-cow': { hidden: false }, 'in-bee': { hidden: false }, crumb: { label: 'Home > Animals' }, 'dock-say': { label: 'Cannot see the item? Use Search.' } }, focus: 'crumb', note: 'One level up' },
++      { id: 'search', title: 'Search for it', say: 'Cannot see the item? Tap the search bar and type a few letters. The matches appear as you type.', tap: 'search', set: { sheet: { hidden: false }, 'sheet-field': { hidden: false }, 'sheet-result': { hidden: false } }, focus: 'sheet-result', note: 'Tap the match' },
++      { id: 'search-pick', title: 'Tap the match', say: 'Tap the Dragon Egg. It is added to the cart and the search window closes.', tap: 'sheet-result', set: { sheet: { hidden: true }, 'sheet-field': { hidden: true }, 'sheet-result': { hidden: true }, 'line-egg': { hidden: false }, total: { value: '$24.00' }, 'dock-say': { label: 'Something with no tile? Use the Keypad.' } }, focus: 'line-egg', note: 'Egg added' },
++      { id: 'keypad', title: 'Keypad for any price', say: 'For something with no tile, such as a repair, open the Keypad tab and key in the price.', tap: 'tab-keypad', set: { 'tab-keypad': { tone: 'accent' }, 'tab-quick': { tone: 'neutral' }, back: { hidden: true }, crumb: { hidden: true }, 'in-cow': { hidden: true }, 'in-bee': { hidden: true }, 'kp-amount': { hidden: false }, 'kp-add': { hidden: false }, 'dock-say': { label: 'Key in 4, 5, 0 for $4.50, then tap Add.' } }, focus: 'kp-amount', note: 'Key in the price' },
++      { id: 'custom-added', title: 'A custom amount', say: 'Tap Add. The amount joins the cart as a custom amount line. It has no stock to count.', tap: 'kp-add', set: { 'line-custom': { hidden: false }, total: { value: '$28.50' }, 'dock-say': { label: 'All four ways add to the same cart.' } }, focus: 'line-custom', note: 'Custom amount' },
++    ],
++  },
++  guide: [
++    { id: 'g-intro', say: 'You will find items four ways on the real till: pages, categories, Search and the Keypad. It is practice data, so nothing is saved or charged.', until: { kind: 'next' } },
++    { id: 'g-extras', target: gridPageSpot(PRACTICE_PAGE_EXTRAS), say: 'Tap Extras to see the next page of tiles.', until: { kind: 'press', id: gridPageSpot(PRACTICE_PAGE_EXTRAS) }, gesture: 'tap', recover: { say: 'Go to the Checkout tab and tap Quick Menu.', target: SPOT.tabCheckout }, allow: [], at },
++    { id: 'g-sticker', target: gridItemSpot(STICKER), say: 'The Sticker Pack is on this page. Tap its tile to add it.', until: { kind: 'state', test: s => has(s, STICKER) }, gesture: 'tap', allow: ['add'], at },
++    { id: 'g-home', target: gridPageSpot(PRACTICE_PAGE_HOME), say: 'Tap Home to go back to the first page.', until: { kind: 'press', id: gridPageSpot(PRACTICE_PAGE_HOME) }, gesture: 'tap', allow: [], at },
++    { id: 'g-category', target: gridCatSpot(ANIMALS), say: 'Tap the Animals tile. A tile like this opens a category.', until: { kind: 'press', id: gridCatSpot(ANIMALS) }, gesture: 'tap', allow: [], at },
++    { id: 'g-cow', target: gridItemSpot(COW_P), say: 'Look at the path above the tiles: you are inside Animals. Tap the Highland Cow. It comes in more than one size.', until: { kind: 'press', id: gridItemSpot(COW_P) }, gesture: 'tap', allow: [], at },
++    { id: 'g-large', target: pickVariantSpot(COW_L), say: 'One tile per size. Tap Large to add it to the cart.', until: { kind: 'state', test: s => has(s, COW_L) }, gesture: 'tap', allow: ['add'], at },
++    { id: 'g-back-sizes', target: SPOT.findBack, say: 'The sizes stay open so you can add another. Tap the back arrow to leave them.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', allow: [], at },
++    { id: 'g-back-category', target: SPOT.findBack, say: 'You are back in Animals. Tap the back arrow again to go up to the first page.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', allow: [], at },
++    { id: 'g-search', target: SPOT.findSearch, say: 'Cannot see an item? Tap the search bar.', until: { kind: 'press', id: SPOT.findSearch }, gesture: 'tap', allow: [], at },
++    { id: 'g-type', target: SPOT.searchField, say: 'Type egg. The matches appear under the box as you type.', until: { kind: 'visible', id: searchResultSpot(EGG) }, allow: [], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
++    { id: 'g-result', target: searchResultSpot(EGG), say: 'Tap the Dragon Egg in the results. It is added and the window closes.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
++    { id: 'g-keypad-tab', target: SPOT.findTabs, say: 'For something with no tile, open the Keypad tab.', until: { kind: 'press', id: findTabSpot('keypad') }, gesture: 'tap', allow: [], at },
++    { id: 'g-keys', target: SPOT.findKeypad, say: 'Key in a price. Tap 4, 5, 0 for $4.50.', until: { kind: 'press', id: SPOT.findKeypad }, gesture: 'tap', allow: [], at },
++    { id: 'g-add', target: SPOT.findKeypadAdd, say: 'Tap Add. The amount joins the cart as a custom amount.', until: { kind: 'state', test: s => custom(s) }, gesture: 'tap', allow: ['add'], at },
++    { id: 'g-all-tab', target: SPOT.findTabs, say: 'One more place: tap All products to see everything in the catalogue.', until: { kind: 'press', id: findTabSpot('all') }, gesture: 'tap', allow: [], at },
++    { id: 'g-filter', target: SPOT.findFilter, say: 'Type in this box to narrow the list. A product with several sizes opens its sizes when you tap it, the same as on the grid.', until: { kind: 'next' } },
++    { id: 'g-quick-tab', target: SPOT.findTabs, say: 'Tap Quick Menu to go back to the grid.', until: { kind: 'press', id: findTabSpot('quick') }, gesture: 'tap', allow: [], at },
++  ],
++  check1: [
++    { id: 'other-page', title: 'Add the Sticker Pack to the cart', until: { kind: 'state', test: s => has(s, STICKER) }, ladder: ['Not every item is on the first page of the grid.', 'Look at the page names above the tiles.', 'Open the Extras page, then tap the Sticker Pack tile.'], reveal: gridItemSpot(STICKER), via: gridPageSpot(PRACTICE_PAGE_EXTRAS), gesture: 'tap', allow: ['add'], at },
++    { id: 'find-egg', title: 'The customer wants a Dragon Egg. Find it with Search', until: { kind: 'state', test: s => has(s, EGG) }, ladder: ['There is a quicker way than looking through the grid.', 'The search bar is at the top of Checkout.', 'Open Search, type egg, then tap the Dragon Egg.'], reveal: searchResultSpot(EGG), via: SPOT.findSearch, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
++    { id: 'size', title: 'The customer wants a Large Highland Cow', until: { kind: 'state', test: s => has(s, COW_L) }, ladder: ['Some items come in more than one size.', 'Tap the Highland Cow tile and look at what opens.', 'Tap the Highland Cow tile, then tap Large.'], reveal: pickVariantSpot(COW_L), via: gridItemSpot(COW_P), gesture: 'tap', allow: ['add'], at },
++    { id: 'repair', title: 'A repair for $4.50 has no tile. Add it as a custom amount', until: { kind: 'state', test: s => custom(s) }, ladder: ['Not everything has a tile.', 'The Keypad tab lets you key in any price.', 'Open Keypad, tap 4, 5, 0, then tap Add.'], reveal: SPOT.findKeypadAdd, via: SPOT.findTabs, gesture: 'tap', allow: ['add'], at },
++  ],
++  check2: [
++    { id: 'swap-size', title: 'The customer has a Small Highland Cow but wants the Large instead. Make the swap', until: { kind: 'state', test: s => has(s, COW_L) && !has(s, COW_S) }, inject: [{ kind: 'cart', items: [{ variantId: COW_S, qty: 1 }] }], taughtBy: 'g-large',
++      ladder: ['The cart already has a Highland Cow in it.', 'Two things change: the Small goes out and the Large comes in.', 'Tap the Highland Cow tile and pick Large, then swipe the Small line to the left and tap Remove.'], reveal: pickVariantSpot(COW_L), via: gridItemSpot(COW_P), gesture: 'tap', allow: ['add', 'remove'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
++    { id: 'two-matches', title: 'The customer wants the Red Dragon, not the egg. Find it with Search', until: { kind: 'state', test: s => has(s, DRAGON) && !has(s, EGG) }, taughtBy: 'g-result',
++      ladder: ['Searching for a word can show more than one match.', 'The search bar is at the top of Checkout. Read each match before you tap one.', 'Search for dragon and tap the Red Dragon, not the Dragon Egg.'], reveal: searchResultSpot(DRAGON), via: SPOT.findSearch, gesture: 'tap', allow: ['add', 'remove'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true },
++      watch: [{ id: 'wrong-match', when: s => has(s, EGG), say: 'That is the Dragon Egg and the customer wants the Red Dragon. Take the egg out, then add the dragon.', target: cartLineSpot(EGG), via: SPOT.cartOpen, how: ['Open the cart.', 'Swipe the Dragon Egg line to the left and tap Remove.', 'Open Search, type dragon, and tap the Red Dragon.'], taughtIn: 'cart' }] },
++    { id: 'two-extras', title: 'The customer also wants a Keyring and a Sticker Pack. Both are on the Extras page', until: { kind: 'state', test: s => has(s, KEY) && has(s, STICKER) }, taughtBy: 'g-sticker',
++      ladder: ['Look at the page names above the tiles.', 'These two items sit together on one page.', 'Open the Extras page and tap the Keyring and the Sticker Pack.'], reveal: gridItemSpot(KEY), via: gridPageSpot(PRACTICE_PAGE_EXTRAS), gesture: 'tap', allow: ['add'], at },
++  ],
++  recap: ['You can change page and open a category, and use the path or back arrow to come back.', 'You can find any item with Search, and tap a product with sizes to choose the one you want.', 'You can key in a price on the Keypad for something with no tile.'],
++};
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 5b926aa..304924a 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -16,7 +16,7 @@ import { sheetMaxHeight } from '../lib/keyboardMath';
+ import { useUi } from './uiProfile';
+ import { openHelpPage, useNav } from './nav';
+ import { helpForError } from '../lib/helpContext';
+-import { spotPressed, useSpotRef } from './Spot';
++import { Spot, spotPressed, useSpotRef } from './Spot';
+ import { SPOT } from '../lib/trainingSpots';
+ import { TrainingLayer } from './TrainingLayer';
+ 
+@@ -168,16 +168,16 @@ export const alertMsg = (title: string, message?: string, helpId?: string) => {
+ };
+ 
+ /** Calculator-style keypad: digits shift in from the right as cents (Square behaviour). */
+-export function Keypad({ value, onChange, onSubmit, submitLabel, decimal = true, big }: { value: string; onChange: (digits: string) => void; onSubmit?: () => void; submitLabel?: string; decimal?: boolean; big?: boolean }) {
++export function Keypad({ value, onChange, onSubmit, submitLabel, decimal = true, big, keysSpot, submitSpot }: { value: string; onChange: (digits: string) => void; onSubmit?: () => void; submitLabel?: string; decimal?: boolean; big?: boolean; keysSpot?: string; submitSpot?: string }) {
+   const { c } = useTheme();
+-  const key = (k: string) => { tap(); if (k === '⌫') onChange(value.slice(0, -1)); else if (k === 'C') onChange(''); else onChange((value + k).replace(/^0+(?=\d)/, '').slice(0, 9)); };
++  const key = (k: string) => { spotPressed(keysSpot); tap(); if (k === '⌫') onChange(value.slice(0, -1)); else if (k === 'C') onChange(''); else onChange((value + k).replace(/^0+(?=\d)/, '').slice(0, 9)); };
+   const keys = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'C', '0', '⌫'];
+   return (
+     <View style={{ gap: 8 }}>
+-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{keys.map(k => (
++      <Spot id={keysSpot} style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{keys.map(k => (
+         <Pressable key={k} onPress={() => key(k)} accessibilityRole="button" accessibilityLabel={k === '⌫' ? 'Delete' : k === 'C' ? 'Clear' : k} style={({ pressed }) => ({ width: '31.5%', height: big ? 72 : 60, borderRadius: 14, backgroundColor: pressed ? c.line : c.fill, alignItems: 'center', justifyContent: 'center' })}>
+-          <Text style={{ fontSize: 24, fontWeight: '500', color: c.text }}>{k}</Text></Pressable>))}</View>
+-      {onSubmit ? <Btn title={submitLabel ?? 'Add'} onPress={onSubmit} disabled={!value || (decimal && digitsToCents(value) <= 0)} /> : null}
++          <Text style={{ fontSize: 24, fontWeight: '500', color: c.text }}>{k}</Text></Pressable>))}</Spot>
++      {onSubmit ? <Btn spot={submitSpot} title={submitLabel ?? 'Add'} onPress={onSubmit} disabled={!value || (decimal && digitsToCents(value) <= 0)} /> : null}
+     </View>
+   );
+ }
+diff --git a/tests/trainingcart.test.ts b/tests/trainingcart.test.ts
+index 5946c71..4b72d51 100644
+--- a/tests/trainingcart.test.ts
++++ b/tests/trainingcart.test.ts
+@@ -15,7 +15,7 @@ const until = (list: typeof cart.guide | typeof cart.check1, id: string) => (lis
+ const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
+ 
+ test('the course is registered after sign-in and is valid', () => {
+-  assert.equal(getModule('cart'), cart); assert.deepEqual(MODULES.map(m => m.id), ['welcome', 'sign-in', 'cart']);
++  assert.equal(getModule('cart'), cart); assert.deepEqual(MODULES.map(m => m.id), ['welcome', 'sign-in', 'cart', 'find-items']);
+   assert.deepEqual(validateModule(cart, isKnownSpot), []);
+ });
+ test('Guide steps finish on the right cart', () => {
+diff --git a/tests/trainingfinditems.test.ts b/tests/trainingfinditems.test.ts
+new file mode 100644
+index 0000000..0ae5f51
+--- /dev/null
++++ b/tests/trainingfinditems.test.ts
+@@ -0,0 +1,79 @@
++// Location: tests/trainingfinditems.test.ts
++// The "Find the right item" course: registered, valid, and each step and goal is finished only by the right thing.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { findItems } from '../src/training/modules/find-items';
++import { MODULES, getModule } from '../src/training';
++import { validateModule, type TrainSnap } from '../src/lib/trainingModule';
++import { SPOT, findTabSpot, gridCatSpot, gridItemSpot, gridPageSpot, isKnownSpot, isWindowSpot, pickVariantSpot, searchResultSpot } from '../src/lib/trainingSpots';
++import { isMet, noEvents, snapOf } from '../src/lib/trainingConds';
++import { diagnose, stepRules } from '../src/lib/trainingCourse';
++import { applyInjections, buildSandbox, fixtureGrid, PRACTICE_PAGE_EXTRAS } from '../src/lib/trainingSandbox';
++import { viewTiles } from '../src/lib/gridNav';
++import { FIXTURE_COLLECTIONS } from '../src/lib/trainingSandbox';
++
++const line = (variantId: string, qty = 1) => ({ variantId, title: variantId, kind: 'item' as const, qty });
++const custom = { title: 'Custom amount', kind: 'custom' as const, qty: 1 };
++const snap = (lines: any[], o: { sheets?: number } = {}): TrainSnap => snapOf({ tab: 'checkout', route: '', sheets: o.sheets ?? 0, cart: { lines }, sales: 0, paying: false });
++const by = (list: any[], id: string) => list.find(x => x.id === id);
++const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
++const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
++
++test('the course is registered after the cart course and is valid', () => {
++  assert.equal(getModule('find-items'), findItems); assert.equal(MODULES.findIndex(m => m.id === 'find-items'), MODULES.findIndex(m => m.id === 'cart') + 1);
++  assert.deepEqual(validateModule(findItems, isKnownSpot), []);
++});
++
++test('the practice grid has what the course needs: a second page, categories, and a product in two sizes', () => {
++  const g = fixtureGrid(); assert.ok(g.pages.length >= 2); assert.equal(g.pages[1].id, PRACTICE_PAGE_EXTRAS);
++  assert.ok(g.pages[1].tiles.some(t => t.type === 'item' && t.variantId === 'train-v-sticker') && g.pages[1].tiles.some(t => t.type === 'item' && t.variantId === 'train-v-key'));
++  const animals = g.pages[0].tiles.find(t => t.type === 'category' && t.collectionId === 'train-c-animals')!; assert.ok(animals);
++  const shown = viewTiles(animals as any, FIXTURE_COLLECTIONS, () => true).map(t => (t.type === 'item' ? t.productId : ''));
++  assert.ok(shown.includes('train-p-cow') && shown.includes('train-p-bee'), 'the Animals category shows the cow and the bee');
++});
++
++test('Guide steps are finished by the right press or cart', () => {
++  const g = (id: string) => by(findItems.guide, id).until;
++  assert.ok(isMet(g('g-extras'), snap([]), ev([gridPageSpot(PRACTICE_PAGE_EXTRAS)]))); assert.ok(!isMet(g('g-extras'), snap([]), ev()));
++  assert.ok(isMet(g('g-sticker'), snap([line('train-v-sticker')]), noEvents())); assert.ok(!isMet(g('g-sticker'), snap([line('train-v-egg')]), noEvents()));
++  assert.ok(isMet(g('g-category'), snap([]), ev([gridCatSpot('train-c-animals')])));
++  assert.ok(isMet(g('g-cow'), snap([]), ev([gridItemSpot('train-p-cow')])), 'tapping the product opens its sizes and adds nothing');
++  assert.ok(isMet(g('g-large'), snap([line('train-v-cow-l')]), noEvents())); assert.ok(!isMet(g('g-large'), snap([line('train-v-cow-s')]), noEvents()), 'the Small is not the Large');
++  assert.ok(isMet(g('g-back-sizes'), snap([]), ev([SPOT.findBack])));
++  assert.ok(isMet(g('g-type'), snap([]), ev([], [searchResultSpot('train-v-egg')]))); assert.ok(!isMet(g('g-type'), snap([]), ev()));
++  assert.ok(isMet(g('g-result'), snap([line('train-v-egg')]), noEvents()));
++  assert.ok(isMet(g('g-keypad-tab'), snap([]), ev([findTabSpot('keypad')]))); assert.ok(!isMet(g('g-keypad-tab'), snap([]), ev([findTabSpot('all')])));
++  assert.ok(isMet(g('g-add'), snap([custom]), noEvents())); assert.ok(!isMet(g('g-add'), snap([line('train-v-key')]), noEvents()), 'only a custom amount finishes it');
++});
++
++test('windows are allowed exactly on the steps that live in the Search window', () => {
++  const inWindow = findItems.guide.filter(s => s.target && isWindowSpot(s.target)).map(s => s.id); assert.deepEqual(inWindow, ['g-type', 'g-result']);
++  for (const id of inWindow) assert.equal(stepRules(by(findItems.guide, id)).at?.sheets, true);
++  for (const id of ['g-extras', 'g-large', 'g-add']) assert.equal(stepRules(by(findItems.guide, id)).at?.sheets, false, `${id}: a window opening is off course`);
++  // So a window that opens on the Extras step is reported, with Close pointed at.
++  const base = snap([]); const d = diagnose(stepRules(by(findItems.guide, 'g-extras')), { tabs: ['checkout'], routes: ['cart'] }, base, snap([], { sheets: 1 }))!; assert.equal(d.kind, 'sheet');
++});
++
++test('Check 1 goals are each finished only by their own item, and none starts finished', () => {
++  const win: Record<string, any[]> = { 'other-page': [line('train-v-sticker')], 'find-egg': [line('train-v-egg')], size: [line('train-v-cow-l')], repair: [custom] };
++  for (const gl of findItems.check1) {
++    assert.ok(!isMet(gl.until, snap([]), noEvents()), `${gl.id} must not be finished by an empty cart`); assert.ok(isMet(gl.until, snap(win[gl.id]), noEvents()), `${gl.id} is won by its own item`);
++    for (const [other, lines] of Object.entries(win)) if (other !== gl.id) assert.ok(!isMet(gl.until, snap(lines), noEvents()), `${gl.id} must not be won by the ${other} item`);
++  }
++});
++
++test('Check 2: the swap starts unfinished and needs both halves; the dragon goal rejects the egg; each says where it was taught', () => {
++  const swap = by(findItems.check2, 'swap-size'); const start = applyInjections(buildSandbox(real), swap.inject);
++  const lines = start.pos.cart.lines.map((l: any) => line(l.variantId, l.qty)); assert.deepEqual(lines.map((l: any) => l.variantId), ['train-v-cow-s']); assert.ok(!isMet(swap.until, snap(lines), noEvents()));
++  assert.ok(!isMet(swap.until, snap([line('train-v-cow-s'), line('train-v-cow-l')]), noEvents()), 'adding the Large without removing the Small is not enough');
++  assert.ok(!isMet(swap.until, snap([]), noEvents())); assert.ok(isMet(swap.until, snap([line('train-v-cow-l')]), noEvents()));
++  const two = by(findItems.check2, 'two-matches'); assert.ok(!isMet(two.until, snap([line('train-v-dragon'), line('train-v-egg')]), noEvents())); assert.ok(isMet(two.until, snap([line('train-v-dragon')]), noEvents()));
++  assert.ok(two.watch[0].when(snap([line('train-v-egg')]))); assert.ok(!two.watch[0].when(snap([line('train-v-dragon')])));
++  const ex = by(findItems.check2, 'two-extras'); assert.ok(!isMet(ex.until, snap([line('train-v-key')]), noEvents())); assert.ok(isMet(ex.until, snap([line('train-v-key'), line('train-v-sticker')]), noEvents()));
++  for (const g of findItems.check2) assert.ok(g.taughtBy, `${g.id} says where it was taught`);
++});
++
++test('every spot the course points at is known, and the picker tiles and search rows are named after real practice items', () => {
++  for (const id of [pickVariantSpot('train-v-cow-l'), searchResultSpot('train-v-egg'), gridPageSpot(PRACTICE_PAGE_EXTRAS), gridCatSpot('train-c-animals'), findTabSpot('keypad')]) assert.ok(isKnownSpot(id), id);
++  assert.ok(isWindowSpot(searchResultSpot('x')) && isWindowSpot(SPOT.searchField) && !isWindowSpot(SPOT.findSearch));
++});
+diff --git a/tests/trainingspots.test.ts b/tests/trainingspots.test.ts
+index 9849b99..8bbef20 100644
+--- a/tests/trainingspots.test.ts
++++ b/tests/trainingspots.test.ts
+@@ -7,7 +7,7 @@ import path from 'node:path';
+ import { SPOT, STATIC_SPOTS, isKnownSpot } from '../src/lib/trainingSpots';
+ import { MODULES } from '../src/training';
+ import { validateModule, type Goal, type Step } from '../src/lib/trainingModule';
+-import { FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
++import { FIXTURE_COLLECTIONS, FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
+ 
+ const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
+ const ui = [...walk('src/screens'), ...walk('src/ui'), 'App.tsx'].filter(f => !f.includes('Training')).map(f => fs.readFileSync(f, 'utf8')).join('\n');
+@@ -18,10 +18,14 @@ test('every static spot is attached to something in the UI', () => {
+ });
+ test('the dynamic spot kinds are really attached (grid tiles, cart lines)', () => {
+   assert.ok(ui.includes('tileSpotId('), 'grid tiles carry spots'); assert.ok(ui.includes('cartLineSpot('), 'cart lines carry spots');
++  for (const fn of ['gridPageSpot(', 'findTabSpot(', 'allProductSpot(', 'pickVariantSpot(', 'searchResultSpot(']) assert.ok(ui.includes(fn), `${fn} is attached to something in the UI`);
+ });
+ test('every module is valid, and every record spot it names exists in the practice data', () => {
+-  const vids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const tiles = fixtureGrid().pages[0].tiles;
++  const vids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const grid = fixtureGrid(); const tiles = grid.pages.flatMap(p => p.tiles);
+   const tileIds = new Set(tiles.flatMap(t => (t.type === 'item' ? [t.variantId ?? t.productId!] : [])));
++  // The items a category shows are its collection's products, so they carry product spots too.
++  for (const t of tiles) if (t.type === 'category') for (const p of FIXTURE_COLLECTIONS.find(c => c.id === t.collectionId)?.productIds ?? []) tileIds.add(p);
++  const pageIds = new Set(grid.pages.map(p => p.id)); const collectionIds = new Set(FIXTURE_COLLECTIONS.map(c => c.id)); const productIds = new Set(FIXTURE_VARIANTS.map(v => v.productId));
+   const spots = (m: (typeof MODULES)[number]): string[] => [...m.guide.flatMap((s: Step) => [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]), ...[...m.check1, ...m.check2].flatMap((g: Goal) => [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined])].filter((x): x is string => !!x);
+   const ids = new Set(MODULES.map(m => m.id)); assert.equal(ids.size, MODULES.length, 'module ids are unique');
+   for (const m of MODULES) {
+@@ -29,6 +33,10 @@ test('every module is valid, and every record spot it names exists in the practi
+     for (const s of spots(m)) {
+       if (s.startsWith('grid.item:')) assert.ok(tileIds.has(s.slice(10)), `${m.id}: no grid tile for ${s}`);
+       if (s.startsWith('cart.line:')) assert.ok(vids.has(s.slice(10)), `${m.id}: no practice item for ${s}`);
++      if (s.startsWith('grid.page:')) assert.ok(pageIds.has(s.slice(10)), `${m.id}: no practice page for ${s}`);
++      if (s.startsWith('grid.cat:')) assert.ok(collectionIds.has(s.slice(9)), `${m.id}: no practice category for ${s}`);
++      if (s.startsWith('pick.variant:') || s.startsWith('search.result:')) assert.ok(vids.has(s.slice(s.indexOf(':') + 1)), `${m.id}: no practice item for ${s}`);
++      if (s.startsWith('all.product:')) assert.ok(productIds.has(s.slice(12)), `${m.id}: no practice product for ${s}`);
+     }
+     for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'cart') for (const it of i.items) assert.ok(vids.has(it.variantId), `${m.id}: unknown practice item ${it.variantId}`);
+   }

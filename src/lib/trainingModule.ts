@@ -3,7 +3,7 @@
 // Writer's guide: src/training/README.md
 import { validateDemo } from './trainingDemo';
 import { isGesture, type Gesture } from './pointerGesture';
-import { WINDOW_SPOTS } from './trainingSpots';
+import { isWindowSpot } from './trainingSpots';
 import { RESPONSE_CODES } from './responseCodes';
 export type { Gesture } from './pointerGesture';
 export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
@@ -123,7 +123,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
     if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
     if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
-    for (const t of [s.target, s.recover?.target]) if (t && WINDOW_SPOTS.includes(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
+    for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
     for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
     for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
