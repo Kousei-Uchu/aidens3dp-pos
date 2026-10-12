@@ -3,6 +3,7 @@
 // Runs with two practice staff (Casey, a cashier, PIN 1234; Morgan, a manager, PIN 2468 and a cashier pass). See `practiceStaff` in trainingSandbox.ts.
 import type { TrainingModule } from '../../lib/trainingModule';
 import { SPOT, gridActionSpot } from '../../lib/trainingSpots';
+import { gridAim } from '../aims';
 import { PRACTICE_CASEY, PRACTICE_MORGAN } from '../../lib/trainingSandbox';
 
 const SWITCH = gridActionSpot('switch_staff'); const LOCK = gridActionSpot('lock_pos');
@@ -96,12 +97,12 @@ export const signIn: TrainingModule = {
   guide: [
     { id: 'g-who', say: 'The Casey tile names who is signed in. This practice till starts with Casey, a cashier.', target: SWITCH, until: { kind: 'next' } },
     { id: 'g-open', say: 'Tap the Casey tile to hand the till to someone else without locking it.', target: SWITCH, until: { kind: 'visible', id: SPOT.loginPinpad }, gesture: 'tap', recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
-    { id: 'g-pass-open', say: 'Morgan has a cashier pass. Tap Scan pass.', target: SPOT.loginScanPass, until: { kind: 'visible', id: SPOT.passScan }, at: { sheets: true } },
-    { id: 'g-pass-scan', say: 'On a real till you hold the pass under the scanner. Here, tap Scan this pass.', target: SPOT.passScan, until: { kind: 'state', test: morganIn }, gesture: 'tap', allow: [], at: { sheets: true } },
+    { id: 'g-pass-open', say: 'Morgan has a cashier pass. Tap Scan pass.', target: SPOT.loginScanPass, until: { kind: 'visible', id: SPOT.passScan }, gesture: 'tap', recoverFrom: [{ say: 'The sign in window closed. Tap the tile that names who is signed in to open it again, then tap Scan pass.', target: SWITCH }], recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout }, at: { sheets: true } },
+    { id: 'g-pass-scan', say: 'On a real till you hold the pass under the scanner. Here, tap Scan this pass.', target: SPOT.passScan, until: { kind: 'state', test: morganIn }, gesture: 'tap', allow: [], recoverFrom: [{ say: 'The pass window closed. Tap Scan pass to open it again.', target: SPOT.loginScanPass }, { say: 'The sign in window closed. Tap the tile that names who is signed in, then tap Scan pass.', target: SWITCH }], recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout }, at: { sheets: true } },
     { id: 'g-keep-cart', say: 'The tile now names Morgan. Switching never clears the cart, so a sale in progress carries straight on.', target: SWITCH, until: { kind: 'next' } },
-    { id: 'g-lock', say: 'Stepping away? Tap Lock POS to cover the till with the Sign in screen.', target: LOCK, until: { kind: 'state', test: s => !!s.locked }, gesture: 'tap', allow: [] },
+    { id: 'g-lock', say: 'Stepping away? Tap Lock POS to cover the till with the Sign in screen.', target: LOCK, until: { kind: 'state', test: s => !!s.locked }, gesture: 'tap', aim: gridAim('top'), recover: { say: 'Open the Checkout tab, then tap Lock POS.', target: SPOT.tabCheckout }, allow: [] },
     { id: 'g-pin-info', say: 'This is the Sign in screen. Anyone can use it with a PIN or a pass. A wrong PIN clears and lets you try again.', target: SPOT.loginPinpad, until: { kind: 'next' } },
-    { id: 'g-pin', say: 'Key the practice cashier PIN: 1 2 3 4. It signs in on the fourth digit, or tap Unlock.', target: SPOT.loginPinpad, until: { kind: 'state', test: caseyIn }, gesture: 'tap', allow: [] },
+    { id: 'g-pin', say: 'Key the practice cashier PIN: 1 2 3 4. It signs in on the fourth digit, or tap Unlock.', target: SPOT.loginPinpad, until: { kind: 'state', test: caseyIn }, gesture: 'tap', allow: [], recoverFrom: [{ say: 'Casey needs to sign in for this step. Tap the tile that names who is signed in, then key 1 2 3 4.', target: SWITCH }], recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
     { id: 'g-fallback', say: 'A pass that will not scan, or is not recognised, may have been cancelled or replaced. Key your PIN instead, and ask a manager or owner for a new pass.', until: { kind: 'next' } },
   ],
   check1: [

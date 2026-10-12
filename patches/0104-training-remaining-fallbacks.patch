@@ -1,0 +1,179 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 1daf1b9..53e4d4b 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -229,3 +229,13 @@ On the iPad and on a phone, in a Check that does not use discounts, prices or no
+ 4. In Find the right item, open the sizes and look at the tab steps: the ring should point at the back arrow first.
+ 
+ Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
++
++## T19. Training: the last fallbacks (B6, 0104)
++
++On the iPad and on a phone.
++
++1. **Sign in and lock and switch staff:** at Scan pass, close the sign in window: the ring should point at the tile that names who is signed in. At Scan this pass, close the pass window (then the sign in window too): it should point at Scan pass, then the tile. At the PIN step, sign in as Morgan instead: it should point at the tile and say Casey needs to sign in.
++2. **Take a card payment:** at the customer's terminal step, cancel the payment from the Payment page: the ring should point at Card. Go back to the cart: it should point at Charge. At the Receipt step, close the Receipt window another way (swipe it away): the step should still finish.
++3. **Find the right item:** at the search step, switch to another tab: the ring should point at the Checkout tab.
++
++Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 6c58dab..e863164 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -106,6 +106,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0101 | 2026-10-12 | Training (B6), fixes part 2 of 3 (reported Find the right item #4 and #5, General #1). **Scroll awareness:** the driver now measures a target even when it is off screen. Wholly off screen: no dim, no ring, an edge cue (Scroll up or Scroll down) and the step text says to scroll first. Cut off at an edge: still ringed, with the cue and a short note. Pure helper `scrollNeed` in `trainingGeometry.ts`. **Brand orange:** the ring, pointer, glow and progress bar are the brand orange `#FB873F` (the docs site's `--highlight`) in every look; the light look's dim is a little stronger so the orange stands out. **Per-line windows:** the minus and Remove item buttons in the line window are now `line.minus:<key>` and `line.remove:<key>` (key is the variant, or the line's own id for a custom amount), so the guide never points at the wrong item's window. With another item's window open it says to close it first and names the item. New `tests/trainingscroll.test.ts`; palette and context tests updated. Device test T16 | B6 |
+ | 0102 | 2026-10-12 | Training (B6), fixes part 3 of 3 (General #2, Card #1, audit). **Correction chains:** an unwanted discount or price change now walks the person down the fix, deepest step first, so the ring follows them in and out of the line window and its sub-windows (new spots `line.discount:`, `line.discountoff:`, `line.price:`, `line.priceoff:`, `line.adjust:`, `line.adjustoff:`, plus `cart.customerx` for the customer x). **Wandered off:** a goal can say it lives on the Quick Menu grid (`at.view` of `top` or `grid`), and the stray check corrects another tab, the sizes or a category one move at a time (used by the Find items other page goal). **Card paid by cash:** card goals finish only when every tender of the last sale is a card; Cash, Gift card and Split now have spots and publish which is open, and the card goals and the Card guide step walk the person back to Card (close window, tap Card), while a sale already paid another way offers Start this part again. **Audit:** every course checked for steps that finish too easily or have no fallback; see the plan doc. Device test T17 | B6 |
+ | 0103 | 2026-10-13 | Training (B6), follow-up to 0102. **Cart-level corrections:** an unwanted cart discount, whole order price or note now walks the person down the fix, deepest step first (new spots `cart.menu`, `cart.menu.discount`, `cart.menu.order`, `cart.discountoff`, `cart.orderoff`, `line.note:<key>`). Notes on a line are now noticed (before, only a cart-level note was). **Fallbacks from the 0102 audit:** the shared `gridAim` and `tabsAim` (`src/training/aims.ts`) now steer the cart course's add and quantity steps and the find items back and tab steps away from the wrong tab, category or open sizes; the welcome tile step and the sign-in open step now say how to tap. Device test T18 | B6 |
++| 0104 | 2026-10-13 | Training (B6), the rest of the fallbacks from the 0102 audit. New `Step.recoverFrom` (where to point, deepest first, when the target is gone because a window was closed or backed out of; validated like `recover`). **Sign in:** Scan pass, Scan this pass, Lock POS and the PIN step no longer dead end (closing the sign in or pass window points back at the tile or Scan pass; being signed in as Morgan during the PIN step points at the tile; Lock POS steers off a wrong tab or category). **Find items:** the search step has a fallback. **Take a card payment:** the terminal tap step falls back to Card, then Charge, then the cart bar; the Receipt step finishes when the sale is done and the window is closed, however it was closed. Device test T19 | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0104-plan.md b/docs/patches/0104-plan.md
+new file mode 100644
+index 0000000..e3beabc
+--- /dev/null
++++ b/docs/patches/0104-plan.md
+@@ -0,0 +1,11 @@
++# 0104: Training, the rest of the fallbacks
++
++Finishes the list left open in 0102 and 0103.
++
++## Changes
++- `Step.recoverFrom` and the host: tried after `target` and before `recover`, first one on screen wins; `validateModule` checks the spots.
++- sign-in g-pass-open, g-pass-scan, g-lock, g-pin; find-items g-search; pay-card g-tap.
++- pay-card g-receipt now finishes on "sale done and the Receipt window closed", so a swiped-away window cannot strand the step. Its target is still No receipt.
++
++## Left as is
++Guide steps whose target is always on screen where the step runs (the intro and info steps, g-total, g-terminal, g-wait) need no fallback. Typed-text strays outside the find items typing steps are still not covered.
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index f2c3b9f..d3c6933 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -71,7 +71,9 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
+   /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
+   gesture?: Gesture;
+   /** Looked at on every check, before `target`. Returns what to say and point at right now (the next key to tap, the way back to the grid), or null to use `say` and `target` as written. */
+-  aim?: (s: TrainSnap) => { say: string; target: string } | null };
++  aim?: (s: TrainSnap) => { say: string; target: string } | null;
++  /** Where to point, deepest first, when the target is gone because the person closed a window or backed out. The first one that is on screen wins, and `recover` (the shallowest) is the last resort. */
++  recoverFrom?: { say: string; target: string }[] };
+ 
+ /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
+ export type Injection =
+@@ -132,6 +134,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
+     if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
+     if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
++    for (const t of (s.recoverFrom ?? []).map(r => r.target)) if (t && !spotOk(t)) at('guide', `step ${s.id} falls back to the unknown spot "${t}"`);
+     for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
+     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
+     for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
+diff --git a/src/training/modules/find-items.ts b/src/training/modules/find-items.ts
+index 8d0f948..1591b20 100644
+--- a/src/training/modules/find-items.ts
++++ b/src/training/modules/find-items.ts
+@@ -120,7 +120,7 @@ export const findItems: TrainingModule = {
+     { id: 'g-large', target: pickVariantSpot(COW_L), say: 'One tile per size. Tap Large to add it to the cart.', until: { kind: 'state', test: s => has(s, COW_L) }, gesture: 'tap', aim: gridAim('sizes'), allow: ['add'], at },
+     { id: 'g-back-sizes', target: SPOT.findBack, say: 'The sizes stay open so you can add another. Tap the back arrow to leave them.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', aim: gridAim('sizes'), allow: [], at },
+     { id: 'g-back-category', target: SPOT.findBack, say: 'You are back in Animals. Tap the back arrow again to go up to the first page.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', aim: gridAim('inside'), allow: [], at },
+-    { id: 'g-search', target: SPOT.findSearch, say: 'Cannot see an item? Tap the search bar.', until: { kind: 'press', id: SPOT.findSearch }, gesture: 'tap', allow: [], at },
++    { id: 'g-search', target: SPOT.findSearch, say: 'Cannot see an item? Tap the search bar.', until: { kind: 'press', id: SPOT.findSearch }, gesture: 'tap', recover: { say: 'Go to the Checkout tab. The search bar is at the top.', target: SPOT.tabCheckout }, allow: [], at },
+     { id: 'g-type', target: SPOT.searchField, say: 'Type egg. The matches appear under the box as you type.', until: { kind: 'state', test: s => (s.typed?.search ?? '').trim().toLowerCase() === WORD }, gesture: 'tap', aim: wordAim, allow: [], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
+     { id: 'g-result', target: searchResultSpot(EGG), say: 'Tap the Dragon Egg in the results. It is added and the window closes.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
+     { id: 'g-keypad-tab', target: findTabSpot('keypad'), say: 'For something with no tile, open the Keypad tab.', until: { kind: 'press', id: findTabSpot('keypad') }, gesture: 'tap', aim: tabsAim, allow: [], at },
+diff --git a/src/training/modules/pay-card.ts b/src/training/modules/pay-card.ts
+index 3eadce8..1a935fd 100644
+--- a/src/training/modules/pay-card.ts
++++ b/src/training/modules/pay-card.ts
+@@ -106,9 +106,9 @@ export const payCard: TrainingModule = {
+     { id: 'g-total', target: SPOT.payTotal, say: 'This is the Payment page. The number is what is still to pay. If the customer pays part another way, it counts down.', until: { kind: 'next' }, at: { tabs: ['checkout'], routes: ['pay'], sheets: false } },
+     { id: 'g-card', target: SPOT.payCard, say: 'Tap Card. The terminal beside the till wakes up and shows the amount.', until: { kind: 'press', id: SPOT.payCard }, gesture: 'tap', allow: ['tender'], recover: { say: 'Tap Charge to open the Payment page, then tap Card.', target: SPOT.cartCharge }, at: { tabs: ['checkout'], routes: ['pay'], sheets: false }, watch: [wrongWays[0]] },
+     { id: 'g-terminal', target: SPOT.terminalTap, say: 'This is the customer\'s terminal. For this part you are the customer. Under $100 a tap is all that is needed. Over $100 they key a PIN too.', until: { kind: 'next' }, allow: ['tender'], at: place },
+-    { id: 'g-tap', target: SPOT.terminalTap, say: 'Tap card, as the customer would.', until: { kind: 'press', id: SPOT.terminalTap }, gesture: 'tap', allow: ['tender', 'sale'], at: place },
++    { id: 'g-tap', target: SPOT.terminalTap, say: 'Tap card, as the customer would.', until: { kind: 'press', id: SPOT.terminalTap }, gesture: 'tap', allow: ['tender', 'sale'], recoverFrom: [{ say: 'The payment was cancelled. Tap Card to start it again.', target: SPOT.payCard }, { say: 'Tap Charge to open the Payment page, then tap Card.', target: SPOT.cartCharge }], recover: { say: 'On a phone, tap the cart bar at the bottom of the screen, then tap Charge.', target: SPOT.cartOpen }, at: place },
+     { id: 'g-wait', say: 'The terminal checks the card with the bank. When it is approved the till finishes the sale by itself. You do not tap anything. Wait for the Receipt window.', until: { kind: 'visible', id: SPOT.receiptNone }, allow: ['tender', 'sale'], at: placeWin },
+-    { id: 'g-receipt', target: SPOT.receiptNone, say: 'The sale is complete. You can email, text or share a receipt from here. For practice, tap No receipt.', until: { kind: 'press', id: SPOT.receiptNone }, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
++    { id: 'g-receipt', target: SPOT.receiptNone, say: 'The sale is complete. You can email, text or share a receipt from here. For practice, tap No receipt.', until: { kind: 'state', test: s => s.sales >= 1 && s.sheets === 0 }, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
+     { id: 'g-done', say: 'The cart is clear and the till is ready for the next customer. If a card is ever declined, the Not approved window has Try card again and Use another method. You will practise that next.', until: { kind: 'next' }, at: { tabs: ['checkout'], routes: ['cart', 'pay'], sheets: false } },
+   ],
+   check1: [
+diff --git a/src/training/modules/sign-in.ts b/src/training/modules/sign-in.ts
+index 17c7aff..6eaa648 100644
+--- a/src/training/modules/sign-in.ts
++++ b/src/training/modules/sign-in.ts
+@@ -3,6 +3,7 @@
+ // Runs with two practice staff (Casey, a cashier, PIN 1234; Morgan, a manager, PIN 2468 and a cashier pass). See `practiceStaff` in trainingSandbox.ts.
+ import type { TrainingModule } from '../../lib/trainingModule';
+ import { SPOT, gridActionSpot } from '../../lib/trainingSpots';
++import { gridAim } from '../aims';
+ import { PRACTICE_CASEY, PRACTICE_MORGAN } from '../../lib/trainingSandbox';
+ 
+ const SWITCH = gridActionSpot('switch_staff'); const LOCK = gridActionSpot('lock_pos');
+@@ -96,12 +97,12 @@ export const signIn: TrainingModule = {
+   guide: [
+     { id: 'g-who', say: 'The Casey tile names who is signed in. This practice till starts with Casey, a cashier.', target: SWITCH, until: { kind: 'next' } },
+     { id: 'g-open', say: 'Tap the Casey tile to hand the till to someone else without locking it.', target: SWITCH, until: { kind: 'visible', id: SPOT.loginPinpad }, gesture: 'tap', recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
+-    { id: 'g-pass-open', say: 'Morgan has a cashier pass. Tap Scan pass.', target: SPOT.loginScanPass, until: { kind: 'visible', id: SPOT.passScan }, at: { sheets: true } },
+-    { id: 'g-pass-scan', say: 'On a real till you hold the pass under the scanner. Here, tap Scan this pass.', target: SPOT.passScan, until: { kind: 'state', test: morganIn }, gesture: 'tap', allow: [], at: { sheets: true } },
++    { id: 'g-pass-open', say: 'Morgan has a cashier pass. Tap Scan pass.', target: SPOT.loginScanPass, until: { kind: 'visible', id: SPOT.passScan }, gesture: 'tap', recoverFrom: [{ say: 'The sign in window closed. Tap the tile that names who is signed in to open it again, then tap Scan pass.', target: SWITCH }], recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout }, at: { sheets: true } },
++    { id: 'g-pass-scan', say: 'On a real till you hold the pass under the scanner. Here, tap Scan this pass.', target: SPOT.passScan, until: { kind: 'state', test: morganIn }, gesture: 'tap', allow: [], recoverFrom: [{ say: 'The pass window closed. Tap Scan pass to open it again.', target: SPOT.loginScanPass }, { say: 'The sign in window closed. Tap the tile that names who is signed in, then tap Scan pass.', target: SWITCH }], recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout }, at: { sheets: true } },
+     { id: 'g-keep-cart', say: 'The tile now names Morgan. Switching never clears the cart, so a sale in progress carries straight on.', target: SWITCH, until: { kind: 'next' } },
+-    { id: 'g-lock', say: 'Stepping away? Tap Lock POS to cover the till with the Sign in screen.', target: LOCK, until: { kind: 'state', test: s => !!s.locked }, gesture: 'tap', allow: [] },
++    { id: 'g-lock', say: 'Stepping away? Tap Lock POS to cover the till with the Sign in screen.', target: LOCK, until: { kind: 'state', test: s => !!s.locked }, gesture: 'tap', aim: gridAim('top'), recover: { say: 'Open the Checkout tab, then tap Lock POS.', target: SPOT.tabCheckout }, allow: [] },
+     { id: 'g-pin-info', say: 'This is the Sign in screen. Anyone can use it with a PIN or a pass. A wrong PIN clears and lets you try again.', target: SPOT.loginPinpad, until: { kind: 'next' } },
+-    { id: 'g-pin', say: 'Key the practice cashier PIN: 1 2 3 4. It signs in on the fourth digit, or tap Unlock.', target: SPOT.loginPinpad, until: { kind: 'state', test: caseyIn }, gesture: 'tap', allow: [] },
++    { id: 'g-pin', say: 'Key the practice cashier PIN: 1 2 3 4. It signs in on the fourth digit, or tap Unlock.', target: SPOT.loginPinpad, until: { kind: 'state', test: caseyIn }, gesture: 'tap', allow: [], recoverFrom: [{ say: 'Casey needs to sign in for this step. Tap the tile that names who is signed in, then key 1 2 3 4.', target: SWITCH }], recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
+     { id: 'g-fallback', say: 'A pass that will not scan, or is not recognised, may have been cancelled or replaced. Key your PIN instead, and ask a manager or owner for a new pass.', until: { kind: 'next' } },
+   ],
+   check1: [
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 260c4a7..39944ff 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -118,6 +118,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           // `aim` says what to point at right now (the next key, the way back to the grid). It wins when what it points at is on screen.
+           const aimed = step.aim?.(snap) ?? null; if (aimed) { rect = await spot(aimed.target); if (rect) say = aimed.say; }
+           if (!rect) rect = await spot(step.target);
++          if (step.target && !rect) for (const r of step.recoverFrom ?? []) { rect = await spot(r.target); if (rect) { say = r.say; break; } }
+           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
+           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
+           if (off) { rect = off.rect; say = off.view!.say; }
+diff --git a/tests/trainingpaycard.test.ts b/tests/trainingpaycard.test.ts
+index 2e60029..a21ad46 100644
+--- a/tests/trainingpaycard.test.ts
++++ b/tests/trainingpaycard.test.ts
+@@ -30,7 +30,7 @@ test('Guide steps are finished by the right press, cart or window', () => {
+   assert.ok(isMet(g('g-card'), snap([]), ev([SPOT.payCard]))); assert.ok(!isMet(g('g-card'), snap([]), ev([SPOT.cartCharge])));
+   assert.ok(isMet(g('g-tap'), snap([]), ev([SPOT.terminalTap]))); assert.ok(!isMet(g('g-tap'), snap([]), ev([SPOT.terminalInsert])));
+   assert.ok(isMet(g('g-wait'), snap([]), ev([], [SPOT.receiptNone]))); assert.ok(!isMet(g('g-wait'), snap([]), ev()));
+-  assert.ok(isMet(g('g-receipt'), snap([]), ev([SPOT.receiptNone])));
++  assert.ok(!isMet(g('g-receipt'), snap([], { sales: 1, sheets: 1 }), ev([SPOT.receiptNone])), 'the Receipt window is still open'); assert.ok(isMet(g('g-receipt'), snap([], { sales: 1 }), ev()), 'the step finishes when the sale is done and the window is gone, however it was closed'); assert.ok(!isMet(g('g-receipt'), snap([]), ev([SPOT.receiptNone])), 'a press with no sale does not finish it');
+ });
+ 
+ test('the Receipt and Not approved buttons are window spots, so steps that point at them must allow windows', () => {
+@@ -84,3 +84,7 @@ test('a card goal is not finished by a sale paid another way, and the person is
+   }
+   const g = by(payCard.guide, 'g-card'); assert.ok(g.watch!.some((w: any) => w.id === 'wrong-way-open'));
+ });
++
++test('the card tap step falls back deepest first when the terminal has gone', () => {
++  const s = by(payCard.guide, 'g-tap'); assert.deepEqual(s.recoverFrom.map((r: any) => r.target), [SPOT.payCard, SPOT.cartCharge]); assert.equal(s.recover.target, SPOT.cartOpen);
++});
+diff --git a/tests/trainingsignin.test.ts b/tests/trainingsignin.test.ts
+index b0a45bf..b742345 100644
+--- a/tests/trainingsignin.test.ts
++++ b/tests/trainingsignin.test.ts
+@@ -55,3 +55,13 @@ test('Check 2 problems are customer or staff side, and each says where it was ta
+   for (const g of signIn.check2) { assert.ok(g.inject?.length, g.id); assert.ok(g.taughtBy, g.id); }
+   assert.ok(signIn.check2.some(g => g.inject?.some(i => i.kind === 'pass')));
+ });
++
++test('the sign in steps fall back to the tile that opens the window, deepest first, instead of a dead end', async () => {
++  const { SPOT, gridActionSpot } = await import('../src/lib/trainingSpots'); const { signIn } = await import('../src/training/modules/sign-in');
++  const step = (id: string) => signIn.guide.find(s => s.id === id)!; const SWITCH = gridActionSpot('switch_staff');
++  assert.deepEqual(step('g-pass-open').recoverFrom!.map(r => r.target), [SWITCH]);
++  assert.deepEqual(step('g-pass-scan').recoverFrom!.map(r => r.target), [SPOT.loginScanPass, SWITCH]);
++  assert.deepEqual(step('g-pin').recoverFrom!.map(r => r.target), [SWITCH], 'signed in as someone else: reopen the switch window');
++  assert.equal(typeof step('g-lock').aim, 'function'); assert.equal(step('g-lock').recover!.target, SPOT.tabCheckout);
++  for (const id of ['g-pass-open', 'g-pass-scan', 'g-lock', 'g-pin']) assert.ok(step(id).gesture, `${id} says how to reach its target`);
++});

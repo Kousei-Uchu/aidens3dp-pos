@@ -30,7 +30,7 @@ test('Guide steps are finished by the right press, cart or window', () => {
   assert.ok(isMet(g('g-card'), snap([]), ev([SPOT.payCard]))); assert.ok(!isMet(g('g-card'), snap([]), ev([SPOT.cartCharge])));
   assert.ok(isMet(g('g-tap'), snap([]), ev([SPOT.terminalTap]))); assert.ok(!isMet(g('g-tap'), snap([]), ev([SPOT.terminalInsert])));
   assert.ok(isMet(g('g-wait'), snap([]), ev([], [SPOT.receiptNone]))); assert.ok(!isMet(g('g-wait'), snap([]), ev()));
-  assert.ok(isMet(g('g-receipt'), snap([]), ev([SPOT.receiptNone])));
+  assert.ok(!isMet(g('g-receipt'), snap([], { sales: 1, sheets: 1 }), ev([SPOT.receiptNone])), 'the Receipt window is still open'); assert.ok(isMet(g('g-receipt'), snap([], { sales: 1 }), ev()), 'the step finishes when the sale is done and the window is gone, however it was closed'); assert.ok(!isMet(g('g-receipt'), snap([]), ev([SPOT.receiptNone])), 'a press with no sale does not finish it');
 });
 
 test('the Receipt and Not approved buttons are window spots, so steps that point at them must allow windows', () => {
@@ -83,4 +83,8 @@ test('a card goal is not finished by a sale paid another way, and the person is 
     assert.ok(done.when(snap([], { sales: 1, kinds: ['cash'] }))); assert.ok(!done.when(snap([], { sales: 1, kinds: ['card'] }))); assert.equal(done.fix, 'restart');
   }
   const g = by(payCard.guide, 'g-card'); assert.ok(g.watch!.some((w: any) => w.id === 'wrong-way-open'));
+});
+
+test('the card tap step falls back deepest first when the terminal has gone', () => {
+  const s = by(payCard.guide, 'g-tap'); assert.deepEqual(s.recoverFrom.map((r: any) => r.target), [SPOT.payCard, SPOT.cartCharge]); assert.equal(s.recover.target, SPOT.cartOpen);
 });
