@@ -1,0 +1,134 @@
+From 1189d6b8d522a396da7426bfeddd083d1a11786b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:56:11 +1100
+Subject: [PATCH 1/2] Sign in: close the scan window before the Switch staff
+ sheet under it
+
+Scanning a pass closed both windows in the same moment. On iOS that can
+leave an invisible window over the screen, so nothing could be pressed,
+not even Skip or Exit in a training Guide. The scan window now slides
+away first and the sheet closes half a second later.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/screens/StaffLogin.tsx | 11 +++++++++--
+ 1 file changed, 9 insertions(+), 2 deletions(-)
+
+diff --git a/src/screens/StaffLogin.tsx b/src/screens/StaffLogin.tsx
+index 139333c..026fd5e 100644
+--- a/src/screens/StaffLogin.tsx
++++ b/src/screens/StaffLogin.tsx
+@@ -1,6 +1,6 @@
+ // Location: src/screens/StaffLogin.tsx
+ // PIN pad + pass scanning, shared by the lock screen and the "Switch staff" sheet.
+-import React, { useState } from 'react';
++import React, { useEffect, useRef, useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, HelpButton, Sheet, Txt } from '../ui/kit';
+ import { Spot, spotPressed } from '../ui/Spot';
+@@ -19,13 +19,20 @@ export const PinPad = ({ onKey }: { onKey: (k: string) => void }) => (
+ );
+ 
+ /** Enter a PIN, or scan a pass with the Bluetooth scanner or the camera. `onDone` runs after a successful sign-in. */
++/** How long the scan window needs to slide away before the window under it may close (iOS freezes the screen if two windows are dismissed in the same moment). */
++export const SCAN_CLOSE_MS = 500;
++
+ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignInResult) => void; scannerOn?: boolean }) {
+   const [pin, setPin] = useState(''); const [err, setErr] = useState(''); const [cam, setCam] = useState(false);
++  const timer = useRef<ReturnType<typeof setTimeout> | null>(null); useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+   const finish = (r: SignInResult) => { if (r.ok) { setPin(''); setErr(''); onDone(r); } else { setErr(r.message); setPin(''); } };
+   const tryPin = async (p: string, quiet: boolean) => { const r = await signInWithPin(p); if (r.ok) finish(r); else if (!quiet) finish(r); };
+   const onScan = async (code: string): Promise<string | null> => {
+     if (!isBadgeCode(code)) return null;
+-    const r = await signInWithPass(code); finish(r); if (r.ok) setCam(false);
++    const r = await signInWithPass(code);
++    // A pass is scanned in a window on top of this one (and on the Switch staff sheet that is a window on top of a window). Close the scan window first and
++    // let it finish sliding away before telling the sheet below to close, so two windows never dismiss together (that left the practice till frozen).
++    if (r.ok) { setCam(false); setPin(''); setErr(''); timer.current = setTimeout(() => { timer.current = null; onDone(r); }, SCAN_CLOSE_MS); } else finish(r);
+     return r.ok ? r.message : null;
+   };
+   return (
+-- 
+2.43.0
+
+
+From bfcfbbc456ac3118abac18e51b62af02942c2301 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:56:11 +1100
+Subject: [PATCH 2/2] Docs: patch 0097 plan, progress log row and T11 note
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ docs/DEVICE_TESTS.md      |  2 +-
+ docs/PROGRESS.md          |  3 ++-
+ docs/patches/0097-plan.md | 22 ++++++++++++++++++++++
+ 3 files changed, 25 insertions(+), 2 deletions(-)
+ create mode 100644 docs/patches/0097-plan.md
+
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 842b2a1..57a09e1 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -143,7 +143,7 @@ Tell me: pass or fail for each step, the exact error text for any failure, and t
+ On the iPad and on a phone: **More ▸ Training ▸ Sign in, lock and switch staff**. No setup needed: practice has its own people, Casey (PIN 1234) and Morgan (PIN 2468, with a pass).
+ 
+ 1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, and the Show covers the staff tile, a pass scan, locking, a PIN and a pass that fails.
+-2. **Guide.** Follow the arrows. Pass: Switch staff opens, Scan pass opens a window with a drawn pass and a **Scan this pass** button, the ring points at that button, and after the scan the Casey tile says Morgan. Lock POS then shows the Sign in screen with the bar still at the bottom, and keying 1 2 3 4 signs in as Casey.
++2. **Guide.** Follow the arrows. Pass: Switch staff opens, Scan pass opens a window with a drawn pass and a **Scan this pass** button, the ring points at that button, and after the scan the Casey tile says Morgan. **(0097) Right after the scan, step 5 shows with the windows gone, and Next, Skip and Exit all respond.** Also try the real till (outside training): Switch staff ▸ Scan pass with a real pass closes both windows and the screen stays usable. Lock POS then shows the Sign in screen with the bar still at the bottom, and keying 1 2 3 4 signs in as Casey.
+ 3. **Check 1.** Three goals. Pass: each finishes the moment you do the thing, and the hints climb to a ringed answer.
+ 4. **Check 2.** The first goal cancels Morgan's pass. Pass: scanning it says it is not recognised, and keying 2 4 6 8 gets you in. The second starts with items in the cart. Pass: switching to Morgan keeps them.
+ 5. **Leave and finish.** Exit mid-course, then finish another run. Pass: the real till is signed in as you again, the cart is as you left it, and the green tick is under **your** name.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index f1272ff..08278e1 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -99,6 +99,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0094 | 2026-10-12 | Training (B6), task course 3 of the plan: **Build a cart** (`cart`) finished and registered. The draft from the earlier commit was rejected by the course checker (screen ids reused, a gesture written as an object, a Show that pointed at hidden things, a Check 2 with no "taught by", and a Check 2 goal that was already complete when it began), so it is rewritten: a working animated Show (add, add again, add another, swipe, Remove), a Guide that teaches removal before Check 2 asks for it, a Check 1 that needs three **different** items, and a Check 2 where the customer swaps one item for another. | B6 |
+ | 0095 | 2026-10-12 | Docs only: the training module plan is now `docs/TRAINING_PLAN.md`, the ordered list of all 50 planned courses in five tiers (what each covers, its Guide steps, its Check 2 failure), with what is built so far marked. | B6 |
+ | 0096 | 2026-10-12 | Virtual Zeller Terminal 2: **screens redone from your photos and screenshots**, as seven small commits. The terminal is **dark mode only** (the Dark screen switch on the Virtual terminal page is gone). **Idle** is the screensaver logo on the screensaver colour with the small zeller wordmark. **Tap Now** is the blue panel with the contactless symbol over a dark amount sheet with a small Cancel link (it was a sideways label). **Processing** is the blue smile on dark. **Approved** is a green ring and tick on dark with no Note / Contact / Receipt / New Sale buttons. **Declined** is a red ring, the amount, a bold response line and the explanation, with no eReceipt button. Receipt (QR on a white card), Cancelled and Not available are restyled to match. Wording in `COPY` was already right. | B6, N34 |
++| 0097 | 2026-10-12 | Device report, Sign in course: **soft lock at Guide step 5** (after scanning Morgan's pass, nothing could be pressed, not even Skip or Exit). Cause: a scanned pass closed the scan window and the Switch staff sheet under it in the same moment, and iOS can leave an invisible window over the screen when two windows dismiss together. The scan window now slides away first and the sheet closes 0.5 s later (`SCAN_CLOSE_MS` in `src/screens/StaffLogin.tsx`). This also covers the real till's Switch staff and camera pass scan. Found by reading the code, **not reproduced** (no device here): T11 must be run again. | B6 |
+ 
+ ---
+ 
+@@ -423,7 +424,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N33 **Non-blocking (B6, 0081):** on the iPad, run a Check and press Hint. The toast should slide in at the top and pulse once (a quick grow and glow that peaks a third of a second in and is gone by 0.8 s), and the bar's hint text should pulse with it. Press Hint until the answer is ringed, then press once more: the toast should pulse again with no new text. Open a window during a Check (a sheet) and press Hint there: the toast should appear on the window and stay until you tap its x. Tell me if the pulse is too strong or too weak (the two numbers are `PULSE_SCALE_GAIN` and `PULSE_TINT_ALPHA` in `src/lib/hintPulse.ts`), whether the toast covers anything you need, and how it looks in the light, dark and brand themes. Also try with Reduce Motion on (colour only, no growing).
+ - [ ] N34 **Non-blocking (B6, 0082):** photos for the virtual terminal. The Terminal 2 screens in 0082 are drawn from public descriptions, so the wording, layout and colours are best guesses. To make them match: (1) the branded idle screen your terminal shows, (2) each Zeller in-app popup (waiting for card, PIN, processing, approved, declined with a reason, cancelled, receipt options, error or not available), (3) a front photo of the terminal and, if you can, a short video of a tap payment and an insert payment with PIN. Everything the screens say lives in `COPY` in `src/lib/virtualTerminal.ts`, and their look in `src/ui/TerminalFace.tsx`, so it is a re-skin, not a rebuild.
+ - [~] N34b **Non-blocking (B6, 0096):** the terminal screens now follow your photos (idle, Tap Now, processing, approved, declined). Still approximate: the receipt options screen, the PIN pad, remove card, cancelled and not available (no photos of those yet), and the processing smile is drawn, not animated. Check them against the real terminal and send photos of any that look off. See T13 in `docs/DEVICE_TESTS.md`.
+-- [ ] N35 **Non-blocking (B6, 0093):** device check for the sign-in course (More ▸ Training ▸ Sign in, lock and switch staff). The practice pass window (a drawn pass with a **Scan this pass** button) opens inside the Switch staff window, so check it looks right on the iPad and phone and that the highlight ring still points at the button. Also check that locking the practice till shows the Sign in screen with the dock still visible, that your real till is signed in as you again after Leave, and that your green tick is under your name, not Casey's or Morgan's. See T11 in `docs/DEVICE_TESTS.md`.
++- [ ] N35 **Non-blocking (B6, 0093):** device check for the sign-in course (More ▸ Training ▸ Sign in, lock and switch staff). The practice pass window (a drawn pass with a **Scan this pass** button) opens inside the Switch staff window, so check it looks right on the iPad and phone and that the highlight ring still points at the button. **0097 fixes a freeze reported after the pass scan (Guide step 5): confirm Skip, Exit and taps all still work once Morgan is signed in.** Also check that locking the practice till shows the Sign in screen with the dock still visible, that your real till is signed in as you again after Leave, and that your green tick is under your name, not Casey's or Morgan's. See T11 in `docs/DEVICE_TESTS.md`.
+ - [ ] N36 **Non-blocking (B6, 0094):** device check for the cart course (More ▸ Training ▸ Build a cart). Check the swipe-left cursor on a cart line shows Remove and that tapping Remove finishes the Guide step, on both the iPad (cart beside the grid) and a phone (cart is a page). Check 1 should not finish with three of the same item. See T12 in `docs/DEVICE_TESTS.md`.
+ 
+ ### Priority 3
+diff --git a/docs/patches/0097-plan.md b/docs/patches/0097-plan.md
+new file mode 100644
+index 0000000..7a25f28
+--- /dev/null
++++ b/docs/patches/0097-plan.md
+@@ -0,0 +1,22 @@
++# Patch 0097: Sign in course froze after scanning the pass
++
++Stacks on 0096.
++
++## What you asked
++> i get soft locked at guide step 5 for sign in, lock, and switch staff, as clicking doesnt do anything anywhere, and theres no way out other than restarting the app because even the skip and exit buttons are not able to be pressed.
++
++## What I found
++Step 5 (`g-keep-cart`) is the first step after the pass is scanned. Scanning ran `onDone` (which closes the Switch staff sheet) and closed the scan window in the same moment. The scan window is a second window on top of the sheet, so two windows dismissed together. On iOS that can leave an invisible window covering the screen. Anything under it, including the training bar's Skip and Exit, cannot be pressed.
++
++## What it does
++- `StaffLoginPad` (`src/screens/StaffLogin.tsx`): after a good pass scan it closes the scan window first, then calls `onDone` (which closes the sheet) `SCAN_CLOSE_MS` (0.5 s) later. The wait is cancelled if the pad goes away first. A PIN sign-in, a failed scan and the lock screen behave as before.
++- It is the same code the real till uses, so the real Switch staff camera scan gets the same fix.
++
++## Not proven
++I could not reproduce this (no device, and the Zeller package would not install here), so the cause is from reading the code. If step 5 still freezes, tell me what is on screen (is the Switch staff sheet still showing?) and I will go further, for example by drawing the practice pass inside the sheet instead of in a second window.
++
++## Checklist
++1. [x] `src/screens/StaffLogin.tsx`.
++2. [x] Terminal and sign-in test files unchanged and as before (the logic is not in a pure file, so it has no unit test).
++3. [~] Not typechecked: please run `npm run typecheck`.
++4. [ ] Device test T11 (`docs/DEVICE_TESTS.md`), step 2.
+-- 
+2.43.0
+

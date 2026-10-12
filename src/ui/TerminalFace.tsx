@@ -3,7 +3,7 @@
 // the state and the taps come in as props, so the practice device, the playground and the Show demos all draw the same face.
 // Everything is sized from the width, so it stays sharp and in proportion from a thumbnail to full size.
 import React from 'react';
-import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+import { Image, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { QR } from './QR';
 import { spotRefFor } from './Spot';
@@ -18,8 +18,8 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
   const spotRef = spots ? spotRefFor : undefined; // only the live terminal registers spots, so a thumbnail in a gallery never steals the highlight
   const k = faceColors(s.dark); const u = w / 100; const h = w * FACE_ASPECT; const t = screenText(s); const press = (f?: () => void) => (f ? { onPress: f } : { disabled: true });
   const shell = { width: w, height: h, backgroundColor: s.screen === 'sleep' ? (brand?.bg ?? '#13111C') : k.bg, overflow: 'hidden' as const, alignItems: 'center' as const };
-  const disc = (bg: string, icon: React.ComponentProps<typeof Ionicons>['name']) => (
-    <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18 * u} color="#fff" /></View>
+  const disc = (color: string, icon: React.ComponentProps<typeof Ionicons>['name']) => ( // an outlined ring like the Approved and Declined screens
+    <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.2 * u, borderColor: color, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18 * u} color={color} /></View>
   );
   const heading = (title: string, line?: string, hint?: string) => (
     <View style={{ alignItems: 'center', paddingHorizontal: 8 * u, gap: 2 * u }}>
@@ -37,17 +37,27 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
   let body: React.ReactNode;
   switch (s.screen) {
     case 'sleep':
-      body = <View style={{ flex: 1, justifyContent: 'center' }}>{brand?.logo
-        ? <Image source={brand.logo} resizeMode="contain" accessibilityIgnoresInvertColors style={{ width: w * 0.62, height: w * 0.4 }} />
-        : <Ionicons name="storefront-outline" size={22 * u} color="#EFD8C9" />}</View>; break;
+      // The idle screen is the business's screensaver: its logo centred on its screensaver colour, with the small Zeller wordmark at the foot like the real terminal.
+      body = (<View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
+        {brand?.logo
+          ? <Image source={brand.logo} resizeMode="contain" accessibilityIgnoresInvertColors style={{ width: w * 0.72, height: w * 0.5 }} />
+          : <Ionicons name="storefront-outline" size={22 * u} color="#EFD8C9" />}
+        <Text style={{ position: 'absolute', bottom: 9 * u, fontSize: 9 * u, fontWeight: '600', letterSpacing: 0.4 * u, color: '#FFFFFF', opacity: 0.7 }}>zeller</Text>
+      </View>); break;
     case 'amount':
+      // Tap Now: a blue panel with the contactless symbol on top, the amount on a dark sheet that overlaps it, and a small Cancel link.
       body = (
-        <View style={{ flex: 1, flexDirection: 'row', width: '100%' }}>
-          <View style={{ width: '35%', backgroundColor: '#1C7DFF', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 * u }}>
-            <Text style={{ fontSize: 10 * u, fontWeight: '700', color: '#F5F8FF', transform: [{ rotate: '-90deg' }], textAlign: 'center' }}>Tap Now</Text>
+        <View style={{ flex: 1, width: '100%', backgroundColor: '#1C7DFF' }}>
+          <View style={{ height: '38%', justifyContent: 'center', alignItems: 'center', gap: 4 * u }}>
+            <Ionicons name="wifi" size={13 * u} color="#F5F8FF" style={{ transform: [{ rotate: '90deg' }] }} />
+            <Text style={{ fontSize: 11 * u, fontWeight: '700', color: '#F5F8FF' }}>Tap Now</Text>
           </View>
-          <View style={{ flex: 1, backgroundColor: '#0D0D0F', justifyContent: 'center', alignItems: 'center' }}>
-            <Text style={{ fontSize: 16 * u, fontWeight: '700', color: '#F5F6F8' }}>{t.line}</Text>
+          <View style={{ flex: 1, backgroundColor: k.bg, borderTopLeftRadius: 9 * u, borderTopRightRadius: 9 * u, alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 17 * u, fontWeight: '700', color: k.text }}>{t.line}</Text>
+            <View style={{ position: 'absolute', bottom: 8 * u }}>
+              <Pressable ref={spotRef?.(SPOT.terminalCancel)} collapsable={false} accessibilityRole="button" accessibilityLabel="Cancel" hitSlop={8 * u} {...press(onCancel)}>
+                <Text style={{ fontSize: 5 * u, color: '#3D8BFF' }}>Cancel</Text></Pressable>
+            </View>
           </View>
         </View>
       );
@@ -67,35 +77,49 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
         </View>
         <View style={{ paddingTop: 1 * u }}>{pill('Cancel', onCancel, SPOT.terminalCancel)}</View></View>); break;
     case 'processing':
-      body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u, backgroundColor: '#F7F7F7' }}><ActivityIndicator size="large" color="#1C7DFF" />{heading('Processing', 'Please wait', 'Do not remove the card')}</View>; break;
-    case 'approved':
+      // Processing: the Zeller smile in blue on the dark screen, with the word under it. No hint line: the reference only says Processing.
       body = (
-        <View style={{ flex: 1, width: '100%', backgroundColor: '#2ECC71', justifyContent: 'center', alignItems: 'center' }}>
-          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.4 * u, borderColor: '#F6F9FF', alignItems: 'center', justifyContent: 'center', marginBottom: 10 * u }}>
-            <Ionicons name="checkmark" size={18 * u} color="#F6F9FF" />
+        <View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center', gap: 9 * u }} accessibilityRole="progressbar">
+          <View style={{ width: 26 * u, height: 22 * u, alignItems: 'center' }}>
+            <View style={{ flexDirection: 'row', gap: 10 * u, marginBottom: 3 * u }}>
+              <View style={{ width: 4 * u, height: 1.6 * u, borderRadius: u, backgroundColor: '#1C7DFF' }} />
+              <View style={{ width: 4 * u, height: 1.6 * u, borderRadius: u, backgroundColor: '#1C7DFF' }} /></View>
+            <View style={{ width: 20 * u, height: 10 * u, borderBottomLeftRadius: 10 * u, borderBottomRightRadius: 10 * u, borderBottomWidth: 1.8 * u, borderLeftWidth: 1.8 * u, borderRightWidth: 1.8 * u, borderColor: '#1C7DFF' }} />
           </View>
-          <Text style={{ fontSize: 14 * u, fontWeight: '700', color: '#F4F8FF' }}>{t.title}</Text>
+          <Text style={{ fontSize: 6.5 * u, fontWeight: '600', color: k.text }}>Processing</Text>
+        </View>); break;
+    case 'approved':
+      // Approved in dark mode: a green ring and tick with "$X Approved" under it. The reference's Note / Contact / Receipt buttons and New Sale are not on our terminal.
+      body = (
+        <View style={{ flex: 1, width: '100%', backgroundColor: k.bg, justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.4 * u, borderColor: '#34D26A', alignItems: 'center', justifyContent: 'center', marginBottom: 9 * u }}>
+            <Ionicons name="checkmark" size={18 * u} color="#34D26A" />
+          </View>
+          <Text style={{ fontSize: 10 * u, fontWeight: '700', color: k.text, textAlign: 'center' }}>{t.title}</Text>
         </View>
       );
       break;
     case 'declined':
+      // Declined: red ring with a cross, "$X Declined", the bold response line, then the plain explanation. The eReceipt button in the reference is left out.
       body = (
-        <View style={{ flex: 1, width: '100%', backgroundColor: '#0D0D0F', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 * u }}>
-          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.6 * u, borderColor: '#F44B4B', alignItems: 'center', justifyContent: 'center', marginBottom: 10 * u }}>
-            <Ionicons name="close" size={18 * u} color="#F44B4B" />
+        <View style={{ flex: 1, width: '100%', backgroundColor: '#1B2221', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 9 * u }}>
+          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.2 * u, borderColor: '#F4584C', alignItems: 'center', justifyContent: 'center', marginBottom: 8 * u }}>
+            <Ionicons name="close" size={18 * u} color="#F4584C" />
           </View>
-          <Text style={{ fontSize: 14 * u, fontWeight: '700', color: '#F5F6F8', textAlign: 'center' }}>{t.title}</Text>
-          <Text style={{ marginTop: 8 * u, fontSize: 8.5 * u, color: '#F5F6F8', textAlign: 'center' }}>{t.line}</Text>
-          <Text style={{ marginTop: 6 * u, fontSize: 6.1 * u, color: '#D2D6DD', textAlign: 'center', lineHeight: 11 * u }}>{t.hint}</Text>
+          <Text style={{ fontSize: 10 * u, fontWeight: '700', color: k.text, textAlign: 'center' }}>{t.title}</Text>
+          <Text style={{ marginTop: 5 * u, fontSize: 5.2 * u, fontWeight: '700', color: k.text, textAlign: 'center' }}>{t.line}</Text>
+          <Text style={{ marginTop: 2.5 * u, fontSize: 4.8 * u, color: k.text, textAlign: 'center', lineHeight: 7.4 * u }}>{t.hint}</Text>
         </View>
       );
       break;
     case 'cancelled': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.sub, 'close')}{heading(t.title, t.line)}</View>; break;
     case 'removeCard': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}><Ionicons name="card-outline" size={26 * u} color={k.accent} />{heading(t.title)}</View>; break;
     case 'receipt':
+      // Dark screen with the QR on a white card, so it still scans.
       body = (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%', backgroundColor: '#F5F6F8' }}>
-          <QR value="https://example.com/practice-receipt" size={Math.round(46 * u)} />
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%', backgroundColor: k.bg, gap: 7 * u }}>
+          <View style={{ backgroundColor: '#FFFFFF', padding: 4 * u, borderRadius: 4 * u }}><QR value="https://example.com/practice-receipt" size={Math.round(46 * u)} /></View>
+          <Text style={{ fontSize: 5 * u, color: k.sub }}>Scan for your receipt</Text>
         </View>
       );
       break;

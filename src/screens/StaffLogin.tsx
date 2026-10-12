@@ -1,6 +1,6 @@
 // Location: src/screens/StaffLogin.tsx
 // PIN pad + pass scanning, shared by the lock screen and the "Switch staff" sheet.
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, HelpButton, Sheet, Txt } from '../ui/kit';
 import { Spot, spotPressed } from '../ui/Spot';
@@ -19,13 +19,20 @@ export const PinPad = ({ onKey }: { onKey: (k: string) => void }) => (
 );
 
 /** Enter a PIN, or scan a pass with the Bluetooth scanner or the camera. `onDone` runs after a successful sign-in. */
+/** How long the scan window needs to slide away before the window under it may close (iOS freezes the screen if two windows are dismissed in the same moment). */
+export const SCAN_CLOSE_MS = 500;
+
 export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignInResult) => void; scannerOn?: boolean }) {
   const [pin, setPin] = useState(''); const [err, setErr] = useState(''); const [cam, setCam] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null); useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
   const finish = (r: SignInResult) => { if (r.ok) { setPin(''); setErr(''); onDone(r); } else { setErr(r.message); setPin(''); } };
   const tryPin = async (p: string, quiet: boolean) => { const r = await signInWithPin(p); if (r.ok) finish(r); else if (!quiet) finish(r); };
   const onScan = async (code: string): Promise<string | null> => {
     if (!isBadgeCode(code)) return null;
-    const r = await signInWithPass(code); finish(r); if (r.ok) setCam(false);
+    const r = await signInWithPass(code);
+    // A pass is scanned in a window on top of this one (and on the Switch staff sheet that is a window on top of a window). Close the scan window first and
+    // let it finish sliding away before telling the sheet below to close, so two windows never dismiss together (that left the practice till frozen).
+    if (r.ok) { setCam(false); setPin(''); setErr(''); timer.current = setTimeout(() => { timer.current = null; onDone(r); }, SCAN_CLOSE_MS); } else finish(r);
     return r.ok ? r.message : null;
   };
   return (

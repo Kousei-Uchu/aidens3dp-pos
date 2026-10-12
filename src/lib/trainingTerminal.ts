@@ -64,7 +64,7 @@ export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: numbe
 /** The one terminal training uses. Check 2 sets how many cards it declines before it approves. */
 const queue: Outcome[] = []; let declineWith = '51';
 /** The virtual terminal drawn on screen during training. Automatic until a course asks for the person to play the customer (`setManualCard`). */
-export const trainingVt = createVt({ dark: false });
+export const trainingVt = createVt({ dark: true });
 export const trainingTerminal = makeTrainingTerminal({ next: () => queue.shift() ?? 'approve', vt: trainingVt, declineCode: () => declineWith });
 export const setDeclines = (times: number, code = '51'): void => { queue.length = 0; declineWith = code; for (let i = 0; i < Math.max(0, Math.min(5, times)); i++) queue.push('decline'); };
 export const setManualCard = (manual: boolean): void => { trainingVt.manual = manual; };

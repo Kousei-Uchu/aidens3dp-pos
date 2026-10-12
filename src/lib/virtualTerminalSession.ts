@@ -16,7 +16,7 @@ type Timers = { set: (f: () => void, ms: number) => unknown; clear: (h: unknown)
 const realTimers: Timers = { set: (f, ms) => { const h: any = setTimeout(f, ms); h?.unref?.(); return h; }, clear: h => clearTimeout(h as any) };
 
 export function createVt(o: { dark?: boolean; manual?: boolean; timers?: Timers } = {}): VtController {
-  const timers = o.timers ?? realTimers; let state = vtInitial(!!o.dark); let pending: unknown = null; const subs = new Set<(s: VtState, prev: VtState) => void>();
+  const timers = o.timers ?? realTimers; let state = vtInitial(o.dark ?? true); let pending: unknown = null; const subs = new Set<(s: VtState, prev: VtState) => void>();
   const stop = () => { if (pending !== null) { timers.clear(pending); pending = null; } };
   // A message screen moves on by itself (approved, declined, cancelled, receipt, removeCard) so the terminal never sticks, unless the screen is one the person is meant to act on.
   const schedule = () => {
