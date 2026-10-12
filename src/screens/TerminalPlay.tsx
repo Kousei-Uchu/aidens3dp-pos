@@ -17,10 +17,10 @@ const AMOUNTS = [1200, 4500, 12000] as const;
 
 export default function TerminalPlay() {
   const { c } = useTheme(); const nav = useNav(); const brand = useFaceBrand();
-  const [manual, setManual] = useState(true); const [dark, setDark] = useState(false); const [amount, setAmount] = useState<number>(4500); const [decline, setDecline] = useState(false);
+  const [manual, setManual] = useState(true); const [amount, setAmount] = useState<number>(4500); const [decline, setDecline] = useState(false);
   const [log, setLog] = useState<string[]>([]); const [busy, setBusy] = useState(false); const live = useRef<ReturnType<typeof startCharge> | null>(null); const outcome = useRef<'approve' | 'decline'>('approve'); outcome.current = decline ? 'decline' : 'approve';
   const vt = useMemo(() => createVt({ manual: true }), []); const term = useMemo(() => makeTrainingTerminal({ next: () => outcome.current, vt }), [vt]);
-  useEffect(() => { vt.manual = manual; }, [vt, manual]); useEffect(() => { vt.dispatch({ t: 'dark', dark }); }, [vt, dark]); useEffect(() => () => vt.dispose(), [vt]);
+  useEffect(() => { vt.manual = manual; }, [vt, manual]); useEffect(() => () => vt.dispose(), [vt]);
   const start = () => {
     if (busy) return; setBusy(true); setLog([`Asked for ${money(amount)}`]); const add = (m: string) => setLog(l => [...l, m]);
     const ch = startCharge(term, { amountCents: amount, reference: `play-${Date.now()}` }, { onEvent: e => add(describeEvent(e)) });
@@ -37,7 +37,6 @@ export default function TerminalPlay() {
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{AMOUNTS.map(a => <Chip key={a} label={`${money(a)}${a > 10000 ? ' (needs PIN)' : ''}`} active={amount === a} onPress={() => setAmount(a)} />)}</View>
           <Toggle label="Decline the card" sub="The terminal says Declined (insufficient funds)." value={decline} onChange={setDecline} />
           <Toggle label="I am the customer" sub="Off: the terminal taps a card and keys a PIN by itself." value={manual} onChange={setManual} />
-          <Toggle label="Dark screen" sub="The Terminal 2 has light and dark screen modes." value={dark} onChange={setDark} />
           <Btn title={busy ? 'Waiting for the customer…' : 'Ask for payment'} onPress={start} disabled={busy} />
           {busy ? <Btn kind="secondary" title="Cancel from the till" onPress={() => live.current?.cancel()} /> : null}
           {log.length ? <View style={{ gap: 2 }}>{log.map((l, i) => <Txt key={i} size={13} sub>{l}</Txt>)}</View> : null}
@@ -46,7 +45,7 @@ export default function TerminalPlay() {
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
             {VT_SCREENS.map(sc => (
               <View key={sc} style={{ alignItems: 'center', gap: 4 }}>
-                <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: c.line, height: 110 * FACE_ASPECT }}><TerminalFace s={previewState(sc, dark)} w={110} brand={brand} /></View>
+                <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: c.line, height: 110 * FACE_ASPECT }}><TerminalFace s={previewState(sc)} w={110} brand={brand} /></View>
                 <Txt size={12} sub>{sc}</Txt></View>))}
           </ScrollView>
         </Section>

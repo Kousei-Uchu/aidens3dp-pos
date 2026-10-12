@@ -1,0 +1,468 @@
+From e00107fec2fcb06e48be412866cb1c571ab7b27c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:09 +1100
+Subject: [PATCH 1/8] Virtual terminal: dark mode only
+
+Every screen now draws in the dark palette, the light/dark toggle on the
+Virtual terminal page is gone, and new terminals and previews start dark.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/lib/trainingTerminal.ts       | 2 +-
+ src/lib/virtualTerminal.ts        | 8 ++++----
+ src/lib/virtualTerminalSession.ts | 2 +-
+ src/screens/TerminalPlay.tsx      | 7 +++----
+ 4 files changed, 9 insertions(+), 10 deletions(-)
+
+diff --git a/src/lib/trainingTerminal.ts b/src/lib/trainingTerminal.ts
+index 78787e5..6b70450 100644
+--- a/src/lib/trainingTerminal.ts
++++ b/src/lib/trainingTerminal.ts
+@@ -64,7 +64,7 @@ export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: numbe
+ /** The one terminal training uses. Check 2 sets how many cards it declines before it approves. */
+ const queue: Outcome[] = []; let declineWith = '51';
+ /** The virtual terminal drawn on screen during training. Automatic until a course asks for the person to play the customer (`setManualCard`). */
+-export const trainingVt = createVt({ dark: false });
++export const trainingVt = createVt({ dark: true });
+ export const trainingTerminal = makeTrainingTerminal({ next: () => queue.shift() ?? 'approve', vt: trainingVt, declineCode: () => declineWith });
+ export const setDeclines = (times: number, code = '51'): void => { queue.length = 0; declineWith = code; for (let i = 0; i < Math.max(0, Math.min(5, times)); i++) queue.push('decline'); };
+ export const setManualCard = (manual: boolean): void => { trainingVt.manual = manual; };
+diff --git a/src/lib/virtualTerminal.ts b/src/lib/virtualTerminal.ts
+index 5244fe2..05a3321 100644
+--- a/src/lib/virtualTerminal.ts
++++ b/src/lib/virtualTerminal.ts
+@@ -22,7 +22,7 @@ export type VtState = {
+ export const CONTACTLESS_LIMIT_CENTS = 10_000;
+ export const PIN_MIN = 4; export const PIN_MAX = 6;
+ export const needsPin = (media: VtMedia, amountCents: number): boolean => media === 'INSERT' || amountCents > CONTACTLESS_LIMIT_CENTS;
+-export const vtInitial = (dark = false): VtState => ({ screen: 'sleep', amountCents: 0, pin: 0, dark });
++export const vtInitial = (dark = true): VtState => ({ screen: 'sleep', amountCents: 0, pin: 0, dark });
+ 
+ export type VtAction =
+   | { t: 'request'; amountCents: number }                  // the till asks the terminal for a payment: wakes it
+@@ -108,12 +108,12 @@ export function screenText(s: VtState): { title: string; line: string; hint: str
+ export const FACE_ASPECT = 2.05;
+ export const BODY_ASPECT = 2.03;
+ 
+-/** The face colours for light and dark mode. Dark mode is Zeller Terminal 2's default. The idle screen takes its background from the business's own settings instead. */
++/** The face colours. Our virtual terminal is dark mode only (the `dark` flag is kept for the demo files, but no longer changes the look). The idle screen takes its background from the business's own settings instead. */
+ export const FACE = {
+   light: { bg: '#FFFFFF', text: '#111111', sub: '#6B7280', key: '#F1F1F4', accent: '#111111', onAccent: '#FFFFFF', good: '#15803D', bad: '#DC2626' },
+   dark: { bg: '#0B0B0C', text: '#F4F4F5', sub: '#9CA3AF', key: '#222226', accent: '#F4F4F5', onAccent: '#111111', good: '#10B981', bad: '#EF5350' },
+ } as const;
+-export const faceColors = (dark: boolean) => (dark ? FACE.dark : FACE.light);
++export const faceColors = (_dark?: boolean) => FACE.dark;
+ 
+ /** The keys on the PIN screen, in rows, as the person sees them. */
+ export const PIN_ROWS: readonly (readonly string[])[] = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['del', '0', 'ok']];
+@@ -121,7 +121,7 @@ export const PIN_ROWS: readonly (readonly string[])[] = [['1', '2', '3'], ['4',
+ export const TERMINAL_TAPS: Readonly<Partial<Record<VtScreen, readonly string[]>>> = { amount: ['cancel'], pin: ['cancel', ...PIN_ROWS.flat()] };
+ 
+ /** A still picture of any screen, for the gallery and for Show demos: the state the terminal would be in on that screen, with typical numbers. */
+-export function previewState(screen: VtScreen, dark = false, amountCents = 4500): VtState {
++export function previewState(screen: VtScreen, dark = true, amountCents = 4500): VtState {
+   const base: VtState = { ...vtInitial(dark), screen, amountCents };
+   switch (screen) {
+     case 'pin': return { ...base, media: 'INSERT', pin: 3 };
+diff --git a/src/lib/virtualTerminalSession.ts b/src/lib/virtualTerminalSession.ts
+index 62ce110..df1b296 100644
+--- a/src/lib/virtualTerminalSession.ts
++++ b/src/lib/virtualTerminalSession.ts
+@@ -16,7 +16,7 @@ type Timers = { set: (f: () => void, ms: number) => unknown; clear: (h: unknown)
+ const realTimers: Timers = { set: (f, ms) => { const h: any = setTimeout(f, ms); h?.unref?.(); return h; }, clear: h => clearTimeout(h as any) };
+ 
+ export function createVt(o: { dark?: boolean; manual?: boolean; timers?: Timers } = {}): VtController {
+-  const timers = o.timers ?? realTimers; let state = vtInitial(!!o.dark); let pending: unknown = null; const subs = new Set<(s: VtState, prev: VtState) => void>();
++  const timers = o.timers ?? realTimers; let state = vtInitial(o.dark ?? true); let pending: unknown = null; const subs = new Set<(s: VtState, prev: VtState) => void>();
+   const stop = () => { if (pending !== null) { timers.clear(pending); pending = null; } };
+   // A message screen moves on by itself (approved, declined, cancelled, receipt, removeCard) so the terminal never sticks, unless the screen is one the person is meant to act on.
+   const schedule = () => {
+diff --git a/src/screens/TerminalPlay.tsx b/src/screens/TerminalPlay.tsx
+index cc9b415..93195c7 100644
+--- a/src/screens/TerminalPlay.tsx
++++ b/src/screens/TerminalPlay.tsx
+@@ -17,10 +17,10 @@ const AMOUNTS = [1200, 4500, 12000] as const;
+ 
+ export default function TerminalPlay() {
+   const { c } = useTheme(); const nav = useNav(); const brand = useFaceBrand();
+-  const [manual, setManual] = useState(true); const [dark, setDark] = useState(false); const [amount, setAmount] = useState<number>(4500); const [decline, setDecline] = useState(false);
++  const [manual, setManual] = useState(true); const [amount, setAmount] = useState<number>(4500); const [decline, setDecline] = useState(false);
+   const [log, setLog] = useState<string[]>([]); const [busy, setBusy] = useState(false); const live = useRef<ReturnType<typeof startCharge> | null>(null); const outcome = useRef<'approve' | 'decline'>('approve'); outcome.current = decline ? 'decline' : 'approve';
+   const vt = useMemo(() => createVt({ manual: true }), []); const term = useMemo(() => makeTrainingTerminal({ next: () => outcome.current, vt }), [vt]);
+-  useEffect(() => { vt.manual = manual; }, [vt, manual]); useEffect(() => { vt.dispatch({ t: 'dark', dark }); }, [vt, dark]); useEffect(() => () => vt.dispose(), [vt]);
++  useEffect(() => { vt.manual = manual; }, [vt, manual]); useEffect(() => () => vt.dispose(), [vt]);
+   const start = () => {
+     if (busy) return; setBusy(true); setLog([`Asked for ${money(amount)}`]); const add = (m: string) => setLog(l => [...l, m]);
+     const ch = startCharge(term, { amountCents: amount, reference: `play-${Date.now()}` }, { onEvent: e => add(describeEvent(e)) });
+@@ -37,7 +37,6 @@ export default function TerminalPlay() {
+           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{AMOUNTS.map(a => <Chip key={a} label={`${money(a)}${a > 10000 ? ' (needs PIN)' : ''}`} active={amount === a} onPress={() => setAmount(a)} />)}</View>
+           <Toggle label="Decline the card" sub="The terminal says Declined (insufficient funds)." value={decline} onChange={setDecline} />
+           <Toggle label="I am the customer" sub="Off: the terminal taps a card and keys a PIN by itself." value={manual} onChange={setManual} />
+-          <Toggle label="Dark screen" sub="The Terminal 2 has light and dark screen modes." value={dark} onChange={setDark} />
+           <Btn title={busy ? 'Waiting for the customer…' : 'Ask for payment'} onPress={start} disabled={busy} />
+           {busy ? <Btn kind="secondary" title="Cancel from the till" onPress={() => live.current?.cancel()} /> : null}
+           {log.length ? <View style={{ gap: 2 }}>{log.map((l, i) => <Txt key={i} size={13} sub>{l}</Txt>)}</View> : null}
+@@ -46,7 +45,7 @@ export default function TerminalPlay() {
+           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
+             {VT_SCREENS.map(sc => (
+               <View key={sc} style={{ alignItems: 'center', gap: 4 }}>
+-                <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: c.line, height: 110 * FACE_ASPECT }}><TerminalFace s={previewState(sc, dark)} w={110} brand={brand} /></View>
++                <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: c.line, height: 110 * FACE_ASPECT }}><TerminalFace s={previewState(sc)} w={110} brand={brand} /></View>
+                 <Txt size={12} sub>{sc}</Txt></View>))}
+           </ScrollView>
+         </Section>
+-- 
+2.43.0
+
+
+From c768165ead8b77364713319ae32cd61441377622 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:18 +1100
+Subject: [PATCH 2/8] Virtual terminal: idle screen is the screensaver logo on
+ the screensaver colour
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/ui/TerminalFace.tsx | 10 +++++++---
+ 1 file changed, 7 insertions(+), 3 deletions(-)
+
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index 1e3bc7d..5c22a08 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -37,9 +37,13 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+   let body: React.ReactNode;
+   switch (s.screen) {
+     case 'sleep':
+-      body = <View style={{ flex: 1, justifyContent: 'center' }}>{brand?.logo
+-        ? <Image source={brand.logo} resizeMode="contain" accessibilityIgnoresInvertColors style={{ width: w * 0.62, height: w * 0.4 }} />
+-        : <Ionicons name="storefront-outline" size={22 * u} color="#EFD8C9" />}</View>; break;
++      // The idle screen is the business's screensaver: its logo centred on its screensaver colour, with the small Zeller wordmark at the foot like the real terminal.
++      body = (<View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center' }}>
++        {brand?.logo
++          ? <Image source={brand.logo} resizeMode="contain" accessibilityIgnoresInvertColors style={{ width: w * 0.72, height: w * 0.5 }} />
++          : <Ionicons name="storefront-outline" size={22 * u} color="#EFD8C9" />}
++        <Text style={{ position: 'absolute', bottom: 9 * u, fontSize: 9 * u, fontWeight: '600', letterSpacing: 0.4 * u, color: '#FFFFFF', opacity: 0.7 }}>zeller</Text>
++      </View>); break;
+     case 'amount':
+       body = (
+         <View style={{ flex: 1, flexDirection: 'row', width: '100%' }}>
+-- 
+2.43.0
+
+
+From eb5ae649a3fecd34cfb2e9b298f8919d6b40b133 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:27 +1100
+Subject: [PATCH 3/8] Virtual terminal: Tap Now screen matches the reference
+
+Blue panel with the contactless symbol on top, amount on a dark sheet
+below it, and a small Cancel link, instead of a sideways label.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/ui/TerminalFace.tsx | 16 +++++++++++-----
+ 1 file changed, 11 insertions(+), 5 deletions(-)
+
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index 5c22a08..b5541d6 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -45,13 +45,19 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+         <Text style={{ position: 'absolute', bottom: 9 * u, fontSize: 9 * u, fontWeight: '600', letterSpacing: 0.4 * u, color: '#FFFFFF', opacity: 0.7 }}>zeller</Text>
+       </View>); break;
+     case 'amount':
++      // Tap Now: a blue panel with the contactless symbol on top, the amount on a dark sheet that overlaps it, and a small Cancel link.
+       body = (
+-        <View style={{ flex: 1, flexDirection: 'row', width: '100%' }}>
+-          <View style={{ width: '35%', backgroundColor: '#1C7DFF', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3 * u }}>
+-            <Text style={{ fontSize: 10 * u, fontWeight: '700', color: '#F5F8FF', transform: [{ rotate: '-90deg' }], textAlign: 'center' }}>Tap Now</Text>
++        <View style={{ flex: 1, width: '100%', backgroundColor: '#1C7DFF' }}>
++          <View style={{ height: '38%', justifyContent: 'center', alignItems: 'center', gap: 4 * u }}>
++            <Ionicons name="wifi" size={13 * u} color="#F5F8FF" style={{ transform: [{ rotate: '90deg' }] }} />
++            <Text style={{ fontSize: 11 * u, fontWeight: '700', color: '#F5F8FF' }}>Tap Now</Text>
+           </View>
+-          <View style={{ flex: 1, backgroundColor: '#0D0D0F', justifyContent: 'center', alignItems: 'center' }}>
+-            <Text style={{ fontSize: 16 * u, fontWeight: '700', color: '#F5F6F8' }}>{t.line}</Text>
++          <View style={{ flex: 1, backgroundColor: k.bg, borderTopLeftRadius: 9 * u, borderTopRightRadius: 9 * u, alignItems: 'center', justifyContent: 'center' }}>
++            <Text style={{ fontSize: 17 * u, fontWeight: '700', color: k.text }}>{t.line}</Text>
++            <View style={{ position: 'absolute', bottom: 8 * u }}>
++              <Pressable ref={spotRef?.(SPOT.terminalCancel)} collapsable={false} accessibilityRole="button" accessibilityLabel="Cancel" hitSlop={8 * u} {...press(onCancel)}>
++                <Text style={{ fontSize: 5 * u, color: '#3D8BFF' }}>Cancel</Text></Pressable>
++            </View>
+           </View>
+         </View>
+       );
+-- 
+2.43.0
+
+
+From 5fd0f6d59d29abef964224c4a95f3b9c08bde78a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:38 +1100
+Subject: [PATCH 4/8] Virtual terminal: Processing screen is the blue smile on
+ dark
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/ui/TerminalFace.tsx | 12 +++++++++++-
+ 1 file changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index b5541d6..3ef1d44 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -77,7 +77,17 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+         </View>
+         <View style={{ paddingTop: 1 * u }}>{pill('Cancel', onCancel, SPOT.terminalCancel)}</View></View>); break;
+     case 'processing':
+-      body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u, backgroundColor: '#F7F7F7' }}><ActivityIndicator size="large" color="#1C7DFF" />{heading('Processing', 'Please wait', 'Do not remove the card')}</View>; break;
++      // Processing: the Zeller smile in blue on the dark screen, with the word under it. No hint line: the reference only says Processing.
++      body = (
++        <View style={{ flex: 1, width: '100%', justifyContent: 'center', alignItems: 'center', gap: 9 * u }} accessibilityRole="progressbar">
++          <View style={{ width: 26 * u, height: 22 * u, alignItems: 'center' }}>
++            <View style={{ flexDirection: 'row', gap: 10 * u, marginBottom: 3 * u }}>
++              <View style={{ width: 4 * u, height: 1.6 * u, borderRadius: u, backgroundColor: '#1C7DFF' }} />
++              <View style={{ width: 4 * u, height: 1.6 * u, borderRadius: u, backgroundColor: '#1C7DFF' }} /></View>
++            <View style={{ width: 20 * u, height: 10 * u, borderBottomLeftRadius: 10 * u, borderBottomRightRadius: 10 * u, borderBottomWidth: 1.8 * u, borderLeftWidth: 1.8 * u, borderRightWidth: 1.8 * u, borderColor: '#1C7DFF' }} />
++          </View>
++          <Text style={{ fontSize: 6.5 * u, fontWeight: '600', color: k.text }}>Processing</Text>
++        </View>); break;
+     case 'approved':
+       body = (
+         <View style={{ flex: 1, width: '100%', backgroundColor: '#2ECC71', justifyContent: 'center', alignItems: 'center' }}>
+-- 
+2.43.0
+
+
+From 0a09dd7b92a67801c262a553b6ffe5a018009276 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:38 +1100
+Subject: [PATCH 5/8] Virtual terminal: Approved screen in dark mode, no action
+ buttons
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/ui/TerminalFace.tsx | 9 +++++----
+ 1 file changed, 5 insertions(+), 4 deletions(-)
+
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index 3ef1d44..9f8b31e 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -89,12 +89,13 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+           <Text style={{ fontSize: 6.5 * u, fontWeight: '600', color: k.text }}>Processing</Text>
+         </View>); break;
+     case 'approved':
++      // Approved in dark mode: a green ring and tick with "$X Approved" under it. The reference's Note / Contact / Receipt buttons and New Sale are not on our terminal.
+       body = (
+-        <View style={{ flex: 1, width: '100%', backgroundColor: '#2ECC71', justifyContent: 'center', alignItems: 'center' }}>
+-          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.4 * u, borderColor: '#F6F9FF', alignItems: 'center', justifyContent: 'center', marginBottom: 10 * u }}>
+-            <Ionicons name="checkmark" size={18 * u} color="#F6F9FF" />
++        <View style={{ flex: 1, width: '100%', backgroundColor: k.bg, justifyContent: 'center', alignItems: 'center' }}>
++          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.4 * u, borderColor: '#34D26A', alignItems: 'center', justifyContent: 'center', marginBottom: 9 * u }}>
++            <Ionicons name="checkmark" size={18 * u} color="#34D26A" />
+           </View>
+-          <Text style={{ fontSize: 14 * u, fontWeight: '700', color: '#F4F8FF' }}>{t.title}</Text>
++          <Text style={{ fontSize: 10 * u, fontWeight: '700', color: k.text, textAlign: 'center' }}>{t.title}</Text>
+         </View>
+       );
+       break;
+-- 
+2.43.0
+
+
+From 5b5f2d1647f80fca4d287a0a554bd33e45479aa1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:49 +1100
+Subject: [PATCH 6/8] Virtual terminal: Declined screen matches the reference,
+ no eReceipt button
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/ui/TerminalFace.tsx | 13 +++++++------
+ 1 file changed, 7 insertions(+), 6 deletions(-)
+
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index 9f8b31e..66c507b 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -100,14 +100,15 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+       );
+       break;
+     case 'declined':
++      // Declined: red ring with a cross, "$X Declined", the bold response line, then the plain explanation. The eReceipt button in the reference is left out.
+       body = (
+-        <View style={{ flex: 1, width: '100%', backgroundColor: '#0D0D0F', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 10 * u }}>
+-          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.6 * u, borderColor: '#F44B4B', alignItems: 'center', justifyContent: 'center', marginBottom: 10 * u }}>
+-            <Ionicons name="close" size={18 * u} color="#F44B4B" />
++        <View style={{ flex: 1, width: '100%', backgroundColor: '#1B2221', justifyContent: 'center', alignItems: 'center', paddingHorizontal: 9 * u }}>
++          <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.2 * u, borderColor: '#F4584C', alignItems: 'center', justifyContent: 'center', marginBottom: 8 * u }}>
++            <Ionicons name="close" size={18 * u} color="#F4584C" />
+           </View>
+-          <Text style={{ fontSize: 14 * u, fontWeight: '700', color: '#F5F6F8', textAlign: 'center' }}>{t.title}</Text>
+-          <Text style={{ marginTop: 8 * u, fontSize: 8.5 * u, color: '#F5F6F8', textAlign: 'center' }}>{t.line}</Text>
+-          <Text style={{ marginTop: 6 * u, fontSize: 6.1 * u, color: '#D2D6DD', textAlign: 'center', lineHeight: 11 * u }}>{t.hint}</Text>
++          <Text style={{ fontSize: 10 * u, fontWeight: '700', color: k.text, textAlign: 'center' }}>{t.title}</Text>
++          <Text style={{ marginTop: 5 * u, fontSize: 5.2 * u, fontWeight: '700', color: k.text, textAlign: 'center' }}>{t.line}</Text>
++          <Text style={{ marginTop: 2.5 * u, fontSize: 4.8 * u, color: k.text, textAlign: 'center', lineHeight: 7.4 * u }}>{t.hint}</Text>
+         </View>
+       );
+       break;
+-- 
+2.43.0
+
+
+From 45e1b6801b25eb5fc37c542302e729caab779787 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:46:57 +1100
+Subject: [PATCH 7/8] Virtual terminal: receipt, cancelled and unavailable
+ screens in the same dark style
+
+Receipt QR sits on a white card on the dark screen; cancelled and
+unavailable use the same outlined ring as approved and declined.
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ src/ui/TerminalFace.tsx | 12 +++++++-----
+ 1 file changed, 7 insertions(+), 5 deletions(-)
+
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index 66c507b..0cecbd6 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -3,7 +3,7 @@
+ // the state and the taps come in as props, so the practice device, the playground and the Show demos all draw the same face.
+ // Everything is sized from the width, so it stays sharp and in proportion from a thumbnail to full size.
+ import React from 'react';
+-import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
++import { Image, Pressable, Text, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { QR } from './QR';
+ import { spotRefFor } from './Spot';
+@@ -18,8 +18,8 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+   const spotRef = spots ? spotRefFor : undefined; // only the live terminal registers spots, so a thumbnail in a gallery never steals the highlight
+   const k = faceColors(s.dark); const u = w / 100; const h = w * FACE_ASPECT; const t = screenText(s); const press = (f?: () => void) => (f ? { onPress: f } : { disabled: true });
+   const shell = { width: w, height: h, backgroundColor: s.screen === 'sleep' ? (brand?.bg ?? '#13111C') : k.bg, overflow: 'hidden' as const, alignItems: 'center' as const };
+-  const disc = (bg: string, icon: React.ComponentProps<typeof Ionicons>['name']) => (
+-    <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18 * u} color="#fff" /></View>
++  const disc = (color: string, icon: React.ComponentProps<typeof Ionicons>['name']) => ( // an outlined ring like the Approved and Declined screens
++    <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, borderWidth: 2.2 * u, borderColor: color, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18 * u} color={color} /></View>
+   );
+   const heading = (title: string, line?: string, hint?: string) => (
+     <View style={{ alignItems: 'center', paddingHorizontal: 8 * u, gap: 2 * u }}>
+@@ -115,9 +115,11 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+     case 'cancelled': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.sub, 'close')}{heading(t.title, t.line)}</View>; break;
+     case 'removeCard': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}><Ionicons name="card-outline" size={26 * u} color={k.accent} />{heading(t.title)}</View>; break;
+     case 'receipt':
++      // Dark screen with the QR on a white card, so it still scans.
+       body = (
+-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%', backgroundColor: '#F5F6F8' }}>
+-          <QR value="https://example.com/practice-receipt" size={Math.round(46 * u)} />
++        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', width: '100%', backgroundColor: k.bg, gap: 7 * u }}>
++          <View style={{ backgroundColor: '#FFFFFF', padding: 4 * u, borderRadius: 4 * u }}><QR value="https://example.com/practice-receipt" size={Math.round(46 * u)} /></View>
++          <Text style={{ fontSize: 5 * u, color: k.sub }}>Scan for your receipt</Text>
+         </View>
+       );
+       break;
+-- 
+2.43.0
+
+
+From 006bfa946a3ebbf5cbad0430e0e2784d9cbab08f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 12 Oct 2026 18:55:54 +1100
+Subject: [PATCH 8/8] Docs: patch 0096 plan, progress log row and device test
+ T13
+
+Co-Authored-By: Claude Sonnet 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01HPQ9oSxZtSS6NJ2n35ECXG
+---
+ docs/DEVICE_TESTS.md      | 12 ++++++++++++
+ docs/PROGRESS.md          |  2 ++
+ docs/patches/0096-plan.md | 26 ++++++++++++++++++++++++++
+ 3 files changed, 40 insertions(+)
+ create mode 100644 docs/patches/0096-plan.md
+
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 0dd6581..842b2a1 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -160,3 +160,15 @@ On the iPad and on a phone: **More ▸ Training ▸ Build a cart**.
+ 4. **Check 2.** The cart starts with two Bumble Bees and a Red Dragon. Pass: it does not finish by itself. Removing the Dragon alone does not finish it, adding the Egg as well does. Removing the Bees too brings up a note telling you to put one back.
+ 
+ Tell me: pass or fail for each step, and anything on a phone that is hard to reach.
++
++## T13. Virtual terminal screens (B6, 0096)
++
++More ▸ Training ▸ Virtual terminal (and any course that takes a card payment). Pass or fail for each:
++
++1. **Dark only.** Every screen is dark and there is no Dark screen switch on the page.
++2. **Idle.** Your screensaver logo on your screensaver colour, with "zeller" small at the bottom. Change the colour in Settings ▸ Screensaver & display and check the terminal follows.
++3. **Tap Now.** Blue panel on top with the contactless symbol and "Tap Now", the amount on the dark sheet under it, and a small Cancel link that cancels.
++4. **Processing**, **Approved** and **Declined** look like your photos. Approved and Declined have no buttons. Declined shows the amount, "Insufficient funds (51)" in bold and the explanation under it.
++5. **Every screen** (the gallery on the page): receipt, cancelled and not available look in step with the others, and the receipt QR still scans.
++
++Tell me: pass or fail for each step, and a photo of anything that is off.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 24116bc..f1272ff 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -98,6 +98,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0093 | 2026-10-12 | Training (B6), task course 2 of the plan: **Sign in, lock and switch staff** (`sign-in`). Info, Show, Guide, Check 1 and Check 2 on two practice staff (Casey, a cashier, PIN 1234; Morgan, a manager, PIN 2468 and a cashier pass) who exist only in practice. Needed small engine additions: `practiceStaff` on a course, `staff` and `pass` Check injections, who-is-signed-in and locked in what a step can test, a drawn practice pass in place of the camera when scanning a pass, the PIN pad, Unlock, Scan pass and Lock register as spots, Switch staff and Lock POS tiles on the practice grid, and progress always saved under the real signed-in person. | B6 |
+ | 0094 | 2026-10-12 | Training (B6), task course 3 of the plan: **Build a cart** (`cart`) finished and registered. The draft from the earlier commit was rejected by the course checker (screen ids reused, a gesture written as an object, a Show that pointed at hidden things, a Check 2 with no "taught by", and a Check 2 goal that was already complete when it began), so it is rewritten: a working animated Show (add, add again, add another, swipe, Remove), a Guide that teaches removal before Check 2 asks for it, a Check 1 that needs three **different** items, and a Check 2 where the customer swaps one item for another. | B6 |
+ | 0095 | 2026-10-12 | Docs only: the training module plan is now `docs/TRAINING_PLAN.md`, the ordered list of all 50 planned courses in five tiers (what each covers, its Guide steps, its Check 2 failure), with what is built so far marked. | B6 |
++| 0096 | 2026-10-12 | Virtual Zeller Terminal 2: **screens redone from your photos and screenshots**, as seven small commits. The terminal is **dark mode only** (the Dark screen switch on the Virtual terminal page is gone). **Idle** is the screensaver logo on the screensaver colour with the small zeller wordmark. **Tap Now** is the blue panel with the contactless symbol over a dark amount sheet with a small Cancel link (it was a sideways label). **Processing** is the blue smile on dark. **Approved** is a green ring and tick on dark with no Note / Contact / Receipt / New Sale buttons. **Declined** is a red ring, the amount, a bold response line and the explanation, with no eReceipt button. Receipt (QR on a white card), Cancelled and Not available are restyled to match. Wording in `COPY` was already right. | B6, N34 |
+ 
+ ---
+ 
+@@ -421,6 +422,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+ - [ ] N33 **Non-blocking (B6, 0081):** on the iPad, run a Check and press Hint. The toast should slide in at the top and pulse once (a quick grow and glow that peaks a third of a second in and is gone by 0.8 s), and the bar's hint text should pulse with it. Press Hint until the answer is ringed, then press once more: the toast should pulse again with no new text. Open a window during a Check (a sheet) and press Hint there: the toast should appear on the window and stay until you tap its x. Tell me if the pulse is too strong or too weak (the two numbers are `PULSE_SCALE_GAIN` and `PULSE_TINT_ALPHA` in `src/lib/hintPulse.ts`), whether the toast covers anything you need, and how it looks in the light, dark and brand themes. Also try with Reduce Motion on (colour only, no growing).
+ - [ ] N34 **Non-blocking (B6, 0082):** photos for the virtual terminal. The Terminal 2 screens in 0082 are drawn from public descriptions, so the wording, layout and colours are best guesses. To make them match: (1) the branded idle screen your terminal shows, (2) each Zeller in-app popup (waiting for card, PIN, processing, approved, declined with a reason, cancelled, receipt options, error or not available), (3) a front photo of the terminal and, if you can, a short video of a tap payment and an insert payment with PIN. Everything the screens say lives in `COPY` in `src/lib/virtualTerminal.ts`, and their look in `src/ui/TerminalFace.tsx`, so it is a re-skin, not a rebuild.
++- [~] N34b **Non-blocking (B6, 0096):** the terminal screens now follow your photos (idle, Tap Now, processing, approved, declined). Still approximate: the receipt options screen, the PIN pad, remove card, cancelled and not available (no photos of those yet), and the processing smile is drawn, not animated. Check them against the real terminal and send photos of any that look off. See T13 in `docs/DEVICE_TESTS.md`.
+ - [ ] N35 **Non-blocking (B6, 0093):** device check for the sign-in course (More ▸ Training ▸ Sign in, lock and switch staff). The practice pass window (a drawn pass with a **Scan this pass** button) opens inside the Switch staff window, so check it looks right on the iPad and phone and that the highlight ring still points at the button. Also check that locking the practice till shows the Sign in screen with the dock still visible, that your real till is signed in as you again after Leave, and that your green tick is under your name, not Casey's or Morgan's. See T11 in `docs/DEVICE_TESTS.md`.
+ - [ ] N36 **Non-blocking (B6, 0094):** device check for the cart course (More ▸ Training ▸ Build a cart). Check the swipe-left cursor on a cart line shows Remove and that tapping Remove finishes the Guide step, on both the iPad (cart beside the grid) and a phone (cart is a page). Check 1 should not finish with three of the same item. See T12 in `docs/DEVICE_TESTS.md`.
+ 
+diff --git a/docs/patches/0096-plan.md b/docs/patches/0096-plan.md
+new file mode 100644
+index 0000000..384fd29
+--- /dev/null
++++ b/docs/patches/0096-plan.md
+@@ -0,0 +1,26 @@
++# Patch 0096: Virtual terminal screens redone from your photos
++
++Stacks on 0095. Seven small commits, so each screen can be reviewed or dropped on its own.
++
++## What you asked
++> fix all this stuff. in individual patches. attached are the zeller screens to design the others based on, on ours, all screens be dark mode, and the action buttons and menu in general wont be there. the last image with the logo, is the screensaver logo, and the background is the screensaver background colour. re-do all the virtual terminal screens.
++
++## What it does
++1. **Dark mode only.** `faceColors` always gives the dark palette, new terminals and previews start dark, and the Dark screen switch on the Virtual terminal page is removed. The `dark` flag stays on the state so demo files that set it still load.
++2. **Idle.** The screensaver logo on the screensaver colour (as before) with the small zeller wordmark at the foot, like your photo.
++3. **Tap Now.** Blue panel with the contactless symbol and "Tap Now" on top, the amount on a dark sheet that overlaps it, and a small Cancel link (a real spot, so training can still point at it).
++4. **Processing.** The blue smile on the dark screen with "Processing". The hint line is gone.
++5. **Approved.** Dark screen, green ring and tick, "$X Approved". No Note, Contact, Receipt or New Sale.
++6. **Declined.** Red ring and cross, "$X Declined", a bold "Insufficient funds (51)" line and the explanation. No eReceipt button.
++7. **The rest.** Receipt (QR on a white card), Cancelled and Not available use the same outlined ring and dark look.
++
++## Not done
++- Receipt options, PIN pad, remove card, cancelled and not available have no photos, so they follow the look of the others but are not copied from anything.
++- The smile does not animate.
++- `tests/virtualterminal.test.ts` `DWELL_MS` still fails (the Not available screen has no automatic wait); it fails without this patch too.
++
++## Checklist
++1. [x] `src/ui/TerminalFace.tsx`, `src/lib/virtualTerminal.ts`, `virtualTerminalSession.ts`, `trainingTerminal.ts`, `src/screens/TerminalPlay.tsx`.
++2. [x] Suite: 21 of 23 in the terminal tests pass in my sandbox, the same two failures as before the patch (the `DWELL_MS` test, and `screensaver.test.ts`, which needs packages I could not install).
++3. [~] Not typechecked or run against the app (the Zeller package could not be installed in my sandbox): please run `npm run typecheck`.
++4. [ ] Device test T13 (`docs/DEVICE_TESTS.md`).
+-- 
+2.43.0
+

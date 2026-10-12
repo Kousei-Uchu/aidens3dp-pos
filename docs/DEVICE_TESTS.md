@@ -143,7 +143,7 @@ Tell me: pass or fail for each step, the exact error text for any failure, and t
 On the iPad and on a phone: **More ▸ Training ▸ Sign in, lock and switch staff**. No setup needed: practice has its own people, Casey (PIN 1234) and Morgan (PIN 2468, with a pass).
 
 1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, and the Show covers the staff tile, a pass scan, locking, a PIN and a pass that fails.
-2. **Guide.** Follow the arrows. Pass: Switch staff opens, Scan pass opens a window with a drawn pass and a **Scan this pass** button, the ring points at that button, and after the scan the Casey tile says Morgan. Lock POS then shows the Sign in screen with the bar still at the bottom, and keying 1 2 3 4 signs in as Casey.
+2. **Guide.** Follow the arrows. Pass: Switch staff opens, Scan pass opens a window with a drawn pass and a **Scan this pass** button, the ring points at that button, and after the scan the Casey tile says Morgan. **(0097) Right after the scan, step 5 shows with the windows gone, and Next, Skip and Exit all respond.** Also try the real till (outside training): Switch staff ▸ Scan pass with a real pass closes both windows and the screen stays usable. Lock POS then shows the Sign in screen with the bar still at the bottom, and keying 1 2 3 4 signs in as Casey.
 3. **Check 1.** Three goals. Pass: each finishes the moment you do the thing, and the hints climb to a ringed answer.
 4. **Check 2.** The first goal cancels Morgan's pass. Pass: scanning it says it is not recognised, and keying 2 4 6 8 gets you in. The second starts with items in the cart. Pass: switching to Morgan keeps them.
 5. **Leave and finish.** Exit mid-course, then finish another run. Pass: the real till is signed in as you again, the cart is as you left it, and the green tick is under **your** name.
@@ -160,3 +160,15 @@ On the iPad and on a phone: **More ▸ Training ▸ Build a cart**.
 4. **Check 2.** The cart starts with two Bumble Bees and a Red Dragon. Pass: it does not finish by itself. Removing the Dragon alone does not finish it, adding the Egg as well does. Removing the Bees too brings up a note telling you to put one back.
 
 Tell me: pass or fail for each step, and anything on a phone that is hard to reach.
+
+## T13. Virtual terminal screens (B6, 0096)
+
+More ▸ Training ▸ Virtual terminal (and any course that takes a card payment). Pass or fail for each:
+
+1. **Dark only.** Every screen is dark and there is no Dark screen switch on the page.
+2. **Idle.** Your screensaver logo on your screensaver colour, with "zeller" small at the bottom. Change the colour in Settings ▸ Screensaver & display and check the terminal follows.
+3. **Tap Now.** Blue panel on top with the contactless symbol and "Tap Now", the amount on the dark sheet under it, and a small Cancel link that cancels.
+4. **Processing**, **Approved** and **Declined** look like your photos. Approved and Declined have no buttons. Declined shows the amount, "Insufficient funds (51)" in bold and the explanation under it.
+5. **Every screen** (the gallery on the page): receipt, cancelled and not available look in step with the others, and the receipt QR still scans.
+
+Tell me: pass or fail for each step, and a photo of anything that is off.

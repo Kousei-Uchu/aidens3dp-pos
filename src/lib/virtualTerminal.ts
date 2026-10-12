@@ -22,7 +22,7 @@ export type VtState = {
 export const CONTACTLESS_LIMIT_CENTS = 10_000;
 export const PIN_MIN = 4; export const PIN_MAX = 6;
 export const needsPin = (media: VtMedia, amountCents: number): boolean => media === 'INSERT' || amountCents > CONTACTLESS_LIMIT_CENTS;
-export const vtInitial = (dark = false): VtState => ({ screen: 'sleep', amountCents: 0, pin: 0, dark });
+export const vtInitial = (dark = true): VtState => ({ screen: 'sleep', amountCents: 0, pin: 0, dark });
 
 export type VtAction =
   | { t: 'request'; amountCents: number }                  // the till asks the terminal for a payment: wakes it
@@ -108,12 +108,12 @@ export function screenText(s: VtState): { title: string; line: string; hint: str
 export const FACE_ASPECT = 2.05;
 export const BODY_ASPECT = 2.03;
 
-/** The face colours for light and dark mode. Dark mode is Zeller Terminal 2's default. The idle screen takes its background from the business's own settings instead. */
+/** The face colours. Our virtual terminal is dark mode only (the `dark` flag is kept for the demo files, but no longer changes the look). The idle screen takes its background from the business's own settings instead. */
 export const FACE = {
   light: { bg: '#FFFFFF', text: '#111111', sub: '#6B7280', key: '#F1F1F4', accent: '#111111', onAccent: '#FFFFFF', good: '#15803D', bad: '#DC2626' },
   dark: { bg: '#0B0B0C', text: '#F4F4F5', sub: '#9CA3AF', key: '#222226', accent: '#F4F4F5', onAccent: '#111111', good: '#10B981', bad: '#EF5350' },
 } as const;
-export const faceColors = (dark: boolean) => (dark ? FACE.dark : FACE.light);
+export const faceColors = (_dark?: boolean) => FACE.dark;
 
 /** The keys on the PIN screen, in rows, as the person sees them. */
 export const PIN_ROWS: readonly (readonly string[])[] = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['del', '0', 'ok']];
@@ -121,7 +121,7 @@ export const PIN_ROWS: readonly (readonly string[])[] = [['1', '2', '3'], ['4', 
 export const TERMINAL_TAPS: Readonly<Partial<Record<VtScreen, readonly string[]>>> = { amount: ['cancel'], pin: ['cancel', ...PIN_ROWS.flat()] };
 
 /** A still picture of any screen, for the gallery and for Show demos: the state the terminal would be in on that screen, with typical numbers. */
-export function previewState(screen: VtScreen, dark = false, amountCents = 4500): VtState {
+export function previewState(screen: VtScreen, dark = true, amountCents = 4500): VtState {
   const base: VtState = { ...vtInitial(dark), screen, amountCents };
   switch (screen) {
     case 'pin': return { ...base, media: 'INSERT', pin: 3 };
