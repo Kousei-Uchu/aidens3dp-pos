@@ -17,6 +17,13 @@ export function useSpotRef(id?: string): (node: any) => void {
     if (id && node) { let set = refs.get(id); if (!set) { set = new Set(); refs.set(id, set); } set.add(node); }
   }, [id]);
 }
+/** The same registration without a hook, for views drawn inside a loop or a function (the terminal's screen). One stable callback per id. */
+const forId = new Map<string, (node: any) => void>();
+export function spotRefFor(id: string): (node: any) => void {
+  let f = forId.get(id);
+  if (!f) { let last: any = null; f = node => { if (last) { refs.get(id)?.delete(last); if (!refs.get(id)?.size) refs.delete(id); } last = node; if (node) { let set = refs.get(id); if (!set) { set = new Set(); refs.set(id, set); } set.add(node); } }; forId.set(id, f); }
+  return f;
+}
 /** Call from an onPress. Cheap when training is not listening. */
 export const spotPressed = (id?: string): void => { if (id) presses.forEach(f => f(id)); };
 export const onSpotPressed = (f: (id: string) => void): (() => void) => { presses.add(f); return () => { presses.delete(f); }; };

@@ -11,6 +11,13 @@ export const SPOT = {
   sheetClose: 'sheet.close',   // the Close button of a sheet
   lineMinus: 'line.minus',     // the minus button in the line window
   lineRemove: 'line.remove',   // the Remove item button in the line window
+  terminalTap: 'terminal.tap',         // the customer's Tap card button under the practice terminal (manual mode)
+  terminalInsert: 'terminal.insert',   // Insert card
+  terminalRemove: 'terminal.remove',   // Take card out
+  terminalPinpad: 'terminal.pinpad',   // the PIN keys on the terminal's screen (any digit)
+  terminalPinOk: 'terminal.pinok',     // OK on the PIN screen
+  terminalCancel: 'terminal.cancel',   // Cancel on the terminal's screen
+  terminalDone: 'terminal.done',       // Done on the terminal's receipt screen
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
 export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove];

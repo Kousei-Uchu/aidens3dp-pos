@@ -1,0 +1,396 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index f973b22..4e2b68b 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -85,6 +85,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0080 | 2026-10-12 | Training corrections (list of 4), 2: the **highlight ring and its surroundings follow the theme**. The ring, glow, dim, cursor ripple, progress bar, PRACTICE badge and the Show note border use the theme's accent (brand peach, the dark theme's near white, or the colour you chose in Settings, lightened if it is too dark to stand out) instead of one fixed amber; the dim is the theme's own dark; the ring always keeps a 3:1 contrast against the dim. New `src/lib/trainingPalette.ts` (pure, tested) and `src/ui/spotlight.ts` | B6 |
+ | 0081 | 2026-10-12 | Training corrections (list of 2), 1: **a hint now visibly arrives**. Each press of Hint shows a toast at the top of the screen ("Hint 2 of 4", then "The answer"; it fades after a reading time on the main screen and stays until closed inside a window, where the bar is hidden), and the toast and the bar's hint text pulse once in size and colour along your curve `48.225 * t^2 * (0.8 - t)^3` (t in seconds, 0.8 s long, peak about 0.546 at 0.32 s, held at 0 after 0.8). A press at the last rung pulses again so it is always seen; light haptic and a VoiceOver announcement; Reduce Motion keeps the colour and drops the size. New `src/lib/hintPulse.ts` (pure, tested), `src/ui/HintPulse.tsx`, `src/ui/HintToast.tsx`; the old window-only text card is replaced | B6 |
+ | 0082 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 1 of 3. A drawn terminal built from what is public about the Terminal 2 (6.5 inch touchscreen, light and dark screens, tap or insert with no swipe, PIN keyed on the screen, branded sleep screen, QR/email/SMS receipt, no printer): ten screens (sleep, amount, PIN, processing, approved, declined, remove card, cancelled, receipt, not available). The practice terminal now drives it with the same events as the real one, in two modes: automatic (the terminal plays the customer, same timing as before) or manual (you tap or insert the card and key the PIN). Idle screen uses your screensaver logo and colour. More ▸ Training ▸ Virtual terminal is a playground with every screen side by side. Wording on each screen is an approximation until checked against photos (N34). Practice and Show do not use it yet (0083, 0084) | B6 |
++| 0083 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 2 of 3. The terminal now shows during Guide and Check whenever a card payment starts (bottom left, can be hidden, goes away when the terminal sleeps), drawn under the dim so the ring and pointer work on it. Its buttons are spots a course can point at and wait for: `terminal.tap`, `terminal.insert`, `terminal.pinpad`, `terminal.pinok`, `terminal.cancel`, `terminal.remove`, `terminal.done`. A course says who plays the customer with `card: 'auto' \| 'manual'` (manual: the person taps or inserts the card and keys the PIN). Check 2's decline injection takes an optional response `code` (default 51) and the terminal shows that reason; the checker refuses unknown codes and counts outside 1 to 5. New `src/ui/PracticeTerminal.tsx`, `spotRefFor` in `src/ui/Spot.tsx`, `declineCodeOf` | B6 |
+ 
+ ---
+ 
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 0852677..77c6a43 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -4,6 +4,7 @@
+ import { validateDemo } from './trainingDemo';
+ import { isGesture, type Gesture } from './pointerGesture';
+ import { WINDOW_SPOTS } from './trainingSpots';
++import { RESPONSE_CODES } from './responseCodes';
+ export type { Gesture } from './pointerGesture';
+ export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
+ export const STAGES: readonly Stage[] = ['info', 'show', 'guide', 'check1', 'check2', 'gratify'];
+@@ -64,7 +65,7 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
+ /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
+ export type Injection =
+   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
+-  | { kind: 'decline'; times: number }                                  // the fake terminal declines the card this many times (code 51)
++  | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
+   | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
+ /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
+ export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
+@@ -90,6 +91,8 @@ export type Goal = {
+ export type TrainingModule = {
+   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
+   flow: 'standard' | 'guided';                // which checkout the sandbox forces
++  /** Who plays the customer at the virtual card terminal. `auto` (the default): the terminal taps a card and keys the PIN by itself. `manual`: the person does it on the terminal's screen. */
++  card?: 'auto' | 'manual';
+   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
+   info: Demo; show: Demo; guide: Step[];
+   check1: Goal[]; check2: Goal[];
+@@ -152,5 +155,10 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+   for (const g of m.check2) { if (g.inject?.length && !g.taughtBy) at('check2', `goal ${g.id} injects a problem but does not say where it was taught`); if (g.taughtBy && !taught.has(g.taughtBy)) at('check2', `goal ${g.id} says it was taught by "${g.taughtBy}", which does not exist`); }
+   if (!m.recap.length) at('recap', 'needs at least one line');
+   if (!m.tabs.includes('checkout')) at('header', 'tabs must include checkout');
++  if (m.card !== undefined && m.card !== 'auto' && m.card !== 'manual') at('header', `card must be "auto" or "manual", not "${String(m.card)}"`);
++  for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'decline') {
++    if (!(Number.isInteger(i.times) && i.times >= 1 && i.times <= 5)) at('check2', `goal ${g.id} declines the card ${String(i.times)} times, which must be a whole number from 1 to 5`);
++    if (i.code !== undefined && !RESPONSE_CODES[i.code]) at('check2', `goal ${g.id} declines with the unknown response code "${i.code}"`);
++  }
+   return bad;
+ }
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+index 79ac1ea..a4abb83 100644
+--- a/src/lib/trainingSandbox.ts
++++ b/src/lib/trainingSandbox.ts
+@@ -83,3 +83,6 @@ export function trainingBlocker(s: { pos: { cart: Cart; attempts: BlockAttempt[]
+   return null;
+ }
+ export const declinesOf = (inj: readonly Injection[] | undefined): number => (inj ?? []).reduce((n, i) => n + (i.kind === 'decline' ? i.times : 0), 0);
++
++/** The response code the practice terminal declines with: the first decline injection's code, or 51 (insufficient funds). */
++export const declineCodeOf = (inj: readonly Injection[] | undefined): string => (inj ?? []).reduce<string | undefined>((c, i) => c ?? (i.kind === 'decline' ? i.code : undefined), undefined) ?? '51';
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index fa33b57..20d92e1 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -11,6 +11,13 @@ export const SPOT = {
+   sheetClose: 'sheet.close',   // the Close button of a sheet
+   lineMinus: 'line.minus',     // the minus button in the line window
+   lineRemove: 'line.remove',   // the Remove item button in the line window
++  terminalTap: 'terminal.tap',         // the customer's Tap card button under the practice terminal (manual mode)
++  terminalInsert: 'terminal.insert',   // Insert card
++  terminalRemove: 'terminal.remove',   // Take card out
++  terminalPinpad: 'terminal.pinpad',   // the PIN keys on the terminal's screen (any digit)
++  terminalPinOk: 'terminal.pinok',     // OK on the PIN screen
++  terminalCancel: 'terminal.cancel',   // Cancel on the terminal's screen
++  terminalDone: 'terminal.done',       // Done on the terminal's receipt screen
+ } as const;
+ /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+ export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove];
+diff --git a/src/lib/virtualTerminal.ts b/src/lib/virtualTerminal.ts
+index 0a3a5db..d7a7974 100644
+--- a/src/lib/virtualTerminal.ts
++++ b/src/lib/virtualTerminal.ts
+@@ -128,3 +128,6 @@ export function previewState(screen: VtScreen, dark = false, amountCents = 4500)
+     default: return base;
+   }
+ }
++
++/** How wide the practice terminal is drawn: a fifth of a wide window, two fifths of a narrow one, within sensible limits. */
++export const practiceWidth = (winW: number): number => Math.round(Math.max(120, Math.min(190, winW >= 700 ? winW * 0.2 : winW * 0.4)));
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index 7d7cfa9..d643031 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -5,8 +5,9 @@ import { create } from 'zustand';
+ import { useApp, flushPersist } from './store';
+ import { kvGet, kvSet } from '../lib/kv';
+ import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
+-import { applyInjections, buildSandbox, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
+-import { resetTrainingTerminal, setDeclines } from '../lib/trainingTerminal';
++import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
++import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
++import { getModule } from '../training';
+ import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
+ import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
+ import { completeModule, emptyProgress, readProgress, recordStage, staffKey, type Progress } from '../lib/trainingProgress';
+@@ -47,6 +48,8 @@ type Sess = {
+ let real: Swap | null = null;
+ let goalStart: Swap | null = null;
+ 
++/** Who plays the customer at the practice terminal for this course (the course's `card` setting; automatic when it says nothing). */
++const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
+ export const useTraining = create<Sess>((set, get) => ({
+   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
+   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
+@@ -60,13 +63,13 @@ export const useTraining = create<Sess>((set, get) => ({
+       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
+       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
+     }
+-    resetTrainingTerminal(); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
++    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
+     const r = get().run; if (r) set({ run: seeIntro(r) });
+     return null;
+   },
+   inject: inj => {
+     if (!real) return; const s = useApp.getState();
+-    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj));
++    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj));
+   },
+   leave: () => {
+     goalStart = null; setGate(null);
+@@ -85,7 +88,7 @@ export const useTraining = create<Sess>((set, get) => ({
+   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
+   restartGoal: inj => {
+     if (!goalStart) return false;
+-    resetTrainingTerminal(); useApp.setState(goalStart); setDeclines(declinesOf(inj)); set({ hint: freshHints(), view: null }); return true;
++    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); set({ hint: freshHints(), view: null }); return true;
+   },
+ }));
+ export const isPractising = (): boolean => real !== null;
+diff --git a/src/training/README.md b/src/training/README.md
+index c089e8a..4eb9676 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -81,5 +81,6 @@ Practice has a drawn Zeller Terminal 2 (`src/ui/VirtualTerminal.tsx`, the screen
+ 
+ - **Automatic or manual.** Automatic (the default): the terminal plays the customer, taps a card after one step and keys a PIN itself when the amount is over the contactless limit. Manual (`setManualCard(true)`): the person plays the customer, tapping or inserting the card and keying the PIN on the terminal's screen, which is how a Guide or Check can teach what the customer does.
+ - **Declines.** `setDeclines(times, code)` makes the card decline, with code 51 (insufficient funds) unless a code is given. The terminal shows the reason.
++- **In a course.** The terminal shows by itself during Guide and Check when a card payment starts. Set `card: 'manual'` on the module for the person to play the customer; leave it out for the terminal to do it. Its buttons are spots: `SPOT.terminalTap`, `terminalInsert`, `terminalPinpad` (any digit), `terminalPinOk`, `terminalCancel`, `terminalRemove`, `terminalDone`. A Guide step that points at one of them, and waits with `until: { kind: 'press', id }`, teaches the customer's side. A Check 2 decline injection can name a response `code` from `responseCodes.ts` (51 when left out), and the terminal shows that reason.
+ - **Wording.** Everything a screen says is in `COPY` in `src/lib/virtualTerminal.ts`. It is an approximation until checked against photos of the real terminal.
+ - **Playground.** More ▸ Training ▸ Virtual terminal runs a terminal of its own (never the till's) and shows every screen.
+diff --git a/src/ui/PracticeTerminal.tsx b/src/ui/PracticeTerminal.tsx
+new file mode 100644
+index 0000000..a199e3e
+--- /dev/null
++++ b/src/ui/PracticeTerminal.tsx
+@@ -0,0 +1,31 @@
++// Location: src/ui/PracticeTerminal.tsx
++// The practice card terminal during Guide and Check: it appears when a card payment starts, so the person sees what the customer sees,
++// and goes away when the terminal is asleep again. It is drawn under the training overlay, so the dim, the ring and the pointer work on it like on any other control.
++import React, { useEffect, useState } from 'react';
++import { Pressable, View, useWindowDimensions } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import VirtualTerminal, { useVt } from './VirtualTerminal';
++import { Txt } from './kit';
++import { useTheme } from './theme';
++import { Enter } from './Motion';
++import { trainingVt } from '../lib/trainingTerminal';
++import { practiceWidth } from '../lib/virtualTerminal';
++
++export default function PracticeTerminal() {
++  const { c } = useTheme(); const s = useVt(trainingVt); const win = useWindowDimensions(); const [hidden, setHidden] = useState(false);
++  const awake = s.screen !== 'sleep'; useEffect(() => { if (!awake) setHidden(false); }, [awake]); // a new payment always shows it again
++  if (!awake) return null;
++  if (hidden) return (
++    <View pointerEvents="box-none" style={{ position: 'absolute', left: 10, bottom: 10 }}>
++      <Pressable onPress={() => setHidden(false)} accessibilityRole="button" accessibilityLabel="Show the card terminal" style={{ flexDirection: 'row', gap: 6, alignItems: 'center', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 }}>
++        <Ionicons name="card-outline" size={18} color={c.onAccent} /><Txt size={13} weight="700" color={c.onAccent}>Terminal</Txt></Pressable></View>);
++  return (
++    <View pointerEvents="box-none" style={{ position: 'absolute', left: 10, bottom: 10 }}>
++      <Enter from="up" distance={16} duration={260} pointerEvents="box-none">
++        <View style={{ backgroundColor: c.card, borderColor: c.line, borderWidth: 1, borderRadius: 18, padding: 10, gap: 6, alignItems: 'center' }}>
++          <View style={{ flexDirection: 'row', alignItems: 'center', alignSelf: 'stretch', justifyContent: 'space-between' }}>
++            <Txt size={12} weight="700" sub>Card terminal (practice)</Txt>
++            <Pressable onPress={() => setHidden(true)} hitSlop={10} accessibilityRole="button" accessibilityLabel="Hide the card terminal"><Ionicons name="chevron-down" size={18} color={c.sub} /></Pressable></View>
++          <VirtualTerminal vt={trainingVt} width={practiceWidth(win.width)} spots controls={trainingVt.manual} />
++        </View></Enter></View>);
++}
+diff --git a/src/ui/Spot.tsx b/src/ui/Spot.tsx
+index db85339..bbb07da 100644
+--- a/src/ui/Spot.tsx
++++ b/src/ui/Spot.tsx
+@@ -17,6 +17,13 @@ export function useSpotRef(id?: string): (node: any) => void {
+     if (id && node) { let set = refs.get(id); if (!set) { set = new Set(); refs.set(id, set); } set.add(node); }
+   }, [id]);
+ }
++/** The same registration without a hook, for views drawn inside a loop or a function (the terminal's screen). One stable callback per id. */
++const forId = new Map<string, (node: any) => void>();
++export function spotRefFor(id: string): (node: any) => void {
++  let f = forId.get(id);
++  if (!f) { let last: any = null; f = node => { if (last) { refs.get(id)?.delete(last); if (!refs.get(id)?.size) refs.delete(id); } last = node; if (node) { let set = refs.get(id); if (!set) { set = new Set(); refs.set(id, set); } set.add(node); } }; forId.set(id, f); }
++  return f;
++}
+ /** Call from an onPress. Cheap when training is not listening. */
+ export const spotPressed = (id?: string): void => { if (id) presses.forEach(f => f(id)); };
+ export const onSpotPressed = (f: (id: string) => void): (() => void) => { presses.add(f); return () => { presses.delete(f); }; };
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index 02ed83c..f6d728e 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -6,14 +6,17 @@ import React from 'react';
+ import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { QR } from './QR';
++import { spotRefFor } from './Spot';
++import { SPOT } from '../lib/trainingSpots';
+ import { faceColors, PIN_MAX, PIN_ROWS, screenText, type VtState } from '../lib/virtualTerminal';
+ 
+ /** The terminal screen's shape: a tall phone-like panel (the Terminal 2's display is 6.5 inches). Height is this many times the width. */
+ export const FACE_ASPECT = 2.05;
+ export type FaceBrand = { bg: string; logo?: { uri: string } | null };
+-type Props = { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spotRef?: (id: string) => ((n: any) => void) | undefined };
++type Props = { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spots?: boolean };
+ 
+-export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spotRef }: Props) {
++export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spots }: Props) {
++  const spotRef = spots ? spotRefFor : undefined; // only the live terminal registers spots, so a thumbnail in a gallery never steals the highlight
+   const k = faceColors(s.dark); const u = w / 100; const h = w * FACE_ASPECT; const t = screenText(s); const press = (f?: () => void) => (f ? { onPress: f } : { disabled: true });
+   const shell = { width: w, height: h, backgroundColor: s.screen === 'sleep' ? (brand?.bg ?? '#13111C') : k.bg, overflow: 'hidden' as const, alignItems: 'center' as const };
+   const disc = (bg: string, icon: React.ComponentProps<typeof Ionicons>['name']) => (
+@@ -38,19 +41,19 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+     case 'amount':
+       body = (<><View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 9 * u }}>
+         <Ionicons name="wifi" size={26 * u} color={k.accent} style={{ transform: [{ rotate: '90deg' }] }} />{heading(t.title, t.line, t.hint)}</View>
+-        <View style={{ paddingBottom: 7 * u }}>{pill('Cancel', onCancel, 'terminal.cancel')}</View></>); break;
++        <View style={{ paddingBottom: 7 * u }}>{pill('Cancel', onCancel, SPOT.terminalCancel)}</View></>); break;
+     case 'pin':
+       body = (<View style={{ flex: 1, width: '100%', alignItems: 'center', paddingTop: 7 * u, gap: 4 * u }}>
+         {heading(t.title, t.line)}
+         <View style={{ flexDirection: 'row', gap: 3 * u, marginVertical: 1.5 * u }} accessibilityLabel={`${s.pin} digits entered`}>
+           {Array.from({ length: PIN_MAX }, (_, i) => <View key={i} style={{ width: 4.6 * u, height: 4.6 * u, borderRadius: 3 * u, backgroundColor: i < s.pin ? k.accent : 'transparent', borderWidth: 0.8 * u, borderColor: k.sub }} />)}</View>
+-        <View ref={spotRef?.('terminal.pinpad')} collapsable={false} style={{ gap: 2.4 * u, width: '86%' }}>
++        <View ref={spotRef?.(SPOT.terminalPinpad)} collapsable={false} style={{ gap: 2.4 * u, width: '86%' }}>
+           {PIN_ROWS.map((row, ri) => <View key={ri} style={{ flexDirection: 'row', gap: 2.4 * u }}>{row.map(key => (
+-            <Pressable key={key} ref={key === 'ok' && spotRef ? spotRef('terminal.pinok') : undefined} collapsable={false} accessibilityRole="button" accessibilityLabel={key === 'del' ? 'Delete' : key === 'ok' ? 'OK' : key} {...press(onKey ? () => onKey(key) : undefined)}
++            <Pressable key={key} ref={key === 'ok' && spotRef ? spotRef(SPOT.terminalPinOk) : undefined} collapsable={false} accessibilityRole="button" accessibilityLabel={key === 'del' ? 'Delete' : key === 'ok' ? 'OK' : key} {...press(onKey ? () => onKey(key) : undefined)}
+               style={{ flex: 1, height: 11 * u, borderRadius: 3 * u, alignItems: 'center', justifyContent: 'center', backgroundColor: key === 'ok' ? k.good : k.key }}>
+               {key === 'del' ? <Ionicons name="backspace-outline" size={6.4 * u} color={k.text} /> : <Text style={{ fontSize: 7 * u, fontWeight: '700', color: key === 'ok' ? '#fff' : k.text }}>{key === 'ok' ? 'OK' : key}</Text>}
+             </Pressable>))}</View>)}</View>
+-        <View style={{ paddingTop: 1 * u }}>{pill('Cancel', onCancel, 'terminal.cancel')}</View></View>); break;
++        <View style={{ paddingTop: 1 * u }}>{pill('Cancel', onCancel, SPOT.terminalCancel)}</View></View>); break;
+     case 'processing':
+       body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}><ActivityIndicator size="large" color={k.accent} />{heading(t.title, t.line, t.hint)}</View>; break;
+     case 'approved': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.good, 'checkmark')}{heading(t.title, t.line)}</View>; break;
+@@ -60,7 +63,7 @@ export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spo
+     case 'receipt':
+       body = (<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 5 * u }}>
+         <QR value="https://example.com/practice-receipt" size={Math.round(46 * u)} />{heading(t.title, t.line, t.hint)}
+-        <View style={{ flexDirection: 'row', gap: 3 * u }}>{pill('Email', undefined)}{pill('SMS', undefined)}{pill('Done', onDone, 'terminal.done', true)}</View></View>); break;
++        <View style={{ flexDirection: 'row', gap: 3 * u }}>{pill('Email', undefined)}{pill('SMS', undefined)}{pill('Done', onDone, SPOT.terminalDone, true)}</View></View>); break;
+     case 'unavailable': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.bad, 'cloud-offline-outline')}{heading(t.title, t.line, t.hint)}</View>; break;
+   }
+   return <View style={shell} accessibilityLabel={`Terminal screen: ${t.title || 'idle'} ${t.line}`}>{body}</View>;
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 597b447..09db735 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -12,6 +12,7 @@ import { measureSpot, onSpotPressed } from './Spot';
+ import { confirm } from './kit';
+ import TrainingOverlay from './TrainingOverlay';
+ import TrainingDock from './TrainingDock';
++import PracticeTerminal from './PracticeTerminal';
+ import { Enter } from './Motion';
+ import { Veil, dipThrough } from './Veil';
+ import { trainingActions } from './trainingActions';
+@@ -143,7 +144,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+ 
+   return (
+     <View style={{ flex: 1 }}>
+-      <View style={{ flex: 1 }}>{children}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
++      <View style={{ flex: 1 }}>{children}{sandbox ? <PracticeTerminal /> : null}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
+       {sandbox ? <TrainingDock /> : null}
+       <Veil />
+     </View>
+diff --git a/src/ui/VirtualTerminal.tsx b/src/ui/VirtualTerminal.tsx
+index 3abc0b1..49c4adb 100644
+--- a/src/ui/VirtualTerminal.tsx
++++ b/src/ui/VirtualTerminal.tsx
+@@ -3,6 +3,8 @@
+ // `useVt` turns a controller (src/lib/virtualTerminalSession.ts) into React state. Used by the playground page and, from the next patch, by practice.
+ import React, { useCallback, useSyncExternalStore } from 'react';
+ import { Pressable, View } from 'react-native';
++import { spotPressed, spotRefFor } from './Spot';
++import { SPOT } from '../lib/trainingSpots';
+ import { Ionicons } from '@expo/vector-icons';
+ import TerminalFace, { FACE_ASPECT, type FaceBrand } from './TerminalFace';
+ import { Txt } from './kit';
+@@ -22,32 +24,35 @@ export function useFaceBrand(): FaceBrand {
+   return { bg: normaliseHex(ss.bgColor) ?? '#13111C', logo: logoSource(ss) };
+ }
+ /** Device body around the face. `w` is the width of the whole device. */
+-export function TerminalBody({ s, w, brand, onKey, onCancel, onDone, spotRef }: { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spotRef?: (id: string) => ((n: any) => void) | undefined }) {
++export function TerminalBody({ s, w, brand, onKey, onCancel, onDone, spots }: { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spots?: boolean }) {
+   const bezel = w * 0.05; const inner = w - bezel * 2; const lit = s.screen !== 'sleep';
+   return (
+     <View style={{ width: w, padding: bezel, paddingBottom: bezel * 1.8, borderRadius: w * 0.11, backgroundColor: '#0E0E10', borderWidth: 1.5, borderColor: '#2A2A2E', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
+       <View style={{ width: inner, height: inner * FACE_ASPECT, borderRadius: w * 0.07, overflow: 'hidden' }}>
+-        <TerminalFace s={s} w={inner} brand={brand} onKey={onKey} onCancel={onCancel} onDone={onDone} spotRef={spotRef} /></View>
++        <TerminalFace s={s} w={inner} brand={brand} onKey={onKey} onCancel={onCancel} onDone={onDone} spots={spots} /></View>
+       <View style={{ marginTop: bezel * 0.7, width: inner * 0.34, height: 3, borderRadius: 2, backgroundColor: lit ? '#3A3A40' : '#222226' }} accessibilityLabel="Card slot" />
+     </View>);
+ }
+ 
+ /** The terminal and its customer controls, wired to a controller. */
+-export default function VirtualTerminal({ vt, width = 260, controls = true, brand }: { vt: VtController; width?: number; controls?: boolean; brand?: FaceBrand }) {
++/** `spots` makes the terminal's buttons things training can point at and listen to. Only the practice terminal sets it. */
++export default function VirtualTerminal({ vt, width = 260, controls = true, brand, spots = false }: { vt: VtController; width?: number; controls?: boolean; brand?: FaceBrand; spots?: boolean }) {
+   const { c } = useTheme(); const s = useVt(vt); const own = useFaceBrand(); const b = brand ?? own;
+   const manual = vt.manual; const canPresent = manual && s.screen === 'amount'; const canRemove = manual && s.screen === 'removeCard';
+-  const btn = (label: string, icon: React.ComponentProps<typeof Ionicons>['name'], on: boolean, f: () => void) => (
+-    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!on} onPress={f}
++  const btn = (label: string, icon: React.ComponentProps<typeof Ionicons>['name'], on: boolean, f: () => void, spot?: string) => (
++    <Pressable ref={spots && spot ? spotRefFor(spot) : undefined} collapsable={false} accessibilityRole="button" accessibilityLabel={label} disabled={!on} onPress={() => { if (spots) spotPressed(spot); f(); }}
+       style={{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 999, backgroundColor: on ? c.accent : c.fill, opacity: on ? 1 : 0.5 }}>
+       <Ionicons name={icon} size={18} color={on ? c.onAccent : c.sub} /><Txt size={14} weight="700" color={on ? c.onAccent : c.sub}>{label}</Txt></Pressable>);
+   return (
+     <View style={{ alignItems: 'center', gap: 12 }}>
+-      <TerminalBody s={s} w={width} brand={b} onKey={manual ? k => vt.dispatch({ t: 'key', key: k }) : undefined} onCancel={() => vt.dispatch({ t: 'cancel' })} onDone={() => vt.dispatch({ t: 'next' })} />
++      <TerminalBody s={s} w={width} brand={b} spots={spots}
++        onKey={manual ? k => { if (spots) spotPressed(k === 'ok' ? SPOT.terminalPinOk : SPOT.terminalPinpad); vt.dispatch({ t: 'key', key: k }); } : undefined}
++        onCancel={() => { if (spots) spotPressed(SPOT.terminalCancel); vt.dispatch({ t: 'cancel' }); }} onDone={() => { if (spots) spotPressed(SPOT.terminalDone); vt.dispatch({ t: 'next' }); }} />
+       {controls ? <View style={{ width: Math.max(width, 260), gap: 8 }}>
+         <View style={{ flexDirection: 'row', gap: 8 }}>
+-          {btn('Tap card', 'wifi', canPresent, () => vt.dispatch({ t: 'present', media: 'TAP' }))}
+-          {btn('Insert card', 'card-outline', canPresent, () => vt.dispatch({ t: 'present', media: 'INSERT' }))}</View>
+-        {canRemove ? btn('Take card out', 'arrow-down-circle-outline', true, () => vt.dispatch({ t: 'removed' })) : null}
++          {btn('Tap card', 'wifi', canPresent, () => vt.dispatch({ t: 'present', media: 'TAP' }), SPOT.terminalTap)}
++          {btn('Insert card', 'card-outline', canPresent, () => vt.dispatch({ t: 'present', media: 'INSERT' }), SPOT.terminalInsert)}</View>
++        {canRemove ? btn('Take card out', 'arrow-down-circle-outline', true, () => vt.dispatch({ t: 'removed' }), SPOT.terminalRemove) : null}
+         <Txt size={12} sub style={{ textAlign: 'center' }}>{manual ? 'You are the customer: tap or insert the card when the terminal asks, and key the PIN on its screen.' : 'The terminal plays the customer: it taps a card by itself.'}</Txt>
+       </View> : null}
+     </View>);
+diff --git a/tests/practiceterminal.test.ts b/tests/practiceterminal.test.ts
+new file mode 100644
+index 0000000..2c79f56
+--- /dev/null
++++ b/tests/practiceterminal.test.ts
+@@ -0,0 +1,45 @@
++// Tests for the virtual terminal inside practice: spots, course settings, decline codes, and the shared practice terminal.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { MODULES } from '../src/training';
++import { validateModule, type Injection, type TrainingModule } from '../src/lib/trainingModule';
++import { isKnownSpot, SPOT, STATIC_SPOTS } from '../src/lib/trainingSpots';
++import { declineCodeOf, declinesOf } from '../src/lib/trainingSandbox';
++import { resetTrainingTerminal, setDeclines, setManualCard, trainingTerminal, trainingVt, timing } from '../src/lib/trainingTerminal';
++import { practiceWidth } from '../src/lib/virtualTerminal';
++import { startCharge } from '../src/lib/zeller';
++
++const welcome = MODULES[0] as TrainingModule;
++const problems = (m: TrainingModule) => validateModule(m, isKnownSpot);
++const withInject = (inject: Injection[]): TrainingModule => ({ ...welcome, check2: welcome.check2.map((g, i) => (i === 0 ? { ...g, inject, taughtBy: g.taughtBy ?? welcome.guide[0].id } : g)) });
++
++test('the terminal spots are known, unique and named in the UI', () => {
++  for (const id of ['terminal.tap', 'terminal.insert', 'terminal.remove', 'terminal.pinpad', 'terminal.pinok', 'terminal.cancel', 'terminal.done']) assert.ok(isKnownSpot(id), id);
++  assert.equal(new Set(STATIC_SPOTS).size, STATIC_SPOTS.length); assert.equal(SPOT.terminalTap, 'terminal.tap');
++});
++test('a course may say who plays the customer, and only auto or manual are accepted', () => {
++  assert.deepEqual(problems(welcome), []); assert.deepEqual(problems({ ...welcome, card: 'manual' }), []); assert.deepEqual(problems({ ...welcome, card: 'auto' }), []);
++  assert.ok(problems({ ...welcome, card: 'robot' as any }).some(p => /card must be/.test(p)));
++});
++test('a decline injection needs 1 to 5 declines and a response code the app knows', () => {
++  assert.deepEqual(problems(withInject([{ kind: 'decline', times: 2, code: 'QB' }])).filter(p => /declin/.test(p)), []);
++  assert.ok(problems(withInject([{ kind: 'decline', times: 0 }])).some(p => /whole number from 1 to 5/.test(p)));
++  assert.ok(problems(withInject([{ kind: 'decline', times: 9 }])).some(p => /whole number from 1 to 5/.test(p)));
++  assert.ok(problems(withInject([{ kind: 'decline', times: 1, code: 'ZZZ' }])).some(p => /unknown response code "ZZZ"/.test(p)));
++});
++test('declineCodeOf: the code asked for, else 51; declinesOf still counts', () => {
++  assert.equal(declineCodeOf(undefined), '51'); assert.equal(declineCodeOf([{ kind: 'decline', times: 1 }]), '51'); assert.equal(declineCodeOf([{ kind: 'ledger', counts: {} }, { kind: 'decline', times: 2, code: 'QB' }]), 'QB'); assert.equal(declinesOf([{ kind: 'decline', times: 2, code: 'QB' }]), 2);
++});
++test('the practice terminal declines the number of times asked, with the code asked, then approves; reset puts everything back', async () => {
++  const was = timing.stepMs; timing.stepMs = 5; try {
++    resetTrainingTerminal(); setDeclines(2, 'QB'); const kinds: string[] = [];
++    for (const ref of ['a', 'b', 'c']) { const r = await startCharge(trainingTerminal, { amountCents: 100, reference: ref }).promise; kinds.push(r.kind === 'DECLINED' ? `D:${r.code}` : r.kind); }
++    assert.deepEqual(kinds, ['D:QB', 'D:QB', 'APPROVED']);
++    setManualCard(true); assert.equal(trainingVt.manual, true); trainingVt.dispatch({ t: 'request', amountCents: 5 }); resetTrainingTerminal();
++    assert.equal(trainingVt.manual, false); assert.equal(trainingVt.get().screen, 'sleep'); assert.equal(trainingTerminal.approved.length, 0);
++    assert.equal((await startCharge(trainingTerminal, { amountCents: 100, reference: 'd' }).promise).kind, 'APPROVED', 'decline code and queue were cleared');
++  } finally { timing.stepMs = was; resetTrainingTerminal(); }
++});
++test('practiceWidth stays within 120 to 190 and is wider on a tablet', () => {
++  assert.equal(practiceWidth(200), 120); assert.equal(practiceWidth(390), 156); assert.equal(practiceWidth(1180), 190); assert.ok(practiceWidth(1024) >= practiceWidth(600));
++});

@@ -14,13 +14,15 @@ import { useSpotlight } from './spotlight';
 import { MAX_ZOOM, demoStateAfter, fitBox, planStep, renderScale, type Note, type NodeView } from '../lib/trainingDemo';
 import type { Demo } from '../lib/trainingModule';
 import { gesturePlan, isPress } from '../lib/pointerGesture';
+import { TerminalBody, useFaceBrand } from './VirtualTerminal';
+import { BODY_ASPECT, isVtScreen, previewState } from '../lib/virtualTerminal';
 
 const BIG = 3000;
 const toneColor = (c: Colors, t?: string, fallback?: string) => (t === 'good' ? c.good : t === 'bad' ? c.bad : t === 'accent' ? c.accent : fallback ?? c.text);
 
 /** Fades a node in or out when a step shows or hides it, dips it when the pointer taps it, and draws it by kind. */
 function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
-  const { c } = useTheme(); const sp = useSpotlight(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
+  const { c } = useTheme(); const sp = useSpotlight(); const brand = useFaceBrand(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
   useEffect(() => { Animated.timing(o, { toValue: n.hidden ? 0 : 1, duration: 280, useNativeDriver: false }).start(); }, [n.hidden]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { Animated.timing(knob, { toValue: n.on ? 1 : 0, duration: 260, useNativeDriver: false }).start(); }, [n.on]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (press > 0) Animated.sequence([Animated.timing(s, { toValue: 0.93, duration: 110, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 5, useNativeDriver: false })]).start(); }, [press]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -29,6 +31,7 @@ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
   const one = { allowFontScaling: false as const, numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }; // a single line shrinks a little rather than being cut off
   let body: React.ReactNode = null;
   switch (n.kind) {
+    case 'terminal': { const w = Math.min(u(n.w), u(n.h) / BODY_ASPECT); const sc = isVtScreen(n.value ?? 'sleep') ? (n.value as any) : 'sleep'; body = <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none"><TerminalBody s={previewState(sc, !!n.on, n.amount ?? 4500)} w={w} brand={brand} /></View>; break; }
     case 'panel': body = <View style={{ flex: 1, backgroundColor: c.card, borderRadius: u(12), borderWidth: u(1), borderColor: c.line, padding: u(8) }}>{n.label ? <Text {...one} style={{ color: c.sub, fontSize: u(10), fontWeight: '700' }}>{n.label}</Text> : null}</View>; break;
     case 'bar': body = <View style={{ flex: 1, backgroundColor: c.card, borderBottomWidth: u(1), borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(12) }}><Text {...one} style={{ color: c.text, fontSize: u(15), fontWeight: '700', flexShrink: 1 }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(11) }}>{n.sub}</Text> : null}</View>; break;
     case 'text': body = <View style={{ flex: 1, justifyContent: 'center' }}><Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(n.size ?? 13), fontWeight: '600', textAlign: n.align ?? 'left' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(Math.max(9, (n.size ?? 13) - 2)), textAlign: n.align ?? 'left' }}>{n.sub}</Text> : null}</View>; break;

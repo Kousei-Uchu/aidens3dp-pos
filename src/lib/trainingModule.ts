@@ -4,6 +4,7 @@
 import { validateDemo } from './trainingDemo';
 import { isGesture, type Gesture } from './pointerGesture';
 import { WINDOW_SPOTS } from './trainingSpots';
+import { RESPONSE_CODES } from './responseCodes';
 export type { Gesture } from './pointerGesture';
 export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
 export const STAGES: readonly Stage[] = ['info', 'show', 'guide', 'check1', 'check2', 'gratify'];
@@ -17,15 +18,17 @@ export type Tone = 'neutral' | 'good' | 'bad' | 'accent';
  * A camera zooms and pans over the canvas, a pointer taps controls, and the picture changes as the steps play.
  * It is watched, not played: the person moves through it with Next and Back. Ids are unique across the whole demo.
  */
-export type DemoKind = 'panel' | 'bar' | 'text' | 'button' | 'tile' | 'row' | 'toggle' | 'field' | 'chip' | 'icon';
+export type DemoKind = 'panel' | 'bar' | 'text' | 'button' | 'tile' | 'row' | 'toggle' | 'field' | 'chip' | 'icon' | 'terminal';
 /** x, y, w, h are canvas units (the canvas is demo.canvas.w by demo.canvas.h). Nodes draw in list order, so later ones sit on top. */
 export type DemoNode = {
   id: string; kind: DemoKind; x: number; y: number; w: number; h: number;
   label?: string; sub?: string; value?: string; icon?: string;
   tone?: Tone; color?: string; on?: boolean; hidden?: boolean; size?: number; align?: 'left' | 'center' | 'right';
+  /** For a `terminal` node: `value` is the screen it shows (a `VtScreen`: sleep, amount, pin, processing, approved, declined, removeCard, cancelled, receipt, unavailable), `amount` the payment in cents, and `on` means dark mode. */
+  amount?: number;
 };
 /** What a step changes on a node. Only these fields can change. */
-export type DemoEffect = Partial<Pick<DemoNode, 'hidden' | 'label' | 'sub' | 'value' | 'icon' | 'tone' | 'color' | 'on'>>;
+export type DemoEffect = Partial<Pick<DemoNode, 'hidden' | 'label' | 'sub' | 'value' | 'icon' | 'tone' | 'color' | 'on' | 'amount'>>;
 export type DemoScreen = { id: string; nodes: DemoNode[] };
 /**
  * One step. In order, when it plays: the camera goes to `tap` (or `focus`), the pointer moves to `tap` and taps it,
@@ -64,7 +67,7 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
-  | { kind: 'decline'; times: number }                                  // the fake terminal declines the card this many times (code 51)
+  | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
   | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
 /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
@@ -90,6 +93,8 @@ export type Goal = {
 export type TrainingModule = {
   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
   flow: 'standard' | 'guided';                // which checkout the sandbox forces
+  /** Who plays the customer at the virtual card terminal. `auto` (the default): the terminal taps a card and keys the PIN by itself. `manual`: the person does it on the terminal's screen. */
+  card?: 'auto' | 'manual';
   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
   info: Demo; show: Demo; guide: Step[];
   check1: Goal[]; check2: Goal[];
@@ -152,5 +157,10 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
   for (const g of m.check2) { if (g.inject?.length && !g.taughtBy) at('check2', `goal ${g.id} injects a problem but does not say where it was taught`); if (g.taughtBy && !taught.has(g.taughtBy)) at('check2', `goal ${g.id} says it was taught by "${g.taughtBy}", which does not exist`); }
   if (!m.recap.length) at('recap', 'needs at least one line');
   if (!m.tabs.includes('checkout')) at('header', 'tabs must include checkout');
+  if (m.card !== undefined && m.card !== 'auto' && m.card !== 'manual') at('header', `card must be "auto" or "manual", not "${String(m.card)}"`);
+  for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'decline') {
+    if (!(Number.isInteger(i.times) && i.times >= 1 && i.times <= 5)) at('check2', `goal ${g.id} declines the card ${String(i.times)} times, which must be a whole number from 1 to 5`);
+    if (i.code !== undefined && !RESPONSE_CODES[i.code]) at('check2', `goal ${g.id} declines with the unknown response code "${i.code}"`);
+  }
   return bad;
 }

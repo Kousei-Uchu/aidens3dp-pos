@@ -30,6 +30,7 @@ import Diagnostics from './src/screens/Diagnostics';
 import Help from './src/screens/Help';
 import Training from './src/screens/Training';
 import TrainingRun from './src/screens/TrainingRun';
+import TerminalPlay from './src/screens/TerminalPlay';
 import TrainingHost from './src/ui/TrainingHost';
 import { Spot } from './src/ui/Spot';
 import { SPOT } from './src/lib/trainingSpots';
@@ -71,6 +72,7 @@ function Routes({ route: top }: { route: Route }) {
     case 'help': return <Help id={p.id} />;
     case 'training': return <Training />;
     case 'trainingRun': return <TrainingRun />;
+    case 'terminalPlay': return <TerminalPlay />;
     default: return null;
   }
 }

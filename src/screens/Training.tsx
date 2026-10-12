@@ -49,6 +49,11 @@ export default function Training() {
                 <Txt weight="700" color={c.onAccent}>{complete ? 'Do it again' : done.length ? 'Continue' : 'Start'}</Txt></Pressable>
             </Card></Enter>);
         })}
+        <Enter delay={stagger(MODULES.length + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Ionicons name="card-outline" size={34} color={c.sub} /><View style={{ flex: 1 }}><Txt size={17} weight="700">Virtual terminal</Txt><Txt size={13} sub>Practice Zeller Terminal 2</Txt></View></View>
+          <Txt sub>Try the card terminal on its own: ask it for a payment, tap or insert a card, key a PIN, and see every screen it can show.</Txt>
+          <Pressable onPress={() => nav.push('terminalPlay')} accessibilityRole="button" style={{ backgroundColor: c.fill, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}><Txt weight="700">Open</Txt></Pressable>
+        </Card></Enter>
       </View>
     </Page>
   );

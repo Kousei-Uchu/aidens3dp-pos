@@ -5,8 +5,9 @@ import { create } from 'zustand';
 import { useApp, flushPersist } from './store';
 import { kvGet, kvSet } from '../lib/kv';
 import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
-import { applyInjections, buildSandbox, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
-import { resetTrainingTerminal, setDeclines } from '../lib/trainingTerminal';
+import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
+import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
+import { getModule } from '../training';
 import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
 import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
 import { completeModule, emptyProgress, readProgress, recordStage, staffKey, type Progress } from '../lib/trainingProgress';
@@ -47,6 +48,8 @@ type Sess = {
 let real: Swap | null = null;
 let goalStart: Swap | null = null;
 
+/** Who plays the customer at the practice terminal for this course (the course's `card` setting; automatic when it says nothing). */
+const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
 export const useTraining = create<Sess>((set, get) => ({
   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
@@ -60,13 +63,13 @@ export const useTraining = create<Sess>((set, get) => ({
       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
     }
-    resetTrainingTerminal(); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
+    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
     const r = get().run; if (r) set({ run: seeIntro(r) });
     return null;
   },
   inject: inj => {
     if (!real) return; const s = useApp.getState();
-    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj));
+    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj));
   },
   leave: () => {
     goalStart = null; setGate(null);
@@ -85,7 +88,7 @@ export const useTraining = create<Sess>((set, get) => ({
   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
   restartGoal: inj => {
     if (!goalStart) return false;
-    resetTrainingTerminal(); useApp.setState(goalStart); setDeclines(declinesOf(inj)); set({ hint: freshHints(), view: null }); return true;
+    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); set({ hint: freshHints(), view: null }); return true;
   },
 }));
 export const isPractising = (): boolean => real !== null;
