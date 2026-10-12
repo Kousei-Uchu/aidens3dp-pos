@@ -1,0 +1,741 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index a558d81..5cfdb5b 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -137,3 +137,15 @@ Set up: sell yourself a $20 gift card through the POS (or issue one in Shopify a
+ 6. Check the Help page **Paying with a gift card**: it currently says cancelling does **not** restore value. That is out of date after 0056 and is on the Final Touches list (F6).
+ 
+ Tell me: pass or fail for each step, the exact error text for any failure, and the balances you saw in Shopify admin.
++
++## T11. Training: Sign in, lock and switch staff (B6, 0093)
++
++On the iPad and on a phone: **More ▸ Training ▸ Sign in, lock and switch staff**. No setup needed: practice has its own people, Casey (PIN 1234) and Morgan (PIN 2468, with a pass).
++
++1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, and the Show covers the staff tile, a pass scan, locking, a PIN and a pass that fails.
++2. **Guide.** Follow the arrows. Pass: Switch staff opens, Scan pass opens a window with a drawn pass and a **Scan this pass** button, the ring points at that button, and after the scan the Casey tile says Morgan. Lock POS then shows the Sign in screen with the bar still at the bottom, and keying 1 2 3 4 signs in as Casey.
++3. **Check 1.** Three goals. Pass: each finishes the moment you do the thing, and the hints climb to a ringed answer.
++4. **Check 2.** The first goal cancels Morgan's pass. Pass: scanning it says it is not recognised, and keying 2 4 6 8 gets you in. The second starts with items in the cart. Pass: switching to Morgan keeps them.
++5. **Leave and finish.** Exit mid-course, then finish another run. Pass: the real till is signed in as you again, the cart is as you left it, and the green tick is under **your** name.
++
++Tell me: pass or fail for each step, and a screenshot of the pass window if it looks off.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index c3328ca..9db831c 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -95,6 +95,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0090 | 2026-10-12 | Device test T6: **the daily float report now judges a float by playing a day of imagined cash sales against it**, not by a size guess and note value. Reported: a drawer with $106 and no $20s or $10s was told to add six $20s and a $10. The old report assumed a float must hold a whole day of change (ignoring that notes handed over are reused) and filled the gap with the biggest notes first. Now: a top-up only adds the notes and coins that cut the failure rate most for what they cost, and a drawer that already copes is asked for nothing; every way of banking the takings is tried against the same imagined day, so the float that stays is the one that copes best; the report shows the percentage of a typical day's cash sales with exact change, before and after. Also fixes a case where a cut-short search only offered ways that bank handfuls of coins (new `bigFirst` option on the change finder). New `src/lib/floatPlan.ts`, `tests/floatplan.test.ts`; `idealFloat`, `coverageNow/Keep`, `low` and `lowOn` removed; the sheet says *Working it out* while it thinks. Help pages updated | B1f, B1k |
+ | 0091 | 2026-10-12 | Device test T6, part 2: **Swap my cash** (More ▸ Cash drawer ▸ Swap my cash). Tap the notes and coins you hold yourself and it suggests an even exchange with the drawer: what to put in, what to take out (squares layout), judged by playing a day of imagined cash sales against the drawer before and after, with a small cost per note or coin held and per piece moved. Your example (a $50 of your own against a drawer swamped in $5s) comes out as put in the $50, take out ten $5s. Never takes out the kind it hands in; float and Z-report never change; recorded as one Contents corrected entry only after you confirm. New `src/lib/cashSwap.ts`, `src/screens/SwapCash.tsx`, `tests/cashswap.test.ts`, help page `cash/swap-cash` (60 pages). Not run on a device | B1l |
+ | 0092 | 2026-10-12 | Device test T8: **a pop-out nested contents menu in Help**, like the side menu on a docs website. A Contents button (list icon) in the Help header slides a panel in from the left with the whole page tree: sections have an arrow that opens and closes them, titles open the page and close the menu, the current page is highlighted and its sections start open, Help home is the first row. The existing ways round Help (search, trail, topic cards, lists, links, Back, Help home) are unchanged. Respects Reduce Motion. New pure `src/lib/helpTree.ts` and `tests/helptree.test.ts`, `src/ui/HelpMenu.tsx`; `Help.tsx` gets the button; `help/start.md` documents it (60 pages). Not run on a device | B7f |
++| 0093 | 2026-10-12 | Training (B6), task course 2 of the plan: **Sign in, lock and switch staff** (`sign-in`). Info, Show, Guide, Check 1 and Check 2 on two practice staff (Casey, a cashier, PIN 1234; Morgan, a manager, PIN 2468 and a cashier pass) who exist only in practice. Needed small engine additions: `practiceStaff` on a course, `staff` and `pass` Check injections, who-is-signed-in and locked in what a step can test, a drawn practice pass in place of the camera when scanning a pass, the PIN pad, Unlock, Scan pass and Lock register as spots, Switch staff and Lock POS tiles on the practice grid, and progress always saved under the real signed-in person. | B6 |
+ 
+ ---
+ 
+@@ -305,7 +306,7 @@ Current implementation and validation status are recorded here. Device and live-
+   - [x] B5b (0026, refined 0056) Guided checkout asks Items → Discount → Check → Pay by default. Customer is not a separate required step; Add/change customer is in More options. Custom can explicitly enable the separate Customer step. Back buttons identify their destination. Part-paid sales still go to Pay and cannot be edited.
+   - [x] B5c (0027) Simple-mode wording, helper copy and adjustable tap-target sizing remain; defaults no longer force larger text/tap targets.
+   - [ ] B5d **Device test deferred until your test device is available:** try Simple and Minimal on the iPad, especially the simpler views/grid density, Back from guided Discount to Items, More options, and a complete sale. Check that Custom tab and More switches persist and that permissions remain correct. You had reported an ineffective Back arrow; the button now names its destination, but hardware confirmation is still needed.
+-- [~] B6 Training mode (Info → Show → Guide → Check 1 → Check 2 → Gratify). Patch 0063 replaces the earlier 0061 training attempt with foundations adapted from the supplied, older-repository `0059-training-foundations.patch`: an animated Info slideshow and a **Show** that is a user-paced animated UI demonstration (simplified copies of the real screens, a camera that zooms and pans, a pointer that taps, spotlight, notes, Next and Back, never autoplay; clarified and rebuilt in 0065); actual Checkout/cart screens spotlighted by an animated dim/ring/bubble overlay; working Guide actions and two checks against isolated fixture data; progressive hints, fake card terminal and confetti; module-specific declarative course definitions and per-staff progress. The starter **How training works** course exercises the runner, not a full operational task course. Assumption: training is isolated from live sales, storage, Shopify and the card reader; live state is restored when exiting. Remaining: task-specific modules for the app's processes (each with its own Show demonstration) and device validation, including how sharp and smooth the Show camera looks on the iPad.
++- [~] B6 Training mode (Info → Show → Guide → Check 1 → Check 2 → Gratify). Patch 0063 replaces the earlier 0061 training attempt with foundations adapted from the supplied, older-repository `0059-training-foundations.patch`: an animated Info slideshow and a **Show** that is a user-paced animated UI demonstration (simplified copies of the real screens, a camera that zooms and pans, a pointer that taps, spotlight, notes, Next and Back, never autoplay; clarified and rebuilt in 0065); actual Checkout/cart screens spotlighted by an animated dim/ring/bubble overlay; working Guide actions and two checks against isolated fixture data; progressive hints, fake card terminal and confetti; module-specific declarative course definitions and per-staff progress. The starter **How training works** course exercises the runner, not a full operational task course. Assumption: training is isolated from live sales, storage, Shopify and the card reader; live state is restored when exiting. 0093 adds the first task course, **Sign in, lock and switch staff**. Remaining: more task-specific modules for the app's processes (each with its own Show demonstration) and device validation, including how sharp and smooth the Show camera looks on the iPad.
+ - [ ] B7 In-app docs (Markdown, Basic/Deep/Advanced) + docs Worker. **Started in 0028.** Three pages per patch, as you asked. Design: `docs/patches/0028-plan.md`; writer's guide: `help/README.md`.
+   - **How it works.** Pages are Markdown files in `help/` (`help/<folder>/<name>.md`, a folder's own page is its `index.md`). Each has a header (id, title, parent, summary, tags, related) and up to three sections, `## Basic`, `## Deep`, `## Advanced`. Choosing a depth shows it **plus the levels above it**. `[[page-id]]` links pages together; contents lists come from each page's `parent`. `npm run help:build` checks every page (dead links, missing parent or Basic section, loops, unclosed code, stray headings, bad mermaid) and writes `help/help.json`, which the app and the docs Worker both read. Code: `src/lib/helpDocs.ts` (pure, tested), `scripts/build-help.ts`. The Advanced flowcharts are Mermaid; the in-app drawing supports a simple subset (see the guide) and the website draws the full thing.
+   - [x] B7a (0028) foundation: format, checker, build, guide, tests, first three pages.
+@@ -418,6 +419,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+ - [ ] N33 **Non-blocking (B6, 0081):** on the iPad, run a Check and press Hint. The toast should slide in at the top and pulse once (a quick grow and glow that peaks a third of a second in and is gone by 0.8 s), and the bar's hint text should pulse with it. Press Hint until the answer is ringed, then press once more: the toast should pulse again with no new text. Open a window during a Check (a sheet) and press Hint there: the toast should appear on the window and stay until you tap its x. Tell me if the pulse is too strong or too weak (the two numbers are `PULSE_SCALE_GAIN` and `PULSE_TINT_ALPHA` in `src/lib/hintPulse.ts`), whether the toast covers anything you need, and how it looks in the light, dark and brand themes. Also try with Reduce Motion on (colour only, no growing).
+ - [ ] N34 **Non-blocking (B6, 0082):** photos for the virtual terminal. The Terminal 2 screens in 0082 are drawn from public descriptions, so the wording, layout and colours are best guesses. To make them match: (1) the branded idle screen your terminal shows, (2) each Zeller in-app popup (waiting for card, PIN, processing, approved, declined with a reason, cancelled, receipt options, error or not available), (3) a front photo of the terminal and, if you can, a short video of a tap payment and an insert payment with PIN. Everything the screens say lives in `COPY` in `src/lib/virtualTerminal.ts`, and their look in `src/ui/TerminalFace.tsx`, so it is a re-skin, not a rebuild.
++- [ ] N35 **Non-blocking (B6, 0093):** device check for the sign-in course (More ▸ Training ▸ Sign in, lock and switch staff). The practice pass window (a drawn pass with a **Scan this pass** button) opens inside the Switch staff window, so check it looks right on the iPad and phone and that the highlight ring still points at the button. Also check that locking the practice till shows the Sign in screen with the dock still visible, that your real till is signed in as you again after Leave, and that your green tick is under your name, not Casey's or Morgan's. See T11 in `docs/DEVICE_TESTS.md`.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/patches/0093-plan.md b/docs/patches/0093-plan.md
+new file mode 100644
+index 0000000..5977bb5
+--- /dev/null
++++ b/docs/patches/0093-plan.md
+@@ -0,0 +1,25 @@
++# Patch 0093: Training course "Sign in, lock and switch staff"
++
++Stacks on 0092 (and the `cart` course commit). Second course in the training plan, after `welcome`.
++
++## What you asked
++> get started on #2 (the training module list: most urgent first, a module for every feature eventually)
++
++## How it works
++- **Course `sign-in`** (`src/training/modules/sign-in.ts`), six minutes: Info (names and roles, PIN or pass, stepping away, roles), Show (nine steps, including a pass that fails and the PIN fallback), Guide (nine steps on the real practice till), Check 1 (switch by pass, lock, sign in by PIN) and Check 2 (a cancelled pass so the PIN is the only way in, and a switch while a sale is in the cart).
++- **Practice staff.** A course can set `practiceStaff`. The practice till then has two people with known credentials, Casey (cashier, PIN 1234) and Morgan (manager, PIN 2468, plus a cashier pass), requires sign-in and starts signed in as Casey. They are built with the same PIN hash and pass hash as real staff, so the real sign-in code runs unchanged. They exist only in the sandbox.
++- **Practice pass.** A camera cannot scan a pass that is not real, so while training is on the Scan pass window draws the pass with a **Scan this pass** button (`src/ui/PracticePass.tsx`). A `pass` injection swaps in a cancelled pass, which the till refuses exactly as it refuses a real cancelled one.
++- **Injections.** `staff` (start as Casey, as Morgan, or on the Sign in screen) and `pass`. A `staff` injection only acts when practice staff exist, so a course without them can never lock the real till. The checker refuses either injection on a course without `practiceStaff`.
++- **What a step can test.** The snapshot now carries who is signed in and whether the Sign in screen is up.
++- **Spots.** PIN pad (any digit), Unlock, Scan pass, Lock register, and the practice pass button. The practice grid gains the Switch staff and Lock POS tiles.
++- **Progress fix.** The signed-in person can be Casey or Morgan during practice, so a finished course and the "taught in" check now use the real person, held in the swap snapshot (`realStaffId()`).
++- Not done: a wrong PIN as a Check 2 failure (it cannot be forced to happen), so it is explained in the Guide and Show instead. The Help button on the Sign in screen is not available in practice (Help is not one of the course's pages).
++
++## Checklist
++1. [x] `src/training/modules/sign-in.ts`, registered in `src/training/index.ts`, titled in `trainingRemedies.ts`.
++2. [x] `src/lib/trainingPass.ts`, `src/ui/PracticePass.tsx`, `src/screens/Scanner.tsx`, `src/screens/StaffLogin.tsx`.
++3. [x] Engine: `trainingSandbox.ts`, `trainingModule.ts`, `trainingConds.ts`, `trainingSpots.ts`, `trainingSession.ts`, `TrainingHost.tsx`, `pin.ts` (`hashPinSync`).
++4. [x] `tests/trainingsignin.test.ts` (7 tests). Full suite: 606 of 607 pass in my sandbox. The one failure, `tests/virtualterminal.test.ts` ("every screen has copy, a preview, and screens that wait for a person have no automatic move", `DWELL_MS`), fails the same way on the repo without this patch.
++5. [x] Help: `help/staff/training.md` lists the courses and the practice staff; `help/help.json` rebuilt (60 pages); help tests pass.
++6. [~] Not typechecked against the app (the Zeller package could not be installed in my sandbox): please run `npm run typecheck`. The pure files typecheck alone; the `.tsx` files were reviewed, not compiled.
++7. [ ] Device test T11 (`docs/DEVICE_TESTS.md`).
+diff --git a/help/help.json b/help/help.json
+index 8402648..53e0340 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "8c8a8bf6",
++ "version": "79f7d4bc",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1705,9 +1705,9 @@
+    "updated": "2026-10-12",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen (\"Hint 2 of 4\") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\nThe moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen (\"Hint 2 of 4\") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your ticks are always saved under you, even while the practice till is signed in as Casey or Morgan. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\nThe moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.\n\n### Courses so far\n- **How training works**: a five minute tour of the six parts.\n- **Sign in, lock and switch staff**: sign in with a PIN or a cashier pass, hand the till to a colleague from the grid, and lock it when you step away. Practice uses two practice people, **Casey** (a cashier, PIN 1234) and **Morgan** (a manager, PIN 2468, with a cashier pass). They exist only inside practice. When a step asks you to scan a pass, a drawn practice pass appears with a **Scan this pass** button, because a camera cannot scan a pass that is not real.\n\nMore courses are added one at a time, most important first.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
+     "deep": "Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+-    "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
++    "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice staff, practice pass and the sign-in course | `src/lib/trainingSandbox.ts` (`practiceStaff`), `src/lib/trainingPass.ts`, `src/ui/PracticePass.tsx`, `src/training/modules/sign-in.ts` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nA course can ask for practice staff (`practiceStaff` on the course). The practice till then replaces the staff list with Casey and Morgan (built in `practiceStaff()`, with PINs hashed the same way as real ones), requires sign-in and starts signed in as Casey. A Check goal can start signed in as either, or on the Sign in screen (`staff` injection), and can cancel Morgan's pass (`pass` injection). The Scan pass window draws the practice pass while training is on (`src/ui/PracticePass.tsx`, `src/lib/trainingPass.ts`). Courses without `practiceStaff` keep the real staff list, and a `staff` injection can never lock the real till.\n\nThe starter course, **How training works**, is an engine demonstration. **Sign in, lock and switch staff** is the first task course. More task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+   },
+   {
+diff --git a/help/staff/training.md b/help/staff/training.md
+index 1be8014..1d7b698 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -20,10 +20,16 @@ Each course has six parts:
+ 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
+ 6. **Done** recaps what you can do and marks the course complete.
+ 
+-In the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen ("Hint 2 of 4") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
++In the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen ("Hint 2 of 4") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your ticks are always saved under you, even while the practice till is signed in as Casey or Morgan. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
+ 
+ The moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.
+ 
++### Courses so far
++- **How training works**: a five minute tour of the six parts.
++- **Sign in, lock and switch staff**: sign in with a PIN or a cashier pass, hand the till to a colleague from the grid, and lock it when you step away. Practice uses two practice people, **Casey** (a cashier, PIN 1234) and **Morgan** (a manager, PIN 2468, with a cashier pass). They exist only inside practice. When a step asks you to scan a pass, a drawn practice pass appears with a **Scan this pass** button, because a camera cannot scan a pass that is not real.
++
++More courses are added one at a time, most important first.
++
+ ### Progress
+ Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
+ 
+@@ -40,8 +46,11 @@ Info and Show are each a list of steps over a few mock screens or diagrams. Each
+ | Course runner | `src/screens/TrainingRun.tsx` |
+ | Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |
+ | Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |
++| Practice staff, practice pass and the sign-in course | `src/lib/trainingSandbox.ts` (`practiceStaff`), `src/lib/trainingPass.ts`, `src/ui/PracticePass.tsx`, `src/training/modules/sign-in.ts` |
+ | Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |
+ | Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |
+ | Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |
+ 
+-The starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs.
++A course can ask for practice staff (`practiceStaff` on the course). The practice till then replaces the staff list with Casey and Morgan (built in `practiceStaff()`, with PINs hashed the same way as real ones), requires sign-in and starts signed in as Casey. A Check goal can start signed in as either, or on the Sign in screen (`staff` injection), and can cancel Morgan's pass (`pass` injection). The Scan pass window draws the practice pass while training is on (`src/ui/PracticePass.tsx`, `src/lib/trainingPass.ts`). Courses without `practiceStaff` keep the real staff list, and a `staff` injection can never lock the real till.
++
++The starter course, **How training works**, is an engine demonstration. **Sign in, lock and switch staff** is the first task course. More task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs.
+diff --git a/src/lib/pin.ts b/src/lib/pin.ts
+index 22279c3..a11c7fc 100644
+--- a/src/lib/pin.ts
++++ b/src/lib/pin.ts
+@@ -6,6 +6,8 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
+ async function sha256(s: string): Promise<string> {
+   return bytesToHex(nobleSha256(utf8ToBytes(s)));
+ }
++/** The same hash as `hashPin`, without the promise. Training uses it to build practice staff with known PINs. */
++export const hashPinSync = (salt: string, pin: string): string => bytesToHex(nobleSha256(utf8ToBytes(`${salt}:${pin}`)));
+ export const newSalt = () => Math.random().toString(36).slice(2, 12);
+ export const hashPin = (salt: string, pin: string) => sha256(`${salt}:${pin}`);
+ export const verifyPin = async (salt: string, pin: string, hash: string) => (await hashPin(salt, pin)) === hash;
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index 77bdfe4..fab85ad 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -15,10 +15,10 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+ }
+ /** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
+ type CartLike = { variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number };
+-export function snapOf(s: { tab: string; route: string; sheets?: number; cart: { lines: CartLike[]; customer?: unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
++export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; cart: { lines: CartLike[]; customer?: unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
+   return {
+     tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
+-    hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying,
++    hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked,
+     cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined })),
+     cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
+   };
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 163573d..a070366 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -49,6 +49,8 @@ export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'cust
+ export type TrainSnap = {
+   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
+   cart: SnapLine[]; cartDiscount: boolean; orderAdjusted: boolean; hasNote: boolean;
++  /** Who is signed in (a practice staff id such as `train-staff-casey`) and whether the Sign in screen is up. Left out by plain tests. */
++  staffId?: string; locked?: boolean;
+ };
+ export type Until =
+   | { kind: 'next' }                                  // an informational step: the Next button moves on
+@@ -68,7 +70,9 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
+ export type Injection =
+   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
+   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
+-  | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
++  | { kind: 'ledger'; counts: Record<string, number> }
++  | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)
++  | { kind: 'pass'; state: 'cancelled' };                               // the practice cashier pass has been cancelled, so the till will not recognise it                 // replace the drawer contents (for example no small change)
+ /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
+ export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
+ export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'adjust', 'customer', 'note', 'tender', 'sale'];
+@@ -95,6 +99,8 @@ export type TrainingModule = {
+   flow: 'standard' | 'guided';                // which checkout the sandbox forces
+   /** Who plays the customer at the virtual card terminal. `auto` (the default): the terminal taps a card and keys the PIN by itself. `manual`: the person does it on the terminal's screen. */
+   card?: 'auto' | 'manual';
++  /** Practice runs with two practice staff (Casey, a cashier, and Morgan, a manager) who have known PINs and a cashier pass, and requires sign-in. Left out, the real staff list is kept. */
++  practiceStaff?: boolean;
+   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
+   info: Demo; show: Demo; guide: Step[];
+   check1: Goal[]; check2: Goal[];
+@@ -158,6 +164,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+   if (!m.recap.length) at('recap', 'needs at least one line');
+   if (!m.tabs.includes('checkout')) at('header', 'tabs must include checkout');
+   if (m.card !== undefined && m.card !== 'auto' && m.card !== 'manual') at('header', `card must be "auto" or "manual", not "${String(m.card)}"`);
++  for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) for (const g of goals) for (const i of g.inject ?? []) if ((i.kind === 'staff' || i.kind === 'pass') && !m.practiceStaff) at(name, `goal ${g.id} uses a ${i.kind} injection, which needs practiceStaff on the course`);
+   for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'decline') {
+     if (!(Number.isInteger(i.times) && i.times >= 1 && i.times <= 5)) at('check2', `goal ${g.id} declines the card ${String(i.times)} times, which must be a whole number from 1 to 5`);
+     if (i.code !== undefined && !RESPONSE_CODES[i.code]) at('check2', `goal ${g.id} declines with the unknown response code "${i.code}"`);
+diff --git a/src/lib/trainingPass.ts b/src/lib/trainingPass.ts
+new file mode 100644
+index 0000000..c887b7a
+--- /dev/null
++++ b/src/lib/trainingPass.ts
+@@ -0,0 +1,22 @@
++// Location: src/lib/trainingPass.ts
++// The practice cashier passes. A camera cannot scan a pass that does not exist, so during practice the Scan pass window draws these instead
++// and a button stands in for holding the pass under the scanner. Pure apart from one small flag, reset whenever practice starts or restarts.
++import type { Injection } from './trainingModule';
++
++/** Morgan's pass. A real pass code: 'P' plus 12 Crockford base32 characters (see badge.ts). */
++export const PRACTICE_PASS_CODE = 'P7K3M9Q2XW4DE';
++/** A pass nobody owns any more, for the "cancelled pass" problem. It matches no staff member, so the till refuses it like a real cancelled pass. */
++export const CANCELLED_PASS_CODE = 'PBZ5R8T1HN6CW';
++export type PassState = 'good' | 'cancelled';
++export type PracticePass = { code: string; name: string; role: string; cancelled: boolean };
++
++let state: PassState = 'good';
++export const setPassState = (s: PassState): void => { state = s; };
++export const passState = (): PassState => state;
++export const resetPass = (): void => { state = 'good'; };
++/** A `pass` injection decides the state for the goal that carries it; a goal without one gets a good pass. */
++export const passStateOf = (inj: readonly Injection[] | undefined): PassState => ((inj ?? []).find(i => i.kind === 'pass') as Extract<Injection, { kind: 'pass' }> | undefined)?.state ?? 'good';
++/** The pass the practice window holds out right now. */
++export const practicePass = (): PracticePass => (state === 'cancelled'
++  ? { code: CANCELLED_PASS_CODE, name: 'Morgan', role: 'Manager', cancelled: true }
++  : { code: PRACTICE_PASS_CODE, name: 'Morgan', role: 'Manager', cancelled: false });
+diff --git a/src/lib/trainingRemedies.ts b/src/lib/trainingRemedies.ts
+index ecac6c1..b92d52f 100644
+--- a/src/lib/trainingRemedies.ts
++++ b/src/lib/trainingRemedies.ts
+@@ -7,6 +7,7 @@ import type { DeviationKind } from './trainingCourse';
+ /** The modules that are planned, with the titles the hub will show. A module that is not built yet still has a title here, so a remedy can name it. The built ones win (see `moduleTitle`). */
+ export const PLANNED_TITLES: Record<string, string> = {
+   welcome: 'How training works',
++  'sign-in': 'Sign in, lock and switch staff',
+   cart: 'Build a cart',
+   discounts: 'Discounts',
+   'price-adjust': 'Change a price',
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+index a4abb83..a5d7118 100644
+--- a/src/lib/trainingSandbox.ts
++++ b/src/lib/trainingSandbox.ts
+@@ -6,6 +6,10 @@ import type { Variant, Collection, Customer, ManualPreset, Cart } from './types'
+ import type { Grid, Tile } from './grid';
+ import { addVariant, emptyCart } from './cartOps';
+ import { emptyLedger, type CashLedger } from './cashLedger';
++import { hashPinSync } from './pin';
++import { hashBadge } from './badge';
++import { PRACTICE_PASS_CODE } from './trainingPass';
++import type { StaffMember } from './types';
+ import type { Injection } from './trainingModule';
+ 
+ export const TRAIN_PREFIX = 'train-';
+@@ -33,12 +37,24 @@ const HOME_TILES: Tile[] = [
+   { type: 'item', productId: `${TRAIN_PREFIX}p-cow` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-bee` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-dragon` },
+   { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
+   { type: 'action', action: 'custom_amount' }, { type: 'action', action: 'clear_cart' },
++  { type: 'action', action: 'switch_staff' }, { type: 'action', action: 'lock_pos' },
+ ];
+ export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: `${TRAIN_PREFIX}page-home`, name: 'Home', tiles: HOME_TILES }] });
+ /** A normal drawer with plenty of change. Check 2 can replace it with an injection. */
+ export const FIXTURE_DRAWER: Record<string, number> = { '5000': 2, '2000': 5, '1000': 5, '500': 6, '200': 10, '100': 10, '50': 10, '20': 10, '10': 10, '5': 10 };
+ export const fixtureLedger = (): CashLedger => ({ ...emptyLedger(), counts: { ...FIXTURE_DRAWER } });
+ 
++/** The two practice staff for courses with `practiceStaff`. Known PINs (1234 and 2468) and, for Morgan, the practice cashier pass. Never saved: they live only in the sandbox. */
++export const PRACTICE_CASEY = `${TRAIN_PREFIX}staff-casey`; export const PRACTICE_MORGAN = `${TRAIN_PREFIX}staff-morgan`;
++export const PRACTICE_PINS = { casey: '1234', morgan: '2468' } as const;
++export function practiceStaff(): StaffMember[] {
++  const casey = { id: PRACTICE_CASEY, name: 'Casey', role: 'cashier' as const, salt: 'train-casey' };
++  const morgan = { id: PRACTICE_MORGAN, name: 'Morgan', role: 'manager' as const, salt: 'train-morgan', badgeSalt: 'train-badge' };
++  return [
++    { ...casey, pinHash: hashPinSync(casey.salt, PRACTICE_PINS.casey) },
++    { ...morgan, pinHash: hashPinSync(morgan.salt, PRACTICE_PINS.morgan), badgeHash: hashBadge(morgan.badgeSalt, PRACTICE_PASS_CODE) },
++  ];
++}
+ /** Settings for the sandbox: the real staff list and display mode stay (so roles and text size apply); everything that points outside the till is blanked. */
+ export function sandboxSettings(real: Settings): Settings {
+   return { ...real, receipt: { ...real.receipt, serverUrl: '' }, passServerUrl: '', giftClaimUrl: '', bundlesJson: '', adjustPerms: {}, smartChange: false, cashRounding: true };
+@@ -47,24 +63,29 @@ export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos
+ /** The real state to put back afterwards. */
+ export const takeSnapshot = (s: App): Swap => ({ settings: s.settings, data: s.data, grid: s.grid, gridVersion: s.gridVersion, pos: s.pos, sync: s.sync, zeller: s.zeller, staffId: s.staffId, unlocked: s.unlocked });
+ /** The practice state. The signed in person stays signed in. */
+-export function buildSandbox(real: Swap): Swap {
++export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean } = {}): Swap {
+   const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, x]));
+   return {
+-    settings: sandboxSettings(real.settings),
++    settings: opts.practiceStaff ? { ...sandboxSettings(real.settings), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings),
+     data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: [], presets: FIXTURE_PRESETS },
+     grid: fixtureGrid(), gridVersion: 0,
+     pos: { saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
+-    sync: { state: 'idle' }, zeller: { ready: true }, staffId: real.staffId, unlocked: true,
++    sync: { state: 'idle' }, zeller: { ready: true }, staffId: opts.practiceStaff ? PRACTICE_CASEY : real.staffId, unlocked: true,
+   };
+ }
+ /** What each injection does to the practice state: a cart injection replaces the cart, a ledger injection replaces the drawer. Card declines are not state: the session hands them to the fake terminal. Nothing else changes. */
+ export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined): Swap {
+-  let cart: Cart | undefined; let ledger: CashLedger | undefined;
++  let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
+   for (const i of inj ?? []) {
++    if (i.kind === 'staff') who = i.who;
+     if (i.kind === 'cart') { cart = cart ?? emptyCart(); for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } }
+     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
+   }
+-  return cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
++  let out: Swap = cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
++  // A staff injection only applies to practice staff, so a course without them can never lock the real till by mistake.
++  if (who === 'locked' && out.settings.staff.length) out = { ...out, staffId: undefined, unlocked: false };
++  else if (who && who !== 'locked' && out.settings.staff.some(m => m.id === (who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN))) out = { ...out, staffId: who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN, unlocked: true };
++  return out;
+ }
+ /** A card attempt counts as "still waiting on the reader" for this long after it starts (the same window the screensaver and staff lock use). */
+ export const WAITING_WINDOW_MS = 5 * 60_000;
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index 20d92e1..fcf55a7 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -18,9 +18,14 @@ export const SPOT = {
+   terminalPinOk: 'terminal.pinok',     // OK on the PIN screen
+   terminalCancel: 'terminal.cancel',   // Cancel on the terminal's screen
+   terminalDone: 'terminal.done',       // Done on the terminal's receipt screen
++  loginPinpad: 'login.pinpad',         // the PIN keys on the Sign in screen and in the Switch staff window (any digit)
++  loginUnlock: 'login.unlock',         // Unlock under the PIN keys
++  loginScanPass: 'login.scanpass',     // Scan pass under the PIN keys
++  switchLock: 'switch.lock',           // Lock register inside the Switch staff window
++  passScan: 'pass.scan',               // the practice pass sheet's Scan this pass button (only in training)
+ } as const;
+ /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove];
++export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan];
+ export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
+ /** Spots whose id ends in a record id: a grid tile, or a cart line. */
+ export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:'] as const;
+diff --git a/src/screens/Scanner.tsx b/src/screens/Scanner.tsx
+index b4eda23..8419325 100644
+--- a/src/screens/Scanner.tsx
++++ b/src/screens/Scanner.tsx
+@@ -5,9 +5,14 @@ import { Btn, Txt } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { noteActivity } from '../lib/idle';
+ import { isUserTyping } from '../lib/focusGuard';
++import { isTraining } from '../lib/trainingGuard';
++import { PracticePassSheet } from '../ui/PracticePass';
+ 
+ /** Camera scanner. `onScan` returns a short confirmation ("Added Dragon plush") or null if the code was unknown. Stays open until Done. */
+-export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
++export function CameraScanner(p: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string; /** Scanning a cashier pass. In practice a drawn pass stands in for the camera. */ pass?: boolean }) {
++  return p.pass && isTraining() ? <PracticePassSheet visible={p.visible} onClose={p.onClose} onScan={p.onScan} title={p.title} /> : <RealCameraScanner {...p} />;
++}
++function RealCameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
+   const { c } = useTheme(); const [perm, ask] = useCameraPermissions();
+   const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null); const lock = useRef(0); const lastCode = useRef('');
+   useEffect(() => { if (visible && perm && !perm.granted && perm.canAskAgain) void ask(); if (!visible) setLast(null); }, [visible, perm]);
+diff --git a/src/screens/StaffLogin.tsx b/src/screens/StaffLogin.tsx
+index 045e6a2..139333c 100644
+--- a/src/screens/StaffLogin.tsx
++++ b/src/screens/StaffLogin.tsx
+@@ -3,15 +3,19 @@
+ import React, { useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, HelpButton, Sheet, Txt } from '../ui/kit';
++import { Spot, spotPressed } from '../ui/Spot';
++import { SPOT } from '../lib/trainingSpots';
+ import { useApp } from '../state/store';
+ import { CameraScanner, HidScanner } from './Scanner';
+ import { isBadgeCode } from '../lib/badge';
+ import { lockRegister, signInWithPass, signInWithPin, type SignInResult } from '../lib/staffAuth';
+ 
+ export const PinPad = ({ onKey }: { onKey: (k: string) => void }) => (
+-  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: 280 }}>
+-    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <Btn key={i} title={k} kind="secondary" onPress={() => onKey(k)} style={{ width: 88 }} /> : <View key={i} style={{ width: 88 }} />)}
+-  </View>
++  <Spot id={SPOT.loginPinpad} style={{ width: 280 }}>
++    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: 280 }}>
++      {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <Btn key={i} title={k} kind="secondary" onPress={() => { spotPressed(SPOT.loginPinpad); onKey(k); }} style={{ width: 88 }} /> : <View key={i} style={{ width: 88 }} />)}
++    </View>
++  </Spot>
+ );
+ 
+ /** Enter a PIN, or scan a pass with the Bluetooth scanner or the camera. `onDone` runs after a successful sign-in. */
+@@ -29,12 +33,12 @@ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignIn
+       <Txt size={30} style={{ letterSpacing: 8 }}>{'•'.repeat(pin.length) || ' '}</Txt>
+       {err ? <Txt color="#DC2626" style={{ textAlign: 'center' }}>{err}</Txt> : null}
+       <PinPad onKey={k => { setErr(''); if (k === '⌫') setPin(p => p.slice(0, -1)); else { const n = (pin + k).slice(0, 6); setPin(n); if (n.length >= 4) void tryPin(n, true); } }} />
+-      <Btn title="Unlock" onPress={() => void tryPin(pin, false)} disabled={pin.length < 4} style={{ width: 280 }} />
+-      <Btn title="Scan pass" kind="secondary" icon="qr-code-outline" onPress={() => setCam(true)} style={{ width: 280 }} />
++      <Btn title="Unlock" onPress={() => void tryPin(pin, false)} disabled={pin.length < 4} style={{ width: 280 }} spot={SPOT.loginUnlock} />
++      <Btn title="Scan pass" kind="secondary" icon="qr-code-outline" onPress={() => setCam(true)} style={{ width: 280 }} spot={SPOT.loginScanPass} />
+       <Txt size={13} sub style={{ textAlign: 'center' }}>Enter your PIN, or scan your cashier pass with the scanner.</Txt>
+       <HelpButton id="fix/locked-out" label="Sign-in help" />
+       <HidScanner enabled={scannerOn && !cam} onScan={code => { if (isBadgeCode(code)) void onScan(code); else setErr('That is not a cashier pass.'); }} />
+-      <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan your cashier pass" onScan={onScan} />
++      <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan your cashier pass" onScan={onScan} pass />
+     </View>
+   );
+ }
+@@ -48,7 +52,7 @@ export function SwitchStaffSheet({ visible, onClose, onSwitched }: { visible: bo
+       {staff.length === 0 ? <Txt sub>No staff yet. Add people in More ▸ Staff first.</Txt> : <View style={{ alignItems: 'center', gap: 14 }}>
+         <Txt sub>{cur ? `Signed in as ${cur.name} (${cur.role}).` : 'Nobody is signed in.'} The next PIN or pass takes over, and the cart stays as it is.</Txt>
+         <StaffLoginPad scannerOn={visible} onDone={r => { onSwitched?.(r.message); onClose(); }} />
+-        {requirePin ? <Btn title="Lock register" kind="ghost" onPress={() => { lockRegister(); onClose(); }} style={{ width: 280 }} /> : null}
++        {requirePin ? <Btn title="Lock register" kind="ghost" onPress={() => { lockRegister(); onClose(); }} style={{ width: 280 }} spot={SPOT.switchLock} /> : null}
+       </View>}
+     </Sheet>
+   );
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index d643031..41ba546 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -7,6 +7,7 @@ import { kvGet, kvSet } from '../lib/kv';
+ import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
+ import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
+ import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
++import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
+ import { getModule } from '../training';
+ import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
+ import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
+@@ -50,6 +51,8 @@ let goalStart: Swap | null = null;
+ 
+ /** Who plays the customer at the practice terminal for this course (the course's `card` setting; automatic when it says nothing). */
+ const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
++/** Who is really using the till. During practice the signed in person can be a practice staff member (Casey, Morgan), so progress and "done" ticks must use the real one, held in the snapshot. */
++export const realStaffId = (): string | undefined => (real ? real.staffId : useApp.getState().staffId);
+ export const useTraining = create<Sess>((set, get) => ({
+   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
+   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
+@@ -63,21 +66,21 @@ export const useTraining = create<Sess>((set, get) => ({
+       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
+       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
+     }
+-    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
++    resetTrainingTerminal(); resetPass(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff })); set({ sandbox: true, hint: freshHints(), view: null });
+     const r = get().run; if (r) set({ run: seeIntro(r) });
+     return null;
+   },
+   inject: inj => {
+     if (!real) return; const s = useApp.getState();
+-    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj));
++    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj));
+   },
+   leave: () => {
+     goalStart = null; setGate(null);
+-    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); } // restore first, then drop the guard
++    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); } // restore first, then drop the guard
+     set({ sandbox: false, view: null });
+   },
+   completeStage: () => {
+-    const run = get().run; if (!run) return null; const who = staffKey(useApp.getState().staffId);
++    const run = get().run; if (!run) return null; const who = staffKey(realStaffId());
+     let p = recordStage(get().progress, who, run.moduleId, run.stage);
+     if (run.stage === 'check2') p = completeModule(p, who, run.moduleId, { hints: run.hints, secs: elapsedSecs(run) });
+     set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p);
+@@ -88,7 +91,7 @@ export const useTraining = create<Sess>((set, get) => ({
+   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
+   restartGoal: inj => {
+     if (!goalStart) return false;
+-    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); set({ hint: freshHints(), view: null }); return true;
++    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
+   },
+ }));
+ export const isPractising = (): boolean => real !== null;
+diff --git a/src/training/index.ts b/src/training/index.ts
+index a27c050..e1cdd7e 100644
+--- a/src/training/index.ts
++++ b/src/training/index.ts
+@@ -2,6 +2,7 @@
+ // Every training module the app knows about, in the order the hub lists them. Add a module here once its file exists.
+ import type { TrainingModule } from '../lib/trainingModule';
+ import { welcome } from './modules/welcome';
++import { signIn } from './modules/sign-in';
+ 
+-export const MODULES: TrainingModule[] = [welcome];
++export const MODULES: TrainingModule[] = [welcome, signIn];
+ export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
+diff --git a/src/training/modules/sign-in.ts b/src/training/modules/sign-in.ts
+new file mode 100644
+index 0000000..5587cc3
+--- /dev/null
++++ b/src/training/modules/sign-in.ts
+@@ -0,0 +1,118 @@
++// Location: src/training/modules/sign-in.ts
++// "Sign in, lock and switch staff": PIN or cashier pass, the Switch staff tile, and Lock POS.
++// Runs with two practice staff (Casey, a cashier, PIN 1234; Morgan, a manager, PIN 2468 and a cashier pass). See `practiceStaff` in trainingSandbox.ts.
++import type { TrainingModule } from '../../lib/trainingModule';
++import { SPOT, gridActionSpot } from '../../lib/trainingSpots';
++import { PRACTICE_CASEY, PRACTICE_MORGAN } from '../../lib/trainingSandbox';
++
++const SWITCH = gridActionSpot('switch_staff'); const LOCK = gridActionSpot('lock_pos');
++const caseyIn = (s: { staffId?: string; locked?: boolean }): boolean => s.staffId === PRACTICE_CASEY && !s.locked;
++const morganIn = (s: { staffId?: string; locked?: boolean }): boolean => s.staffId === PRACTICE_MORGAN && !s.locked;
++
++export const signIn: TrainingModule = {
++  id: 'sign-in', title: 'Sign in, lock and switch staff', summary: 'Sign in with a PIN or a cashier pass, hand the till to a colleague, and lock it when you step away. Six minutes with practice data.', minutes: 6, suggestedFirst: false,
++  flow: 'standard', practiceStaff: true, tabs: ['checkout'], routes: [],
++  info: {
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'overview', nodes: [
++        { id: 'in-title', kind: 'text', x: 40, y: 20, w: 560, h: 34, label: 'Signing in', size: 22, align: 'center' },
++        { id: 'ppl', kind: 'panel', x: 40, y: 70, w: 260, h: 136, label: 'EVERYONE HAS A NAME', hidden: true },
++        { id: 'p1', kind: 'row', x: 52, y: 96, w: 236, h: 42, icon: 'person', label: 'Casey', sub: 'Cashier', hidden: true },
++        { id: 'p2', kind: 'row', x: 52, y: 146, w: 236, h: 42, icon: 'person', label: 'Morgan', sub: 'Manager', hidden: true },
++        { id: 'ways', kind: 'panel', x: 330, y: 70, w: 270, h: 136, label: 'TWO WAYS IN', hidden: true },
++        { id: 'w-pin', kind: 'button', x: 346, y: 100, w: 112, h: 44, label: 'PIN', icon: 'keypad', tone: 'neutral', hidden: true },
++        { id: 'w-pass', kind: 'button', x: 470, y: 100, w: 116, h: 44, label: 'Pass', icon: 'qr-code', tone: 'neutral', hidden: true },
++        { id: 'w-note', kind: 'text', x: 346, y: 152, w: 240, h: 44, label: 'A PIN is keyed in. A pass is scanned.', size: 12, hidden: true },
++        { id: 'away', kind: 'panel', x: 40, y: 224, w: 560, h: 118, label: 'WHEN YOU STEP AWAY', hidden: true },
++        { id: 'away-icon', kind: 'icon', x: 56, y: 258, w: 48, h: 48, icon: 'lock-closed', tone: 'accent', hidden: true },
++        { id: 'away-text', kind: 'text', x: 116, y: 252, w: 470, h: 44, label: 'Lock POS puts the till on the Sign in screen. The sale in the cart is kept.', size: 14, hidden: true },
++        { id: 'away-chip', kind: 'chip', x: 116, y: 302, w: 150, h: 28, label: 'Cart kept', tone: 'good', hidden: true },
++        { id: 'role-text', kind: 'text', x: 40, y: 354, w: 560, h: 30, label: 'Your role decides which menus you can open.', size: 13, align: 'center', hidden: true },
++      ] },
++    ],
++    steps: [
++      { id: 'who', title: 'Who is at the till', say: 'Each person who works the till has their own name and role. Signing in tells the till who is working, so each sale carries the right name.', set: { ppl: { hidden: false }, p1: { hidden: false }, p2: { hidden: false } }, focus: 'ppl', note: 'One name each' },
++      { id: 'ways', title: 'Two ways in', say: 'You sign in with a PIN, or by scanning your cashier pass. Both take a second, and both lead to the same place.', set: { ways: { hidden: false }, 'w-pin': { hidden: false }, 'w-pass': { hidden: false }, 'w-note': { hidden: false } }, focus: 'ways', note: 'PIN or pass' },
++      { id: 'away', title: 'Stepping away', say: 'Lock POS hides the till behind the Sign in screen. Whatever is in the cart waits there until someone signs back in.', set: { away: { hidden: false }, 'away-icon': { hidden: false }, 'away-text': { hidden: false }, 'away-chip': { hidden: false } }, focus: 'away', note: 'Nothing is lost' },
++      { id: 'role', title: 'Your role', say: 'Your role is set when you are added. A cashier sees the selling screens. A manager or owner sees more of the menus.', set: { 'role-text': { hidden: false }, p1: { tone: 'accent' } }, focus: 'role-text', note: 'Roles differ' },
++    ],
++  },
++  show: {
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'checkout', nodes: [
++        { id: 'co-bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Checkout', sub: 'Practice data' },
++        { id: 'tile-staff', kind: 'tile', x: 14, y: 56, w: 104, h: 82, icon: 'person-circle', label: 'Casey', sub: 'Cashier', color: '#DDD6FE' },
++        { id: 'tile-lock', kind: 'tile', x: 126, y: 56, w: 104, h: 82, icon: 'lock-closed', label: 'Lock POS', color: '#E5E7EB' },
++        { id: 'tile-bee', kind: 'tile', x: 14, y: 146, w: 104, h: 82, icon: 'bug', label: 'Bumble Bee', sub: '$8.00', color: '#FEF08A' },
++        { id: 'tile-dragon', kind: 'tile', x: 126, y: 146, w: 104, h: 82, icon: 'flame', label: 'Red Dragon', sub: '$25.00', color: '#FED7AA' },
++        { id: 'cart', kind: 'panel', x: 372, y: 52, w: 254, h: 250, label: 'CART' },
++        { id: 'line-bee', kind: 'row', x: 380, y: 76, w: 238, h: 40, label: 'Bumble Bee', sub: '2 x $8.00', value: '$16.00' },
++        { id: 'line-dragon', kind: 'row', x: 380, y: 116, w: 238, h: 40, label: 'Red Dragon', sub: '1 x $25.00', value: '$25.00' },
++        { id: 'total', kind: 'row', x: 380, y: 224, w: 238, h: 34, label: 'Total', value: '$41.00' },
++        { id: 'charge', kind: 'button', x: 380, y: 264, w: 238, h: 30, label: 'Charge', icon: 'card' },
++        { id: 'dock', kind: 'panel', x: 0, y: 340, w: 640, h: 60 },
++        { id: 'dock-say', kind: 'text', x: 14, y: 346, w: 600, h: 48, label: 'Tap the tile that names who is signed in.', size: 14 },
++      ] },
++      { id: 'switch', nodes: [
++        { id: 'sw-sheet', kind: 'panel', x: 150, y: 20, w: 340, h: 316, label: 'Switch staff' },
++        { id: 'sw-who', kind: 'text', x: 166, y: 56, w: 308, h: 36, label: 'Signed in as Casey (cashier). The next PIN or pass takes over.', size: 12 },
++        { id: 'sw-pad', kind: 'panel', x: 190, y: 100, w: 260, h: 130, label: 'PIN PAD' },
++        { id: 'sw-unlock', kind: 'button', x: 166, y: 242, w: 150, h: 36, label: 'Unlock' },
++        { id: 'sw-scan', kind: 'button', x: 324, y: 242, w: 150, h: 36, label: 'Scan pass', icon: 'qr-code', tone: 'neutral' },
++        { id: 'sw-lock', kind: 'button', x: 166, y: 288, w: 308, h: 32, label: 'Lock register', tone: 'neutral' },
++      ] },
++      { id: 'pass', nodes: [
++        { id: 'ps-sheet', kind: 'panel', x: 150, y: 20, w: 340, h: 316, label: 'Scan your cashier pass' },
++        { id: 'ps-card', kind: 'panel', x: 180, y: 64, w: 280, h: 150, label: 'PRACTICE PASS' },
++        { id: 'ps-name', kind: 'text', x: 196, y: 88, w: 248, h: 28, label: 'Morgan', size: 20 },
++        { id: 'ps-role', kind: 'text', x: 196, y: 118, w: 248, h: 20, label: 'Manager', size: 13, tone: 'neutral' },
++        { id: 'ps-bars', kind: 'icon', x: 196, y: 146, w: 248, h: 56, icon: 'barcode', size: 52 },
++        { id: 'ps-scan', kind: 'button', x: 180, y: 232, w: 280, h: 40, label: 'Scan this pass', icon: 'scan' },
++        { id: 'ps-ok', kind: 'chip', x: 180, y: 284, w: 280, h: 28, label: 'Signed in as Morgan', tone: 'good', hidden: true },
++      ] },
++      { id: 'locked', nodes: [
++        { id: 'lk-title', kind: 'text', x: 120, y: 30, w: 400, h: 36, label: 'Sign in', size: 26, align: 'center' },
++        { id: 'lk-dots', kind: 'text', x: 120, y: 76, w: 400, h: 34, label: '. . . .', size: 24, align: 'center', hidden: true },
++        { id: 'lk-pad', kind: 'panel', x: 230, y: 120, w: 180, h: 130, label: 'PIN PAD' },
++        { id: 'lk-unlock', kind: 'button', x: 230, y: 260, w: 180, h: 34, label: 'Unlock' },
++        { id: 'lk-scan', kind: 'button', x: 230, y: 300, w: 180, h: 34, label: 'Scan pass', icon: 'qr-code', tone: 'neutral' },
++        { id: 'lk-err', kind: 'text', x: 120, y: 344, w: 400, h: 40, label: 'That pass is not recognised. It may have been cancelled or replaced.', size: 12, align: 'center', tone: 'bad', hidden: true },
++      ] },
++    ],
++    steps: [
++      { id: 'tile', title: 'The staff tile', say: 'This tile names whoever is signed in. Tap it to hand the till to someone else without locking it.', focus: 'tile-staff', note: 'Who is signed in' },
++      { id: 'open', title: 'Switch staff', say: 'A window opens. The sale in the cart is not touched by anything you do in it.', tap: 'tile-staff', screen: 'switch', focus: 'sw-sheet', note: 'Cart stays as it is' },
++      { id: 'pass', title: 'Scan a pass', say: 'Tap Scan pass, then hold the cashier pass under the scanner or the camera.', tap: 'sw-scan', screen: 'pass', focus: 'ps-card', note: 'A cashier pass' },
++      { id: 'scanned', title: 'Signed in', say: 'The pass is read and the new person is signed in straight away. No PIN is needed.', tap: 'ps-scan', set: { 'ps-ok': { hidden: false } }, focus: 'ps-ok', note: 'Morgan is in' },
++      { id: 'keep', title: 'The cart stays', say: 'The tile now names Morgan, and the cart is exactly as it was. Switching staff never clears a sale.', screen: 'checkout', set: { 'tile-staff': { label: 'Morgan', sub: 'Manager' }, 'dock-say': { label: 'Same cart, new person signed in.' } }, focus: 'cart', note: 'Same sale' },
++      { id: 'lock', title: 'Lock POS', say: 'Stepping away? Tap Lock POS. The Sign in screen covers the till, and the cart waits behind it.', tap: 'tile-lock', screen: 'locked', focus: 'lk-title', note: 'Till is hidden' },
++      { id: 'pin', title: 'Key your PIN', say: 'To sign back in, key your PIN. It signs in by itself on the fourth digit, or tap Unlock.', tap: 'lk-pad', set: { 'lk-dots': { hidden: false } }, focus: 'lk-dots', note: 'PIN dots' },
++      { id: 'show-fail', title: 'A pass that fails', say: 'If a pass says it is not recognised, it may have been cancelled or replaced. Do not keep scanning it.', tap: 'lk-scan', set: { 'lk-err': { hidden: false } }, focus: 'lk-err', note: 'Not recognised' },
++      { id: 'show-fallback', title: 'Use your PIN', say: 'Key your PIN instead, which always works. Ask a manager or owner for a new pass.', tap: 'lk-pad', set: { 'lk-err': { hidden: true } }, focus: 'lk-pad', note: 'PIN always works' },
++    ],
++  },
++  guide: [
++    { id: 'g-who', say: 'The Casey tile names who is signed in. This practice till starts with Casey, a cashier.', target: SWITCH, until: { kind: 'next' } },
++    { id: 'g-open', say: 'Tap the Casey tile to hand the till to someone else without locking it.', target: SWITCH, until: { kind: 'visible', id: SPOT.loginPinpad }, recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
++    { id: 'g-pass-open', say: 'Morgan has a cashier pass. Tap Scan pass.', target: SPOT.loginScanPass, until: { kind: 'visible', id: SPOT.passScan }, at: { sheets: true } },
++    { id: 'g-pass-scan', say: 'On a real till you hold the pass under the scanner. Here, tap Scan this pass.', target: SPOT.passScan, until: { kind: 'state', test: morganIn }, gesture: 'tap', allow: [], at: { sheets: true } },
++    { id: 'g-keep-cart', say: 'The tile now names Morgan. Switching never clears the cart, so a sale in progress carries straight on.', target: SWITCH, until: { kind: 'next' } },
++    { id: 'g-lock', say: 'Stepping away? Tap Lock POS to cover the till with the Sign in screen.', target: LOCK, until: { kind: 'state', test: s => !!s.locked }, gesture: 'tap', allow: [] },
++    { id: 'g-pin-info', say: 'This is the Sign in screen. Anyone can use it with a PIN or a pass. A wrong PIN clears and lets you try again.', target: SPOT.loginPinpad, until: { kind: 'next' } },
++    { id: 'g-pin', say: 'Key the practice cashier PIN: 1 2 3 4. It signs in on the fourth digit, or tap Unlock.', target: SPOT.loginPinpad, until: { kind: 'state', test: caseyIn }, gesture: 'tap', allow: [] },
++    { id: 'g-fallback', say: 'A pass that will not scan, or is not recognised, may have been cancelled or replaced. Key your PIN instead, and ask a manager or owner for a new pass.', until: { kind: 'next' } },
++  ],
++  check1: [
++    { id: 'c1-pass', title: 'Switch the till to Morgan with their cashier pass', until: { kind: 'state', test: morganIn }, inject: [{ kind: 'staff', who: 'casey' }], ladder: ['Look at the grid for the tile that names who is signed in.', 'Tap that tile to open the Switch staff window.', 'Tap Scan pass, then scan the practice pass.', 'In the pass window, tap Scan this pass.'], reveal: SWITCH, allow: [], at: { sheets: true } },
++    { id: 'c1-lock', title: 'Morgan is stepping away. Lock the register', until: { kind: 'state', test: s => !!s.locked }, inject: [{ kind: 'staff', who: 'morgan' }], ladder: ['Look for a button that covers the till.', 'It is on the grid, next to the staff tile.', 'The tile is called Lock POS.'], reveal: LOCK, allow: [], at: { sheets: true } },
++    { id: 'c1-pin', title: 'Sign in as Casey. Casey\'s PIN is 1234', until: { kind: 'state', test: caseyIn }, inject: [{ kind: 'staff', who: 'locked' }], ladder: ['The till is on the Sign in screen.', 'Use the PIN pad.', 'Key 1 2 3 4. It signs in on the fourth digit.', 'Tap 1, then 2, then 3, then 4.'], reveal: SPOT.loginPinpad, allow: [], at: { sheets: true } },
++  ],
++  check2: [
++    { id: 'c2-cancelled', title: 'Sign in as Morgan, whose pass has been cancelled. Morgan\'s PIN is 2468', until: { kind: 'state', test: morganIn }, inject: [{ kind: 'staff', who: 'locked' }, { kind: 'pass', state: 'cancelled' }], taughtBy: 'g-fallback', ladder: ['The pass will not work. Look for another way in.', 'The Sign in screen also takes a PIN.', 'Key Morgan\'s PIN: 2 4 6 8.', 'Tap 2, then 4, then 6, then 8.'], reveal: SPOT.loginPinpad, allow: [], at: { sheets: true } },
++    { id: 'c2-mid-sale', title: 'A sale is in progress and Morgan needs the till. Switch to Morgan without losing the cart', until: { kind: 'state', test: s => morganIn(s) && s.lines >= 2 }, inject: [{ kind: 'staff', who: 'casey' }, { kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 2 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-keep-cart', ladder: ['You do not need to lock the till to hand it over.', 'Tap the tile that names who is signed in.', 'Morgan has a cashier pass. Tap Scan pass.', 'Tap Scan this pass. The cart stays.'], reveal: SWITCH, allow: [], at: { sheets: true },
++      watch: [{ id: 'cart-lost', when: s => s.lines < 2, say: 'The cart lost an item. Switching staff never does that, so something was removed. Tap Start this part again.', how: ['Tap Start this part again.', 'Switch staff from the grid tile, not from the cart.'] }] },
++  ],
++  recap: ['You sign in with a PIN, or by scanning your cashier pass.', 'You switch staff from the grid tile, and the sale in the cart carries on.', 'You lock the till when you step away, and key your PIN if a pass will not scan.'],
++};
+diff --git a/src/ui/PracticePass.tsx b/src/ui/PracticePass.tsx
+new file mode 100644
+index 0000000..ef2681d
+--- /dev/null
++++ b/src/ui/PracticePass.tsx
+@@ -0,0 +1,31 @@
++// Location: src/ui/PracticePass.tsx
++// Stands in for the camera while someone practises signing in with a cashier pass. A camera cannot scan a pass that is not real,
++// so the window draws the practice pass and a button plays the part of holding it under the scanner. Only ever shown during practice.
++import React, { useEffect, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Sheet, Txt } from './kit';
++import { useTheme } from './theme';
++import { Barcode128 } from './Barcode128';
++import { SPOT } from '../lib/trainingSpots';
++import { practicePass } from '../lib/trainingPass';
++
++export function PracticePassSheet({ visible, onClose, onScan, title }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
++  const { c } = useTheme(); const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null);
++  useEffect(() => { if (!visible) setLast(null); }, [visible]);
++  const pass = practicePass();
++  const scan = async () => { const r = await onScan(pass.code); setLast(r ? { ok: true, text: r } : { ok: false, text: 'Not recognised. The pass may have been cancelled or replaced. Close this window and key your PIN instead.' }); };
++  return (
++    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan your cashier pass'}>
++      <View style={{ gap: 12, alignItems: 'center' }}>
++        <Txt sub style={{ textAlign: 'center' }}>Practice pass. On a real till you would hold the pass under the scanner or the camera.</Txt>
++        <View style={{ width: '100%', borderRadius: 16, borderWidth: 1, borderColor: c.line, backgroundColor: c.card, padding: 16, alignItems: 'center', gap: 6, opacity: pass.cancelled ? 0.6 : 1 }}>
++          <Txt size={20} weight="700">{pass.name}</Txt>
++          <Txt sub>{pass.role}{pass.cancelled ? ' · cancelled' : ''}</Txt>
++          <Barcode128 value={pass.code} width={240} height={56} />
++        </View>
++        {last ? <Txt color={last.ok ? c.good : c.bad} style={{ textAlign: 'center' }}>{last.text}</Txt> : null}
++        <Btn title="Scan this pass" icon="scan-outline" onPress={() => void scan()} spot={SPOT.passScan} style={{ width: '100%' }} />
++      </View>
++    </Sheet>
++  );
++}
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 09db735..d7b9099 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -6,7 +6,8 @@ import React, { useEffect, useRef } from 'react';
+ import { View, useWindowDimensions } from 'react-native';
+ import { useNav, type Tab } from './nav';
+ import { useApp } from '../state/store';
+-import { useTraining, type DockView } from '../state/trainingSession';
++import { useTraining, realStaffId, type DockView } from '../state/trainingSession';
++import { isLockScreen } from '../lib/posLock';
+ import { getModule } from '../training';
+ import { measureSpot, onSpotPressed } from './Spot';
+ import { confirm } from './kit';
+@@ -90,7 +91,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         const fresh = key.current !== k;
+         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
+         const app = useApp.getState();
+-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+         const until = item.until;
+         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
+@@ -104,7 +105,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
+           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
+           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
+-          const done = taughtIn ? isComplete(st.progress, staffKey(useApp.getState().staffId), taughtIn) : false;
++          const done = taughtIn ? isComplete(st.progress, staffKey(realStaffId()), taughtIn) : false;
+           const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
+           return { rect, gesture, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
+         };
+diff --git a/tests/trainingsignin.test.ts b/tests/trainingsignin.test.ts
+new file mode 100644
+index 0000000..b0a45bf
+--- /dev/null
++++ b/tests/trainingsignin.test.ts
+@@ -0,0 +1,57 @@
++// Location: tests/trainingsignin.test.ts
++// The "Sign in, lock and switch staff" course: it is valid, its practice staff really sign in, and each goal can be won (and only by the right thing).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { signIn } from '../src/training/modules/sign-in';
++import { getModule } from '../src/training';
++import { validateModule, type TrainSnap } from '../src/lib/trainingModule';
++import { isKnownSpot } from '../src/lib/trainingSpots';
++import { isMet, noEvents, snapOf } from '../src/lib/trainingConds';
++import { PRACTICE_CASEY, PRACTICE_MORGAN, PRACTICE_PINS, applyInjections, buildSandbox, practiceStaff } from '../src/lib/trainingSandbox';
++import { CANCELLED_PASS_CODE, PRACTICE_PASS_CODE, passStateOf } from '../src/lib/trainingPass';
++import { findByBadge } from '../src/lib/badge';
++import { verifyPin } from '../src/lib/pin';
++
++const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
++const base = (over: Partial<TrainSnap> = {}): TrainSnap => ({ ...snapOf({ tab: 'checkout', route: '', cart: { lines: [] }, sales: 0, paying: false }), ...over });
++
++test('the course is registered and valid', () => {
++  assert.equal(getModule('sign-in'), signIn); assert.equal(signIn.practiceStaff, true);
++  assert.deepEqual(validateModule(signIn, isKnownSpot), []);
++});
++test('practice staff have the PINs and the pass the course teaches', async () => {
++  const st = practiceStaff();
++  for (const [m, pin] of [[st[0], PRACTICE_PINS.casey], [st[1], PRACTICE_PINS.morgan]] as const) { assert.ok(await verifyPin(m.salt, pin, m.pinHash)); assert.ok(!(await verifyPin(m.salt, '0000', m.pinHash))); }
++  assert.equal(findByBadge(st, PRACTICE_PASS_CODE)?.id, PRACTICE_MORGAN);
++  assert.equal(findByBadge(st, CANCELLED_PASS_CODE), null, 'a cancelled pass matches nobody');
++  assert.equal(st[0].badgeHash, undefined, 'Casey has no pass');
++});
++test('the practice till starts as Casey, and injections move between people', () => {
++  const sb = buildSandbox(real, { practiceStaff: true });
++  assert.equal(sb.staffId, PRACTICE_CASEY); assert.equal(sb.unlocked, true); assert.equal(sb.settings.staff.length, 2); assert.equal(sb.settings.requirePin, true);
++  const locked = applyInjections(sb, [{ kind: 'staff', who: 'locked' }]); assert.equal(locked.unlocked, false); assert.equal(locked.staffId, undefined);
++  const m = applyInjections(locked, [{ kind: 'staff', who: 'morgan' }]); assert.equal(m.staffId, PRACTICE_MORGAN); assert.equal(m.unlocked, true);
++  assert.equal(applyInjections(m, [{ kind: 'staff', who: 'casey' }]).staffId, PRACTICE_CASEY);
++});
++test('a course without practice staff can never lock or change the real till', () => {
++  const plain = buildSandbox(real); assert.equal(plain.settings.staff.length, 0);
++  const out = applyInjections(plain, [{ kind: 'staff', who: 'locked' }, { kind: 'staff', who: 'morgan' }]);
++  assert.equal(out.unlocked, true); assert.equal(out.staffId, undefined);
++});
++test('the pass injection only applies while its goal runs', () => {
++  assert.equal(passStateOf([{ kind: 'pass', state: 'cancelled' }]), 'cancelled'); assert.equal(passStateOf([]), 'good'); assert.equal(passStateOf(undefined), 'good');
++});
++test('each goal is won only by the right sign-in state', () => {
++  const won = (id: string, s: TrainSnap, list = [...signIn.check1, ...signIn.check2]) => isMet(list.find(g => g.id === id)!.until, s, noEvents());
++  assert.ok(won('c1-pass', base({ staffId: PRACTICE_MORGAN, locked: false }))); assert.ok(!won('c1-pass', base({ staffId: PRACTICE_CASEY, locked: false })));
++  assert.ok(won('c1-lock', base({ staffId: undefined, locked: true }))); assert.ok(!won('c1-lock', base({ staffId: PRACTICE_MORGAN, locked: false })));
++  assert.ok(won('c1-pin', base({ staffId: PRACTICE_CASEY, locked: false }))); assert.ok(!won('c1-pin', base({ staffId: PRACTICE_MORGAN, locked: false })));
++  assert.ok(won('c2-cancelled', base({ staffId: PRACTICE_MORGAN, locked: false })));
++  const line = { title: 'x', kind: 'item' as const, qty: 1, discounted: false, adjusted: false };
++  assert.ok(won('c2-mid-sale', base({ staffId: PRACTICE_MORGAN, locked: false, lines: 2, cart: [line, line] })));
++  assert.ok(!won('c2-mid-sale', base({ staffId: PRACTICE_MORGAN, locked: false, lines: 0 })), 'switching must not cost the cart');
++});
++test('Check 2 problems are customer or staff side, and each says where it was taught', () => {
++  for (const g of signIn.check2) { assert.ok(g.inject?.length, g.id); assert.ok(g.taughtBy, g.id); }
++  assert.ok(signIn.check2.some(g => g.inject?.some(i => i.kind === 'pass')));
++});

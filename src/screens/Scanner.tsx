@@ -5,9 +5,14 @@ import { Btn, Txt } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { noteActivity } from '../lib/idle';
 import { isUserTyping } from '../lib/focusGuard';
+import { isTraining } from '../lib/trainingGuard';
+import { PracticePassSheet } from '../ui/PracticePass';
 
 /** Camera scanner. `onScan` returns a short confirmation ("Added Dragon plush") or null if the code was unknown. Stays open until Done. */
-export function CameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
+export function CameraScanner(p: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string; /** Scanning a cashier pass. In practice a drawn pass stands in for the camera. */ pass?: boolean }) {
+  return p.pass && isTraining() ? <PracticePassSheet visible={p.visible} onClose={p.onClose} onScan={p.onScan} title={p.title} /> : <RealCameraScanner {...p} />;
+}
+function RealCameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
   const { c } = useTheme(); const [perm, ask] = useCameraPermissions();
   const [last, setLast] = useState<{ ok: boolean; text: string } | null>(null); const lock = useRef(0); const lastCode = useRef('');
   useEffect(() => { if (visible && perm && !perm.granted && perm.canAskAgain) void ask(); if (!visible) setLast(null); }, [visible, perm]);

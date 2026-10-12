@@ -7,6 +7,7 @@ import type { DeviationKind } from './trainingCourse';
 /** The modules that are planned, with the titles the hub will show. A module that is not built yet still has a title here, so a remedy can name it. The built ones win (see `moduleTitle`). */
 export const PLANNED_TITLES: Record<string, string> = {
   welcome: 'How training works',
+  'sign-in': 'Sign in, lock and switch staff',
   cart: 'Build a cart',
   discounts: 'Discounts',
   'price-adjust': 'Change a price',

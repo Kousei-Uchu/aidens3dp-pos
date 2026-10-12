@@ -6,6 +6,8 @@ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 async function sha256(s: string): Promise<string> {
   return bytesToHex(nobleSha256(utf8ToBytes(s)));
 }
+/** The same hash as `hashPin`, without the promise. Training uses it to build practice staff with known PINs. */
+export const hashPinSync = (salt: string, pin: string): string => bytesToHex(nobleSha256(utf8ToBytes(`${salt}:${pin}`)));
 export const newSalt = () => Math.random().toString(36).slice(2, 12);
 export const hashPin = (salt: string, pin: string) => sha256(`${salt}:${pin}`);
 export const verifyPin = async (salt: string, pin: string, hash: string) => (await hashPin(salt, pin)) === hash;

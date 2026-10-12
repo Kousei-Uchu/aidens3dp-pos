@@ -18,9 +18,14 @@ export const SPOT = {
   terminalPinOk: 'terminal.pinok',     // OK on the PIN screen
   terminalCancel: 'terminal.cancel',   // Cancel on the terminal's screen
   terminalDone: 'terminal.done',       // Done on the terminal's receipt screen
+  loginPinpad: 'login.pinpad',         // the PIN keys on the Sign in screen and in the Switch staff window (any digit)
+  loginUnlock: 'login.unlock',         // Unlock under the PIN keys
+  loginScanPass: 'login.scanpass',     // Scan pass under the PIN keys
+  switchLock: 'switch.lock',           // Lock register inside the Switch staff window
+  passScan: 'pass.scan',               // the practice pass sheet's Scan this pass button (only in training)
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan];
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
 export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:'] as const;

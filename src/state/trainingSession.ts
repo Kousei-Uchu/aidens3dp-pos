@@ -7,6 +7,7 @@ import { kvGet, kvSet } from '../lib/kv';
 import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
 import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
 import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
+import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
 import { getModule } from '../training';
 import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
 import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
@@ -50,6 +51,8 @@ let goalStart: Swap | null = null;
 
 /** Who plays the customer at the practice terminal for this course (the course's `card` setting; automatic when it says nothing). */
 const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
+/** Who is really using the till. During practice the signed in person can be a practice staff member (Casey, Morgan), so progress and "done" ticks must use the real one, held in the snapshot. */
+export const realStaffId = (): string | undefined => (real ? real.staffId : useApp.getState().staffId);
 export const useTraining = create<Sess>((set, get) => ({
   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
@@ -63,21 +66,21 @@ export const useTraining = create<Sess>((set, get) => ({
       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
     }
-    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(buildSandbox(real)); set({ sandbox: true, hint: freshHints(), view: null });
+    resetTrainingTerminal(); resetPass(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff })); set({ sandbox: true, hint: freshHints(), view: null });
     const r = get().run; if (r) set({ run: seeIntro(r) });
     return null;
   },
   inject: inj => {
     if (!real) return; const s = useApp.getState();
-    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj));
+    useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj));
   },
   leave: () => {
     goalStart = null; setGate(null);
-    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); } // restore first, then drop the guard
+    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); } // restore first, then drop the guard
     set({ sandbox: false, view: null });
   },
   completeStage: () => {
-    const run = get().run; if (!run) return null; const who = staffKey(useApp.getState().staffId);
+    const run = get().run; if (!run) return null; const who = staffKey(realStaffId());
     let p = recordStage(get().progress, who, run.moduleId, run.stage);
     if (run.stage === 'check2') p = completeModule(p, who, run.moduleId, { hints: run.hints, secs: elapsedSecs(run) });
     set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p);
@@ -88,7 +91,7 @@ export const useTraining = create<Sess>((set, get) => ({
   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
   restartGoal: inj => {
     if (!goalStart) return false;
-    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); set({ hint: freshHints(), view: null }); return true;
+    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
   },
 }));
 export const isPractising = (): boolean => real !== null;
