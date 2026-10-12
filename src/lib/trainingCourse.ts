@@ -7,7 +7,7 @@
 // Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
 // practice till back exactly as the goal began. So nobody can ever get stuck.
 import type { Allow, Goal, Place, SnapLine, Step, TrainSnap } from './trainingModule';
-import { SPOT, cartLineSpot, gridItemSpot, lineKeyOf, lineMinusSpot, lineRemoveSpot } from './trainingSpots';
+import { SPOT, cartLineSpot, findTabSpot, gridItemSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, linePriceSpot, lineKeyOf, lineMinusSpot, lineRemoveSpot } from './trainingSpots';
 import { remedyOf } from './trainingRemedies';
 import type { Gesture } from './pointerGesture';
 
@@ -21,6 +21,8 @@ export type Deviation = {
   /** How the person reaches `target` (a swipe to take a line out, for example). Left out: a tap. */
   gesture?: Gesture;
   /** The same fix when a window (a sheet) is already open: the control inside it, and what to say. Left out: the window is in the way, so close it first. */
+  /** Steps inside windows, deepest first: the first one on screen is shown, so the highlight follows the person down into the fix and back out of a wrong turn. */
+  chain?: { target: string; say: string; gesture?: Gesture }[];
   window?: { say: string; target: string };
   /** `undo`: the person can put it right with the control pointed at. `restart`: only starting this part again fixes it. */
   fix: 'undo' | 'restart';
@@ -67,7 +69,7 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
   }
 
   // Mistakes the module author knows about.
-  for (const w of goal.watch ?? []) { let hit = false; try { hit = !!w.when(now); } catch { hit = false; } if (hit) return { id: `watch:${w.id}`, kind: 'watch', fix: 'undo', title: 'Not quite', say: w.say, target: w.target, via: w.via }; }
+  for (const w of goal.watch ?? []) { let hit = false; try { hit = !!w.when(now); } catch { hit = false; } if (hit) return { id: `watch:${w.id}`, kind: 'watch', fix: w.fix ?? 'undo', title: 'Not quite', say: w.say, target: w.target, via: w.via }; }
 
   // The wrong place.
   const tabs = goal.at?.tabs ?? frame.tabs; const routes = goal.at?.routes ?? frame.routes;
@@ -76,6 +78,13 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
   }
   if (now.route && !routes.includes(now.route)) {
     return { id: `place:route:${now.route}`, kind: 'place', fix: 'undo', title: 'Wrong screen', say: 'This screen is not part of this task. Tap Back to return.', target: SPOT.back };
+  }
+  // Wandered somewhere on Checkout the goal does not use (another tab, inside a category, the sizes open).
+  const want = goal.at?.view; const w = now.where;
+  if (want && w && now.tab === 'checkout' && !now.route) {
+    if (w.tab !== 'quick') return { id: 'place:view:tab', kind: 'place', fix: 'undo', title: 'Wrong place', say: 'This part happens on the Quick Menu. Tap Quick Menu to go back to it.', target: findTabSpot('quick') };
+    if (w.sizes) return { id: 'place:view:sizes', kind: 'place', fix: 'undo', title: 'Wrong place', say: 'The sizes are open and this part does not need them. Tap the back arrow.', target: SPOT.findBack };
+    if (want === 'top' && w.depth > 0) return { id: 'place:view:depth', kind: 'place', fix: 'undo', title: 'Wrong place', say: 'You are inside a category. Tap the back arrow to go up to the first page.', target: SPOT.findBack };
   }
   // The cart. This comes BEFORE the window check on purpose: fixing a cart mistake usually means opening a window (the line editor), and the person
   // must never be told to close the very window the fix needs. While a cart mistake stands, it is the one thing said, and it adapts to what is open.
@@ -106,13 +115,13 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
   const lineNow = (f: (l: SnapLine) => boolean): SnapLine | undefined => now.cart.find(f);
   if (!allow.has('discount')) {
     const newLine = lineNow(l => l.discounted && !base.cart.some(b => keyOf(b) === keyOf(l) && b.discounted));
-    if ((now.cartDiscount && !base.cartDiscount) || newLine) return { id: 'discount', kind: 'discount', fix: 'undo', title: 'A discount was added', say: 'This task does not use a discount. Open the discount and remove it.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen };
+    if ((now.cartDiscount && !base.cartDiscount) || newLine) return { id: 'discount', kind: 'discount', fix: 'undo', title: 'A discount was added', say: 'This task does not use a discount. Open the discount and remove it.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen, ...(newLine && lineKeyOf(newLine) ? { chain: [{ target: lineDiscountOffSpot(lineKeyOf(newLine)!), say: 'Tap the Remove button to take the discount off.' }, { target: lineDiscountSpot(lineKeyOf(newLine)!), say: 'Tap Discount, then take it off.' }] } : {}) };
   }
   if (!allow.has('adjust')) {
     const newLine = lineNow(l => l.adjusted && !base.cart.some(b => keyOf(b) === keyOf(l) && b.adjusted));
-    if ((now.orderAdjusted && !base.orderAdjusted) || newLine) return { id: 'adjust', kind: 'adjust', fix: 'undo', title: 'A price was changed', say: 'This task does not change any prices. Open the item or the order price and remove the adjustment.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen };
+    if ((now.orderAdjusted && !base.orderAdjusted) || newLine) return { id: 'adjust', kind: 'adjust', fix: 'undo', title: 'A price was changed', say: 'This task does not change any prices. Open the item or the order price and remove the adjustment.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen, ...(newLine && lineKeyOf(newLine) ? { chain: [...(newLine.itemPriced ? [{ target: linePriceOffSpot(lineKeyOf(newLine)!), say: 'Tap Reset to catalogue price.' }, { target: linePriceSpot(lineKeyOf(newLine)!), say: 'Tap Item price adjustment, then reset the price.' }] : []), ...(newLine.lineAdjusted ? [{ target: lineAdjustOffSpot(lineKeyOf(newLine)!), say: 'Tap Remove adjustment.' }, { target: lineAdjustSpot(lineKeyOf(newLine)!), say: 'Tap Line price adjustment, then remove it.' }] : [])] } : {}) };
   }
-  if (!allow.has('customer') && now.hasCustomer && !base.hasCustomer) return { id: 'customer', kind: 'customer', fix: 'undo', title: 'A customer was added', say: 'This task does not need a customer on the sale. Open the cart and take the customer off.', via: SPOT.cartOpen };
+  if (!allow.has('customer') && now.hasCustomer && !base.hasCustomer) return { id: 'customer', kind: 'customer', fix: 'undo', title: 'A customer was added', say: 'This task does not need a customer on the sale. Open the cart and take the customer off.', target: SPOT.cartCustomerOff, via: SPOT.cartOpen };
   if (!allow.has('note') && now.hasNote && !base.hasNote) return { id: 'note', kind: 'note', fix: 'undo', title: 'A note was added', say: 'This task does not need a note. Open the cart and clear the note.', via: SPOT.cartOpen };
   if (!allow.has('tender') && now.tenders > base.tenders) return { id: 'tender', kind: 'tender', fix: 'restart', title: 'A payment was started', say: 'A payment was started that this part did not need. Tap Start this part again to set it up fresh.' };
 
@@ -130,7 +139,12 @@ export type FixCandidate = { target?: string; say: string; gesture: Gesture };
  * With a window open, a mistake that has a fix inside it points there (and says so), otherwise it asks for the window to be closed first, so the card
  * never sends the person to a control hidden under the window they are in. With no window open, the page's control comes first, then the bar that opens the cart.
  */
-export function fixCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window'>, windowOpen: boolean): FixCandidate[] {
+export function fixCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, windowOpen: boolean): FixCandidate[] {
+  const chain: FixCandidate[] = (d.chain ?? []).map(c => ({ target: c.target, say: c.say, gesture: c.gesture ?? 'tap' }));
+  if (chain.length) {
+    const closeFirst: FixCandidate = { target: SPOT.sheetClose, say: `Close this window first. ${d.say}`, gesture: 'tap' };
+    return windowOpen ? [...chain, closeFirst] : [...chain, { target: d.target, say: d.say, gesture: d.gesture ?? 'tap' }, ...(d.via ? [{ target: d.via, say: d.via === SPOT.cartOpen ? `Open the cart first. ${d.say}` : d.say, gesture: 'tap' as Gesture }] : [])];
+  }
   const page: FixCandidate = { target: d.target, say: d.say, gesture: d.gesture ?? 'tap' };
   if (windowOpen) {
     const closeFirst: FixCandidate = { target: SPOT.sheetClose, say: d.target === SPOT.sheetClose ? d.say : `Close this window first. ${d.say}`, gesture: 'tap' };

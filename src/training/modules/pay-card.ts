@@ -7,7 +7,13 @@ import { SPOT, gridItemSpot } from '../../lib/trainingSpots';
 const BEE = 'train-v-bee'; const EGG = 'train-v-egg'; const DRAGON = 'train-v-dragon'; const KEY = 'train-v-key';
 const has = (s: { cart: { variantId?: string }[] }, id: string): boolean => s.cart.some(l => l.variantId === id);
 /** A sale finished and the Receipt window is closed again, so the next goal starts on a clear screen. */
-const saleDone = (n: number) => (s: { sales: number; sheets: number }): boolean => s.sales >= n && s.sheets === 0;
+const saleDone = (n: number) => (s: { sales: number; sheets: number; lastSaleKinds?: string[] }): boolean => s.sales >= n && s.sheets === 0 && !!s.lastSaleKinds?.length && s.lastSaleKinds.every(k => k === 'card');
+/** Paying a card sale another way. While the Cash, Gift card or Split choice is open the person is walked back to Card; once a sale has gone through another way it can only be started again. */
+const NOT_CARD = ['cash', 'gift_card', 'exchange_credit'];
+const wrongWays = [
+  { id: 'wrong-way-open', when: (s: { payOpen?: string }) => !!s.payOpen, say: 'The customer is paying by card, not by cash, gift card or split. Close this window, then tap Card.', target: SPOT.sheetClose, how: ['Tap Close at the top of the window.', 'Tap Card on the Payment page.'], taughtIn: 'welcome' },
+  { id: 'wrong-way-done', when: (s: { lastSaleKinds?: string[] }) => !!s.lastSaleKinds?.some(k => NOT_CARD.includes(k)), say: 'That sale was paid another way, and this part needs a card payment. Tap Start this part again.', fix: 'restart' as const, how: ['Tap Start this part again.'] },
+];
 const place = { tabs: ['checkout'], routes: ['cart', 'pay'], sheets: false };
 const placeWin = { tabs: ['checkout'], routes: ['cart', 'pay'], sheets: true };
 
@@ -98,7 +104,7 @@ export const payCard: TrainingModule = {
     { id: 'g-add', target: gridItemSpot(BEE), say: 'First a sale to pay for. Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'state', test: s => has(s, BEE) }, gesture: 'tap', allow: ['add'], recover: { say: 'On the Checkout tab, tap the Bumble Bee tile.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: ['cart'], sheets: false } },
     { id: 'g-charge', target: SPOT.cartCharge, say: 'The cart is ready. Tap Charge to open the Payment page. On a phone, open the cart from the bar at the bottom first.', until: { kind: 'press', id: SPOT.cartCharge }, gesture: 'tap', allow: [], recover: { say: 'On a phone, tap the cart bar at the bottom of the screen, then tap Charge.', target: SPOT.cartOpen }, at: { tabs: ['checkout'], routes: ['cart'], sheets: false } },
     { id: 'g-total', target: SPOT.payTotal, say: 'This is the Payment page. The number is what is still to pay. If the customer pays part another way, it counts down.', until: { kind: 'next' }, at: { tabs: ['checkout'], routes: ['pay'], sheets: false } },
-    { id: 'g-card', target: SPOT.payCard, say: 'Tap Card. The terminal beside the till wakes up and shows the amount.', until: { kind: 'press', id: SPOT.payCard }, gesture: 'tap', allow: ['tender'], at: { tabs: ['checkout'], routes: ['pay'], sheets: false } },
+    { id: 'g-card', target: SPOT.payCard, say: 'Tap Card. The terminal beside the till wakes up and shows the amount.', until: { kind: 'press', id: SPOT.payCard }, gesture: 'tap', allow: ['tender'], recover: { say: 'Tap Charge to open the Payment page, then tap Card.', target: SPOT.cartCharge }, at: { tabs: ['checkout'], routes: ['pay'], sheets: false }, watch: [wrongWays[0]] },
     { id: 'g-terminal', target: SPOT.terminalTap, say: 'This is the customer\'s terminal. For this part you are the customer. Under $100 a tap is all that is needed. Over $100 they key a PIN too.', until: { kind: 'next' }, allow: ['tender'], at: place },
     { id: 'g-tap', target: SPOT.terminalTap, say: 'Tap card, as the customer would.', until: { kind: 'press', id: SPOT.terminalTap }, gesture: 'tap', allow: ['tender', 'sale'], at: place },
     { id: 'g-wait', say: 'The terminal checks the card with the bank. When it is approved the till finishes the sale by itself. You do not tap anything. Wait for the Receipt window.', until: { kind: 'visible', id: SPOT.receiptNone }, allow: ['tender', 'sale'], at: placeWin },
@@ -107,15 +113,15 @@ export const payCard: TrainingModule = {
   ],
   check1: [
     { id: 'card-sale', title: 'Take a card payment for the sale in the cart', until: { kind: 'state', test: saleDone(1) }, inject: [{ kind: 'cart', items: [{ variantId: BEE, qty: 1 }, { variantId: EGG, qty: 1 }] }],
-      ladder: ['The cart is ready to be paid.', 'Charge opens the Payment page, and Card starts the terminal.', 'You are the customer at the terminal: tap card.', 'Tap Charge, then Card, then Tap card on the terminal, then No receipt.'], reveal: SPOT.payCard, via: SPOT.cartCharge, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
+      ladder: ['The cart is ready to be paid.', 'Charge opens the Payment page, and Card starts the terminal.', 'You are the customer at the terminal: tap card.', 'Tap Charge, then Card, then Tap card on the terminal, then No receipt.'], reveal: SPOT.payCard, via: SPOT.cartCharge, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin, watch: wrongWays },
     { id: 'pin-sale', title: 'Take a card payment for this bigger sale. It is over $100, so the customer needs a PIN', until: { kind: 'state', test: saleDone(2) }, inject: [{ kind: 'cart', items: [{ variantId: DRAGON, qty: 5 }] }],
-      ladder: ['The total is over the contactless limit.', 'After the customer taps, the terminal asks for something more.', 'Key any four digits on the terminal, then tap OK on its screen.', 'Tap Card, tap card on the terminal, key 1, 2, 3, 4 and OK, then tap No receipt.'], reveal: SPOT.terminalPinpad, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
+      ladder: ['The total is over the contactless limit.', 'After the customer taps, the terminal asks for something more.', 'Key any four digits on the terminal, then tap OK on its screen.', 'Tap Card, tap card on the terminal, key 1, 2, 3, 4 and OK, then tap No receipt.'], reveal: SPOT.terminalPinpad, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin, watch: wrongWays },
   ],
   check2: [
     { id: 'declined-once', title: 'Take a card payment. The customer\'s first card will be declined', until: { kind: 'state', test: saleDone(1) }, inject: [{ kind: 'cart', items: [{ variantId: BEE, qty: 1 }, { variantId: KEY, qty: 1 }] }, { kind: 'decline', times: 1 }], taughtBy: 'retry',
-      ladder: ['If the card is declined, the cart is kept.', 'The Not approved window has two buttons. One tries the card again.', 'Tap Try card again, then tap card on the terminal.'], reveal: SPOT.payRetry, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
+      ladder: ['If the card is declined, the cart is kept.', 'The Not approved window has two buttons. One tries the card again.', 'Tap Try card again, then tap card on the terminal.'], reveal: SPOT.payRetry, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin, watch: wrongWays },
     { id: 'declined-twice', title: 'Take this payment. Two cards will be declined, then a third works', until: { kind: 'state', test: saleDone(2) }, inject: [{ kind: 'cart', items: [{ variantId: DRAGON, qty: 1 }] }, { kind: 'decline', times: 2, code: '54' }], taughtBy: 'declined',
-      ladder: ['Read the reason in the Not approved window each time.', 'A declined card does not empty the cart. You can try again as often as the customer wants.', 'Tap Try card again after each decline, and tap card on the terminal each time.'], reveal: SPOT.payRetry, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
+      ladder: ['Read the reason in the Not approved window each time.', 'A declined card does not empty the cart. You can try again as often as the customer wants.', 'Tap Try card again after each decline, and tap card on the terminal each time.'], reveal: SPOT.payRetry, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin, watch: wrongWays },
   ],
   recap: ['You start a card payment with Charge and Card, and the customer finishes it on the terminal.', 'You know the customer keys a PIN over $100, and that an approved card finishes the sale by itself.', 'You know a declined card keeps the cart, and that Try card again or Use another method are your choices.', 'You never charge again while the status is unknown.'],
 };

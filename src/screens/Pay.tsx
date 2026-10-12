@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
+import { setPayOpen } from '../lib/trainingProbe';
 import { Btn, Card, Chip, HelpButton, Keypad, Money, Page, Row, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff, type Attempt } from '../state/store';
@@ -36,6 +37,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const [plan, setPlan] = useState<SplitPlan>([]); // the payments still to take when the bill is split, in cents (src/lib/splitPlan.ts); empty = not split
   const [splitOpen, setSplitOpen] = useState(false); const [splitDigits, setSplitDigits] = useState(''); const [cashOpen, setCashOpen] = useState(false);
   const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
+  useEffect(() => { setPayOpen(cashOpen ? 'cash' : gift ? 'gift' : splitOpen ? 'split' : undefined); return () => setPayOpen(undefined); }, [cashOpen, gift, splitOpen]); // training: which way of paying is open
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelCash, setCancelCash] = useState<Tender[] | null>(null);
   const [done, setDone] = useState<SaleRecord | null>(null); const [change, setChange] = useState<number | null>(null); const cancelRef = useRef<(() => void) | null>(null);
@@ -207,9 +209,9 @@ export default function Pay({ onBack }: { onBack: () => void }) {
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
           {payQuestion(ui.explain, true) ? <Txt size={17} weight="700" style={{ textAlign: 'center', marginBottom: 2 }}>{payQuestion(ui.explain, true)}</Txt> : null}
           <PayOption hint={payHint('card', ui.explain)}><Btn spot={SPOT.payCard} title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption>
-          <PayOption hint={payHint('cash', ui.explain)}><Btn title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
-          <PayOption hint={payHint('gift', ui.explain)}><Btn title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
-          <PayOption hint={payHint('split', ui.explain)}><Btn title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
+          <PayOption hint={payHint('cash', ui.explain)}><Btn spot={SPOT.payCash} title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
+          <PayOption hint={payHint('gift', ui.explain)}><Btn spot={SPOT.payGift} title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
+          <PayOption hint={payHint('split', ui.explain)}><Btn spot={SPOT.paySplit} title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
           {split ? <Btn title="Cancel split" kind="ghost" onPress={() => setPlan([])} /> : null}
         </View>
       ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: {}, given: {} })} /></View> : null}
