@@ -218,3 +218,14 @@ On the iPad and on a phone: **More ▸ Training**.
 4. In Find the right item, go to the Keypad tab or into a category during the Extras page goal: the card should point you back one move at a time.
 
 Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
+
+## T18. Training: cart-level corrections and fallbacks (B6, 0103)
+
+On the iPad and on a phone, in a Check that does not use discounts, prices or notes.
+
+1. Apply a cart discount (cart menu, Apply cart discount). The ring should go to the three dots, then Apply cart discount, then the Remove button as you go. Do the same with Whole order price.
+2. Put a note on an item. The ring should point at the item, then at the Note field in its window with "Clear the note, then tap Done".
+3. In Build a cart, after the first item, tap the Keypad tab and then try the next add step: the ring should send you back to Quick Menu.
+4. In Find the right item, open the sizes and look at the tab steps: the ring should point at the back arrow first.
+
+Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.

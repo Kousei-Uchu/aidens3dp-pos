@@ -2,6 +2,7 @@
 // "Build a cart": add items to a sale, change quantities, and take things out.
 import type { TrainingModule } from '../../lib/trainingModule';
 import { SPOT, cartLineSpot, gridItemSpot } from '../../lib/trainingSpots';
+import { gridAim } from '../aims';
 
 const BEE = 'train-v-bee'; const DRAGON = 'train-v-dragon'; const EGG = 'train-v-egg';
 const has = (s: { cart: { variantId?: string }[] }, id: string): boolean => s.cart.some(l => l.variantId === id);
@@ -69,9 +70,9 @@ export const cart: TrainingModule = {
   guide: [
     { id: 'g-intro', say: 'You will build a small sale on the real till with practice data: add three items, add another, then take one out.', until: { kind: 'next' } },
     { id: 'g-add-first', target: gridItemSpot(BEE), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'state', test: s => has(s, BEE) }, gesture: 'tap', recover: { say: 'On the Checkout tab, tap the Bumble Bee tile.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false }, allow: ['add'] },
-    { id: 'g-add-second', target: gridItemSpot(DRAGON), say: 'Add a different item. Tap the Red Dragon tile.', until: { kind: 'state', test: s => has(s, DRAGON) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
-    { id: 'g-add-third', target: gridItemSpot(EGG), say: 'Add one more. Tap the Dragon Egg tile.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
-    { id: 'g-qty', target: gridItemSpot(BEE), say: 'Tap the Bumble Bee tile again. Tapping the same item adds another one.', until: { kind: 'state', test: s => s.qty >= 4 }, gesture: 'tap', allow: ['add', 'qty'], at: { tabs: ['checkout'], routes: ['cart'] } },
+    { id: 'g-add-second', target: gridItemSpot(DRAGON), say: 'Add a different item. Tap the Red Dragon tile.', until: { kind: 'state', test: s => has(s, DRAGON) }, gesture: 'tap', aim: gridAim('inside'), allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
+    { id: 'g-add-third', target: gridItemSpot(EGG), say: 'Add one more. Tap the Dragon Egg tile.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', aim: gridAim('inside'), allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
+    { id: 'g-qty', target: gridItemSpot(BEE), say: 'Tap the Bumble Bee tile again. Tapping the same item adds another one.', until: { kind: 'state', test: s => s.qty >= 4 }, gesture: 'tap', aim: gridAim('inside'), allow: ['add', 'qty'], at: { tabs: ['checkout'], routes: ['cart'] } },
     { id: 'g-remove', target: cartLineSpot(DRAGON), say: 'The customer does not want the Red Dragon after all. Swipe its line to the left, then tap Remove. On a phone, open the cart first.', until: { kind: 'state', test: s => !has(s, DRAGON) }, gesture: 'swipe-left', allow: ['remove'], recover: { say: 'Open the cart from the bar at the bottom, then find the Red Dragon line.', target: SPOT.cartOpen }, at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
     { id: 'g-total', say: 'The total is always at the bottom of the cart and counts every quantity. Charge is how you take payment, which is the next course.', until: { kind: 'next' } },
   ],

@@ -3,8 +3,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
-import { SPOT, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
+import { SPOT, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
+import { Spot } from '../ui/Spot';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced, usePricer } from '../state/selectors';
 import { digitsToCents, fmt } from '../lib/money';
@@ -139,7 +140,7 @@ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClo
       {problem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{problem}</Txt> : null}
       <Field kind="text" label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="e.g. Damaged box, price match" />
       <Keypad value={digits} onChange={setDigits} onSubmit={set} submitLabel="Set order total" />
-      {cart.orderAdjust ? <Btn title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ marginTop: 6 }} /> : null}
+      {cart.orderAdjust ? <Btn spot={SPOT.cartOrderOff} title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ marginTop: 6 }} /> : null}
     </Sheet>
   );
 }
@@ -207,7 +208,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
             </View>
           </View>
         ) : null}
-        <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
+        <Spot id={lineNoteSpot(lineKey!)}><Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" /></Spot>
         <Btn spot={lineRemoveSpot(lineKey!)} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
       </Sheet>

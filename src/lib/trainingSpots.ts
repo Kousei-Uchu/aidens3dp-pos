@@ -29,6 +29,11 @@ export const SPOT = {
   findKeypadAdd: 'find.keypad.add',    // the Add button under the Keypad tab's keys
   searchField: 'search.field',         // the box in the Search window
   payTotal: 'pay.total',               // the amount due at the top of the Payment page
+  cartMenu: 'cart.menu',                 // the three dots in the cart
+  cartMenuDiscount: 'cart.menu.discount', // Apply cart discount, in the cart menu
+  cartMenuOrder: 'cart.menu.order',       // Whole order price, in the cart menu
+  cartDiscountOff: 'cart.discountoff',    // Remove, in the cart discount window
+  cartOrderOff: 'cart.orderoff',          // Remove adjustment, in the whole order price window
   cartCustomerOff: 'cart.customerx',   // the small x that takes the customer off the cart
   payCash: 'pay.cash',                 // the Cash button on the Payment page
   payGift: 'pay.gift',                 // the Gift card button on the Payment page
@@ -39,12 +44,12 @@ export const SPOT = {
   receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:'] as const;
+export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -64,6 +69,8 @@ export const linePriceSpot = (key: string): string => `line.price:${key}`;
 export const linePriceOffSpot = (key: string): string => `line.priceoff:${key}`;
 export const lineAdjustSpot = (key: string): string => `line.adjust:${key}`;
 export const lineAdjustOffSpot = (key: string): string => `line.adjustoff:${key}`;
+/** The note field in ONE line's window. */
+export const lineNoteSpot = (key: string): string => `line.note:${key}`;
 export const lineKeyOf = (l: { variantId?: string; lineId?: string }): string | undefined => l.variantId ?? l.lineId;
 /** One key on the Keypad tab: a digit, 'C' (clear) or 'del' (delete). */
 export const findKeySpot = (key: string): string => `find.key:${key}`;

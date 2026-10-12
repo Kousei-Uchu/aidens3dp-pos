@@ -50,7 +50,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
           {cart.customer ? <Pressable ref={spotRefFor(SPOT.cartCustomerOff)} collapsable={false} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
         </Pressable>
         {onClose ? <HelpButton id="sales/cart-and-prices" label="Cart help" /> : null}
-        <IconBtn icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
+        <IconBtn spot={SPOT.cartMenu} icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
       </View>
 
       {empty ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}><Ionicons name="cart-outline" size={44} color={c.sub} /><Txt sub style={{ textAlign: 'center', paddingHorizontal: 24 }}>{cartEmptyText(ui.explain)}</Txt></View> : (
@@ -112,8 +112,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row icon="bookmark-outline" title="Save cart" onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
-        <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
-        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
+        <Row spot={SPOT.cartMenuDiscount} icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
+        <Row spot={SPOT.cartMenuOrder} icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
@@ -131,7 +131,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />
       <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
-      <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+      <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} offSpot={SPOT.cartDiscountOff} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
       <OrderAdjustSheet visible={sheet === 'orderadj'} onClose={() => setSheet('none')} />
       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
       <GiftCheckSheet visible={sheet === 'check'} onClose={() => setSheet('none')} />
