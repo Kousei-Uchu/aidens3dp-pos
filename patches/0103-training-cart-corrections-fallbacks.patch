@@ -1,0 +1,378 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 2061a45..1daf1b9 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -218,3 +218,14 @@ On the iPad and on a phone: **More ▸ Training**.
+ 4. In Find the right item, go to the Keypad tab or into a category during the Extras page goal: the card should point you back one move at a time.
+ 
+ Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
++
++## T18. Training: cart-level corrections and fallbacks (B6, 0103)
++
++On the iPad and on a phone, in a Check that does not use discounts, prices or notes.
++
++1. Apply a cart discount (cart menu, Apply cart discount). The ring should go to the three dots, then Apply cart discount, then the Remove button as you go. Do the same with Whole order price.
++2. Put a note on an item. The ring should point at the item, then at the Note field in its window with "Clear the note, then tap Done".
++3. In Build a cart, after the first item, tap the Keypad tab and then try the next add step: the ring should send you back to Quick Menu.
++4. In Find the right item, open the sizes and look at the tab steps: the ring should point at the back arrow first.
++
++Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index a6b0950..6c58dab 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -105,6 +105,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0100 | 2026-10-12 | Training (B6), fixes to **Find the right item**, part 1 of 3 (reported issues 1 to 3). **Retry stuck at step 2:** Checkout kept its tab, category and sizes between attempts, and the page chips are hidden inside a category or the sizes, so the Extras target was off screen and the recovery text sent you to a tab you were already on. Checkout now resets when a practice run starts, restarts or ends, and every grid step has an `aim` that says the next move back to the grid (Quick Menu, back arrow). **Cursor on the real button:** the tab steps point at one tab of the switch (`find.tab:keypad`, `quick`, `all`, drawn as an equal slice of the native control) and the Keypad has a spot per key (`find.key:<digit>`, `C`, `del`). **Typing is checked:** new `typed` view of Checkout (`src/lib/trainingProbe.ts`); the Keypad step finishes only on 4, 5, 0 and points at the next key (or C after a wrong one), the Search step finishes only when egg is typed, and the repair goal and its Add step need exactly $4.50 (a wrong amount is flagged). Tests added to `tests/trainingfinditems.test.ts`. Device test T15 | B6 |
+ | 0101 | 2026-10-12 | Training (B6), fixes part 2 of 3 (reported Find the right item #4 and #5, General #1). **Scroll awareness:** the driver now measures a target even when it is off screen. Wholly off screen: no dim, no ring, an edge cue (Scroll up or Scroll down) and the step text says to scroll first. Cut off at an edge: still ringed, with the cue and a short note. Pure helper `scrollNeed` in `trainingGeometry.ts`. **Brand orange:** the ring, pointer, glow and progress bar are the brand orange `#FB873F` (the docs site's `--highlight`) in every look; the light look's dim is a little stronger so the orange stands out. **Per-line windows:** the minus and Remove item buttons in the line window are now `line.minus:<key>` and `line.remove:<key>` (key is the variant, or the line's own id for a custom amount), so the guide never points at the wrong item's window. With another item's window open it says to close it first and names the item. New `tests/trainingscroll.test.ts`; palette and context tests updated. Device test T16 | B6 |
+ | 0102 | 2026-10-12 | Training (B6), fixes part 3 of 3 (General #2, Card #1, audit). **Correction chains:** an unwanted discount or price change now walks the person down the fix, deepest step first, so the ring follows them in and out of the line window and its sub-windows (new spots `line.discount:`, `line.discountoff:`, `line.price:`, `line.priceoff:`, `line.adjust:`, `line.adjustoff:`, plus `cart.customerx` for the customer x). **Wandered off:** a goal can say it lives on the Quick Menu grid (`at.view` of `top` or `grid`), and the stray check corrects another tab, the sizes or a category one move at a time (used by the Find items other page goal). **Card paid by cash:** card goals finish only when every tender of the last sale is a card; Cash, Gift card and Split now have spots and publish which is open, and the card goals and the Card guide step walk the person back to Card (close window, tap Card), while a sale already paid another way offers Start this part again. **Audit:** every course checked for steps that finish too easily or have no fallback; see the plan doc. Device test T17 | B6 |
++| 0103 | 2026-10-13 | Training (B6), follow-up to 0102. **Cart-level corrections:** an unwanted cart discount, whole order price or note now walks the person down the fix, deepest step first (new spots `cart.menu`, `cart.menu.discount`, `cart.menu.order`, `cart.discountoff`, `cart.orderoff`, `line.note:<key>`). Notes on a line are now noticed (before, only a cart-level note was). **Fallbacks from the 0102 audit:** the shared `gridAim` and `tabsAim` (`src/training/aims.ts`) now steer the cart course's add and quantity steps and the find items back and tab steps away from the wrong tab, category or open sizes; the welcome tile step and the sign-in open step now say how to tap. Device test T18 | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0103-plan.md b/docs/patches/0103-plan.md
+new file mode 100644
+index 0000000..fe04bd5
+--- /dev/null
++++ b/docs/patches/0103-plan.md
+@@ -0,0 +1,12 @@
++# 0103: Training, cart-level corrections and fallbacks
++
++Follows 0102 (which left these two items open).
++
++## Changes
++- Spots for the cart menu (`cart.menu`, `cart.menu.discount`, `cart.menu.order`), the Remove buttons in the cart discount and whole order price windows, and the note field in a line window. Chains in `trainingCourse.ts` use them, deepest first.
++- `SnapLine.noted`: a note on a line is a stray when the goal does not allow notes.
++- `src/training/aims.ts`: `gridAim` moved out of find-items and shared; new `tabsAim`. Used on the cart add and quantity steps and the find items back and tab steps.
++- Welcome g-tile and sign-in g-open say how to reach their target (a tap).
++
++## Still not covered
++Sign-in g-pass-open, g-pass-scan, g-lock, g-pin have no fallback; find-items g-search; pay-card g-tap and g-receipt (inside terminal and receipt windows). Typed-text strays outside the find items typing steps.
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index ca89eb9..4aae9e2 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -14,12 +14,12 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+   }
+ }
+ /** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
+-type CartLike = { id?: string; variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; unitCents?: number };
++type CartLike = { id?: string; variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; unitCents?: number; note?: string };
+ export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
+   return {
+     tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
+     hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds,
+-    cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents, lineId: l.id, itemPriced: l.overrideCents !== undefined, lineAdjusted: !!l.adjust })),
++    cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents, lineId: l.id, itemPriced: l.overrideCents !== undefined, lineAdjusted: !!l.adjust, noted: !!(l.note && l.note.trim()) })),
+     cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
+   };
+ }
+diff --git a/src/lib/trainingCourse.ts b/src/lib/trainingCourse.ts
+index de25a96..86e0f7e 100644
+--- a/src/lib/trainingCourse.ts
++++ b/src/lib/trainingCourse.ts
+@@ -7,7 +7,7 @@
+ // Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
+ // practice till back exactly as the goal began. So nobody can ever get stuck.
+ import type { Allow, Goal, Place, SnapLine, Step, TrainSnap } from './trainingModule';
+-import { SPOT, cartLineSpot, findTabSpot, gridItemSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, linePriceSpot, lineKeyOf, lineMinusSpot, lineRemoveSpot } from './trainingSpots';
++import { SPOT, cartLineSpot, findTabSpot, gridItemSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, linePriceSpot, lineKeyOf, lineMinusSpot, lineNoteSpot, lineRemoveSpot } from './trainingSpots';
+ import { remedyOf } from './trainingRemedies';
+ import type { Gesture } from './pointerGesture';
+ 
+@@ -115,14 +115,15 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
+   const lineNow = (f: (l: SnapLine) => boolean): SnapLine | undefined => now.cart.find(f);
+   if (!allow.has('discount')) {
+     const newLine = lineNow(l => l.discounted && !base.cart.some(b => keyOf(b) === keyOf(l) && b.discounted));
+-    if ((now.cartDiscount && !base.cartDiscount) || newLine) return { id: 'discount', kind: 'discount', fix: 'undo', title: 'A discount was added', say: 'This task does not use a discount. Open the discount and remove it.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen, ...(newLine && lineKeyOf(newLine) ? { chain: [{ target: lineDiscountOffSpot(lineKeyOf(newLine)!), say: 'Tap the Remove button to take the discount off.' }, { target: lineDiscountSpot(lineKeyOf(newLine)!), say: 'Tap Discount, then take it off.' }] } : {}) };
++    if ((now.cartDiscount && !base.cartDiscount) || newLine) return { id: 'discount', kind: 'discount', fix: 'undo', title: 'A discount was added', say: 'This task does not use a discount. Open the discount and remove it.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen, ...(newLine && lineKeyOf(newLine) ? { chain: [{ target: lineDiscountOffSpot(lineKeyOf(newLine)!), say: 'Tap the Remove button to take the discount off.' }, { target: lineDiscountSpot(lineKeyOf(newLine)!), say: 'Tap Discount, then take it off.' }] } : { chain: [{ target: SPOT.cartDiscountOff, say: 'Tap the Remove button to take the cart discount off.' }, { target: SPOT.cartMenuDiscount, say: 'Tap Apply cart discount, then take it off.' }, { target: SPOT.cartMenu, say: 'Tap the three dots in the cart.' }] }) };
+   }
+   if (!allow.has('adjust')) {
+     const newLine = lineNow(l => l.adjusted && !base.cart.some(b => keyOf(b) === keyOf(l) && b.adjusted));
+-    if ((now.orderAdjusted && !base.orderAdjusted) || newLine) return { id: 'adjust', kind: 'adjust', fix: 'undo', title: 'A price was changed', say: 'This task does not change any prices. Open the item or the order price and remove the adjustment.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen, ...(newLine && lineKeyOf(newLine) ? { chain: [...(newLine.itemPriced ? [{ target: linePriceOffSpot(lineKeyOf(newLine)!), say: 'Tap Reset to catalogue price.' }, { target: linePriceSpot(lineKeyOf(newLine)!), say: 'Tap Item price adjustment, then reset the price.' }] : []), ...(newLine.lineAdjusted ? [{ target: lineAdjustOffSpot(lineKeyOf(newLine)!), say: 'Tap Remove adjustment.' }, { target: lineAdjustSpot(lineKeyOf(newLine)!), say: 'Tap Line price adjustment, then remove it.' }] : [])] } : {}) };
++    if ((now.orderAdjusted && !base.orderAdjusted) || newLine) return { id: 'adjust', kind: 'adjust', fix: 'undo', title: 'A price was changed', say: 'This task does not change any prices. Open the item or the order price and remove the adjustment.', target: newLine?.variantId ? cartLineSpot(newLine.variantId) : undefined, via: SPOT.cartOpen, ...(newLine && lineKeyOf(newLine) ? { chain: [...(newLine.itemPriced ? [{ target: linePriceOffSpot(lineKeyOf(newLine)!), say: 'Tap Reset to catalogue price.' }, { target: linePriceSpot(lineKeyOf(newLine)!), say: 'Tap Item price adjustment, then reset the price.' }] : []), ...(newLine.lineAdjusted ? [{ target: lineAdjustOffSpot(lineKeyOf(newLine)!), say: 'Tap Remove adjustment.' }, { target: lineAdjustSpot(lineKeyOf(newLine)!), say: 'Tap Line price adjustment, then remove it.' }] : [])] } : (now.orderAdjusted && !base.orderAdjusted) ? { chain: [{ target: SPOT.cartOrderOff, say: 'Tap Remove adjustment.' }, { target: SPOT.cartMenuOrder, say: 'Tap Whole order price, then remove the adjustment.' }, { target: SPOT.cartMenu, say: 'Tap the three dots in the cart.' }] } : {}) };
+   }
+   if (!allow.has('customer') && now.hasCustomer && !base.hasCustomer) return { id: 'customer', kind: 'customer', fix: 'undo', title: 'A customer was added', say: 'This task does not need a customer on the sale. Open the cart and take the customer off.', target: SPOT.cartCustomerOff, via: SPOT.cartOpen };
+-  if (!allow.has('note') && now.hasNote && !base.hasNote) return { id: 'note', kind: 'note', fix: 'undo', title: 'A note was added', say: 'This task does not need a note. Open the cart and clear the note.', via: SPOT.cartOpen };
++  const noteLine = lineNow(x => !!x.noted && !base.cart.some(b => keyOf(b) === keyOf(x) && b.noted));
++  if (!allow.has('note') && ((now.hasNote && !base.hasNote) || noteLine)) return { id: 'note', kind: 'note', fix: 'undo', title: 'A note was added', say: 'This task does not need a note. Open the item, clear the note, then tap Done.', target: noteLine?.variantId ? cartLineSpot(noteLine.variantId) : undefined, via: SPOT.cartOpen, ...(noteLine && lineKeyOf(noteLine) ? { chain: [{ target: lineNoteSpot(lineKeyOf(noteLine)!), say: 'Clear the note, then tap Done.' }] } : {}) };
+   if (!allow.has('tender') && now.tenders > base.tenders) return { id: 'tender', kind: 'tender', fix: 'restart', title: 'A payment was started', say: 'A payment was started that this part did not need. Tap Start this part again to set it up fresh.' };
+ 
+   // Only when the cart is right: a window this task does not need.
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 9cb194d..f2c3b9f 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -44,7 +44,7 @@ export type DemoStep = {
+ export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
+ 
+ /** One cart line as training sees it. */
+-export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
++export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
+ /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
+ export type TrainSnap = {
+   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index 9c9c3c7..d5978e1 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -29,6 +29,11 @@ export const SPOT = {
+   findKeypadAdd: 'find.keypad.add',    // the Add button under the Keypad tab's keys
+   searchField: 'search.field',         // the box in the Search window
+   payTotal: 'pay.total',               // the amount due at the top of the Payment page
++  cartMenu: 'cart.menu',                 // the three dots in the cart
++  cartMenuDiscount: 'cart.menu.discount', // Apply cart discount, in the cart menu
++  cartMenuOrder: 'cart.menu.order',       // Whole order price, in the cart menu
++  cartDiscountOff: 'cart.discountoff',    // Remove, in the cart discount window
++  cartOrderOff: 'cart.orderoff',          // Remove adjustment, in the whole order price window
+   cartCustomerOff: 'cart.customerx',   // the small x that takes the customer off the cart
+   payCash: 'pay.cash',                 // the Cash button on the Payment page
+   payGift: 'pay.gift',                 // the Gift card button on the Payment page
+@@ -39,12 +44,12 @@ export const SPOT = {
+   receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
+ } as const;
+ /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
++export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
+ /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
+-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
++export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+ export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
+ /** Spots whose id ends in a record id: a grid tile, or a cart line. */
+-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:'] as const;
++export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
+ export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
+ export const gridItemSpot = (id: string): string => `grid.item:${id}`;
+ export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
+@@ -64,6 +69,8 @@ export const linePriceSpot = (key: string): string => `line.price:${key}`;
+ export const linePriceOffSpot = (key: string): string => `line.priceoff:${key}`;
+ export const lineAdjustSpot = (key: string): string => `line.adjust:${key}`;
+ export const lineAdjustOffSpot = (key: string): string => `line.adjustoff:${key}`;
++/** The note field in ONE line's window. */
++export const lineNoteSpot = (key: string): string => `line.note:${key}`;
+ export const lineKeyOf = (l: { variantId?: string; lineId?: string }): string | undefined => l.variantId ?? l.lineId;
+ /** One key on the Keypad tab: a digit, 'C' (clear) or 'del' (delete). */
+ export const findKeySpot = (key: string): string => `find.key:${key}`;
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index f8f3d09..9032a68 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -50,7 +50,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+           {cart.customer ? <Pressable ref={spotRefFor(SPOT.cartCustomerOff)} collapsable={false} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
+         </Pressable>
+         {onClose ? <HelpButton id="sales/cart-and-prices" label="Cart help" /> : null}
+-        <IconBtn icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
++        <IconBtn spot={SPOT.cartMenu} icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />
+       </View>
+ 
+       {empty ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}><Ionicons name="cart-outline" size={44} color={c.sub} /><Txt sub style={{ textAlign: 'center', paddingHorizontal: 24 }}>{cartEmptyText(ui.explain)}</Txt></View> : (
+@@ -112,8 +112,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <Row icon="bookmark-outline" title="Save cart" onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
+         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
+         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
+-        <Row icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
+-        <Row icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
++        <Row spot={SPOT.cartMenuDiscount} icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />
++        <Row spot={SPOT.cartMenuOrder} icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
+         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
+         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
+         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
+@@ -131,7 +131,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />
+       <LineEditor line={edit ? cart.lines.find(l => l.id === edit.id) ?? null : null} onClose={() => setEdit(null)} />
+       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
+-      <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
++      <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} offSpot={SPOT.cartDiscountOff} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+       <OrderAdjustSheet visible={sheet === 'orderadj'} onClose={() => setSheet('none')} />
+       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
+       <GiftCheckSheet visible={sheet === 'check'} onClose={() => setSheet('none')} />
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 01c7050..4f12059 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -3,8 +3,9 @@ import React, { useEffect, useMemo, useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+-import { SPOT, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
++import { SPOT, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
+ import { setOpenLine } from '../lib/trainingProbe';
++import { Spot } from '../ui/Spot';
+ import { useApp } from '../state/store';
+ import { useCatalogue, usePriced, usePricer } from '../state/selectors';
+ import { digitsToCents, fmt } from '../lib/money';
+@@ -139,7 +140,7 @@ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClo
+       {problem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{problem}</Txt> : null}
+       <Field kind="text" label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="e.g. Damaged box, price match" />
+       <Keypad value={digits} onChange={setDigits} onSubmit={set} submitLabel="Set order total" />
+-      {cart.orderAdjust ? <Btn title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ marginTop: 6 }} /> : null}
++      {cart.orderAdjust ? <Btn spot={SPOT.cartOrderOff} title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ marginTop: 6 }} /> : null}
+     </Sheet>
+   );
+ }
+@@ -207,7 +208,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+             </View>
+           </View>
+         ) : null}
+-        <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
++        <Spot id={lineNoteSpot(lineKey!)}><Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" /></Spot>
+         <Btn spot={lineRemoveSpot(lineKey!)} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
+         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
+       </Sheet>
+diff --git a/src/training/aims.ts b/src/training/aims.ts
+new file mode 100644
+index 0000000..6f6bbc0
+--- /dev/null
++++ b/src/training/aims.ts
+@@ -0,0 +1,15 @@
++// Location: src/training/aims.ts
++// Shared `aim` helpers for Guide steps (see Step.aim in trainingModule.ts): what to say and point at right now when Checkout is not where the step needs it.
++import type { TrainSnap } from '../lib/trainingModule';
++import { SPOT, findTabSpot } from '../lib/trainingSpots';
++
++/** Where Checkout has to be for a step on the grid. Returns the next move to get there (the practice may have left Checkout on another tab, inside a category or in the sizes), or null when it is already right. */
++export const gridAim = (want: 'top' | 'inside' | 'sizes') => (s: TrainSnap): { say: string; target: string } | null => {
++  const w = s.where; if (!w) return null;
++  if (w.tab !== 'quick') return { say: 'Tap Quick Menu to get back to the grid.', target: findTabSpot('quick') };
++  if (w.sizes && want !== 'sizes') return { say: 'The sizes are open. Tap the back arrow to close them.', target: SPOT.findBack };
++  if (w.depth > 0 && want === 'top') return { say: 'You are inside a category. Tap the back arrow to go up to the first page.', target: SPOT.findBack };
++  return null;
++};
++/** For a step on the Keypad | Quick Menu | All products switch: the switch is hidden while the sizes are open, so close them first. */
++export const tabsAim = (s: TrainSnap): { say: string; target: string } | null => (s.where?.sizes ? { say: 'The sizes are open. Tap the back arrow to close them first.', target: SPOT.findBack } : null);
+diff --git a/src/training/modules/cart.ts b/src/training/modules/cart.ts
+index b8684e2..97cc37f 100644
+--- a/src/training/modules/cart.ts
++++ b/src/training/modules/cart.ts
+@@ -2,6 +2,7 @@
+ // "Build a cart": add items to a sale, change quantities, and take things out.
+ import type { TrainingModule } from '../../lib/trainingModule';
+ import { SPOT, cartLineSpot, gridItemSpot } from '../../lib/trainingSpots';
++import { gridAim } from '../aims';
+ 
+ const BEE = 'train-v-bee'; const DRAGON = 'train-v-dragon'; const EGG = 'train-v-egg';
+ const has = (s: { cart: { variantId?: string }[] }, id: string): boolean => s.cart.some(l => l.variantId === id);
+@@ -69,9 +70,9 @@ export const cart: TrainingModule = {
+   guide: [
+     { id: 'g-intro', say: 'You will build a small sale on the real till with practice data: add three items, add another, then take one out.', until: { kind: 'next' } },
+     { id: 'g-add-first', target: gridItemSpot(BEE), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'state', test: s => has(s, BEE) }, gesture: 'tap', recover: { say: 'On the Checkout tab, tap the Bumble Bee tile.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false }, allow: ['add'] },
+-    { id: 'g-add-second', target: gridItemSpot(DRAGON), say: 'Add a different item. Tap the Red Dragon tile.', until: { kind: 'state', test: s => has(s, DRAGON) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
+-    { id: 'g-add-third', target: gridItemSpot(EGG), say: 'Add one more. Tap the Dragon Egg tile.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
+-    { id: 'g-qty', target: gridItemSpot(BEE), say: 'Tap the Bumble Bee tile again. Tapping the same item adds another one.', until: { kind: 'state', test: s => s.qty >= 4 }, gesture: 'tap', allow: ['add', 'qty'], at: { tabs: ['checkout'], routes: ['cart'] } },
++    { id: 'g-add-second', target: gridItemSpot(DRAGON), say: 'Add a different item. Tap the Red Dragon tile.', until: { kind: 'state', test: s => has(s, DRAGON) }, gesture: 'tap', aim: gridAim('inside'), allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
++    { id: 'g-add-third', target: gridItemSpot(EGG), say: 'Add one more. Tap the Dragon Egg tile.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', aim: gridAim('inside'), allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'] } },
++    { id: 'g-qty', target: gridItemSpot(BEE), say: 'Tap the Bumble Bee tile again. Tapping the same item adds another one.', until: { kind: 'state', test: s => s.qty >= 4 }, gesture: 'tap', aim: gridAim('inside'), allow: ['add', 'qty'], at: { tabs: ['checkout'], routes: ['cart'] } },
+     { id: 'g-remove', target: cartLineSpot(DRAGON), say: 'The customer does not want the Red Dragon after all. Swipe its line to the left, then tap Remove. On a phone, open the cart first.', until: { kind: 'state', test: s => !has(s, DRAGON) }, gesture: 'swipe-left', allow: ['remove'], recover: { say: 'Open the cart from the bar at the bottom, then find the Red Dragon line.', target: SPOT.cartOpen }, at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
+     { id: 'g-total', say: 'The total is always at the bottom of the cart and counts every quantity. Charge is how you take payment, which is the next course.', until: { kind: 'next' } },
+   ],
+diff --git a/src/training/modules/find-items.ts b/src/training/modules/find-items.ts
+index f5a379e..8d0f948 100644
+--- a/src/training/modules/find-items.ts
++++ b/src/training/modules/find-items.ts
+@@ -2,6 +2,7 @@
+ // "Find the right item": pages, categories, the variation picker, Search, and the Keypad for a price with no tile.
+ // Practice data: Home and Extras pages, Animals and Dragons categories, a Highland Cow in two sizes (see trainingSandbox.ts).
+ import type { TrainingModule, TrainSnap } from '../../lib/trainingModule';
++import { gridAim, tabsAim } from '../aims';
+ import { SPOT, cartLineSpot, findKeySpot, findTabSpot, gridCatSpot, gridItemSpot, gridPageSpot, pickVariantSpot, searchResultSpot } from '../../lib/trainingSpots';
+ import { PRACTICE_PAGE_EXTRAS, PRACTICE_PAGE_HOME } from '../../lib/trainingSandbox';
+ 
+@@ -12,14 +13,6 @@ const custom = (s: { cart: { kind: string }[] }): boolean => s.cart.some(l => l.
+ const at = { tabs: ['checkout'], routes: ['cart'], sheets: false };
+ const KEYS = '450'; const WORD = 'egg';
+ const priced = (s: { cart: { kind: string; unitCents?: number }[] }): boolean => s.cart.some(l => l.kind === 'custom' && l.unitCents === 450);
+-/** Where Checkout has to be for a step on the grid. Returns the next move to get there (the practice may have left Checkout on another tab, inside a category or in the sizes), or null when it is already right. */
+-const gridAim = (want: 'top' | 'inside' | 'sizes') => (s: TrainSnap): { say: string; target: string } | null => {
+-  const w = s.where; if (!w) return null;
+-  if (w.tab !== 'quick') return { say: 'Tap Quick Menu to get back to the grid.', target: findTabSpot('quick') };
+-  if (w.sizes && want !== 'sizes') return { say: 'The sizes are open. Tap the back arrow to close them.', target: SPOT.findBack };
+-  if (w.depth > 0 && want === 'top') return { say: 'You are inside a category. Tap the back arrow to go up to the first page.', target: SPOT.findBack };
+-  return null;
+-};
+ /** The next key to tap to key in 450, or the way to start again when something else was keyed in. */
+ const keysAim = (s: TrainSnap): { say: string; target: string } | null => {
+   const t = s.typed?.keypad ?? '';
+@@ -125,17 +118,17 @@ export const findItems: TrainingModule = {
+     { id: 'g-category', target: gridCatSpot(ANIMALS), say: 'Tap the Animals tile. A tile like this opens a category.', until: { kind: 'press', id: gridCatSpot(ANIMALS) }, gesture: 'tap', aim: gridAim('top'), allow: [], at },
+     { id: 'g-cow', target: gridItemSpot(COW_P), say: 'Look at the path above the tiles: you are inside Animals. Tap the Highland Cow. It comes in more than one size.', until: { kind: 'press', id: gridItemSpot(COW_P) }, gesture: 'tap', aim: gridAim('inside'), allow: [], at },
+     { id: 'g-large', target: pickVariantSpot(COW_L), say: 'One tile per size. Tap Large to add it to the cart.', until: { kind: 'state', test: s => has(s, COW_L) }, gesture: 'tap', aim: gridAim('sizes'), allow: ['add'], at },
+-    { id: 'g-back-sizes', target: SPOT.findBack, say: 'The sizes stay open so you can add another. Tap the back arrow to leave them.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', allow: [], at },
+-    { id: 'g-back-category', target: SPOT.findBack, say: 'You are back in Animals. Tap the back arrow again to go up to the first page.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', allow: [], at },
++    { id: 'g-back-sizes', target: SPOT.findBack, say: 'The sizes stay open so you can add another. Tap the back arrow to leave them.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', aim: gridAim('sizes'), allow: [], at },
++    { id: 'g-back-category', target: SPOT.findBack, say: 'You are back in Animals. Tap the back arrow again to go up to the first page.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', aim: gridAim('inside'), allow: [], at },
+     { id: 'g-search', target: SPOT.findSearch, say: 'Cannot see an item? Tap the search bar.', until: { kind: 'press', id: SPOT.findSearch }, gesture: 'tap', allow: [], at },
+     { id: 'g-type', target: SPOT.searchField, say: 'Type egg. The matches appear under the box as you type.', until: { kind: 'state', test: s => (s.typed?.search ?? '').trim().toLowerCase() === WORD }, gesture: 'tap', aim: wordAim, allow: [], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
+     { id: 'g-result', target: searchResultSpot(EGG), say: 'Tap the Dragon Egg in the results. It is added and the window closes.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
+-    { id: 'g-keypad-tab', target: findTabSpot('keypad'), say: 'For something with no tile, open the Keypad tab.', until: { kind: 'press', id: findTabSpot('keypad') }, gesture: 'tap', allow: [], at },
++    { id: 'g-keypad-tab', target: findTabSpot('keypad'), say: 'For something with no tile, open the Keypad tab.', until: { kind: 'press', id: findTabSpot('keypad') }, gesture: 'tap', aim: tabsAim, allow: [], at },
+     { id: 'g-keys', target: findKeySpot('4'), say: 'Key in a price. Tap 4, 5, 0 for $4.50.', until: { kind: 'state', test: s => s.typed?.keypad === KEYS }, gesture: 'tap', aim: keysAim, allow: [], at },
+     { id: 'g-add', target: SPOT.findKeypadAdd, say: 'Tap Add. The amount joins the cart as a custom amount.', until: { kind: 'state', test: s => priced(s) }, gesture: 'tap', allow: ['add'], at },
+-    { id: 'g-all-tab', target: findTabSpot('all'), say: 'One more place: tap All products to see everything in the catalogue.', until: { kind: 'press', id: findTabSpot('all') }, gesture: 'tap', allow: [], at },
++    { id: 'g-all-tab', target: findTabSpot('all'), say: 'One more place: tap All products to see everything in the catalogue.', until: { kind: 'press', id: findTabSpot('all') }, gesture: 'tap', aim: tabsAim, allow: [], at },
+     { id: 'g-filter', target: SPOT.findFilter, say: 'Type in this box to narrow the list. A product with several sizes opens its sizes when you tap it, the same as on the grid.', until: { kind: 'next' } },
+-    { id: 'g-quick-tab', target: findTabSpot('quick'), say: 'Tap Quick Menu to go back to the grid.', until: { kind: 'press', id: findTabSpot('quick') }, gesture: 'tap', allow: [], at },
++    { id: 'g-quick-tab', target: findTabSpot('quick'), say: 'Tap Quick Menu to go back to the grid.', until: { kind: 'press', id: findTabSpot('quick') }, gesture: 'tap', aim: tabsAim, allow: [], at },
+   ],
+   check1: [
+     { id: 'other-page', title: 'Add the Sticker Pack to the cart', until: { kind: 'state', test: s => has(s, STICKER) }, ladder: ['Not every item is on the first page of the grid.', 'Look at the page names above the tiles.', 'Open the Extras page, then tap the Sticker Pack tile.'], reveal: gridItemSpot(STICKER), via: gridPageSpot(PRACTICE_PAGE_EXTRAS), gesture: 'tap', allow: ['add'], at: { ...at, view: 'top' } },
+diff --git a/src/training/modules/sign-in.ts b/src/training/modules/sign-in.ts
+index 5587cc3..17c7aff 100644
+--- a/src/training/modules/sign-in.ts
++++ b/src/training/modules/sign-in.ts
+@@ -95,7 +95,7 @@ export const signIn: TrainingModule = {
+   },
+   guide: [
+     { id: 'g-who', say: 'The Casey tile names who is signed in. This practice till starts with Casey, a cashier.', target: SWITCH, until: { kind: 'next' } },
+-    { id: 'g-open', say: 'Tap the Casey tile to hand the till to someone else without locking it.', target: SWITCH, until: { kind: 'visible', id: SPOT.loginPinpad }, recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
++    { id: 'g-open', say: 'Tap the Casey tile to hand the till to someone else without locking it.', target: SWITCH, until: { kind: 'visible', id: SPOT.loginPinpad }, gesture: 'tap', recover: { say: 'Open the Checkout tab, then tap the tile that names who is signed in.', target: SPOT.tabCheckout } },
+     { id: 'g-pass-open', say: 'Morgan has a cashier pass. Tap Scan pass.', target: SPOT.loginScanPass, until: { kind: 'visible', id: SPOT.passScan }, at: { sheets: true } },
+     { id: 'g-pass-scan', say: 'On a real till you hold the pass under the scanner. Here, tap Scan this pass.', target: SPOT.passScan, until: { kind: 'state', test: morganIn }, gesture: 'tap', allow: [], at: { sheets: true } },
+     { id: 'g-keep-cart', say: 'The tile now names Morgan. Switching never clears the cart, so a sale in progress carries straight on.', target: SWITCH, until: { kind: 'next' } },
+diff --git a/src/training/modules/welcome.ts b/src/training/modules/welcome.ts
+index 524df79..c12b875 100644
+--- a/src/training/modules/welcome.ts
++++ b/src/training/modules/welcome.ts
+@@ -83,7 +83,7 @@ export const welcome: TrainingModule = {
+   },
+   guide: [
+     { id: 'g-dock', say: 'The bar at the bottom stays with you in practice. It shows what you are doing, and has Hint and Exit buttons.', until: { kind: 'next' } },
+-    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false } },
++    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, gesture: 'tap', recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false } },
+     { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen },
+       watch: [{ id: 'bee-gone', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The Bumble Bee has gone from the cart. Tap its tile to add it back.', target: gridItemSpot('train-v-bee'), how: ['Find the Bumble Bee tile on the grid.', 'Tap it once.'] }] },
+     { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, allow: ['remove'], gesture: 'swipe-left', at: { tabs: ['checkout'], routes: ['cart'], sheets: false }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
+diff --git a/tests/trainingcontext.test.ts b/tests/trainingcontext.test.ts
+index ee7f338..b059fcd 100644
+--- a/tests/trainingcontext.test.ts
++++ b/tests/trainingcontext.test.ts
+@@ -4,7 +4,7 @@ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import { diagnose, fixCandidates, stepRules } from '../src/lib/trainingCourse';
+ import { snapOf } from '../src/lib/trainingConds';
+-import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, lineAdjustOffSpot, findTabSpot } from '../src/lib/trainingSpots';
++import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, lineAdjustOffSpot, lineNoteSpot, findTabSpot } from '../src/lib/trainingSpots';
+ import { validateModule, type Step, type TrainingModule } from '../src/lib/trainingModule';
+ import { isKnownSpot } from '../src/lib/trainingSpots';
+ import { welcome } from '../src/training/modules/welcome';
+@@ -100,3 +100,22 @@ test('wandering off the grid on a goal that lives on the grid is corrected one m
+   assert.equal(diagnose({ ...goal, at: { ...goal.at, view: 'grid' as const } }, frame, snap(), at('quick', 2)), null, 'grid allows being inside a category');
+   assert.equal(diagnose({ allow: [], at: { tabs: ['checkout'], routes: ['cart'] } }, frame, snap(), at('keypad')), null, 'a goal with no view rule is left alone');
+ });
++
++test('a cart discount, a whole order price and a note are walked back through the cart menu, deepest step first', () => {
++  const base = snap({ lines: [line('train-v-egg')] }); const mk = (o: any) => snapOf({ tab: 'checkout', route: '', cart: { lines: [line('train-v-egg')], ...o }, sales: 0, paying: false });
++  const d = diagnose({ allow: [] }, frame, base, mk({ discount: {} }))!; assert.equal(d.kind, 'discount');
++  assert.deepEqual(fixCandidates(d, false).slice(0, 3).map(c => c.target), [SPOT.cartDiscountOff, SPOT.cartMenuDiscount, SPOT.cartMenu]);
++  assert.deepEqual(fixCandidates(d, true).map(c => c.target), [SPOT.cartDiscountOff, SPOT.cartMenuDiscount, SPOT.cartMenu, SPOT.sheetClose]);
++  const o = diagnose({ allow: [] }, frame, base, mk({ orderAdjust: {} }))!; assert.equal(o.kind, 'adjust'); assert.deepEqual(fixCandidates(o, false).slice(0, 3).map(c => c.target), [SPOT.cartOrderOff, SPOT.cartMenuOrder, SPOT.cartMenu]);
++  const n = diagnose({ allow: [] }, frame, base, snap({ lines: [{ ...line('train-v-egg'), note: 'gift' }] }))!; assert.equal(n.kind, 'note');
++  assert.equal(fixCandidates(n, true)[0].target, lineNoteSpot('train-v-egg')); assert.equal(n.target, cartLineSpot('train-v-egg'));
++  assert.equal(diagnose({ allow: ['note'] }, frame, base, snap({ lines: [{ ...line('train-v-egg'), note: 'gift' }] })), null, 'a goal that allows notes is not corrected');
++  assert.ok(WINDOW_SPOTS.includes(SPOT.cartDiscountOff) && WINDOW_SPOTS.includes(SPOT.cartMenuDiscount) && !WINDOW_SPOTS.includes(SPOT.cartMenu));
++});
++test('the shared grid fallbacks steer the cart and find items steps back', async () => {
++  const { gridAim, tabsAim } = await import('../src/training/aims'); const { cart } = await import('../src/training/modules/cart'); const { welcome } = await import('../src/training/modules/welcome');
++  const at = (tab: any, depth = 0, sizes = false) => snap({ where: { tab, depth, sizes } });
++  assert.equal(gridAim('inside')(at('keypad'))!.target, findTabSpot('quick')); assert.equal(gridAim('inside')(at('quick', 2)), null); assert.equal(tabsAim(at('quick', 0, true))!.target, SPOT.findBack); assert.equal(tabsAim(at('quick')), null);
++  for (const id of ['g-add-second', 'g-add-third', 'g-qty']) assert.equal(typeof cart.guide.find(s => s.id === id)!.aim, 'function', id);
++  assert.equal(welcome.guide.find(s => s.id === 'g-tile')!.gesture, 'tap');
++});

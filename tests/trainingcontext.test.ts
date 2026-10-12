@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { diagnose, fixCandidates, stepRules } from '../src/lib/trainingCourse';
 import { snapOf } from '../src/lib/trainingConds';
-import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, lineAdjustOffSpot, findTabSpot } from '../src/lib/trainingSpots';
+import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, lineAdjustOffSpot, lineNoteSpot, findTabSpot } from '../src/lib/trainingSpots';
 import { validateModule, type Step, type TrainingModule } from '../src/lib/trainingModule';
 import { isKnownSpot } from '../src/lib/trainingSpots';
 import { welcome } from '../src/training/modules/welcome';
@@ -99,4 +99,23 @@ test('wandering off the grid on a goal that lives on the grid is corrected one m
   assert.equal(diagnose(goal, frame, snap(), at('keypad'))!.target, findTabSpot('quick')); assert.equal(diagnose(goal, frame, snap(), at('quick', 1, true))!.target, SPOT.findBack); assert.equal(diagnose(goal, frame, snap(), at('quick', 2))!.target, SPOT.findBack);
   assert.equal(diagnose({ ...goal, at: { ...goal.at, view: 'grid' as const } }, frame, snap(), at('quick', 2)), null, 'grid allows being inside a category');
   assert.equal(diagnose({ allow: [], at: { tabs: ['checkout'], routes: ['cart'] } }, frame, snap(), at('keypad')), null, 'a goal with no view rule is left alone');
+});
+
+test('a cart discount, a whole order price and a note are walked back through the cart menu, deepest step first', () => {
+  const base = snap({ lines: [line('train-v-egg')] }); const mk = (o: any) => snapOf({ tab: 'checkout', route: '', cart: { lines: [line('train-v-egg')], ...o }, sales: 0, paying: false });
+  const d = diagnose({ allow: [] }, frame, base, mk({ discount: {} }))!; assert.equal(d.kind, 'discount');
+  assert.deepEqual(fixCandidates(d, false).slice(0, 3).map(c => c.target), [SPOT.cartDiscountOff, SPOT.cartMenuDiscount, SPOT.cartMenu]);
+  assert.deepEqual(fixCandidates(d, true).map(c => c.target), [SPOT.cartDiscountOff, SPOT.cartMenuDiscount, SPOT.cartMenu, SPOT.sheetClose]);
+  const o = diagnose({ allow: [] }, frame, base, mk({ orderAdjust: {} }))!; assert.equal(o.kind, 'adjust'); assert.deepEqual(fixCandidates(o, false).slice(0, 3).map(c => c.target), [SPOT.cartOrderOff, SPOT.cartMenuOrder, SPOT.cartMenu]);
+  const n = diagnose({ allow: [] }, frame, base, snap({ lines: [{ ...line('train-v-egg'), note: 'gift' }] }))!; assert.equal(n.kind, 'note');
+  assert.equal(fixCandidates(n, true)[0].target, lineNoteSpot('train-v-egg')); assert.equal(n.target, cartLineSpot('train-v-egg'));
+  assert.equal(diagnose({ allow: ['note'] }, frame, base, snap({ lines: [{ ...line('train-v-egg'), note: 'gift' }] })), null, 'a goal that allows notes is not corrected');
+  assert.ok(WINDOW_SPOTS.includes(SPOT.cartDiscountOff) && WINDOW_SPOTS.includes(SPOT.cartMenuDiscount) && !WINDOW_SPOTS.includes(SPOT.cartMenu));
+});
+test('the shared grid fallbacks steer the cart and find items steps back', async () => {
+  const { gridAim, tabsAim } = await import('../src/training/aims'); const { cart } = await import('../src/training/modules/cart'); const { welcome } = await import('../src/training/modules/welcome');
+  const at = (tab: any, depth = 0, sizes = false) => snap({ where: { tab, depth, sizes } });
+  assert.equal(gridAim('inside')(at('keypad'))!.target, findTabSpot('quick')); assert.equal(gridAim('inside')(at('quick', 2)), null); assert.equal(tabsAim(at('quick', 0, true))!.target, SPOT.findBack); assert.equal(tabsAim(at('quick')), null);
+  for (const id of ['g-add-second', 'g-add-third', 'g-qty']) assert.equal(typeof cart.guide.find(s => s.id === id)!.aim, 'function', id);
+  assert.equal(welcome.guide.find(s => s.id === 'g-tile')!.gesture, 'tap');
 });

@@ -2,6 +2,7 @@
 // "Find the right item": pages, categories, the variation picker, Search, and the Keypad for a price with no tile.
 // Practice data: Home and Extras pages, Animals and Dragons categories, a Highland Cow in two sizes (see trainingSandbox.ts).
 import type { TrainingModule, TrainSnap } from '../../lib/trainingModule';
+import { gridAim, tabsAim } from '../aims';
 import { SPOT, cartLineSpot, findKeySpot, findTabSpot, gridCatSpot, gridItemSpot, gridPageSpot, pickVariantSpot, searchResultSpot } from '../../lib/trainingSpots';
 import { PRACTICE_PAGE_EXTRAS, PRACTICE_PAGE_HOME } from '../../lib/trainingSandbox';
 
@@ -12,14 +13,6 @@ const custom = (s: { cart: { kind: string }[] }): boolean => s.cart.some(l => l.
 const at = { tabs: ['checkout'], routes: ['cart'], sheets: false };
 const KEYS = '450'; const WORD = 'egg';
 const priced = (s: { cart: { kind: string; unitCents?: number }[] }): boolean => s.cart.some(l => l.kind === 'custom' && l.unitCents === 450);
-/** Where Checkout has to be for a step on the grid. Returns the next move to get there (the practice may have left Checkout on another tab, inside a category or in the sizes), or null when it is already right. */
-const gridAim = (want: 'top' | 'inside' | 'sizes') => (s: TrainSnap): { say: string; target: string } | null => {
-  const w = s.where; if (!w) return null;
-  if (w.tab !== 'quick') return { say: 'Tap Quick Menu to get back to the grid.', target: findTabSpot('quick') };
-  if (w.sizes && want !== 'sizes') return { say: 'The sizes are open. Tap the back arrow to close them.', target: SPOT.findBack };
-  if (w.depth > 0 && want === 'top') return { say: 'You are inside a category. Tap the back arrow to go up to the first page.', target: SPOT.findBack };
-  return null;
-};
 /** The next key to tap to key in 450, or the way to start again when something else was keyed in. */
 const keysAim = (s: TrainSnap): { say: string; target: string } | null => {
   const t = s.typed?.keypad ?? '';
@@ -125,17 +118,17 @@ export const findItems: TrainingModule = {
     { id: 'g-category', target: gridCatSpot(ANIMALS), say: 'Tap the Animals tile. A tile like this opens a category.', until: { kind: 'press', id: gridCatSpot(ANIMALS) }, gesture: 'tap', aim: gridAim('top'), allow: [], at },
     { id: 'g-cow', target: gridItemSpot(COW_P), say: 'Look at the path above the tiles: you are inside Animals. Tap the Highland Cow. It comes in more than one size.', until: { kind: 'press', id: gridItemSpot(COW_P) }, gesture: 'tap', aim: gridAim('inside'), allow: [], at },
     { id: 'g-large', target: pickVariantSpot(COW_L), say: 'One tile per size. Tap Large to add it to the cart.', until: { kind: 'state', test: s => has(s, COW_L) }, gesture: 'tap', aim: gridAim('sizes'), allow: ['add'], at },
-    { id: 'g-back-sizes', target: SPOT.findBack, say: 'The sizes stay open so you can add another. Tap the back arrow to leave them.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', allow: [], at },
-    { id: 'g-back-category', target: SPOT.findBack, say: 'You are back in Animals. Tap the back arrow again to go up to the first page.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', allow: [], at },
+    { id: 'g-back-sizes', target: SPOT.findBack, say: 'The sizes stay open so you can add another. Tap the back arrow to leave them.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', aim: gridAim('sizes'), allow: [], at },
+    { id: 'g-back-category', target: SPOT.findBack, say: 'You are back in Animals. Tap the back arrow again to go up to the first page.', until: { kind: 'press', id: SPOT.findBack }, gesture: 'tap', aim: gridAim('inside'), allow: [], at },
     { id: 'g-search', target: SPOT.findSearch, say: 'Cannot see an item? Tap the search bar.', until: { kind: 'press', id: SPOT.findSearch }, gesture: 'tap', allow: [], at },
     { id: 'g-type', target: SPOT.searchField, say: 'Type egg. The matches appear under the box as you type.', until: { kind: 'state', test: s => (s.typed?.search ?? '').trim().toLowerCase() === WORD }, gesture: 'tap', aim: wordAim, allow: [], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
     { id: 'g-result', target: searchResultSpot(EGG), say: 'Tap the Dragon Egg in the results. It is added and the window closes.', until: { kind: 'state', test: s => has(s, EGG) }, gesture: 'tap', allow: ['add'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true } },
-    { id: 'g-keypad-tab', target: findTabSpot('keypad'), say: 'For something with no tile, open the Keypad tab.', until: { kind: 'press', id: findTabSpot('keypad') }, gesture: 'tap', allow: [], at },
+    { id: 'g-keypad-tab', target: findTabSpot('keypad'), say: 'For something with no tile, open the Keypad tab.', until: { kind: 'press', id: findTabSpot('keypad') }, gesture: 'tap', aim: tabsAim, allow: [], at },
     { id: 'g-keys', target: findKeySpot('4'), say: 'Key in a price. Tap 4, 5, 0 for $4.50.', until: { kind: 'state', test: s => s.typed?.keypad === KEYS }, gesture: 'tap', aim: keysAim, allow: [], at },
     { id: 'g-add', target: SPOT.findKeypadAdd, say: 'Tap Add. The amount joins the cart as a custom amount.', until: { kind: 'state', test: s => priced(s) }, gesture: 'tap', allow: ['add'], at },
-    { id: 'g-all-tab', target: findTabSpot('all'), say: 'One more place: tap All products to see everything in the catalogue.', until: { kind: 'press', id: findTabSpot('all') }, gesture: 'tap', allow: [], at },
+    { id: 'g-all-tab', target: findTabSpot('all'), say: 'One more place: tap All products to see everything in the catalogue.', until: { kind: 'press', id: findTabSpot('all') }, gesture: 'tap', aim: tabsAim, allow: [], at },
     { id: 'g-filter', target: SPOT.findFilter, say: 'Type in this box to narrow the list. A product with several sizes opens its sizes when you tap it, the same as on the grid.', until: { kind: 'next' } },
-    { id: 'g-quick-tab', target: findTabSpot('quick'), say: 'Tap Quick Menu to go back to the grid.', until: { kind: 'press', id: findTabSpot('quick') }, gesture: 'tap', allow: [], at },
+    { id: 'g-quick-tab', target: findTabSpot('quick'), say: 'Tap Quick Menu to go back to the grid.', until: { kind: 'press', id: findTabSpot('quick') }, gesture: 'tap', aim: tabsAim, allow: [], at },
   ],
   check1: [
     { id: 'other-page', title: 'Add the Sticker Pack to the cart', until: { kind: 'state', test: s => has(s, STICKER) }, ladder: ['Not every item is on the first page of the grid.', 'Look at the page names above the tiles.', 'Open the Extras page, then tap the Sticker Pack tile.'], reveal: gridItemSpot(STICKER), via: gridPageSpot(PRACTICE_PAGE_EXTRAS), gesture: 'tap', allow: ['add'], at: { ...at, view: 'top' } },
