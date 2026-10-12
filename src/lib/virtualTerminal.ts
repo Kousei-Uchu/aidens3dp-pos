@@ -3,7 +3,7 @@
 // Used by the practice terminal (trainingTerminal.ts), the playground page and, later, the Show demos and Demo mode.
 // The shape follows what is publicly known of the Terminal 2: one 6.5 inch full colour touchscreen with light and dark modes, tap or insert
 // (no swipe, no magstripe), PIN keyed on the screen, a branded sleep screen, and no printer (receipts are a QR code, email or SMS).
-// The WORDING on each screen is an approximation until it is replaced from photos of the real terminal: it all lives in `COPY`, nowhere else.
+// UI and wording updated from the provided Zeller Terminal 2 dark-mode Connected UI references.
 import type { ZellerEvent } from './zeller';
 
 export type VtScreen = 'sleep' | 'amount' | 'pin' | 'processing' | 'approved' | 'declined' | 'removeCard' | 'cancelled' | 'receipt' | 'unavailable';
@@ -68,7 +68,7 @@ export function vtReduce(s: VtState, a: VtAction): VtState {
 export const isIdle = (s: VtState): boolean => s.screen === 'sleep';
 
 /** How long a message screen stays when nobody is in charge of moving on (the automatic mode). Zero means it waits for somebody. */
-export const DWELL_MS: Readonly<Record<VtScreen, number>> = { sleep: 0, amount: 0, pin: 0, processing: 0, approved: 1800, declined: 2600, removeCard: 1200, cancelled: 1500, receipt: 3500, unavailable: 2500 };
+export const DWELL_MS: Readonly<Record<VtScreen, number>> = { sleep: 0, amount: 0, pin: 0, processing: 0, approved: 1800, declined: 2600, removeCard: 1200, cancelled: 1500, receipt: 3500, unavailable: 0 };
 /** What an unattended terminal does next, or null if it waits. The removeCard screen is the only one that needs a different action. */
 export const autoAction = (s: VtState): VtAction | null => (DWELL_MS[s.screen] === 0 ? null : s.screen === 'removeCard' ? { t: 'removed' } : { t: 'next' });
 
@@ -84,14 +84,14 @@ export function eventFor(s: VtState): ZellerEvent | null {
   }
 }
 
-/** The words on each screen. The approximate wording; replace from photos of the real terminal. `{amount}` is filled in by `screenText`. */
+/** The words on each screen. Updated from the provided Zeller Terminal 2 dark-mode Connected UI references. `{amount}` is filled in by `screenText`. */
 export const COPY: Readonly<Record<VtScreen, { title: string; line?: string; hint?: string }>> = {
   sleep: { title: '' },
-  amount: { title: '{amount}', line: 'Tap or insert card', hint: 'Customer: hold your card to the top of the screen, or insert it chip first' },
+  amount: { title: 'Tap Now', line: '{amount}', hint: '' },
   pin: { title: 'Enter PIN', line: '{amount}', hint: 'Tap OK when you have finished' },
   processing: { title: 'Processing', line: 'Please wait', hint: 'Do not remove the card' },
-  approved: { title: 'Approved', line: '{amount}' },
-  declined: { title: 'Declined', line: '{reason}', hint: 'Try another card' },
+  approved: { title: '{amount} Approved', line: '' },
+  declined: { title: '{amount} Declined', line: 'Insufficient funds (51)', hint: 'There are not enough funds on the card to make this transaction. Refer the cardholder to their bank or seek another form of payment.' },
   removeCard: { title: 'Remove card' },
   cancelled: { title: 'Cancelled', line: 'Payment was not taken' },
   receipt: { title: 'Receipt', line: 'Scan the QR code, or choose Email or SMS', hint: 'No paper receipt on this terminal' },
@@ -99,7 +99,8 @@ export const COPY: Readonly<Record<VtScreen, { title: string; line?: string; hin
 };
 export const money = (cents: number): string => `$${(Math.max(0, cents) / 100).toFixed(2)}`;
 export function screenText(s: VtState): { title: string; line: string; hint: string } {
-  const c = COPY[s.screen]; const fill = (t?: string) => (t ?? '').replace('{amount}', money(s.amountCents)).replace('{reason}', s.failText || 'Card declined');
+  const c = COPY[s.screen];
+  const fill = (t?: string) => (t ?? '').replace('{amount}', money(s.amountCents)).replace('{reason}', s.failText || 'Card declined');
   return { title: fill(c.title), line: fill(c.line), hint: fill(c.hint) };
 }
 
@@ -107,10 +108,10 @@ export function screenText(s: VtState): { title: string; line: string; hint: str
 export const FACE_ASPECT = 2.05;
 export const BODY_ASPECT = 2.03;
 
-/** The face colours for light and dark mode. The idle screen takes its background from the business's own settings instead. */
+/** The face colours for light and dark mode. Dark mode is Zeller Terminal 2's default. The idle screen takes its background from the business's own settings instead. */
 export const FACE = {
   light: { bg: '#FFFFFF', text: '#111111', sub: '#6B7280', key: '#F1F1F4', accent: '#111111', onAccent: '#FFFFFF', good: '#15803D', bad: '#DC2626' },
-  dark: { bg: '#0B0B0C', text: '#F4F4F5', sub: '#9CA3AF', key: '#222226', accent: '#F4F4F5', onAccent: '#111111', good: '#4ADE80', bad: '#F87171' },
+  dark: { bg: '#0B0B0C', text: '#F4F4F5', sub: '#9CA3AF', key: '#222226', accent: '#F4F4F5', onAccent: '#111111', good: '#10B981', bad: '#EF5350' },
 } as const;
 export const faceColors = (dark: boolean) => (dark ? FACE.dark : FACE.light);
 
