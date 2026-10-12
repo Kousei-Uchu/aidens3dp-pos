@@ -12,6 +12,7 @@ This help explains every part of the POS: what each screen is for, how to do eac
 ### Finding what you need
 - Open the **Help** screen (More ▸ Help). Pages are grouped by job: selling, taking payment, the cash drawer, gift cards, orders and refunds, stock, staff, settings, and fixing problems.
 - Tap the **?** in a screen header to open help for that screen. Some error alerts also have a **Help** button that opens the relevant troubleshooting page.
+- Tap the **Contents** button (the list icon at the top right) to slide out the whole contents menu, like the side menu on a docs website. Sections have an arrow: tap the arrow to open or close a section, or tap a title to go to that page. The page you are on is highlighted and its sections start open. It is an extra way round: search, the trail, the lists and links all still work.
 - Use the search box at the top. Type a word or two ("refund", "card declined") and every word has to match.
 - A page ends with **Related pages**. Words in blue take you to another page.
 - Numbered instructions are shown as separate visual steps. On the docs website, choose **Guide me through these steps** to focus on one step at a time; in the app, numbered steps are presented as distinct cards.
@@ -37,7 +38,7 @@ Tell the person who looks after the POS. The pages are ordinary text files, so a
 The pages are Markdown files kept in one folder. The app has a copy built in, so it works with no internet, and the docs website serves the same files. Because both read the same source, they cannot drift apart. When a page changes, its fingerprint (a short code) changes too, so a device can tell whether it has the latest.
 
 ### How pages are organised
-Each page has a **parent**, which makes the folders-inside-folders shape in the website sidebar and the topic cards in the app. Pages also point at each other with links, and each page shows the pages that link to it. Nothing is listed by hand: the contents list is built from the parents, so a new page appears in the right place the moment it exists.
+Each page has a **parent**, which makes the folders-inside-folders shape in the website sidebar, the app's Contents menu and the topic cards in the app. Pages also point at each other with links, and each page shows the pages that link to it. Nothing is listed by hand: the contents list is built from the parents, so a new page appears in the right place the moment it exists.
 
 ### Checks before a page is accepted
 A page cannot be added to the set unless its links all go somewhere, its parent exists, it has a Basic section, and its code blocks are closed. This is why you should not meet a dead link while reading.
@@ -48,6 +49,7 @@ A page cannot be added to the set unless its links all go somewhere, its parent 
 | What | Where |
 |---|---|
 | The pages | `help/**/*.md` (a page is `help/<folder>/<name>.md`; a folder's own page is `index.md`) |
+| Contents menu (rows, open sections) | `treeRows`, `openFor`, `toggled` in `src/lib/helpTree.ts`; `HelpMenu` in `src/ui/HelpMenu.tsx`; opened by the Contents button in `Help` in `src/screens/Help.tsx` |
 | Format, parsing, checks, search | `src/lib/helpDocs.ts` (pure, no React) |
 | Build and check script | `scripts/build-help.ts` (`npm run help:build`, `npm run help:check`) |
 | What the app and the website read | `help/help.json` (generated, do not edit by hand) |

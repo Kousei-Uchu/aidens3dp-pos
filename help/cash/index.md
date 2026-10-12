@@ -4,7 +4,7 @@ title: The cash drawer and ledger
 parent: start
 summary: What More ▸ Cash drawer shows, the difference between the shift figures and the notes-and-coins ledger, what updates the ledger, and why it can drift.
 tags: [cash, drawer, ledger, float, notes, coins, expected, paid in, paid out, history, z-report, per register]
-related: [cash/open-close, cash/change, cash/check-change, cash/smart-change, cash/float-report, cash/tender-machine, pay/cash, pay]
+related: [cash/open-close, cash/change, cash/check-change, cash/smart-change, cash/float-report, cash/swap-cash, cash/tender-machine, pay/cash, pay]
 updated: 2026-10-11
 ---
 The **Cash drawer** screen (More ▸ Cash drawer) keeps track of the cash in the till: which notes and coins are in the drawer right now, and the shift figures for the day. Every role can open it.

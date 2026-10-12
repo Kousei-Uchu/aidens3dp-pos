@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Card, Chip, Empty, Field, IconBtn, Page, Row, Section, Segmented, Txt } from '../ui/kit';
 import Markdown from '../ui/Markdown';
+import { HelpMenu } from '../ui/HelpMenu';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
@@ -34,7 +35,7 @@ export default function Help({ id }: { id?: string }) {
   const { index, pages } = helpSet;
   const depth = asDepth(useApp(s => s.settings.helpDepth)); const patch = useApp(s => s.patchSettings);
   const [hist, setHist] = useState<string[]>([id && index.byId[id] ? id : ROOT_ID]);
-  const [q, setQ] = useState('');
+  const [q, setQ] = useState(''); const [menu, setMenu] = useState(false);
   const cur = hist[hist.length - 1]; const page = index.byId[cur] ?? index.byId[ROOT_ID];
   const go = (to: string) => { if (!index.byId[to]) return; setQ(''); setHist(h => (h[h.length - 1] === to ? h : [...h, to])); };
   const back = () => (q ? setQ('') : hist.length > 1 ? setHist(h => h.slice(0, -1)) : nav.pop());
@@ -50,7 +51,7 @@ export default function Help({ id }: { id?: string }) {
 
   return (
     <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back} helpId={null}
-      right={page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : undefined}>
+      right={<View style={{ flexDirection: 'row' }}><IconBtn icon="list-outline" label="Contents" onPress={() => setMenu(true)} />{page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : null}</View>}>
       <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
         <Field kind="search" placeholder="Search help" value={q} onChangeText={setQ} />
         {remoteUnavailable ? <Txt size={12} sub>Showing built-in help. The newer online copy could not be reached.</Txt> : null}
@@ -70,6 +71,7 @@ export default function Help({ id }: { id?: string }) {
           </>
         )}
       </View>
+      <HelpMenu visible={menu} onClose={() => setMenu(false)} index={index} current={page.id} onPick={go} />
       {q.trim() ? null : (
         <>
           {kids.length && page.id === ROOT_ID ? (

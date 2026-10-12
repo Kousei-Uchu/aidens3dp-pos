@@ -76,7 +76,9 @@ At the end of a day with tracked cash sales: **More ▸ Cash drawer ▸ Daily fl
 3. Check the float it leaves looks right for tomorrow.
 4. Tap **Show another way**. Tap **I took this out: record it** and then check the ledger.
 
-Tell me: whether the suggested float size (it stays between $50 and $300) is wrong for you.
+5. **Swap my cash** (0091): **More ▸ Cash drawer ▸ Swap my cash**. Tap a note you hold yourself (for example a $50). Pass: it shows what to put in and what to take out, with the same total each way, and says *Nothing worth swapping* when the drawer has nothing useful to give. After swapping for real, tap **I swapped it: record it**. Pass: the ledger has a **Contents corrected** entry and Expected is unchanged.
+
+Tell me: whether the suggested float size (it stays between $50 and $300) is wrong for you, and whether the swaps make sense for your real drawer.
 
 ## T7. Simple and Minimal display modes (B5d, N20)
 
@@ -99,6 +101,7 @@ On the iPad and on a phone: **More ▸ Help**.
 4. Open **Checkout: the main screen** at Advanced. Pass: the two flowcharts draw and scroll sideways, and you can read them.
 5. Repeat in Simple and Minimal modes, and in the dark theme.
 6. Try the visual step cards and topic cards added in 0058.
+7. **Contents menu** (0092): tap the list icon at the top right of Help. Pass: a panel slides in from the left with the whole page tree, the page you are on is highlighted with its sections open, the arrows open and close sections, tapping a title opens that page and closes the menu, and tapping outside or the X closes it without changing page. Search, the trail and Back still work as before.
 
 Tell me: anything that looks wrong, and whether the flowcharts are readable.
 
