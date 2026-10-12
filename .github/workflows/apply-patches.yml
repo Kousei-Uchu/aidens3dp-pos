@@ -1,0 +1,48 @@
+# Location: .github/workflows/apply-patches.yml
+# Watches patches/ on main. Any patches/*.patch not yet listed in patches/APPLIED.txt is applied in order,
+# committed (one commit per patch) and pushed. If one does not apply cleanly the run fails, nothing after it is tried,
+# and an issue is opened naming the patch.
+name: Apply patches
+
+on:
+  push:
+    branches: [main]
+    paths: ['patches/**']
+  workflow_dispatch:
+
+# One run at a time, so two pushes can never apply the same patch twice.
+concurrency:
+  group: apply-patches
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  issues: write
+
+jobs:
+  apply:
+    # The commits this job makes touch patches/APPLIED.txt; GITHUB_TOKEN pushes do not start another run, but this keeps it explicit.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set committer
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+      - name: Apply new patches
+        id: apply
+        run: PUSH=1 scripts/apply-patches.sh
+      - name: Report a patch that would not apply
+        if: failure() && steps.apply.outputs.failed != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const name = '${{ steps.apply.outputs.failed }}';
+            await github.rest.issues.create({
+              ...context.repo,
+              title: `Patch ${name} does not apply`,
+              body: `\`patches/${name}\` did not apply cleanly on \`${context.sha.slice(0, 7)}\`. Patches after it were not tried.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nFix or replace the patch file; the next push to \`patches/\` retries it.`,
+            });
