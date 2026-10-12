@@ -7,6 +7,7 @@ import { kvGet, kvSet } from '../lib/kv';
 import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
 import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
 import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
+import { resetCheckout } from '../lib/trainingProbe';
 import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
 import { getModule } from '../training';
 import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
@@ -22,6 +23,8 @@ export type DockView = {
   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
   /** How many times Hint has been pressed (see Sess.hintPress). In the view so the toast and its pulse change in the same frame as the hint text, and again on a press that adds nothing new. */
   hintPress?: number;
+  /** Set when the spot being pointed at is off screen or cut off, and the person has to scroll to reach it. */
+  scroll?: { dir: 'up' | 'down'; fully: boolean };
   /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
   gesture?: Gesture;
   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
@@ -66,7 +69,7 @@ export const useTraining = create<Sess>((set, get) => ({
       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
     }
-    resetTrainingTerminal(); resetPass(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff })); set({ sandbox: true, hint: freshHints(), view: null });
+    resetTrainingTerminal(); resetPass(); resetCheckout(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff })); set({ sandbox: true, hint: freshHints(), view: null });
     const r = get().run; if (r) set({ run: seeIntro(r) });
     return null;
   },
@@ -76,7 +79,7 @@ export const useTraining = create<Sess>((set, get) => ({
   },
   leave: () => {
     goalStart = null; setGate(null);
-    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); } // restore first, then drop the guard
+    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); } // restore first, then drop the guard
     set({ sandbox: false, view: null });
   },
   completeStage: () => {
@@ -91,7 +94,7 @@ export const useTraining = create<Sess>((set, get) => ({
   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
   restartGoal: inj => {
     if (!goalStart) return false;
-    resetTrainingTerminal(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
+    resetTrainingTerminal(); resetCheckout(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
   },
 }));
 export const isPractising = (): boolean => real !== null;

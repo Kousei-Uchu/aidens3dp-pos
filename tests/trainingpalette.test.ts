@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { RING_CONTRAST, blend, contrast, dimOf, luminance, mix, parseColor, spotlightPalette } from '../src/lib/trainingPalette';
+import { BRAND_ORANGE, RING_CONTRAST, blend, contrast, dimOf, luminance, mix, parseColor, spotlightPalette } from '../src/lib/trainingPalette';
 
 // The three built-in looks, copied from src/ui/theme.tsx (a test below checks they have not drifted).
 const light = { bg: '#F4F4F5', card: '#FFFFFF', text: '#111111', accent: '#111111' };
@@ -18,23 +18,17 @@ test('colour maths: parsing, luminance and contrast', () => {
   assert.deepEqual(mix(k, w, 0.5), { r: 127.5, g: 127.5, b: 127.5, a: 1 });
 });
 
-test('the brand look uses its own peach accent, the dark look its near white, the light look a white ring', () => {
-  assert.equal(spotlightPalette(brand, true).ring.toLowerCase(), '#fae9dc'); assert.equal(spotlightPalette(dark, true).ring.toLowerCase(), '#f4f4f5');
-  assert.equal(spotlightPalette(light, false).ring.toLowerCase(), '#ffffff'); // the accent is near black, which the dim would swallow
-});
-
-test('the ring stands out from the dim in every look and for any accent a person could choose', () => {
-  const accents = ['#2563EB', '#DC2626', '#16A34A', '#7C3AED', '#DB2777', '#F59E0B', '#0EA5E9', '#000000', '#222222', '#FFFFFF', '#444444', '#1E3A8A', '#064E3B', '#831843', '#E5E7EB'];
-  for (const [t, isDark] of [[light, false], [dark, true], [brand, true]] as const) for (const a of accents) {
-    const p = spotlightPalette({ ...t, accent: a }, isDark); const ring = parseColor(p.ring)!;
-    assert.ok(contrast(ring, seenOn(t, isDark)) >= RING_CONTRAST, `accent ${a} on ${isDark ? 'dark' : 'light'} gives ring ${p.ring} (contrast ${contrast(ring, seenOn(t, isDark)).toFixed(2)})`);
+test('the ring is the brand orange in every built-in look, whatever the accent', () => {
+  for (const [t, isDark] of [[light, false], [dark, true], [brand, true]] as const) for (const a of [t.accent, '#2563EB', '#000000', '#FFFFFF']) {
+    const p = spotlightPalette({ ...t, accent: a }, isDark); assert.equal(p.ring.toLowerCase(), '#fb873f'); assert.equal(p.glow.toLowerCase(), '#fb873f');
+    assert.ok(contrast(parseColor(p.ring)!, seenOn(t, isDark)) >= RING_CONTRAST, `orange is visible on the ${isDark ? 'dark' : 'light'} dim`);
   }
+  assert.equal(BRAND_ORANGE.toLowerCase(), '#fb873f');
 });
 
-test('a chosen accent is kept when it already stands out, and lightened (not replaced) when it does not', () => {
-  assert.equal(spotlightPalette({ ...dark, accent: '#F59E0B' }, true).ring.toLowerCase(), '#f59e0b');
-  const lifted = parseColor(spotlightPalette({ ...light, accent: '#2563EB' }, false).ring)!; const orig = parseColor('#2563EB')!;
-  assert.ok(lifted.b > lifted.r && lifted.b >= orig.b, 'still blue'); assert.ok(luminance(lifted) > luminance(orig), 'lighter than the chosen blue');
+test('a theme whose dim swallows the orange gets a lighter orange instead', () => {
+  const odd = { bg: '#FB873F', card: '#FB873F', text: '#FB873F', accent: '#000' }; const p = spotlightPalette(odd, false);
+  assert.ok(luminance(parseColor(p.ring)!) > luminance(parseColor(BRAND_ORANGE)!), 'lighter than the brand orange');
 });
 
 test('the text on the ring is readable, and the dim belongs to the theme', () => {
@@ -45,8 +39,8 @@ test('the text on the ring is readable, and the dim belongs to the theme', () =>
   assert.ok(dimOf(dark, true).a > dimOf(light, false).a, 'a dark page needs a stronger dim to read as dimmed');
 });
 
-test('unreadable theme values fall back to something visible', () => {
-  const p = spotlightPalette({ bg: 'weird', card: 'weird', text: 'weird', accent: 'weird' }, true); assert.equal(p.ring.toLowerCase(), '#ffffff'); assert.ok(p.dim.startsWith('rgba('));
+test('unreadable theme values still give a visible orange ring', () => {
+  const p = spotlightPalette({ bg: 'weird', card: 'weird', text: 'weird', accent: 'weird' }, true); assert.equal(p.ring.toLowerCase(), '#fb873f'); assert.ok(p.dim.startsWith('rgba('));
 });
 
 test('the built-in looks above match the app theme file, and no training screen hard codes the old amber', () => {

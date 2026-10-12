@@ -1,0 +1,14 @@
+// Location: src/lib/trainingProbe.ts
+// A small read-only window onto Checkout's own screen state (B6): which tab and level it is on, and what has been typed.
+// Checkout publishes here; training reads it. Checkout also registers a reset so a practice run always starts from a clean Checkout.
+export type Typed = { search?: string; keypad?: string };
+export type CheckoutWhere = { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
+let openLine: string | undefined; export const setOpenLine = (k: string | undefined): void => { openLine = k; }; export const getOpenLine = (): string | undefined => openLine;
+let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
+export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
+export const clearProbe = (): void => { typed = {}; where = undefined; };
+export const getTyped = (): Typed => typed;
+export const getWhere = (): CheckoutWhere | undefined => where;
+export const registerCheckoutReset = (f: () => void): (() => void) => { reset = f; return () => { if (reset === f) reset = null; }; };
+/** Puts Checkout back on Quick Menu, first page, nothing typed. Does nothing when Checkout is not mounted. */
+export const resetCheckout = (): void => { try { reset?.(); } catch { /* a reset must never break training */ } };

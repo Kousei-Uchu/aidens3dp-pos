@@ -1,5 +1,6 @@
 // Location: src/screens/Checkout.tsx
-import { spotPressed, useSpotRef } from '../ui/Spot';
+import { registerSlice, spotPressed, useSpotRef } from '../ui/Spot';
+import { clearProbe, registerCheckoutReset, setProbe } from '../lib/trainingProbe';
 import { SPOT, allProductSpot, findTabSpot, gridPageSpot, searchResultSpot } from '../lib/trainingSpots';
 import { Spot } from '../ui/Spot';
 import React, { useEffect, useMemo, useState } from 'react';
@@ -66,6 +67,11 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
   const [spotlightItem, setSpotlightItem] = useState<Variant | null>(null);
+  // Training (B6): let it see the tab, depth and typed text, point at one tab of the switch, and start a practice run from a clean Checkout.
+  useEffect(() => { setProbe({ search: sheet === 'search' ? q : '', keypad: digits }, { tab, depth: path.length, sizes: !!variants }); }, [sheet, q, digits, tab, path, variants]);
+  useEffect(() => () => clearProbe(), []);
+  useEffect(() => { const off = (['keypad', 'quick', 'all'] as const).map((t, i) => registerSlice(findTabSpot(t), SPOT.findTabs, i, 3)); return () => off.forEach(f => f()); }, []);
+  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setQty(1); setDigits(''); setVariants(null); setSheet('none'); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
   const spotlightTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);

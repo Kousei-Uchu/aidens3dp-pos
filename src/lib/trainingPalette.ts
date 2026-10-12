@@ -1,8 +1,7 @@
 // Location: src/lib/trainingPalette.ts
-// The colours of the training spotlight (B6): the ring, the dim, the glow and the text on the ring. They come from the current theme, so the highlight
-// belongs to the app instead of being one amber for every look. The ring sits on the dimmed screen, so it must stand out from the DIM, not from the page:
-// the theme's accent is used when it does (brand peach, the dark theme's near white, a chosen colour that is light enough), a chosen colour that is too dark is
-// lightened until it does, and an accent that is almost black (the light theme) falls back to the theme's card surface. Pure, tested (tests/trainingpalette.test.ts).
+// The colours of the training spotlight (B6): the ring, the dim, the glow and the text on the ring. The ring, pointer and glow are the brand orange in every look
+// (patch 0080 made them follow the theme accent, which gave peach or near white). The dim still belongs to the theme. The ring sits on the dimmed screen, so it must
+// stand out from the DIM: the orange does in all three built-in looks, and only an odd theme gets a lightened orange. Pure, tested (tests/trainingpalette.test.ts).
 export type Rgb = { r: number; g: number; b: number; a: number };
 const hex2 = (n: number): string => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
 
@@ -30,22 +29,17 @@ type ThemeLike = { bg: string; card: string; text: string; accent: string };
 const WHITE: Rgb = { r: 255, g: 255, b: 255, a: 1 }; const BLACK: Rgb = { r: 17, g: 17, b: 17, a: 1 };
 /** The ring must be at least this far from the dim (3:1 is the usual line for a graphic that has to be seen). */
 export const RING_CONTRAST = 3;
-/** An accent darker than this is treated as "the theme's ink" (the light theme's near black), and the ring uses the surface instead of a grey. */
-const NEAR_BLACK = 0.05;
 
 /** The dim: the theme's own dark (its background when the theme is dark, its ink when it is light), strong enough that the lit box is clear. */
-export function dimOf(c: ThemeLike, dark: boolean): Rgb { const base = parseColor(dark ? c.bg : c.text) ?? BLACK; return { ...base, a: dark ? 0.74 : 0.6 }; }
+export function dimOf(c: ThemeLike, dark: boolean): Rgb { const base = parseColor(dark ? c.bg : c.text) ?? BLACK; return { ...base, a: dark ? 0.74 : 0.72 }; }
 
+/** The brand orange (the docs site's `--highlight`). The ring, the pointer and the progress bar are this colour in every look. */
+export const BRAND_ORANGE = '#FB873F';
 export function spotlightPalette(c: ThemeLike, dark: boolean): SpotlightPalette {
   const page = parseColor(c.bg) ?? (dark ? BLACK : WHITE); const dim = dimOf(c, dark); const seen = blend(dim, page); // what the ring is drawn over
-  const accent = parseColor(c.accent); const card = parseColor(c.card);
-  const ok = (x: Rgb): boolean => contrast(x, seen) >= RING_CONTRAST;
-  let ring: Rgb | null = null;
-  if (accent && luminance(accent) >= NEAR_BLACK) {
-    if (ok(accent)) ring = accent;
-    else for (let t = 0.1; t <= 0.8 && !ring; t += 0.1) { const lighter = mix(accent, WHITE, t); if (ok(lighter)) ring = lighter; }
-  }
-  if (!ring) ring = card && luminance(card) >= 0.4 && ok(card) ? card : WHITE;
+  const brand = parseColor(BRAND_ORANGE)!; let ring = brand;
+  // Only a theme whose dim happens to swallow the orange (not one of the built-in looks) gets a lightened orange, so it can never vanish.
+  if (contrast(ring, seen) < RING_CONTRAST) for (let t = 0.1; t <= 0.8; t += 0.1) { ring = mix(brand, WHITE, t); if (contrast(ring, seen) >= RING_CONTRAST) break; }
   const onRing = contrast(ring, BLACK) >= contrast(ring, WHITE) ? '#111111' : '#FFFFFF';
   return { ring: toHex(ring), onRing, dim: rgba(dim, dim.a), glow: toHex(ring) };
 }

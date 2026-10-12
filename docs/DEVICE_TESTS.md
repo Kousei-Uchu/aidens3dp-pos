@@ -185,3 +185,25 @@ On the iPad and on a phone: **More ▸ Training ▸ Take a card payment**.
 
 Tell me: pass or fail for each step, and whether the terminal is in the way of the Payment page on a phone.
 
+
+## T15. Training: Find the right item fixes (B6, 0100)
+
+On the iPad and on a phone: **More ▸ Training ▸ Find the right item**.
+
+1. Do the Guide as far as the Keypad, add the $4.50, then leave and start the course again from the start. Checkout should be on Quick Menu, first page, nothing typed, and step 2 should ring the Extras chip.
+2. In the Guide, open Animals, then tap the Keypad tab yourself. The ring should point at Quick Menu, then at the back arrow, and never tell you to go to a tab you are already on.
+3. The tab steps should ring only the tab named (Keypad, All products, Quick Menu), not the whole switch, on the native control and the plain one.
+4. On the Keypad step the ring should walk 4, then 5, then 0. Tap a wrong key and it should point at C. In Search, type something other than egg: the step should not finish and should say what to type.
+5. In Check 1, add a custom amount of $5.00 instead of $4.50: it should not finish and should say so.
+
+Tell me: pass or fail for each step, and whether the ring sits exactly on the tab or key.
+
+## T16. Training: scroll, orange highlight, per-item windows (B6, 0101)
+
+On the iPad and on a phone, in the light, dark and brand looks.
+
+1. In any course, the ring, pointer and progress bar are orange (not peach or white), and readable on all three looks.
+2. On a phone, in a course step that points at something below the visible area (a long Payment page or a tall cart), the screen should not dim, a Scroll down pill should show at the bottom, and scrolling should bring the ring in. Try again with the target cut off at the edge: it should be ringed and the pill still shows.
+3. In a Check with two items in the cart, add an item you were not asked for, then open the line window of the other item. The card should tell you to close this window first and name the extra item. Open the right item's window and the card should point at Remove item inside it. Try the same with too many of an item and the minus button.
+
+Tell me: pass or fail for each step, and whether the Scroll pill covers anything you need.

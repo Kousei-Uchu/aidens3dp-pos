@@ -1,0 +1,543 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 6064541..89361eb 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -197,3 +197,13 @@ On the iPad and on a phone: **More ▸ Training ▸ Find the right item**.
+ 5. In Check 1, add a custom amount of $5.00 instead of $4.50: it should not finish and should say so.
+ 
+ Tell me: pass or fail for each step, and whether the ring sits exactly on the tab or key.
++
++## T16. Training: scroll, orange highlight, per-item windows (B6, 0101)
++
++On the iPad and on a phone, in the light, dark and brand looks.
++
++1. In any course, the ring, pointer and progress bar are orange (not peach or white), and readable on all three looks.
++2. On a phone, in a course step that points at something below the visible area (a long Payment page or a tall cart), the screen should not dim, a Scroll down pill should show at the bottom, and scrolling should bring the ring in. Try again with the target cut off at the edge: it should be ringed and the pill still shows.
++3. In a Check with two items in the cart, add an item you were not asked for, then open the line window of the other item. The card should tell you to close this window first and name the extra item. Open the right item's window and the card should point at Remove item inside it. Try the same with too many of an item and the minus button.
++
++Tell me: pass or fail for each step, and whether the Scroll pill covers anything you need.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 4d40305..1380267 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -103,6 +103,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0098 | 2026-10-12 | Training (B6), task course 4 of the plan: **Find the right item** (`find-items`). Info, Show, Guide (18 steps: change page, open a category, pick a size, go back, Search, Keypad custom amount, All products), Check 1 (4 goals) and Check 2 (swap a Small cow for the Large, a search with two matches, two items on the Extras page). Real screens gained spots: the Search bar and its box and result rows, the Keypad | Quick Menu | All products switch (and each part of it), page chips, the grid back arrow, the All products filter and rows, the variation picker's tiles, the Keypad's keys and Add. The practice grid gained an **Extras** page, **Animals** and **Dragons** category tiles, and a Sticker Pack. Also removes an unused `weight` from three nodes in `cart.ts` (a type error with no effect on screen). Not fixed: `tests/virtualterminal.test.ts` still expects the terminal's "unavailable" screen to move on by itself, but `DWELL_MS` says it waits for a person | B6 |
+ | 0099 | 2026-10-12 | Training (B6), task course 5 of the plan: **Take a card payment** (`pay-card`). Info, Show (Payment page, terminal, PIN over $100, receipt, declined, unknown result), Guide (9 steps, the person plays the customer on the virtual terminal), Check 1 (a card sale, and a sale over $100 that needs a PIN) and Check 2 (one decline code 51 then retry, two declines code 54 then retry). Real screens gained spots: the amount due and Card button on Payment, Try card again and Use another method in the Not approved window, and No receipt in the Receipt window. New `tests/trainingpaycard.test.ts` (8 tests). Device test T14. Reader not ready and unknown results are taught in the Show only (no way to inject them yet) | B6 |
+ | 0100 | 2026-10-12 | Training (B6), fixes to **Find the right item**, part 1 of 3 (reported issues 1 to 3). **Retry stuck at step 2:** Checkout kept its tab, category and sizes between attempts, and the page chips are hidden inside a category or the sizes, so the Extras target was off screen and the recovery text sent you to a tab you were already on. Checkout now resets when a practice run starts, restarts or ends, and every grid step has an `aim` that says the next move back to the grid (Quick Menu, back arrow). **Cursor on the real button:** the tab steps point at one tab of the switch (`find.tab:keypad`, `quick`, `all`, drawn as an equal slice of the native control) and the Keypad has a spot per key (`find.key:<digit>`, `C`, `del`). **Typing is checked:** new `typed` view of Checkout (`src/lib/trainingProbe.ts`); the Keypad step finishes only on 4, 5, 0 and points at the next key (or C after a wrong one), the Search step finishes only when egg is typed, and the repair goal and its Add step need exactly $4.50 (a wrong amount is flagged). Tests added to `tests/trainingfinditems.test.ts`. Device test T15 | B6 |
++| 0101 | 2026-10-12 | Training (B6), fixes part 2 of 3 (reported Find the right item #4 and #5, General #1). **Scroll awareness:** the driver now measures a target even when it is off screen. Wholly off screen: no dim, no ring, an edge cue (Scroll up or Scroll down) and the step text says to scroll first. Cut off at an edge: still ringed, with the cue and a short note. Pure helper `scrollNeed` in `trainingGeometry.ts`. **Brand orange:** the ring, pointer, glow and progress bar are the brand orange `#FB873F` (the docs site's `--highlight`) in every look; the light look's dim is a little stronger so the orange stands out. **Per-line windows:** the minus and Remove item buttons in the line window are now `line.minus:<key>` and `line.remove:<key>` (key is the variant, or the line's own id for a custom amount), so the guide never points at the wrong item's window. With another item's window open it says to close it first and names the item. New `tests/trainingscroll.test.ts`; palette and context tests updated. Device test T16 | B6 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0101-plan.md b/docs/patches/0101-plan.md
+new file mode 100644
+index 0000000..f54adb8
+--- /dev/null
++++ b/docs/patches/0101-plan.md
+@@ -0,0 +1,16 @@
++# 0101: Training, Find the right item fixes, part 2 of 3
++
++Reported: Find items #4 (offscreen), #5 (brand orange); General #1 (item windows treated the same).
++
++## Causes
++- #4: `spot()` treated an off screen target as missing, so there was no scroll guidance, and with no ring the whole screen dimmed and blocked touches.
++- #5: patch 0080 made the ring follow the theme accent (peach, near white).
++- General #1: `line.minus` and `line.remove` were one id each for every line window.
++
++## Changes
++- `scrollNeed` and `scrollSay` (`trainingGeometry.ts`); `DockView.scroll`; the host records the need of the last spot measured; `ScrollCue` in the overlay; the dim is dropped while the target is wholly off screen.
++- `BRAND_ORANGE` (`trainingPalette.ts`) used for ring, pointer, glow and bar. Light dim alpha 0.6 to 0.72 so the orange keeps 3:1 contrast.
++- `lineMinusSpot(key)`, `lineRemoveSpot(key)`, `lineKeyOf`; `SnapLine.lineId`; `LineEditor` publishes which line is open (`setOpenLine`) for later use; the course's window candidates use the line's own buttons.
++
++## Not in this patch
++0102: correction chains for strays, card paid by cash, and an audit of the other courses.
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index 7944ee2..f5150a5 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -14,12 +14,12 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+   }
+ }
+ /** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
+-type CartLike = { variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; unitCents?: number };
+-export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
++type CartLike = { id?: string; variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; unitCents?: number };
++export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
+   return {
+     tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
+-    hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where,
+-    cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents })),
++    hasCustomer: !!s.cart.customer, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine,
++    cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents, lineId: l.id })),
+     cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
+   };
+ }
+diff --git a/src/lib/trainingCourse.ts b/src/lib/trainingCourse.ts
+index 0bba70f..1990784 100644
+--- a/src/lib/trainingCourse.ts
++++ b/src/lib/trainingCourse.ts
+@@ -7,7 +7,7 @@
+ // Some cannot be undone with a tap (a finished sale), and for those, and for anything the person cannot work out, "Start this part again" puts the
+ // practice till back exactly as the goal began. So nobody can ever get stuck.
+ import type { Allow, Goal, Place, SnapLine, Step, TrainSnap } from './trainingModule';
+-import { SPOT, cartLineSpot, gridItemSpot } from './trainingSpots';
++import { SPOT, cartLineSpot, gridItemSpot, lineKeyOf, lineMinusSpot, lineRemoveSpot } from './trainingSpots';
+ import { remedyOf } from './trainingRemedies';
+ import type { Gesture } from './pointerGesture';
+ 
+@@ -92,13 +92,13 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
+     const b = was.get(k)?.qty ?? 0; const l = c.line; const target = l.variantId ? cartLineSpot(l.variantId) : undefined;
+     if (b === 0 && !allow.has('add')) {
+       return { id: `extra:${k}`, kind: 'extra', fix: 'undo', title: `${name(l)} was added`, say: `The ${name(l)} is not part of this task. Swipe its line to the left, then tap Remove.`, target, via: SPOT.cartOpen, gesture: 'swipe-left',
+-        window: { say: `The ${name(l)} is not part of this task. Tap Remove item in this window.`, target: SPOT.lineRemove } };
++        window: lineKeyOf(l) ? { say: `The ${name(l)} is not part of this task. Tap Remove item in this window.`, target: lineRemoveSpot(lineKeyOf(l)!) } : undefined };
+     }
+     const wanted = b === 0 ? 1 : b;
+     if (c.qty > wanted && !allow.has('qty')) {
+       const extra = c.qty - wanted; const take = extra === 1 ? 'one' : plural(extra, 'unit');
+       return { id: `qty:${k}`, kind: 'qty', fix: 'undo', title: `Too many ${name(l)}`, say: b === 0 ? `You have ${c.qty} of the ${name(l)}, and one is enough here. Take ${take} out.` : `The ${name(l)} was only meant to be ${b}. Take ${take} out.`, target, via: SPOT.cartOpen,
+-        window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: SPOT.lineMinus } };
++        ...(lineKeyOf(l) ? { window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: lineMinusSpot(lineKeyOf(l)!) } } : {}) };
+     }
+   }
+ 
+diff --git a/src/lib/trainingGeometry.ts b/src/lib/trainingGeometry.ts
+index d2196d3..840c217 100644
+--- a/src/lib/trainingGeometry.ts
++++ b/src/lib/trainingGeometry.ts
+@@ -67,3 +67,19 @@ export function placeNotice(o: { screen: Size; size: Size; avoid: readonly Rect[
+ 
+ /** One equal part of a box, counting from 0 along its width (one tab of a segmented control). */
+ export const sliceRect = (r: Rect, index: number, count: number): Rect => { const w = r.w / count; return { x: r.x + w * index, y: r.y, w, h: r.h }; };
++
++/** Does the person have to scroll to reach this spot? `fully`: it is wholly off screen. Otherwise it is cut off at the edge. Null when all of it is in view (or it cannot be measured). Vertical only. */
++export type ScrollNeed = { dir: 'up' | 'down'; fully: boolean };
++export function scrollNeed(r: Rect | null | undefined, screen: Size, edge = 6): ScrollNeed | null {
++  if (!r || r.w <= 1 || r.h <= 1) return null;
++  if (r.y >= screen.h) return { dir: 'down', fully: true };
++  if (r.y + r.h <= 0) return { dir: 'up', fully: true };
++  if (r.x + r.w <= 0 || r.x >= screen.w) return null; // sideways is not something a scroll fixes
++  if (r.y + r.h > screen.h - edge && r.y < screen.h - edge) return { dir: 'down', fully: false };
++  if (r.y < edge && r.y + r.h > edge) return { dir: 'up', fully: false };
++  return null;
++}
++/** The words that go with a scroll need: where the spot is and which way to scroll, added to what the step already says. */
++export function scrollSay(say: string, need: ScrollNeed): string {
++  return need.fully ? `Scroll ${need.dir} until you can see it. ${say}` : `${say} Scroll ${need.dir} a little so all of it is on screen.`;
++}
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index ea7ccb6..e931adf 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -44,7 +44,7 @@ export type DemoStep = {
+ export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
+ 
+ /** One cart line as training sees it. */
+-export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
++export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
+ /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
+ export type TrainSnap = {
+   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
+@@ -52,6 +52,7 @@ export type TrainSnap = {
+   /** Who is signed in (a practice staff id such as `train-staff-casey`) and whether the Sign in screen is up. Left out by plain tests. */
+   staffId?: string; locked?: boolean;
+   /** What is typed in Search and on the Keypad, and where Checkout is (tab, how many levels deep, whether sizes are open). Left out by plain tests. */
++  /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
+   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
+ };
+ export type Until =
+diff --git a/src/lib/trainingPalette.ts b/src/lib/trainingPalette.ts
+index d3820bf..1c01760 100644
+--- a/src/lib/trainingPalette.ts
++++ b/src/lib/trainingPalette.ts
+@@ -1,8 +1,7 @@
+ // Location: src/lib/trainingPalette.ts
+-// The colours of the training spotlight (B6): the ring, the dim, the glow and the text on the ring. They come from the current theme, so the highlight
+-// belongs to the app instead of being one amber for every look. The ring sits on the dimmed screen, so it must stand out from the DIM, not from the page:
+-// the theme's accent is used when it does (brand peach, the dark theme's near white, a chosen colour that is light enough), a chosen colour that is too dark is
+-// lightened until it does, and an accent that is almost black (the light theme) falls back to the theme's card surface. Pure, tested (tests/trainingpalette.test.ts).
++// The colours of the training spotlight (B6): the ring, the dim, the glow and the text on the ring. The ring, pointer and glow are the brand orange in every look
++// (patch 0080 made them follow the theme accent, which gave peach or near white). The dim still belongs to the theme. The ring sits on the dimmed screen, so it must
++// stand out from the DIM: the orange does in all three built-in looks, and only an odd theme gets a lightened orange. Pure, tested (tests/trainingpalette.test.ts).
+ export type Rgb = { r: number; g: number; b: number; a: number };
+ const hex2 = (n: number): string => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
+ 
+@@ -30,22 +29,17 @@ type ThemeLike = { bg: string; card: string; text: string; accent: string };
+ const WHITE: Rgb = { r: 255, g: 255, b: 255, a: 1 }; const BLACK: Rgb = { r: 17, g: 17, b: 17, a: 1 };
+ /** The ring must be at least this far from the dim (3:1 is the usual line for a graphic that has to be seen). */
+ export const RING_CONTRAST = 3;
+-/** An accent darker than this is treated as "the theme's ink" (the light theme's near black), and the ring uses the surface instead of a grey. */
+-const NEAR_BLACK = 0.05;
+ 
+ /** The dim: the theme's own dark (its background when the theme is dark, its ink when it is light), strong enough that the lit box is clear. */
+-export function dimOf(c: ThemeLike, dark: boolean): Rgb { const base = parseColor(dark ? c.bg : c.text) ?? BLACK; return { ...base, a: dark ? 0.74 : 0.6 }; }
++export function dimOf(c: ThemeLike, dark: boolean): Rgb { const base = parseColor(dark ? c.bg : c.text) ?? BLACK; return { ...base, a: dark ? 0.74 : 0.72 }; }
+ 
++/** The brand orange (the docs site's `--highlight`). The ring, the pointer and the progress bar are this colour in every look. */
++export const BRAND_ORANGE = '#FB873F';
+ export function spotlightPalette(c: ThemeLike, dark: boolean): SpotlightPalette {
+   const page = parseColor(c.bg) ?? (dark ? BLACK : WHITE); const dim = dimOf(c, dark); const seen = blend(dim, page); // what the ring is drawn over
+-  const accent = parseColor(c.accent); const card = parseColor(c.card);
+-  const ok = (x: Rgb): boolean => contrast(x, seen) >= RING_CONTRAST;
+-  let ring: Rgb | null = null;
+-  if (accent && luminance(accent) >= NEAR_BLACK) {
+-    if (ok(accent)) ring = accent;
+-    else for (let t = 0.1; t <= 0.8 && !ring; t += 0.1) { const lighter = mix(accent, WHITE, t); if (ok(lighter)) ring = lighter; }
+-  }
+-  if (!ring) ring = card && luminance(card) >= 0.4 && ok(card) ? card : WHITE;
++  const brand = parseColor(BRAND_ORANGE)!; let ring = brand;
++  // Only a theme whose dim happens to swallow the orange (not one of the built-in looks) gets a lightened orange, so it can never vanish.
++  if (contrast(ring, seen) < RING_CONTRAST) for (let t = 0.1; t <= 0.8; t += 0.1) { ring = mix(brand, WHITE, t); if (contrast(ring, seen) >= RING_CONTRAST) break; }
+   const onRing = contrast(ring, BLACK) >= contrast(ring, WHITE) ? '#111111' : '#FFFFFF';
+   return { ring: toHex(ring), onRing, dim: rgba(dim, dim.a), glow: toHex(ring) };
+ }
+diff --git a/src/lib/trainingProbe.ts b/src/lib/trainingProbe.ts
+index 0f8ee25..fb3522f 100644
+--- a/src/lib/trainingProbe.ts
++++ b/src/lib/trainingProbe.ts
+@@ -3,6 +3,7 @@
+ // Checkout publishes here; training reads it. Checkout also registers a reset so a practice run always starts from a clean Checkout.
+ export type Typed = { search?: string; keypad?: string };
+ export type CheckoutWhere = { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
++let openLine: string | undefined; export const setOpenLine = (k: string | undefined): void => { openLine = k; }; export const getOpenLine = (): string | undefined => openLine;
+ let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
+ export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
+ export const clearProbe = (): void => { typed = {}; where = undefined; };
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index ac9ef02..7a4bd2e 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -9,8 +9,6 @@ export const SPOT = {
+   moreTraining: 'more.training',
+   back: 'page.back',           // the Back arrow at the top of every pushed page
+   sheetClose: 'sheet.close',   // the Close button of a sheet
+-  lineMinus: 'line.minus',     // the minus button in the line window
+-  lineRemove: 'line.remove',   // the Remove item button in the line window
+   terminalTap: 'terminal.tap',         // the customer's Tap card button under the practice terminal (manual mode)
+   terminalInsert: 'terminal.insert',   // Insert card
+   terminalRemove: 'terminal.remove',   // Take card out
+@@ -37,12 +35,12 @@ export const SPOT = {
+   receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
+ } as const;
+ /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
++export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
+ /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
+-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:');
++export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:');
+ export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
+ /** Spots whose id ends in a record id: a grid tile, or a cart line. */
+-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:'] as const;
++export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:'] as const;
+ export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
+ export const gridItemSpot = (id: string): string => `grid.item:${id}`;
+ export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
+@@ -52,6 +50,10 @@ export const cartLineSpot = (variantId: string): string => `cart.line:${variantI
+ export const gridPageSpot = (pageId: string): string => `grid.page:${pageId}`;
+ /** One part of the Keypad | Quick Menu | All products switch: 'keypad', 'quick' or 'all'. */
+ export const findTabSpot = (tab: 'keypad' | 'quick' | 'all'): string => `find.tab:${tab}`;
++/** The minus and Remove item buttons in ONE line's window. Each line has its own, so the guide can tell which item's window is open. The key is the variant, or the line's own id for a custom amount. */
++export const lineMinusSpot = (key: string): string => `line.minus:${key}`;
++export const lineRemoveSpot = (key: string): string => `line.remove:${key}`;
++export const lineKeyOf = (l: { variantId?: string; lineId?: string }): string | undefined => l.variantId ?? l.lineId;
+ /** One key on the Keypad tab: a digit, 'C' (clear) or 'del' (delete). */
+ export const findKeySpot = (key: string): string => `find.key:${key}`;
+ /** A product row on All products. */
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 26150d3..057d00a 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+-import { SPOT } from '../lib/trainingSpots';
++import { SPOT, lineMinusSpot, lineRemoveSpot } from '../lib/trainingSpots';
++import { setOpenLine } from '../lib/trainingProbe';
+ import { useApp } from '../state/store';
+ import { useCatalogue, usePriced, usePricer } from '../state/selectors';
+ import { digitsToCents, fmt } from '../lib/money';
+@@ -149,6 +150,8 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+   const [adj, setAdj] = useState(false); const [adjDigits, setAdjDigits] = useState(''); const [adjReason, setAdjReason] = useState(''); const [itemReason, setItemReason] = useState(''); const priced = usePriced(); const orderAdj = useApp(s => s.pos.cart.orderAdjust);
+   const [scope, setScope] = useState<'qty' | 'all'>('qty'); const [scopeQty, setScopeQty] = useState(1);
+   const mayItem = useAdjustAllowed('item'); const mayLine = useAdjustAllowed('line'); // A16.9
++  const lineKey = line ? line.variantId ?? line.id : undefined; // training: which line's window this is
++  useEffect(() => { setOpenLine(lineKey); return () => setOpenLine(undefined); }, [lineKey]);
+   if (!line) return null;
+   const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
+   const canAll = line.kind === 'item' && !!line.variantId;
+@@ -168,7 +171,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+     <>
+       <Sheet visible={!disc && !price && !adj} onClose={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} title={line.title}>
+         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22, marginBottom: 12 }}>
+-          <Btn spot={SPOT.lineMinus} title="−" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty - 1))} style={{ width: 64 }} />
++          <Btn spot={lineMinusSpot(lineKey!)} title="−" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty - 1))} style={{ width: 64 }} />
+           <Txt size={30} weight="700">{line.qty}</Txt>
+           <Btn title="+" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty + 1))} style={{ width: 64 }} />
+         </View>
+@@ -205,7 +208,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose:
+           </View>
+         ) : null}
+         <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
+-        <Btn spot={SPOT.lineRemove} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
++        <Btn spot={lineRemoveSpot(lineKey!)} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
+         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
+       </Sheet>
+       <DiscountSheet visible={disc} onClose={() => setDisc(false)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index be8d39e..cf698ed 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -23,6 +23,8 @@ export type DockView = {
+   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
+   /** How many times Hint has been pressed (see Sess.hintPress). In the view so the toast and its pulse change in the same frame as the hint text, and again on a press that adds nothing new. */
+   hintPress?: number;
++  /** Set when the spot being pointed at is off screen or cut off, and the person has to scroll to reach it. */
++  scroll?: { dir: 'up' | 'down'; fully: boolean };
+   /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
+   gesture?: Gesture;
+   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 1813193..73a8437 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -19,9 +19,9 @@ import { Veil, dipThrough } from './Veil';
+ import { trainingActions } from './trainingActions';
+ import { SPOT } from '../lib/trainingSpots';
+ import { ROOT_LAYER } from '../lib/trainingLayers';
+-import { onScreen, type Rect } from '../lib/trainingGeometry';
++import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
+ import { isMet, snapOf, type Events } from '../lib/trainingConds';
+-import { getTyped, getWhere } from '../lib/trainingProbe';
++import { getOpenLine, getTyped, getWhere } from '../lib/trainingProbe';
+ import { hintView, shouldNudge } from '../lib/trainingHints';
+ import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+ import { gateFor, type Gesture } from '../lib/pointerGesture';
+@@ -78,7 +78,9 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         leavePractice(() => { useTraining.getState().leave(); navRef.current.reset(); navRef.current.setTab('more'); navRef.current.push('training'); });
+       });
+     };
+-    const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); return onScreen(r, { w: winRef.current.width, h: winRef.current.height }) ? r : null; };
++    // The last spot measured says whether the person has to scroll: it can be wholly off screen (no ring, a cue at the edge) or cut off at the edge (ringed, with a cue).
++    const need: { current: ScrollNeed | null } = { current: null };
++    const spot = async (id?: string): Promise<Rect | null> => { if (!id) return null; const r = await measureSpot(id); const scr = { w: winRef.current.width, h: winRef.current.height }; need.current = scrollNeed(r, scr); return onScreen(r, scr) ? r : null; };
+ 
+     const tick = async () => {
+       if (busy.current || leaving.current) return; busy.current = true;
+@@ -88,11 +90,11 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         if (!mod.tabs.includes(n.tab)) { n.setTab(mod.tabs[0] as Tab); return; }          // stay inside the module's screens
+         if (top && !mod.routes.includes(top.name)) { n.pop(); return; }
+         const item = cur.step ?? cur.goal; if (!item) return;
+-        const k = `${st.run.stage}:${cur.i}`;
++        need.current = null; const k = `${st.run.stage}:${cur.i}`;
+         const fresh = key.current !== k;
+         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
+         const app = useApp.getState();
+-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+         const until = item.until;
+         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
+@@ -112,9 +114,10 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         };
+         let view: DockView;
+         if (cur.step) {
+-          const step = cur.step; let say = step.say; let rect = await spot(step.target);
++          const step = cur.step; let say = step.say; let rect: Rect | null = null;
+           // `aim` says what to point at right now (the next key, the way back to the grid). It wins when what it points at is on screen.
+-          const aimed = step.aim?.(snap) ?? null; let aimRect: Rect | null = null; if (aimed) { aimRect = await spot(aimed.target); if (aimRect) { say = aimed.say; rect = aimRect; } }
++          const aimed = step.aim?.(snap) ?? null; if (aimed) { rect = await spot(aimed.target); if (rect) say = aimed.say; }
++          if (!rect) rect = await spot(step.target);
+           if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
+           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
+           if (off) { rect = off.rect; say = off.view!.say; }
+@@ -132,6 +135,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           setGate(null);
+           view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+         }
++        if (need.current) view = { ...view, scroll: need.current, say: scrollSay(view.say, need.current) };
+         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
+         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
+       } finally { busy.current = false; }
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index 2c3c90c..6102442 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -45,6 +45,17 @@ function useRectGlide(rect: Rect | null, screen: Size, reduce: boolean): RectVal
+   return v;
+ }
+ 
++/** Shown at the top or bottom edge when the spot is off screen or cut off: which way to scroll. It never takes touches. */
++function ScrollCue({ dir, color, on }: { dir: 'up' | 'down'; color: string; on: string }) {
++  return (
++    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, [dir === 'down' ? 'bottom' : 'top']: dir === 'down' ? 96 : 70, alignItems: 'center' }}>
++      <View accessible accessibilityLabel={`Scroll ${dir}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: color, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 }}>
++        <Ionicons name={dir === 'down' ? 'chevron-down' : 'chevron-up'} size={18} color={on} />
++        <Text style={{ color: on, fontSize: 14, fontWeight: '800' }}>Scroll {dir}</Text>
++      </View>
++    </View>
++  );
++}
+ /** The ring: it pulses (native), and its box follows the glide (layout, so it sits in an outer view). */
+ function Ring({ vals, color }: { vals: RectVals; color: string }) {
+   const a = useRef(new Animated.Value(0.5)).current;
+@@ -181,7 +192,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
+   // In Guide the screen dims and only the target takes taps. While off course the dim stays when there is a fix to point at (only that takes taps, so nothing else can be
+   // opened by accident); it lifts only when there is nothing to point at, because then the fix could be anywhere.
+-  const dim = guide && (!view?.stray || !!hole);
++  const dim = guide && (!view?.stray || !!hole) && !view?.scroll?.fully; // a spot that is off screen leaves the screen free to scroll
+ 
+   // Dim fades in the first time guide mode shows, and out when it ends.
+   const dimO = useRef(new Animated.Value(0)).current;
+@@ -228,6 +239,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+         </Animated.View>
+       ) : null}
+       {showRing && hole ? <Ring vals={vals} color={sp.ring} /> : null}
++      {view?.scroll ? <ScrollCue dir={view.scroll.dir} color={sp.ring} on={sp.onRing} /> : null}
+       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
+       {showRing && hole && !view.next ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
+       {guide && !view.stray ? (
+diff --git a/tests/trainingcontext.test.ts b/tests/trainingcontext.test.ts
+index 1f87540..b347f41 100644
+--- a/tests/trainingcontext.test.ts
++++ b/tests/trainingcontext.test.ts
+@@ -4,7 +4,7 @@ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import { diagnose, fixCandidates, stepRules } from '../src/lib/trainingCourse';
+ import { snapOf } from '../src/lib/trainingConds';
+-import { SPOT, WINDOW_SPOTS, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
++import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot } from '../src/lib/trainingSpots';
+ import { validateModule, type Step, type TrainingModule } from '../src/lib/trainingModule';
+ import { isKnownSpot } from '../src/lib/trainingSpots';
+ import { welcome } from '../src/training/modules/welcome';
+@@ -20,7 +20,7 @@ test('the reported bug: too many of an item, then the line window opens. One mes
+   const page = diagnose({ ...goal, allow: ['add', 'remove'] }, frame, base, tooMany)!; assert.equal(page.kind, 'qty');
+   const open = diagnose({ ...goal, allow: ['add', 'remove'] }, frame, base, snap({ lines: [line('train-v-bee', 3)], sheets: 1 }))!;
+   assert.equal(open.kind, 'qty', 'opening the window to fix it is not a new mistake (it used to flip to "not needed, close it")');
+-  const c = fixCandidates(open, true); assert.equal(c[0].target, SPOT.lineMinus); assert.match(c[0].say, /minus/i); assert.doesNotMatch(c[0].say, /does not need this window/i);
++  const c = fixCandidates(open, true); assert.equal(c[0].target, lineMinusSpot('train-v-bee')); assert.match(c[0].say, /minus/i); assert.doesNotMatch(c[0].say, /does not need this window/i);
+   assert.equal(c[0].gesture, 'tap');
+ });
+ 
+@@ -37,7 +37,7 @@ test('page first, then the bar that opens the cart, when no window is open', ()
+ 
+ test('an extra item with the line window open points at Remove item in that window', () => {
+   const d = diagnose({ allow: [] }, frame, snap(), snap({ lines: [line('train-v-egg')], sheets: 1 }))!; const c = fixCandidates(d, true);
+-  assert.equal(c[0].target, SPOT.lineRemove); assert.match(c[0].say, /Remove item/); assert.equal(c[1].target, SPOT.sheetClose, 'falls back to closing a window that is not the line window');
++  assert.equal(c[0].target, lineRemoveSpot('train-v-egg')); assert.match(c[0].say, /Remove item/); assert.equal(c[1].target, SPOT.sheetClose, 'falls back to closing a window that is not the line window');
+   assert.match(c[1].say, /^Close this window first\./);
+ });
+ 
+@@ -52,7 +52,7 @@ test('no candidate ever tells the person to close the window that holds the fix'
+     diagnose({ allow: [] }, frame, snap(), snap({ lines: [line('train-v-egg')], sheets: 1 })), diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-egg')] }), snap({ lines: [line('train-v-egg', 4)], sheets: 1 })),
+     diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-egg')] }), snap({ sheets: 1 })),
+   ];
+-  for (const d of cases) { assert.ok(d); const c = fixCandidates(d!, true)[0]; if (d!.window && d!.window.target !== SPOT.sheetClose) assert.ok(WINDOW_SPOTS.includes(c.target!) && c.target !== SPOT.sheetClose, `${d!.kind}: the first thing shown is the fix inside the window`); }
++  for (const d of cases) { assert.ok(d); const c = fixCandidates(d!, true)[0]; if (d!.window && d!.window.target !== SPOT.sheetClose) assert.ok(isWindowSpot(c.target!) && c.target !== SPOT.sheetClose, `${d!.kind}: the first thing shown is the fix inside the window`); }
+ });
+ 
+ test('a Guide step does not allow windows unless it says so, or waits for one to open', () => {
+@@ -71,7 +71,14 @@ test('the checker: gestures are known, a state step says how to reach its target
+   const remove = welcome.guide.find(s => s.id === 'g-remove')!;
+   assert.ok(validateModule(withStep({ ...remove, gesture: undefined }), isKnownSpot).some(e => /how to reach it \(gesture\)/.test(e)));
+   assert.ok(validateModule(withStep({ ...remove, gesture: 'pinch' as never }), isKnownSpot).some(e => /unknown gesture/.test(e)));
+-  const win: Step = { id: 'g-minus', say: 'x', target: SPOT.lineMinus, until: { kind: 'press', id: SPOT.lineMinus } };
++  const win: Step = { id: 'g-minus', say: 'x', target: lineMinusSpot('train-v-bee'), until: { kind: 'press', id: lineMinusSpot('train-v-bee') } };
+   assert.ok(validateModule(withStep(win), isKnownSpot).some(e => /inside a window/.test(e)));
+   assert.ok(!validateModule(withStep({ ...win, at: { sheets: true, tabs: ['checkout'], routes: [] } }), isKnownSpot).some(e => /inside a window/.test(e)));
+ });
++
++test('each line has its own window buttons, so the guide can tell which item is open', () => {
++  assert.notEqual(lineRemoveSpot('train-v-egg'), lineRemoveSpot('train-v-bee')); assert.ok(isKnownSpot(lineRemoveSpot('train-v-egg'))); assert.ok(WINDOW_SPOTS.includes(SPOT.sheetClose));
++  // The extra item is the egg. With the BEE's window open, the egg's Remove button does not exist, so the person is told to close this window first, naming the egg.
++  const d = diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-bee')] }), snap({ lines: [line('train-v-bee'), line('train-v-egg')], sheets: 1 }))!; const c = fixCandidates(d, true);
++  assert.equal(c[0].target, lineRemoveSpot('train-v-egg')); assert.equal(c[1].target, SPOT.sheetClose); assert.match(c[1].say, /^Close this window first\./); assert.match(c[1].say, /egg|train-v-egg/i);
++});
+diff --git a/tests/trainingpalette.test.ts b/tests/trainingpalette.test.ts
+index a5e90a0..dcafb78 100644
+--- a/tests/trainingpalette.test.ts
++++ b/tests/trainingpalette.test.ts
+@@ -3,7 +3,7 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+-import { RING_CONTRAST, blend, contrast, dimOf, luminance, mix, parseColor, spotlightPalette } from '../src/lib/trainingPalette';
++import { BRAND_ORANGE, RING_CONTRAST, blend, contrast, dimOf, luminance, mix, parseColor, spotlightPalette } from '../src/lib/trainingPalette';
+ 
+ // The three built-in looks, copied from src/ui/theme.tsx (a test below checks they have not drifted).
+ const light = { bg: '#F4F4F5', card: '#FFFFFF', text: '#111111', accent: '#111111' };
+@@ -18,23 +18,17 @@ test('colour maths: parsing, luminance and contrast', () => {
+   assert.deepEqual(mix(k, w, 0.5), { r: 127.5, g: 127.5, b: 127.5, a: 1 });
+ });
+ 
+-test('the brand look uses its own peach accent, the dark look its near white, the light look a white ring', () => {
+-  assert.equal(spotlightPalette(brand, true).ring.toLowerCase(), '#fae9dc'); assert.equal(spotlightPalette(dark, true).ring.toLowerCase(), '#f4f4f5');
+-  assert.equal(spotlightPalette(light, false).ring.toLowerCase(), '#ffffff'); // the accent is near black, which the dim would swallow
+-});
+-
+-test('the ring stands out from the dim in every look and for any accent a person could choose', () => {
+-  const accents = ['#2563EB', '#DC2626', '#16A34A', '#7C3AED', '#DB2777', '#F59E0B', '#0EA5E9', '#000000', '#222222', '#FFFFFF', '#444444', '#1E3A8A', '#064E3B', '#831843', '#E5E7EB'];
+-  for (const [t, isDark] of [[light, false], [dark, true], [brand, true]] as const) for (const a of accents) {
+-    const p = spotlightPalette({ ...t, accent: a }, isDark); const ring = parseColor(p.ring)!;
+-    assert.ok(contrast(ring, seenOn(t, isDark)) >= RING_CONTRAST, `accent ${a} on ${isDark ? 'dark' : 'light'} gives ring ${p.ring} (contrast ${contrast(ring, seenOn(t, isDark)).toFixed(2)})`);
++test('the ring is the brand orange in every built-in look, whatever the accent', () => {
++  for (const [t, isDark] of [[light, false], [dark, true], [brand, true]] as const) for (const a of [t.accent, '#2563EB', '#000000', '#FFFFFF']) {
++    const p = spotlightPalette({ ...t, accent: a }, isDark); assert.equal(p.ring.toLowerCase(), '#fb873f'); assert.equal(p.glow.toLowerCase(), '#fb873f');
++    assert.ok(contrast(parseColor(p.ring)!, seenOn(t, isDark)) >= RING_CONTRAST, `orange is visible on the ${isDark ? 'dark' : 'light'} dim`);
+   }
++  assert.equal(BRAND_ORANGE.toLowerCase(), '#fb873f');
+ });
+ 
+-test('a chosen accent is kept when it already stands out, and lightened (not replaced) when it does not', () => {
+-  assert.equal(spotlightPalette({ ...dark, accent: '#F59E0B' }, true).ring.toLowerCase(), '#f59e0b');
+-  const lifted = parseColor(spotlightPalette({ ...light, accent: '#2563EB' }, false).ring)!; const orig = parseColor('#2563EB')!;
+-  assert.ok(lifted.b > lifted.r && lifted.b >= orig.b, 'still blue'); assert.ok(luminance(lifted) > luminance(orig), 'lighter than the chosen blue');
++test('a theme whose dim swallows the orange gets a lighter orange instead', () => {
++  const odd = { bg: '#FB873F', card: '#FB873F', text: '#FB873F', accent: '#000' }; const p = spotlightPalette(odd, false);
++  assert.ok(luminance(parseColor(p.ring)!) > luminance(parseColor(BRAND_ORANGE)!), 'lighter than the brand orange');
+ });
+ 
+ test('the text on the ring is readable, and the dim belongs to the theme', () => {
+@@ -45,8 +39,8 @@ test('the text on the ring is readable, and the dim belongs to the theme', () =>
+   assert.ok(dimOf(dark, true).a > dimOf(light, false).a, 'a dark page needs a stronger dim to read as dimmed');
+ });
+ 
+-test('unreadable theme values fall back to something visible', () => {
+-  const p = spotlightPalette({ bg: 'weird', card: 'weird', text: 'weird', accent: 'weird' }, true); assert.equal(p.ring.toLowerCase(), '#ffffff'); assert.ok(p.dim.startsWith('rgba('));
++test('unreadable theme values still give a visible orange ring', () => {
++  const p = spotlightPalette({ bg: 'weird', card: 'weird', text: 'weird', accent: 'weird' }, true); assert.equal(p.ring.toLowerCase(), '#fb873f'); assert.ok(p.dim.startsWith('rgba('));
+ });
+ 
+ test('the built-in looks above match the app theme file, and no training screen hard codes the old amber', () => {
+diff --git a/tests/trainingscroll.test.ts b/tests/trainingscroll.test.ts
+new file mode 100644
+index 0000000..405c7c4
+--- /dev/null
++++ b/tests/trainingscroll.test.ts
+@@ -0,0 +1,26 @@
++// Location: tests/trainingscroll.test.ts
++// Training knows when a spot is off screen or cut off, and says which way to scroll.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { onScreen, scrollNeed, scrollSay } from '../src/lib/trainingGeometry';
++
++const screen = { w: 400, h: 800 };
++test('a spot wholly below or above the screen needs a scroll that way', () => {
++  assert.deepEqual(scrollNeed({ x: 20, y: 900, w: 100, h: 40 }, screen), { dir: 'down', fully: true });
++  assert.deepEqual(scrollNeed({ x: 20, y: -80, w: 100, h: 40 }, screen), { dir: 'up', fully: true });
++  assert.equal(onScreen({ x: 20, y: 900, w: 100, h: 40 }, screen), false, 'it is not drawn as a ring');
++});
++test('a spot cut off at an edge needs a small scroll, and one fully in view needs none', () => {
++  assert.deepEqual(scrollNeed({ x: 20, y: 770, w: 100, h: 60 }, screen), { dir: 'down', fully: false });
++  assert.deepEqual(scrollNeed({ x: 20, y: -20, w: 100, h: 60 }, screen), { dir: 'up', fully: false });
++  assert.equal(scrollNeed({ x: 20, y: 300, w: 100, h: 60 }, screen), null);
++  assert.equal(onScreen({ x: 20, y: 770, w: 100, h: 60 }, screen), true, 'a cut off spot is still ringed');
++});
++test('an unmeasurable spot or one off to the side gives no scroll advice', () => {
++  assert.equal(scrollNeed(null, screen), null); assert.equal(scrollNeed({ x: 0, y: 0, w: 0, h: 0 }, screen), null); assert.equal(scrollNeed({ x: 500, y: 900, w: 50, h: 50 }, screen)?.dir, 'down');
++  assert.equal(scrollNeed({ x: -200, y: 300, w: 100, h: 50 }, screen), null);
++});
++test('the words say which way, and keep what the step already said', () => {
++  assert.equal(scrollSay('Tap Add.', { dir: 'down', fully: true }), 'Scroll down until you can see it. Tap Add.');
++  assert.equal(scrollSay('Tap Add.', { dir: 'up', fully: false }), 'Tap Add. Scroll up a little so all of it is on screen.');
++});

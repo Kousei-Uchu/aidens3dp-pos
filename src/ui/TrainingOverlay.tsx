@@ -45,6 +45,17 @@ function useRectGlide(rect: Rect | null, screen: Size, reduce: boolean): RectVal
   return v;
 }
 
+/** Shown at the top or bottom edge when the spot is off screen or cut off: which way to scroll. It never takes touches. */
+function ScrollCue({ dir, color, on }: { dir: 'up' | 'down'; color: string; on: string }) {
+  return (
+    <View pointerEvents="none" style={{ position: 'absolute', left: 0, right: 0, [dir === 'down' ? 'bottom' : 'top']: dir === 'down' ? 96 : 70, alignItems: 'center' }}>
+      <View accessible accessibilityLabel={`Scroll ${dir}`} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: color, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 8 }}>
+        <Ionicons name={dir === 'down' ? 'chevron-down' : 'chevron-up'} size={18} color={on} />
+        <Text style={{ color: on, fontSize: 14, fontWeight: '800' }}>Scroll {dir}</Text>
+      </View>
+    </View>
+  );
+}
 /** The ring: it pulses (native), and its box follows the glide (layout, so it sits in an outer view). */
 function Ring({ vals, color }: { vals: RectVals; color: string }) {
   const a = useRef(new Animated.Value(0.5)).current;
@@ -181,7 +192,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
   // In Guide the screen dims and only the target takes taps. While off course the dim stays when there is a fix to point at (only that takes taps, so nothing else can be
   // opened by accident); it lifts only when there is nothing to point at, because then the fix could be anywhere.
-  const dim = guide && (!view?.stray || !!hole);
+  const dim = guide && (!view?.stray || !!hole) && !view?.scroll?.fully; // a spot that is off screen leaves the screen free to scroll
 
   // Dim fades in the first time guide mode shows, and out when it ends.
   const dimO = useRef(new Animated.Value(0)).current;
@@ -228,6 +239,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
         </Animated.View>
       ) : null}
       {showRing && hole ? <Ring vals={vals} color={sp.ring} /> : null}
+      {view?.scroll ? <ScrollCue dir={view.scroll.dir} color={sp.ring} on={sp.onRing} /> : null}
       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
       {showRing && hole && !view.next ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
       {guide && !view.stray ? (
