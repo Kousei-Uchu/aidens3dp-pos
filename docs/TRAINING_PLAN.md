@@ -6,8 +6,8 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
 
 ## State of play
 
-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094) and `find-items` (0098).
-- **Next:** `pay-card`, then `pay-cash`, `receipts`.
+- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098) and `pay-card` (0099).
+- **Next:** `pay-cash`, then `receipts`.
 - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
 - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
 
@@ -25,9 +25,10 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
 4. **`find-items`: Find the right item** (done, 0098). Quick Menu pages, categories, All products, keypad and custom amount, search, and the variation picker.
    - Guide: change page, drill into a category, search, pick a variation, enter a custom amount.
    - Check 2: the customer swaps a Small Highland Cow for the Large, a search that shows two matches (the dragon, not the egg), and two items that sit together on the Extras page.
-5. **`pay-card`: Take a card payment.** The Charge screen and the Zeller terminal, including the customer side using the virtual terminal in manual mode.
+5. **`pay-card`: Take a card payment** (done, 0099). The Charge screen and the Zeller terminal, including the customer side using the virtual terminal in manual mode.
    - Guide: Charge, Card, customer taps, approved, receipt prompt.
    - Check 2: a declined card (51), then retry or switch method. Also reader not ready, and a result that comes back unknown ("Checking...", never re-charge).
+   - As built: Guide takes one sale by card with the person playing the customer at the terminal (`card: 'manual'`). Check 1 adds a sale over $100 that needs a PIN. Check 2 declines once (51) and then twice (54), so the person retries. **Not in Check 2:** reader not ready and an unknown result. There is no injection for either, so the Show teaches them and a later patch can add the injections.
 6. **`pay-cash`: Take cash and give change.** Tap the notes and coins handed over (the denomination pad), change from the drawer, 5c rounding.
    - Guide: Charge, Cash, tap denominations, undo or subtract an entry, change shown, done.
    - Check 2: no change available in the drawer (ledger injection), so split or ask for card. Also a customer who hands over too little.

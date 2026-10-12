@@ -21,6 +21,8 @@ import { cashDue, postCashSale, recordCancelledCashTender } from '../lib/cashSal
 import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
 import { ReceiptPrompt } from './Receipt';
 import { useUi } from '../ui/uiProfile';
+import { Spot } from '../ui/Spot';
+import { SPOT } from '../lib/trainingSpots';
 import { payHint, payQuestion, payTitle } from '../lib/simpleLabels';
 import type { SaleRecord, Tender } from '../lib/types';
 
@@ -184,11 +186,11 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const busy = card.phase === 'waiting';
   return (
     <Page title="Payment" onBack={busy ? undefined : () => (tenders.length ? void abandon() : onBack())} helpId="pay/card" right={zeller.ready ? undefined : <Txt size={13} color={c.bad} style={{ marginRight: 12 }}>Reader issue</Txt>}>
-      <View style={{ alignItems: 'center', paddingVertical: 24 }}>
+      <Spot id={SPOT.payTotal} style={{ alignItems: 'center', paddingVertical: 24 }}>
         <Txt sub>{tenders.length ? 'Remaining' : 'Total due'}</Txt><Money cents={remaining} size={46} weight="700" />
         {tenders.length ? <Txt sub size={13}>of {fmt(total)}</Txt> : null}
         {split ? <Txt size={14} weight="600" style={{ marginTop: 6 }}>Next payment: {fmt(target)}{plan.length > 1 ? ` · then ${plan.slice(1).map(v => fmt(v)).join(', ')}` : ''}</Txt> : null}
-      </View>
+      </Spot>
       {showsWaitingStrip(card.phase) && card.phase === 'waiting' ? (
         <View style={{ marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 14, backgroundColor: c.fill, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <ActivityIndicator />
@@ -204,7 +206,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       </View> : remaining > 0 ? (
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
           {payQuestion(ui.explain, true) ? <Txt size={17} weight="700" style={{ textAlign: 'center', marginBottom: 2 }}>{payQuestion(ui.explain, true)}</Txt> : null}
-          <PayOption hint={payHint('card', ui.explain)}><Btn title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption>
+          <PayOption hint={payHint('card', ui.explain)}><Btn spot={SPOT.payCard} title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption>
           <PayOption hint={payHint('cash', ui.explain)}><Btn title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
           <PayOption hint={payHint('gift', ui.explain)}><Btn title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
           <PayOption hint={payHint('split', ui.explain)}><Btn title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
@@ -216,7 +218,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       <Sheet visible={showsOwnSheet(card.phase)} dismissable={false} title={card.phase === 'unknown' ? 'Payment status unknown' : card.phase === 'declined' ? 'Not approved' : 'Reader'} onClose={() => {}}>
           {card.phase === 'declined' ? <View style={{ gap: 12 }}><Txt size={17}>{card.text}</Txt>{card.code ? <Txt sub size={13}>Code {card.code}. The cart is kept.</Txt> : <Txt sub size={13}>The cart is kept.</Txt>}
             <HelpButton id="fix/card-declined" label="Card payment help" />
-            <Btn title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
+            <Btn spot={SPOT.payRetry} title="Try card again" onPress={() => { setCard({ phase: 'idle' }); void runCard(); }} /><Btn spot={SPOT.payOther} title="Use another method" kind="secondary" onPress={() => setCard({ phase: 'idle' })} /></View> : null}
           {card.phase === 'unknown' ? <View style={{ gap: 12 }}><View style={{ flexDirection: 'row', gap: 10, alignItems: 'center' }}>{card.checking ? <ActivityIndicator /> : null}<Txt size={16} style={{ flex: 1 }}>{card.text}</Txt></View>
             <Txt sub size={13}>The customer may have been charged {fmt(card.amount)}. Do not charge again until this is resolved.</Txt>
             <HelpButton id="fix/card-declined" label="Unknown payment help" />

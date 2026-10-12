@@ -172,3 +172,16 @@ More ▸ Training ▸ Virtual terminal (and any course that takes a card payment
 5. **Every screen** (the gallery on the page): receipt, cancelled and not available look in step with the others, and the receipt QR still scans.
 
 Tell me: pass or fail for each step, and a photo of anything that is off.
+
+## T14. Training: Take a card payment (B6, 0099)
+
+On the iPad and on a phone: **More ▸ Training ▸ Take a card payment**.
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself and the text fits. The Show taps Card, the terminal on the right changes (amount, processing, a PIN screen for $125, approved), the Receipt window opens, and then a declined card, Try card again and the unknown-result window appear.
+2. **Guide.** Follow the arrows. Pass: Add the Bee, Charge, the amount is ringed, Card, then the terminal appears and you tap **Tap card** on it. The sale finishes by itself, the Receipt window opens, and No receipt closes it. **No step should call the sale or the payment a mistake.** On a phone, check the Charge step first points at the cart bar.
+3. **Check 1.** Two goals. Pass: the first finishes only after the sale **and** the Receipt window is closed. The second cart is over $100, the terminal asks for a PIN, any four digits and OK work, and the hints climb to a ringed answer.
+4. **Check 2.** The first goal declines your first card. Pass: the Not approved window shows Insufficient funds and code 51, Try card again works, and the sale finishes. The second declines two cards with code 54 (card expired), then approves the third.
+5. **Strays.** In Check 2 try Use another method and then Card again. Pass: it is not flagged. Remove the item from the cart mid-payment. Pass: you are told the sale still needs it.
+
+Tell me: pass or fail for each step, and whether the terminal is in the way of the Payment page on a phone.
+
