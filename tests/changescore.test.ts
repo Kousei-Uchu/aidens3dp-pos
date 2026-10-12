@@ -2,7 +2,7 @@
 // 0022: weighted ("smart") change: the profile learned from the ledger, the score, and the planner.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, selectSmartCandidates, smartTightness, type CashProfile } from '../src/lib/changeScore';
+import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, selectSmartCandidates, type CashProfile } from '../src/lib/changeScore';
 import { newEntry, totalOf, type Counts, type LedgerEntry } from '../src/lib/cashLedger';
 import { planChange } from '../src/lib/cashSale';
 import { checkChange } from '../src/lib/checkChange';
@@ -106,17 +106,12 @@ test('explainChoice: says what is kept, or that it is the quickest way', () => {
   assert.match(explainChoice({ '500': 1, '100': 5 }, { '100': 5 }, { '500': 1 }), /4 more pieces to count, but keeps 1 more \$5/);
   assert.match(explainChoice({ '500': 1 }, { '500': 1 }, { '500': 1 }), /Quickest/);
 });
-test('smartTightness: warns when the change would leave the drawer unable to cover usual sales, quiet otherwise', () => {
-  const prof = profile({ amounts: [{ cents: 500, p: 0.6 }, { cents: 1000, p: 0.4 }], needPerSale: { '500': 1 }, horizon: 4, confidence: 1, source: 'history', samples: 20 });
-  const tight = smartTightness({ '500': 2, '1000': 1 }, { '500': 2 }, prof); assert.ok(tight.length >= 1); assert.match(tight.join(' '), /usual|short of \$5/);
-  assert.deepEqual(smartTightness({ '500': 6, '1000': 3 }, { '500': 1 }, prof), []); assert.deepEqual(smartTightness({ '500': 1 }, { '500': 1 }, emptyProfile()), []);
-});
-test('checkChange: with a profile the warning comes from the profile; without one it is the plain rule, unchanged', () => {
+test('checkChange: a profile changes only which notes are given and the judge; the verdict and what is taken stay the same, and a null profile equals none (0088)', () => {
   const drawer = { '500': 2, '1000': 1 }; const offered = { '2000': 1 }; // $15 due, $20 handed over: $5 change
   const prof = profile({ amounts: [{ cents: 500, p: 1 }], needPerSale: { '500': 1 }, horizon: 4, confidence: 1, source: 'history', samples: 20 });
   const plain = checkChange(drawer, offered, 1500); const smart = checkChange(drawer, offered, 1500, undefined, prof);
   assert.equal(plain.verdict, 'change'); assert.equal(smart.verdict, 'change');
-  if (plain.verdict === 'change' && smart.verdict === 'change') { assert.deepEqual(plain.take, smart.take); assert.equal(totalOf(plain.change), totalOf(smart.change)); assert.ok(smart.tight.length >= 1); assert.match(smart.tight.join(' '), /usual|short of \$5/); }
+  if (plain.verdict === 'change' && smart.verdict === 'change') { assert.deepEqual(plain.take, smart.take); assert.equal(totalOf(plain.change), totalOf(smart.change)); assert.ok(Array.isArray(smart.tight)); }
   assert.deepEqual(checkChange(drawer, offered, 1500, undefined, null), plain);
 });
 test('profileNote: says where the numbers came from', () => {

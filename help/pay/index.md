@@ -74,7 +74,7 @@ flowchart TD
   C -->|card| D[runCard: see the card page]
   C -->|cash| E[CashSheet then takeCash]
   C -->|gift card| F[GiftCheckSheet then useGift debits the card]
-  C -->|split| G[chunk or equalLeft sets the next payment amount]
+  C -->|split| G[plan sets the next payment amount]
   D --> H[addTender adds to cart.tenders]
   E --> H
   F --> H

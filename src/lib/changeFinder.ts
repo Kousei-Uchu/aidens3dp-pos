@@ -10,8 +10,11 @@ export type ChangeResult = {
   exact: boolean;
 };
 
-/** `all`: when exact matches exist, still return the near ones too (the float report wants to weigh closeness against stock). */
-export type FindOptions = { maxNodes?: number; all?: boolean };
+/** `all`: when exact matches exist, still return the near ones too (the float report wants to weigh closeness against stock).
+ *  `bigFirst`: try the most of each note or coin first, so a search cut short by `maxNodes` has covered the ways that use the big notes
+ *  (0089: the float report cut short after only the ways that bank handfuls of coins, and picked a float with no coins left). The set of results
+ *  is the same when the search is not cut short. */
+export type FindOptions = { maxNodes?: number; all?: boolean; bigFirst?: boolean };
 export type FindOutcome = { results: ChangeResult[]; truncated: boolean };
 
 /** Same behaviour as findCombinations, but says whether the search was cut short by `maxNodes` (results are then incomplete). */
@@ -45,7 +48,10 @@ export function findCombinationsLimited(available: Record<string, number>, targe
       return;
     }
     const [value, quantity] = entries[index];
-    for (let qty = 0; qty <= quantity; qty++) {
+    if (opts.bigFirst) {
+      const top = Math.min(quantity, Math.floor((target + delta + 1e-9 - total) / value));
+      for (let qty = top; qty >= 0; qty--) { used[index] = qty; search(index + 1, total + value * qty); if (truncated) break; }
+    } else for (let qty = 0; qty <= quantity; qty++) {
       const nextTotal = total + value * qty;
       if (nextTotal > target + delta + 1e-9) break;
       used[index] = qty;

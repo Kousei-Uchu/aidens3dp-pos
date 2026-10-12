@@ -1,0 +1,70 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 1be7588..9f9c06d 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -91,6 +91,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0086 | 2026-10-12 | Device test T4.4: **a split payment with too little cash no longer suggests splitting again.** The split is now a plan (the list of payments still to take). When the cash handed over does not cover the current payment, the cash screen offers: with two payments left, **Add $… to payment 2** or **Go back and change the split**; with more than two, **Add $… to payment N** for each later payment, **Spread $… over the other payments** (only when each later payment rises by a whole number of dollars, otherwise the button is left out), or **Go back and change the split**. The Payment screen now shows the payments still to come (**Next payment: $… · then $…**). A payment of any other kind that falls short (a gift card with a low balance) still shares what is left over the later parts as before. New `src/lib/splitPlan.ts` and `tests/splitplan.test.ts`; Help pages updated | B1i |
+ | 0087 | 2026-10-12 | Device tests T4.7, T4.9 and T6: **every list of notes and coins now uses the squares layout** (the note or coin with an x3 badge) instead of the old "1 × $2" text. Cancelling a part-paid cash sale (collect the change back, return what was handed over), the Check change answer (**Ask for**, **They keep**, **Give as change**), the cash screen's "Ask for less" option, and the daily float report (**Take out**, **Leave in the drawer**, **Top up**, the notes better banked) all use it. One shared component, `src/ui/CountSquares.tsx`; `adviceFor` now also returns `groups` and `note` for the screen | B1i, B1d, B1f |
+ | 0088 | 2026-10-12 | Device test T4.9: **Check change's "may not be worth it" warning is now a real judge, not a stock rule.** Reported: with no $20s in the drawer, $4 of change was refused for "leaving you out of $20s". The old rule asked whether the drawer was short of anything afterwards, so a shortage you already had caused the warning. The new check plays out your next few cash sales (160 seeded imagined runs, change amounts and handed-over notes taken from your profile, or a generic $1 to $30 spread when there is none) twice: against the drawer as it is (card) and against the drawer after this change. It warns only when the change makes at least 8 points more of those sales fail, names the notes or coins to blame by putting each back in turn, and says the two percentages. With smart change on, if its first choice would warn it tries the runners-up and the fewest-pieces way and uses the kindest. New `src/lib/changeImpact.ts` (`makeChange`, `makeScript`, `play`, `judgeChoices`, `judgeChange`, `genericProfile`), `tests/changeimpact.test.ts` (including the T4.9 case, a healthy drawer never warning, the blamed note, choosing a kinder way, random drawers); `tightness` and `smartTightness` removed; Help pages and `help/help.json` updated | B1d |
++| 0089 | 2026-10-12 | Build fix found while typechecking: `CashSheet` (added in 0086) had a prop named `plan` and a local `plan`, a syntax error that stops the app bundling. The prop is now `splitPlan` inside the component (its public name `plan` is unchanged, so `Pay.tsx` is untouched); a loosely typed drawer list in `tests/changeimpact.test.ts` is fixed so `npm run typecheck` is clean again | N3 |
+ 
+ ---
+ 
+diff --git a/docs/patches/0089-plan.md b/docs/patches/0089-plan.md
+new file mode 100644
+index 0000000..3834f75
+--- /dev/null
++++ b/docs/patches/0089-plan.md
+@@ -0,0 +1,17 @@
++# Patch 0089: build fix (typecheck found it)
++
++Stacks on 0088. Not on your list; found while running `tsc` before starting the T6 and T8 work, and it stops the app bundling, so it goes first.
++
++## What was wrong
++- `src/screens/CashSheet.tsx`: since 0086, `CashSheet` took a prop called `plan` (the split-payment plan) **and** declared `const plan = useMemo(... planChange ...)` in its body. A parameter and a top-level `const` of the same name in one function is a JavaScript syntax error ("Identifier 'plan' has already been declared"), so Metro cannot bundle the app. `tsc` reports it as TS2300 twice and TS2339 once (`'kind' does not exist on type 'SplitPlan'`).
++- `tests/changeimpact.test.ts` line 71: a list of drawers typed too narrowly for `Counts` (TS2322). The test itself runs fine; only `tsc` (which includes `tests/`) complained.
++
++## Checklist
++1. [x] `CashSheet`: destructure the prop as `plan: splitPlan = []`. Its public name stays `plan`, so `Pay.tsx` (`plan={plan}`) needs no change.
++2. [x] `CashSheet`: the one place that used the prop (`livePlan`) now reads `splitPlan`. The local `plan` (the change plan) is untouched.
++3. [x] `tests/changeimpact.test.ts`: the drawer list is cast `as Counts[]`.
++4. [x] `tsc --noEmit` is clean (apart from the private Zeller package, which cannot be fetched in my sandbox; it is clean on your machine for that part as before).
++5. [x] `docs/PROGRESS.md`: row 0089.
++
++## Not changed
++No behaviour. The split-shortfall options from 0086 work exactly as designed once the file compiles.
+diff --git a/src/screens/CashSheet.tsx b/src/screens/CashSheet.tsx
+index cead4d0..3687424 100644
+--- a/src/screens/CashSheet.tsx
++++ b/src/screens/CashSheet.tsx
+@@ -106,7 +106,7 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
+   );
+ }
+ 
+-export function CashSheet({ visible, onClose, due, onTake, plan = [], onChangeSplit }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void; plan?: SplitPlan; onChangeSplit?: () => void }) {
++export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [], onChangeSplit }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void; plan?: SplitPlan; onChangeSplit?: () => void }) {
+   const { c } = useTheme(); const ui = useUi(); const drawer = useApp(s => s.pos.ledger.counts);
+   const [step, setStep] = useState<'receive' | 'change'>('receive'); const [draft, setDraft] = useState<Draft>([]); const [partX, setPartX] = useState<number | null>(null); const [force, setForce] = useState(false);
+   useEffect(() => { if (visible) { setStep('receive'); setDraft([]); setPartX(null); setForce(false); } }, [visible]);
+@@ -121,7 +121,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan = [], onChangeSp
+ 
+   const finish = (given: Counts = {}, next?: SplitPlan) => onTake({ tendered: got, received, given, ...(partX !== null ? { applyCents: partX } : {}), ...(next ? { plan: next } : {}) });
+   // a split bill with too little cash for this part: say where the rest goes (or go back and change the split), instead of splitting it again
+-  const livePlan = useMemo(() => (plan.length > 1 ? [billDue, ...plan.slice(1)] : plan), [plan, billDue]); // this payment is what is due on screen
++  const livePlan = useMemo(() => (splitPlan.length > 1 ? [billDue, ...splitPlan.slice(1)] : splitPlan), [splitPlan, billDue]); // this payment is what is due on screen
+   const choices = st.state === 'short' && partX === null && onChangeSplit ? shortChoices(livePlan, got) : [];
+   const choiceTitle = (k: ShortChoice) => (k.kind === 'next' ? `Add ${fmt(k.shortBy)} to payment 2 (${fmt(k.was)} → ${fmt(k.now)})` : k.kind === 'part' ? `Add ${fmt(k.shortBy)} to payment ${k.part} (${fmt(k.was)} → ${fmt(k.now)})` : k.kind === 'spread' ? `Spread ${fmt(k.shortBy)} over the other ${k.parts} payments (+${fmt(k.each)} each)` : 'Go back and change the split');
+   const takeChoice = (k: ShortChoice) => { if (k.kind === 'modify') { onChangeSplit?.(); return; } finish({}, applyShortChoice(livePlan, k)); };
+diff --git a/tests/changeimpact.test.ts b/tests/changeimpact.test.ts
+index 22adeba..0f747c7 100644
+--- a/tests/changeimpact.test.ts
++++ b/tests/changeimpact.test.ts
+@@ -68,7 +68,7 @@ test('with no profile the generic spread of change amounts is used, and the word
+   const j = judgeChange({ drawer: { '500': 1, '100': 10, '200': 5, '2000': 2 }, take: { '2000': 1 }, change: { '500': 1, '200': 2, '100': 2 } }); assert.equal(j.generic, true); assert.match(j.tight.join(' '), /typical sales/);
+ });
+ test('taking cash in can only help: handing over a note and getting no change back never warns', () => {
+-  for (const drawer of [{}, { '500': 1 }, { '2000': 3, '500': 4 }]) assert.deepEqual(judgeChange({ drawer, take: { '2000': 1 }, change: {}, profile: stall }).tight, []);
++  for (const drawer of [{}, { '500': 1 }, { '2000': 3, '500': 4 }] as Counts[]) assert.deepEqual(judgeChange({ drawer, take: { '2000': 1 }, change: {}, profile: stall }).tight, []);
+ });
+ test('random drawers and changes: always a sensible answer, rates between 0 and 1, a warning only with a real gap', () => {
+   let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const dens = [2000, 1000, 500, 200, 100, 50];

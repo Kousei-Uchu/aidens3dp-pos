@@ -139,24 +139,6 @@ export function scoreAfter(after: Counts, pieces: number, profile: CashProfile):
   return SCORE_WEIGHTS.coverage * coverage(after, profile) - SCORE_WEIGHTS.depth * depth(after, profile) - SCORE_WEIGHTS.piece * pieces;
 }
 
-/** Notes and coins the drawer is expected to run short of over the next few sales. */
-export function lowOn(after: Counts, profile: CashProfile): number[] {
-  return Object.entries(profile.needPerSale).map(([v, n]) => ({ v: Number(v), want: n * profile.horizon })).filter(x => x.want >= 1 && (after[String(x.v)] ?? 0) + IN_CREDIT * (profile.inPerSale[String(x.v)] ?? 0) * profile.horizon < x.want * 0.5).map(x => x.v).sort((a, b) => b - a);
-}
-const pct = (x: number) => `${Math.round(x * 100)}%`;
-/**
- * Replacement for the plain "is this change worth giving" rule when smart change is on. Empty = no concerns.
- * `pool` is the drawer plus what the customer hands over; `change` is what would go back.
- */
-export function smartTightness(pool: Counts, change: Counts, profile: CashProfile): string[] {
-  if (!profileUsable(profile)) return [];
-  const after = cleanCounts(diffCounts(pool, change)); const before = coverage(pool, profile); const now = coverage(after, profile); const out: string[] = [];
-  if (now < 0.5) out.push(`leaves the drawer able to make change for only ${pct(now)} of your usual sales`);
-  else if (before - now >= 0.15) out.push(`drops the share of usual change you could still make from ${pct(before)} to ${pct(now)}`);
-  const low = lowOn(after, profile).filter(v => v <= 2000); if (low.length) out.push(`leaves you short of ${low.map(denomLabel).join(', ')} for the next few sales`);
-  return out;
-}
-
 export type SmartPlan =
   | { kind: 'none' }
   | { kind: 'impossible'; truncated: boolean }

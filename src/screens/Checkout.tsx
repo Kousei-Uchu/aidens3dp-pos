@@ -83,7 +83,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
   };
   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
-  const pick = (v: Variant) => { add(v); setVariants(null); }; // a tap in the variation picker adds it and goes back to where you were
+  const pick = (v: Variant) => { add(v); }; // a tap in the variation picker adds it and stays on the picker, so several variations can be added in a row; the back arrow or the path leaves it
   const onScan = (code: string): string | null => {
     if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
     const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);

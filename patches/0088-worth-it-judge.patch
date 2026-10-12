@@ -1,0 +1,573 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7cbb06a..1be7588 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -90,6 +90,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0085 | 2026-10-12 | Device test T1.6: the **variation picker no longer closes when you tap a variation**. It adds the item (toast and spotlight as before) and stays put, so you can add several variations in a row; the back arrow or the path leaves it. One line in `pick` in `src/screens/Checkout.tsx` | A14.2 |
+ | 0086 | 2026-10-12 | Device test T4.4: **a split payment with too little cash no longer suggests splitting again.** The split is now a plan (the list of payments still to take). When the cash handed over does not cover the current payment, the cash screen offers: with two payments left, **Add $… to payment 2** or **Go back and change the split**; with more than two, **Add $… to payment N** for each later payment, **Spread $… over the other payments** (only when each later payment rises by a whole number of dollars, otherwise the button is left out), or **Go back and change the split**. The Payment screen now shows the payments still to come (**Next payment: $… · then $…**). A payment of any other kind that falls short (a gift card with a low balance) still shares what is left over the later parts as before. New `src/lib/splitPlan.ts` and `tests/splitplan.test.ts`; Help pages updated | B1i |
+ | 0087 | 2026-10-12 | Device tests T4.7, T4.9 and T6: **every list of notes and coins now uses the squares layout** (the note or coin with an x3 badge) instead of the old "1 × $2" text. Cancelling a part-paid cash sale (collect the change back, return what was handed over), the Check change answer (**Ask for**, **They keep**, **Give as change**), the cash screen's "Ask for less" option, and the daily float report (**Take out**, **Leave in the drawer**, **Top up**, the notes better banked) all use it. One shared component, `src/ui/CountSquares.tsx`; `adviceFor` now also returns `groups` and `note` for the screen | B1i, B1d, B1f |
++| 0088 | 2026-10-12 | Device test T4.9: **Check change's "may not be worth it" warning is now a real judge, not a stock rule.** Reported: with no $20s in the drawer, $4 of change was refused for "leaving you out of $20s". The old rule asked whether the drawer was short of anything afterwards, so a shortage you already had caused the warning. The new check plays out your next few cash sales (160 seeded imagined runs, change amounts and handed-over notes taken from your profile, or a generic $1 to $30 spread when there is none) twice: against the drawer as it is (card) and against the drawer after this change. It warns only when the change makes at least 8 points more of those sales fail, names the notes or coins to blame by putting each back in turn, and says the two percentages. With smart change on, if its first choice would warn it tries the runners-up and the fewest-pieces way and uses the kindest. New `src/lib/changeImpact.ts` (`makeChange`, `makeScript`, `play`, `judgeChoices`, `judgeChange`, `genericProfile`), `tests/changeimpact.test.ts` (including the T4.9 case, a healthy drawer never warning, the blamed note, choosing a kinder way, random drawers); `tightness` and `smartTightness` removed; Help pages and `help/help.json` updated | B1d |
+ 
+ ---
+ 
+diff --git a/help/cash/check-change.md b/help/cash/check-change.md
+index c32faf1..1836dc1 100644
+--- a/help/cash/check-change.md
++++ b/help/cash/check-change.md
+@@ -30,7 +30,7 @@ Until you tap something it says *Tap their notes and coins to see what we can do
+ |---|---|---|
+ | Green: **Cash works: no change needed** | Part of what they hold pays the bill exactly | Ask for those notes and coins. The box also says what they keep. |
+ | Green: **Cash works: $… change** | They hand over a note or two and we can give the change | Ask for the notes and coins listed, and give the change listed. |
+-| Amber: **We can make $… change, but it may not be worth it** | We can, but it would leave the drawer thin | Card is the safer choice. The box says why. |
++| Amber: **We can make $… change, but it may not be worth it** | We can, but giving it would make the next sales harder than asking for card would | Card is the safer choice. The box says why and by how much. |
+ | Red: **We can't make the change** | No part of what they hold works | Ask for card, or take the part in cash the box suggests and put the rest on card. |
+ | Red: **They're $… short in cash** | What they hold is less than the bill | Ask for card, or take what they have as a part payment. |
+ 
+@@ -42,11 +42,13 @@ It looks at every part of what the customer says they have:
+ For example, a $37.00 bill, a drawer with plenty of change, and a customer with a $50 and a $20: it asks for the $50 and tells you the customer keeps the $20, because the $20 alone is not enough.
+ 
+ ### Is it worth it?
+-The amber box appears when making the change would leave the drawer thin. With **Smart change** off, that means either:
+-- the change **uses up the last** of a note or coin of $20 or smaller (for example *uses up the last $10*), or
+-- the change **takes more than half** the cash in the drawer.
++The amber box appears only when giving **this** change would make your next cash sales harder than asking for card would. It plays out your next few sales twice, once with the drawer as it is now and once with the drawer after this change, and compares how many of them could not be given exact change. It warns when the change makes that noticeably worse, and the box says which notes or coins are to blame, for example *uses up the last $5, so about 40% of your usual sales would then get no exact change (15% if you ask for card)*.
+ 
+-With **Smart change** on, the warning is based on what the next sales are likely to need instead. See [[cash/smart-change]].
++Because it compares with and without, it never warns about a shortage you already had. If you have no $20 notes and the change is $4, there is nothing to warn about: the missing $20s are missing either way.
++
++If smart change is off, or there is no history yet, it uses a spread of typical change amounts from $1 to $30 and the box says *typical sales* instead of *your usual sales*. With **Smart change** on it uses the change amounts and notes your own customers really give you. See [[cash/smart-change]].
++
++When smart change is on and its first choice of notes would warn, the check also tries the other ways of giving the same change and uses the one that is kindest to the next sales, so you only see amber when every way hurts.
+ 
+ Amber is advice, not a block. You can still take the cash.
+ 
+@@ -75,8 +77,12 @@ When no part works, the POS also looks for **part in cash**: the biggest cash am
+ ### The short answer has no part-cash suggestion
+ If what they hold is less than the bill, the box says they are short and suggests card or a part payment, but does not work out a cash amount for you. You can simply take what they have as a part payment.
+ 
+-### Two meanings of "worth it"
+-Plain rules are used when Smart change is off, so the answer is something you can check by looking at the drawer. With it on, the answer comes from the learned profile, so it can warn about a note that is not yet *quite* gone but will be needed. Neither ever changes whether change can be made, only the advice. The line at the bottom of the sheet says which is in use and what it is based on.
++### How the worth-it check decides
++The check imagines 160 runs of your next few cash sales (about half a day's worth, between 4 and 12), using the same sequence every time so the same drawer always gets the same answer. Each imagined sale needs a change amount drawn from your usual ones, and the customer hands over the note you usually receive for it. A sale that the drawer cannot make exactly counts as failed and leaves the drawer alone.
++
++It runs that twice: against the drawer as it is (what happens if you ask for card) and against the drawer after taking their notes and giving this change. Only the gap matters. It warns when giving the change makes at least 8 percentage points more of the sales fail. To say which notes or coins are to blame, it puts each one the change used back, one at a time, and sees how many of the extra failures disappear.
++
++It never changes whether change can be made, only the advice and, with smart change on, which of the exact ways of giving it is shown. The line at the bottom of the sheet says what the numbers are based on.
+ 
+ ### A very large handover
+ If the customer holds a great many notes and coins, the POS stops looking after trying 2,000 parts of the handover. It then answers from the best found so far, which could be "can't make the change" even though a part it never reached would have worked. In practice, ask a customer holding that much cash what they would like to hand over.
+@@ -95,13 +101,14 @@ flowchart TD
+   F -->|exact payment| H[exact]
+   F -->|needs change| I[change plus tight reasons]
+   I --> J{profile usable}
+-  J -->|yes| K[planChangeSmart and smartTightness]
+-  J -->|no| L[planChange and tightness]
++  J -->|yes| K[planChangeSmart: best way and runners-up]
++  J -->|no| L[planChange: fewest pieces]
++  K --> N[judgeChoices: play the next sales with and without the change]
++  L --> N
+   D --> M[adviceFor writes the box]
+   G --> M
+   H --> M
+-  K --> M
+-  L --> M
++  N --> M
+ ```
+ 
+ ### Where the code is
+@@ -110,8 +117,9 @@ flowchart TD
+ | The sheet | `CheckChangeSheet` in `src/screens/CheckChange.tsx` |
+ | The verdict | `checkChange` in `src/lib/checkChange.ts` |
+ | The words in the box | `adviceFor` in `src/lib/checkChange.ts` |
+-| The plain worth-it rule | `tightness` in `src/lib/checkChange.ts` |
+-| The learned worth-it rule | `smartTightness`, `profileNote` in `src/lib/changeScore.ts` |
++| The worth-it check | `judgeChoices`, `judgeChange` in `src/lib/changeImpact.ts` |
++| The sales simulation behind it | `makeScript`, `play`, `makeChange` in `src/lib/changeImpact.ts` |
++| The line saying what the numbers are based on | `profileNote` in `src/lib/changeScore.ts` |
+ | The cash due, with rounding | `cashDue` in `src/lib/cashSale.ts`; what remains comes from `usePriced` and `paidTotal` |
+ | The profile (null when Smart change is off) | `useCashProfile` in `src/state/cashProfile.ts` |
+ | The tap pad | `DenomPad` in `src/ui/DenomPad.tsx` |
+@@ -127,13 +135,14 @@ flowchart TD
+ 
+ The amber or green tone is decided in `adviceFor`: a `change` result with any `tight` entries is amber.
+ 
+-### The plain worth-it rule
+-`tightness` looks at the drawer after taking the customer's notes in and giving the change out. It flags a denomination of $20 or smaller that is in the change and is at zero afterwards, and it flags change worth more than half of the drawer plus what was taken in. The smart version is `smartTightness`: it flags a coverage of less than half of usual change amounts, a drop of 15 percentage points or more, or a note or coin the profile expects to run short of.
++### The worth-it check
++`judgeChoices` builds a script with `makeScript` (seeded, so it is repeatable), plays it against the drawer as it is and against the drawer after each way of giving the change with `play`, and returns the way it settled on (`index`) and `tight`. A later way replaces the first only if it is at least 2 points kinder. It warns when the chosen way is `WARN_DELTA` (0.08) or more worse than declining. `judgeChange` is the same for a single way. With no usable profile it uses `genericProfile`. Sales are made with `makeChange`, which backtracks so a drawer with no $10s still finds $5 + $5.
+ 
+ ### Reading the code for a fault
+ - **Nothing happens when I tap notes.** `due` is zero (empty cart) and no amount has been keyed in. Use **Check a different amount**.
+ - **The answer is always can't make the change.** The record is empty or out of date. The red ledger line is shown when `ledgerEmpty`. Use **Correct contents**.
+ - **The tile is missing from the grid.** The layout was made before `check_change` existed. Add it from Edit grid ▸ Add tile ▸ Actions. A register on an older app version drops the tile type from a synced layout, so update every register first.
+-- **The amber warning mentions usual sales.** Smart change is on, so `smartTightness` is in use.
++- **The amber warning says usual sales, or typical sales.** *Usual* means your own history was used (smart change on); *typical* means the generic spread in `genericProfile` was used.
++- **It warned, but the drawer looks fine to me.** Read the two percentages in the box: the warning means the second is clearly higher than the first, so one of the notes it names is one your usual sales lean on.
+ - **The amount differs from the Cash sheet.** Check change always uses what remains on the whole sale (rounded with `cashDue` when **Cash rounding (5c)** is on). The cash sheet uses the amount of the payment being taken, so after **Split amount** the two differ. Use **Check a different amount**.
+-- **Tests.** `tests/checkchange.test.ts` (verdicts, ranking, part cash, worth-it rules), `tests/changescore.test.ts` (the smart rules).
++- **Tests.** `tests/checkchange.test.ts` (verdicts, ranking, part cash), `tests/changeimpact.test.ts` (the worth-it check, including the case of no $20s and $4 change), `tests/changescore.test.ts` (the smart rules).
+diff --git a/help/cash/smart-change.md b/help/cash/smart-change.md
+index 2ad35d3..babbdaa 100644
+--- a/help/cash/smart-change.md
++++ b/help/cash/smart-change.md
+@@ -14,12 +14,12 @@ updated: 2026-10-11
+ ### Turning it on
+ Settings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.
+ 
+-With it off, nothing changes: change is the fewest pieces, and Check change uses its plain "worth it?" rules.
++With it off, nothing changes: change is the fewest pieces, and Check change still judges "worth it?" using a spread of typical change amounts.
+ 
+ ### What you will notice
+ - **On the Give change screen** (cash sales and cash refunds), under **Take from the drawer**, a line says why that choice was made. For example: *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* If the quickest way is also the best, it says *Quickest way, and it keeps the drawer well stocked.*
+ - **Show another way** steps through the next best choices. The button then reads **Show the next way**, and finally **Back to the suggested way**. While you are on another choice the line says *Another way to make the same change.*
+-- **In Check change**, the amber "may not be worth it" warning is based on what your next sales are likely to need. See [[cash/check-change]].
++- **In Check change**, the amber "may not be worth it" warning is based on your own usual change amounts, and it compares giving the change with asking for card, so it never warns about a shortage you already had. See [[cash/check-change]].
+ 
+ You can always ignore the suggestion and tap what you really give. See [[cash/change]].
+ The [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.
+@@ -110,7 +110,7 @@ flowchart TD
+ | History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |
+ | The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |
+ | The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |
+-| The warning in Check change | `smartTightness`, `lowOn` in `src/lib/changeScore.ts` |
++| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts`; `lowOn` in `src/lib/changeScore.ts` is still used by the float report |
+ | The line under the switch | `profileNote` in `src/lib/changeScore.ts` |
+ | The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |
+ 
+@@ -139,4 +139,4 @@ flowchart TD
+ - **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.
+ - **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.
+ - **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.
+-- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/checkchange.test.ts` covers the worth-it rules.
++- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/changeimpact.test.ts` covers the worth-it check.
+diff --git a/help/help.json b/help/help.json
+index a2f25fd..1eb9a51 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "5b700682",
++ "version": "3e77b28d",
+  "pages": [
+   {
+    "id": "cash",
+@@ -101,9 +101,9 @@
+    "updated": "2026-10-11",
+    "lead": "**Check change** answers one question before any money changes hands: *the customer says they have these notes. Can we give them change for this sale?* Nothing is recorded and the cart is not touched.",
+    "sections": {
+-    "basic": "### Opening it\nThere are three ways in:\n- **A grid tile** called **Check change** (Edit grid ▸ Add tile ▸ Actions). A new grid has it already. A grid made before the tile existed does not, so add it. See [[sales/grid]].\n- **The cart ••• menu**: **Check change**, with *Can we make change for this cart?* under it.\n- **The guided checkout**: **More options** ▸ **Check change**.\n\n### What you see\n- At the top, **Cart total** and the amount. This is what is still owing on the sale, and when **Cash rounding (5c)** is on it is rounded to the nearest 5c, the same as the cash sheet would ask for.\n- **Check a different amount** lets you key in any amount instead, and **Use the cart total** switches back. With an empty cart the keypad is already open under **Amount to check**.\n- **What the customer says they have**, the same tap pad as the cash sheet. Tap each note and coin they say they have. **Customer has** shows the total. The pad has the **Add / Remove** switch, **Undo** and **Start over**, as on [[pay/cash]].\n- Underneath, a coloured box with the answer.\n\nUntil you tap something it says *Tap their notes and coins to see what we can do.*\n\n### The answers\n| Colour and title | What it means | What to do |\n|---|---|---|\n| Green: **Cash works: no change needed** | Part of what they hold pays the bill exactly | Ask for those notes and coins. The box also says what they keep. |\n| Green: **Cash works: $… change** | They hand over a note or two and we can give the change | Ask for the notes and coins listed, and give the change listed. |\n| Amber: **We can make $… change, but it may not be worth it** | We can, but it would leave the drawer thin | Card is the safer choice. The box says why. |\n| Red: **We can't make the change** | No part of what they hold works | Ask for card, or take the part in cash the box suggests and put the rest on card. |\n| Red: **They're $… short in cash** | What they hold is less than the bill | Ask for card, or take what they have as a part payment. |\n\n### How it picks what to ask for\nIt looks at every part of what the customer says they have:\n1. If some part pays the bill **exactly**, that wins, using the fewest notes and coins.\n2. Otherwise it asks for the **smallest handover** that covers the bill and whose change we can make. That means they keep the most of their own money.\n\nFor example, a $37.00 bill, a drawer with plenty of change, and a customer with a $50 and a $20: it asks for the $50 and tells you the customer keeps the $20, because the $20 alone is not enough.\n\n### Is it worth it?\nThe amber box appears when making the change would leave the drawer thin. With **Smart change** off, that means either:\n- the change **uses up the last** of a note or coin of $20 or smaller (for example *uses up the last $10*), or\n- the change **takes more than half** the cash in the drawer.\n\nWith **Smart change** on, the warning is based on what the next sales are likely to need instead. See [[cash/smart-change]].\n\nAmber is advice, not a block. You can still take the cash.\n\n### If the box says the ledger is empty\nA red line says *The drawer ledger is empty, so this can't know what change you have.* The POS has no record of cash in the drawer, so it cannot say. Open the drawer or use **Correct contents** first. See [[cash/open-close]].\n\n### Using the answer\nCheck change does not take any payment. When the customer agrees, go to **Charge** ▸ **Cash** and tap what they actually hand over, as normal. See [[pay/cash]].",
+-    "deep": "### Why it is separate from the cash sheet\nThe cash sheet works with what the customer **has already handed over**, and the change it works out comes from that whole handover. Check change works earlier, from what they **say they have**, and it considers handing over **only part** of it. That is how it can tell you to ask for the $50 and let them keep the $20, before they have handed anything over. (The cash sheet's **Ask for less** reaches a similar answer, but only after the notes are in your hand.) Both use the same change search. See [[cash/change]].\n\n### How the best handover is ranked\nEvery part of what the customer holds that covers the bill is tried. Each one is ranked by three things, in order:\n1. **Exact payment** beats everything.\n2. **Less change** beats more change (so they keep more).\n3. **Fewer pieces** breaks any tie.\n\nParts whose change the drawer cannot make are skipped. If nothing is left, the answer is \"can't make the change\".\n\n### What the card answer suggests\nWhen no part works, the POS also looks for **part in cash**: the biggest cash amount, in 5c steps, whose change can be made, with the rest on card. Example: the record holds one $20, a customer says they have a $50, and the bill is $37.00. The $13.00 change cannot be made, but $30.00 in cash can (the $20 comes back from the drawer), so the box says to take $30.00 in cash and put the other $7.00 on card.\n\n### The short answer has no part-cash suggestion\nIf what they hold is less than the bill, the box says they are short and suggests card or a part payment, but does not work out a cash amount for you. You can simply take what they have as a part payment.\n\n### Two meanings of \"worth it\"\nPlain rules are used when Smart change is off, so the answer is something you can check by looking at the drawer. With it on, the answer comes from the learned profile, so it can warn about a note that is not yet *quite* gone but will be needed. Neither ever changes whether change can be made, only the advice. The line at the bottom of the sheet says which is in use and what it is based on.\n\n### A very large handover\nIf the customer holds a great many notes and coins, the POS stops looking after trying 2,000 parts of the handover. It then answers from the best found so far, which could be \"can't make the change\" even though a part it never reached would have worked. In practice, ask a customer holding that much cash what they would like to hand over.",
+-    "advanced": "### From taps to a verdict\n```mermaid\nflowchart TD\n  A[CheckChangeSheet: due and the tapped notes and coins] --> B[checkChange drawer offered due profile]\n  B --> C{offered covers the bill}\n  C -->|no| D[short]\n  C -->|yes| E[try every part of offered up to 2000]\n  E --> F{any part with makeable change}\n  F -->|no| G[card plus partCashOption]\n  F -->|exact payment| H[exact]\n  F -->|needs change| I[change plus tight reasons]\n  I --> J{profile usable}\n  J -->|yes| K[planChangeSmart and smartTightness]\n  J -->|no| L[planChange and tightness]\n  D --> M[adviceFor writes the box]\n  G --> M\n  H --> M\n  K --> M\n  L --> M\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The sheet | `CheckChangeSheet` in `src/screens/CheckChange.tsx` |\n| The verdict | `checkChange` in `src/lib/checkChange.ts` |\n| The words in the box | `adviceFor` in `src/lib/checkChange.ts` |\n| The plain worth-it rule | `tightness` in `src/lib/checkChange.ts` |\n| The learned worth-it rule | `smartTightness`, `profileNote` in `src/lib/changeScore.ts` |\n| The cash due, with rounding | `cashDue` in `src/lib/cashSale.ts`; what remains comes from `usePriced` and `paidTotal` |\n| The profile (null when Smart change is off) | `useCashProfile` in `src/state/cashProfile.ts` |\n| The tap pad | `DenomPad` in `src/ui/DenomPad.tsx` |\n| The grid tile | the `check_change` action in `src/lib/grid.ts`, handled in `src/screens/Checkout.tsx` |\n| The cart menu and guided checkout entries | `src/screens/CartPane.tsx`, `src/screens/GuidedCheckout.tsx` |\n\n### Result shapes\n`checkChange` returns one of four:\n- `short`: `shortBy`, and `part` which is always null.\n- `exact`: `take` (what to ask for) and `handBack` (what they keep).\n- `change`: `take`, `handBack`, `change` and `tight`, a list of reasons it may not be worth it. An empty list means no concerns.\n- `card`: `part`, the part-cash option or null.\n\nThe amber or green tone is decided in `adviceFor`: a `change` result with any `tight` entries is amber.\n\n### The plain worth-it rule\n`tightness` looks at the drawer after taking the customer's notes in and giving the change out. It flags a denomination of $20 or smaller that is in the change and is at zero afterwards, and it flags change worth more than half of the drawer plus what was taken in. The smart version is `smartTightness`: it flags a coverage of less than half of usual change amounts, a drop of 15 percentage points or more, or a note or coin the profile expects to run short of.\n\n### Reading the code for a fault\n- **Nothing happens when I tap notes.** `due` is zero (empty cart) and no amount has been keyed in. Use **Check a different amount**.\n- **The answer is always can't make the change.** The record is empty or out of date. The red ledger line is shown when `ledgerEmpty`. Use **Correct contents**.\n- **The tile is missing from the grid.** The layout was made before `check_change` existed. Add it from Edit grid ▸ Add tile ▸ Actions. A register on an older app version drops the tile type from a synced layout, so update every register first.\n- **The amber warning mentions usual sales.** Smart change is on, so `smartTightness` is in use.\n- **The amount differs from the Cash sheet.** Check change always uses what remains on the whole sale (rounded with `cashDue` when **Cash rounding (5c)** is on). The cash sheet uses the amount of the payment being taken, so after **Split amount** the two differ. Use **Check a different amount**.\n- **Tests.** `tests/checkchange.test.ts` (verdicts, ranking, part cash, worth-it rules), `tests/changescore.test.ts` (the smart rules)."
++    "basic": "### Opening it\nThere are three ways in:\n- **A grid tile** called **Check change** (Edit grid ▸ Add tile ▸ Actions). A new grid has it already. A grid made before the tile existed does not, so add it. See [[sales/grid]].\n- **The cart ••• menu**: **Check change**, with *Can we make change for this cart?* under it.\n- **The guided checkout**: **More options** ▸ **Check change**.\n\n### What you see\n- At the top, **Cart total** and the amount. This is what is still owing on the sale, and when **Cash rounding (5c)** is on it is rounded to the nearest 5c, the same as the cash sheet would ask for.\n- **Check a different amount** lets you key in any amount instead, and **Use the cart total** switches back. With an empty cart the keypad is already open under **Amount to check**.\n- **What the customer says they have**, the same tap pad as the cash sheet. Tap each note and coin they say they have. **Customer has** shows the total. The pad has the **Add / Remove** switch, **Undo** and **Start over**, as on [[pay/cash]].\n- Underneath, a coloured box with the answer.\n\nUntil you tap something it says *Tap their notes and coins to see what we can do.*\n\n### The answers\n| Colour and title | What it means | What to do |\n|---|---|---|\n| Green: **Cash works: no change needed** | Part of what they hold pays the bill exactly | Ask for those notes and coins. The box also says what they keep. |\n| Green: **Cash works: $… change** | They hand over a note or two and we can give the change | Ask for the notes and coins listed, and give the change listed. |\n| Amber: **We can make $… change, but it may not be worth it** | We can, but giving it would make the next sales harder than asking for card would | Card is the safer choice. The box says why and by how much. |\n| Red: **We can't make the change** | No part of what they hold works | Ask for card, or take the part in cash the box suggests and put the rest on card. |\n| Red: **They're $… short in cash** | What they hold is less than the bill | Ask for card, or take what they have as a part payment. |\n\n### How it picks what to ask for\nIt looks at every part of what the customer says they have:\n1. If some part pays the bill **exactly**, that wins, using the fewest notes and coins.\n2. Otherwise it asks for the **smallest handover** that covers the bill and whose change we can make. That means they keep the most of their own money.\n\nFor example, a $37.00 bill, a drawer with plenty of change, and a customer with a $50 and a $20: it asks for the $50 and tells you the customer keeps the $20, because the $20 alone is not enough.\n\n### Is it worth it?\nThe amber box appears only when giving **this** change would make your next cash sales harder than asking for card would. It plays out your next few sales twice, once with the drawer as it is now and once with the drawer after this change, and compares how many of them could not be given exact change. It warns when the change makes that noticeably worse, and the box says which notes or coins are to blame, for example *uses up the last $5, so about 40% of your usual sales would then get no exact change (15% if you ask for card)*.\n\nBecause it compares with and without, it never warns about a shortage you already had. If you have no $20 notes and the change is $4, there is nothing to warn about: the missing $20s are missing either way.\n\nIf smart change is off, or there is no history yet, it uses a spread of typical change amounts from $1 to $30 and the box says *typical sales* instead of *your usual sales*. With **Smart change** on it uses the change amounts and notes your own customers really give you. See [[cash/smart-change]].\n\nWhen smart change is on and its first choice of notes would warn, the check also tries the other ways of giving the same change and uses the one that is kindest to the next sales, so you only see amber when every way hurts.\n\nAmber is advice, not a block. You can still take the cash.\n\n### If the box says the ledger is empty\nA red line says *The drawer ledger is empty, so this can't know what change you have.* The POS has no record of cash in the drawer, so it cannot say. Open the drawer or use **Correct contents** first. See [[cash/open-close]].\n\n### Using the answer\nCheck change does not take any payment. When the customer agrees, go to **Charge** ▸ **Cash** and tap what they actually hand over, as normal. See [[pay/cash]].",
++    "deep": "### Why it is separate from the cash sheet\nThe cash sheet works with what the customer **has already handed over**, and the change it works out comes from that whole handover. Check change works earlier, from what they **say they have**, and it considers handing over **only part** of it. That is how it can tell you to ask for the $50 and let them keep the $20, before they have handed anything over. (The cash sheet's **Ask for less** reaches a similar answer, but only after the notes are in your hand.) Both use the same change search. See [[cash/change]].\n\n### How the best handover is ranked\nEvery part of what the customer holds that covers the bill is tried. Each one is ranked by three things, in order:\n1. **Exact payment** beats everything.\n2. **Less change** beats more change (so they keep more).\n3. **Fewer pieces** breaks any tie.\n\nParts whose change the drawer cannot make are skipped. If nothing is left, the answer is \"can't make the change\".\n\n### What the card answer suggests\nWhen no part works, the POS also looks for **part in cash**: the biggest cash amount, in 5c steps, whose change can be made, with the rest on card. Example: the record holds one $20, a customer says they have a $50, and the bill is $37.00. The $13.00 change cannot be made, but $30.00 in cash can (the $20 comes back from the drawer), so the box says to take $30.00 in cash and put the other $7.00 on card.\n\n### The short answer has no part-cash suggestion\nIf what they hold is less than the bill, the box says they are short and suggests card or a part payment, but does not work out a cash amount for you. You can simply take what they have as a part payment.\n\n### How the worth-it check decides\nThe check imagines 160 runs of your next few cash sales (about half a day's worth, between 4 and 12), using the same sequence every time so the same drawer always gets the same answer. Each imagined sale needs a change amount drawn from your usual ones, and the customer hands over the note you usually receive for it. A sale that the drawer cannot make exactly counts as failed and leaves the drawer alone.\n\nIt runs that twice: against the drawer as it is (what happens if you ask for card) and against the drawer after taking their notes and giving this change. Only the gap matters. It warns when giving the change makes at least 8 percentage points more of the sales fail. To say which notes or coins are to blame, it puts each one the change used back, one at a time, and sees how many of the extra failures disappear.\n\nIt never changes whether change can be made, only the advice and, with smart change on, which of the exact ways of giving it is shown. The line at the bottom of the sheet says what the numbers are based on.\n\n### A very large handover\nIf the customer holds a great many notes and coins, the POS stops looking after trying 2,000 parts of the handover. It then answers from the best found so far, which could be \"can't make the change\" even though a part it never reached would have worked. In practice, ask a customer holding that much cash what they would like to hand over.",
++    "advanced": "### From taps to a verdict\n```mermaid\nflowchart TD\n  A[CheckChangeSheet: due and the tapped notes and coins] --> B[checkChange drawer offered due profile]\n  B --> C{offered covers the bill}\n  C -->|no| D[short]\n  C -->|yes| E[try every part of offered up to 2000]\n  E --> F{any part with makeable change}\n  F -->|no| G[card plus partCashOption]\n  F -->|exact payment| H[exact]\n  F -->|needs change| I[change plus tight reasons]\n  I --> J{profile usable}\n  J -->|yes| K[planChangeSmart: best way and runners-up]\n  J -->|no| L[planChange: fewest pieces]\n  K --> N[judgeChoices: play the next sales with and without the change]\n  L --> N\n  D --> M[adviceFor writes the box]\n  G --> M\n  H --> M\n  N --> M\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The sheet | `CheckChangeSheet` in `src/screens/CheckChange.tsx` |\n| The verdict | `checkChange` in `src/lib/checkChange.ts` |\n| The words in the box | `adviceFor` in `src/lib/checkChange.ts` |\n| The worth-it check | `judgeChoices`, `judgeChange` in `src/lib/changeImpact.ts` |\n| The sales simulation behind it | `makeScript`, `play`, `makeChange` in `src/lib/changeImpact.ts` |\n| The line saying what the numbers are based on | `profileNote` in `src/lib/changeScore.ts` |\n| The cash due, with rounding | `cashDue` in `src/lib/cashSale.ts`; what remains comes from `usePriced` and `paidTotal` |\n| The profile (null when Smart change is off) | `useCashProfile` in `src/state/cashProfile.ts` |\n| The tap pad | `DenomPad` in `src/ui/DenomPad.tsx` |\n| The grid tile | the `check_change` action in `src/lib/grid.ts`, handled in `src/screens/Checkout.tsx` |\n| The cart menu and guided checkout entries | `src/screens/CartPane.tsx`, `src/screens/GuidedCheckout.tsx` |\n\n### Result shapes\n`checkChange` returns one of four:\n- `short`: `shortBy`, and `part` which is always null.\n- `exact`: `take` (what to ask for) and `handBack` (what they keep).\n- `change`: `take`, `handBack`, `change` and `tight`, a list of reasons it may not be worth it. An empty list means no concerns.\n- `card`: `part`, the part-cash option or null.\n\nThe amber or green tone is decided in `adviceFor`: a `change` result with any `tight` entries is amber.\n\n### The worth-it check\n`judgeChoices` builds a script with `makeScript` (seeded, so it is repeatable), plays it against the drawer as it is and against the drawer after each way of giving the change with `play`, and returns the way it settled on (`index`) and `tight`. A later way replaces the first only if it is at least 2 points kinder. It warns when the chosen way is `WARN_DELTA` (0.08) or more worse than declining. `judgeChange` is the same for a single way. With no usable profile it uses `genericProfile`. Sales are made with `makeChange`, which backtracks so a drawer with no $10s still finds $5 + $5.\n\n### Reading the code for a fault\n- **Nothing happens when I tap notes.** `due` is zero (empty cart) and no amount has been keyed in. Use **Check a different amount**.\n- **The answer is always can't make the change.** The record is empty or out of date. The red ledger line is shown when `ledgerEmpty`. Use **Correct contents**.\n- **The tile is missing from the grid.** The layout was made before `check_change` existed. Add it from Edit grid ▸ Add tile ▸ Actions. A register on an older app version drops the tile type from a synced layout, so update every register first.\n- **The amber warning says usual sales, or typical sales.** *Usual* means your own history was used (smart change on); *typical* means the generic spread in `genericProfile` was used.\n- **It warned, but the drawer looks fine to me.** Read the two percentages in the box: the warning means the second is clearly higher than the first, so one of the notes it names is one your usual sales lean on.\n- **The amount differs from the Cash sheet.** Check change always uses what remains on the whole sale (rounded with `cashDue` when **Cash rounding (5c)** is on). The cash sheet uses the amount of the payment being taken, so after **Split amount** the two differ. Use **Check a different amount**.\n- **Tests.** `tests/checkchange.test.ts` (verdicts, ranking, part cash), `tests/changeimpact.test.ts` (the worth-it check, including the case of no $20s and $4 change), `tests/changescore.test.ts` (the smart rules)."
+    }
+   },
+   {
+@@ -197,9 +197,9 @@
+    "updated": "2026-10-11",
+    "lead": "**Smart change** chooses which notes and coins to give as change so the drawer is still well stocked for the next customers, instead of just using the fewest pieces. It is off until you turn it on.",
+    "sections": {
+-    "basic": "### Turning it on\nSettings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.\n\nWith it off, nothing changes: change is the fewest pieces, and Check change uses its plain \"worth it?\" rules.\n\n### What you will notice\n- **On the Give change screen** (cash sales and cash refunds), under **Take from the drawer**, a line says why that choice was made. For example: *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* If the quickest way is also the best, it says *Quickest way, and it keeps the drawer well stocked.*\n- **Show another way** steps through the next best choices. The button then reads **Show the next way**, and finally **Back to the suggested way**. While you are on another choice the line says *Another way to make the same change.*\n- **In Check change**, the amber \"may not be worth it\" warning is based on what your next sales are likely to need. See [[cash/check-change]].\n\nYou can always ignore the suggestion and tap what you really give. See [[cash/change]].\nThe [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.\n\n### What it never does\nIt **never** decides whether change can be made. If exact change is possible without Smart change, it is possible with it, and the other way round. It only chooses between the ways that are already exact.\n\n### What the line under the switch says\n| Line | What it means |\n|---|---|\n| *no history or item prices to learn from yet, so it picks the fewest pieces* | Nothing to go on. It behaves as if it were off. |\n| *No tracked cash sales yet, so it is guessing from your item prices.* | It assumes customers pay a bill with the next note up, and works out the change from your item library. |\n| *learned from your recent cash sales (about N counted, newest weigh most)* | It has real sales to learn from. |\n| *learned from about N recent cash sales plus your item prices* | A mix of both, and real sales take over as they build up. |\n\n### Helping it learn\nIt learns from denomination-recorded cash sales where you tapped what the customer handed over and confirmed the change (**Gave this**). Cancellation entries are excluded from demand learning. Give it a few days of cash sales. See [[pay/cash]].\n\n### When a suggestion feels wrong\nTap **Show another way**, or tap **I'll give different notes and coins**. Smart change is advice. If it keeps suggesting something you dislike, turn it off in Settings ▸ Payments.",
++    "basic": "### Turning it on\nSettings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.\n\nWith it off, nothing changes: change is the fewest pieces, and Check change still judges \"worth it?\" using a spread of typical change amounts.\n\n### What you will notice\n- **On the Give change screen** (cash sales and cash refunds), under **Take from the drawer**, a line says why that choice was made. For example: *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* If the quickest way is also the best, it says *Quickest way, and it keeps the drawer well stocked.*\n- **Show another way** steps through the next best choices. The button then reads **Show the next way**, and finally **Back to the suggested way**. While you are on another choice the line says *Another way to make the same change.*\n- **In Check change**, the amber \"may not be worth it\" warning is based on your own usual change amounts, and it compares giving the change with asking for card, so it never warns about a shortage you already had. See [[cash/check-change]].\n\nYou can always ignore the suggestion and tap what you really give. See [[cash/change]].\nThe [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.\n\n### What it never does\nIt **never** decides whether change can be made. If exact change is possible without Smart change, it is possible with it, and the other way round. It only chooses between the ways that are already exact.\n\n### What the line under the switch says\n| Line | What it means |\n|---|---|\n| *no history or item prices to learn from yet, so it picks the fewest pieces* | Nothing to go on. It behaves as if it were off. |\n| *No tracked cash sales yet, so it is guessing from your item prices.* | It assumes customers pay a bill with the next note up, and works out the change from your item library. |\n| *learned from your recent cash sales (about N counted, newest weigh most)* | It has real sales to learn from. |\n| *learned from about N recent cash sales plus your item prices* | A mix of both, and real sales take over as they build up. |\n\n### Helping it learn\nIt learns from denomination-recorded cash sales where you tapped what the customer handed over and confirmed the change (**Gave this**). Cancellation entries are excluded from demand learning. Give it a few days of cash sales. See [[pay/cash]].\n\n### When a suggestion feels wrong\nTap **Show another way**, or tap **I'll give different notes and coins**. Smart change is advice. If it keeps suggesting something you dislike, turn it off in Settings ▸ Payments.",
+     "deep": "### What it is, and is not\nIt is a small statistical model that reads your own sales history, not a neural network or anything that phones home. Every number comes from the drawer record and the item library on this iPad, and the scoring is a short sum you can read below.\n\n### What it learns from\nEach time, the POS rebuilds a **profile** from three things:\n1. **The drawer history.** Which change amounts you actually give ($8.00, $13.00…), how many of each note and coin that used, and what customers actually hand over. Newer sales count more: a sale 14 days old counts half as much as one today.\n2. **The item library.** A customer buying a $12 item usually pays with a $20, so $8.00 back is likely. This is used while there are few real sales, and its weight fades as real sales build up, reaching equal weight at about 8 recent sales.\n3. **The sales list.** Used only to size how far ahead to plan: about half an average cash-sale day (counting the last 28 days), kept between 4 and 12 sales, or 6 when there is nothing to go on.\n\nCash sales with recorded denominations inform the model. Cancellation reversals, cash refunds, and cash drawer adjustments are not treated as customer change demand.\n\n### How a choice is scored\nFor every exact way of making the change, the POS imagines the drawer **after** giving it, and gives that a score. Higher is better:\n\n**100 × coverage − 40 × depth − 0.5 × pieces**\n\n- **Coverage** is the share of your usual change amounts that the drawer could still make exactly. 100% means you could still make all of them.\n- **Depth** is how far each note and coin is below what the next few sales are expected to use. 0 is well stocked and 1 is out. Notes and coins used more often count more. Half of what customers usually hand over is counted as on hand, because it can be given back again.\n- **Pieces** is a small push towards fewer pieces, so it only decides near-ties.\n\nThe best-scoring way is shown, and the next three are kept for **Show another way**.\n\n### A worked example\nSuppose your library has one item, at $12.00, and no sales have been tracked yet. The profile guesses that $8.00 of change is the most common (70%), followed by $38.00 (30%).\n\nThe drawer record holds 10 × $1, 10 × $2, 2 × $5, 3 × $10 and 2 × $20, and $8.00 is owed.\n\n| Way | Pieces | Score |\n|---|---|---|\n| 1 × $5, 1 × $2, 1 × $1 (fewest pieces) | 3 | about 89.2 |\n| 4 × $2 | 4 | about 90.6 |\n\nBoth keep full coverage, so it comes down to depth. The first uses one of only two $5 notes, and the profile expects $5 notes to be needed. So Smart change suggests 4 × $2 and says *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* The runner-up choices, 3 × $2 + 2 × $1, 2 × $2 + 4 × $1 and the $5 way, follow behind.\n\nThe weights are chosen to put stock first and speed second. They are a short list in the code if you ever want to tune them.\n\n### When history is thin\nUntil there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.\n\n### The learned profile is per iPad\nThe profile is built from this iPad's own ledger, so each register learns from its own sales. Nothing is shared between registers. See [[cash]].",
+-    "advanced": "### From history to a suggestion\n```mermaid\nflowchart TD\n  A[useCashProfile in cashProfile.ts] --> B{Smart change on}\n  B -->|no| C[null so planChange is used]\n  B -->|yes| D[buildProfile from ledger entries and item prices]\n  D --> E[CashProfile: amounts needPerSale inPerSale horizon confidence]\n  E --> F[planChangeSmart pool owed profile]\n  F --> G[planChange first: is exact change possible]\n  G -->|no| H[return impossible unchanged]\n  G -->|yes| I[findCombinationsLimited collects exact ways up to the search limit]\n  I --> J[scoreAfter up to 400: quickest baseline plus spread sample]\n  J --> K[best plus 3 alternatives plus explainChoice]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The switch and the note under it | `Settings` ▸ Payments in `src/screens/Settings.tsx` (`SmartChangeNote`) |\n| Building the profile for this iPad | `useCashProfile` in `src/state/cashProfile.ts` |\n| History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |\n| The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |\n| The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |\n| The warning in Check change | `smartTightness`, `lowOn` in `src/lib/changeScore.ts` |\n| The line under the switch | `profileNote` in `src/lib/changeScore.ts` |\n| The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |\n\n### The numbers\n| Name | Value | What it does |\n|---|---|---|\n| `SCORE_WEIGHTS` | coverage 100, depth 40, piece 0.5 | the weights in the score |\n| Half-life | 14 days | a sale this old counts half |\n| Confidence point | 8 recent change sales | history and the item-price guess count equally |\n| Horizon | 4 to 12, default 6 | how many upcoming sales to plan for |\n| Amounts kept | 60 | the most usual change amounts in a profile |\n| Candidates scored | 400 | keeps the quickest options and samples across the full piece-count/search range |\n| Alternatives kept | 3 | for Show another way |\n| Prior notes | $5, $10, $20, $50, $100 | which notes a customer is assumed to pay with |\n| Prior change from | $20 and smaller | note and coin sizes the guess builds change from |\n\n### What counts as history\n`fromLedger` only reads entries that carry a sale id. A `sale_change` entry counts as a change given if all its amounts are negative and its note does not start with *Sale cancelled*. A `sale_in` entry counts towards what customers hand over. Other kinds (`refund_out`, `paid_out`, `adjust` and so on) are skipped. The ledger keeps only the newest 1,000 entries, so very old sales fall out anyway.\n\n### Falling back to the plain answer\n`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding any exact option, it returns the plain answer with `smart: false`. A truncated search with some exact options is marked as truncated in the UI; the smart pick is then best among the options found. To keep scoring bounded on large drawers, it scores at most 400 options: the quickest baseline and a deterministic spread across the full range, rather than only the first 400 quickest combinations.\n\n### Reading the code for a fault\n- **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.\n- **The reason line is missing.** `smart` is false: the profile has no amounts yet, so the plain answer is shown.\n- **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.\n- **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.\n- **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.\n- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/checkchange.test.ts` covers the worth-it rules."
++    "advanced": "### From history to a suggestion\n```mermaid\nflowchart TD\n  A[useCashProfile in cashProfile.ts] --> B{Smart change on}\n  B -->|no| C[null so planChange is used]\n  B -->|yes| D[buildProfile from ledger entries and item prices]\n  D --> E[CashProfile: amounts needPerSale inPerSale horizon confidence]\n  E --> F[planChangeSmart pool owed profile]\n  F --> G[planChange first: is exact change possible]\n  G -->|no| H[return impossible unchanged]\n  G -->|yes| I[findCombinationsLimited collects exact ways up to the search limit]\n  I --> J[scoreAfter up to 400: quickest baseline plus spread sample]\n  J --> K[best plus 3 alternatives plus explainChoice]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The switch and the note under it | `Settings` ▸ Payments in `src/screens/Settings.tsx` (`SmartChangeNote`) |\n| Building the profile for this iPad | `useCashProfile` in `src/state/cashProfile.ts` |\n| History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |\n| The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |\n| The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |\n| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts`; `lowOn` in `src/lib/changeScore.ts` is still used by the float report |\n| The line under the switch | `profileNote` in `src/lib/changeScore.ts` |\n| The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |\n\n### The numbers\n| Name | Value | What it does |\n|---|---|---|\n| `SCORE_WEIGHTS` | coverage 100, depth 40, piece 0.5 | the weights in the score |\n| Half-life | 14 days | a sale this old counts half |\n| Confidence point | 8 recent change sales | history and the item-price guess count equally |\n| Horizon | 4 to 12, default 6 | how many upcoming sales to plan for |\n| Amounts kept | 60 | the most usual change amounts in a profile |\n| Candidates scored | 400 | keeps the quickest options and samples across the full piece-count/search range |\n| Alternatives kept | 3 | for Show another way |\n| Prior notes | $5, $10, $20, $50, $100 | which notes a customer is assumed to pay with |\n| Prior change from | $20 and smaller | note and coin sizes the guess builds change from |\n\n### What counts as history\n`fromLedger` only reads entries that carry a sale id. A `sale_change` entry counts as a change given if all its amounts are negative and its note does not start with *Sale cancelled*. A `sale_in` entry counts towards what customers hand over. Other kinds (`refund_out`, `paid_out`, `adjust` and so on) are skipped. The ledger keeps only the newest 1,000 entries, so very old sales fall out anyway.\n\n### Falling back to the plain answer\n`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding any exact option, it returns the plain answer with `smart: false`. A truncated search with some exact options is marked as truncated in the UI; the smart pick is then best among the options found. To keep scoring bounded on large drawers, it scores at most 400 options: the quickest baseline and a deterministic spread across the full range, rather than only the first 400 quickest combinations.\n\n### Reading the code for a fault\n- **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.\n- **The reason line is missing.** `smart` is false: the profile has no amounts yet, so the plain answer is shown.\n- **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.\n- **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.\n- **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.\n- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/changeimpact.test.ts` covers the worth-it check."
+    }
+   },
+   {
+diff --git a/src/lib/changeImpact.ts b/src/lib/changeImpact.ts
+new file mode 100644
+index 0000000..9a75965
+--- /dev/null
++++ b/src/lib/changeImpact.ts
+@@ -0,0 +1,153 @@
++// Location: src/lib/changeImpact.ts
++// 0088: the "is this change worth giving?" judge, and the small sales simulator behind it (the float report uses the same simulator, 0089).
++// Pure (no React, no store), tested in tests/changeimpact.test.ts. All amounts are integer cents.
++//
++// The old rule asked "is the drawer short of anything after this?", so a drawer that was already out of $20s warned about $4 of change.
++// This one asks the only question that matters: does giving THIS change make the next sales harder than saying no (card) would?
++//  1. A fixed, seeded script of upcoming cash sales is drawn from the profile (the change amounts you usually give, and the note
++//     customers usually hand over for each). Seeded, so the same drawer always gets the same answer.
++//  2. The script is played twice: against the drawer as it is now ("decline"), and against the drawer after taking the customer's
++//     notes in and giving the change out ("accept"). Each sale is made exactly from what is in the drawer plus the note just handed
++//     over; a sale that cannot be made exactly counts as a failure and the drawer is left as it was.
++//  3. Only the difference matters. Out of $20s already, and the change does not touch $20s: both runs fail the same sales, no warning.
++//  4. If the difference is big enough, the change is re-run with each note or coin it spent put back, one at a time, to find which
++//     ones are to blame, and the warning names them.
++// With no profile (smart change off, or no history yet) a generic spread of change amounts is used, so the rule still works.
++import { cleanCounts, denomLabel, type Counts } from './cashLedger';
++import { profileUsable, type CashProfile } from './changeScore';
++
++const NOTES = [500, 1000, 2000, 5000, 10000];
++const TRIALS = 160;
++const SEED = 20261012;
++/** Warn when giving the change makes at least this share of the next sales fail more often than declining would (8 points). */
++export const WARN_DELTA = 0.08;
++/** A note or coin counts as "to blame" when putting it back removes at least this share of the extra failures. */
++const BLAME_SHARE = 0.3;
++const NODE_CAP = 4000;
++
++/** Small seeded generator (mulberry32): the same seed always gives the same numbers. */
++function rng(seed: number): () => number {
++  let a = seed | 0;
++  return () => { a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
++}
++
++/**
++ * Exact change for `owed` from `pool`, largest notes first with backtracking (so a drawer short of $10s still finds $5 + $5).
++ * null when it cannot be made exactly (or the search cap is hit, which for a cash drawer means it is not worth the cashier's time).
++ */
++export function makeChange(pool: Counts, owed: number, cap = NODE_CAP): Counts | null {
++  if (owed <= 0) return {};
++  const ds = Object.keys(pool).map(Number).filter(v => v > 0 && (pool[String(v)] ?? 0) > 0).sort((a, b) => b - a);
++  const reach = new Array(ds.length + 1).fill(0); for (let i = ds.length - 1; i >= 0; i--) reach[i] = reach[i + 1] + ds[i] * pool[String(ds[i])];
++  if (reach[0] < owed) return null;
++  const picked: [number, number][] = []; let nodes = 0;
++  const go = (i: number, left: number): boolean => {
++    if (left === 0) return true; if (i === ds.length || reach[i] < left || ++nodes > cap) return false;
++    const v = ds[i];
++    for (let q = Math.min(pool[String(v)], Math.floor(left / v)); q >= 0; q--) { if (q) picked.push([v, q]); if (go(i + 1, left - q * v)) return true; if (q) picked.pop(); }
++    return false;
++  };
++  if (!go(0, owed)) return null;
++  const out: Counts = {}; for (const [v, q] of picked) out[String(v)] = q; return out;
++}
++
++/** What to plan for when there is no profile: any change amount from $1 to $30 in 50c steps is equally likely. */
++export function genericProfile(): CashProfile {
++  const cents: number[] = []; for (let c = 100; c <= 3000; c += 50) cents.push(c);
++  return { amounts: cents.map(c => ({ cents: c, p: 1 / cents.length })), needPerSale: {}, inPerSale: {}, horizon: 6, confidence: 0, source: 'none', samples: 0 };
++}
++
++export type Sale = { change: number; tender: number };
++export type Script = Sale[][];
++
++/** The note a customer hands over for a sale that needs `change` back: what the history says they hand over, else the next note up (70%) or the one above it (30%). 0 = no note can cover it. */
++function tenderFor(change: number, profile: CashProfile, u: number): number {
++  const higher = NOTES.filter(n => n > change); if (!higher.length) return 0;
++  const learned = higher.map(n => profile.inPerSale[String(n)] ?? 0); const useLearned = learned.some(w => w > 0);
++  const w = useLearned ? learned.map((x, i) => x + (i === 0 ? 0.02 : 0)) : higher.map((n, i) => (i === 0 ? 0.7 : i === 1 && n <= 5000 ? 0.3 : 0));
++  const total = w.reduce((a, b) => a + b, 0); let r = u * total;
++  for (let i = 0; i < higher.length; i++) { r -= w[i]; if (r < 0) return higher[i]; }
++  return higher[0];
++}
++
++/** `trials` imagined runs of `sales` cash sales each (default: the profile's horizon). Build it once and play it against every drawer being compared. */
++export function makeScript(profile: CashProfile, o: { trials?: number; sales?: number; seed?: number } = {}): Script {
++  const rnd = rng(o.seed ?? SEED); const trials = o.trials ?? TRIALS; const sales = o.sales ?? profile.horizon;
++  const amounts = profile.amounts.length ? profile.amounts : genericProfile().amounts; const out: Script = [];
++  for (let t = 0; t < trials; t++) {
++    const run: Sale[] = [];
++    for (let s = 0; s < sales; s++) {
++      let r = rnd(); let change = amounts[amounts.length - 1].cents; for (const a of amounts) { r -= a.p; if (r < 0) { change = a.cents; break; } }
++      const tender = tenderFor(change, profile, rnd()); if (tender > 0) run.push({ change, tender });
++    }
++    out.push(run);
++  }
++  return out;
++}
++
++export type PlayResult = { rate: number; failed: number; total: number };
++/** Plays the script against `drawer`. A sale that cannot be made exactly is a failure (the customer pays by card and the drawer is left alone). */
++export function play(drawer: Counts, script: Script): PlayResult {
++  const start = cleanCounts(Object.fromEntries(Object.entries(drawer).filter(([, n]) => n > 0))); let failed = 0; let total = 0;
++  for (const run of script) {
++    const d: Counts = { ...start };
++    for (const s of run) {
++      total++; const pool: Counts = { ...d }; pool[String(s.tender)] = (pool[String(s.tender)] ?? 0) + 1;
++      const give = makeChange(pool, s.change);
++      if (!give) { failed++; continue; }
++      for (const [v, n] of Object.entries(pool)) d[v] = n - (give[v] ?? 0);
++    }
++  }
++  return { rate: total ? failed / total : 0, failed, total };
++}
++
++export type Judgement = {
++  /** Reasons it may not be worth it, as phrases that follow "That ...". Empty = fine. */
++  tight: string[];
++  /** Share (0 to 1) of the next sales that could not be given exact change if we say no (card) and if we say yes. */
++  declineRate: number; acceptRate: number;
++  /** The notes and coins to blame (cents), most to blame first. */
++  culprits: number[];
++  /** True when there was no profile and the generic spread of change amounts was used. */
++  generic: boolean;
++};
++const pct = (x: number) => `${Math.round(x * 100)}%`;
++/** A later way of making the same change has to be at least this much better (2 points) to replace the first, so noise never flips the choice. */
++const SWITCH_GAIN = 0.02;
++
++const drawerAfter = (pool: Counts, change: Counts): Counts => { const after: Counts = { ...pool }; for (const [v, n] of Object.entries(change)) after[v] = (after[v] ?? 0) - n; return after; };
++
++/**
++ * `drawer`: what the ledger holds now. `take`: the notes and coins the customer hands over. `options`: different exact ways of giving the same
++ * change, the preferred one first. Plays the next sales against the drawer as it is (card) and against each way of giving the change, uses the
++ * first way unless a later one is clearly kinder to the next sales, and warns only if the chosen way still makes sales fail noticeably more often
++ * than declining would. `index` is the way chosen.
++ */
++export function judgeChoices(o: { drawer: Counts; take: Counts; options: Counts[]; profile?: CashProfile | null }): Judgement & { index: number } {
++  const generic = !profileUsable(o.profile); const prof = generic ? genericProfile() : (o.profile as CashProfile);
++  const before = cleanCounts(Object.fromEntries(Object.entries(o.drawer).filter(([, n]) => n > 0)));
++  const pool: Counts = { ...before }; for (const [v, n] of Object.entries(o.take)) pool[v] = (pool[v] ?? 0) + n;
++  const script = makeScript(prof); const decline = play(before, script);
++  let index = 0; let accept = play(drawerAfter(pool, o.options[0] ?? {}), script);
++  for (let i = 1; i < o.options.length && accept.rate - decline.rate >= WARN_DELTA; i++) { // only look for a kinder way when the first one would warn
++    const alt = play(drawerAfter(pool, o.options[i]), script); if (accept.rate - alt.rate >= SWITCH_GAIN) { index = i; accept = alt; }
++  }
++  const change = o.options[index] ?? {}; const after = drawerAfter(pool, change); const delta = accept.rate - decline.rate;
++  const quiet = { tight: [] as string[], declineRate: decline.rate, acceptRate: accept.rate, culprits: [] as number[], generic, index };
++  if (delta < WARN_DELTA) return quiet;
++  // who is to blame: put each spent note or coin back (up to what the drawer held before) and see how many of the extra failures go away
++  const blame = Object.keys(change).map(Number).filter(v => (change[String(v)] ?? 0) > 0).map(v => {
++    const restored = { ...after, [String(v)]: Math.max(after[String(v)] ?? 0, pool[String(v)] ?? 0) };
++    return { v, gain: accept.rate - play(restored, script).rate };
++  }).filter(x => x.gain > 0).sort((a, b) => b.gain - a.gain);
++  const culprits = blame.filter(x => x.gain >= BLAME_SHARE * delta).slice(0, 2).map(x => x.v);
++  const gone = culprits.filter(v => (after[String(v)] ?? 0) <= 0 && (pool[String(v)] ?? 0) > 0);
++  const lead = gone.length ? `uses up the last ${gone.map(denomLabel).join(' and ')}` : culprits.length ? `uses ${culprits.map(v => `${change[String(v)]} × ${denomLabel(v)}`).join(' and ')}, which your next sales are likely to need` : 'leaves the drawer thin';
++  const tail = `about ${pct(accept.rate)} of ${generic ? 'typical' : 'your usual'} sales would then get no exact change (${pct(decline.rate)} if you ask for card)`;
++  return { ...quiet, tight: [`${lead}, so ${tail}`], culprits };
++}
++
++/** One way of giving the change: `judgeChoices` with a single option. */
++export function judgeChange(o: { drawer: Counts; take: Counts; change: Counts; profile?: CashProfile | null }): Judgement {
++  const { index: _index, ...j } = judgeChoices({ drawer: o.drawer, take: o.take, options: [o.change], profile: o.profile }); return j;
++}
+diff --git a/src/lib/changeScore.ts b/src/lib/changeScore.ts
+index 8b9dd27..a64655d 100644
+--- a/src/lib/changeScore.ts
++++ b/src/lib/changeScore.ts
+@@ -143,20 +143,6 @@ export function scoreAfter(after: Counts, pieces: number, profile: CashProfile):
+ export function lowOn(after: Counts, profile: CashProfile): number[] {
+   return Object.entries(profile.needPerSale).map(([v, n]) => ({ v: Number(v), want: n * profile.horizon })).filter(x => x.want >= 1 && (after[String(x.v)] ?? 0) + IN_CREDIT * (profile.inPerSale[String(x.v)] ?? 0) * profile.horizon < x.want * 0.5).map(x => x.v).sort((a, b) => b - a);
+ }
+-const pct = (x: number) => `${Math.round(x * 100)}%`;
+-/**
+- * Replacement for the plain "is this change worth giving" rule when smart change is on. Empty = no concerns.
+- * `pool` is the drawer plus what the customer hands over; `change` is what would go back.
+- */
+-export function smartTightness(pool: Counts, change: Counts, profile: CashProfile): string[] {
+-  if (!profileUsable(profile)) return [];
+-  const after = cleanCounts(diffCounts(pool, change)); const before = coverage(pool, profile); const now = coverage(after, profile); const out: string[] = [];
+-  if (now < 0.5) out.push(`leaves the drawer able to make change for only ${pct(now)} of your usual sales`);
+-  else if (before - now >= 0.15) out.push(`drops the share of usual change you could still make from ${pct(before)} to ${pct(now)}`);
+-  const low = lowOn(after, profile).filter(v => v <= 2000); if (low.length) out.push(`leaves you short of ${low.map(denomLabel).join(', ')} for the next few sales`);
+-  return out;
+-}
+-
+ export type SmartPlan =
+   | { kind: 'none' }
+   | { kind: 'impossible'; truncated: boolean }
+diff --git a/src/lib/checkChange.ts b/src/lib/checkChange.ts
+index d484a9e..0876a80 100644
+--- a/src/lib/checkChange.ts
++++ b/src/lib/checkChange.ts
+@@ -1,33 +1,25 @@
+ // Location: src/lib/checkChange.ts
+ // B1d: "Check Change". The customer says what notes and coins they have; can the drawer make the change for this bill, is it worth it,
+ // or should we ask for card? Pure, tested in tests/checkchange.test.ts. Uses the drawer ledger and your change finder (via planChange).
+-import { addCounts, cleanCounts, denomLabel, diffCounts, summariseCounts, totalOf, type Counts } from './cashLedger';
++import { addCounts, cleanCounts, diffCounts, summariseCounts, totalOf, type Counts } from './cashLedger';
+ import { partCashOption, piecesOf, planChange, type PartCash } from './cashSale';
+-import { planChangeSmart, profileUsable, smartTightness, type CashProfile } from './changeScore';
++import { planChangeSmart, profileUsable, type CashProfile } from './changeScore';
++import { judgeChoices } from './changeImpact';
+ 
+ export type CheckChangeResult =
+   | { verdict: 'short'; shortBy: number; part: PartCash | null }
+   /** They can pay the bill exactly with `take`; no change needed. */
+   | { verdict: 'exact'; take: Counts; handBack: Counts }
+-  /** They pay with `take` (the rest stays with them) and we give `change` from the drawer. `tight` lists reasons it may not be worth it. */
++  /** They pay with `take` (the rest stays with them) and we give `change` from the drawer. `tight` lists reasons it may not be worth it (judgeChange, 0088). */
+   | { verdict: 'change'; take: Counts; handBack: Counts; change: Counts; tight: string[] }
+   /** No part of what they hold lets us make the change: ask for card (or part cash + card). */
+   | { verdict: 'card'; part: PartCash | null };
+ 
+-/** Why making this change might not be a good idea, given what is in the drawer. Empty = no concerns. */
+-export function tightness(drawer: Counts, take: Counts, change: Counts): string[] {
+-  const out: string[] = []; const before = cleanCounts(drawer); const after = diffCounts(addCounts(before, take), change);
+-  const lastOnes = Object.keys(change).map(Number).filter(v => v <= 2000 && (before[String(v)] ?? 0) + (take[String(v)] ?? 0) > 0 && (after[String(v)] ?? 0) <= 0).sort((a, b) => b - a);
+-  if (lastOnes.length) out.push(`uses up the last ${lastOnes.map(denomLabel).join(', ')}`);
+-  const drawerTotal = totalOf(before); if (drawerTotal > 0 && totalOf(change) * 2 > drawerTotal + totalOf(take)) out.push('takes more than half the cash in the drawer');
+-  return out;
+-}
+-
+ /**
+  * `offered` is everything the customer says they have. Looks at every part of it (up to `maxSubsets`) that covers the bill:
+  * an exact payment wins (fewest pieces); otherwise the smallest handover whose change the drawer can make (so they keep the most).
+- * With a usable `profile` (smart change on) the notes and coins of the change, and the "worth it?" warning, are judged against what the next
+- * sales are likely to need (0022); without one the plain rules above apply, exactly as before.
++ * With a usable `profile` (smart change on) the notes and coins of the change are chosen to suit the next sales (0022). The "worth it?" warning
++ * (0088) is judged with or without a profile: it plays out the next sales with and without this change and warns only if the change itself hurts.
+  */
+ export function checkChange(drawer: Counts, offered: Counts, due: number, maxSubsets = 2000, profile?: CashProfile | null): CheckChangeResult {
+   const have = totalOf(offered);
+@@ -54,8 +46,12 @@ export function checkChange(drawer: Counts, offered: Counts, due: number, maxSub
+   if (!b) return { verdict: 'card', part: partCashOption(drawer, offered, due) };
+   const handBack = diffCounts(offered, b.take); if (b.total === due) return { verdict: 'exact', take: b.take, handBack };
+   const pool = addCounts(drawer, b.take); const smart = profileUsable(profile) ? planChangeSmart(pool, b.total - due, profile, 20000) : null;
+-  const change = smart && smart.kind === 'exact' ? smart.counts : b.change;
+-  return { verdict: 'change', take: b.take, handBack, change, tight: profileUsable(profile) ? smartTightness(pool, change, profile) : tightness(drawer, b.take, change) };
++  // the ways of giving this change, the preferred first: smart change's pick and its runners-up, then the fewest-pieces way. The judge uses the first
++  // unless a later one is clearly kinder to the next sales, and warns only if the way it settles on still hurts (0088).
++  const ways: Counts[] = []; const known = new Set<string>();
++  for (const c of [...(smart && smart.kind === 'exact' ? [smart.counts, ...smart.alternatives] : []), b.change]) { const key = JSON.stringify(Object.entries(cleanCounts(c)).sort()); if (!known.has(key)) { known.add(key); ways.push(c); } }
++  const j = judgeChoices({ drawer, take: b.take, options: ways, profile });
++  return { verdict: 'change', take: b.take, handBack, change: ways[j.index], tight: j.tight };
+ }
+ 
+ /** Advice for the cashier: a verdict, plain words, and the notes and coins to show as squares (`groups`). `detail` is the same advice as one line of text. */
+diff --git a/tests/changeimpact.test.ts b/tests/changeimpact.test.ts
+new file mode 100644
+index 0000000..22adeba
+--- /dev/null
++++ b/tests/changeimpact.test.ts
+@@ -0,0 +1,83 @@
++// Location: tests/changeimpact.test.ts
++// 0088: the "is this change worth giving?" judge: it must warn only when the change itself makes the next sales harder, never about a
++// shortage that was already there (device test T4.9: no $20s in the drawer, $4 of change, and it warned about $20s).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { WARN_DELTA, genericProfile, judgeChange, judgeChoices, makeChange, makeScript, play } from '../src/lib/changeImpact';
++import { checkChange } from '../src/lib/checkChange';
++import { emptyProfile, type CashProfile } from '../src/lib/changeScore';
++import { totalOf, type Counts } from '../src/lib/cashLedger';
++
++const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(), ...o });
++/** Change amounts like a stall that sells $16-ish items for $20 and $50 notes: $4 most often, $26 sometimes, $14 now and then. */
++const stall = profile({ amounts: [{ cents: 400, p: 0.5 }, { cents: 2600, p: 0.3 }, { cents: 1400, p: 0.2 }], needPerSale: { '2000': 0.3, '500': 0.8, '200': 1, '100': 1 }, inPerSale: { '2000': 0.6, '5000': 0.4 }, horizon: 6, confidence: 1, source: 'history', samples: 40 });
++
++test('makeChange: exact change, backtracking when the big notes do not fit, null when impossible, never more than the pool holds', () => {
++  assert.deepEqual(makeChange({ '2000': 1, '500': 1 }, 2500), { '2000': 1, '500': 1 });
++  assert.deepEqual(makeChange({ '1000': 1, '500': 2 }, 1000), { '1000': 1 }); // largest first
++  assert.deepEqual(makeChange({ '1000': 0, '500': 2 }, 1000), { '500': 2 }); // no $10s: two $5s
++  assert.deepEqual(makeChange({ '500': 3, '200': 2 }, 900), { '500': 1, '200': 2 }); // $5 + 2 × $2: the first guess ($5 + $2 + ...) has to back out of 2 × $5
++  assert.equal(makeChange({ '500': 3 }, 600), null); assert.equal(makeChange({ '500': 1 }, 1000), null); assert.deepEqual(makeChange({ '500': 1 }, 0), {});
++  for (let owed = 5; owed <= 3000; owed += 5) { const pool: Counts = { '2000': 1, '1000': 2, '500': 1, '200': 3, '100': 2, '50': 1, '20': 2, '10': 1, '5': 1 }; const r = makeChange(pool, owed); if (r) { assert.equal(totalOf(r), owed); for (const [v, n] of Object.entries(r)) assert.ok(n <= pool[v]); } }
++});
++test('the sales script is seeded: the same profile always gives the same script, and the same drawer the same answer', () => {
++  assert.deepEqual(makeScript(stall), makeScript(stall)); const d = { '500': 3, '200': 4, '100': 6 };
++  assert.deepEqual(play(d, makeScript(stall)), play(d, makeScript(stall))); assert.notDeepEqual(makeScript(stall, { seed: 1 }), makeScript(stall, { seed: 2 }));
++});
++test('play: a well-stocked drawer almost never fails, an empty one always does', () => {
++  const rich = { '2000': 4, '1000': 6, '500': 10, '200': 12, '100': 20, '50': 10 }; assert.ok(play(rich, makeScript(stall)).rate < 0.05);
++  const r = play({}, makeScript(stall)); assert.equal(r.rate, 1); assert.ok(r.total > 0);
++});
++
++test('T4.9: no $20s in the drawer and $4 of change must NOT warn about $20s (the shortage was already there)', () => {
++  const noTwenties = { '500': 6, '200': 6, '100': 8, '50': 4 };
++  for (const [offered, due] of [[{ '2000': 1 }, 1600], [{ '1000': 1 }, 600], [{ '5000': 1 }, 4600], [{ '500': 1 }, 100]] as [Counts, number][]) {
++    const r = checkChange(noTwenties, offered, due, undefined, stall); assert.equal(r.verdict, 'change');
++    if (r.verdict === 'change') assert.ok(!r.tight.join(' ').includes('$20'), `${JSON.stringify(offered)} for ${due}: ${r.tight.join(' ')}`);
++  }
++  for (const [offered, due] of [[{ '2000': 1 }, 1600], [{ '1000': 1 }, 600]] as [Counts, number][]) { const r = checkChange(noTwenties, offered, due, undefined, stall); if (r.verdict === 'change') assert.deepEqual(r.tight, []); }
++  const j = judgeChange({ drawer: noTwenties, take: { '1000': 1 }, change: { '200': 2 }, profile: stall }); assert.deepEqual(j.tight, []); assert.ok(Math.abs(j.acceptRate - j.declineRate) < WARN_DELTA);
++});
++test('a healthy drawer never warns, whatever the change', () => {
++  const healthy = { '2000': 4, '1000': 6, '500': 10, '200': 12, '100': 20, '50': 10, '20': 6, '10': 6, '5': 6 };
++  for (const [take, change] of [[{ '2000': 1 }, { '200': 2 }], [{ '5000': 1 }, { '2000': 1, '500': 1, '100': 1 }], [{ '1000': 1 }, { '500': 1, '100': 1 }]] as [Counts, Counts][]) assert.deepEqual(judgeChange({ drawer: healthy, take, change, profile: stall }).tight, []);
++  assert.deepEqual(judgeChange({ drawer: healthy, take: { '2000': 1 }, change: { '200': 2 } }).tight, []); // no profile either
++});
++test('it warns when the change uses up what the next sales need, names it, and says what card would leave', () => {
++  const drawer = { '500': 1, '100': 10, '200': 5, '2000': 2 }; // a single $5 left; $20 for $9 means $11 back
++  const j = judgeChange({ drawer, take: { '2000': 1 }, change: { '500': 1, '100': 6 }, profile: stall });
++  assert.equal(j.tight.length, 1); assert.match(j.tight[0], /^uses up the last \$5, so about \d+% of your usual sales would then get no exact change \(\d+% if you ask for card\)$/); assert.ok(j.culprits.includes(500));
++  assert.ok(j.acceptRate - j.declineRate >= WARN_DELTA);
++});
++test('it blames the note that matters, not the one that is plentiful', () => {
++  const drawer = { '500': 1, '100': 30, '2000': 1 }; // plenty of $1 coins, a single $5
++  const j = judgeChange({ drawer, take: { '1000': 1 }, change: { '500': 1, '100': 3 }, profile: profile({ amounts: [{ cents: 500, p: 0.6 }, { cents: 800, p: 0.4 }], inPerSale: { '1000': 1 }, horizon: 6, confidence: 1, source: 'history', samples: 20 }) });
++  assert.equal(j.culprits[0], 500); assert.match(j.tight[0], /^uses up the last \$5/);
++});
++test('judgeChoices: of several ways to give the same change it uses the first unless a later one is clearly kinder', () => {
++  const drawer = { '100': 4, '200': 6, '1000': 2 }; const take = { '2000': 1 }; // $20 for $9: $11 back
++  const p = profile({ amounts: [{ cents: 500, p: 0.4 }, { cents: 900, p: 0.3 }, { cents: 1400, p: 0.3 }], horizon: 8, confidence: 1, source: 'history', samples: 20 });
++  const burnsCoins = { '100': 3, '200': 4 }; const usesTen = { '100': 1, '1000': 1 };
++  const bad = judgeChoices({ drawer, take, options: [burnsCoins], profile: p }); assert.equal(bad.index, 0); assert.equal(bad.tight.length, 1);
++  const kind = judgeChoices({ drawer, take, options: [burnsCoins, usesTen], profile: p }); assert.equal(kind.index, 1); assert.deepEqual(kind.tight, []);
++  assert.equal(judgeChoices({ drawer, take, options: [usesTen, burnsCoins], profile: p }).index, 0); // already the kind one first: no switch
++  assert.equal(judgeChoices({ drawer: { '500': 6 }, take: {}, options: [{ '500': 1 }], profile: p }).index, 0);
++});
++test('with no profile the generic spread of change amounts is used, and the words say "typical"', () => {
++  assert.equal(genericProfile().amounts.length, 59); assert.ok(Math.abs(genericProfile().amounts.reduce((s, a) => s + a.p, 0) - 1) < 1e-9);
++  const j = judgeChange({ drawer: { '500': 1, '100': 10, '200': 5, '2000': 2 }, take: { '2000': 1 }, change: { '500': 1, '200': 2, '100': 2 } }); assert.equal(j.generic, true); assert.match(j.tight.join(' '), /typical sales/);
++});
++test('taking cash in can only help: handing over a note and getting no change back never warns', () => {
++  for (const drawer of [{}, { '500': 1 }, { '2000': 3, '500': 4 }]) assert.deepEqual(judgeChange({ drawer, take: { '2000': 1 }, change: {}, profile: stall }).tight, []);
++});
++test('random drawers and changes: always a sensible answer, rates between 0 and 1, a warning only with a real gap', () => {
++  let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const dens = [2000, 1000, 500, 200, 100, 50];
++  for (let i = 0; i < 40; i++) {
++    const drawer: Counts = {}; for (const d of dens) if (rnd() < 0.8) drawer[String(d)] = Math.floor(rnd() * 8);
++    const take: Counts = { [String([2000, 5000][Math.floor(rnd() * 2)])]: 1 }; const pool: Counts = { ...drawer }; for (const [v, n] of Object.entries(take)) pool[v] = (pool[v] ?? 0) + n;
++    const owed = 100 * (1 + Math.floor(rnd() * 15)); const change = makeChange(pool, owed); if (!change) continue;
++    const j = judgeChange({ drawer, take, change, profile: i % 2 ? stall : null });
++    assert.ok(j.acceptRate >= 0 && j.acceptRate <= 1 && j.declineRate >= 0 && j.declineRate <= 1);
++    assert.equal(j.tight.length > 0, j.acceptRate - j.declineRate >= WARN_DELTA);
++  }
++});
+diff --git a/tests/changescore.test.ts b/tests/changescore.test.ts
+index 62b7616..507a446 100644
+--- a/tests/changescore.test.ts
++++ b/tests/changescore.test.ts
+@@ -2,7 +2,7 @@
+ // 0022: weighted ("smart") change: the profile learned from the ledger, the score, and the planner.
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, selectSmartCandidates, smartTightness, type CashProfile } from '../src/lib/changeScore';
++import { buildProfile, coverage, depth, emptyProfile, explainChoice, horizonFrom, planChangeSmart, profileNote, profileUsable, scoreAfter, selectSmartCandidates, type CashProfile } from '../src/lib/changeScore';
+ import { newEntry, totalOf, type Counts, type LedgerEntry } from '../src/lib/cashLedger';
+ import { planChange } from '../src/lib/cashSale';
+ import { checkChange } from '../src/lib/checkChange';
+@@ -106,17 +106,12 @@ test('explainChoice: says what is kept, or that it is the quickest way', () => {
+   assert.match(explainChoice({ '500': 1, '100': 5 }, { '100': 5 }, { '500': 1 }), /4 more pieces to count, but keeps 1 more \$5/);
+   assert.match(explainChoice({ '500': 1 }, { '500': 1 }, { '500': 1 }), /Quickest/);
+ });
+-test('smartTightness: warns when the change would leave the drawer unable to cover usual sales, quiet otherwise', () => {
+-  const prof = profile({ amounts: [{ cents: 500, p: 0.6 }, { cents: 1000, p: 0.4 }], needPerSale: { '500': 1 }, horizon: 4, confidence: 1, source: 'history', samples: 20 });
+-  const tight = smartTightness({ '500': 2, '1000': 1 }, { '500': 2 }, prof); assert.ok(tight.length >= 1); assert.match(tight.join(' '), /usual|short of \$5/);
+-  assert.deepEqual(smartTightness({ '500': 6, '1000': 3 }, { '500': 1 }, prof), []); assert.deepEqual(smartTightness({ '500': 1 }, { '500': 1 }, emptyProfile()), []);
+-});
+-test('checkChange: with a profile the warning comes from the profile; without one it is the plain rule, unchanged', () => {
++test('checkChange: a profile changes only which notes are given and the judge; the verdict and what is taken stay the same, and a null profile equals none (0088)', () => {
+   const drawer = { '500': 2, '1000': 1 }; const offered = { '2000': 1 }; // $15 due, $20 handed over: $5 change
+   const prof = profile({ amounts: [{ cents: 500, p: 1 }], needPerSale: { '500': 1 }, horizon: 4, confidence: 1, source: 'history', samples: 20 });
+   const plain = checkChange(drawer, offered, 1500); const smart = checkChange(drawer, offered, 1500, undefined, prof);
+   assert.equal(plain.verdict, 'change'); assert.equal(smart.verdict, 'change');
+-  if (plain.verdict === 'change' && smart.verdict === 'change') { assert.deepEqual(plain.take, smart.take); assert.equal(totalOf(plain.change), totalOf(smart.change)); assert.ok(smart.tight.length >= 1); assert.match(smart.tight.join(' '), /usual|short of \$5/); }
++  if (plain.verdict === 'change' && smart.verdict === 'change') { assert.deepEqual(plain.take, smart.take); assert.equal(totalOf(plain.change), totalOf(smart.change)); assert.ok(Array.isArray(smart.tight)); }
+   assert.deepEqual(checkChange(drawer, offered, 1500, undefined, null), plain);
+ });
+ test('profileNote: says where the numbers came from', () => {
+diff --git a/tests/checkchange.test.ts b/tests/checkchange.test.ts
+index 08e8acc..0418fcd 100644
+--- a/tests/checkchange.test.ts
++++ b/tests/checkchange.test.ts
+@@ -2,7 +2,7 @@
+ // 0021: Check Change: can the drawer make change for what the customer holds?
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { adviceFor, checkChange, tightness } from '../src/lib/checkChange';
++import { adviceFor, checkChange } from '../src/lib/checkChange';
+ import { totalOf } from '../src/lib/cashLedger';
+ import { planChange } from '../src/lib/cashSale';
+ 
+@@ -39,15 +39,10 @@ test('every answer is physically possible: totals add up and the change exists i
+     else { assert.equal(totalOf(r.take) - totalOf(r.change), due); const pool: Record<string, number> = { ...drawer }; for (const [v, n] of Object.entries(r.take)) pool[v] = (pool[v] ?? 0) + n; for (const [v, n] of Object.entries(r.change)) assert.ok(n <= (pool[v] ?? 0)); assert.notEqual(planChange(pool, totalOf(r.change)).kind, 'impossible'); }
+   }
+ });
+-test('tightness: last of a denomination, or draining the drawer', () => {
+-  assert.deepEqual(tightness({ '500': 1, '2000': 4 }, { '5000': 1 }, { '500': 1 }), ['uses up the last $5']);
+-  assert.ok(tightness({ '1000': 2 }, { '5000': 1 }, { '2000': 1, '1000': 2 }).some(x => x.includes('more than half')));
+-  assert.deepEqual(tightness({ '500': 3, '2000': 5 }, { '5000': 1 }, { '500': 1 }), []);
+-});
+ test('advice wording for each verdict', () => {
+   assert.equal(adviceFor(checkChange({ '500': 1 }, { '5000': 1 }, 3700), fmt).tone, 'bad');
+   assert.equal(adviceFor(checkChange({}, { '2000': 1 }, 2000), fmt).title, 'Cash works: no change needed');
+-  assert.equal(adviceFor(checkChange({ '500': 1, '2000': 4 }, { '5000': 1 }, 4500), fmt).tone, 'warn');
++  assert.equal(adviceFor(checkChange({ '500': 1, '100': 10, '200': 5, '2000': 2 }, { '2000': 1 }, 900), fmt).tone, 'warn'); // uses the last $5 of a drawer that needs it (0088)
+   assert.equal(adviceFor(checkChange({ '500': 4 }, { '2000': 1 }, 1000), fmt).title, 'Cash works: $10.00 change');
+ });
+ 

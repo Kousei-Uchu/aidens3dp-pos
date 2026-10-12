@@ -29,7 +29,7 @@ Cash is taken by tapping the notes and coins the customer hands over. The POS wo
 
 ### What happens next
 - **Exact:** tap **Take cash**. The payment is added and, if nothing remains, the sale finishes.
-- **Short:** you can ask for more, or tap **Take $… as part payment**. The cash is recorded as a payment of what they gave, and the rest is paid another way. See [[pay/split-and-part]].
+- **Short:** you can ask for more, or tap **Take $… as part payment**. The cash is recorded as a payment of what they gave, and the rest is paid another way. On a split bill the screen instead offers to move the shortfall into a later payment, spread it, or go back and change the split. See [[pay/split-and-part]].
 - **Change to give:** tap **Next: give $… change**. The **Give change** screen shows **Take from the drawer** with the notes and coins to hand back.
   - **Gave this** confirms you handed over exactly that.
   - **I'll give different notes and coins** lets you tap what you really gave. The total must match the change owed.
