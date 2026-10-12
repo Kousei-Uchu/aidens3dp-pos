@@ -15,7 +15,7 @@ const until = (list: typeof cart.guide | typeof cart.check1, id: string) => (lis
 const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
 
 test('the course is registered after sign-in and is valid', () => {
-  assert.equal(getModule('cart'), cart); assert.deepEqual(MODULES.map(m => m.id), ['welcome', 'sign-in', 'cart', 'find-items']);
+  assert.equal(getModule('cart'), cart); assert.deepEqual(MODULES.map(m => m.id), ['welcome', 'sign-in', 'cart', 'find-items', 'pay-card']);
   assert.deepEqual(validateModule(cart, isKnownSpot), []);
 });
 test('Guide steps finish on the right cart', () => {

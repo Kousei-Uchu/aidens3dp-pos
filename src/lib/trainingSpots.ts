@@ -30,9 +30,14 @@ export const SPOT = {
   findKeypad: 'find.keypad',           // the number keys on the Keypad tab (any key)
   findKeypadAdd: 'find.keypad.add',    // the Add button under the Keypad tab's keys
   searchField: 'search.field',         // the box in the Search window
+  payTotal: 'pay.total',               // the amount due at the top of the Payment page
+  payCard: 'pay.card',                 // the Card button on the Payment page
+  payRetry: 'pay.retry',               // Try card again, in the Not approved window
+  payOther: 'pay.other',               // Use another method, in the Not approved window
+  receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan, SPOT.searchField];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
 export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);

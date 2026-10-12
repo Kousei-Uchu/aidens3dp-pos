@@ -1,5 +1,6 @@
 // Location: src/screens/Receipt.tsx
 import React, { useEffect, useState } from 'react';
+import { SPOT } from '../lib/trainingSpots';
 import { Image, Linking, Share, View } from 'react-native';
 import { Btn, HelpButton, Sheet, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
@@ -72,7 +73,7 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
         {claimable.length ? <Btn title="Claim QR: customer adds their email" icon="qr-code-outline" kind="secondary" onPress={() => setGiftView({ kind: 'claim', i: 0 })} /> : null}
         {gift ? <Btn title="Gift card QR (for scanning at a register)" icon="gift-outline" kind="secondary" onPress={() => setGiftView({ kind: 'card', i: 0 })} /> : null}
         {gift ? <Txt size={13} sub style={{ textAlign: 'center' }}>Gift card code: {gift.giftCardCode}{gift.giftRecipient ? ` · emailing to ${gift.giftRecipient.email}` : ''}</Txt> : null}
-        <Btn title="No receipt" onPress={onDone} />
+        <Btn spot={SPOT.receiptNone} title="No receipt" onPress={onDone} />
       </View>}
     </Sheet>
   );
