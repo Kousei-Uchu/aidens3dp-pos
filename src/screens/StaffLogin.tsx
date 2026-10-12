@@ -3,15 +3,19 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
 import { Btn, HelpButton, Sheet, Txt } from '../ui/kit';
+import { Spot, spotPressed } from '../ui/Spot';
+import { SPOT } from '../lib/trainingSpots';
 import { useApp } from '../state/store';
 import { CameraScanner, HidScanner } from './Scanner';
 import { isBadgeCode } from '../lib/badge';
 import { lockRegister, signInWithPass, signInWithPin, type SignInResult } from '../lib/staffAuth';
 
 export const PinPad = ({ onKey }: { onKey: (k: string) => void }) => (
-  <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: 280 }}>
-    {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <Btn key={i} title={k} kind="secondary" onPress={() => onKey(k)} style={{ width: 88 }} /> : <View key={i} style={{ width: 88 }} />)}
-  </View>
+  <Spot id={SPOT.loginPinpad} style={{ width: 280 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: 280 }}>
+      {['1', '2', '3', '4', '5', '6', '7', '8', '9', '', '0', '⌫'].map((k, i) => k ? <Btn key={i} title={k} kind="secondary" onPress={() => { spotPressed(SPOT.loginPinpad); onKey(k); }} style={{ width: 88 }} /> : <View key={i} style={{ width: 88 }} />)}
+    </View>
+  </Spot>
 );
 
 /** Enter a PIN, or scan a pass with the Bluetooth scanner or the camera. `onDone` runs after a successful sign-in. */
@@ -29,12 +33,12 @@ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignIn
       <Txt size={30} style={{ letterSpacing: 8 }}>{'•'.repeat(pin.length) || ' '}</Txt>
       {err ? <Txt color="#DC2626" style={{ textAlign: 'center' }}>{err}</Txt> : null}
       <PinPad onKey={k => { setErr(''); if (k === '⌫') setPin(p => p.slice(0, -1)); else { const n = (pin + k).slice(0, 6); setPin(n); if (n.length >= 4) void tryPin(n, true); } }} />
-      <Btn title="Unlock" onPress={() => void tryPin(pin, false)} disabled={pin.length < 4} style={{ width: 280 }} />
-      <Btn title="Scan pass" kind="secondary" icon="qr-code-outline" onPress={() => setCam(true)} style={{ width: 280 }} />
+      <Btn title="Unlock" onPress={() => void tryPin(pin, false)} disabled={pin.length < 4} style={{ width: 280 }} spot={SPOT.loginUnlock} />
+      <Btn title="Scan pass" kind="secondary" icon="qr-code-outline" onPress={() => setCam(true)} style={{ width: 280 }} spot={SPOT.loginScanPass} />
       <Txt size={13} sub style={{ textAlign: 'center' }}>Enter your PIN, or scan your cashier pass with the scanner.</Txt>
       <HelpButton id="fix/locked-out" label="Sign-in help" />
       <HidScanner enabled={scannerOn && !cam} onScan={code => { if (isBadgeCode(code)) void onScan(code); else setErr('That is not a cashier pass.'); }} />
-      <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan your cashier pass" onScan={onScan} />
+      <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan your cashier pass" onScan={onScan} pass />
     </View>
   );
 }
@@ -48,7 +52,7 @@ export function SwitchStaffSheet({ visible, onClose, onSwitched }: { visible: bo
       {staff.length === 0 ? <Txt sub>No staff yet. Add people in More ▸ Staff first.</Txt> : <View style={{ alignItems: 'center', gap: 14 }}>
         <Txt sub>{cur ? `Signed in as ${cur.name} (${cur.role}).` : 'Nobody is signed in.'} The next PIN or pass takes over, and the cart stays as it is.</Txt>
         <StaffLoginPad scannerOn={visible} onDone={r => { onSwitched?.(r.message); onClose(); }} />
-        {requirePin ? <Btn title="Lock register" kind="ghost" onPress={() => { lockRegister(); onClose(); }} style={{ width: 280 }} /> : null}
+        {requirePin ? <Btn title="Lock register" kind="ghost" onPress={() => { lockRegister(); onClose(); }} style={{ width: 280 }} spot={SPOT.switchLock} /> : null}
       </View>}
     </Sheet>
   );

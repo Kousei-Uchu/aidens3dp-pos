@@ -6,6 +6,10 @@ import type { Variant, Collection, Customer, ManualPreset, Cart } from './types'
 import type { Grid, Tile } from './grid';
 import { addVariant, emptyCart } from './cartOps';
 import { emptyLedger, type CashLedger } from './cashLedger';
+import { hashPinSync } from './pin';
+import { hashBadge } from './badge';
+import { PRACTICE_PASS_CODE } from './trainingPass';
+import type { StaffMember } from './types';
 import type { Injection } from './trainingModule';
 
 export const TRAIN_PREFIX = 'train-';
@@ -33,12 +37,24 @@ const HOME_TILES: Tile[] = [
   { type: 'item', productId: `${TRAIN_PREFIX}p-cow` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-bee` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-dragon` },
   { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
   { type: 'action', action: 'custom_amount' }, { type: 'action', action: 'clear_cart' },
+  { type: 'action', action: 'switch_staff' }, { type: 'action', action: 'lock_pos' },
 ];
 export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: `${TRAIN_PREFIX}page-home`, name: 'Home', tiles: HOME_TILES }] });
 /** A normal drawer with plenty of change. Check 2 can replace it with an injection. */
 export const FIXTURE_DRAWER: Record<string, number> = { '5000': 2, '2000': 5, '1000': 5, '500': 6, '200': 10, '100': 10, '50': 10, '20': 10, '10': 10, '5': 10 };
 export const fixtureLedger = (): CashLedger => ({ ...emptyLedger(), counts: { ...FIXTURE_DRAWER } });
 
+/** The two practice staff for courses with `practiceStaff`. Known PINs (1234 and 2468) and, for Morgan, the practice cashier pass. Never saved: they live only in the sandbox. */
+export const PRACTICE_CASEY = `${TRAIN_PREFIX}staff-casey`; export const PRACTICE_MORGAN = `${TRAIN_PREFIX}staff-morgan`;
+export const PRACTICE_PINS = { casey: '1234', morgan: '2468' } as const;
+export function practiceStaff(): StaffMember[] {
+  const casey = { id: PRACTICE_CASEY, name: 'Casey', role: 'cashier' as const, salt: 'train-casey' };
+  const morgan = { id: PRACTICE_MORGAN, name: 'Morgan', role: 'manager' as const, salt: 'train-morgan', badgeSalt: 'train-badge' };
+  return [
+    { ...casey, pinHash: hashPinSync(casey.salt, PRACTICE_PINS.casey) },
+    { ...morgan, pinHash: hashPinSync(morgan.salt, PRACTICE_PINS.morgan), badgeHash: hashBadge(morgan.badgeSalt, PRACTICE_PASS_CODE) },
+  ];
+}
 /** Settings for the sandbox: the real staff list and display mode stay (so roles and text size apply); everything that points outside the till is blanked. */
 export function sandboxSettings(real: Settings): Settings {
   return { ...real, receipt: { ...real.receipt, serverUrl: '' }, passServerUrl: '', giftClaimUrl: '', bundlesJson: '', adjustPerms: {}, smartChange: false, cashRounding: true };
@@ -47,24 +63,29 @@ export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos
 /** The real state to put back afterwards. */
 export const takeSnapshot = (s: App): Swap => ({ settings: s.settings, data: s.data, grid: s.grid, gridVersion: s.gridVersion, pos: s.pos, sync: s.sync, zeller: s.zeller, staffId: s.staffId, unlocked: s.unlocked });
 /** The practice state. The signed in person stays signed in. */
-export function buildSandbox(real: Swap): Swap {
+export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean } = {}): Swap {
   const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, x]));
   return {
-    settings: sandboxSettings(real.settings),
+    settings: opts.practiceStaff ? { ...sandboxSettings(real.settings), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings),
     data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: [], presets: FIXTURE_PRESETS },
     grid: fixtureGrid(), gridVersion: 0,
     pos: { saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
-    sync: { state: 'idle' }, zeller: { ready: true }, staffId: real.staffId, unlocked: true,
+    sync: { state: 'idle' }, zeller: { ready: true }, staffId: opts.practiceStaff ? PRACTICE_CASEY : real.staffId, unlocked: true,
   };
 }
 /** What each injection does to the practice state: a cart injection replaces the cart, a ledger injection replaces the drawer. Card declines are not state: the session hands them to the fake terminal. Nothing else changes. */
 export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined): Swap {
-  let cart: Cart | undefined; let ledger: CashLedger | undefined;
+  let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
   for (const i of inj ?? []) {
+    if (i.kind === 'staff') who = i.who;
     if (i.kind === 'cart') { cart = cart ?? emptyCart(); for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } }
     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
   }
-  return cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
+  let out: Swap = cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
+  // A staff injection only applies to practice staff, so a course without them can never lock the real till by mistake.
+  if (who === 'locked' && out.settings.staff.length) out = { ...out, staffId: undefined, unlocked: false };
+  else if (who && who !== 'locked' && out.settings.staff.some(m => m.id === (who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN))) out = { ...out, staffId: who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN, unlocked: true };
+  return out;
 }
 /** A card attempt counts as "still waiting on the reader" for this long after it starts (the same window the screensaver and staff lock use). */
 export const WAITING_WINDOW_MS = 5 * 60_000;

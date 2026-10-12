@@ -137,3 +137,26 @@ Set up: sell yourself a $20 gift card through the POS (or issue one in Shopify a
 6. Check the Help page **Paying with a gift card**: it currently says cancelling does **not** restore value. That is out of date after 0056 and is on the Final Touches list (F6).
 
 Tell me: pass or fail for each step, the exact error text for any failure, and the balances you saw in Shopify admin.
+
+## T11. Training: Sign in, lock and switch staff (B6, 0093)
+
+On the iPad and on a phone: **More ▸ Training ▸ Sign in, lock and switch staff**. No setup needed: practice has its own people, Casey (PIN 1234) and Morgan (PIN 2468, with a pass).
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, and the Show covers the staff tile, a pass scan, locking, a PIN and a pass that fails.
+2. **Guide.** Follow the arrows. Pass: Switch staff opens, Scan pass opens a window with a drawn pass and a **Scan this pass** button, the ring points at that button, and after the scan the Casey tile says Morgan. Lock POS then shows the Sign in screen with the bar still at the bottom, and keying 1 2 3 4 signs in as Casey.
+3. **Check 1.** Three goals. Pass: each finishes the moment you do the thing, and the hints climb to a ringed answer.
+4. **Check 2.** The first goal cancels Morgan's pass. Pass: scanning it says it is not recognised, and keying 2 4 6 8 gets you in. The second starts with items in the cart. Pass: switching to Morgan keeps them.
+5. **Leave and finish.** Exit mid-course, then finish another run. Pass: the real till is signed in as you again, the cart is as you left it, and the green tick is under **your** name.
+
+Tell me: pass or fail for each step, and a screenshot of the pass window if it looks off.
+
+## T12. Training: Build a cart (B6, 0094)
+
+On the iPad and on a phone: **More ▸ Training ▸ Build a cart**.
+
+1. **Info and Show.** Step through both with Next. Pass: the Info builds up piece by piece, the Show adds the Bumble Bee, then a second, then the Dragon and the Egg, swipes the Egg line and taps Remove, and the total follows each change.
+2. **Guide.** Follow the arrows. Pass: each tile ring finishes the step when you tap it, tapping the Bee again counts, and the Red Dragon step asks for a swipe left (on a phone it first points at the bar that opens the cart) and finishes when the line is gone.
+3. **Check 1.** Pass: three of the same item does **not** finish it, three different items does.
+4. **Check 2.** The cart starts with two Bumble Bees and a Red Dragon. Pass: it does not finish by itself. Removing the Dragon alone does not finish it, adding the Egg as well does. Removing the Bees too brings up a note telling you to put one back.
+
+Tell me: pass or fail for each step, and anything on a phone that is hard to reach.

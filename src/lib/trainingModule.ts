@@ -49,6 +49,8 @@ export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'cust
 export type TrainSnap = {
   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
   cart: SnapLine[]; cartDiscount: boolean; orderAdjusted: boolean; hasNote: boolean;
+  /** Who is signed in (a practice staff id such as `train-staff-casey`) and whether the Sign in screen is up. Left out by plain tests. */
+  staffId?: string; locked?: boolean;
 };
 export type Until =
   | { kind: 'next' }                                  // an informational step: the Next button moves on
@@ -68,7 +70,9 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
 export type Injection =
   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
-  | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
+  | { kind: 'ledger'; counts: Record<string, number> }
+  | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)
+  | { kind: 'pass'; state: 'cancelled' };                               // the practice cashier pass has been cancelled, so the till will not recognise it                 // replace the drawer contents (for example no small change)
 /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
 export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'adjust', 'customer', 'note', 'tender', 'sale'];
@@ -95,6 +99,8 @@ export type TrainingModule = {
   flow: 'standard' | 'guided';                // which checkout the sandbox forces
   /** Who plays the customer at the virtual card terminal. `auto` (the default): the terminal taps a card and keys the PIN by itself. `manual`: the person does it on the terminal's screen. */
   card?: 'auto' | 'manual';
+  /** Practice runs with two practice staff (Casey, a cashier, and Morgan, a manager) who have known PINs and a cashier pass, and requires sign-in. Left out, the real staff list is kept. */
+  practiceStaff?: boolean;
   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
   info: Demo; show: Demo; guide: Step[];
   check1: Goal[]; check2: Goal[];
@@ -158,6 +164,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
   if (!m.recap.length) at('recap', 'needs at least one line');
   if (!m.tabs.includes('checkout')) at('header', 'tabs must include checkout');
   if (m.card !== undefined && m.card !== 'auto' && m.card !== 'manual') at('header', `card must be "auto" or "manual", not "${String(m.card)}"`);
+  for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) for (const g of goals) for (const i of g.inject ?? []) if ((i.kind === 'staff' || i.kind === 'pass') && !m.practiceStaff) at(name, `goal ${g.id} uses a ${i.kind} injection, which needs practiceStaff on the course`);
   for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'decline') {
     if (!(Number.isInteger(i.times) && i.times >= 1 && i.times <= 5)) at('check2', `goal ${g.id} declines the card ${String(i.times)} times, which must be a whole number from 1 to 5`);
     if (i.code !== undefined && !RESPONSE_CODES[i.code]) at('check2', `goal ${g.id} declines with the unknown response code "${i.code}"`);

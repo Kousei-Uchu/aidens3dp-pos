@@ -6,7 +6,8 @@ import React, { useEffect, useRef } from 'react';
 import { View, useWindowDimensions } from 'react-native';
 import { useNav, type Tab } from './nav';
 import { useApp } from '../state/store';
-import { useTraining, type DockView } from '../state/trainingSession';
+import { useTraining, realStaffId, type DockView } from '../state/trainingSession';
+import { isLockScreen } from '../lib/posLock';
 import { getModule } from '../training';
 import { measureSpot, onSpotPressed } from './Spot';
 import { confirm } from './kit';
@@ -90,7 +91,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const fresh = key.current !== k;
         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
@@ -104,7 +105,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
-          const done = taughtIn ? isComplete(st.progress, staffKey(useApp.getState().staffId), taughtIn) : false;
+          const done = taughtIn ? isComplete(st.progress, staffKey(realStaffId()), taughtIn) : false;
           const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
           return { rect, gesture, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
         };
