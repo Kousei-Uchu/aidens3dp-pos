@@ -4,7 +4,7 @@ title: The daily float report
 parent: cash
 summary: How to read the cash takings, recommended banking and float, and record notes and coins taken to the bank.
 tags: [cash, drawer, float, report, banking, bank, takings, ledger, profile, top up]
-related: [cash, cash/open-close, cash/smart-change, cash/change]
+related: [cash, cash/open-close, cash/smart-change, cash/change, cash/swap-cash]
 updated: 2026-10-12
 ---
 The **Daily float report** helps you decide what notes and coins to bank and what to leave in the drawer. It is a suggestion: count and handle the actual cash yourself.
