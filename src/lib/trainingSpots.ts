@@ -23,17 +23,36 @@ export const SPOT = {
   loginScanPass: 'login.scanpass',     // Scan pass under the PIN keys
   switchLock: 'switch.lock',           // Lock register inside the Switch staff window
   passScan: 'pass.scan',               // the practice pass sheet's Scan this pass button (only in training)
+  findSearch: 'find.search',           // the Search bar at the top of Checkout (opens the Search window)
+  findTabs: 'find.tabs',               // the Keypad | Quick Menu | All products switch (ring the whole switch; a tap on a part of it is `find.tab:<keypad|quick|all>`)
+  findBack: 'find.back',               // the back arrow above the grid (one level up, or out of the variation picker)
+  findFilter: 'find.filter',           // the Filter products box on All products
+  findKeypad: 'find.keypad',           // the number keys on the Keypad tab (any key)
+  findKeypadAdd: 'find.keypad.add',    // the Add button under the Keypad tab's keys
+  searchField: 'search.field',         // the box in the Search window
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.lineMinus, SPOT.lineRemove, SPOT.switchLock, SPOT.passScan, SPOT.searchField];
+/** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:'] as const;
+export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
 export const gridActionSpot = (action: string): string => `grid.action:${action}`;
 export const cartLineSpot = (variantId: string): string => `cart.line:${variantId}`;
+/** A page chip above the grid. */
+export const gridPageSpot = (pageId: string): string => `grid.page:${pageId}`;
+/** One part of the Keypad | Quick Menu | All products switch: 'keypad', 'quick' or 'all'. */
+export const findTabSpot = (tab: 'keypad' | 'quick' | 'all'): string => `find.tab:${tab}`;
+/** A product row on All products. */
+export const allProductSpot = (productId: string): string => `all.product:${productId}`;
+/** A variation tile in the variation picker. */
+export const pickVariantSpot = (variantId: string): string => `pick.variant:${variantId}`;
+/** An item row in the Search window. */
+export const searchResultSpot = (variantId: string): string => `search.result:${variantId}`;
 /** The spot id a grid tile carries, or undefined for tile types training does not point at. */
 export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
   if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }

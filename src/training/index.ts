@@ -4,6 +4,7 @@ import type { TrainingModule } from '../lib/trainingModule';
 import { welcome } from './modules/welcome';
 import { signIn } from './modules/sign-in';
 import { cart } from './modules/cart';
+import { findItems } from './modules/find-items';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);

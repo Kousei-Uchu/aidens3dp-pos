@@ -9,6 +9,7 @@ export const PLANNED_TITLES: Record<string, string> = {
   welcome: 'How training works',
   'sign-in': 'Sign in, lock and switch staff',
   cart: 'Build a cart',
+  'find-items': 'Find the right item',
   discounts: 'Discounts',
   'price-adjust': 'Change a price',
   customer: 'Customers and notes',

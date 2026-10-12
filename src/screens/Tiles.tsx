@@ -1,6 +1,6 @@
 // Location: src/screens/Tiles.tsx
-import { spotPressed, useSpotRef } from '../ui/Spot';
-import { tileSpotId } from '../lib/trainingSpots';
+import { Spot, spotPressed, useSpotRef } from '../ui/Spot';
+import { pickVariantSpot, tileSpotId } from '../lib/trainingSpots';
 import React, { useMemo, useState } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { Image, Pressable, ScrollView, View } from 'react-native';
@@ -85,8 +85,8 @@ export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPic
   return (
     <View onLayout={e => onLayout(e.nativeEvent.layout.width)} style={{ width: '100%', flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 8, paddingTop: 2, paddingBottom: 8 }}>
       {vs.map(v => { const tone = stockToneOf(v.stock); const dot = TONE_DOT[tone]; const name = v.variantTitle || 'Default'; return (
-        <View key={v.id} style={{ width: size, height: size * 0.9, padding: 4 }}>
-          <Pressable onPress={() => { tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
+        <Spot key={v.id} id={pickVariantSpot(v.id)} style={{ width: size, height: size * 0.9, padding: 4 }}>
+          <Pressable onPress={() => { spotPressed(pickVariantSpot(v.id)); tap(); onPick(v); }} accessibilityRole="button" accessibilityLabel={`${name}, ${stockText(v.stock)}`}
             style={({ pressed }) => ({ flex: 1, overflow: 'hidden', borderRadius: 14, backgroundColor: TILE_COLORS[3], padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 })}>
             {v.image ? <Image source={{ uri: v.image }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', minHeight: 9 }}>{dot ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dot }} /> : null}</View>
@@ -96,7 +96,7 @@ export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPic
               <Txt size={12} color={tone === 'neg' ? '#B91C1C' : tone === 'out' || tone === 'low' ? '#B45309' : '#374151'} numberOfLines={1}>{stockText(v.stock)}</Txt>
             </View>
           </Pressable>
-        </View>); })}
+        </Spot>); })}
       {!vs.length ? <Empty title="No variations" sub="This product has nothing to choose from." /> : null}
     </View>
   );

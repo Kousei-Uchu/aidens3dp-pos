@@ -16,13 +16,13 @@ export const cart: TrainingModule = {
       { id: 'overview', nodes: [
         { id: 'in-title', kind: 'text', x: 40, y: 22, w: 560, h: 34, label: 'Build a cart', size: 22, align: 'center' },
         { id: 'sub', kind: 'text', x: 40, y: 62, w: 560, h: 40, label: 'A cart holds the items the customer is buying. You add them from the grid and change them in the cart.', size: 13, hidden: true },
-        { id: 'grid-title', kind: 'text', x: 40, y: 112, w: 560, h: 20, label: 'The grid shows items you can add', size: 13, weight: '700', hidden: true },
+        { id: 'grid-title', kind: 'text', x: 40, y: 112, w: 560, h: 20, label: 'The grid shows items you can add', size: 13, hidden: true },
         { id: 'tile-sample', kind: 'tile', x: 40, y: 138, w: 100, h: 82, icon: 'bug', label: 'Item', sub: '$8.00', color: '#FEF08A', hidden: true },
         { id: 'tile-note', kind: 'text', x: 150, y: 156, w: 420, h: 40, label: 'Tap a tile once to add it. Tap it again to add another. The total goes up.', size: 12, hidden: true },
-        { id: 'cart-title', kind: 'text', x: 40, y: 232, w: 560, h: 20, label: 'The cart lists what is being sold', size: 13, weight: '700', hidden: true },
+        { id: 'cart-title', kind: 'text', x: 40, y: 232, w: 560, h: 20, label: 'The cart lists what is being sold', size: 13, hidden: true },
         { id: 'line-sample', kind: 'row', x: 40, y: 258, w: 560, h: 40, label: 'Item name', sub: '2 x $8.00', value: '$16.00', hidden: true },
         { id: 'line-note', kind: 'text', x: 40, y: 306, w: 560, h: 32, label: 'To take an item out, swipe its line to the left, then tap Remove.', size: 12, hidden: true },
-        { id: 'total', kind: 'row', x: 40, y: 346, w: 560, h: 30, label: 'Total', value: '$16.00', weight: '700', hidden: true },
+        { id: 'total', kind: 'row', x: 40, y: 346, w: 560, h: 30, label: 'Total', value: '$16.00', hidden: true },
       ] },
     ],
     steps: [
