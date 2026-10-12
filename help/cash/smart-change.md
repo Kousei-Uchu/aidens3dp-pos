@@ -14,12 +14,12 @@ updated: 2026-10-11
 ### Turning it on
 Settings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.
 
-With it off, nothing changes: change is the fewest pieces, and Check change uses its plain "worth it?" rules.
+With it off, nothing changes: change is the fewest pieces, and Check change still judges "worth it?" using a spread of typical change amounts.
 
 ### What you will notice
 - **On the Give change screen** (cash sales and cash refunds), under **Take from the drawer**, a line says why that choice was made. For example: *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* If the quickest way is also the best, it says *Quickest way, and it keeps the drawer well stocked.*
 - **Show another way** steps through the next best choices. The button then reads **Show the next way**, and finally **Back to the suggested way**. While you are on another choice the line says *Another way to make the same change.*
-- **In Check change**, the amber "may not be worth it" warning is based on what your next sales are likely to need. See [[cash/check-change]].
+- **In Check change**, the amber "may not be worth it" warning is based on your own usual change amounts, and it compares giving the change with asking for card, so it never warns about a shortage you already had. See [[cash/check-change]].
 
 You can always ignore the suggestion and tap what you really give. See [[cash/change]].
 The [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.
@@ -110,7 +110,7 @@ flowchart TD
 | History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |
 | The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |
 | The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |
-| The warning in Check change | `smartTightness`, `lowOn` in `src/lib/changeScore.ts` |
+| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts`; `lowOn` in `src/lib/changeScore.ts` is still used by the float report |
 | The line under the switch | `profileNote` in `src/lib/changeScore.ts` |
 | The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |
 
@@ -139,4 +139,4 @@ flowchart TD
 - **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.
 - **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.
 - **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.
-- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/checkchange.test.ts` covers the worth-it rules.
+- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/changeimpact.test.ts` covers the worth-it check.
