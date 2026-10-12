@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
-import { SPOT, lineMinusSpot, lineRemoveSpot } from '../lib/trainingSpots';
+import { SPOT, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced, usePricer } from '../state/selectors';
@@ -23,7 +23,7 @@ import { CameraScanner } from './Scanner';
 import type { CartLine, Customer, ManualDiscount } from '../lib/types';
 
 /** Manual discount: Shopify discount-code presets as tappable chips + custom % / $ keypad. */
-export function DiscountSheet({ visible, onClose, onApply, current, title = 'Discount' }: { visible: boolean; onClose: () => void; onApply: (d?: ManualDiscount) => void; current?: ManualDiscount; title?: string }) {
+export function DiscountSheet({ visible, onClose, onApply, offSpot, current, title = 'Discount' }: { visible: boolean; onClose: () => void; onApply: (d?: ManualDiscount) => void; offSpot?: string; current?: ManualDiscount; title?: string }) {
   const presets = useApp(s => s.data.presets); const [mode, setMode] = useState<'pct' | 'amt'>('pct'); const [digits, setDigits] = useState('');
   const apply = () => {
     if (mode === 'pct') { const p = Math.min(100, Number(digits) || 0); if (p > 0) { onApply({ kind: 'pct', value: p, label: `${p}% off` }); setDigits(''); onClose(); } }
@@ -35,7 +35,7 @@ export function DiscountSheet({ visible, onClose, onApply, current, title = 'Dis
       <Segmented value={mode} onChange={m => { setMode(m); setDigits(''); }} options={[{ v: 'pct', label: '% percent' }, { v: 'amt', label: '$ amount' }]} />
       <Txt size={34} weight="700" style={{ textAlign: 'center', marginVertical: 14 }}>{mode === 'pct' ? `${digits || 0}%` : fmt(digitsToCents(digits))}</Txt>
       <Keypad value={digits} onChange={setDigits} decimal={mode === 'amt'} onSubmit={apply} submitLabel="Apply discount" />
-      {current ? <Btn title={`Remove “${current.label}”`} kind="ghost" onPress={() => { onApply(undefined); onClose(); }} style={{ marginTop: 8 }} /> : null}
+      {current ? <Btn spot={offSpot} title={`Remove “${current.label}”`} kind="ghost" onPress={() => { onApply(undefined); onClose(); }} style={{ marginTop: 8 }} /> : null}
     </Sheet>
   );
 }
@@ -177,8 +177,8 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         </View>
         {siblings.length > 1 ? <View style={{ marginBottom: 12 }}><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Variation</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
           {siblings.map(s => <Chip key={s.id} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
-        <Row title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
-        <Row title="Item price adjustment" icon="create-outline"
+        <Row spot={lineDiscountSpot(lineKey!)} title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
+        <Row spot={linePriceSpot(lineKey!)} title="Item price adjustment" icon="create-outline"
           sub={line.kind === 'gift_card' ? 'Not available for gift cards' : hasItemPrice(line) ? `${fmt(line.overrideCents!)} (was ${fmt(line.unitCents)}) · ${line.overrideAll ? 'all in cart' : line.overrideSeenQty !== undefined ? `for ${line.overrideSeenQty} unit${line.overrideSeenQty === 1 ? '' : 's'}` : 'this line'}` : fmt(line.unitCents)}
           onPress={line.kind === 'gift_card' ? undefined : async () => { if (await gateAdjust('item', hasItemPrice(line), () => setCart(cc => ops.clearItemPrice(cc, line.id)))) openPrice(); }} />
         {itemReasons.length ? (
@@ -193,7 +193,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
             </View>
           </View>
         ) : null}
-        <Row title="Line price adjustment" icon="cut-outline" sub={line.adjust ? `${fmt(line.adjust.finalCents)} for the whole line` : canAdjustLine(line) ? 'Set what the whole line costs' : 'Not available for gift cards'}
+        <Row spot={lineAdjustSpot(lineKey!)} title="Line price adjustment" icon="cut-outline" sub={line.adjust ? `${fmt(line.adjust.finalCents)} for the whole line` : canAdjustLine(line) ? 'Set what the whole line costs' : 'Not available for gift cards'}
           onPress={canAdjustLine(line) ? async () => { if (await gateAdjust('line', !!line.adjust, () => setCart(cc => ops.setLineAdjust(cc, line.id, undefined)))) { setAdjDigits(''); setAdjReason(line.adjust?.reason ?? ''); setAdj(true); } } : undefined} />
         {reasons.length ? (
           <View style={{ borderWidth: 1, borderColor: c.warn, borderRadius: 12, padding: 12, gap: 6, marginVertical: 8 }}>
@@ -211,7 +211,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         <Btn spot={lineRemoveSpot(lineKey!)} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
       </Sheet>
-      <DiscountSheet visible={disc} onClose={() => setDisc(false)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
+      <DiscountSheet visible={disc} onClose={() => setDisc(false)} offSpot={lineDiscountOffSpot(lineKey!)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
       <Sheet visible={price} onClose={() => setPrice(false)} title="Item price adjustment">
         <Txt size={13} sub style={{ textAlign: 'center' }}>New unit price for this sale only</Txt>
         <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(digitsToCents(digits))}</Txt>
@@ -229,7 +229,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         </> : <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>Applies to every {line.title} in this order, including any you add later.</Txt>}
         <Field kind="text" label="Reason (optional)" value={itemReason} onChangeText={setItemReason} placeholder="e.g. Damaged box, price match" />
         <Keypad value={digits} onChange={setDigits} onSubmit={setItemPrice} submitLabel="Set price" />
-        {hasItemPrice(line) ? <Btn title={line.overrideAll ? 'Reset to catalogue price (all in cart)' : 'Reset to catalogue price'} kind="ghost" onPress={() => { setCart(cc => ops.clearItemPrice(cc, line.id)); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
+        {hasItemPrice(line) ? <Btn spot={linePriceOffSpot(lineKey!)} title={line.overrideAll ? 'Reset to catalogue price (all in cart)' : 'Reset to catalogue price'} kind="ghost" onPress={() => { setCart(cc => ops.clearItemPrice(cc, line.id)); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
       </Sheet>
       <Sheet visible={adj} onClose={() => setAdj(false)} title="Line price adjustment">
         <Txt size={13} sub style={{ textAlign: 'center' }}>What should the whole line cost?{pl ? ` It costs ${fmt(beforeAdjustCents(pl))} now, after deals and discounts.` : ''}</Txt>
@@ -237,7 +237,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         {adjProblem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{adjProblem}</Txt> : null}
         <Field kind="text" label="Reason (optional)" value={adjReason} onChangeText={setAdjReason} placeholder="e.g. Damaged box, price match" />
         <Keypad value={adjDigits} onChange={setAdjDigits} onSubmit={setAdjustment} submitLabel="Set line price" />
-        {line.adjust ? <Btn title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setLineAdjust(cc, line.id, undefined)); setAdj(false); }} style={{ marginTop: 6 }} /> : null}
+        {line.adjust ? <Btn spot={lineAdjustOffSpot(lineKey!)} title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setLineAdjust(cc, line.id, undefined)); setAdj(false); }} style={{ marginTop: 6 }} /> : null}
       </Sheet>
       <View style={{ height: 0, backgroundColor: c.bg }} />
     </>

@@ -44,7 +44,7 @@ export type DemoStep = {
 export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
 
 /** One cart line as training sees it. */
-export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
+export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
 export type TrainSnap = {
   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
@@ -52,6 +52,8 @@ export type TrainSnap = {
   /** Who is signed in (a practice staff id such as `train-staff-casey`) and whether the Sign in screen is up. Left out by plain tests. */
   staffId?: string; locked?: boolean;
   /** What is typed in Search and on the Keypad, and where Checkout is (tab, how many levels deep, whether sizes are open). Left out by plain tests. */
+  /** The Cash, Gift card or Split choice that is open on the Payment page, when one is. */ payOpen?: 'cash' | 'gift' | 'split';
+  /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
@@ -82,10 +84,12 @@ export type Injection =
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
 export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'adjust', 'customer', 'note', 'tender', 'sale'];
 /** Where the work for a goal happens. Anywhere else is off course. Left out, it is the module's own tabs and routes, with sheets allowed. */
-export type Place = { tabs?: string[]; routes?: string[]; sheets?: boolean };
+export type Place = { tabs?: string[]; routes?: string[]; sheets?: boolean;
+  /** Where on Checkout this part happens: `top` is the Quick Menu grid at its first level, `grid` is anywhere on Quick Menu. Left out: no rule. */ view?: 'top' | 'grid' };
 /** A mistake specific to one goal, in the module author's words: when it is true, the person is told `say` and pointed at `target`. */
 /** `how` is the plain steps to put it right, and `taughtIn` the module that teaches them (left out, the module the person is in). */
-export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string; how?: string[]; taughtIn?: string };
+export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string; how?: string[]; taughtIn?: string;
+  /** `restart` for a mistake a tap cannot undo (a finished sale). Left out: `undo`. */ fix?: 'undo' | 'restart' };
 export type Goal = {
   id: string; title: string;                  // what the person has to achieve, shown in the dock
   until: Until;                               // how the app knows they did it (never 'next')

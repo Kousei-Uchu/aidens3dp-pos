@@ -1,5 +1,5 @@
 // Location: src/screens/CartPane.tsx
-import { Spot } from '../ui/Spot';
+import { Spot, spotRefFor } from '../ui/Spot';
 import { SPOT, cartLineSpot } from '../lib/trainingSpots';
 import { gateAllowsTap } from '../lib/trainingGate';
 import React, { useState } from 'react';
@@ -47,7 +47,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Pressable onPress={() => setSheet('customer')} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 }} accessibilityRole="button" accessibilityLabel="Attach customer">
           <Ionicons name={cart.customer ? 'person-circle' : 'person-add-outline'} size={22} color={c.text} />
           <Txt weight="600" numberOfLines={1} style={{ flex: 1 }}>{customerRowText(ui.explain, cart.customer?.name, !!cart.customer)}</Txt>
-          {cart.customer ? <Pressable onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
+          {cart.customer ? <Pressable ref={spotRefFor(SPOT.cartCustomerOff)} collapsable={false} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}
         </Pressable>
         {onClose ? <HelpButton id="sales/cart-and-prices" label="Cart help" /> : null}
         <IconBtn icon="ellipsis-horizontal" label="Cart menu" onPress={() => setMenu(true)} />

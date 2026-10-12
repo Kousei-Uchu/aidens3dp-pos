@@ -207,3 +207,14 @@ On the iPad and on a phone, in the light, dark and brand looks.
 3. In a Check with two items in the cart, add an item you were not asked for, then open the line window of the other item. The card should tell you to close this window first and name the extra item. Open the right item's window and the card should point at Remove item inside it. Try the same with too many of an item and the minus button.
 
 Tell me: pass or fail for each step, and whether the Scroll pill covers anything you need.
+
+## T17. Training: corrections and card only (B6, 0102)
+
+On the iPad and on a phone: **More ▸ Training**.
+
+1. In a Check that does not use discounts, add a discount to an item. The card should point at the item, then Discount in its window, then the Remove button, one after the other. Try the same with an item price adjustment and a whole-line price adjustment. Open another item's window part way through: it should say to close it first.
+2. In a Check that does not use a customer, add one. The ring should land on the small x by the customer name.
+3. In **Take a card payment**, tap Cash, Gift card or Split on the Payment page. The card should say the customer is paying by card and point at Close, then at Card. Complete a cash sale anyway: the goal must not finish, and the card should offer Start this part again.
+4. In Find the right item, go to the Keypad tab or into a category during the Extras page goal: the card should point you back one move at a time.
+
+Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.

@@ -13,7 +13,7 @@ import { CONTACTLESS_LIMIT_CENTS } from '../src/lib/virtualTerminal';
 import { RESPONSE_CODES } from '../src/lib/responseCodes';
 
 const line = (variantId: string, qty = 1) => ({ variantId, title: variantId, kind: 'item' as const, qty });
-const snap = (lines: any[], o: { sheets?: number; sales?: number; route?: string } = {}): TrainSnap => snapOf({ tab: 'checkout', route: o.route ?? '', sheets: o.sheets ?? 0, cart: { lines }, sales: o.sales ?? 0, paying: false });
+const snap = (lines: any[], o: { sheets?: number; sales?: number; route?: string; kinds?: string[]; payOpen?: 'cash' | 'gift' | 'split' } = {}): TrainSnap => snapOf({ tab: 'checkout', route: o.route ?? '', sheets: o.sheets ?? 0, cart: { lines }, sales: o.sales ?? 0, paying: false, payOpen: o.payOpen, lastSaleKinds: o.kinds ?? ((o.sales ?? 0) > 0 ? ['card'] : undefined) });
 const by = (list: any[], id: string) => list.find(x => x.id === id);
 const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
 const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
@@ -71,4 +71,16 @@ test('Check 2: the card is declined the stated number of times, with a real resp
 
 test('hints point at spots that exist, and every goal can be reached from the Payment page', () => {
   for (const g of [...payCard.check1, ...payCard.check2]) { assert.ok(isKnownSpot(g.reveal!), g.id); if (g.via) assert.ok(isKnownSpot(g.via), g.id); assert.ok(g.at?.routes?.includes('pay'), `${g.id} may use the Payment page`); assert.equal(g.at?.sheets, true, `${g.id} may use the Receipt and Not approved windows`); }
+});
+
+test('a card goal is not finished by a sale paid another way, and the person is walked back to Card', () => {
+  for (const goal of [...payCard.check1, ...payCard.check2]) {
+    for (const kinds of [['cash'], ['gift_card'], ['card', 'cash']]) assert.ok(!isMet(goal.until, snap([], { sales: 2, kinds }), noEvents()), `${goal.id}: ${kinds.join('+')} is not a card sale`);
+    assert.ok(isMet(goal.until, snap([], { sales: 2, kinds: ['card'] }), noEvents()));
+    const open = goal.watch!.find((w: any) => w.id === 'wrong-way-open')!; const done = goal.watch!.find((w: any) => w.id === 'wrong-way-done')!;
+    for (const m of ['cash', 'gift', 'split'] as const) assert.ok(open.when(snap([], { payOpen: m })), `${goal.id}: ${m} open`);
+    assert.ok(!open.when(snap([])), 'nothing open, nothing wrong'); assert.equal(open.target, SPOT.sheetClose);
+    assert.ok(done.when(snap([], { sales: 1, kinds: ['cash'] }))); assert.ok(!done.when(snap([], { sales: 1, kinds: ['card'] }))); assert.equal(done.fix, 'restart');
+  }
+  const g = by(payCard.guide, 'g-card'); assert.ok(g.watch!.some((w: any) => w.id === 'wrong-way-open'));
 });

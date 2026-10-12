@@ -4,14 +4,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { diagnose, fixCandidates, stepRules } from '../src/lib/trainingCourse';
 import { snapOf } from '../src/lib/trainingConds';
-import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot } from '../src/lib/trainingSpots';
+import { SPOT, WINDOW_SPOTS, isWindowSpot, cartLineSpot, gridItemSpot, lineMinusSpot, lineRemoveSpot, lineDiscountOffSpot, lineDiscountSpot, linePriceOffSpot, lineAdjustOffSpot, findTabSpot } from '../src/lib/trainingSpots';
 import { validateModule, type Step, type TrainingModule } from '../src/lib/trainingModule';
 import { isKnownSpot } from '../src/lib/trainingSpots';
 import { welcome } from '../src/training/modules/welcome';
 
 const frame = { tabs: ['checkout'], routes: ['cart'] };
 const line = (variantId: string, qty = 1) => ({ variantId, title: variantId.replace('train-v-', ''), kind: 'item' as const, qty });
-const snap = (o: { sheets?: number; lines?: ReturnType<typeof line>[]; route?: string } = {}) => snapOf({ tab: 'checkout', route: o.route ?? '', sheets: o.sheets ?? 0, cart: { lines: o.lines ?? [] }, sales: 0, paying: false });
+const snap = (o: { sheets?: number; lines?: any[]; route?: string; where?: any } = {}) => snapOf({ tab: 'checkout', route: o.route ?? '', sheets: o.sheets ?? 0, where: o.where, cart: { lines: o.lines ?? [] }, sales: 0, paying: false });
 // The welcome course's first Check: add things, no windows.
 const goal = { allow: ['add', 'remove'] as const, at: { tabs: ['checkout'], routes: [], sheets: false } };
 
@@ -81,4 +81,22 @@ test('each line has its own window buttons, so the guide can tell which item is 
   // The extra item is the egg. With the BEE's window open, the egg's Remove button does not exist, so the person is told to close this window first, naming the egg.
   const d = diagnose({ allow: [] }, frame, snap({ lines: [line('train-v-bee')] }), snap({ lines: [line('train-v-bee'), line('train-v-egg')], sheets: 1 }))!; const c = fixCandidates(d, true);
   assert.equal(c[0].target, lineRemoveSpot('train-v-egg')); assert.equal(c[1].target, SPOT.sheetClose); assert.match(c[1].say, /^Close this window first\./); assert.match(c[1].say, /egg|train-v-egg/i);
+});
+
+test('a discount or price change that was not asked for is walked back down the fix, deepest step first', () => {
+    const disc = { ...line('train-v-egg'), discount: {} }; const base = snap({ lines: [line('train-v-egg')] });
+  const d = diagnose({ allow: [] }, frame, base, snap({ lines: [disc] }))!; assert.equal(d.kind, 'discount');
+  const open = fixCandidates(d, true).map(c => c.target); assert.deepEqual(open, [lineDiscountOffSpot('train-v-egg'), lineDiscountSpot('train-v-egg'), SPOT.sheetClose]);
+  const shut = fixCandidates(d, false).map(c => c.target); assert.equal(shut[0], lineDiscountOffSpot('train-v-egg')); assert.ok(shut.includes(cartLineSpot('train-v-egg'))); assert.equal(shut[shut.length - 1], SPOT.cartOpen);
+  const priced = { ...line('train-v-egg'), overrideCents: 100 }; const dp = diagnose({ allow: [] }, frame, base, snap({ lines: [priced] }))!; assert.equal(dp.kind, 'adjust');
+  assert.equal(fixCandidates(dp, true)[0].target, linePriceOffSpot('train-v-egg'));
+  const adjusted = { ...line('train-v-egg'), adjust: { finalCents: 100 } }; assert.equal(fixCandidates(diagnose({ allow: [] }, frame, base, snap({ lines: [adjusted] }))!, true)[0].target, lineAdjustOffSpot('train-v-egg'));
+  const cust = diagnose({ allow: [] }, frame, base, snapOf({ tab: 'checkout', route: '', cart: { lines: [line('train-v-egg')], customer: {} }, sales: 0, paying: false }))!; assert.equal(cust.target, SPOT.cartCustomerOff);
+});
+test('wandering off the grid on a goal that lives on the grid is corrected one move at a time', () => {
+  const goal = { allow: [], at: { tabs: ['checkout'], routes: ['cart'], view: 'top' as const } }; const at = (tab: string, depth = 0, sizes = false) => snap({ where: { tab, depth, sizes } });
+  assert.equal(diagnose(goal, frame, snap(), at('quick')), null);
+  assert.equal(diagnose(goal, frame, snap(), at('keypad'))!.target, findTabSpot('quick')); assert.equal(diagnose(goal, frame, snap(), at('quick', 1, true))!.target, SPOT.findBack); assert.equal(diagnose(goal, frame, snap(), at('quick', 2))!.target, SPOT.findBack);
+  assert.equal(diagnose({ ...goal, at: { ...goal.at, view: 'grid' as const } }, frame, snap(), at('quick', 2)), null, 'grid allows being inside a category');
+  assert.equal(diagnose({ allow: [], at: { tabs: ['checkout'], routes: ['cart'] } }, frame, snap(), at('keypad')), null, 'a goal with no view rule is left alone');
 });
