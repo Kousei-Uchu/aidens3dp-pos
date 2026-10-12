@@ -1,0 +1,648 @@
+diff --git a/App.tsx b/App.tsx
+index b9535b0..e4c0b17 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -30,6 +30,7 @@ import Diagnostics from './src/screens/Diagnostics';
+ import Help from './src/screens/Help';
+ import Training from './src/screens/Training';
+ import TrainingRun from './src/screens/TrainingRun';
++import TerminalPlay from './src/screens/TerminalPlay';
+ import TrainingHost from './src/ui/TrainingHost';
+ import { Spot } from './src/ui/Spot';
+ import { SPOT } from './src/lib/trainingSpots';
+@@ -71,6 +72,7 @@ function Routes({ route: top }: { route: Route }) {
+     case 'help': return <Help id={p.id} />;
+     case 'training': return <Training />;
+     case 'trainingRun': return <TrainingRun />;
++    case 'terminalPlay': return <TerminalPlay />;
+     default: return null;
+   }
+ }
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index a6ad85b..f973b22 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -84,6 +84,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0079 | 2026-10-12 | Training corrections (list of 4), 1: the **cursor can swipe, scroll, double or triple tap and press and hold** (Guide and Show), course correction is **context aware** (no more "use the minus button" then "close this window"), and the **Guide allows only the interactions it asks for** (a swipe step blocks the tap that opened the line window; a Guide step allows no window unless it says so; the screen stays dimmed while off course with only the fix open). New `src/lib/pointerGesture.ts`, `src/lib/trainingGate.ts`, `fixCandidates` in `src/lib/trainingCourse.ts`; spots `line.minus` and `line.remove`; welcome Show gains a swipe step | B6 |
+ | 0080 | 2026-10-12 | Training corrections (list of 4), 2: the **highlight ring and its surroundings follow the theme**. The ring, glow, dim, cursor ripple, progress bar, PRACTICE badge and the Show note border use the theme's accent (brand peach, the dark theme's near white, or the colour you chose in Settings, lightened if it is too dark to stand out) instead of one fixed amber; the dim is the theme's own dark; the ring always keeps a 3:1 contrast against the dim. New `src/lib/trainingPalette.ts` (pure, tested) and `src/ui/spotlight.ts` | B6 |
+ | 0081 | 2026-10-12 | Training corrections (list of 2), 1: **a hint now visibly arrives**. Each press of Hint shows a toast at the top of the screen ("Hint 2 of 4", then "The answer"; it fades after a reading time on the main screen and stays until closed inside a window, where the bar is hidden), and the toast and the bar's hint text pulse once in size and colour along your curve `48.225 * t^2 * (0.8 - t)^3` (t in seconds, 0.8 s long, peak about 0.546 at 0.32 s, held at 0 after 0.8). A press at the last rung pulses again so it is always seen; light haptic and a VoiceOver announcement; Reduce Motion keeps the colour and drops the size. New `src/lib/hintPulse.ts` (pure, tested), `src/ui/HintPulse.tsx`, `src/ui/HintToast.tsx`; the old window-only text card is replaced | B6 |
++| 0082 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 1 of 3. A drawn terminal built from what is public about the Terminal 2 (6.5 inch touchscreen, light and dark screens, tap or insert with no swipe, PIN keyed on the screen, branded sleep screen, QR/email/SMS receipt, no printer): ten screens (sleep, amount, PIN, processing, approved, declined, remove card, cancelled, receipt, not available). The practice terminal now drives it with the same events as the real one, in two modes: automatic (the terminal plays the customer, same timing as before) or manual (you tap or insert the card and key the PIN). Idle screen uses your screensaver logo and colour. More ▸ Training ▸ Virtual terminal is a playground with every screen side by side. Wording on each screen is an approximation until checked against photos (N34). Practice and Show do not use it yet (0083, 0084) | B6 |
+ 
+ ---
+ 
+@@ -404,6 +405,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N32 **Blocking for F4:** please send me a skill (or a written style guide) for removing AI-sounding writing and for Australian English, so I apply your rules rather than guessing them. Nothing else in Final Touches waits on it.
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
+ - [ ] N33 **Non-blocking (B6, 0081):** on the iPad, run a Check and press Hint. The toast should slide in at the top and pulse once (a quick grow and glow that peaks a third of a second in and is gone by 0.8 s), and the bar's hint text should pulse with it. Press Hint until the answer is ringed, then press once more: the toast should pulse again with no new text. Open a window during a Check (a sheet) and press Hint there: the toast should appear on the window and stay until you tap its x. Tell me if the pulse is too strong or too weak (the two numbers are `PULSE_SCALE_GAIN` and `PULSE_TINT_ALPHA` in `src/lib/hintPulse.ts`), whether the toast covers anything you need, and how it looks in the light, dark and brand themes. Also try with Reduce Motion on (colour only, no growing).
++- [ ] N34 **Non-blocking (B6, 0082):** photos for the virtual terminal. The Terminal 2 screens in 0082 are drawn from public descriptions, so the wording, layout and colours are best guesses. To make them match: (1) the branded idle screen your terminal shows, (2) each Zeller in-app popup (waiting for card, PIN, processing, approved, declined with a reason, cancelled, receipt options, error or not available), (3) a front photo of the terminal and, if you can, a short video of a tap payment and an insert payment with PIN. Everything the screens say lives in `COPY` in `src/lib/virtualTerminal.ts`, and their look in `src/ui/TerminalFace.tsx`, so it is a re-skin, not a rebuild.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/trainingTerminal.ts b/src/lib/trainingTerminal.ts
+index 32b6bc5..78787e5 100644
+--- a/src/lib/trainingTerminal.ts
++++ b/src/lib/trainingTerminal.ts
+@@ -2,26 +2,54 @@
+ // A pretend Zeller terminal for training. It sends the same event names as the real one and either approves or declines (code 51).
+ // It plugs in wherever a TerminalLike is expected, so Pay and startCharge run exactly as they do in production.
+ import type { TerminalLike, ZellerEvent, ZellerTxn } from './zeller';
++import { lookupResponse } from './responseCodes';
++import { eventFor, type VtState } from './virtualTerminal';
++import { createVt, type VtController } from './virtualTerminalSession';
+ 
+ export type Outcome = 'approve' | 'decline';
+ type Op<T> = Promise<T | (Error & { type: string })> & { cancel?: () => void; onEvent?: (cb: (e: ZellerEvent) => void) => unknown };
+ const err = (type: string): Error & { type: string } => Object.assign(new Error(type), { type });
+ 
+ export const timing = { stepMs: 600 };
+-export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: number }): TerminalLike & { approved: ZellerTxn[] } {
+-  const ms = () => opts.stepMs ?? timing.stepMs; const approved: ZellerTxn[] = []; let n = 0;
++/** The PIN an unattended virtual terminal keys for the customer when the amount needs one. */
++const AUTO_PIN = ['1', '2', '3', '4', 'ok'];
++/**
++ * `vt` is the virtual Zeller Terminal 2 drawn on screen (optional: without it the terminal has no picture and behaves exactly as before).
++ * Automatic (`vt.manual` false): the terminal plays the customer, taps a card after one step and keys the PIN itself, and the timing is the same as ever.
++ * Manual: the person plays the customer on the virtual terminal (taps or inserts the card, keys the PIN), or presses Cancel on it.
++ * `declineCode` is the response code the terminal gives when the card is declined (51, insufficient funds, unless a course says otherwise).
++ */
++export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: number; vt?: VtController; declineCode?: () => string }): TerminalLike & { approved: ZellerTxn[] } {
++  const ms = () => opts.stepMs ?? timing.stepMs; const approved: ZellerTxn[] = []; let n = 0; const vt = opts.vt;
+   const run = (o: { amount: number; reference?: string }, kind: 'PURCHASE' | 'REFUND'): Op<ZellerTxn> => {
+-    const subs: ((e: ZellerEvent) => void)[] = []; let timers: ReturnType<typeof setTimeout>[] = []; let finish: (v: ZellerTxn | (Error & { type: string })) => void = () => {};
+-    const emit = (type: string) => subs.forEach(cb => cb({ type }));
+-    const p = new Promise<ZellerTxn | (Error & { type: string })>(res => { finish = res; }) as Op<ZellerTxn>;
+-    const outcome = opts.next();
++    const subs: ((e: ZellerEvent) => void)[] = []; let timers: ReturnType<typeof setTimeout>[] = []; let finish: (v: ZellerTxn | (Error & { type: string })) => void = () => {}; let off: (() => void) | undefined; let done = false;
++    const emit = (e: ZellerEvent) => subs.forEach(cb => cb(e));
++    const p = new Promise<ZellerTxn | (Error & { type: string })>(res => { finish = v => { if (done) return; done = true; off?.(); res(v); }; }) as Op<ZellerTxn>;
++    const outcome = opts.next(); const code = outcome === 'decline' ? (opts.declineCode?.() ?? '51') : '00';
++    const text = outcome === 'decline' ? (code === '51' ? 'Insufficient funds' : lookupResponse(code).message.replace(/ — .*$/, '').replace(/\.$/, '')) : undefined;
+     const txn = (): ZellerTxn => ({
+-      type: kind, amount: o.amount, currency: 'AUD', externalReference: o.reference, transactionUuid: `train-txn-${++n}`, timestampLocal: new Date().toISOString(), scheme: 'Visa', cardMedia: 'TAP', panMasked: 'XXXXXXXXXXXX0000',
+-      ...(outcome === 'approve' ? { $type: 'Approved' as const, status: 'APPROVED' as const, approvalCode: 'TRAIN1', responseCode: '00' } : { $type: 'Declined' as const, status: 'DECLINED' as const, responseCode: '51', responseText: 'Insufficient funds' }),
++      type: kind, amount: o.amount, currency: 'AUD', externalReference: o.reference, transactionUuid: `train-txn-${++n}`, timestampLocal: new Date().toISOString(), scheme: 'Visa', cardMedia: vt?.get().media === 'INSERT' ? 'INSERT' : 'TAP', panMasked: 'XXXXXXXXXXXX0000',
++      ...(outcome === 'approve' ? { $type: 'Approved' as const, status: 'APPROVED' as const, approvalCode: 'TRAIN1', responseCode: '00' } : { $type: 'Declined' as const, status: 'DECLINED' as const, responseCode: code, responseText: text }),
+     });
+-    timers = [setTimeout(() => emit('AWAITING_PAYMENT_METHOD'), 0), setTimeout(() => emit('PROCESSING'), ms()), setTimeout(() => { const t = txn(); if (t.status === 'APPROVED') approved.push(t); finish(t); }, ms() * 2)];
++    const settle = () => { const t = txn(); if (t.status === 'APPROVED') approved.push(t); finish(t); };
++    if (!vt || kind === 'REFUND') {
++      // No picture (refunds are not drawn yet): the same three beats as ever.
++      timers = [setTimeout(() => emit({ type: 'AWAITING_PAYMENT_METHOD' }), 0), setTimeout(() => emit({ type: 'PROCESSING' }), ms()), setTimeout(settle, ms() * 2)];
++    } else {
++      // The virtual terminal is in charge: its screens decide when the till hears about each stage.
++      let pinTimers: ReturnType<typeof setTimeout>[] = []; let processing = false;
++      const onScreen = (s: VtState, prev: VtState) => {
++        if (s.screen === prev.screen) return; const e = eventFor(s); if (e && s.screen !== 'approved' && s.screen !== 'declined') emit(e);
++        if (s.screen === 'cancelled') { timers.forEach(clearTimeout); pinTimers.forEach(clearTimeout); finish(err('Cancelled')); }
++        if (s.screen === 'pin' && !vt.manual) pinTimers = AUTO_PIN.map((k, i) => setTimeout(() => vt.dispatch({ t: 'key', key: k }), 250 * (i + 1)));
++        if (s.screen === 'processing' && !processing) { processing = true; timers.push(setTimeout(() => { vt.dispatch({ t: 'result', approved: outcome === 'approve', text, code }); const e2 = eventFor(vt.get()); if (e2) emit(e2); settle(); }, ms())); }
++      };
++      off = vt.subscribe(onScreen); const stop = off; off = () => { stop(); pinTimers.forEach(clearTimeout); };
++      // The request is made on the next tick, so the till has attached its event listener before the first event is sent.
++      timers = [setTimeout(() => { vt.dispatch({ t: 'request', amountCents: o.amount }); timers.push(setTimeout(() => { if (!vt.manual) vt.dispatch({ t: 'present', media: 'TAP' }); }, ms())); }, 0)];
++    }
+     p.onEvent = cb => { subs.push(cb); };
+-    p.cancel = () => { timers.forEach(clearTimeout); finish(err('Cancelled')); };
++    p.cancel = () => { timers.forEach(clearTimeout); if (vt && kind === 'PURCHASE' && !done) { vt.dispatch({ t: 'cancel' }); if (vt.get().screen === 'processing') vt.dispatch({ t: 'reset' }); } finish(err('Cancelled')); };
+     return p;
+   };
+   return {
+@@ -34,7 +62,10 @@ export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: numbe
+ }
+ 
+ /** The one terminal training uses. Check 2 sets how many cards it declines before it approves. */
+-const queue: Outcome[] = [];
+-export const trainingTerminal = makeTrainingTerminal({ next: () => queue.shift() ?? 'approve' });
+-export const setDeclines = (times: number): void => { queue.length = 0; for (let i = 0; i < Math.max(0, Math.min(5, times)); i++) queue.push('decline'); };
+-export const resetTrainingTerminal = (): void => { queue.length = 0; trainingTerminal.approved.length = 0; };
++const queue: Outcome[] = []; let declineWith = '51';
++/** The virtual terminal drawn on screen during training. Automatic until a course asks for the person to play the customer (`setManualCard`). */
++export const trainingVt = createVt({ dark: false });
++export const trainingTerminal = makeTrainingTerminal({ next: () => queue.shift() ?? 'approve', vt: trainingVt, declineCode: () => declineWith });
++export const setDeclines = (times: number, code = '51'): void => { queue.length = 0; declineWith = code; for (let i = 0; i < Math.max(0, Math.min(5, times)); i++) queue.push('decline'); };
++export const setManualCard = (manual: boolean): void => { trainingVt.manual = manual; };
++export const resetTrainingTerminal = (): void => { queue.length = 0; declineWith = '51'; trainingTerminal.approved.length = 0; trainingVt.manual = false; trainingVt.dispatch({ t: 'reset' }); };
+diff --git a/src/lib/virtualTerminal.ts b/src/lib/virtualTerminal.ts
+new file mode 100644
+index 0000000..0a3a5db
+--- /dev/null
++++ b/src/lib/virtualTerminal.ts
+@@ -0,0 +1,130 @@
++// Location: src/lib/virtualTerminal.ts
++// The virtual Zeller Terminal 2 (B6, F8): what its screen shows and how it moves from one screen to the next. Pure: no timers, no React.
++// Used by the practice terminal (trainingTerminal.ts), the playground page and, later, the Show demos and Demo mode.
++// The shape follows what is publicly known of the Terminal 2: one 6.5 inch full colour touchscreen with light and dark modes, tap or insert
++// (no swipe, no magstripe), PIN keyed on the screen, a branded sleep screen, and no printer (receipts are a QR code, email or SMS).
++// The WORDING on each screen is an approximation until it is replaced from photos of the real terminal: it all lives in `COPY`, nowhere else.
++import type { ZellerEvent } from './zeller';
++
++export type VtScreen = 'sleep' | 'amount' | 'pin' | 'processing' | 'approved' | 'declined' | 'removeCard' | 'cancelled' | 'receipt' | 'unavailable';
++export const VT_SCREENS: readonly VtScreen[] = ['sleep', 'amount', 'pin', 'processing', 'approved', 'declined', 'removeCard', 'cancelled', 'receipt', 'unavailable'];
++export const isVtScreen = (s: string): s is VtScreen => (VT_SCREENS as readonly string[]).includes(s);
++
++export type VtMedia = 'TAP' | 'INSERT';
++export type VtState = {
++  screen: VtScreen; amountCents: number; media?: VtMedia;
++  pin: number;                                  // digits keyed so far (the screen shows dots, never the digits)
++  ok?: boolean;                                 // how the last payment ended, kept so the screens after it know
++  failText?: string; failCode?: string; dark: boolean;
++};
++
++/** Australian contactless limit: above this the customer is asked for a PIN even when they tap. */
++export const CONTACTLESS_LIMIT_CENTS = 10_000;
++export const PIN_MIN = 4; export const PIN_MAX = 6;
++export const needsPin = (media: VtMedia, amountCents: number): boolean => media === 'INSERT' || amountCents > CONTACTLESS_LIMIT_CENTS;
++export const vtInitial = (dark = false): VtState => ({ screen: 'sleep', amountCents: 0, pin: 0, dark });
++
++export type VtAction =
++  | { t: 'request'; amountCents: number }                  // the till asks the terminal for a payment: wakes it
++  | { t: 'present'; media: VtMedia }                       // the customer taps or inserts a card
++  | { t: 'key'; key: string }                              // a PIN key: '0'..'9', 'del' or 'ok'
++  | { t: 'cancel' }                                        // the Cancel button on the terminal
++  | { t: 'result'; approved: boolean; text?: string; code?: string }
++  | { t: 'next' }                                          // a message screen has been on long enough
++  | { t: 'removed' }                                       // the customer took the card out
++  | { t: 'offline' }
++  | { t: 'reset' }
++  | { t: 'dark'; dark: boolean };
++
++/** The one function that decides what happens. Anything that does not make sense on the current screen changes nothing. */
++export function vtReduce(s: VtState, a: VtAction): VtState {
++  switch (a.t) {
++    case 'request': return { ...vtInitial(s.dark), screen: 'amount', amountCents: Math.max(0, Math.round(a.amountCents)) };
++    case 'present':
++      if (s.screen !== 'amount') return s;
++      return { ...s, media: a.media, pin: 0, screen: needsPin(a.media, s.amountCents) ? 'pin' : 'processing' };
++    case 'key': {
++      if (s.screen !== 'pin') return s;
++      if (a.key === 'del') return { ...s, pin: Math.max(0, s.pin - 1) };
++      if (a.key === 'ok') return s.pin >= PIN_MIN ? { ...s, screen: 'processing' } : s;
++      if (/^[0-9]$/.test(a.key)) return s.pin < PIN_MAX ? { ...s, pin: s.pin + 1 } : s;
++      return s;
++    }
++    case 'cancel': return s.screen === 'amount' || s.screen === 'pin' ? { ...s, screen: 'cancelled', ok: false } : s;
++    case 'result':
++      if (s.screen !== 'processing') return s;
++      return a.approved ? { ...s, screen: 'approved', ok: true, failText: undefined, failCode: undefined } : { ...s, screen: 'declined', ok: false, failText: a.text, failCode: a.code };
++    case 'next':
++      if (s.screen === 'approved' || s.screen === 'declined') return s.media === 'INSERT' ? { ...s, screen: 'removeCard' } : s.ok ? { ...s, screen: 'receipt' } : vtInitial(s.dark);
++      if (s.screen === 'cancelled' || s.screen === 'receipt' || s.screen === 'unavailable') return { ...vtInitial(s.dark) };
++      return s;
++    case 'removed': return s.screen !== 'removeCard' ? s : s.ok ? { ...s, screen: 'receipt' } : vtInitial(s.dark);
++    case 'offline': return { ...s, screen: 'unavailable', ok: false };
++    case 'reset': return vtInitial(s.dark);
++    case 'dark': return { ...s, dark: a.dark };
++  }
++}
++/** A declined, cancelled or finished payment ends at the sleep screen with the amount cleared. */
++export const isIdle = (s: VtState): boolean => s.screen === 'sleep';
++
++/** How long a message screen stays when nobody is in charge of moving on (the automatic mode). Zero means it waits for somebody. */
++export const DWELL_MS: Readonly<Record<VtScreen, number>> = { sleep: 0, amount: 0, pin: 0, processing: 0, approved: 1800, declined: 2600, removeCard: 1200, cancelled: 1500, receipt: 3500, unavailable: 2500 };
++/** What an unattended terminal does next, or null if it waits. The removeCard screen is the only one that needs a different action. */
++export const autoAction = (s: VtState): VtAction | null => (DWELL_MS[s.screen] === 0 ? null : s.screen === 'removeCard' ? { t: 'removed' } : { t: 'next' });
++
++/** The event the real terminal would send when it reaches this screen, so the till reacts to the virtual one exactly as it does to the real one. */
++export function eventFor(s: VtState): ZellerEvent | null {
++  switch (s.screen) {
++    case 'amount': return { type: 'AWAITING_PAYMENT_METHOD' };
++    case 'pin': return { type: 'AWAITING_PIN_ENTRY' };
++    case 'processing': return { type: 'PROCESSING' };
++    case 'approved': return { type: 'DISPLAYING_PAYMENT_MESSAGE', message: 'Approved' };
++    case 'declined': return { type: 'DISPLAYING_PAYMENT_MESSAGE', message: s.failText || 'Declined' };
++    default: return null;
++  }
++}
++
++/** The words on each screen. The approximate wording; replace from photos of the real terminal. `{amount}` is filled in by `screenText`. */
++export const COPY: Readonly<Record<VtScreen, { title: string; line?: string; hint?: string }>> = {
++  sleep: { title: '' },
++  amount: { title: '{amount}', line: 'Tap or insert card', hint: 'Customer: hold your card to the top of the screen, or insert it chip first' },
++  pin: { title: 'Enter PIN', line: '{amount}', hint: 'Tap OK when you have finished' },
++  processing: { title: 'Processing', line: 'Please wait', hint: 'Do not remove the card' },
++  approved: { title: 'Approved', line: '{amount}' },
++  declined: { title: 'Declined', line: '{reason}', hint: 'Try another card' },
++  removeCard: { title: 'Remove card' },
++  cancelled: { title: 'Cancelled', line: 'Payment was not taken' },
++  receipt: { title: 'Receipt', line: 'Scan the QR code, or choose Email or SMS', hint: 'No paper receipt on this terminal' },
++  unavailable: { title: 'Not available', line: 'The terminal cannot take payments right now', hint: 'Check its Wi-Fi or SIM connection' },
++};
++export const money = (cents: number): string => `$${(Math.max(0, cents) / 100).toFixed(2)}`;
++export function screenText(s: VtState): { title: string; line: string; hint: string } {
++  const c = COPY[s.screen]; const fill = (t?: string) => (t ?? '').replace('{amount}', money(s.amountCents)).replace('{reason}', s.failText || 'Card declined');
++  return { title: fill(c.title), line: fill(c.line), hint: fill(c.hint) };
++}
++
++/** The face colours for light and dark mode. The idle screen takes its background from the business's own settings instead. */
++export const FACE = {
++  light: { bg: '#FFFFFF', text: '#111111', sub: '#6B7280', key: '#F1F1F4', accent: '#111111', onAccent: '#FFFFFF', good: '#15803D', bad: '#DC2626' },
++  dark: { bg: '#0B0B0C', text: '#F4F4F5', sub: '#9CA3AF', key: '#222226', accent: '#F4F4F5', onAccent: '#111111', good: '#4ADE80', bad: '#F87171' },
++} as const;
++export const faceColors = (dark: boolean) => (dark ? FACE.dark : FACE.light);
++
++/** The keys on the PIN screen, in rows, as the person sees them. */
++export const PIN_ROWS: readonly (readonly string[])[] = [['1', '2', '3'], ['4', '5', '6'], ['7', '8', '9'], ['del', '0', 'ok']];
++/** Which screens have something the person can tap on the terminal itself. */
++export const TERMINAL_TAPS: Readonly<Partial<Record<VtScreen, readonly string[]>>> = { amount: ['cancel'], pin: ['cancel', ...PIN_ROWS.flat()] };
++
++/** A still picture of any screen, for the gallery and for Show demos: the state the terminal would be in on that screen, with typical numbers. */
++export function previewState(screen: VtScreen, dark = false, amountCents = 4500): VtState {
++  const base: VtState = { ...vtInitial(dark), screen, amountCents };
++  switch (screen) {
++    case 'pin': return { ...base, media: 'INSERT', pin: 3 };
++    case 'processing': return { ...base, media: 'TAP' };
++    case 'approved': return { ...base, media: 'TAP', ok: true };
++    case 'declined': return { ...base, media: 'TAP', ok: false, failText: 'Insufficient funds', failCode: '51' };
++    case 'removeCard': return { ...base, media: 'INSERT', ok: true };
++    case 'cancelled': return { ...base, ok: false };
++    default: return base;
++  }
++}
+diff --git a/src/lib/virtualTerminalSession.ts b/src/lib/virtualTerminalSession.ts
+new file mode 100644
+index 0000000..62ce110
+--- /dev/null
++++ b/src/lib/virtualTerminalSession.ts
+@@ -0,0 +1,36 @@
++// Location: src/lib/virtualTerminalSession.ts
++// A virtual terminal you can hold: its current screen, a way to send it actions, and (when nobody is in charge) the timers that move a message screen on.
++// No React and no app imports, so it runs in the node tests. The React side is `useVt` in src/ui/VirtualTerminal.tsx.
++import { autoAction, DWELL_MS, vtInitial, vtReduce, type VtAction, type VtState } from './virtualTerminal';
++
++export type VtController = {
++  get: () => VtState;
++  subscribe: (cb: (s: VtState, prev: VtState) => void) => () => void;
++  dispatch: (a: VtAction) => VtState;
++  /** Manual: the person plays the customer (taps or inserts the card, keys the PIN, takes the card out). Automatic: the terminal plays the customer. */
++  manual: boolean;
++  /** Stops every timer the controller started. */
++  dispose: () => void;
++};
++type Timers = { set: (f: () => void, ms: number) => unknown; clear: (h: unknown) => void };
++const realTimers: Timers = { set: (f, ms) => { const h: any = setTimeout(f, ms); h?.unref?.(); return h; }, clear: h => clearTimeout(h as any) };
++
++export function createVt(o: { dark?: boolean; manual?: boolean; timers?: Timers } = {}): VtController {
++  const timers = o.timers ?? realTimers; let state = vtInitial(!!o.dark); let pending: unknown = null; const subs = new Set<(s: VtState, prev: VtState) => void>();
++  const stop = () => { if (pending !== null) { timers.clear(pending); pending = null; } };
++  // A message screen moves on by itself (approved, declined, cancelled, receipt, removeCard) so the terminal never sticks, unless the screen is one the person is meant to act on.
++  const schedule = () => {
++    stop(); const a = autoAction(state); if (!a) return;
++    // In manual mode the person takes the card out themselves; every other message screen still moves on by itself.
++    if (c.manual && state.screen === 'removeCard') return;
++    pending = timers.set(() => { pending = null; c.dispatch(a); }, DWELL_MS[state.screen]);
++  };
++  const c: VtController = {
++    manual: !!o.manual,
++    get: () => state,
++    subscribe: cb => { subs.add(cb); return () => { subs.delete(cb); }; },
++    dispatch: a => { const prev = state; const next = vtReduce(prev, a); if (next === prev) return state; state = next; schedule(); subs.forEach(cb => cb(state, prev)); return state; },
++    dispose: () => { stop(); subs.clear(); },
++  };
++  return c;
++}
+diff --git a/src/screens/TerminalPlay.tsx b/src/screens/TerminalPlay.tsx
+new file mode 100644
+index 0000000..cc9b415
+--- /dev/null
++++ b/src/screens/TerminalPlay.tsx
+@@ -0,0 +1,55 @@
++// Location: src/screens/TerminalPlay.tsx
++// More > Training > Virtual terminal: the practice Zeller Terminal 2 on its own, to play with and to check against the real one.
++// It owns a separate terminal (never the till's), takes a pretend payment through the same code the till uses, and shows every screen side by side.
++import React, { useEffect, useMemo, useRef, useState } from 'react';
++import { ScrollView, View } from 'react-native';
++import { Btn, Card, Chip, Page, Section, Toggle, Txt } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useNav } from '../ui/nav';
++import VirtualTerminal, { useFaceBrand } from '../ui/VirtualTerminal';
++import TerminalFace, { FACE_ASPECT } from '../ui/TerminalFace';
++import { createVt } from '../lib/virtualTerminalSession';
++import { makeTrainingTerminal } from '../lib/trainingTerminal';
++import { describeEvent, startCharge } from '../lib/zeller';
++import { money, previewState, VT_SCREENS } from '../lib/virtualTerminal';
++
++const AMOUNTS = [1200, 4500, 12000] as const;
++
++export default function TerminalPlay() {
++  const { c } = useTheme(); const nav = useNav(); const brand = useFaceBrand();
++  const [manual, setManual] = useState(true); const [dark, setDark] = useState(false); const [amount, setAmount] = useState<number>(4500); const [decline, setDecline] = useState(false);
++  const [log, setLog] = useState<string[]>([]); const [busy, setBusy] = useState(false); const live = useRef<ReturnType<typeof startCharge> | null>(null); const outcome = useRef<'approve' | 'decline'>('approve'); outcome.current = decline ? 'decline' : 'approve';
++  const vt = useMemo(() => createVt({ manual: true }), []); const term = useMemo(() => makeTrainingTerminal({ next: () => outcome.current, vt }), [vt]);
++  useEffect(() => { vt.manual = manual; }, [vt, manual]); useEffect(() => { vt.dispatch({ t: 'dark', dark }); }, [vt, dark]); useEffect(() => () => vt.dispose(), [vt]);
++  const start = () => {
++    if (busy) return; setBusy(true); setLog([`Asked for ${money(amount)}`]); const add = (m: string) => setLog(l => [...l, m]);
++    const ch = startCharge(term, { amountCents: amount, reference: `play-${Date.now()}` }, { onEvent: e => add(describeEvent(e)) });
++    live.current = ch;
++    void ch.promise.then(r => { live.current = null; add(r.kind === 'APPROVED' ? 'Result: approved' : r.kind === 'DECLINED' ? `Result: declined (${r.text})` : r.kind === 'CANCELLED' ? 'Result: cancelled' : `Result: ${r.kind}`); setBusy(false); });
++  };
++  return (
++    <Page title="Virtual terminal" onBack={nav.pop}>
++      <View style={{ padding: 16, gap: 14 }}>
++        <Txt sub>A practice Zeller Terminal 2. It is not your real reader and charges nothing. Ask it for a payment, then play the customer: tap or insert a card, and key the PIN on its screen when it asks.</Txt>
++        <View style={{ alignItems: 'center' }}><VirtualTerminal vt={vt} width={250} brand={brand} /></View>
++        <Card style={{ padding: 14, gap: 10 }}>
++          <Txt weight="700">Payment</Txt>
++          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>{AMOUNTS.map(a => <Chip key={a} label={`${money(a)}${a > 10000 ? ' (needs PIN)' : ''}`} active={amount === a} onPress={() => setAmount(a)} />)}</View>
++          <Toggle label="Decline the card" sub="The terminal says Declined (insufficient funds)." value={decline} onChange={setDecline} />
++          <Toggle label="I am the customer" sub="Off: the terminal taps a card and keys a PIN by itself." value={manual} onChange={setManual} />
++          <Toggle label="Dark screen" sub="The Terminal 2 has light and dark screen modes." value={dark} onChange={setDark} />
++          <Btn title={busy ? 'Waiting for the customer…' : 'Ask for payment'} onPress={start} disabled={busy} />
++          {busy ? <Btn kind="secondary" title="Cancel from the till" onPress={() => live.current?.cancel()} /> : null}
++          {log.length ? <View style={{ gap: 2 }}>{log.map((l, i) => <Txt key={i} size={13} sub>{l}</Txt>)}</View> : null}
++        </Card>
++        <Section title="Every screen" footer="The wording is an approximation until it is checked against photos of the real terminal." >
++          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingVertical: 4 }}>
++            {VT_SCREENS.map(sc => (
++              <View key={sc} style={{ alignItems: 'center', gap: 4 }}>
++                <View style={{ borderRadius: 14, overflow: 'hidden', borderWidth: 1, borderColor: c.line, height: 110 * FACE_ASPECT }}><TerminalFace s={previewState(sc, dark)} w={110} brand={brand} /></View>
++                <Txt size={12} sub>{sc}</Txt></View>))}
++          </ScrollView>
++        </Section>
++      </View>
++    </Page>);
++}
+diff --git a/src/screens/Training.tsx b/src/screens/Training.tsx
+index 2a714e5..3404ea1 100644
+--- a/src/screens/Training.tsx
++++ b/src/screens/Training.tsx
+@@ -49,6 +49,11 @@ export default function Training() {
+                 <Txt weight="700" color={c.onAccent}>{complete ? 'Do it again' : done.length ? 'Continue' : 'Start'}</Txt></Pressable>
+             </Card></Enter>);
+         })}
++        <Enter delay={stagger(MODULES.length + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10 }}>
++          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Ionicons name="card-outline" size={34} color={c.sub} /><View style={{ flex: 1 }}><Txt size={17} weight="700">Virtual terminal</Txt><Txt size={13} sub>Practice Zeller Terminal 2</Txt></View></View>
++          <Txt sub>Try the card terminal on its own: ask it for a payment, tap or insert a card, key a PIN, and see every screen it can show.</Txt>
++          <Pressable onPress={() => nav.push('terminalPlay')} accessibilityRole="button" style={{ backgroundColor: c.fill, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}><Txt weight="700">Open</Txt></Pressable>
++        </Card></Enter>
+       </View>
+     </Page>
+   );
+diff --git a/src/training/README.md b/src/training/README.md
+index 183fbd5..c089e8a 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -74,3 +74,12 @@ Guide and Check run on fake data (ids start with `train-`). Nothing is written t
+ ## Rules for the words
+ 
+ Plain, adult, short. No em dashes, no emoji, no ASCII art. Say what to do, not how it feels.
++
++## The virtual terminal
++
++Practice has a drawn Zeller Terminal 2 (`src/ui/VirtualTerminal.tsx`, the screens in `src/ui/TerminalFace.tsx`, the rules in `src/lib/virtualTerminal.ts`). The practice terminal (`src/lib/trainingTerminal.ts`) drives it and sends the same events the real one does, so Pay behaves exactly as in production.
++
++- **Automatic or manual.** Automatic (the default): the terminal plays the customer, taps a card after one step and keys a PIN itself when the amount is over the contactless limit. Manual (`setManualCard(true)`): the person plays the customer, tapping or inserting the card and keying the PIN on the terminal's screen, which is how a Guide or Check can teach what the customer does.
++- **Declines.** `setDeclines(times, code)` makes the card decline, with code 51 (insufficient funds) unless a code is given. The terminal shows the reason.
++- **Wording.** Everything a screen says is in `COPY` in `src/lib/virtualTerminal.ts`. It is an approximation until checked against photos of the real terminal.
++- **Playground.** More ▸ Training ▸ Virtual terminal runs a terminal of its own (never the till's) and shows every screen.
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+new file mode 100644
+index 0000000..02ed83c
+--- /dev/null
++++ b/src/ui/TerminalFace.tsx
+@@ -0,0 +1,67 @@
++// Location: src/ui/TerminalFace.tsx
++// The picture on the virtual Zeller Terminal 2's screen. Draws one screen of the terminal at any size and does nothing else:
++// the state and the taps come in as props, so the practice device, the playground and the Show demos all draw the same face.
++// Everything is sized from the width, so it stays sharp and in proportion from a thumbnail to full size.
++import React from 'react';
++import { ActivityIndicator, Image, Pressable, Text, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { QR } from './QR';
++import { faceColors, PIN_MAX, PIN_ROWS, screenText, type VtState } from '../lib/virtualTerminal';
++
++/** The terminal screen's shape: a tall phone-like panel (the Terminal 2's display is 6.5 inches). Height is this many times the width. */
++export const FACE_ASPECT = 2.05;
++export type FaceBrand = { bg: string; logo?: { uri: string } | null };
++type Props = { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spotRef?: (id: string) => ((n: any) => void) | undefined };
++
++export default function TerminalFace({ s, w, brand, onKey, onCancel, onDone, spotRef }: Props) {
++  const k = faceColors(s.dark); const u = w / 100; const h = w * FACE_ASPECT; const t = screenText(s); const press = (f?: () => void) => (f ? { onPress: f } : { disabled: true });
++  const shell = { width: w, height: h, backgroundColor: s.screen === 'sleep' ? (brand?.bg ?? '#13111C') : k.bg, overflow: 'hidden' as const, alignItems: 'center' as const };
++  const disc = (bg: string, icon: React.ComponentProps<typeof Ionicons>['name']) => (
++    <View style={{ width: 30 * u, height: 30 * u, borderRadius: 15 * u, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}><Ionicons name={icon} size={18 * u} color="#fff" /></View>);
++  const heading = (title: string, line?: string, hint?: string) => (
++    <View style={{ alignItems: 'center', paddingHorizontal: 8 * u, gap: 2 * u }}>
++      <Text style={{ fontSize: 11 * u, fontWeight: '700', color: k.text, textAlign: 'center' }} numberOfLines={2}>{title}</Text>
++      {line ? <Text style={{ fontSize: 5.6 * u, color: k.sub, textAlign: 'center' }} numberOfLines={3}>{line}</Text> : null}
++      {hint ? <Text style={{ fontSize: 4.2 * u, color: k.sub, textAlign: 'center', marginTop: 2 * u }} numberOfLines={3}>{hint}</Text> : null}
++    </View>);
++  const pill = (label: string, onP: (() => void) | undefined, id?: string, strong = false) => (
++    <Pressable ref={id && spotRef ? spotRef(id) : undefined} collapsable={false} accessibilityRole="button" accessibilityLabel={label} {...press(onP)}
++      style={{ paddingHorizontal: 9 * u, paddingVertical: 3.2 * u, borderRadius: 99, backgroundColor: strong ? k.accent : k.key }}>
++      <Text style={{ fontSize: 5 * u, fontWeight: '700', color: strong ? k.onAccent : k.text }}>{label}</Text></Pressable>);
++
++  let body: React.ReactNode;
++  switch (s.screen) {
++    case 'sleep':
++      body = <View style={{ flex: 1, justifyContent: 'center' }}>{brand?.logo
++        ? <Image source={brand.logo} resizeMode="contain" accessibilityIgnoresInvertColors style={{ width: w * 0.62, height: w * 0.4 }} />
++        : <Ionicons name="storefront-outline" size={22 * u} color="#EFD8C9" />}</View>; break;
++    case 'amount':
++      body = (<><View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 9 * u }}>
++        <Ionicons name="wifi" size={26 * u} color={k.accent} style={{ transform: [{ rotate: '90deg' }] }} />{heading(t.title, t.line, t.hint)}</View>
++        <View style={{ paddingBottom: 7 * u }}>{pill('Cancel', onCancel, 'terminal.cancel')}</View></>); break;
++    case 'pin':
++      body = (<View style={{ flex: 1, width: '100%', alignItems: 'center', paddingTop: 7 * u, gap: 4 * u }}>
++        {heading(t.title, t.line)}
++        <View style={{ flexDirection: 'row', gap: 3 * u, marginVertical: 1.5 * u }} accessibilityLabel={`${s.pin} digits entered`}>
++          {Array.from({ length: PIN_MAX }, (_, i) => <View key={i} style={{ width: 4.6 * u, height: 4.6 * u, borderRadius: 3 * u, backgroundColor: i < s.pin ? k.accent : 'transparent', borderWidth: 0.8 * u, borderColor: k.sub }} />)}</View>
++        <View ref={spotRef?.('terminal.pinpad')} collapsable={false} style={{ gap: 2.4 * u, width: '86%' }}>
++          {PIN_ROWS.map((row, ri) => <View key={ri} style={{ flexDirection: 'row', gap: 2.4 * u }}>{row.map(key => (
++            <Pressable key={key} ref={key === 'ok' && spotRef ? spotRef('terminal.pinok') : undefined} collapsable={false} accessibilityRole="button" accessibilityLabel={key === 'del' ? 'Delete' : key === 'ok' ? 'OK' : key} {...press(onKey ? () => onKey(key) : undefined)}
++              style={{ flex: 1, height: 11 * u, borderRadius: 3 * u, alignItems: 'center', justifyContent: 'center', backgroundColor: key === 'ok' ? k.good : k.key }}>
++              {key === 'del' ? <Ionicons name="backspace-outline" size={6.4 * u} color={k.text} /> : <Text style={{ fontSize: 7 * u, fontWeight: '700', color: key === 'ok' ? '#fff' : k.text }}>{key === 'ok' ? 'OK' : key}</Text>}
++            </Pressable>))}</View>)}</View>
++        <View style={{ paddingTop: 1 * u }}>{pill('Cancel', onCancel, 'terminal.cancel')}</View></View>); break;
++    case 'processing':
++      body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}><ActivityIndicator size="large" color={k.accent} />{heading(t.title, t.line, t.hint)}</View>; break;
++    case 'approved': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.good, 'checkmark')}{heading(t.title, t.line)}</View>; break;
++    case 'declined': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.bad, 'close')}{heading(t.title, t.line, t.hint)}</View>; break;
++    case 'cancelled': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.sub, 'close')}{heading(t.title, t.line)}</View>; break;
++    case 'removeCard': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}><Ionicons name="card-outline" size={26 * u} color={k.accent} />{heading(t.title)}</View>; break;
++    case 'receipt':
++      body = (<View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 5 * u }}>
++        <QR value="https://example.com/practice-receipt" size={Math.round(46 * u)} />{heading(t.title, t.line, t.hint)}
++        <View style={{ flexDirection: 'row', gap: 3 * u }}>{pill('Email', undefined)}{pill('SMS', undefined)}{pill('Done', onDone, 'terminal.done', true)}</View></View>); break;
++    case 'unavailable': body = <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', gap: 8 * u }}>{disc(k.bad, 'cloud-offline-outline')}{heading(t.title, t.line, t.hint)}</View>; break;
++  }
++  return <View style={shell} accessibilityLabel={`Terminal screen: ${t.title || 'idle'} ${t.line}`}>{body}</View>;
++}
+diff --git a/src/ui/VirtualTerminal.tsx b/src/ui/VirtualTerminal.tsx
+new file mode 100644
+index 0000000..3abc0b1
+--- /dev/null
++++ b/src/ui/VirtualTerminal.tsx
+@@ -0,0 +1,54 @@
++// Location: src/ui/VirtualTerminal.tsx
++// The virtual Zeller Terminal 2 as a device: the body, the screen (TerminalFace) and, in manual mode, the customer's hands (tap a card, insert a card, take it out).
++// `useVt` turns a controller (src/lib/virtualTerminalSession.ts) into React state. Used by the playground page and, from the next patch, by practice.
++import React, { useCallback, useSyncExternalStore } from 'react';
++import { Pressable, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import TerminalFace, { FACE_ASPECT, type FaceBrand } from './TerminalFace';
++import { Txt } from './kit';
++import { useTheme } from './theme';
++import { useApp } from '../state/store';
++import { logoSource, normaliseHex } from '../lib/screensaver';
++import type { VtController } from '../lib/virtualTerminalSession';
++import type { VtState } from '../lib/virtualTerminal';
++
++export function useVt(vt: VtController): VtState {
++  const sub = useCallback((cb: () => void) => vt.subscribe(() => cb()), [vt]);
++  return useSyncExternalStore(sub, vt.get, vt.get);
++}
++/** The business's own idle screen: its screensaver logo on its screensaver colour (Settings ▸ Screensaver & display), so the practice terminal wakes up looking like the real one. */
++export function useFaceBrand(): FaceBrand {
++  const ss = useApp(s => s.settings.screensaver);
++  return { bg: normaliseHex(ss.bgColor) ?? '#13111C', logo: logoSource(ss) };
++}
++/** Device body around the face. `w` is the width of the whole device. */
++export function TerminalBody({ s, w, brand, onKey, onCancel, onDone, spotRef }: { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spotRef?: (id: string) => ((n: any) => void) | undefined }) {
++  const bezel = w * 0.05; const inner = w - bezel * 2; const lit = s.screen !== 'sleep';
++  return (
++    <View style={{ width: w, padding: bezel, paddingBottom: bezel * 1.8, borderRadius: w * 0.11, backgroundColor: '#0E0E10', borderWidth: 1.5, borderColor: '#2A2A2E', alignItems: 'center', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 14, shadowOffset: { width: 0, height: 6 }, elevation: 8 }}>
++      <View style={{ width: inner, height: inner * FACE_ASPECT, borderRadius: w * 0.07, overflow: 'hidden' }}>
++        <TerminalFace s={s} w={inner} brand={brand} onKey={onKey} onCancel={onCancel} onDone={onDone} spotRef={spotRef} /></View>
++      <View style={{ marginTop: bezel * 0.7, width: inner * 0.34, height: 3, borderRadius: 2, backgroundColor: lit ? '#3A3A40' : '#222226' }} accessibilityLabel="Card slot" />
++    </View>);
++}
++
++/** The terminal and its customer controls, wired to a controller. */
++export default function VirtualTerminal({ vt, width = 260, controls = true, brand }: { vt: VtController; width?: number; controls?: boolean; brand?: FaceBrand }) {
++  const { c } = useTheme(); const s = useVt(vt); const own = useFaceBrand(); const b = brand ?? own;
++  const manual = vt.manual; const canPresent = manual && s.screen === 'amount'; const canRemove = manual && s.screen === 'removeCard';
++  const btn = (label: string, icon: React.ComponentProps<typeof Ionicons>['name'], on: boolean, f: () => void) => (
++    <Pressable accessibilityRole="button" accessibilityLabel={label} disabled={!on} onPress={f}
++      style={{ flex: 1, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', paddingVertical: 11, borderRadius: 999, backgroundColor: on ? c.accent : c.fill, opacity: on ? 1 : 0.5 }}>
++      <Ionicons name={icon} size={18} color={on ? c.onAccent : c.sub} /><Txt size={14} weight="700" color={on ? c.onAccent : c.sub}>{label}</Txt></Pressable>);
++  return (
++    <View style={{ alignItems: 'center', gap: 12 }}>
++      <TerminalBody s={s} w={width} brand={b} onKey={manual ? k => vt.dispatch({ t: 'key', key: k }) : undefined} onCancel={() => vt.dispatch({ t: 'cancel' })} onDone={() => vt.dispatch({ t: 'next' })} />
++      {controls ? <View style={{ width: Math.max(width, 260), gap: 8 }}>
++        <View style={{ flexDirection: 'row', gap: 8 }}>
++          {btn('Tap card', 'wifi', canPresent, () => vt.dispatch({ t: 'present', media: 'TAP' }))}
++          {btn('Insert card', 'card-outline', canPresent, () => vt.dispatch({ t: 'present', media: 'INSERT' }))}</View>
++        {canRemove ? btn('Take card out', 'arrow-down-circle-outline', true, () => vt.dispatch({ t: 'removed' })) : null}
++        <Txt size={12} sub style={{ textAlign: 'center' }}>{manual ? 'You are the customer: tap or insert the card when the terminal asks, and key the PIN on its screen.' : 'The terminal plays the customer: it taps a card by itself.'}</Txt>
++      </View> : null}
++    </View>);
++}
+diff --git a/tests/virtualterminal.test.ts b/tests/virtualterminal.test.ts
+new file mode 100644
+index 0000000..9f0f271
+--- /dev/null
++++ b/tests/virtualterminal.test.ts
+@@ -0,0 +1,113 @@
++// Tests for the virtual Zeller Terminal 2: the screen model, the controller's timers, and the practice terminal driving it.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { COPY, CONTACTLESS_LIMIT_CENTS, DWELL_MS, PIN_MAX, PIN_MIN, VT_SCREENS, autoAction, eventFor, needsPin, previewState, screenText, vtInitial, vtReduce, type VtAction, type VtState } from '../src/lib/virtualTerminal';
++import { createVt } from '../src/lib/virtualTerminalSession';
++import { makeTrainingTerminal } from '../src/lib/trainingTerminal';
++import { startCharge, type ZellerEvent } from '../src/lib/zeller';
++
++const fire = (f: { q: { f: () => void }[] }) => { const t = f.q.shift(); t?.f(); }; // a timer that has gone off is no longer pending
++const run = (s: VtState, ...a: VtAction[]) => a.reduce(vtReduce, s);
++const fake = () => { const q: { f: () => void; ms: number; id: number }[] = []; let id = 0; return { q, timers: { set: (f: () => void, ms: number) => { q.push({ f, ms, id: ++id }); return id; }, clear: (h: unknown) => { const i = q.findIndex(x => x.id === h); if (i >= 0) q.splice(i, 1); } } }; };
++
++test('a request wakes the terminal on the amount screen and clears the last payment', () => {
++  const s = run(vtInitial(), { t: 'request', amountCents: 4500 });
++  assert.equal(s.screen, 'amount'); assert.equal(s.amountCents, 4500); assert.equal(s.pin, 0);
++  const again = run(run(s, { t: 'present', media: 'TAP' }), { t: 'request', amountCents: 100 }); assert.equal(again.screen, 'amount'); assert.equal(again.media, undefined);
++});
++test('tap under the limit goes straight to processing; insert, or tap over the limit, asks for a PIN', () => {
++  assert.equal(run(vtInitial(), { t: 'request', amountCents: 4500 }, { t: 'present', media: 'TAP' }).screen, 'processing');
++  assert.equal(run(vtInitial(), { t: 'request', amountCents: 4500 }, { t: 'present', media: 'INSERT' }).screen, 'pin');
++  assert.equal(run(vtInitial(), { t: 'request', amountCents: CONTACTLESS_LIMIT_CENTS + 1 }, { t: 'present', media: 'TAP' }).screen, 'pin');
++  assert.equal(needsPin('TAP', CONTACTLESS_LIMIT_CENTS), false);
++});
++test('PIN keys: digits fill up to the maximum, delete takes one back, OK needs the minimum', () => {
++  let s = run(vtInitial(), { t: 'request', amountCents: 100 }, { t: 'present', media: 'INSERT' });
++  for (let i = 0; i < PIN_MIN - 1; i++) s = vtReduce(s, { t: 'key', key: '1' });
++  assert.equal(vtReduce(s, { t: 'key', key: 'ok' }).screen, 'pin', 'too short');
++  s = vtReduce(s, { t: 'key', key: '1' }); assert.equal(s.pin, PIN_MIN); assert.equal(vtReduce(s, { t: 'key', key: 'ok' }).screen, 'processing');
++  for (let i = 0; i < 9; i++) s = vtReduce(s, { t: 'key', key: '7' }); assert.equal(s.pin, PIN_MAX);
++  assert.equal(vtReduce(s, { t: 'key', key: 'del' }).pin, PIN_MAX - 1); assert.equal(vtReduce(vtInitial(), { t: 'key', key: '5' }).pin, 0, 'ignored off the PIN screen'); assert.equal(vtReduce(s, { t: 'key', key: 'x' }), s);
++});
++test('cancel works on the amount and PIN screens and nowhere else', () => {
++  assert.equal(run(vtInitial(), { t: 'request', amountCents: 100 }, { t: 'cancel' }).screen, 'cancelled');
++  assert.equal(run(vtInitial(), { t: 'request', amountCents: 100 }, { t: 'present', media: 'INSERT' }, { t: 'cancel' }).screen, 'cancelled');
++  const proc = run(vtInitial(), { t: 'request', amountCents: 100 }, { t: 'present', media: 'TAP' }); assert.equal(vtReduce(proc, { t: 'cancel' }), proc, 'no cancel while processing');
++});
++test('approved by tap goes to the receipt screen then sleeps; by insert it asks for the card out first', () => {
++  const tap = run(vtInitial(), { t: 'request', amountCents: 100 }, { t: 'present', media: 'TAP' }, { t: 'result', approved: true });
++  assert.equal(tap.screen, 'approved'); const r = vtReduce(tap, { t: 'next' }); assert.equal(r.screen, 'receipt'); assert.equal(vtReduce(r, { t: 'next' }).screen, 'sleep');
++  const ins = run(vtInitial(), { t: 'request', amountCents: 100 }, { t: 'present', media: 'INSERT' }, { t: 'key', key: '1' }, { t: 'key', key: '2' }, { t: 'key', key: '3' }, { t: 'key', key: '4' }, { t: 'key', key: 'ok' }, { t: 'result', approved: true }, { t: 'next' });
++  assert.equal(ins.screen, 'removeCard'); assert.equal(vtReduce(ins, { t: 'removed' }).screen, 'receipt');
++});
++test('declined shows the reason, never offers a receipt, and ends asleep with the amount cleared', () => {
++  const d = run(vtInitial(), { t: 'request', amountCents: 700 }, { t: 'present', media: 'TAP' }, { t: 'result', approved: false, text: 'Insufficient funds', code: '51' });
++  assert.equal(d.screen, 'declined'); assert.match(screenText(d).line, /Insufficient funds/); const n = vtReduce(d, { t: 'next' }); assert.equal(n.screen, 'sleep'); assert.equal(n.amountCents, 0);
++});
++test('a result only counts while processing, and offline shows the unavailable screen', () => {
++  const a = run(vtInitial(), { t: 'request', amountCents: 100 }); assert.equal(vtReduce(a, { t: 'result', approved: true }), a);
++  const o = vtReduce(a, { t: 'offline' }); assert.equal(o.screen, 'unavailable'); assert.equal(vtReduce(o, { t: 'next' }).screen, 'sleep');
++});
++test('light and dark mode survive a reset and a new payment', () => {
++  let s = vtReduce(vtInitial(), { t: 'dark', dark: true }); s = run(s, { t: 'request', amountCents: 100 }, { t: 'reset' }); assert.equal(s.dark, true); assert.equal(run(s, { t: 'request', amountCents: 5 }).dark, true);
++});
++test('every screen has copy, a preview, and screens that wait for a person have no automatic move', () => {
++  for (const sc of VT_SCREENS) { assert.ok(COPY[sc], sc); assert.equal(previewState(sc).screen, sc); }
++  for (const sc of ['sleep', 'amount', 'pin', 'processing'] as const) assert.equal(autoAction(previewState(sc)), null, sc);
++  for (const sc of ['approved', 'declined', 'cancelled', 'receipt', 'unavailable', 'removeCard'] as const) { assert.ok(DWELL_MS[sc] > 0); assert.ok(autoAction(previewState(sc)), sc); }
++  assert.deepEqual(autoAction(previewState('removeCard')), { t: 'removed' });
++  assert.match(screenText(previewState('amount', false, 4500)).title, /\$45\.00/);
++});
++test('the events sent match the real terminal\'s names', () => {
++  assert.equal(eventFor(previewState('amount'))?.type, 'AWAITING_PAYMENT_METHOD'); assert.equal(eventFor(previewState('pin'))?.type, 'AWAITING_PIN_ENTRY');
++  assert.equal(eventFor(previewState('processing'))?.type, 'PROCESSING'); assert.equal(eventFor(previewState('sleep')), null);
++});
++
++test('the controller moves message screens on by itself, except that a manual terminal waits for the card to be taken out', () => {
++  const f = fake(); const vt = createVt({ timers: f.timers });
++  vt.dispatch({ t: 'request', amountCents: 100 }); vt.dispatch({ t: 'present', media: 'TAP' }); vt.dispatch({ t: 'result', approved: true });
++  assert.equal(vt.get().screen, 'approved'); assert.equal(f.q.length, 1); assert.equal(f.q[0].ms, DWELL_MS.approved); fire(f); assert.equal(vt.get().screen, 'receipt');
++  fire(f); assert.equal(vt.get().screen, 'sleep'); assert.equal(f.q.length, 0, 'nothing left running');
++  const m = createVt({ manual: true, timers: f.timers }); m.dispatch({ t: 'request', amountCents: 100 }); m.dispatch({ t: 'present', media: 'INSERT' });
++  for (const k of ['1', '2', '3', '4', 'ok']) m.dispatch({ t: 'key', key: k }); m.dispatch({ t: 'result', approved: true }); fire(f); assert.equal(m.get().screen, 'removeCard'); assert.equal(f.q.length, 0, 'waits for the person');
++  m.dispatch({ t: 'removed' }); assert.equal(m.get().screen, 'receipt');
++});
++test('a new action cancels the timer that was waiting, and dispose stops everything', () => {
++  const f = fake(); const vt = createVt({ timers: f.timers }); vt.dispatch({ t: 'request', amountCents: 100 }); vt.dispatch({ t: 'cancel' }); assert.equal(f.q.length, 1);
++  vt.dispatch({ t: 'request', amountCents: 200 }); assert.equal(f.q.length, 0); vt.dispatch({ t: 'cancel' }); vt.dispose(); assert.equal(f.q.length, 0);
++});
++test('subscribers hear every change once, and not an action that changes nothing', () => {
++  const vt = createVt({ timers: fake().timers }); const seen: string[] = []; const off = vt.subscribe(s => seen.push(s.screen));
++  vt.dispatch({ t: 'key', key: '1' }); vt.dispatch({ t: 'request', amountCents: 100 }); vt.dispatch({ t: 'request', amountCents: 100 }); off(); vt.dispatch({ t: 'cancel' }); assert.deepEqual(seen, ['amount', 'amount']);
++});
++
++const events = (p: { onEvent?: (cb: (e: ZellerEvent) => void) => unknown }) => { const seen: string[] = []; p.onEvent?.(e => seen.push(e.type)); return seen; };
++test('practice terminal, automatic: same events and result as before, and the picture follows', async () => {
++  const vt = createVt({ timers: fake().timers }); const t = makeTrainingTerminal({ next: () => 'approve', stepMs: 5, vt }); const op = t.purchase({ amount: 4500, reference: 'a' }); const seen = events(op);
++  const r: any = await op; assert.equal(r.status, 'APPROVED'); assert.equal(r.cardMedia, 'TAP'); assert.deepEqual(seen, ['AWAITING_PAYMENT_METHOD', 'PROCESSING', 'DISPLAYING_PAYMENT_MESSAGE']); assert.equal(vt.get().screen, 'approved');
++});
++test('practice terminal, automatic over the contactless limit: it keys a PIN by itself', async () => {
++  const vt = createVt({ timers: fake().timers }); const t = makeTrainingTerminal({ next: () => 'approve', stepMs: 5, vt }); const op = t.purchase({ amount: 25000, reference: 'b' }); const seen = events(op);
++  const r: any = await op; assert.equal(r.status, 'APPROVED'); assert.ok(seen.includes('AWAITING_PIN_ENTRY')); assert.ok(seen.indexOf('AWAITING_PIN_ENTRY') < seen.indexOf('PROCESSING'));
++});
++test('practice terminal, decline: the screen shows the reason and the till gets code 51 (or the code a course asks for)', async () => {
++  const vt = createVt({ timers: fake().timers }); const t = makeTrainingTerminal({ next: () => 'decline', stepMs: 5, vt }); const r: any = await t.purchase({ amount: 100, reference: 'c' });
++  assert.equal(r.responseCode, '51'); assert.equal(vt.get().screen, 'declined'); assert.equal(vt.get().failText, 'Insufficient funds');
++  const vt2 = createVt({ timers: fake().timers }); const t2 = makeTrainingTerminal({ next: () => 'decline', stepMs: 5, vt: vt2, declineCode: () => 'QB' }); const r2: any = await t2.purchase({ amount: 100, reference: 'd' });
++  assert.equal(r2.responseCode, 'QB'); assert.match(vt2.get().failText ?? '', /declined|locked/i);
++});
++test('practice terminal, manual: nothing happens until the person presents a card; insert asks for a PIN they key', async () => {
++  const vt = createVt({ manual: true, timers: fake().timers }); const t = makeTrainingTerminal({ next: () => 'approve', stepMs: 5, vt }); const op = t.purchase({ amount: 1200, reference: 'e' }); let done = false; void op.then(() => { done = true; });
++  await new Promise(r => setTimeout(r, 40)); assert.equal(done, false); assert.equal(vt.get().screen, 'amount');
++  vt.dispatch({ t: 'present', media: 'INSERT' }); assert.equal(vt.get().screen, 'pin'); await new Promise(r => setTimeout(r, 40)); assert.equal(done, false, 'waits for the PIN');
++  for (const k of ['4', '2', '4', '2', 'ok']) vt.dispatch({ t: 'key', key: k }); const r: any = await op; assert.equal(r.status, 'APPROVED'); assert.equal(r.cardMedia, 'INSERT');
++});
++test('practice terminal, manual: Cancel on the terminal cancels the sale, and so does cancelling from the till', async () => {
++  const vt = createVt({ manual: true, timers: fake().timers }); const t = makeTrainingTerminal({ next: () => 'approve', stepMs: 5, vt }); const op = t.purchase({ amount: 100, reference: 'f' }); await new Promise(r => setTimeout(r, 20));
++  vt.dispatch({ t: 'cancel' }); const r: any = await op; assert.equal(r.type, 'Cancelled'); assert.equal(vt.get().screen, 'cancelled');
++  const vt2 = createVt({ manual: true, timers: fake().timers }); const t2 = makeTrainingTerminal({ next: () => 'approve', stepMs: 5, vt: vt2 }); const c = startCharge(t2, { amountCents: 100, reference: 'g' }); await new Promise(r => setTimeout(r, 20)); c.cancel();
++  assert.equal((await c.promise).kind, 'CANCELLED'); assert.equal(vt2.get().screen, 'cancelled');
++});
++test('cancelling during processing puts the terminal back to sleep instead of leaving it spinning', async () => {
++  const vt = createVt({ timers: fake().timers }); const t = makeTrainingTerminal({ next: () => 'approve', stepMs: 30, vt }); const c = startCharge(t, { amountCents: 100, reference: 'h' }); await new Promise(r => setTimeout(r, 45)); assert.equal(vt.get().screen, 'processing'); c.cancel(); await c.promise; assert.equal(vt.get().screen, 'sleep');
++});

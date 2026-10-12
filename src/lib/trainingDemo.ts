@@ -4,6 +4,7 @@
 import type { Demo, DemoNode } from './trainingModule';
 import { grow, placeBubble, type Rect } from './trainingGeometry';
 import { isGesture, type Gesture } from './pointerGesture';
+import { isVtScreen } from './virtualTerminal';
 
 export type NodeView = DemoNode & { hidden: boolean; screen: string };
 export type DemoState = { screen: string; nodes: Map<string, NodeView> };
@@ -164,6 +165,12 @@ export function textProblems(n: DemoNode): string[] {
     case 'field': one('text', n.value ?? n.label, sz ?? 12, n.w - 18); break;
     case 'toggle': one('label', n.label, 12, n.w - 16 - 46); break;
     case 'panel': one('label', n.label, 10, n.w - 16); break;
+    case 'terminal': {
+      if (!isVtScreen(n.value ?? 'sleep')) out.push(`"${n.id}": the terminal screen "${n.value}" does not exist`);
+      if (!(n.h >= n.w * 1.9 && n.h <= n.w * 2.2)) out.push(`"${n.id}": a terminal is about twice as tall as it is wide, not ${(n.h / Math.max(1, n.w)).toFixed(2)} times`);
+      if (n.amount !== undefined && !(Number.isFinite(n.amount) && n.amount >= 0)) out.push(`"${n.id}": the terminal amount must be zero or more cents`);
+      break;
+    }
     case 'text': {
       const size = sz ?? 13; const lines = (t: string | undefined, fs: number) => (t ? Math.max(1, Math.ceil(tw(t, fs) / Math.max(1, n.w))) * fs * LINE : 0);
       const need = lines(n.label, size) + lines(n.sub, Math.max(9, size - 2));

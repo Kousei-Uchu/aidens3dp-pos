@@ -12,6 +12,7 @@ import { measureSpot, onSpotPressed } from './Spot';
 import { confirm } from './kit';
 import TrainingOverlay from './TrainingOverlay';
 import TrainingDock from './TrainingDock';
+import PracticeTerminal from './PracticeTerminal';
 import { Enter } from './Motion';
 import { Veil, dipThrough } from './Veil';
 import { trainingActions } from './trainingActions';
@@ -143,7 +144,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flex: 1 }}>{children}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
+      <View style={{ flex: 1 }}>{children}{sandbox ? <PracticeTerminal /> : null}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
       {sandbox ? <TrainingDock /> : null}
       <Veil />
     </View>

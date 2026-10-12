@@ -83,3 +83,6 @@ export function trainingBlocker(s: { pos: { cart: Cart; attempts: BlockAttempt[]
   return null;
 }
 export const declinesOf = (inj: readonly Injection[] | undefined): number => (inj ?? []).reduce((n, i) => n + (i.kind === 'decline' ? i.times : 0), 0);
+
+/** The response code the practice terminal declines with: the first decline injection's code, or 51 (insufficient funds). */
+export const declineCodeOf = (inj: readonly Injection[] | undefined): string => (inj ?? []).reduce<string | undefined>((c, i) => c ?? (i.kind === 'decline' ? i.code : undefined), undefined) ?? '51';

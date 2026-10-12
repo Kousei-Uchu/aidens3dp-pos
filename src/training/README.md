@@ -16,8 +16,9 @@ A module is one TypeScript file in `src/training/modules/`, added to the list in
 Both stages are a `Demo`. Show demonstrates the job on mock screens; Info explains it with diagrams and cards built from the same parts. A `Demo` is: a fixed canvas, one or more **screens** made of **nodes**, and a list of **steps**. Think of a short product walkthrough: the camera moves in on a control, a pointer taps it, the screen responds, the camera settles on the result, and a note points at it. The person watches and presses Next when ready. Nothing moves on by itself, and they never have to do anything in it.
 
 - **Canvas**: `canvas: { w, h }` in canvas units (the welcome course uses 640 by 400, a landscape till). Every node is placed with `x`, `y`, `w`, `h` in those units, and must fit inside it.
-- **Nodes** (`kind`): `panel`, `bar`, `text`, `button`, `tile`, `row`, `toggle`, `field`, `chip`, `icon`. They draw in list order, so later ones sit on top. Give each an `id`. Ids are unique across every screen of the demo. Use `hidden: true` for things a step will reveal, such as a cart line.
+- **Nodes** (`kind`): `panel`, `bar`, `text`, `button`, `tile`, `row`, `toggle`, `field`, `chip`, `icon`, `terminal`. They draw in list order, so later ones sit on top. Give each an `id`. Ids are unique across every screen of the demo. Use `hidden: true` for things a step will reveal, such as a cart line.
 - **Make it look like the real thing**: copy the real label, price and layout. The mock should be recognisable the moment the person reaches Guide.
+- **The terminal**: a `terminal` node draws the Zeller Terminal 2. `value` is the screen it shows (`sleep`, `amount`, `pin`, `processing`, `approved`, `declined`, `removeCard`, `cancelled`, `receipt`, `unavailable`), `amount` is the payment in cents, and `on: true` is dark mode. Give it a box about twice as tall as it is wide (for example 150 by 308). A step changes it with `set: { term: { value: 'approved' } }`, and the camera can zoom in on it with `focus`. Use it to show the customer's side next to the till.
 - **Steps**: each has `say` (one plain sentence, the same rules as everywhere), an optional short `title`, and any of:
   - `tap`: the pointer glides to this node and taps it. The node must be on screen and visible at that moment.
   - `set`: what changes when the tap lands, as `{ nodeId: { hidden, label, sub, value, icon, tone, color, on } }`. Use `on` to flip a toggle, `hidden: false` to reveal a line, `tone: 'accent'` on a tile to ring it.
@@ -74,3 +75,13 @@ Guide and Check run on fake data (ids start with `train-`). Nothing is written t
 ## Rules for the words
 
 Plain, adult, short. No em dashes, no emoji, no ASCII art. Say what to do, not how it feels.
+
+## The virtual terminal
+
+Practice has a drawn Zeller Terminal 2 (`src/ui/VirtualTerminal.tsx`, the screens in `src/ui/TerminalFace.tsx`, the rules in `src/lib/virtualTerminal.ts`). The practice terminal (`src/lib/trainingTerminal.ts`) drives it and sends the same events the real one does, so Pay behaves exactly as in production.
+
+- **Automatic or manual.** Automatic (the default): the terminal plays the customer, taps a card after one step and keys a PIN itself when the amount is over the contactless limit. Manual (`setManualCard(true)`): the person plays the customer, tapping or inserting the card and keying the PIN on the terminal's screen, which is how a Guide or Check can teach what the customer does.
+- **Declines.** `setDeclines(times, code)` makes the card decline, with code 51 (insufficient funds) unless a code is given. The terminal shows the reason.
+- **In a course.** The terminal shows by itself during Guide and Check when a card payment starts. Set `card: 'manual'` on the module for the person to play the customer; leave it out for the terminal to do it. Its buttons are spots: `SPOT.terminalTap`, `terminalInsert`, `terminalPinpad` (any digit), `terminalPinOk`, `terminalCancel`, `terminalRemove`, `terminalDone`. A Guide step that points at one of them, and waits with `until: { kind: 'press', id }`, teaches the customer's side. A Check 2 decline injection can name a response `code` from `responseCodes.ts` (51 when left out), and the terminal shows that reason.
+- **Wording.** Everything a screen says is in `COPY` in `src/lib/virtualTerminal.ts`. It is an approximation until checked against photos of the real terminal.
+- **Playground.** More ▸ Training ▸ Virtual terminal runs a terminal of its own (never the till's) and shows every screen.

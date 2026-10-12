@@ -1,0 +1,174 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 4e2b68b..fa6bc35 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -86,6 +86,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0081 | 2026-10-12 | Training corrections (list of 2), 1: **a hint now visibly arrives**. Each press of Hint shows a toast at the top of the screen ("Hint 2 of 4", then "The answer"; it fades after a reading time on the main screen and stays until closed inside a window, where the bar is hidden), and the toast and the bar's hint text pulse once in size and colour along your curve `48.225 * t^2 * (0.8 - t)^3` (t in seconds, 0.8 s long, peak about 0.546 at 0.32 s, held at 0 after 0.8). A press at the last rung pulses again so it is always seen; light haptic and a VoiceOver announcement; Reduce Motion keeps the colour and drops the size. New `src/lib/hintPulse.ts` (pure, tested), `src/ui/HintPulse.tsx`, `src/ui/HintToast.tsx`; the old window-only text card is replaced | B6 |
+ | 0082 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 1 of 3. A drawn terminal built from what is public about the Terminal 2 (6.5 inch touchscreen, light and dark screens, tap or insert with no swipe, PIN keyed on the screen, branded sleep screen, QR/email/SMS receipt, no printer): ten screens (sleep, amount, PIN, processing, approved, declined, remove card, cancelled, receipt, not available). The practice terminal now drives it with the same events as the real one, in two modes: automatic (the terminal plays the customer, same timing as before) or manual (you tap or insert the card and key the PIN). Idle screen uses your screensaver logo and colour. More ▸ Training ▸ Virtual terminal is a playground with every screen side by side. Wording on each screen is an approximation until checked against photos (N34). Practice and Show do not use it yet (0083, 0084) | B6 |
+ | 0083 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 2 of 3. The terminal now shows during Guide and Check whenever a card payment starts (bottom left, can be hidden, goes away when the terminal sleeps), drawn under the dim so the ring and pointer work on it. Its buttons are spots a course can point at and wait for: `terminal.tap`, `terminal.insert`, `terminal.pinpad`, `terminal.pinok`, `terminal.cancel`, `terminal.remove`, `terminal.done`. A course says who plays the customer with `card: 'auto' \| 'manual'` (manual: the person taps or inserts the card and keys the PIN). Check 2's decline injection takes an optional response `code` (default 51) and the terminal shows that reason; the checker refuses unknown codes and counts outside 1 to 5. New `src/ui/PracticeTerminal.tsx`, `spotRefFor` in `src/ui/Spot.tsx`, `declineCodeOf` | B6 |
++| 0084 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 3 of 3. Show and Info can draw the terminal: a new `terminal` node kind (`value` is the screen, `amount` the payment in cents, `on` dark mode) that steps change like any other node, so a demo can show the customer's side (amount, tap, PIN, approved or declined) beside the till. The checker refuses an unknown screen, a squashed or stretched terminal and a negative amount. Writer's guide updated. Finishes the virtual terminal except for matching its look to photos (N34) | B6 |
+ 
+ ---
+ 
+diff --git a/src/lib/trainingDemo.ts b/src/lib/trainingDemo.ts
+index c8a362c..d3ba2a9 100644
+--- a/src/lib/trainingDemo.ts
++++ b/src/lib/trainingDemo.ts
+@@ -4,6 +4,7 @@
+ import type { Demo, DemoNode } from './trainingModule';
+ import { grow, placeBubble, type Rect } from './trainingGeometry';
+ import { isGesture, type Gesture } from './pointerGesture';
++import { isVtScreen } from './virtualTerminal';
+ 
+ export type NodeView = DemoNode & { hidden: boolean; screen: string };
+ export type DemoState = { screen: string; nodes: Map<string, NodeView> };
+@@ -164,6 +165,12 @@ export function textProblems(n: DemoNode): string[] {
+     case 'field': one('text', n.value ?? n.label, sz ?? 12, n.w - 18); break;
+     case 'toggle': one('label', n.label, 12, n.w - 16 - 46); break;
+     case 'panel': one('label', n.label, 10, n.w - 16); break;
++    case 'terminal': {
++      if (!isVtScreen(n.value ?? 'sleep')) out.push(`"${n.id}": the terminal screen "${n.value}" does not exist`);
++      if (!(n.h >= n.w * 1.9 && n.h <= n.w * 2.2)) out.push(`"${n.id}": a terminal is about twice as tall as it is wide, not ${(n.h / Math.max(1, n.w)).toFixed(2)} times`);
++      if (n.amount !== undefined && !(Number.isFinite(n.amount) && n.amount >= 0)) out.push(`"${n.id}": the terminal amount must be zero or more cents`);
++      break;
++    }
+     case 'text': {
+       const size = sz ?? 13; const lines = (t: string | undefined, fs: number) => (t ? Math.max(1, Math.ceil(tw(t, fs) / Math.max(1, n.w))) * fs * LINE : 0);
+       const need = lines(n.label, size) + lines(n.sub, Math.max(9, size - 2));
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 77c6a43..163573d 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -18,15 +18,17 @@ export type Tone = 'neutral' | 'good' | 'bad' | 'accent';
+  * A camera zooms and pans over the canvas, a pointer taps controls, and the picture changes as the steps play.
+  * It is watched, not played: the person moves through it with Next and Back. Ids are unique across the whole demo.
+  */
+-export type DemoKind = 'panel' | 'bar' | 'text' | 'button' | 'tile' | 'row' | 'toggle' | 'field' | 'chip' | 'icon';
++export type DemoKind = 'panel' | 'bar' | 'text' | 'button' | 'tile' | 'row' | 'toggle' | 'field' | 'chip' | 'icon' | 'terminal';
+ /** x, y, w, h are canvas units (the canvas is demo.canvas.w by demo.canvas.h). Nodes draw in list order, so later ones sit on top. */
+ export type DemoNode = {
+   id: string; kind: DemoKind; x: number; y: number; w: number; h: number;
+   label?: string; sub?: string; value?: string; icon?: string;
+   tone?: Tone; color?: string; on?: boolean; hidden?: boolean; size?: number; align?: 'left' | 'center' | 'right';
++  /** For a `terminal` node: `value` is the screen it shows (a `VtScreen`: sleep, amount, pin, processing, approved, declined, removeCard, cancelled, receipt, unavailable), `amount` the payment in cents, and `on` means dark mode. */
++  amount?: number;
+ };
+ /** What a step changes on a node. Only these fields can change. */
+-export type DemoEffect = Partial<Pick<DemoNode, 'hidden' | 'label' | 'sub' | 'value' | 'icon' | 'tone' | 'color' | 'on'>>;
++export type DemoEffect = Partial<Pick<DemoNode, 'hidden' | 'label' | 'sub' | 'value' | 'icon' | 'tone' | 'color' | 'on' | 'amount'>>;
+ export type DemoScreen = { id: string; nodes: DemoNode[] };
+ /**
+  * One step. In order, when it plays: the camera goes to `tap` (or `focus`), the pointer moves to `tap` and taps it,
+diff --git a/src/lib/virtualTerminal.ts b/src/lib/virtualTerminal.ts
+index d7a7974..3b5c117 100644
+--- a/src/lib/virtualTerminal.ts
++++ b/src/lib/virtualTerminal.ts
+@@ -103,6 +103,10 @@ export function screenText(s: VtState): { title: string; line: string; hint: str
+   return { title: fill(c.title), line: fill(c.line), hint: fill(c.hint) };
+ }
+ 
++/** The terminal's screen is this many times as tall as it is wide, and the whole device (with its edge) a little more. */
++export const FACE_ASPECT = 2.05;
++export const BODY_ASPECT = 2.03;
++
+ /** The face colours for light and dark mode. The idle screen takes its background from the business's own settings instead. */
+ export const FACE = {
+   light: { bg: '#FFFFFF', text: '#111111', sub: '#6B7280', key: '#F1F1F4', accent: '#111111', onAccent: '#FFFFFF', good: '#15803D', bad: '#DC2626' },
+diff --git a/src/training/README.md b/src/training/README.md
+index 4eb9676..c2d4c96 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -16,8 +16,9 @@ A module is one TypeScript file in `src/training/modules/`, added to the list in
+ Both stages are a `Demo`. Show demonstrates the job on mock screens; Info explains it with diagrams and cards built from the same parts. A `Demo` is: a fixed canvas, one or more **screens** made of **nodes**, and a list of **steps**. Think of a short product walkthrough: the camera moves in on a control, a pointer taps it, the screen responds, the camera settles on the result, and a note points at it. The person watches and presses Next when ready. Nothing moves on by itself, and they never have to do anything in it.
+ 
+ - **Canvas**: `canvas: { w, h }` in canvas units (the welcome course uses 640 by 400, a landscape till). Every node is placed with `x`, `y`, `w`, `h` in those units, and must fit inside it.
+-- **Nodes** (`kind`): `panel`, `bar`, `text`, `button`, `tile`, `row`, `toggle`, `field`, `chip`, `icon`. They draw in list order, so later ones sit on top. Give each an `id`. Ids are unique across every screen of the demo. Use `hidden: true` for things a step will reveal, such as a cart line.
++- **Nodes** (`kind`): `panel`, `bar`, `text`, `button`, `tile`, `row`, `toggle`, `field`, `chip`, `icon`, `terminal`. They draw in list order, so later ones sit on top. Give each an `id`. Ids are unique across every screen of the demo. Use `hidden: true` for things a step will reveal, such as a cart line.
+ - **Make it look like the real thing**: copy the real label, price and layout. The mock should be recognisable the moment the person reaches Guide.
++- **The terminal**: a `terminal` node draws the Zeller Terminal 2. `value` is the screen it shows (`sleep`, `amount`, `pin`, `processing`, `approved`, `declined`, `removeCard`, `cancelled`, `receipt`, `unavailable`), `amount` is the payment in cents, and `on: true` is dark mode. Give it a box about twice as tall as it is wide (for example 150 by 308). A step changes it with `set: { term: { value: 'approved' } }`, and the camera can zoom in on it with `focus`. Use it to show the customer's side next to the till.
+ - **Steps**: each has `say` (one plain sentence, the same rules as everywhere), an optional short `title`, and any of:
+   - `tap`: the pointer glides to this node and taps it. The node must be on screen and visible at that moment.
+   - `set`: what changes when the tap lands, as `{ nodeId: { hidden, label, sub, value, icon, tone, color, on } }`. Use `on` to flip a toggle, `hidden: false` to reveal a line, `tone: 'accent'` on a tile to ring it.
+diff --git a/src/ui/DemoView.tsx b/src/ui/DemoView.tsx
+index 8626873..92522cf 100644
+--- a/src/ui/DemoView.tsx
++++ b/src/ui/DemoView.tsx
+@@ -14,13 +14,15 @@ import { useSpotlight } from './spotlight';
+ import { MAX_ZOOM, demoStateAfter, fitBox, planStep, renderScale, type Note, type NodeView } from '../lib/trainingDemo';
+ import type { Demo } from '../lib/trainingModule';
+ import { gesturePlan, isPress } from '../lib/pointerGesture';
++import { TerminalBody, useFaceBrand } from './VirtualTerminal';
++import { BODY_ASPECT, isVtScreen, previewState } from '../lib/virtualTerminal';
+ 
+ const BIG = 3000;
+ const toneColor = (c: Colors, t?: string, fallback?: string) => (t === 'good' ? c.good : t === 'bad' ? c.bad : t === 'accent' ? c.accent : fallback ?? c.text);
+ 
+ /** Fades a node in or out when a step shows or hides it, dips it when the pointer taps it, and draws it by kind. */
+ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
+-  const { c } = useTheme(); const sp = useSpotlight(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
++  const { c } = useTheme(); const sp = useSpotlight(); const brand = useFaceBrand(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
+   useEffect(() => { Animated.timing(o, { toValue: n.hidden ? 0 : 1, duration: 280, useNativeDriver: false }).start(); }, [n.hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { Animated.timing(knob, { toValue: n.on ? 1 : 0, duration: 260, useNativeDriver: false }).start(); }, [n.on]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { if (press > 0) Animated.sequence([Animated.timing(s, { toValue: 0.93, duration: 110, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 5, useNativeDriver: false })]).start(); }, [press]); // eslint-disable-line react-hooks/exhaustive-deps
+@@ -29,6 +31,7 @@ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
+   const one = { allowFontScaling: false as const, numberOfLines: 1, adjustsFontSizeToFit: true, minimumFontScale: 0.7 }; // a single line shrinks a little rather than being cut off
+   let body: React.ReactNode = null;
+   switch (n.kind) {
++    case 'terminal': { const w = Math.min(u(n.w), u(n.h) / BODY_ASPECT); const sc = isVtScreen(n.value ?? 'sleep') ? (n.value as any) : 'sleep'; body = <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }} pointerEvents="none"><TerminalBody s={previewState(sc, !!n.on, n.amount ?? 4500)} w={w} brand={brand} /></View>; break; }
+     case 'panel': body = <View style={{ flex: 1, backgroundColor: c.card, borderRadius: u(12), borderWidth: u(1), borderColor: c.line, padding: u(8) }}>{n.label ? <Text {...one} style={{ color: c.sub, fontSize: u(10), fontWeight: '700' }}>{n.label}</Text> : null}</View>; break;
+     case 'bar': body = <View style={{ flex: 1, backgroundColor: c.card, borderBottomWidth: u(1), borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(12) }}><Text {...one} style={{ color: c.text, fontSize: u(15), fontWeight: '700', flexShrink: 1 }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(11) }}>{n.sub}</Text> : null}</View>; break;
+     case 'text': body = <View style={{ flex: 1, justifyContent: 'center' }}><Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(n.size ?? 13), fontWeight: '600', textAlign: n.align ?? 'left' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(Math.max(9, (n.size ?? 13) - 2)), textAlign: n.align ?? 'left' }}>{n.sub}</Text> : null}</View>; break;
+diff --git a/src/ui/TerminalFace.tsx b/src/ui/TerminalFace.tsx
+index f6d728e..f873c23 100644
+--- a/src/ui/TerminalFace.tsx
++++ b/src/ui/TerminalFace.tsx
+@@ -8,10 +8,9 @@ import { Ionicons } from '@expo/vector-icons';
+ import { QR } from './QR';
+ import { spotRefFor } from './Spot';
+ import { SPOT } from '../lib/trainingSpots';
+-import { faceColors, PIN_MAX, PIN_ROWS, screenText, type VtState } from '../lib/virtualTerminal';
++import { FACE_ASPECT, faceColors, PIN_MAX, PIN_ROWS, screenText, type VtState } from '../lib/virtualTerminal';
+ 
+-/** The terminal screen's shape: a tall phone-like panel (the Terminal 2's display is 6.5 inches). Height is this many times the width. */
+-export const FACE_ASPECT = 2.05;
++export { FACE_ASPECT };
+ export type FaceBrand = { bg: string; logo?: { uri: string } | null };
+ type Props = { s: VtState; w: number; brand?: FaceBrand; onKey?: (k: string) => void; onCancel?: () => void; onDone?: () => void; spots?: boolean };
+ 
+diff --git a/tests/terminaldemo.test.ts b/tests/terminaldemo.test.ts
+new file mode 100644
+index 0000000..e6ba853
+--- /dev/null
++++ b/tests/terminaldemo.test.ts
+@@ -0,0 +1,31 @@
++// Tests for the terminal as a picture in Show and Info demos.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { demoStateAfter, validateDemo } from '../src/lib/trainingDemo';
++import type { Demo, DemoNode } from '../src/lib/trainingModule';
++
++const term = (o: Partial<DemoNode> = {}): DemoNode => ({ id: 'term', kind: 'terminal', x: 400, y: 20, w: 150, h: 308, value: 'sleep', ...o });
++const demo = (nodes: DemoNode[] = [term()]): Demo => ({
++  canvas: { w: 640, h: 400 }, screens: [{ id: 'main', nodes: [{ id: 'btn', kind: 'button', x: 40, y: 300, w: 200, h: 36, label: 'Charge card' }, ...nodes] }],
++  steps: [
++    { say: 'The customer pays at the terminal.', tap: 'btn', set: { term: { value: 'amount', amount: 4500 } }, focus: 'term' },
++    { say: 'They tap their card.', focus: 'term', set: { term: { value: 'processing' } } },
++    { say: 'The terminal shows it was approved.', focus: 'term', set: { term: { value: 'approved' } }, note: 'Approved' },
++  ],
++});
++
++test('a terminal node changes screen, amount and mode step by step', () => {
++  const d = demo(); assert.deepEqual(validateDemo(d), []);
++  assert.equal(demoStateAfter(d, -1).nodes.get('term')?.value, 'sleep'); const a = demoStateAfter(d, 0).nodes.get('term'); assert.equal(a?.value, 'amount'); assert.equal(a?.amount, 4500);
++  assert.equal(demoStateAfter(d, 2).nodes.get('term')?.value, 'approved');
++  d.steps[1].set = { term: { on: true } }; assert.equal(demoStateAfter(d, 1).nodes.get('term')?.on, true);
++});
++test('the checker refuses a terminal that shows a screen that does not exist, in the node or in a step', () => {
++  assert.ok(validateDemo(demo([term({ value: 'welcome' })])).some(p => /terminal screen "welcome" does not exist/.test(p)));
++  const d = demo(); d.steps[2].set = { term: { value: 'paid' } }; assert.ok(validateDemo(d).some(p => /step 3 makes .*"paid" does not exist/.test(p)));
++});
++test('the checker refuses a squashed or stretched terminal and a negative amount', () => {
++  assert.ok(validateDemo(demo([term({ h: 150 })])).some(p => /about twice as tall/.test(p)));
++  assert.ok(validateDemo(demo([term({ w: 100, h: 308 })])).some(p => /about twice as tall/.test(p)));
++  assert.ok(validateDemo(demo([term({ amount: -5 })])).some(p => /zero or more cents/.test(p)));
++});
