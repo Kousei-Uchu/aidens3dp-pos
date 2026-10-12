@@ -18,6 +18,8 @@ import type { Rect } from '../lib/trainingGeometry';
 export type DockView = {
   mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
+  /** How many times Hint has been pressed (see Sess.hintPress). In the view so the toast and its pulse change in the same frame as the hint text, and again on a press that adds nothing new. */
+  hintPress?: number;
   /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
   gesture?: Gesture;
   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
@@ -25,6 +27,8 @@ export type DockView = {
 };
 type Sess = {
   run: Run | null; sandbox: boolean; hint: HintState; view: DockView | null; progress: Progress; loaded: boolean;
+  /** Goes up on every press of Hint, including one at the last rung that changes nothing, so the person always sees the press was heard (the toast pulses on it). Never reset. */
+  hintPress: number;
   /** Goes up each time the person asks "how do I do this?" while off course, so the card opens its steps. */
   howNonce: number; openHow: () => void;
   loadProgress: () => Promise<void>;
@@ -44,7 +48,7 @@ let real: Swap | null = null;
 let goalStart: Swap | null = null;
 
 export const useTraining = create<Sess>((set, get) => ({
-  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, howNonce: 0,
+  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
   loadProgress: async () => { if (get().loaded) return; set({ progress: readProgress(await kvGet(TRAINING_PROGRESS_KEY, null)), loaded: true }); },
   begin: (moduleId, stage = 'info') => set({ run: startRun(moduleId, stage), hint: freshHints(), view: null }),
@@ -76,7 +80,7 @@ export const useTraining = create<Sess>((set, get) => ({
     set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p);
     const next = finishStage(run); const r: Run = { ...next, introSeen: false }; set({ run: r, hint: freshHints(), view: null }); return r;
   },
-  pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
+  pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), hintPress: s.hintPress + 1, run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
   setView: v => set({ view: v }),
   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
   restartGoal: inj => {

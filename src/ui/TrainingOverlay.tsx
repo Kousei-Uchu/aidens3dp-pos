@@ -14,7 +14,8 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from './theme';
 import { useSpotlight } from './spotlight';
 import Swap from './Swap';
-import { useReduceMotion } from './Motion';
+import HintToast from './HintToast';
+import { Enter, useReduceMotion } from './Motion';
 import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
 import { centred, grow, onScreen, placeBubble, placeNotice, type Rect, type Size, type Slot } from '../lib/trainingGeometry';
 import { HOLD_MS, glideMs, irisStart, isTinyMove, segments } from '../lib/guideMotion';
@@ -165,6 +166,8 @@ function StrayCard({ stray }: { stray: StrayView }) {
 export default function TrainingOverlay({ layer }: { layer: string }) {
   const { c } = useTheme(); const sp = useSpotlight(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
   const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(150);
+  // The press whose hint toast has been closed (by the person, or by its timer on the main screen). Each layer keeps its own, so a window shows the current hint when it opens.
+  const [shut, setShut] = useState(-1);
   const measure = () => box.current?.measureInWindow((x, y, w, h) => { setOrigin({ x, y }); if (w > 0 && h > 0) setSize({ w, h }); });
   // Window coordinates from the driver become local to this layer, and a target outside this layer's frame counts as not there.
   const local: Rect | null = view?.rect ? { x: view.rect.x - origin.x, y: view.rect.y - origin.y, w: view.rect.w, h: view.rect.h } : null;
@@ -251,7 +254,9 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
           <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={{ backgroundColor: c.fill, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
         </View>
       ) : null}
-      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <Floating avoid={avoid} screen={size} top={56} prefer="bottom" pointerEvents="none"><View style={{ backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View></Floating> : null}
+      {/* The hint toast. It shows on every layer, not just windows, and an off-course notice always wins over it (the notice is the thing to act on). */}
+      {view.mode === 'check' && view.hintLevel > 0 && !!view.say && !view.stray && shut !== (view.hintPress ?? 0)
+        ? <Floating avoid={avoid} screen={size} top={isRoot ? 12 : 56} prefer={isRoot ? 'top' : 'bottom'} pointerEvents="box-none"><Enter from="up" distance={18} duration={300}><HintToast view={view} persist={!isRoot} onClose={() => setShut(view.hintPress ?? 0)} /></Enter></Floating> : null}
     </View>
   );
 }

@@ -39,7 +39,7 @@ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`
 
 ## Goals and hints
 
-A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
+A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look. Each press shows the hint in a toast at the top of the screen ("Hint 2 of 4", then "The answer") and in the bar under the app, and its box pulses once (size and colour, over 0.8 seconds, following `48.225 * t^2 * (0.8 - t)^3`; see `src/lib/hintPulse.ts`). A press at the last rung changes no text but pulses again, so the press is always seen. On the main screen the toast fades after a reading time (the bar keeps the text); inside a window it stays until its x is tapped, because the bar is hidden there. An off-course notice always takes the place of a hint.
 
 ## Going off course (Guide and Checks)
 

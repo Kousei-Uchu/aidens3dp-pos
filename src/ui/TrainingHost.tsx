@@ -61,7 +61,8 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     };
     trainingActions.next = () => { nextTap.current = true; };
     // While off course the card is what is on screen, so Hint opens its steps instead of spending a hint the person cannot see.
-    trainingActions.hint = () => { const t = useTraining.getState(); if (t.view?.stray?.how.length) { t.openHow(); return; } const cur = current(); if (cur?.goal) t.pressHint(cur.goal.id, cur.goal.ladder); };
+    // A press asks for an immediate check, so the hint (and its toast and pulse) shows within a frame or two instead of waiting for the next poll.
+    trainingActions.hint = () => { const t = useTraining.getState(); if (t.view?.stray?.how.length) { t.openHow(); return; } const cur = current(); if (cur?.goal) { t.pressHint(cur.goal.id, cur.goal.ladder); kickRef.current?.(); } };
     trainingActions.restart = () => {
       const cur = current(); if (!cur?.goal && !cur?.step) return; const st = useTraining.getState();
       if (!st.restartGoal(cur.goal?.inject)) return;
@@ -124,7 +125,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           let strayView: DockView['stray'];
           if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
           setGate(null);
-          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
