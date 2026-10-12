@@ -110,7 +110,7 @@ flowchart TD
 | History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |
 | The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |
 | The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |
-| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts`; `lowOn` in `src/lib/changeScore.ts` is still used by the float report |
+| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts` |
 | The line under the switch | `profileNote` in `src/lib/changeScore.ts` |
 | The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |
 

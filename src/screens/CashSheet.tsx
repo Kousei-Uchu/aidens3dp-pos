@@ -106,7 +106,7 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
   );
 }
 
-export function CashSheet({ visible, onClose, due, onTake, plan = [], onChangeSplit }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void; plan?: SplitPlan; onChangeSplit?: () => void }) {
+export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [], onChangeSplit }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void; plan?: SplitPlan; onChangeSplit?: () => void }) {
   const { c } = useTheme(); const ui = useUi(); const drawer = useApp(s => s.pos.ledger.counts);
   const [step, setStep] = useState<'receive' | 'change'>('receive'); const [draft, setDraft] = useState<Draft>([]); const [partX, setPartX] = useState<number | null>(null); const [force, setForce] = useState(false);
   useEffect(() => { if (visible) { setStep('receive'); setDraft([]); setPartX(null); setForce(false); } }, [visible]);
@@ -121,7 +121,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan = [], onChangeSp
 
   const finish = (given: Counts = {}, next?: SplitPlan) => onTake({ tendered: got, received, given, ...(partX !== null ? { applyCents: partX } : {}), ...(next ? { plan: next } : {}) });
   // a split bill with too little cash for this part: say where the rest goes (or go back and change the split), instead of splitting it again
-  const livePlan = useMemo(() => (plan.length > 1 ? [billDue, ...plan.slice(1)] : plan), [plan, billDue]); // this payment is what is due on screen
+  const livePlan = useMemo(() => (splitPlan.length > 1 ? [billDue, ...splitPlan.slice(1)] : splitPlan), [splitPlan, billDue]); // this payment is what is due on screen
   const choices = st.state === 'short' && partX === null && onChangeSplit ? shortChoices(livePlan, got) : [];
   const choiceTitle = (k: ShortChoice) => (k.kind === 'next' ? `Add ${fmt(k.shortBy)} to payment 2 (${fmt(k.was)} → ${fmt(k.now)})` : k.kind === 'part' ? `Add ${fmt(k.shortBy)} to payment ${k.part} (${fmt(k.was)} → ${fmt(k.now)})` : k.kind === 'spread' ? `Spread ${fmt(k.shortBy)} over the other ${k.parts} payments (+${fmt(k.each)} each)` : 'Go back and change the split');
   const takeChoice = (k: ShortChoice) => { if (k.kind === 'modify') { onChangeSplit?.(); return; } finish({}, applyShortChoice(livePlan, k)); };

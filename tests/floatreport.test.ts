@@ -2,7 +2,7 @@
 // 0023: the daily float report: takings, what to take out, what to leave, top-up, banking big notes.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { idealFloat, ledgerTakings, recommendFloat } from '../src/lib/floatReport';
+import { ledgerTakings, recommendFloat } from '../src/lib/floatReport';
 import { emptyProfile, type CashProfile } from '../src/lib/changeScore';
 import { findCombinations, findCombinationsLimited } from '../src/lib/changeFinder';
 import { newEntry, totalOf, type Counts } from '../src/lib/cashLedger';
@@ -20,11 +20,6 @@ test('ledgerTakings: received minus change minus cash refunds since a time, and 
   ];
   assert.deepEqual(ledgerTakings(e, since), { cents: 2000 - 800 + 1000 - 500, sales: 2 });
 });
-test('idealFloat: 1.5 × a day of usual change, to the nearest $10 up, kept in $50-$300; null with no profile', () => {
-  assert.equal(idealFloat(null), null); assert.equal(idealFloat(emptyProfile()), null);
-  const p = profile({ amounts: [{ cents: 1000, p: 1 }], horizon: 5 }); assert.equal(idealFloat(p), 15000); // 1000 × 10 sales × 1.5
-  assert.equal(idealFloat(profile({ amounts: [{ cents: 100, p: 1 }], horizon: 4 })), 5000); assert.equal(idealFloat(profile({ amounts: [{ cents: 5000, p: 1 }], horizon: 12 })), 30000);
-});
 test('recommendFloat: with no profile it takes the largest notes first, never more than the takings, and says so', () => {
   const drawer = { '5000': 1, '2000': 3, '500': 4, '100': 10 }; const r = recommendFloat({ drawer, takings: 9000 });
   assert.equal(r.usedProfile, false); assert.deepEqual(r.best.takeOut, { '5000': 1, '2000': 2 }); assert.equal(r.gap, 0); assert.equal(r.best.keepTotal, totalOf(drawer) - 9000); assert.match(r.notes.join(' '), /No cash history/);
@@ -39,7 +34,7 @@ test('recommendFloat: with a profile it stays within $10 of the takings, never o
   assert.ok(Math.abs(r.gap) <= 1000, `gap ${r.gap}`); for (const [v, n] of Object.entries(r.best.takeOut)) assert.ok(n <= (drawer as Counts)[v]);
   assert.equal(r.best.keepTotal, totalOf(drawer) - r.best.takeOutTotal);
   for (const alt of r.alternatives) { assert.ok(Math.abs(alt.takeOutTotal - takings) <= 1000); for (const [v, n] of Object.entries(alt.takeOut)) assert.ok(n <= (drawer as Counts)[v]); }
-  assert.ok((r.coverageKeep ?? 0) >= 0.7, `coverage ${r.coverageKeep}`);
+  assert.ok((r.failKeep ?? 1) <= 0.3, `failure rate ${r.failKeep}`);
 });
 test('recommendFloat: banks the notes the float does not need rather than the coins it does', () => {
   const drawer = { '5000': 2, '500': 6, '200': 6, '100': 8 }; // takings $100: two $50 notes, or a mix of the small change the float needs
@@ -51,10 +46,13 @@ test('the change finder\'s new `all` option returns near amounts even when exact
   assert.ok(plain.every(r => r.exact)); assert.ok(near.length > plain.length); assert.ok(near.some(r => !r.exact));
   const r = recommendFloat({ drawer, takings: 2000, profile: prof }); assert.ok(Math.abs(r.gap) <= 1000);
 });
-test('recommendFloat: a short float gets a top-up list that stays inside the gap and uses change denominations only', () => {
-  const r = recommendFloat({ drawer: { '5000': 1, '500': 1 }, takings: 5000, profile: prof });
-  assert.ok(r.ideal !== null && r.best.keepTotal < r.ideal); const up = totalOf(r.topUp); assert.ok(up > 0 && up <= r.ideal - r.best.keepTotal);
-  for (const v of Object.keys(r.topUp)) assert.ok(Number(v) <= 2000);
+test('recommendFloat: a short float gets a top-up that lowers the failure rate and uses change denominations only', () => {
+  const r = recommendFloat({ drawer: { '5000': 1, '500': 1 }, takings: 5000, profile: prof, budgetMs: Infinity });
+  assert.ok(totalOf(r.topUp) > 0); for (const v of Object.keys(r.topUp)) assert.ok(Number(v) <= 2000);
+  assert.ok(r.failKeep !== null && r.failTopUp !== null && r.failTopUp < r.failKeep); assert.equal(r.suggestedFloat, r.best.keepTotal + totalOf(r.topUp));
+});
+test('recommendFloat: no profile means no failure figures and no top-up', () => {
+  const r = recommendFloat({ drawer: { '5000': 1, '500': 1 }, takings: 5000 }); assert.equal(r.failNow, null); assert.equal(r.failKeep, null); assert.equal(r.failTopUp, null); assert.deepEqual(r.topUp, {});
 });
 test('recommendFloat: $50 and $100 notes left in the drawer are listed as better banked', () => {
   const r = recommendFloat({ drawer: { '10000': 1, '5000': 1, '500': 20 }, takings: 1000, profile: prof }); assert.equal(Object.keys(r.bankable).length > 0, true);
@@ -66,4 +64,12 @@ test('recommendFloat: random drawers never over-draw and stay within the toleran
     const drawer: Counts = {}; for (const d of dens) if (rnd() < 0.8) drawer[String(d)] = Math.floor(rnd() * 6); const takings = 5 * Math.floor(rnd() * 600);
     for (const p of [null, prof]) { const r = recommendFloat({ drawer, takings, profile: p }); for (const [v, n] of Object.entries(r.best.takeOut)) assert.ok(n <= (drawer[v] ?? 0)); assert.ok(r.best.takeOutTotal <= Math.max(takings + 1000, totalOf(drawer))); assert.equal(r.best.keepTotal + r.best.takeOutTotal, totalOf(drawer)); }
   }
+});
+test('findCombinationsLimited: bigFirst finds the same set of ways when not cut short, and reaches big-note ways first when it is', () => {
+  const drawer = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12 };
+  const a = findCombinationsLimited(drawer, 18000, 0, { all: true }).results; const b = findCombinationsLimited(drawer, 18000, 0, { all: true, bigFirst: true }).results;
+  const key = (r: { values: Record<string, { qty_used: number }> }) => JSON.stringify(Object.entries(r.values).map(([v, q]) => [v, q.qty_used]).sort()); assert.deepEqual(a.map(key).sort(), b.map(key).sort());
+  const cutA = findCombinationsLimited(drawer, 18000, 0, { maxNodes: 400 }); const cutB = findCombinationsLimited(drawer, 18000, 0, { maxNodes: 400, bigFirst: true });
+  assert.ok(cutA.truncated && cutB.truncated); const bigNotes = (r: { values: Record<string, { qty_used: number }> }) => (r.values['5000']?.qty_used ?? 0) + (r.values['2000']?.qty_used ?? 0);
+  if (cutB.results.length && cutA.results.length) assert.ok(Math.max(...cutB.results.map(bigNotes)) >= Math.max(...cutA.results.map(bigNotes)));
 });

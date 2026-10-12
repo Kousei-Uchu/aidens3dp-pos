@@ -1,0 +1,648 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 9f9c06d..78de36d 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -92,6 +92,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0087 | 2026-10-12 | Device tests T4.7, T4.9 and T6: **every list of notes and coins now uses the squares layout** (the note or coin with an x3 badge) instead of the old "1 × $2" text. Cancelling a part-paid cash sale (collect the change back, return what was handed over), the Check change answer (**Ask for**, **They keep**, **Give as change**), the cash screen's "Ask for less" option, and the daily float report (**Take out**, **Leave in the drawer**, **Top up**, the notes better banked) all use it. One shared component, `src/ui/CountSquares.tsx`; `adviceFor` now also returns `groups` and `note` for the screen | B1i, B1d, B1f |
+ | 0088 | 2026-10-12 | Device test T4.9: **Check change's "may not be worth it" warning is now a real judge, not a stock rule.** Reported: with no $20s in the drawer, $4 of change was refused for "leaving you out of $20s". The old rule asked whether the drawer was short of anything afterwards, so a shortage you already had caused the warning. The new check plays out your next few cash sales (160 seeded imagined runs, change amounts and handed-over notes taken from your profile, or a generic $1 to $30 spread when there is none) twice: against the drawer as it is (card) and against the drawer after this change. It warns only when the change makes at least 8 points more of those sales fail, names the notes or coins to blame by putting each back in turn, and says the two percentages. With smart change on, if its first choice would warn it tries the runners-up and the fewest-pieces way and uses the kindest. New `src/lib/changeImpact.ts` (`makeChange`, `makeScript`, `play`, `judgeChoices`, `judgeChange`, `genericProfile`), `tests/changeimpact.test.ts` (including the T4.9 case, a healthy drawer never warning, the blamed note, choosing a kinder way, random drawers); `tightness` and `smartTightness` removed; Help pages and `help/help.json` updated | B1d |
+ | 0089 | 2026-10-12 | Build fix found while typechecking: `CashSheet` (added in 0086) had a prop named `plan` and a local `plan`, a syntax error that stops the app bundling. The prop is now `splitPlan` inside the component (its public name `plan` is unchanged, so `Pay.tsx` is untouched); a loosely typed drawer list in `tests/changeimpact.test.ts` is fixed so `npm run typecheck` is clean again | N3 |
++| 0090 | 2026-10-12 | Device test T6: **the daily float report now judges a float by playing a day of imagined cash sales against it**, not by a size guess and note value. Reported: a drawer with $106 and no $20s or $10s was told to add six $20s and a $10. The old report assumed a float must hold a whole day of change (ignoring that notes handed over are reused) and filled the gap with the biggest notes first. Now: a top-up only adds the notes and coins that cut the failure rate most for what they cost, and a drawer that already copes is asked for nothing; every way of banking the takings is tried against the same imagined day, so the float that stays is the one that copes best; the report shows the percentage of a typical day's cash sales with exact change, before and after. Also fixes a case where a cut-short search only offered ways that bank handfuls of coins (new `bigFirst` option on the change finder). New `src/lib/floatPlan.ts`, `tests/floatplan.test.ts`; `idealFloat`, `coverageNow/Keep`, `low` and `lowOn` removed; the sheet says *Working it out* while it thinks. Help pages updated | B1f, B1k |
+ 
+ ---
+ 
+@@ -288,7 +289,7 @@ Current implementation and validation status are recorded here. Device and live-
+     - **Still a gap:** an exchange that also pays cash back while taking you to Pay does not show the cash refund sheet (that path never told the cashier about the cash either). Tell me if you use it. The ledger lives on each iPad separately.
+     - **Planned order:** 0020 cash prompts, split suggestion and refunds into the ledger · 0021 Check Change (grid tile and cart menu) · 0022 weighted change scoring and its toggle (done) · 0023 daily float report (done) · 0024 tender-machine porting point (empty function, greyed-out "Under Construction" toggle).
+   - [ ] B1j **You:** (0022) turn on Settings ▸ Payments ▸ Smart change, ring up a few tracked cash sales, then look at the change suggestion and its reason line, try **Show another way**, and open Check change with a few note combinations. Tell me if a suggestion ever feels wrong (for example it keeps something you never run out of), or if the "may not be worth it" warning fires too often or too rarely. With almost no sales it guesses from item prices, so give it a few days.
+-- [ ] B1k **You:** (0023) at the end of a day with tracked cash sales, open Cash drawer ▸ Daily float report. Check the takings match your Z-report, that the suggested take-out is something you would really bank, and that the float it leaves looks right for tomorrow. Try "Show another way" and "I took this out: record it" (check the ledger afterwards). Tell me if the suggested float size ($50 to $300 range) is wrong for you.
++- [ ] B1k **You:** (0023, reworked in 0090) at the end of a day with tracked cash sales, open Cash drawer ▸ Daily float report. Check the takings match your Z-report, that the suggested take-out is something you would really bank, and that the float it leaves looks right for tomorrow. Try "Show another way" and "I took this out: record it" (check the ledger afterwards). Tell me if the suggested float size ($50 to $300 range) is wrong for you.
+ - [ ] B1h **You:** on the iPad, open the drawer (check the carried-over contents), do a paid in and a paid out, correct the contents, then count and close. Tell me if the tap pad is awkward (button size, the Add/Remove switch, ×5/×10) or the Z-report text reads wrong.
+   - [ ] B1i **You:** on the iPad, ring up a cash sale: tap the notes handed over, check the change suggestion against what is really in the drawer, confirm it, then look at Drawer ▸ the ledger (Cash received / Change given entries and the new counts). Also try: part payment, different notes for change, an amount where the drawer has no exact change (the sheet should say so), and cancelling a part-paid cash sale: collect the exact change previously given and return the same notes/coins originally tendered. The cashier must not be offered an untracked shortcut or optimized cancellation return. Tell me if tapping notes is too slow at a busy counter. Then hand over a note for a small bill when the drawer is nearly empty, check the red box offers sensible options, test a cash refund (suggested or manually entered denominations) and confirm the ledger, and try Check Change with a real cart and a few combinations of notes.
+ 
+diff --git a/docs/patches/0090-plan.md b/docs/patches/0090-plan.md
+new file mode 100644
+index 0000000..6842b0f
+--- /dev/null
++++ b/docs/patches/0090-plan.md
+@@ -0,0 +1,36 @@
++# Patch 0090: the float report judges floats by simulation (device test T6, part 1)
++
++Stacks on 0089.
++
++## What you reported (T6)
++> it values higher notes too heavily, I have no 20s and 10s, and it wants me to get 6 20s and 1 10 when I already have 106 in there. This doesn't seem like advanced enough of an algorithm either.
++
++(The second half of your T6 note, entering cash from your own pocket and seeing what to exchange, is patch 0091.)
++
++## What was wrong
++1. **Size guess.** `idealFloat` assumed a float should hold 1.5 times a whole day's change. It ignored that every note a customer hands over goes back into the drawer and is used as change for the next one, so the target was far bigger than any real drawer needs.
++2. **Ranked by dollar value.** The top-up list was sorted by (shortfall x note value), so $20s always went first and used up the whole gap.
++3. **Shortlist from the wrong judge.** Choosing what to bank used a "coverage" score (can the drawer make each usual change amount once, exactly) that cannot see a drawer running out over a day. Found while testing: with a search cut short, it also only ever looked at ways that bank handfuls of coins, and chose a float with no $1 or $2 coins left (92% of imagined sales failing).
++
++## How it works now
++- The simulator from 0088 (`makeScript` and `play` in `src/lib/changeImpact.ts`) plays a day of imagined cash sales: the change amounts and the note handed over for each come from your profile (or item prices, or a generic spread). The same seeded script is played against every drawer being compared, so results are repeatable and differences are real. A day is twice the profile's horizon, 30 imagined days.
++- `planTopUp` (`src/lib/floatPlan.ts`): start from the float that stays. Each step tries adding a note or coin (or a small handful: coins come in twos and fours because one coin alone often fixes nothing) and takes the step with the best (failure points saved) minus (0.04 points per dollar added). Ties go to the cheaper. Stops at 3% failures, when no step gains 0.5 points, at $200 added, after 20 steps, or after 1.5 s (best so far). Never $50 or $100.
++- `rankTakeOuts`: every candidate way of banking the takings is played against a short day (10 imagined days); the best 30 against the full day; the winner has the lowest (failure points + 1.5 per dollar from the exact takings). The old quick score is gone from the report.
++- `findCombinationsLimited` gets a `bigFirst` option (most of each note first). Same results when not cut short; when cut short it has covered the big-note ways first. The report uses it.
++- The report shows: *about N% of a typical day's cash sales could get exact change* (and the drawer as it is now), and with a top-up *with the top-up, about M%; the float would be about $X*. A drawer that copes says *Nothing needs adding*.
++- The sheet calculates after it draws (it says *Working it out...*), so a slow iPad shows a sheet straight away.
++
++## Checklist
++1. [x] `src/lib/floatPlan.ts`: `dayScript`, `failRate`, `planTopUp`, `rankTakeOuts` and their constants.
++2. [x] `src/lib/changeFinder.ts`: `bigFirst` option (same results; tested, including cut short).
++3. [x] `src/lib/floatReport.ts`: `recommendFloat` uses 1 and 2, adds `budgetMs`; report gains `failNow`, `failKeep`, `failTopUp`, `suggestedFloat`; loses `ideal`, `coverageNow`, `coverageKeep`, `low`; `idealFloat` removed.
++4. [x] `src/lib/changeScore.ts`: `lowOn` removed (it was only used by the float report).
++5. [x] `src/screens/FloatReport.tsx`: computes after opening; new wording; top-up explanation.
++6. [x] Tests: `tests/floatplan.test.ts` (new, includes your T6 drawer and the cut-short regression); `tests/floatreport.test.ts` updated (idealFloat test replaced, coverage assertion replaced, bigFirst test).
++7. [x] Help: `help/cash/float-report.md`, `help/cash/smart-change.md`, `help/help.json` rebuilt (59 pages).
++8. [x] `docs/PROGRESS.md`: row 0090 and B1k.
++
++## Honest limits
++- It is only as good as the profile. With few tracked cash sales it leans on item prices, and a spread of big change amounts makes big notes look necessary. The report says what it is based on at the bottom.
++- I have not run this on a device. In my sandbox one report takes about 0.1 to 1 second; Hermes on an iPad is slower, which is why there is a 1.5 s cap on the top-up search.
++- Top-up still adds money (from the bank or safe). Swapping your own cash for the drawer's surplus is patch 0091.
+diff --git a/help/cash/float-report.md b/help/cash/float-report.md
+index 750b977..e9aa853 100644
+--- a/help/cash/float-report.md
++++ b/help/cash/float-report.md
+@@ -5,7 +5,7 @@ parent: cash
+ summary: How to read the cash takings, recommended banking and float, and record notes and coins taken to the bank.
+ tags: [cash, drawer, float, report, banking, bank, takings, ledger, profile, top up]
+ related: [cash, cash/open-close, cash/smart-change, cash/change]
+-updated: 2026-10-11
++updated: 2026-10-12
+ ---
+ The **Daily float report** helps you decide what notes and coins to bank and what to leave in the drawer. It is a suggestion: count and handle the actual cash yourself.
+ 
+@@ -19,7 +19,9 @@ Go to **More ▸ Cash drawer** and tap **Daily float report**. If the drawer is
+ - **Take out (bank)** suggests notes and coins to remove. **Leave in the drawer as the float** shows what the ledger expects to remain. Each is drawn as notes and coins in squares with a count badge (**x3**), the same as the change screen, with the total beside the heading.
+ - **Show another way** cycles through up to two other suggestions, when available.
+ - A warning may say the ledger and sales disagree. Count the drawer before banking if the count might be wrong.
+-- **Top up if you can** suggests notes and coins to add if the remaining float is below the recommended amount. Notes that are rarely used as change may be listed as better banked.
++- A line under the float says how many of a typical day's cash sales it could give exact change for (for example *about 94%*), and how that compares with the drawer as it is now.
++- **Top up if you can** appears only when a typical day would often go without exact change. It lists the few notes and coins that fix the most, and says what the percentage becomes with them. If nothing needs adding it says so. Notes that are rarely used as change may be listed as better banked.
++- The report takes a moment to work out when you open it (it says *Working it out*).
+ 
+ If the suggestion is right and you have physically taken the money out, tap **I took this out: record it**. Confirm the prompt. Do not record it before the cash has actually left the drawer. Tap **Close** to leave without changing the ledger.
+ 
+@@ -31,7 +33,12 @@ The report uses sales on this register and its own drawer ledger. It does not co
+ ### How it chooses what to bank
+ The report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.
+ 
+-The suggested float can be higher than the amount needed for today's takings. The report may suggest a top-up to move the remaining drawer towards its estimate. These are recommendations only; the cashier still takes out or adds the physical notes and coins.
++To judge a float it imagines a whole day of your cash sales (the change amounts and notes your customers usually give, 30 imagined days at a time) and counts how many could not be given exact change from that drawer. Notes handed over by one customer are available as change for the next, so a float does not have to hold a whole day's change at the start. Every way of banking the takings is tried against a short version, the best 30 against the full version, and the one whose float copes best wins, with a small penalty for each dollar it is away from the exact takings.
++
++### Why it asks for a top-up
++It adds notes and coins one small step at a time, always the step that cuts the failure rate the most for what it costs, and stops as soon as about 97% of imagined sales work or nothing left is worth adding. Every dollar counts against a step, so a $20 note is only asked for when $20s really fix failures; it is not chosen because it is worth the most. A drawer that already copes, even with no $20s or $10s, is asked for nothing. It never asks for $50 or $100 notes, never more than $200 in one go, and never gives up more than about a second and a half of thinking: if it runs out of time it shows the best it had.
++
++These are recommendations only; the cashier still takes out or adds the physical notes and coins.
+ 
+ ### A banking entry changes the ledger
+ The report does not move money automatically. After you confirm that cash was removed, **I took this out: record it** writes a **Paid out** entry with the selected denominations. If you close the report or do not confirm, it makes no ledger change. It records at most the option currently shown, so do not press it twice for one physical banking.
+@@ -53,16 +60,27 @@ flowchart TD
+ | Report sheet and confirmation | `FloatReportSheet` in `src/screens/FloatReport.tsx` |
+ | Period cash total | `cashSince` in `src/screens/Drawer.tsx` |
+ | Recommendation | `recommendFloat`, `ledgerTakings` in `src/lib/floatReport.ts` |
++| Day simulation, top-up and ranking | `dayScript`, `failRate`, `planTopUp`, `rankTakeOuts` in `src/lib/floatPlan.ts`; `makeScript`, `play` in `src/lib/changeImpact.ts` |
++| Ways of banking the takings | `findCombinationsLimited` (with `bigFirst`) in `src/lib/changeFinder.ts` |
+ | Ledger entry | `newEntry`, `applyEntry` in `src/lib/cashLedger.ts` |
+ | Learned cash profile | `useCashProfile` in `src/state/cashProfile.ts` |
+-| Tests | `tests/floatreport.test.ts` |
++| Tests | `tests/floatreport.test.ts`, `tests/floatplan.test.ts` |
++
++`recommendFloat` limits the amount it recommends taking out to what the ledger says is present. With a usable profile, it lists combinations within $10 of takings (trying the most of each big note first, so a search that is cut short has still covered the ways that bank big notes), plays a short imagined day against every one with `rankTakeOuts`, plays the full day against the best 30, and picks the lowest cost, where cost is failure points plus 1.5 per dollar from the takings. `planTopUp` then adds pieces greedily from the float that stays. Without a profile it uses largest notes first and shows no percentages or top-up. The UI offers the best option and up to two alternatives. The imagined days are seeded, so the same drawer always gives the same answer. The calculation is bounded, so an unusually large search can show that its result is good but not the only possible one.
+ 
+-`recommendFloat` limits the amount it recommends taking out to what the ledger says is present. With a usable profile, it compares candidate denomination combinations within $10 of takings and scores the drawer left behind; without a profile it uses largest notes first. The UI offers the best option and up to two alternatives. The cash report calculation is bounded, so an unusually large search can show that its result is good but not the only possible one.
++| Number | Value | What it does |
++|---|---|---|
++| `DAY_TRIALS` | 30 | imagined days per drawer in the full comparison |
++| `DOLLAR_COST` | 0.04 points per dollar | what a dollar of float costs against failure points |
++| `GOOD_ENOUGH` | 3% | at or below this failure share nothing more is added |
++| `MIN_NET` | 0.5 points | a step must gain at least this, cost taken off |
++| `MAX_TOPUP` | $200 | most ever asked for |
+ 
+ ### If the figures look wrong
+ - **The ledger saw a different amount from sales.** Denominations may have been entered incorrectly, cash may have moved outside the POS, or the ledger needs a count. Use **Count & close (Z-report)** or **Correct contents** before relying on the suggestion.
+ - **There is no amount to take out.** There may be no cash takings, or the ledger has no cash available to bank.
+-- **The report asks for a top-up.** It cannot add cash itself; take the displayed denominations from your safe or bank and add them by hand.
++- **The report asks for a top-up.** It cannot add cash itself; take the displayed denominations from your safe or bank and add them by hand. The line under it shows the percentage before and after. If the top-up looks too big, check the profile line at the bottom: with few tracked sales it leans on item prices, and many large change amounts make big notes look necessary.
++- **No percentages and no top-up.** There is no profile yet (no tracked cash sales and no item prices), so it only takes the largest notes first.
+ - **I took this out: record it** is missing. There is no positive amount in the suggested banking option to record.
+ 
+ ### Known boundaries
+diff --git a/help/cash/smart-change.md b/help/cash/smart-change.md
+index babbdaa..26392c9 100644
+--- a/help/cash/smart-change.md
++++ b/help/cash/smart-change.md
+@@ -110,7 +110,7 @@ flowchart TD
+ | History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |
+ | The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |
+ | The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |
+-| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts`; `lowOn` in `src/lib/changeScore.ts` is still used by the float report |
++| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts` |
+ | The line under the switch | `profileNote` in `src/lib/changeScore.ts` |
+ | The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |
+ 
+diff --git a/help/help.json b/help/help.json
+index 1eb9a51..0574240 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "3e77b28d",
++ "version": "76cb4644",
+  "pages": [
+   {
+    "id": "cash",
+@@ -129,12 +129,12 @@
+     "cash/smart-change",
+     "cash/change"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-10-12",
+    "lead": "The **Daily float report** helps you decide what notes and coins to bank and what to leave in the drawer. It is a suggestion: count and handle the actual cash yourself.",
+    "sections": {
+-    "basic": "### Open the report\nGo to **More ▸ Cash drawer** and tap **Daily float report**. If the drawer is open, the report covers the time since it was opened; otherwise it covers today.\n\n### Read the figures\n- **Cash takings** is cash sales minus cash refunds for the chosen period.\n- **Take out (bank)** suggests notes and coins to remove. **Leave in the drawer as the float** shows what the ledger expects to remain. Each is drawn as notes and coins in squares with a count badge (**x3**), the same as the change screen, with the total beside the heading.\n- **Show another way** cycles through up to two other suggestions, when available.\n- A warning may say the ledger and sales disagree. Count the drawer before banking if the count might be wrong.\n- **Top up if you can** suggests notes and coins to add if the remaining float is below the recommended amount. Notes that are rarely used as change may be listed as better banked.\n\nIf the suggestion is right and you have physically taken the money out, tap **I took this out: record it**. Confirm the prompt. Do not record it before the cash has actually left the drawer. Tap **Close** to leave without changing the ledger.\n\n### Where the cash history comes from\nThe report uses sales on this register and its own drawer ledger. It does not combine cash from other iPads. Cash sales or change you chose not to track can make the ledger differ from the sales total. Correct it or count and close the drawer if needed: [[cash/open-close]].",
+-    "deep": "### How it chooses what to bank\nThe report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.\n\nThe suggested float can be higher than the amount needed for today's takings. The report may suggest a top-up to move the remaining drawer towards its estimate. These are recommendations only; the cashier still takes out or adds the physical notes and coins.\n\n### A banking entry changes the ledger\nThe report does not move money automatically. After you confirm that cash was removed, **I took this out: record it** writes a **Paid out** entry with the selected denominations. If you close the report or do not confirm, it makes no ledger change. It records at most the option currently shown, so do not press it twice for one physical banking.",
+-    "advanced": "### Calculation and ledger write\n```mermaid\nflowchart TD\n  A[Read this register ledger and cash sales] --> B[Choose period since open or today]\n  B --> C[Recommend notes to bank and float to keep]\n  C --> D{Cash physically removed}\n  D -->|no| E[Close without changing ledger]\n  D -->|yes| F[Confirm Paid out entry]\n```\n\n| Job | Where |\n|---|---|\n| Report sheet and confirmation | `FloatReportSheet` in `src/screens/FloatReport.tsx` |\n| Period cash total | `cashSince` in `src/screens/Drawer.tsx` |\n| Recommendation | `recommendFloat`, `ledgerTakings` in `src/lib/floatReport.ts` |\n| Ledger entry | `newEntry`, `applyEntry` in `src/lib/cashLedger.ts` |\n| Learned cash profile | `useCashProfile` in `src/state/cashProfile.ts` |\n| Tests | `tests/floatreport.test.ts` |\n\n`recommendFloat` limits the amount it recommends taking out to what the ledger says is present. With a usable profile, it compares candidate denomination combinations within $10 of takings and scores the drawer left behind; without a profile it uses largest notes first. The UI offers the best option and up to two alternatives. The cash report calculation is bounded, so an unusually large search can show that its result is good but not the only possible one.\n\n### If the figures look wrong\n- **The ledger saw a different amount from sales.** Denominations may have been entered incorrectly, cash may have moved outside the POS, or the ledger needs a count. Use **Count & close (Z-report)** or **Correct contents** before relying on the suggestion.\n- **There is no amount to take out.** There may be no cash takings, or the ledger has no cash available to bank.\n- **The report asks for a top-up.** It cannot add cash itself; take the displayed denominations from your safe or bank and add them by hand.\n- **I took this out: record it** is missing. There is no positive amount in the suggested banking option to record.\n\n### Known boundaries\nThe report is per register, uses the local ledger and local sales, and does not move cash or connect to hardware. Its profile is rebuilt from available local data; recommendations do not guarantee the next customer's change can be made. Always check the physical drawer."
++    "basic": "### Open the report\nGo to **More ▸ Cash drawer** and tap **Daily float report**. If the drawer is open, the report covers the time since it was opened; otherwise it covers today.\n\n### Read the figures\n- **Cash takings** is cash sales minus cash refunds for the chosen period.\n- **Take out (bank)** suggests notes and coins to remove. **Leave in the drawer as the float** shows what the ledger expects to remain. Each is drawn as notes and coins in squares with a count badge (**x3**), the same as the change screen, with the total beside the heading.\n- **Show another way** cycles through up to two other suggestions, when available.\n- A warning may say the ledger and sales disagree. Count the drawer before banking if the count might be wrong.\n- A line under the float says how many of a typical day's cash sales it could give exact change for (for example *about 94%*), and how that compares with the drawer as it is now.\n- **Top up if you can** appears only when a typical day would often go without exact change. It lists the few notes and coins that fix the most, and says what the percentage becomes with them. If nothing needs adding it says so. Notes that are rarely used as change may be listed as better banked.\n- The report takes a moment to work out when you open it (it says *Working it out*).\n\nIf the suggestion is right and you have physically taken the money out, tap **I took this out: record it**. Confirm the prompt. Do not record it before the cash has actually left the drawer. Tap **Close** to leave without changing the ledger.\n\n### Where the cash history comes from\nThe report uses sales on this register and its own drawer ledger. It does not combine cash from other iPads. Cash sales or change you chose not to track can make the ledger differ from the sales total. Correct it or count and close the drawer if needed: [[cash/open-close]].",
++    "deep": "### How it chooses what to bank\nThe report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.\n\nTo judge a float it imagines a whole day of your cash sales (the change amounts and notes your customers usually give, 30 imagined days at a time) and counts how many could not be given exact change from that drawer. Notes handed over by one customer are available as change for the next, so a float does not have to hold a whole day's change at the start. Every way of banking the takings is tried against a short version, the best 30 against the full version, and the one whose float copes best wins, with a small penalty for each dollar it is away from the exact takings.\n\n### Why it asks for a top-up\nIt adds notes and coins one small step at a time, always the step that cuts the failure rate the most for what it costs, and stops as soon as about 97% of imagined sales work or nothing left is worth adding. Every dollar counts against a step, so a $20 note is only asked for when $20s really fix failures; it is not chosen because it is worth the most. A drawer that already copes, even with no $20s or $10s, is asked for nothing. It never asks for $50 or $100 notes, never more than $200 in one go, and never gives up more than about a second and a half of thinking: if it runs out of time it shows the best it had.\n\nThese are recommendations only; the cashier still takes out or adds the physical notes and coins.\n\n### A banking entry changes the ledger\nThe report does not move money automatically. After you confirm that cash was removed, **I took this out: record it** writes a **Paid out** entry with the selected denominations. If you close the report or do not confirm, it makes no ledger change. It records at most the option currently shown, so do not press it twice for one physical banking.",
++    "advanced": "### Calculation and ledger write\n```mermaid\nflowchart TD\n  A[Read this register ledger and cash sales] --> B[Choose period since open or today]\n  B --> C[Recommend notes to bank and float to keep]\n  C --> D{Cash physically removed}\n  D -->|no| E[Close without changing ledger]\n  D -->|yes| F[Confirm Paid out entry]\n```\n\n| Job | Where |\n|---|---|\n| Report sheet and confirmation | `FloatReportSheet` in `src/screens/FloatReport.tsx` |\n| Period cash total | `cashSince` in `src/screens/Drawer.tsx` |\n| Recommendation | `recommendFloat`, `ledgerTakings` in `src/lib/floatReport.ts` |\n| Day simulation, top-up and ranking | `dayScript`, `failRate`, `planTopUp`, `rankTakeOuts` in `src/lib/floatPlan.ts`; `makeScript`, `play` in `src/lib/changeImpact.ts` |\n| Ways of banking the takings | `findCombinationsLimited` (with `bigFirst`) in `src/lib/changeFinder.ts` |\n| Ledger entry | `newEntry`, `applyEntry` in `src/lib/cashLedger.ts` |\n| Learned cash profile | `useCashProfile` in `src/state/cashProfile.ts` |\n| Tests | `tests/floatreport.test.ts`, `tests/floatplan.test.ts` |\n\n`recommendFloat` limits the amount it recommends taking out to what the ledger says is present. With a usable profile, it lists combinations within $10 of takings (trying the most of each big note first, so a search that is cut short has still covered the ways that bank big notes), plays a short imagined day against every one with `rankTakeOuts`, plays the full day against the best 30, and picks the lowest cost, where cost is failure points plus 1.5 per dollar from the takings. `planTopUp` then adds pieces greedily from the float that stays. Without a profile it uses largest notes first and shows no percentages or top-up. The UI offers the best option and up to two alternatives. The imagined days are seeded, so the same drawer always gives the same answer. The calculation is bounded, so an unusually large search can show that its result is good but not the only possible one.\n\n| Number | Value | What it does |\n|---|---|---|\n| `DAY_TRIALS` | 30 | imagined days per drawer in the full comparison |\n| `DOLLAR_COST` | 0.04 points per dollar | what a dollar of float costs against failure points |\n| `GOOD_ENOUGH` | 3% | at or below this failure share nothing more is added |\n| `MIN_NET` | 0.5 points | a step must gain at least this, cost taken off |\n| `MAX_TOPUP` | $200 | most ever asked for |\n\n### If the figures look wrong\n- **The ledger saw a different amount from sales.** Denominations may have been entered incorrectly, cash may have moved outside the POS, or the ledger needs a count. Use **Count & close (Z-report)** or **Correct contents** before relying on the suggestion.\n- **There is no amount to take out.** There may be no cash takings, or the ledger has no cash available to bank.\n- **The report asks for a top-up.** It cannot add cash itself; take the displayed denominations from your safe or bank and add them by hand. The line under it shows the percentage before and after. If the top-up looks too big, check the profile line at the bottom: with few tracked sales it leans on item prices, and many large change amounts make big notes look necessary.\n- **No percentages and no top-up.** There is no profile yet (no tracked cash sales and no item prices), so it only takes the largest notes first.\n- **I took this out: record it** is missing. There is no positive amount in the suggested banking option to record.\n\n### Known boundaries\nThe report is per register, uses the local ledger and local sales, and does not move cash or connect to hardware. Its profile is rebuilt from available local data; recommendations do not guarantee the next customer's change can be made. Always check the physical drawer."
+    }
+   },
+   {
+@@ -199,7 +199,7 @@
+    "sections": {
+     "basic": "### Turning it on\nSettings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.\n\nWith it off, nothing changes: change is the fewest pieces, and Check change still judges \"worth it?\" using a spread of typical change amounts.\n\n### What you will notice\n- **On the Give change screen** (cash sales and cash refunds), under **Take from the drawer**, a line says why that choice was made. For example: *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* If the quickest way is also the best, it says *Quickest way, and it keeps the drawer well stocked.*\n- **Show another way** steps through the next best choices. The button then reads **Show the next way**, and finally **Back to the suggested way**. While you are on another choice the line says *Another way to make the same change.*\n- **In Check change**, the amber \"may not be worth it\" warning is based on your own usual change amounts, and it compares giving the change with asking for card, so it never warns about a shortage you already had. See [[cash/check-change]].\n\nYou can always ignore the suggestion and tap what you really give. See [[cash/change]].\nThe [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.\n\n### What it never does\nIt **never** decides whether change can be made. If exact change is possible without Smart change, it is possible with it, and the other way round. It only chooses between the ways that are already exact.\n\n### What the line under the switch says\n| Line | What it means |\n|---|---|\n| *no history or item prices to learn from yet, so it picks the fewest pieces* | Nothing to go on. It behaves as if it were off. |\n| *No tracked cash sales yet, so it is guessing from your item prices.* | It assumes customers pay a bill with the next note up, and works out the change from your item library. |\n| *learned from your recent cash sales (about N counted, newest weigh most)* | It has real sales to learn from. |\n| *learned from about N recent cash sales plus your item prices* | A mix of both, and real sales take over as they build up. |\n\n### Helping it learn\nIt learns from denomination-recorded cash sales where you tapped what the customer handed over and confirmed the change (**Gave this**). Cancellation entries are excluded from demand learning. Give it a few days of cash sales. See [[pay/cash]].\n\n### When a suggestion feels wrong\nTap **Show another way**, or tap **I'll give different notes and coins**. Smart change is advice. If it keeps suggesting something you dislike, turn it off in Settings ▸ Payments.",
+     "deep": "### What it is, and is not\nIt is a small statistical model that reads your own sales history, not a neural network or anything that phones home. Every number comes from the drawer record and the item library on this iPad, and the scoring is a short sum you can read below.\n\n### What it learns from\nEach time, the POS rebuilds a **profile** from three things:\n1. **The drawer history.** Which change amounts you actually give ($8.00, $13.00…), how many of each note and coin that used, and what customers actually hand over. Newer sales count more: a sale 14 days old counts half as much as one today.\n2. **The item library.** A customer buying a $12 item usually pays with a $20, so $8.00 back is likely. This is used while there are few real sales, and its weight fades as real sales build up, reaching equal weight at about 8 recent sales.\n3. **The sales list.** Used only to size how far ahead to plan: about half an average cash-sale day (counting the last 28 days), kept between 4 and 12 sales, or 6 when there is nothing to go on.\n\nCash sales with recorded denominations inform the model. Cancellation reversals, cash refunds, and cash drawer adjustments are not treated as customer change demand.\n\n### How a choice is scored\nFor every exact way of making the change, the POS imagines the drawer **after** giving it, and gives that a score. Higher is better:\n\n**100 × coverage − 40 × depth − 0.5 × pieces**\n\n- **Coverage** is the share of your usual change amounts that the drawer could still make exactly. 100% means you could still make all of them.\n- **Depth** is how far each note and coin is below what the next few sales are expected to use. 0 is well stocked and 1 is out. Notes and coins used more often count more. Half of what customers usually hand over is counted as on hand, because it can be given back again.\n- **Pieces** is a small push towards fewer pieces, so it only decides near-ties.\n\nThe best-scoring way is shown, and the next three are kept for **Show another way**.\n\n### A worked example\nSuppose your library has one item, at $12.00, and no sales have been tracked yet. The profile guesses that $8.00 of change is the most common (70%), followed by $38.00 (30%).\n\nThe drawer record holds 10 × $1, 10 × $2, 2 × $5, 3 × $10 and 2 × $20, and $8.00 is owed.\n\n| Way | Pieces | Score |\n|---|---|---|\n| 1 × $5, 1 × $2, 1 × $1 (fewest pieces) | 3 | about 89.2 |\n| 4 × $2 | 4 | about 90.6 |\n\nBoth keep full coverage, so it comes down to depth. The first uses one of only two $5 notes, and the profile expects $5 notes to be needed. So Smart change suggests 4 × $2 and says *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* The runner-up choices, 3 × $2 + 2 × $1, 2 × $2 + 4 × $1 and the $5 way, follow behind.\n\nThe weights are chosen to put stock first and speed second. They are a short list in the code if you ever want to tune them.\n\n### When history is thin\nUntil there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.\n\n### The learned profile is per iPad\nThe profile is built from this iPad's own ledger, so each register learns from its own sales. Nothing is shared between registers. See [[cash]].",
+-    "advanced": "### From history to a suggestion\n```mermaid\nflowchart TD\n  A[useCashProfile in cashProfile.ts] --> B{Smart change on}\n  B -->|no| C[null so planChange is used]\n  B -->|yes| D[buildProfile from ledger entries and item prices]\n  D --> E[CashProfile: amounts needPerSale inPerSale horizon confidence]\n  E --> F[planChangeSmart pool owed profile]\n  F --> G[planChange first: is exact change possible]\n  G -->|no| H[return impossible unchanged]\n  G -->|yes| I[findCombinationsLimited collects exact ways up to the search limit]\n  I --> J[scoreAfter up to 400: quickest baseline plus spread sample]\n  J --> K[best plus 3 alternatives plus explainChoice]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The switch and the note under it | `Settings` ▸ Payments in `src/screens/Settings.tsx` (`SmartChangeNote`) |\n| Building the profile for this iPad | `useCashProfile` in `src/state/cashProfile.ts` |\n| History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |\n| The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |\n| The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |\n| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts`; `lowOn` in `src/lib/changeScore.ts` is still used by the float report |\n| The line under the switch | `profileNote` in `src/lib/changeScore.ts` |\n| The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |\n\n### The numbers\n| Name | Value | What it does |\n|---|---|---|\n| `SCORE_WEIGHTS` | coverage 100, depth 40, piece 0.5 | the weights in the score |\n| Half-life | 14 days | a sale this old counts half |\n| Confidence point | 8 recent change sales | history and the item-price guess count equally |\n| Horizon | 4 to 12, default 6 | how many upcoming sales to plan for |\n| Amounts kept | 60 | the most usual change amounts in a profile |\n| Candidates scored | 400 | keeps the quickest options and samples across the full piece-count/search range |\n| Alternatives kept | 3 | for Show another way |\n| Prior notes | $5, $10, $20, $50, $100 | which notes a customer is assumed to pay with |\n| Prior change from | $20 and smaller | note and coin sizes the guess builds change from |\n\n### What counts as history\n`fromLedger` only reads entries that carry a sale id. A `sale_change` entry counts as a change given if all its amounts are negative and its note does not start with *Sale cancelled*. A `sale_in` entry counts towards what customers hand over. Other kinds (`refund_out`, `paid_out`, `adjust` and so on) are skipped. The ledger keeps only the newest 1,000 entries, so very old sales fall out anyway.\n\n### Falling back to the plain answer\n`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding any exact option, it returns the plain answer with `smart: false`. A truncated search with some exact options is marked as truncated in the UI; the smart pick is then best among the options found. To keep scoring bounded on large drawers, it scores at most 400 options: the quickest baseline and a deterministic spread across the full range, rather than only the first 400 quickest combinations.\n\n### Reading the code for a fault\n- **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.\n- **The reason line is missing.** `smart` is false: the profile has no amounts yet, so the plain answer is shown.\n- **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.\n- **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.\n- **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.\n- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/changeimpact.test.ts` covers the worth-it check."
++    "advanced": "### From history to a suggestion\n```mermaid\nflowchart TD\n  A[useCashProfile in cashProfile.ts] --> B{Smart change on}\n  B -->|no| C[null so planChange is used]\n  B -->|yes| D[buildProfile from ledger entries and item prices]\n  D --> E[CashProfile: amounts needPerSale inPerSale horizon confidence]\n  E --> F[planChangeSmart pool owed profile]\n  F --> G[planChange first: is exact change possible]\n  G -->|no| H[return impossible unchanged]\n  G -->|yes| I[findCombinationsLimited collects exact ways up to the search limit]\n  I --> J[scoreAfter up to 400: quickest baseline plus spread sample]\n  J --> K[best plus 3 alternatives plus explainChoice]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The switch and the note under it | `Settings` ▸ Payments in `src/screens/Settings.tsx` (`SmartChangeNote`) |\n| Building the profile for this iPad | `useCashProfile` in `src/state/cashProfile.ts` |\n| History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |\n| The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |\n| The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |\n| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts` |\n| The line under the switch | `profileNote` in `src/lib/changeScore.ts` |\n| The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |\n\n### The numbers\n| Name | Value | What it does |\n|---|---|---|\n| `SCORE_WEIGHTS` | coverage 100, depth 40, piece 0.5 | the weights in the score |\n| Half-life | 14 days | a sale this old counts half |\n| Confidence point | 8 recent change sales | history and the item-price guess count equally |\n| Horizon | 4 to 12, default 6 | how many upcoming sales to plan for |\n| Amounts kept | 60 | the most usual change amounts in a profile |\n| Candidates scored | 400 | keeps the quickest options and samples across the full piece-count/search range |\n| Alternatives kept | 3 | for Show another way |\n| Prior notes | $5, $10, $20, $50, $100 | which notes a customer is assumed to pay with |\n| Prior change from | $20 and smaller | note and coin sizes the guess builds change from |\n\n### What counts as history\n`fromLedger` only reads entries that carry a sale id. A `sale_change` entry counts as a change given if all its amounts are negative and its note does not start with *Sale cancelled*. A `sale_in` entry counts towards what customers hand over. Other kinds (`refund_out`, `paid_out`, `adjust` and so on) are skipped. The ledger keeps only the newest 1,000 entries, so very old sales fall out anyway.\n\n### Falling back to the plain answer\n`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding any exact option, it returns the plain answer with `smart: false`. A truncated search with some exact options is marked as truncated in the UI; the smart pick is then best among the options found. To keep scoring bounded on large drawers, it scores at most 400 options: the quickest baseline and a deterministic spread across the full range, rather than only the first 400 quickest combinations.\n\n### Reading the code for a fault\n- **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.\n- **The reason line is missing.** `smart` is false: the profile has no amounts yet, so the plain answer is shown.\n- **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.\n- **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.\n- **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.\n- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/changeimpact.test.ts` covers the worth-it check."
+    }
+   },
+   {
+diff --git a/src/lib/changeFinder.ts b/src/lib/changeFinder.ts
+index 18eafeb..6cf5444 100644
+--- a/src/lib/changeFinder.ts
++++ b/src/lib/changeFinder.ts
+@@ -10,8 +10,11 @@ export type ChangeResult = {
+   exact: boolean;
+ };
+ 
+-/** `all`: when exact matches exist, still return the near ones too (the float report wants to weigh closeness against stock). */
+-export type FindOptions = { maxNodes?: number; all?: boolean };
++/** `all`: when exact matches exist, still return the near ones too (the float report wants to weigh closeness against stock).
++ *  `bigFirst`: try the most of each note or coin first, so a search cut short by `maxNodes` has covered the ways that use the big notes
++ *  (0089: the float report cut short after only the ways that bank handfuls of coins, and picked a float with no coins left). The set of results
++ *  is the same when the search is not cut short. */
++export type FindOptions = { maxNodes?: number; all?: boolean; bigFirst?: boolean };
+ export type FindOutcome = { results: ChangeResult[]; truncated: boolean };
+ 
+ /** Same behaviour as findCombinations, but says whether the search was cut short by `maxNodes` (results are then incomplete). */
+@@ -45,7 +48,10 @@ export function findCombinationsLimited(available: Record<string, number>, targe
+       return;
+     }
+     const [value, quantity] = entries[index];
+-    for (let qty = 0; qty <= quantity; qty++) {
++    if (opts.bigFirst) {
++      const top = Math.min(quantity, Math.floor((target + delta + 1e-9 - total) / value));
++      for (let qty = top; qty >= 0; qty--) { used[index] = qty; search(index + 1, total + value * qty); if (truncated) break; }
++    } else for (let qty = 0; qty <= quantity; qty++) {
+       const nextTotal = total + value * qty;
+       if (nextTotal > target + delta + 1e-9) break;
+       used[index] = qty;
+diff --git a/src/lib/changeScore.ts b/src/lib/changeScore.ts
+index a64655d..2f73117 100644
+--- a/src/lib/changeScore.ts
++++ b/src/lib/changeScore.ts
+@@ -139,10 +139,6 @@ export function scoreAfter(after: Counts, pieces: number, profile: CashProfile):
+   return SCORE_WEIGHTS.coverage * coverage(after, profile) - SCORE_WEIGHTS.depth * depth(after, profile) - SCORE_WEIGHTS.piece * pieces;
+ }
+ 
+-/** Notes and coins the drawer is expected to run short of over the next few sales. */
+-export function lowOn(after: Counts, profile: CashProfile): number[] {
+-  return Object.entries(profile.needPerSale).map(([v, n]) => ({ v: Number(v), want: n * profile.horizon })).filter(x => x.want >= 1 && (after[String(x.v)] ?? 0) + IN_CREDIT * (profile.inPerSale[String(x.v)] ?? 0) * profile.horizon < x.want * 0.5).map(x => x.v).sort((a, b) => b - a);
+-}
+ export type SmartPlan =
+   | { kind: 'none' }
+   | { kind: 'impossible'; truncated: boolean }
+diff --git a/src/lib/floatPlan.ts b/src/lib/floatPlan.ts
+new file mode 100644
+index 0000000..0134469
+--- /dev/null
++++ b/src/lib/floatPlan.ts
+@@ -0,0 +1,94 @@
++// Location: src/lib/floatPlan.ts
++// 0089: how the daily float report decides what a drawer is missing. Pure (no React, no store), tested in tests/floatplan.test.ts.
++//
++// The old report guessed a float SIZE (1.5 x a day of change) and filled the gap with whichever notes were worth the most. That ignored
++// that the notes customers hand over are used again as change, so the size came out far too big, and it ranked by dollar value, so
++// $20s were always asked for first (device test T6: a drawer holding $106 and no $20s or $10s was told to add six $20s and a $10).
++//
++// This asks the question that matters instead: "if I play a whole day of cash sales against this drawer, how many could not be given exact
++// change?" (the simulator from 0088, src/lib/changeImpact.ts). Then:
++//  1. planTopUp adds notes and coins one small step at a time, always the step that cuts that failure rate the most for what it costs,
++//     and stops when the drawer is good enough or nothing left is worth adding. So a $20 is only asked for if $20s really fix failures.
++//  2. rankTakeOuts re-ranks the ways of banking the day's takings by the failure rate of the drawer left behind, as well as how close each
++//     is to the takings.
++// The same seeded script is played against every drawer being compared, so the answer is repeatable and differences are real.
++import { cleanCounts, diffCounts, type Counts } from './cashLedger';
++import { genericProfile, makeScript, play, type Script } from './changeImpact';
++import { profileUsable, type CashProfile } from './changeScore';
++
++/** Imagined days played per drawer. Fewer than the 160 of the worth-it check, because many drawers are compared. */
++export const DAY_TRIALS = 30;
++/** What one dollar of float costs, in points of failure rate out of 100. A $20 note must cut failures by more than 0.8 points to be worth asking for. */
++export const DOLLAR_COST = 0.04;
++/** At or below this share of failed sales a drawer is good enough and nothing more is added. */
++export const GOOD_ENOUGH = 0.03;
++/** A step must gain at least this many points (cost already taken off) to be taken. */
++export const MIN_NET = 0.5;
++/** Most the report ever asks to be added, and most steps it takes. */
++export const MAX_TOPUP = 20000;
++const MAX_STEPS = 20;
++/** Notes and coins that can be added. $50 and $100 notes are never added: they are not used as change. */
++const PIECES = [2000, 1000, 500, 200, 100, 50, 20, 10, 5] as const;
++/** How many of one piece a single step may add. Coins come in handfuls, because one coin alone often fixes nothing. */
++const CHUNKS: Record<number, number[]> = { 2000: [1, 2], 1000: [1, 2], 500: [1, 2, 4], 200: [1, 2, 4], 100: [1, 2, 4, 8], 50: [1, 2, 4], 20: [1, 2, 4], 10: [1, 2, 4], 5: [1, 2, 4] };
++
++/** A whole day of imagined cash sales for the profile (its horizon is half a day). With no usable profile: a generic $1 to $30 spread. */
++export function dayScript(profile: CashProfile | null | undefined, trials = DAY_TRIALS): Script {
++  const prof = profileUsable(profile) ? profile : genericProfile();
++  return makeScript(prof, { trials, sales: prof.horizon * 2 });
++}
++
++/** Share (0 to 1) of a day's cash sales that could not be given exact change from this drawer. */
++export const failRate = (drawer: Counts, script: Script): number => play(drawer, script).rate;
++
++const addPiece = (d: Counts, piece: number, n: number): Counts => ({ ...d, [String(piece)]: (d[String(piece)] ?? 0) + n });
++
++export type TopUpPlan = {
++  /** Notes and coins to add. */
++  add: Counts;
++  /** Failure rate before and after adding them. */
++  before: number; after: number;
++  /** Why it stopped: already fine, now fine, nothing left worth adding, hit the size or step limit, or ran out of time. */
++  stopped: 'already-good' | 'good' | 'no-gain' | 'limit' | 'time';
++};
++
++/**
++ * Notes and coins worth adding to `keep` (what stays in the drawer). Greedy, one step at a time: among every piece (and small handful of
++ * pieces) it could add, take the one with the best (failure points saved) minus (DOLLAR_COST per dollar), ties to the cheaper. Stops when
++ * the drawer is good enough, no step gains MIN_NET, `maxAdd` cents would be passed, or `budgetMs` has run out (the best so far is returned).
++ */
++export function planTopUp(keep: Counts, script: Script, o: { maxAdd?: number; budgetMs?: number } = {}): TopUpPlan {
++  const maxAdd = o.maxAdd ?? MAX_TOPUP; const budget = o.budgetMs ?? 1500; const t0 = Date.now();
++  let cur = cleanCounts(Object.fromEntries(Object.entries(keep).filter(([, n]) => n > 0))); let rate = failRate(cur, script); const before = rate;
++  const add: Counts = {}; let added = 0;
++  const done = (stopped: TopUpPlan['stopped']): TopUpPlan => ({ add: cleanCounts(add), before, after: rate, stopped });
++  if (rate <= GOOD_ENOUGH) return done('already-good');
++  for (let step = 0; step < MAX_STEPS; step++) {
++    if (Date.now() - t0 > budget) return done('time');
++    let best: { piece: number; n: number; rate: number; net: number } | null = null;
++    for (const piece of PIECES) {
++      let prev = -Infinity; // handfuls of one piece are tried smallest first and given up on once a good one starts to get worse
++      for (const n of CHUNKS[piece]) {
++        const cost = piece * n; if (added + cost > maxAdd) break;
++        const r = failRate(addPiece(cur, piece, n), script); const net = (rate - r) * 100 - (DOLLAR_COST * cost) / 100;
++        if (net >= MIN_NET && (!best || net > best.net + 1e-9 || (Math.abs(net - best.net) <= 1e-9 && cost < best.piece * best.n))) best = { piece, n, rate: r, net };
++        if (prev >= MIN_NET && net < prev) break; prev = net;
++      }
++    }
++    if (!best) return done(added ? 'good' : 'no-gain');
++    cur = addPiece(cur, best.piece, best.n); add[String(best.piece)] = (add[String(best.piece)] ?? 0) + best.n; added += best.piece * best.n; rate = best.rate;
++    if (rate <= GOOD_ENOUGH) return done('good');
++  }
++  return done('limit');
++}
++
++export type TakeOut = { take: Counts; pieces: number; off: number };
++/**
++ * Orders ways of taking money out of `drawer` by how well the drawer left behind copes with a day of sales, plus how far each is from the
++ * amount wanted (`closeWeight` points per dollar). Ties keep the incoming order, so put the preferred ones first. At most `keep` are returned.
++ */
++export function rankTakeOuts<T extends TakeOut>(drawer: Counts, candidates: T[], script: Script, closeWeight: number, keep = 3): (T & { fail: number })[] {
++  return candidates.map(c => ({ ...c, fail: failRate(cleanCounts(diffCounts(drawer, c.take)), script) }))
++    .map((c, i) => ({ c, i, cost: c.fail * 100 + (closeWeight * c.off) / 100 }))
++    .sort((a, b) => a.cost - b.cost || a.i - b.i).slice(0, keep).map(x => x.c);
++}
+diff --git a/src/lib/floatReport.ts b/src/lib/floatReport.ts
+index 880b117..ec13249 100644
+--- a/src/lib/floatReport.ts
++++ b/src/lib/floatReport.ts
+@@ -1,18 +1,20 @@
+ // Location: src/lib/floatReport.ts
+ // B1f: the daily float report. At the end of the day: how much cash came in, which notes and coins to take out (bank) so the amount taken is as
+-// close to the day's cash takings as possible, and what that leaves in the drawer as tomorrow's float, judged by the same learned profile as
+-// smart change (src/lib/changeScore.ts). Also says what to top up and which notes are better banked. Pure, tested in tests/floatreport.test.ts.
+-// All amounts are integer cents.
++// close to the day's cash takings as possible, and what that leaves in the drawer as tomorrow's float. Since 0089 the float is judged by playing
++// a day of imagined cash sales against it (src/lib/floatPlan.ts), not by a size guess. Also says what to top up and which notes are better
++// banked. Pure, tested in tests/floatreport.test.ts. All amounts are integer cents.
+ import { DENOMS, cleanCounts, denomLabel, diffCounts, totalOf, type Counts, type LedgerEntry } from './cashLedger';
+ import { findCombinationsLimited } from './changeFinder';
+-import { coverage, lowOn, profileUsable, scoreAfter, type CashProfile } from './changeScore';
++import { profileUsable, selectSmartCandidates, type CashProfile } from './changeScore';
+ import { greedyChange } from './cashSale';
++import { dayScript, failRate, planTopUp, rankTakeOuts } from './floatPlan';
+ 
+ /** Points lost per dollar the amount taken out is away from the day's takings (100 points = every usual change amount covered). */
+ export const CLOSE_WEIGHT = 1.5;
+ const NEAR = 1000; // how far from the takings (cents) an amount taken out may be
+-const MAX_CANDIDATES = 400;
+-const FLOAT_STEP = 1000; const FLOAT_MIN = 5000; const FLOAT_MAX = 30000;
++const MAX_EXACT = 300; const MAX_NEAR = 100; // ways of banking looked at: spread across the exact ones and the near ones
++/** Every way is first played against a short day (QUICK_TRIALS imagined days); the best FINALISTS are then played against the full set. */
++const QUICK_TRIALS = 10; const FINALISTS = 30;
+ 
+ /** What the ledger saw come in from tracked cash sales since `sinceMs`: received minus change minus cash refunds. Also how many sales that was. */
+ export function ledgerTakings(entries: LedgerEntry[], sinceMs: number): { cents: number; sales: number } {
+@@ -24,25 +26,21 @@ export function ledgerTakings(entries: LedgerEntry[], sinceMs: number): { cents:
+   return { cents, sales: sales.size };
+ }
+ 
+-/** A float size that would cover a day's change with some room: 1.5 × the change you usually give in a day, to the nearest $10, between $50 and $300. null with no profile. */
+-export function idealFloat(profile: CashProfile | null | undefined): number | null {
+-  if (!profileUsable(profile)) return null;
+-  const perSale = profile.amounts.reduce((s, a) => s + a.p * a.cents, 0); const daily = perSale * profile.horizon * 2;
+-  return Math.max(FLOAT_MIN, Math.min(FLOAT_MAX, Math.ceil((daily * 1.5) / FLOAT_STEP) * FLOAT_STEP));
+-}
+-
+ export type FloatOption = { takeOut: Counts; keep: Counts; takeOutTotal: number; keepTotal: number };
+ export type FloatReport = {
+   takings: number; drawerTotal: number; usedProfile: boolean;
+   best: FloatOption; alternatives: FloatOption[];
+   /** takeOutTotal − takings: 0 = exactly the day's takings, positive = taking a little more. */
+   gap: number;
+-  ideal: number | null;
+-  /** Notes and coins to add to the float (from the bank or safe) to get nearer the ideal, if the float is short. */
++  /** Notes and coins to add to the float (from the bank or safe) because a day of sales would otherwise often go without exact change. */
+   topUp: Counts;
++  /** Share (0 to 1) of a typical day's cash sales that could NOT be given exact change: with the drawer as it is now, with the float after
++   *  banking, and with the float after the top-up. null with no profile (nothing to base a typical day on). */
++  failNow: number | null; failKeep: number | null; failTopUp: number | null;
++  /** What the float would hold after the top-up (keep plus top-up), in cents. */
++  suggestedFloat: number;
+   /** $50 and $100 notes left in the drawer: never used as change, so usually better banked. */
+   bankable: Counts;
+-  coverageNow: number | null; coverageKeep: number | null; low: number[];
+   notes: string[];
+   truncated: boolean;
+ };
+@@ -51,41 +49,40 @@ const option = (drawer: Counts, takeOut: Counts): FloatOption => { const keep =
+ 
+ /**
+  * `drawer`: what the ledger says is in the drawer now. `takings`: the day's net cash (cash sales minus cash refunds). With a usable `profile`
+- * it picks, among the ways to take out about `takings` (within $10), the one that leaves the best-stocked float for a whole day of sales;
+- * without one it takes the largest notes first. It never takes out more than the drawer holds.
++ * it plays a short day of imagined cash sales against every way of banking about `takings` (within $10), then a full day against
++ * the best 30, and picks the one whose float copes best, with a penalty for each dollar away from the takings. It then asks `planTopUp` what, if anything, is worth adding. Without a profile it takes the largest notes first. It never takes
++ * out more than the drawer holds. `budgetMs` caps the top-up search (the best so far is used when it runs out).
+  */
+-export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number }): FloatReport {
++export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number }): FloatReport {
+   const drawer = cleanCounts(Object.fromEntries(Object.entries(o.drawer).filter(([, n]) => n > 0))); const drawerTotal = totalOf(drawer);
+   const takings = Math.max(0, Math.min(o.takings, drawerTotal)); const prof = profileUsable(o.profile) ? o.profile : null;
+   const day: CashProfile | null = prof ? { ...prof, horizon: prof.horizon * 2 } : null; // the profile's horizon is half a day
++  const script = prof ? dayScript(prof) : null;
+   let best = option(drawer, {}); let alternatives: FloatOption[] = []; let truncated = false;
+   if (takings > 0) {
+-    if (day) {
+-      const { results, truncated: t } = findCombinationsLimited(drawer, takings, NEAR, { maxNodes: o.maxNodes ?? 150000, all: true }); truncated = t;
+-      const cands = results.map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - takings) }; })
+-        .sort((a, b) => a.off - b.off || a.pieces - b.pieces).slice(0, MAX_CANDIDATES);
+-      const scored = cands.map(c => ({ ...c, score: scoreAfter(cleanCounts(diffCounts(drawer, c.take)), c.pieces, day) - (CLOSE_WEIGHT * c.off) / 100 })).sort((a, b) => b.score - a.score || a.off - b.off);
+-      if (scored.length) { best = option(drawer, scored[0].take); alternatives = scored.slice(1, 3).map(s => option(drawer, s.take)); }
++    if (day && script) {
++      const { results, truncated: t } = findCombinationsLimited(drawer, takings, NEAR, { maxNodes: o.maxNodes ?? 150000, all: true, bigFirst: true }); truncated = t;
++      const all = results.map(r => { const take: Counts = {}; let pieces = 0; for (const [v, q] of Object.entries(r.values)) if (q.qty_used > 0) { take[v] = q.qty_used; pieces += q.qty_used; } return { take, pieces, off: Math.abs(r.total - takings) }; });
++      // spread over the whole search (quickest ways and fuller ones), exact amounts first, then near ones
++      const cands = [...selectSmartCandidates(all.filter(c => c.off === 0), MAX_EXACT), ...selectSmartCandidates(all.filter(c => c.off > 0), MAX_NEAR)];
++      const shortlist = rankTakeOuts(drawer, cands, dayScript(prof, QUICK_TRIALS), CLOSE_WEIGHT, FINALISTS);
++      const ranked = rankTakeOuts(drawer, shortlist, script, CLOSE_WEIGHT, 3);
++      if (ranked.length) { best = option(drawer, ranked[0].take); alternatives = ranked.slice(1).map(s => option(drawer, s.take)); }
+       else { const g = greedyBelow(drawer, takings); best = option(drawer, g); }
+     } else best = option(drawer, greedyBelow(drawer, takings));
+   }
+-  const ideal = idealFloat(prof);
+-  const topUp: Counts = {};
+-  if (day && ideal !== null && best.keepTotal < ideal) {
+-    let gap = ideal - best.keepTotal;
+-    const wants = Object.entries(day.needPerSale).map(([v, n]) => ({ v: Number(v), want: Math.ceil(n * day.horizon) - (best.keep[v] ?? 0) })).filter(x => x.want > 0 && x.v <= 2000).sort((a, b) => b.want * b.v - a.want * a.v);
+-    for (const w of wants) { const n = Math.min(w.want, Math.floor(gap / w.v)); if (n > 0) { topUp[String(w.v)] = n; gap -= n * w.v; } }
+-  }
++  const plan = script ? planTopUp(best.keep, script, { budgetMs: o.budgetMs }) : null;
++  const topUp: Counts = plan ? plan.add : {};
+   const bankable: Counts = {}; for (const d of DENOMS) if (d.cents >= 5000 && (best.keep[String(d.cents)] ?? 0) > 0) bankable[String(d.cents)] = best.keep[String(d.cents)];
+   const gap = best.takeOutTotal - takings;
+-  const coverageNow = day ? coverage(drawer, day) : null; const coverageKeep = day ? coverage(best.keep, day) : null; const low = day ? lowOn(best.keep, day) : [];
++  const failNow = script ? failRate(drawer, script) : null; const failKeep = plan ? plan.before : null; const failTopUp = plan ? plan.after : null;
+   const notes: string[] = [];
+   if (!prof) notes.push('No cash history or item prices to learn from yet, so this just takes the largest notes first. It improves as you track more cash sales.');
+   if (takings <= 0) notes.push('No cash takings to bank, so nothing needs to come out.');
+   else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the day's takings so the float keeps the notes and coins you'll need.`);
+   if (o.takings > drawerTotal) notes.push('The ledger holds less than the takings, so it may be out of date. Count the drawer first.');
+-  if (low.length) notes.push(`Even so, the float is likely to run short of ${low.filter(v => v <= 2000).map(denomLabel).join(', ') || 'some notes and coins'}.`);
+-  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, ideal, topUp: cleanCounts(topUp), bankable, coverageNow, coverageKeep, low, notes, truncated };
++  if (plan && failTopUp !== null && failTopUp > 0.1) notes.push(`Even with the top-up, about ${Math.round(failTopUp * 100)}% of a typical day's cash sales would get no exact change. More of the same notes and coins would not fix it cheaply.`);
++  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, notes, truncated };
+ }
+ 
+ const fmtMoney = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+diff --git a/src/screens/FloatReport.tsx b/src/screens/FloatReport.tsx
+index 89b812d..e68f44c 100644
+--- a/src/screens/FloatReport.tsx
++++ b/src/screens/FloatReport.tsx
+@@ -1,6 +1,7 @@
+ // Location: src/screens/FloatReport.tsx
+ // B1f: the daily float report (More ▸ Cash drawer ▸ Daily float report). Shows the day's cash takings, which notes and coins to take out (bank),
+ // what that leaves as the float, what to top up, and offers to write the banking into the ledger. Uses the learned profile whether or not Smart change is on.
++// Since 0089 the report is worked out after the sheet opens (it plays a day of imagined sales against many drawers), so the sheet shows "Working it out" first.
+ import React, { useEffect, useMemo, useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, Money, Sheet, Txt, confirm } from '../ui/kit';
+@@ -9,7 +10,7 @@ import { useApp, currentStaff } from '../state/store';
+ import { useCashProfile } from '../state/cashProfile';
+ import { applyEntry, newEntry, summariseCounts, totalOf, type Counts } from '../lib/cashLedger';
+ import { CountSquares } from '../ui/CountSquares';
+-import { ledgerTakings, recommendFloat, type FloatOption } from '../lib/floatReport';
++import { ledgerTakings, recommendFloat, type FloatOption, type FloatReport } from '../lib/floatReport';
+ import { profileNote } from '../lib/changeScore';
+ import { fmt } from '../lib/money';
+ 
+@@ -21,10 +22,14 @@ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { vis
+   const [alt, setAlt] = useState(0); useEffect(() => { if (visible) setAlt(0); }, [visible]);
+   const sinceMs = since ? new Date(since).getTime() : startOfToday(); const label = since ? 'since the drawer opened' : 'today';
+   const takings = visible ? cashTakings(new Date(sinceMs).toISOString()) : 0; const seen = useMemo(() => ledgerTakings(ledger.entries, sinceMs), [ledger.entries, sinceMs]);
+-  const rep = useMemo(() => recommendFloat({ drawer: ledger.counts, takings, profile }), [ledger.counts, takings, profile]);
+-  const options: FloatOption[] = [rep.best, ...rep.alternatives]; const shown = options[Math.min(alt, options.length - 1)];
++  const [rep, setRep] = useState<FloatReport | null>(null);
++  useEffect(() => {
++    if (!visible) return; setRep(null); // let the sheet draw first, then do the sums
++    const t = setTimeout(() => setRep(recommendFloat({ drawer: ledger.counts, takings, profile, budgetMs: 2500 })), 40); return () => clearTimeout(t);
++  }, [visible, ledger.counts, takings, profile]);
++  const options: FloatOption[] = rep ? [rep.best, ...rep.alternatives] : []; const shown = rep ? options[Math.min(alt, options.length - 1)] : null;
+   const bank = async () => {
+-    if (!totalOf(shown.takeOut)) return;
++    if (!shown || !totalOf(shown.takeOut)) return;
+     if (!(await confirm('Write this banking into the ledger?', `Takes ${summariseCounts(shown.takeOut)} (${fmt(shown.takeOutTotal)}) out of the drawer ledger as a paid out. Only do this once the cash has really been taken out.`, 'Record it'))) return;
+     const entry = newEntry('paid_out', Object.fromEntries(Object.entries(shown.takeOut).map(([v, n]) => [v, -n])), { staff: currentStaff()?.name, note: 'Daily banking (float report)' });
+     patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, entry), ...(shift.open ? { shift: { ...shift, paidOutCents: shift.paidOutCents + shown.takeOutTotal } } : {}) }); onClose();
+@@ -35,18 +40,20 @@ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { vis
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Daily float report" full>
+       <View style={{ gap: 14 }}>
+-        <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>Cash takings {label}</Txt><Money cents={takings} size={34} weight="700" /><Txt size={12} sub style={{ textAlign: 'center' }}>Cash sales minus cash refunds. The drawer ledger holds {fmt(rep.drawerTotal)}{seen.sales ? `, and saw ${fmt(seen.cents)} from ${seen.sales} tracked sale${seen.sales === 1 ? '' : 's'}` : ''}.</Txt></View>
++        <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>Cash takings {label}</Txt><Money cents={takings} size={34} weight="700" /><Txt size={12} sub style={{ textAlign: 'center' }}>Cash sales minus cash refunds. The drawer ledger holds {fmt(totalOf(ledger.counts))}{seen.sales ? `, and saw ${fmt(seen.cents)} from ${seen.sales} tracked sale${seen.sales === 1 ? '' : 's'}` : ''}.</Txt></View>
+         {takings > 0 && Math.abs(seen.cents - takings) >= 5 ? <Txt size={13} color="#B45309" style={{ textAlign: 'center' }}>The ledger saw {fmt(seen.cents)} but sales say {fmt(takings)}. Some sales weren't tracked, so count the drawer (Count &amp; close) before banking.</Txt> : null}
++        {!rep || !shown ? <Txt sub style={{ textAlign: 'center', paddingVertical: 24 }}>Working it out…</Txt> : <>
+         {totalOf(shown.takeOut) > 0 ? box('Take out (bank)', shown.takeOut) : null}
+         {box('Leave in the drawer as the float', shown.keep, c.good)}
+         {options.length > 1 ? <Btn title={alt === 0 ? 'Show another way' : alt < options.length - 1 ? 'Show the next way' : 'Back to the suggested way'} kind="secondary" onPress={() => setAlt(a => (a + 1) % options.length)} /> : null}
+-        {rep.usedProfile && rep.coverageKeep !== null ? <Txt size={13} sub style={{ textAlign: 'center' }}>This float could make change for {pct(rep.coverageKeep)} of your usual change amounts{rep.coverageNow !== null ? ` (the drawer now: ${pct(rep.coverageNow)})` : ''}.{rep.ideal !== null ? ` A good float for your sales is about ${fmt(rep.ideal)}.` : ''}</Txt> : null}
+-        {totalOf(rep.topUp) > 0 ? box('Top up if you can', rep.topUp, '#B45309') : null}
++        {rep.usedProfile && rep.failKeep !== null ? <Txt size={13} sub style={{ textAlign: 'center' }}>Played against a typical day of your cash sales, this float could give exact change for about {pct(1 - rep.failKeep)} of them{rep.failNow !== null && Math.abs(rep.failNow - rep.failKeep) >= 0.01 ? ` (the drawer as it is now: ${pct(1 - rep.failNow)})` : ''}.</Txt> : null}
++        {totalOf(rep.topUp) > 0 ? <>{box('Top up if you can', rep.topUp, '#B45309')}{rep.failTopUp !== null ? <Txt size={13} sub style={{ textAlign: 'center' }}>With the top-up, about {pct(1 - rep.failTopUp)}. The float would be about {fmt(rep.suggestedFloat)}. Only these are asked for because they are the ones that fix the most.</Txt> : null}</> : rep.usedProfile && rep.failKeep !== null ? <Txt size={13} sub style={{ textAlign: 'center' }}>Nothing needs adding.</Txt> : null}
+         {totalOf(rep.bankable) > 0 ? <View style={{ gap: 2 }}><CountSquares counts={rep.bankable} label="In the float but never used as change" /><Txt size={13} sub style={{ textAlign: 'center' }}>{Object.keys(rep.bankable).length > 1 ? 'These are' : 'This is'} usually better banked.</Txt></View> : null}
+         {rep.notes.map((n, i) => <Txt key={i} size={13} sub style={{ textAlign: 'center' }}>{n}</Txt>)}
+         {rep.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
+         <Txt size={12} sub style={{ textAlign: 'center' }}>{profileNote(profile).replace('Smart change is on', 'Based on')}</Txt>
+         {totalOf(shown.takeOut) > 0 ? <Btn title="I took this out: record it" onPress={() => void bank()} /> : null}
++        </>}
+         <Btn title="Close" kind="secondary" onPress={onClose} />
+       </View>
+     </Sheet>
+diff --git a/tests/floatplan.test.ts b/tests/floatplan.test.ts
+new file mode 100644
+index 0000000..2af740e
+--- /dev/null
++++ b/tests/floatplan.test.ts
+@@ -0,0 +1,65 @@
++// Location: tests/floatplan.test.ts
++// 0089: the float planner. Device test T6: a drawer holding $106 with no $20s or $10s was told to add six $20s and a $10, valued by note size
++// and by a float size guess. The planner now adds only what cuts the failure rate of a whole day of imagined cash sales.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { DOLLAR_COST, GOOD_ENOUGH, MAX_TOPUP, dayScript, failRate, planTopUp, rankTakeOuts, type TakeOut } from '../src/lib/floatPlan';
++import { recommendFloat } from '../src/lib/floatReport';
++import { emptyProfile, type CashProfile } from '../src/lib/changeScore';
++import { diffCounts, totalOf, type Counts } from '../src/lib/cashLedger';
++
++const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(), ...o });
++/** A small stall: mostly small change, customers pay with $20s and the odd $10. */
++const light = profile({ amounts: [{ cents: 300, p: 0.4 }, { cents: 500, p: 0.3 }, { cents: 800, p: 0.3 }], needPerSale: { '500': 0.7, '200': 1, '100': 1 }, inPerSale: { '2000': 0.8, '1000': 0.2 }, horizon: 6, confidence: 1, source: 'history', samples: 30 });
++/** T6's drawer: $106, no $20s or $10s. */
++const t6: Counts = { '500': 10, '200': 10, '100': 25, '50': 20, '20': 5 };
++
++test('T6: a drawer that already copes with the day is not asked for anything, however few $20s and $10s it holds', () => {
++  assert.equal(totalOf(t6), 10600);
++  const r = recommendFloat({ drawer: t6, takings: 0, profile: light, budgetMs: Infinity });
++  assert.deepEqual(r.topUp, {}); assert.ok((r.failNow ?? 1) <= GOOD_ENOUGH + 0.05); assert.equal(r.suggestedFloat, 10600);
++});
++test('planTopUp: a thin drawer is topped up with what cuts failures, the failure rate falls, and it never asks for $50 or $100 notes', () => {
++  const script = dayScript(light); const keep: Counts = { '500': 6, '100': 6 };
++  const p = planTopUp(keep, script, { budgetMs: Infinity }); assert.ok(totalOf(p.add) > 0); assert.ok(p.after < p.before);
++  for (const v of Object.keys(p.add)) assert.ok(Number(v) <= 2000);
++  const merged: Counts = { ...keep }; for (const [v, n] of Object.entries(p.add)) merged[v] = (merged[v] ?? 0) + n; assert.equal(failRate(merged, script), p.after);
++});
++test('planTopUp: asks for coins and small notes, not a pile of $20s, when small change is what fails (not valued by note size)', () => {
++  const script = dayScript(light); const p = planTopUp({ '500': 6, '100': 6 }, script, { budgetMs: Infinity });
++  assert.ok((p.add['2000'] ?? 0) * 2000 <= totalOf(p.add) / 2, `top-up ${JSON.stringify(p.add)}`);
++});
++test('planTopUp: respects maxAdd, is repeatable, and reports why it stopped', () => {
++  const script = dayScript(light); const a = planTopUp({}, script, { maxAdd: 3000, budgetMs: Infinity }); assert.ok(totalOf(a.add) <= 3000);
++  assert.deepEqual(a, planTopUp({}, script, { maxAdd: 3000, budgetMs: Infinity }));
++  assert.equal(planTopUp(t6, script, { budgetMs: Infinity }).stopped, 'already-good');
++  assert.ok(totalOf(planTopUp({}, script, { budgetMs: Infinity }).add) <= MAX_TOPUP);
++});
++test('planTopUp: with no time it stops at once and returns what it has (nothing yet)', () => {
++  const p = planTopUp({}, dayScript(light), { budgetMs: -1 }); assert.equal(p.stopped, 'time'); assert.deepEqual(p.add, {});
++});
++test('planTopUp: a note that does not pay for its dollars is left out (the cost per dollar is real)', () => {
++  assert.ok(DOLLAR_COST > 0); const script = dayScript(light);
++  const p = planTopUp({ '500': 6, '100': 6 }, script, { budgetMs: Infinity }); const dollars = totalOf(p.add) / 100; assert.ok((p.before - p.after) * 100 > DOLLAR_COST * dollars * 0.5);
++});
++test('rankTakeOuts: prefers the way of banking that leaves a drawer coping with the day, then the one nearer the takings', () => {
++  const drawer: Counts = { '2000': 2, '500': 6, '200': 6, '100': 8 }; const script = dayScript(light);
++  const cands: TakeOut[] = [{ take: { '500': 6 }, pieces: 6, off: 0 }, { take: { '2000': 1, '500': 2 }, pieces: 3, off: 0 }, { take: { '2000': 2 }, pieces: 2, off: 1000 }];
++  const r = rankTakeOuts(drawer, cands, script, 1.5, 3); assert.equal(r.length, 3);
++  for (let i = 1; i < r.length; i++) assert.ok(r[i - 1].fail * 100 + (1.5 * r[i - 1].off) / 100 <= r[i].fail * 100 + (1.5 * r[i].off) / 100 + 1e-9);
++  for (const c of r) assert.ok(c.fail >= 0 && c.fail <= 1);
++  const same = rankTakeOuts(drawer, [cands[0], { ...cands[0] }], script, 1.5); assert.deepEqual(same[0].take, cands[0].take);
++});
++test('recommendFloat with a profile: banking stays within $10 of takings, never over-draws, and the top-up is on top of what stays', () => {
++  const drawer: Counts = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12, '50': 6 }; const takings = 18000;
++  const r = recommendFloat({ drawer, takings, profile: light, budgetMs: Infinity });
++  assert.ok(Math.abs(r.gap) <= 1000); assert.deepEqual(diffCounts(drawer, r.best.takeOut), r.best.keep);
++  assert.equal(r.suggestedFloat, r.best.keepTotal + totalOf(r.topUp)); assert.ok(r.failTopUp !== null && r.failKeep !== null && r.failTopUp <= r.failKeep + 1e-9);
++});
++test('banking keeps the coins and small notes a day of sales needs (a search cut short must not bank them)', () => {
++  const drawer: Counts = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12, '50': 6, '20': 5, '10': 5, '5': 5 };
++  const p = profile({ amounts: [{ cents: 500, p: 0.4 }, { cents: 800, p: 0.3 }, { cents: 1500, p: 0.3 }], needPerSale: { '500': 0.8, '200': 0.6, '100': 1.2, '1000': 0.3 }, inPerSale: {}, horizon: 6, confidence: 1, source: 'history', samples: 30 });
++  const r = recommendFloat({ drawer, takings: 18000, profile: p, budgetMs: Infinity });
++  assert.ok((r.failKeep ?? 1) <= 0.15, `failure rate ${r.failKeep}`); assert.ok((r.best.keep['100'] ?? 0) >= 6 && (r.best.keep['500'] ?? 0) >= 4, JSON.stringify(r.best.keep));
++  const cut = recommendFloat({ drawer, takings: 18000, profile: p, maxNodes: 3000, budgetMs: Infinity }); assert.ok((cut.failKeep ?? 1) <= 0.3, `cut short: ${cut.failKeep}`);
++});
+diff --git a/tests/floatreport.test.ts b/tests/floatreport.test.ts
+index aed1a90..97bd09a 100644
+--- a/tests/floatreport.test.ts
++++ b/tests/floatreport.test.ts
+@@ -2,7 +2,7 @@
+ // 0023: the daily float report: takings, what to take out, what to leave, top-up, banking big notes.
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { idealFloat, ledgerTakings, recommendFloat } from '../src/lib/floatReport';
++import { ledgerTakings, recommendFloat } from '../src/lib/floatReport';
+ import { emptyProfile, type CashProfile } from '../src/lib/changeScore';
+ import { findCombinations, findCombinationsLimited } from '../src/lib/changeFinder';
+ import { newEntry, totalOf, type Counts } from '../src/lib/cashLedger';
+@@ -20,11 +20,6 @@ test('ledgerTakings: received minus change minus cash refunds since a time, and
+   ];
+   assert.deepEqual(ledgerTakings(e, since), { cents: 2000 - 800 + 1000 - 500, sales: 2 });
+ });
+-test('idealFloat: 1.5 × a day of usual change, to the nearest $10 up, kept in $50-$300; null with no profile', () => {
+-  assert.equal(idealFloat(null), null); assert.equal(idealFloat(emptyProfile()), null);
+-  const p = profile({ amounts: [{ cents: 1000, p: 1 }], horizon: 5 }); assert.equal(idealFloat(p), 15000); // 1000 × 10 sales × 1.5
+-  assert.equal(idealFloat(profile({ amounts: [{ cents: 100, p: 1 }], horizon: 4 })), 5000); assert.equal(idealFloat(profile({ amounts: [{ cents: 5000, p: 1 }], horizon: 12 })), 30000);
+-});
+ test('recommendFloat: with no profile it takes the largest notes first, never more than the takings, and says so', () => {
+   const drawer = { '5000': 1, '2000': 3, '500': 4, '100': 10 }; const r = recommendFloat({ drawer, takings: 9000 });
+   assert.equal(r.usedProfile, false); assert.deepEqual(r.best.takeOut, { '5000': 1, '2000': 2 }); assert.equal(r.gap, 0); assert.equal(r.best.keepTotal, totalOf(drawer) - 9000); assert.match(r.notes.join(' '), /No cash history/);
+@@ -39,7 +34,7 @@ test('recommendFloat: with a profile it stays within $10 of the takings, never o
+   assert.ok(Math.abs(r.gap) <= 1000, `gap ${r.gap}`); for (const [v, n] of Object.entries(r.best.takeOut)) assert.ok(n <= (drawer as Counts)[v]);
+   assert.equal(r.best.keepTotal, totalOf(drawer) - r.best.takeOutTotal);
+   for (const alt of r.alternatives) { assert.ok(Math.abs(alt.takeOutTotal - takings) <= 1000); for (const [v, n] of Object.entries(alt.takeOut)) assert.ok(n <= (drawer as Counts)[v]); }
+-  assert.ok((r.coverageKeep ?? 0) >= 0.7, `coverage ${r.coverageKeep}`);
++  assert.ok((r.failKeep ?? 1) <= 0.3, `failure rate ${r.failKeep}`);
+ });
+ test('recommendFloat: banks the notes the float does not need rather than the coins it does', () => {
+   const drawer = { '5000': 2, '500': 6, '200': 6, '100': 8 }; // takings $100: two $50 notes, or a mix of the small change the float needs
+@@ -51,10 +46,13 @@ test('the change finder\'s new `all` option returns near amounts even when exact
+   assert.ok(plain.every(r => r.exact)); assert.ok(near.length > plain.length); assert.ok(near.some(r => !r.exact));
+   const r = recommendFloat({ drawer, takings: 2000, profile: prof }); assert.ok(Math.abs(r.gap) <= 1000);
+ });
+-test('recommendFloat: a short float gets a top-up list that stays inside the gap and uses change denominations only', () => {
+-  const r = recommendFloat({ drawer: { '5000': 1, '500': 1 }, takings: 5000, profile: prof });
+-  assert.ok(r.ideal !== null && r.best.keepTotal < r.ideal); const up = totalOf(r.topUp); assert.ok(up > 0 && up <= r.ideal - r.best.keepTotal);
+-  for (const v of Object.keys(r.topUp)) assert.ok(Number(v) <= 2000);
++test('recommendFloat: a short float gets a top-up that lowers the failure rate and uses change denominations only', () => {
++  const r = recommendFloat({ drawer: { '5000': 1, '500': 1 }, takings: 5000, profile: prof, budgetMs: Infinity });
++  assert.ok(totalOf(r.topUp) > 0); for (const v of Object.keys(r.topUp)) assert.ok(Number(v) <= 2000);
++  assert.ok(r.failKeep !== null && r.failTopUp !== null && r.failTopUp < r.failKeep); assert.equal(r.suggestedFloat, r.best.keepTotal + totalOf(r.topUp));
++});
++test('recommendFloat: no profile means no failure figures and no top-up', () => {
++  const r = recommendFloat({ drawer: { '5000': 1, '500': 1 }, takings: 5000 }); assert.equal(r.failNow, null); assert.equal(r.failKeep, null); assert.equal(r.failTopUp, null); assert.deepEqual(r.topUp, {});
+ });
+ test('recommendFloat: $50 and $100 notes left in the drawer are listed as better banked', () => {
+   const r = recommendFloat({ drawer: { '10000': 1, '5000': 1, '500': 20 }, takings: 1000, profile: prof }); assert.equal(Object.keys(r.bankable).length > 0, true);
+@@ -67,3 +65,11 @@ test('recommendFloat: random drawers never over-draw and stay within the toleran
+     for (const p of [null, prof]) { const r = recommendFloat({ drawer, takings, profile: p }); for (const [v, n] of Object.entries(r.best.takeOut)) assert.ok(n <= (drawer[v] ?? 0)); assert.ok(r.best.takeOutTotal <= Math.max(takings + 1000, totalOf(drawer))); assert.equal(r.best.keepTotal + r.best.takeOutTotal, totalOf(drawer)); }
+   }
+ });
++test('findCombinationsLimited: bigFirst finds the same set of ways when not cut short, and reaches big-note ways first when it is', () => {
++  const drawer = { '5000': 1, '2000': 4, '1000': 6, '500': 8, '200': 10, '100': 12 };
++  const a = findCombinationsLimited(drawer, 18000, 0, { all: true }).results; const b = findCombinationsLimited(drawer, 18000, 0, { all: true, bigFirst: true }).results;
++  const key = (r: { values: Record<string, { qty_used: number }> }) => JSON.stringify(Object.entries(r.values).map(([v, q]) => [v, q.qty_used]).sort()); assert.deepEqual(a.map(key).sort(), b.map(key).sort());
++  const cutA = findCombinationsLimited(drawer, 18000, 0, { maxNodes: 400 }); const cutB = findCombinationsLimited(drawer, 18000, 0, { maxNodes: 400, bigFirst: true });
++  assert.ok(cutA.truncated && cutB.truncated); const bigNotes = (r: { values: Record<string, { qty_used: number }> }) => (r.values['5000']?.qty_used ?? 0) + (r.values['2000']?.qty_used ?? 0);
++  if (cutB.results.length && cutA.results.length) assert.ok(Math.max(...cutB.results.map(bigNotes)) >= Math.max(...cutA.results.map(bigNotes)));
++});

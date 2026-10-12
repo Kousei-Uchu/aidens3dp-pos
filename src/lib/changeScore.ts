@@ -139,10 +139,6 @@ export function scoreAfter(after: Counts, pieces: number, profile: CashProfile):
   return SCORE_WEIGHTS.coverage * coverage(after, profile) - SCORE_WEIGHTS.depth * depth(after, profile) - SCORE_WEIGHTS.piece * pieces;
 }
 
-/** Notes and coins the drawer is expected to run short of over the next few sales. */
-export function lowOn(after: Counts, profile: CashProfile): number[] {
-  return Object.entries(profile.needPerSale).map(([v, n]) => ({ v: Number(v), want: n * profile.horizon })).filter(x => x.want >= 1 && (after[String(x.v)] ?? 0) + IN_CREDIT * (profile.inPerSale[String(x.v)] ?? 0) * profile.horizon < x.want * 0.5).map(x => x.v).sort((a, b) => b - a);
-}
 export type SmartPlan =
   | { kind: 'none' }
   | { kind: 'impossible'; truncated: boolean }

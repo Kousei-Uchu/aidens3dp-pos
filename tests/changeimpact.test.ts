@@ -68,7 +68,7 @@ test('with no profile the generic spread of change amounts is used, and the word
   const j = judgeChange({ drawer: { '500': 1, '100': 10, '200': 5, '2000': 2 }, take: { '2000': 1 }, change: { '500': 1, '200': 2, '100': 2 } }); assert.equal(j.generic, true); assert.match(j.tight.join(' '), /typical sales/);
 });
 test('taking cash in can only help: handing over a note and getting no change back never warns', () => {
-  for (const drawer of [{}, { '500': 1 }, { '2000': 3, '500': 4 }]) assert.deepEqual(judgeChange({ drawer, take: { '2000': 1 }, change: {}, profile: stall }).tight, []);
+  for (const drawer of [{}, { '500': 1 }, { '2000': 3, '500': 4 }] as Counts[]) assert.deepEqual(judgeChange({ drawer, take: { '2000': 1 }, change: {}, profile: stall }).tight, []);
 });
 test('random drawers and changes: always a sensible answer, rates between 0 and 1, a warning only with a real gap', () => {
   let seed = 11; const rnd = () => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff; const dens = [2000, 1000, 500, 200, 100, 50];
