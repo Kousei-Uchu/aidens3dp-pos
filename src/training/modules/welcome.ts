@@ -74,6 +74,7 @@ export const welcome: TrainingModule = {
     steps: [
       { id: 'ring', title: 'Guide: the real till', say: 'In Guide you use the real till with practice data. This is a picture of it. The screen dims, and a ring shows the one thing to touch.', focus: 'tile-bee', note: 'The ring shows where to tap' },
       { id: 'tap', title: 'You tap, it responds', say: 'You tap the ringed tile, the same as at a real sale. The item lands in the cart and the total changes.', tap: 'tile-bee', focus: 'cart', set: { 'line-bee': { hidden: false }, total: { value: '$8.00' }, 'dock-say': { label: 'Now add a second item.', sub: 'Step 2 of 3' } }, note: 'The cart updates' },
+      { id: 'swipe', title: 'Swipe to remove', say: 'To take an item out, swipe its line to the left, then tap Remove. Some jobs ask for a swipe, a scroll or a press and hold, and the cursor shows which.', tap: 'line-bee', gesture: 'swipe-left', focus: 'cart', set: { 'line-bee': { hidden: true }, total: { value: '$0.00' }, 'dock-say': { label: 'Swipe the line to remove it.', sub: 'Step 3 of 3' } }, note: 'Swipe left to remove' },
       { id: 'bar', title: 'The bar at the bottom', say: 'The bar at the bottom says what you are doing. When its words change, you have moved on to the next step.', focus: 'dock-say', zoom: 1.7, note: 'Your current job' },
       { id: 'hint1', title: 'Stuck? Tap Hint', say: 'Stuck in a Check? Tap Hint. The first one only tells you where to look.', tap: 'hint', focus: 'hint-text', set: { 'hint-box': { hidden: false }, 'hint-text': { hidden: false } }, note: 'A small pointer' },
       { id: 'hint2', title: 'Each hint is clearer', say: 'Tap again for a clearer pointer. After the last hint, the answer is ringed for you.', tap: 'hint', focus: 'tile-egg', set: { 'hint-text': { label: 'Tap one product tile, then tap a different one.' }, 'tile-egg': { tone: 'accent' } }, note: 'The answer, ringed' },
@@ -82,16 +83,20 @@ export const welcome: TrainingModule = {
   },
   guide: [
     { id: 'g-dock', say: 'The bar at the bottom stays with you in practice. It shows what you are doing, and has Hint and Exit buttons.', until: { kind: 'next' } },
-    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout } },
-    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen } },
-    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
+    { id: 'g-tile', target: gridItemSpot('train-v-bee'), say: 'Tap the Bumble Bee tile to add it to the cart.', until: { kind: 'press', id: gridItemSpot('train-v-bee') }, recover: { say: 'Go back to the Checkout tab.', target: SPOT.tabCheckout }, at: { tabs: ['checkout'], routes: [], sheets: false } },
+    { id: 'g-charge', target: SPOT.cartCharge, say: 'The bee is in the cart. When the customer is ready you press Charge. We will not take a payment in this course.', until: { kind: 'next' }, recover: { say: 'On a phone, the bar at the bottom shows the cart. Charge is on it.', target: SPOT.cartOpen },
+      watch: [{ id: 'bee-gone', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The Bumble Bee has gone from the cart. Tap its tile to add it back.', target: gridItemSpot('train-v-bee'), how: ['Find the Bumble Bee tile on the grid.', 'Tap it once.'] }] },
+    { id: 'g-remove', target: cartLineSpot('train-v-bee'), say: 'Swipe this line to the left, then tap Remove to take the item out.', until: { kind: 'state', test: s => s.lines === 0 }, allow: ['remove'], gesture: 'swipe-left', at: { tabs: ['checkout'], routes: ['cart'], sheets: false }, recover: { say: 'Open the cart from the bar at the bottom. Swipe this line to the left, then tap Remove.', target: SPOT.cartOpen } },
   ],
   check1: [
-    { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg') },
+    { id: 'add-two', title: 'Add two different items to the cart', until: { kind: 'state', test: s => s.lines >= 2 }, ladder: ['Items are added from the grid on the Checkout screen.', 'Tap one product tile, then tap a different one.', 'Tap the Dragon Egg tile, then the Keyring tile.'], reveal: gridItemSpot('train-v-egg'),
+      allow: ['add', 'remove'], at: { tabs: ['checkout'], routes: [], sheets: false } },
   ],
   check2: [
-    { id: 'change-mind', title: 'The customer changed their mind. Take the Red Dragon out of the cart', until: { kind: 'state', test: s => s.lines <= 1 }, inject: [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 1 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-remove',
-      ladder: ['The cart lists everything that has been added.', 'A line can be removed from the cart.', 'Swipe the Red Dragon line to the left, then tap Remove.'], reveal: cartLineSpot('train-v-dragon'), via: SPOT.cartOpen },
+    { id: 'change-mind', title: 'The customer changed their mind. Take the Red Dragon out of the cart', until: { kind: 'state', test: s => !s.cart.some(l => l.variantId === 'train-v-dragon') && s.cart.some(l => l.variantId === 'train-v-bee') }, inject: [{ kind: 'cart', items: [{ variantId: 'train-v-bee', qty: 1 }, { variantId: 'train-v-dragon', qty: 1 }] }], taughtBy: 'g-remove',
+      ladder: ['The cart lists everything that has been added.', 'A line can be removed from the cart.', 'Swipe the Red Dragon line to the left, then tap Remove.'], reveal: cartLineSpot('train-v-dragon'), via: SPOT.cartOpen, gesture: 'swipe-left',
+      allow: ['remove'], at: { tabs: ['checkout'], routes: ['cart'], sheets: true },
+      watch: [{ id: 'bee-removed', when: s => !s.cart.some(l => l.variantId === 'train-v-bee'), say: 'The customer is keeping the Bumble Bee. Tap its tile to add it back, then take out the Red Dragon.', target: gridItemSpot('train-v-bee'), how: ['Find the Bumble Bee tile on the grid.', 'Tap it once to add it back.', 'Then take the Red Dragon out of the cart.'] }] },
   ],
   recap: ['You can add items to a sale from the grid.', 'You can take an item out of the cart.', 'You know where Hint and Exit are when you get stuck.'],
 };

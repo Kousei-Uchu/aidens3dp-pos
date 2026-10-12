@@ -2,6 +2,9 @@
 // The shape of a training module (B6) and the checker that refuses a badly written one. Pure, tested.
 // Writer's guide: src/training/README.md
 import { validateDemo } from './trainingDemo';
+import { isGesture, type Gesture } from './pointerGesture';
+import { WINDOW_SPOTS } from './trainingSpots';
+export type { Gesture } from './pointerGesture';
 export type Stage = 'info' | 'show' | 'guide' | 'check1' | 'check2' | 'gratify';
 export const STAGES: readonly Stage[] = ['info', 'show', 'guide', 'check1', 'check2', 'gratify'];
 export const STAGE_LABEL: Record<Stage, string> = { info: 'Info', show: 'Show', guide: 'Guide', check1: 'Check 1', check2: 'Check 2', gratify: 'Done' };
@@ -31,33 +34,58 @@ export type DemoScreen = { id: string; nodes: DemoNode[] };
 export type DemoStep = {
   id?: string; say: string; title?: string;
   screen?: string; focus?: string; tap?: string; zoom?: number;
+  gesture?: Gesture;                              // how the cursor reaches `tap`: a tap (the default), double or triple tap, press and hold, a swipe or a scroll
   note?: string;                                  // a short label with an arrow, drawn next to the focus
   set?: Record<string, DemoEffect>;
 };
 export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
 
-/** What the training driver can see of the app. Kept small on purpose. */
-export type TrainSnap = { tab: string; route: string; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean };
+/** One cart line as training sees it. */
+export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean };
+/** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
+export type TrainSnap = {
+  tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
+  cart: SnapLine[]; cartDiscount: boolean; orderAdjusted: boolean; hasNote: boolean;
+};
 export type Until =
   | { kind: 'next' }                                  // an informational step: the Next button moves on
   | { kind: 'press'; id: string }                     // the person taps this spot
   | { kind: 'visible'; id: string }                   // this spot is on screen (for example a sheet opened)
   | { kind: 'state'; test: (s: TrainSnap) => boolean };
-export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string } };
+/**
+ * One Guide step. `allow`, `at` and `watch` work exactly as they do on a Check goal (see `Goal`): what may change during the step without being off course,
+ * where it happens, and mistakes specific to this step. Left out, `allow` is worked out from the step (tapping a grid tile allows adding, a cart line allows removing),
+ * and the step happens anywhere the course allows. A step that waits on the till changing (`until: state`) must say `allow` itself.
+ */
+export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[];
+  /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
+  gesture?: Gesture };
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
   | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number }                                  // the fake terminal declines the card this many times (code 51)
   | { kind: 'ledger'; counts: Record<string, number> };                 // replace the drawer contents (for example no small change)
+/** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
+export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
+export const ALLOWS: readonly Allow[] = ['add', 'remove', 'qty', 'discount', 'adjust', 'customer', 'note', 'tender', 'sale'];
+/** Where the work for a goal happens. Anywhere else is off course. Left out, it is the module's own tabs and routes, with sheets allowed. */
+export type Place = { tabs?: string[]; routes?: string[]; sheets?: boolean };
+/** A mistake specific to one goal, in the module author's words: when it is true, the person is told `say` and pointed at `target`. */
+/** `how` is the plain steps to put it right, and `taughtIn` the module that teaches them (left out, the module the person is in). */
+export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; target?: string; via?: string; how?: string[]; taughtIn?: string };
 export type Goal = {
   id: string; title: string;                  // what the person has to achieve, shown in the dock
   until: Until;                               // how the app knows they did it (never 'next')
   ladder: string[];                           // hints from vague to specific; the answer is revealed after the last one
   reveal?: string;                            // spot to highlight when the hints are used up
+  gesture?: Gesture;                          // how the answer is reached, shown by the cursor when it is revealed (left out: a tap)
   via?: string;                               // spot to point at first when `reveal` is not on screen (for example the bar that opens the cart on a phone)
   inject?: Injection[];
-  taughtBy?: string;                          // Check 2 only: the id of the info beat, show beat or guide step that taught the fix
+  taughtBy?: string;                          // Check 2 only: the id of the info step, show step or guide step that taught the fix
+  allow: Allow[];                             // what may change without being off course (an empty list means nothing may change except what the goal asks)
+  at?: Place;                                 // where the work happens
+  watch?: Watch[];                            // mistakes specific to this goal
 };
 export type TrainingModule = {
   id: string; title: string; summary: string; minutes: number; suggestedFirst?: boolean;
@@ -81,6 +109,20 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (!s.say.trim()) at('guide', `step ${s.id} says nothing`);
     if (s.until.kind === 'press' && !s.target) at('guide', `step ${s.id} waits for a tap but points at nothing`);
     for (const t of [s.target, s.recover?.target, s.until.kind === 'press' || s.until.kind === 'visible' ? s.until.id : undefined]) if (t && !spotOk(t)) at('guide', `step ${s.id} uses the unknown spot "${t}"`);
+    if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
+    if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
+    if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
+    for (const t of [s.target, s.recover?.target]) if (t && WINDOW_SPOTS.includes(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
+    for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
+    for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
+    for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
+    const swi = new Set<string>();
+    for (const w of s.watch ?? []) {
+      if (swi.has(w.id)) at('guide', `step ${s.id} has two watches called "${w.id}"`); swi.add(w.id);
+      if (!w.say.trim()) at('guide', `step ${s.id} watch ${w.id} says nothing`);
+      if (w.how?.some(h => !h.trim())) at('guide', `step ${s.id} watch ${w.id} has an empty step in how`);
+      for (const t of [w.target, w.via]) if (t && !spotOk(t)) at('guide', `step ${s.id} watch ${w.id} uses the unknown spot "${t}"`);
+    }
   }
   const taught = new Set<string>([...stepIds, ...m.info.steps.map(b => b.id ?? ''), ...m.show.steps.map(b => b.id ?? '')].filter(Boolean));
   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) {
@@ -91,7 +133,19 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
       if (g.ladder.length < 2) at(name, `goal ${g.id} needs at least 2 hints before the answer is shown`);
       if (g.ladder.some(h => !h.trim())) at(name, `goal ${g.id} has an empty hint`);
       if (!g.reveal) at(name, `goal ${g.id} has nothing to highlight when the hints run out`);
+      if (g.gesture !== undefined && !isGesture(g.gesture)) at(name, `goal ${g.id} has the unknown gesture "${String(g.gesture)}"`);
       for (const t of [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined]) if (t && !spotOk(t)) at(name, `goal ${g.id} uses the unknown spot "${t}"`);
+      if (!Array.isArray(g.allow)) at(name, `goal ${g.id} must say what may change (allow), even if that is an empty list`);
+      else for (const a of g.allow) if (!ALLOWS.includes(a)) at(name, `goal ${g.id} allows the unknown change "${a}"`);
+      for (const t of g.at?.tabs ?? []) if (!m.tabs.includes(t)) at(name, `goal ${g.id} works on the tab "${t}", which the course does not allow`);
+      for (const r of g.at?.routes ?? []) if (!m.routes.includes(r)) at(name, `goal ${g.id} works on the page "${r}", which the course does not allow`);
+      const wi = new Set<string>();
+      for (const w of g.watch ?? []) {
+        if (wi.has(w.id)) at(name, `goal ${g.id} has two watches called "${w.id}"`); wi.add(w.id);
+        if (!w.say.trim()) at(name, `goal ${g.id} watch ${w.id} says nothing`);
+        if (w.how?.some(h => !h.trim())) at(name, `goal ${g.id} watch ${w.id} has an empty step in how`);
+        for (const t of [w.target, w.via]) if (t && !spotOk(t)) at(name, `goal ${g.id} watch ${w.id} uses the unknown spot "${t}"`);
+      }
     }
   }
   if (!m.check2.some(g => g.inject?.length)) at('check2', 'must make something go wrong (needs at least one goal with an injection)');

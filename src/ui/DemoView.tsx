@@ -10,15 +10,17 @@ import { AccessibilityInfo, Animated, Easing, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TILE_COLORS, useTheme, type Colors } from './theme';
 import { tap } from './kit';
+import { useSpotlight } from './spotlight';
 import { MAX_ZOOM, demoStateAfter, fitBox, planStep, renderScale, type Note, type NodeView } from '../lib/trainingDemo';
 import type { Demo } from '../lib/trainingModule';
+import { gesturePlan, isPress } from '../lib/pointerGesture';
 
-const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)'; const BIG = 3000;
+const BIG = 3000;
 const toneColor = (c: Colors, t?: string, fallback?: string) => (t === 'good' ? c.good : t === 'bad' ? c.bad : t === 'accent' ? c.accent : fallback ?? c.text);
 
 /** Fades a node in or out when a step shows or hides it, dips it when the pointer taps it, and draws it by kind. */
 function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
-  const { c } = useTheme(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
+  const { c } = useTheme(); const sp = useSpotlight(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
   useEffect(() => { Animated.timing(o, { toValue: n.hidden ? 0 : 1, duration: 280, useNativeDriver: false }).start(); }, [n.hidden]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { Animated.timing(knob, { toValue: n.on ? 1 : 0, duration: 260, useNativeDriver: false }).start(); }, [n.on]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { if (press > 0) Animated.sequence([Animated.timing(s, { toValue: 0.93, duration: 110, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 5, useNativeDriver: false })]).start(); }, [press]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -32,7 +34,7 @@ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
     case 'text': body = <View style={{ flex: 1, justifyContent: 'center' }}><Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(n.size ?? 13), fontWeight: '600', textAlign: n.align ?? 'left' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(Math.max(9, (n.size ?? 13) - 2)), textAlign: n.align ?? 'left' }}>{n.sub}</Text> : null}</View>; break;
     case 'button': { const solid = n.tone === undefined || n.tone === 'accent'; const bg = solid ? c.accent : n.tone === 'good' ? c.good : n.tone === 'bad' ? c.bad : c.fill; const fg = solid ? c.onAccent : n.tone === 'good' || n.tone === 'bad' ? '#FFFFFF' : c.text;
       body = <View style={{ flex: 1, backgroundColor: bg, borderRadius: u(10), flexDirection: 'row', gap: u(5), alignItems: 'center', justifyContent: 'center', paddingHorizontal: u(6) }}>{n.icon ? <Ionicons name={n.icon as any} size={u(14)} color={fg} /> : null}<Text {...one} style={{ color: fg, fontSize: u(n.size ?? 12), fontWeight: '700' }}>{n.label}</Text></View>; break; }
-    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: u(10), padding: u(7), justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? u(3) : 0, borderColor: RING }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color="#111" /> : <View />}<View><Text {...one} style={{ color: '#111', fontSize: u(11), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: u(10) }}>{n.sub}</Text> : null}</View></View>; break;
+    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: u(10), padding: u(7), justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? u(3) : 0, borderColor: sp.ring }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color="#111" /> : <View />}<View><Text {...one} style={{ color: '#111', fontSize: u(11), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: u(10) }}>{n.sub}</Text> : null}</View></View>; break;
     case 'row': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: u(8), paddingHorizontal: u(8), borderBottomWidth: u(1), borderBottomColor: c.line }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color={c.sub} /> : null}<View style={{ flex: 1 }}><Text {...one} style={{ color: c.text, fontSize: u(12), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...one} style={{ color: c.sub, fontSize: u(10) }}>{n.sub}</Text> : null}</View>{n.value ? <Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(12), fontWeight: '700' }}>{n.value}</Text> : null}</View>; break;
     case 'toggle': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(8) }}><Text {...txt} style={{ color: c.text, fontSize: u(12), fontWeight: '600', flex: 1 }}>{n.label}</Text>
       <Animated.View style={{ width: u(38), height: u(22), borderRadius: u(11), backgroundColor: knob.interpolate({ inputRange: [0, 1], outputRange: [c.line, c.good] }), justifyContent: 'center' }}><Animated.View style={{ width: u(18), height: u(18), borderRadius: u(9), backgroundColor: '#fff', transform: [{ translateX: knob.interpolate({ inputRange: [0, 1], outputRange: [u(2), u(18)] }) }] }} /></Animated.View></View>; break;
@@ -52,16 +54,16 @@ function MockScreen({ nodes, on, press, k }: { nodes: NodeView[]; on: boolean; p
 }
 
 function NoteBubble({ note, k }: { note: Note; k: number }) {
-  const { c } = useTheme(); const o = useRef(new Animated.Value(0)).current; const u = (v: number) => v * k;
+  const { c } = useTheme(); const sp = useSpotlight(); const o = useRef(new Animated.Value(0)).current; const u = (v: number) => v * k;
   useEffect(() => { Animated.timing(o, { toValue: 1, duration: 300, useNativeDriver: false }).start(); }, [o]);
   const bw = u(2);
-  const arrow = { position: 'absolute' as const, width: u(12), height: u(12), backgroundColor: c.card, borderColor: RING, transform: [{ rotate: '45deg' }] };
+  const arrow = { position: 'absolute' as const, width: u(12), height: u(12), backgroundColor: c.card, borderColor: sp.ring, transform: [{ rotate: '45deg' }] };
   const place = note.side === 'below' ? { left: u(note.arrow - 6), top: u(-7), borderLeftWidth: bw, borderTopWidth: bw }
     : note.side === 'above' ? { left: u(note.arrow - 6), bottom: u(-7), borderRightWidth: bw, borderBottomWidth: bw }
     : note.side === 'right' ? { top: u(note.arrow - 6), left: u(-7), borderLeftWidth: bw, borderBottomWidth: bw }
     : { top: u(note.arrow - 6), right: u(-7), borderRightWidth: bw, borderTopWidth: bw };
   return (
-    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: u(note.x), top: u(note.y), width: u(note.w), minHeight: u(note.h), opacity: o, backgroundColor: c.card, borderRadius: u(10), borderWidth: u(2), borderColor: RING, padding: u(7), justifyContent: 'center' }}>
+    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: u(note.x), top: u(note.y), width: u(note.w), minHeight: u(note.h), opacity: o, backgroundColor: c.card, borderRadius: u(10), borderWidth: u(2), borderColor: sp.ring, padding: u(7), justifyContent: 'center' }}>
       <View style={[arrow, place]} />
       <Text allowFontScaling={false} style={{ color: c.text, fontSize: u(12), fontWeight: '700', textAlign: 'center' }}>{note.text}</Text>
     </Animated.View>
@@ -74,7 +76,7 @@ const ease = Easing.inOut(Easing.cubic);
  * count: back and jumps settle straight on the finished picture, and a replay plays the step again from the one before it.
  */
 export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; index: number; replay?: number }) {
-  const { c } = useTheme(); const CW = demo.canvas.w; const CH = demo.canvas.h;
+  const { c } = useTheme(); const sp = useSpotlight(); const CW = demo.canvas.w; const CH = demo.canvas.h;
   const [area, setArea] = useState({ w: 0, h: 0 }); const box = fitBox(area, demo.canvas); const vw = box.w; const vh = box.h; const b = vw / CW; const k = renderScale(vw, CW);
   const [applied, setApplied] = useState(-1); const [note, setNote] = useState<Note | null>(null); const [press, setPress] = useState({ id: '', n: 0 }); const [reduce, setReduce] = useState(false);
   const zoom = useRef(new Animated.Value(1)).current; const cx = useRef(new Animated.Value(CW / 2)).current; const cy = useRef(new Animated.Value(CH / 2)).current;
@@ -104,13 +106,19 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
       }
       setApplied(index - 1); // the picture before this step (also what a replay starts from)
       await camTo(plan.lookCam, plan.look, d(750)); if (dead()) return;
-      if (plan.tapPoint) {
-        if (!cursorShown.current) { px.setValue(plan.tapPoint.x + 70); py.setValue(plan.tapPoint.y + 55); }
+      if (plan.tap && plan.tapPoint) {
+        // The cursor plays the step's gesture (src/lib/pointerGesture.ts): a tap, a double or triple tap, press and hold, a swipe or a scroll.
+        const gp = gesturePlan(plan.gesture, plan.tap);
+        if (!cursorShown.current) { px.setValue(gp.start.x); py.setValue(gp.start.y); }
         void go(po, 1, 200); cursorShown.current = true;
-        await Promise.all([go(px, plan.tapPoint.x, d(700)), go(py, plan.tapPoint.y, d(700))]); if (dead()) return;
-        await wait(150); if (dead()) return;
-        rip.setValue(0); void go(rip, 1, d(450), Easing.out(Easing.quad)); tap(); setPress(p => ({ id: plan.tapId ?? '', n: p.n + 1 }));
-        await wait(220); if (dead()) return;
+        for (const m of gp.moves) {
+          const ms = d(m.ms); const e = m.drag ? ease : Easing.out(Easing.cubic);
+          const arrive = Promise.all([go(px, m.x, ms, e), go(py, m.y, ms, e)]);
+          if (m.ripple) { rip.setValue(0); void go(rip, 1, d(450), Easing.out(Easing.quad)); if (isPress(plan.gesture)) { tap(); setPress(p => ({ id: plan.tapId ?? '', n: p.n + 1 })); } }
+          if (m.hold) { rip.setValue(0); void go(rip, 1, ms, Easing.linear); }
+          await arrive; if (dead()) return;
+        }
+        await wait(160); if (dead()) return;
       } else { void go(po, 0, 200); cursorShown.current = false; await wait(plan.changes ? 150 : 0); if (dead()) return; }
       setApplied(index); // the step's changes happen here (a new screen, a line appearing, a switch flipping)
       await wait(plan.changes ? 520 : 0); if (dead()) return;
@@ -126,7 +134,7 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
   // The canvas is laid out at k per canvas unit (the largest it is ever shown), so the camera only scales by zoom / MAX_ZOOM, never above 1.
   const S = Animated.multiply(zoom, 1 / MAX_ZOOM);
   const tx = Animated.multiply(Animated.subtract(CW / 2, cx), Animated.multiply(S, k)); const ty = Animated.multiply(Animated.subtract(CH / 2, cy), Animated.multiply(S, k));
-  const panel = { position: 'absolute' as const, backgroundColor: DIM };
+  const panel = { position: 'absolute' as const, backgroundColor: sp.dim };
   const lbl = demo.steps[Math.max(0, Math.min(index, demo.steps.length - 1))];
   return (
     <View onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
@@ -139,7 +147,7 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
           <Animated.View style={[panel, { left: -BIG, top: Animated.add(Animated.multiply(hy, k), Animated.multiply(hh, k)), width: CW * k + BIG * 2, height: BIG * 2 }]} />
           <Animated.View style={[panel, { left: -BIG, top: Animated.multiply(hy, k), width: Animated.add(Animated.multiply(hx, k), BIG), height: Animated.multiply(hh, k) }]} />
           <Animated.View style={[panel, { left: Animated.add(Animated.multiply(hx, k), Animated.multiply(hw, k)), top: Animated.multiply(hy, k), width: BIG * 2, height: Animated.multiply(hh, k) }]} />
-          <Animated.View style={{ position: 'absolute', left: Animated.multiply(hx, k), top: Animated.multiply(hy, k), width: Animated.multiply(hw, k), height: Animated.multiply(hh, k), borderRadius: 12 * k, borderWidth: 3 * k, borderColor: RING, opacity: pulse }} />
+          <Animated.View style={{ position: 'absolute', left: Animated.multiply(hx, k), top: Animated.multiply(hy, k), width: Animated.multiply(hw, k), height: Animated.multiply(hh, k), borderRadius: 12 * k, borderWidth: 3 * k, borderColor: sp.ring, opacity: pulse }} />
         </Animated.View>
         {note ? <NoteBubble key={`${index}-${replay}`} note={note} k={k} /> : null}
         <Animated.View pointerEvents="none" style={{ position: 'absolute', left: Animated.subtract(Animated.multiply(px, k), 22 * k), top: Animated.subtract(Animated.multiply(py, k), 22 * k), width: 44 * k, height: 44 * k, alignItems: 'center', justifyContent: 'center', opacity: po }}>

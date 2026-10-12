@@ -21,7 +21,13 @@ export function pageDirection(prevDepth: number, depth: number): From {
   return depth > prevDepth ? 'right' : depth < prevDepth ? 'left' : 'up';
 }
 
-/** The routes that get a page transition. Training only, for now: the rest of the app is left exactly as it was. */
+/**
+ * Pages that may be drawn a second time while they slide away. The leaving page is a fresh copy of the screen, so it must look right from the data alone:
+ * lists and read-only screens do. Pages that depend on a sale in flight or an unsaved form (Pay, the item forms) are never redrawn: they simply give way
+ * to the page that arrives, which still slides in. (0073)
+ */
+export const LEAVE_DRAWN: ReadonlySet<string> = new Set(['saved', 'orders', 'items', 'customers', 'reports', 'giftcards', 'drawer', 'settings', 'staff', 'diagnostics', 'help', 'training', 'trainingRun', 'cart']);
+/** The Training pages, which are always safe and are ranked for direction (below). */
 export const TRANSITION_ROUTES: ReadonlySet<string> = new Set(['training', 'trainingRun']);
 
 // ---- Page changes with the old page leaving as the new one arrives (0071) ----
@@ -57,10 +63,15 @@ export function transitionDir(prev: Where, next: Where): From {
   if (pr !== undefined && nr !== undefined && pr !== nr) return nr > pr ? 'right' : 'left';
   return 'up';
 }
-/** A route gets a transition when it is a Training page, or a page the running course allows (the cart, Pay) while practice data is on. Everything else is drawn as before. */
-export const isAnimatedRoute = (name: string | null | undefined, practice?: readonly string[]): boolean => !!name && (TRANSITION_ROUTES.has(name) || !!practice?.includes(name));
-/** A change is animated when either page is one that animates, so leaving or arriving at a Training page is never half done. */
+/** Every named page animates its arrival (0073). `practice` is kept for older callers: it no longer decides anything. */
+export const isAnimatedRoute = (name: string | null | undefined, _practice?: readonly string[]): boolean => !!name;
+/** A change is animated when either side is a page, so leaving or arriving at a page is never half done. Tab to tab changes have their own fade (TabPane). */
 export const transitionNeeded = (prev: string | null | undefined, next: string | null | undefined, practice?: readonly string[]): boolean => isAnimatedRoute(prev, practice) || isAnimatedRoute(next, practice);
+/** Whether the old page stays drawn while it leaves. A page the running course allows is safe too, because practice data is on and nothing real can show. */
+export const canLeaveDrawn = (name: string | null | undefined, practice?: readonly string[]): boolean => !!name && (LEAVE_DRAWN.has(name) || !!practice?.includes(name));
 
 /** The dip to the page colour used when practice starts or ends and the whole screen changes underneath: fade up, switch, fade away. */
 export const VEIL = { inMs: 160, holdMs: 90, outMs: 360 } as const;
+
+/** Tab to tab and guided-step changes: a short fade and rise. Shorter than a page change, because nothing moves across the screen. */
+export const TAB_ENTER_MS = 280; export const TAB_RISE = 10;

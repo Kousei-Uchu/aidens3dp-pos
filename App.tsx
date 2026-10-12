@@ -39,6 +39,7 @@ import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { noteActivity } from './src/lib/idle';
 import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
+import { Enter, TabPane } from './src/ui/Motion';
 import { isLockScreen } from './src/lib/posLock';
 import { UiProvider, useUi } from './src/ui/uiProfile';
 import { effectiveTab } from './src/lib/uiMode';
@@ -97,8 +98,8 @@ function Shell() {
       <StatusBar style={c.bg === '#0B0B0C' ? 'light' : 'dark'} />
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
-          <View style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</View>
-          {nav.tab === 'inventory' ? <Inventory /> : null}{nav.tab === 'transactions' ? <Transactions /> : null}{nav.tab === 'notifications' ? <Notifications /> : null}{nav.tab === 'more' ? <More /> : null}
+          <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane>
+          {nav.tab !== 'checkout' ? <Enter key={nav.tab} from="up" distance={10} duration={280} style={{ flex: 1 }}>{nav.tab === 'inventory' ? <Inventory /> : nav.tab === 'transactions' ? <Transactions /> : nav.tab === 'notifications' ? <Notifications /> : <More />}</Enter> : null}
         </View>
         {hasPage || moving ? <RouteStage stack={nav.stack} plan={plan} render={r => <Routes route={r} />} /> : null}
       </View>

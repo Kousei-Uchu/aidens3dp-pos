@@ -1,0 +1,449 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 33caa83..a6ad85b 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -83,6 +83,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0078 | 2026-10-12 | Training corrections (list of 5), 1c: **every way of straying names the module that teaches the fix**. A table (`src/lib/trainingRemedies.ts`) gives each stray its plain steps and its teaching module (cart, discounts, price-adjust, customer, welcome). The off-course card shows the steps at once if the person has not finished that module, otherwise they wait behind a small ? button; Hint opens them while the card shows (it used to do nothing visible). Modules can give their own `watch` rules `how` and `taughtIn`. The modules named are the ones in the planned list, so they use these ids | B6 |
+ | 0079 | 2026-10-12 | Training corrections (list of 4), 1: the **cursor can swipe, scroll, double or triple tap and press and hold** (Guide and Show), course correction is **context aware** (no more "use the minus button" then "close this window"), and the **Guide allows only the interactions it asks for** (a swipe step blocks the tap that opened the line window; a Guide step allows no window unless it says so; the screen stays dimmed while off course with only the fix open). New `src/lib/pointerGesture.ts`, `src/lib/trainingGate.ts`, `fixCandidates` in `src/lib/trainingCourse.ts`; spots `line.minus` and `line.remove`; welcome Show gains a swipe step | B6 |
+ | 0080 | 2026-10-12 | Training corrections (list of 4), 2: the **highlight ring and its surroundings follow the theme**. The ring, glow, dim, cursor ripple, progress bar, PRACTICE badge and the Show note border use the theme's accent (brand peach, the dark theme's near white, or the colour you chose in Settings, lightened if it is too dark to stand out) instead of one fixed amber; the dim is the theme's own dark; the ring always keeps a 3:1 contrast against the dim. New `src/lib/trainingPalette.ts` (pure, tested) and `src/ui/spotlight.ts` | B6 |
++| 0081 | 2026-10-12 | Training corrections (list of 2), 1: **a hint now visibly arrives**. Each press of Hint shows a toast at the top of the screen ("Hint 2 of 4", then "The answer"; it fades after a reading time on the main screen and stays until closed inside a window, where the bar is hidden), and the toast and the bar's hint text pulse once in size and colour along your curve `48.225 * t^2 * (0.8 - t)^3` (t in seconds, 0.8 s long, peak about 0.546 at 0.32 s, held at 0 after 0.8). A press at the last rung pulses again so it is always seen; light haptic and a VoiceOver announcement; Reduce Motion keeps the colour and drops the size. New `src/lib/hintPulse.ts` (pure, tested), `src/ui/HintPulse.tsx`, `src/ui/HintToast.tsx`; the old window-only text card is replaced | B6 |
+ 
+ ---
+ 
+@@ -402,6 +403,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [~] N28 **Policy answered; device check pending:** restrictions should apply to manual Item, Line and Whole-order price adjustments only. Cart discounts, line discounts and discount presets remain unaffected. An adjustment is a staff-entered price override; a discount is a promotional/voucher reduction, so the same permission switch should not silently block both. Device verification remains in N28's originally requested role-flow checks.
+ - [ ] N32 **Blocking for F4:** please send me a skill (or a written style guide) for removing AI-sounding writing and for Australian English, so I apply your rules rather than guessing them. Nothing else in Final Touches waits on it.
+ - [ ] N27 **Non-blocking (B7b):** the Help screen is not run in my sandbox (only its logic is tested), so please try it. On the iPad and a phone: More ▸ Help; search for "scan" and "cart"; flip between Basic, Deep and Advanced (it should remember your choice after closing the app); tap a blue link and a page in the lists, then use Back (it should walk back through the pages you opened); open **Checkout: the main screen** at Advanced and check the two flowcharts draw and scroll sideways; try it in Simple and Minimal display modes and in dark theme. Tell me anything that looks wrong, and whether the flowcharts are readable.
++- [ ] N33 **Non-blocking (B6, 0081):** on the iPad, run a Check and press Hint. The toast should slide in at the top and pulse once (a quick grow and glow that peaks a third of a second in and is gone by 0.8 s), and the bar's hint text should pulse with it. Press Hint until the answer is ringed, then press once more: the toast should pulse again with no new text. Open a window during a Check (a sheet) and press Hint there: the toast should appear on the window and stay until you tap its x. Tell me if the pulse is too strong or too weak (the two numbers are `PULSE_SCALE_GAIN` and `PULSE_TINT_ALPHA` in `src/lib/hintPulse.ts`), whether the toast covers anything you need, and how it looks in the light, dark and brand themes. Also try with Reduce Motion on (colour only, no growing).
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/patches/0081-plan.md b/docs/patches/0081-plan.md
+new file mode 100644
+index 0000000..897c38a
+--- /dev/null
++++ b/docs/patches/0081-plan.md
+@@ -0,0 +1,20 @@
++# Patch 0081: a hint visibly arrives (list of 2, point 1)
++
++Stacks on 0080.
++
++## What you asked for
++When you request a hint there should be visual feedback that it was given. A toast might be the better place for it. The hint's container (or its text) pulses with colour and size once when a hint (or a new hint) appears, following `const intensity = 48.225 * Math.pow(t, 2) * Math.pow(0.8 - t, 3);` where t is time.
++
++## What was wrong
++The hint text showed in two places, and neither reacted when it changed: the bar under the app (the hint text replaced the goal text) and a card that only appeared over windows. Pressing Hint at the last rung changed nothing on screen at all.
++
++## How it works
++- `src/lib/hintPulse.ts` (pure, tested): `pulseIntensity(t)` is your curve with t in seconds. It is 0 at t = 0, peaks at t = 0.32 s at about 0.546, and is 0 again at t = 0.8 s. Past 0.8 the expression goes negative, so it is held at 0: a pulse lasts exactly 0.8 s. Size = 1 + 0.15 x intensity (about +8% at the peak). Colour strength = intensity divided by the peak, so it is full strength exactly at the peak. `pulseSamples()` gives the curve as sample points for the native animation (the peak is always a sample; the sampled curve stays within 0.005 of the real one).
++- `src/ui/HintPulse.tsx` (`PulseBox`): one time value runs 0 to 0.8 s when `k` changes (and on first appearing). The size, a soft tint and an accent edge are all read off it, so they stay in step. Native driven. Reduce Motion keeps the colour and drops the size.
++- `src/ui/HintToast.tsx`: bulb (or flag for the answer), "Hint 2 of 4" or "The answer", the text, a close x, a light haptic and a VoiceOver announcement. Colour is the theme accent (the Hint button's colour).
++- The toast shows on every layer (before, only windows had a card). On the main screen it fades after a reading time (6 to 14 s by length) because the bar keeps the text; inside a window it stays until its x is tapped, because the bar is hidden there. Each layer keeps its own "closed" state, so a window shows the current hint when it opens. An off-course notice always takes the place of a hint. The toast uses the existing `Floating` placement, so it moves out of the way of the ringed answer and of the window's Hint and Exit buttons.
++- The bar's hint text sits in the same pulsing box (growing from its left edge, so it never spills into the buttons) with a small "Hint 2 of 4" label.
++- `useTraining.hintPress` counts every press, including one at the last rung that changes nothing; it is in the view (`DockView.hintPress`), so the pulse fires in the same frame as the new text and again on a press that adds nothing. Pressing Hint now also asks the driver for an immediate check, so the hint appears within a frame or two instead of waiting for the next 120 ms poll.
++
++## Not changed
++How many hints a goal has, the ladder rules, the hint count saved in progress (a press at the last rung still counts as one, as before), the Guide (no hints there).
+diff --git a/help/help.json b/help/help.json
+index cbb8c63..c890f31 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "76ac2646",
++ "version": "f3181bdc",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1672,7 +1672,7 @@
+    "updated": "2026-10-12",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\nThe moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen (\"Hint 2 of 4\") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\nThe moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
+     "deep": "Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+     "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nThe starter course, **How training works**, is an engine demonstration, not a complete course catalogue. Additional task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+diff --git a/help/staff/training.md b/help/staff/training.md
+index 44d27f9..1be8014 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -20,7 +20,7 @@ Each course has six parts:
+ 5. **Check 2** repeats the task with a realistic customer-side problem to recover from.
+ 6. **Done** recaps what you can do and marks the course complete.
+ 
+-In the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint becomes more specific; after the last hint, the app highlights the answer. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
++In the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen ("Hint 2 of 4") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.
+ 
+ The moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.
+ 
+diff --git a/src/lib/hintPulse.ts b/src/lib/hintPulse.ts
+new file mode 100644
+index 0000000..0cb0377
+--- /dev/null
++++ b/src/lib/hintPulse.ts
+@@ -0,0 +1,48 @@
++// Location: src/lib/hintPulse.ts
++// The one-off pulse that shows a hint has been given (B6 Check), and the small pure helpers for the hint toast. Pure, tested (tests/hintpulse.test.ts).
++//
++// The curve is the one asked for: intensity(t) = 48.225 * t^2 * (0.8 - t)^3, with t in seconds.
++// It is 0 at t = 0, rises to its peak at t = 0.32 s (about 0.546), and is back to 0 at t = 0.8 s. Past 0.8 the expression goes negative,
++// so it is held at 0 there: the pulse lasts exactly 0.8 s. The drawing is in src/ui/HintPulse.tsx.
++
++/** How long one pulse lasts, in seconds. The curve is zero from here on. */
++export const PULSE_SECONDS = 0.8;
++/** Where the curve peaks, in seconds (the root of its slope: 2(0.8 - t) = 3t). */
++export const PULSE_PEAK_AT = 0.32;
++
++/** The curve itself. Zero before the pulse starts, after it ends, and for anything that is not a number. */
++export function pulseIntensity(t: number): number {
++  if (!Number.isFinite(t) || t <= 0 || t >= PULSE_SECONDS) return 0;
++  return 48.225 * Math.pow(t, 2) * Math.pow(PULSE_SECONDS - t, 3);
++}
++/** The highest value the curve reaches (at PULSE_PEAK_AT). */
++export const PULSE_PEAK = pulseIntensity(PULSE_PEAK_AT);
++
++/** How much the container grows at full intensity: 1 + gain * intensity, so the peak is about 8% bigger. */
++export const PULSE_SCALE_GAIN = 0.15;
++/** How strongly the tint and edge are drawn at full intensity (0 to 1 of the colour). */
++export const PULSE_TINT_ALPHA = 0.22;
++export const pulseScale = (intensity: number): number => 1 + PULSE_SCALE_GAIN * intensity;
++/** Colour strength from 0 to 1: the curve divided by its own peak, so the colour is at full strength exactly at the peak. */
++export const pulseMix = (intensity: number): number => Math.max(0, Math.min(1, intensity / PULSE_PEAK));
++
++export type PulseSamples = { t: number[]; intensity: number[]; scale: number[]; mix: number[] };
++/**
++ * The curve sampled for `Animated.Value.interpolate` (so it can run on the native thread): `t` is the input range, in seconds, and
++ * `intensity`, `scale` and `mix` are matching output ranges. The peak is always one of the samples, so it is hit exactly.
++ */
++export function pulseSamples(steps = 48): PulseSamples {
++  const ts = new Set<number>();
++  for (let i = 0; i <= steps; i++) ts.add(Math.round((PULSE_SECONDS * i / steps) * 1e6) / 1e6);
++  ts.add(PULSE_PEAK_AT);
++  const t = [...ts].sort((a, b) => a - b); const intensity = t.map(pulseIntensity);
++  return { t, intensity, scale: intensity.map(pulseScale), mix: intensity.map(pulseMix) };
++}
++
++/** The title of the hint toast: which hint this is, or that it is the answer. */
++export function hintLabel(level: number, left: number, answer: boolean): string {
++  if (answer) return 'The answer';
++  const l = Math.max(1, Math.round(level)); return `Hint ${l} of ${l + Math.max(0, Math.round(left))}`;
++}
++/** How long the toast stays on the main screen (the bar keeps the text): long enough to read it, never less than 6 s or more than 14 s. */
++export const toastMs = (chars: number): number => Math.round(Math.max(6000, Math.min(14000, 3000 + Math.max(0, chars) * 60)));
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index 74dbac6..7d7cfa9 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -18,6 +18,8 @@ import type { Rect } from '../lib/trainingGeometry';
+ export type DockView = {
+   mode: 'guide' | 'check'; title: string; say: string; rect: Rect | null; next: boolean; reveal: boolean; nudge: boolean;
+   hintLevel: number; hintsLeft: number; canSkip: boolean; objective?: string; counter: string; stage: Stage; index: number; total: number;
++  /** How many times Hint has been pressed (see Sess.hintPress). In the view so the toast and its pulse change in the same frame as the hint text, and again on a press that adds nothing new. */
++  hintPress?: number;
+   /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
+   gesture?: Gesture;
+   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
+@@ -25,6 +27,8 @@ export type DockView = {
+ };
+ type Sess = {
+   run: Run | null; sandbox: boolean; hint: HintState; view: DockView | null; progress: Progress; loaded: boolean;
++  /** Goes up on every press of Hint, including one at the last rung that changes nothing, so the person always sees the press was heard (the toast pulses on it). Never reset. */
++  hintPress: number;
+   /** Goes up each time the person asks "how do I do this?" while off course, so the card opens its steps. */
+   howNonce: number; openHow: () => void;
+   loadProgress: () => Promise<void>;
+@@ -44,7 +48,7 @@ let real: Swap | null = null;
+ let goalStart: Swap | null = null;
+ 
+ export const useTraining = create<Sess>((set, get) => ({
+-  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, howNonce: 0,
++  run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
+   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),
+   loadProgress: async () => { if (get().loaded) return; set({ progress: readProgress(await kvGet(TRAINING_PROGRESS_KEY, null)), loaded: true }); },
+   begin: (moduleId, stage = 'info') => set({ run: startRun(moduleId, stage), hint: freshHints(), view: null }),
+@@ -76,7 +80,7 @@ export const useTraining = create<Sess>((set, get) => ({
+     set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p);
+     const next = finishStage(run); const r: Run = { ...next, introSeen: false }; set({ run: r, hint: freshHints(), view: null }); return r;
+   },
+-  pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
++  pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), hintPress: s.hintPress + 1, run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
+   setView: v => set({ view: v }),
+   captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
+   restartGoal: inj => {
+diff --git a/src/training/README.md b/src/training/README.md
+index c077888..183fbd5 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -39,7 +39,7 @@ A spot is a button, tile or row with an id. Add `spot={SPOT.something}` to `Btn`
+ 
+ ## Goals and hints
+ 
+-A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look.
++A goal has a `title`, an `until` (never `next`), a `ladder` of at least two hints from vague to specific, and a `reveal` spot. Each press of Hint goes one rung up. After the last hint the answer is ringed on screen. If the reveal spot may be off screen (a phone), give a `via` spot to point at first. Write hints as pointers, not instructions: the first should only say where to look. Each press shows the hint in a toast at the top of the screen ("Hint 2 of 4", then "The answer") and in the bar under the app, and its box pulses once (size and colour, over 0.8 seconds, following `48.225 * t^2 * (0.8 - t)^3`; see `src/lib/hintPulse.ts`). A press at the last rung changes no text but pulses again, so the press is always seen. On the main screen the toast fades after a reading time (the bar keeps the text); inside a window it stays until its x is tapped, because the bar is hidden there. An off-course notice always takes the place of a hint.
+ 
+ ## Going off course (Guide and Checks)
+ 
+diff --git a/src/ui/HintPulse.tsx b/src/ui/HintPulse.tsx
+new file mode 100644
+index 0000000..7c6a28c
+--- /dev/null
++++ b/src/ui/HintPulse.tsx
+@@ -0,0 +1,42 @@
++// Location: src/ui/HintPulse.tsx
++// A box that pulses once, in size and colour, each time `k` changes (and once when it first appears). The shape of the pulse is the curve in
++// src/lib/hintPulse.ts, played by one time value running from 0 to 0.8 s; the size, the tint and the edge are all read off it, so they stay in step.
++// All native driven. Uses plain React Native views, not ../ui/kit, because kit imports the training overlay.
++import React, { useEffect, useMemo, useRef } from 'react';
++import { Animated, Easing, StyleSheet, type StyleProp, type ViewStyle } from 'react-native';
++import { PULSE_SECONDS, PULSE_TINT_ALPHA, pulseSamples } from '../lib/hintPulse';
++
++type Props = {
++  /** Changes each time a (new) hint is given. The pulse plays again whenever it changes. */
++  k: string | number;
++  /** The colour of the tint and the edge (the theme's accent). */
++  color: string;
++  /** Match the box's own corner radius so the tint and edge sit inside it. */
++  radius?: number;
++  /** Reduce Motion: the colour still pulses, the size does not. */
++  reduce?: boolean;
++  /** Where the box grows from. Default is the middle; a box that fills a row should grow from its left edge. */
++  origin?: string;
++  style?: StyleProp<ViewStyle>;
++  children?: React.ReactNode;
++};
++export default function PulseBox({ k, color, radius = 14, reduce = false, origin, style, children }: Props) {
++  const s = useMemo(() => pulseSamples(), []);
++  // Rests at the end of the curve (intensity 0), so a box that is not pulsing looks exactly as it would without this wrapper.
++  const t = useRef(new Animated.Value(PULSE_SECONDS)).current;
++  useEffect(() => {
++    t.setValue(0);
++    const a = Animated.timing(t, { toValue: PULSE_SECONDS, duration: PULSE_SECONDS * 1000, easing: Easing.linear, useNativeDriver: true });
++    a.start(); return () => a.stop();
++  }, [k]); // eslint-disable-line react-hooks/exhaustive-deps
++  const scale = reduce ? 1 : t.interpolate({ inputRange: s.t, outputRange: s.scale });
++  const edge = t.interpolate({ inputRange: s.t, outputRange: s.mix });
++  const tint = t.interpolate({ inputRange: s.t, outputRange: s.mix.map(m => m * PULSE_TINT_ALPHA) });
++  return (
++    <Animated.View style={[style, { transform: [{ scale }] }, origin ? ({ transformOrigin: origin } as ViewStyle) : null]}>
++      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, backgroundColor: color, opacity: tint }]} />
++      <Animated.View pointerEvents="none" style={[StyleSheet.absoluteFill, { borderRadius: radius, borderWidth: 2, borderColor: color, opacity: edge }]} />
++      {children}
++    </Animated.View>
++  );
++}
+diff --git a/src/ui/HintToast.tsx b/src/ui/HintToast.tsx
+new file mode 100644
+index 0000000..ab66da4
+--- /dev/null
++++ b/src/ui/HintToast.tsx
+@@ -0,0 +1,38 @@
++// Location: src/ui/HintToast.tsx
++// The card that announces a hint in a Check: a bulb, "Hint 2 of 4" (or "The answer"), the hint, and a small close button. It pulses once each time Hint is pressed
++// (see src/lib/hintPulse.ts), gives a light tap and tells VoiceOver. TrainingOverlay places it (it moves out of the way of what you need to tap).
++// On the main screen it fades after a reading time because the bar under the app keeps the text; inside a window there is no bar, so it stays until it is closed.
++// Uses plain React Native views, not ../ui/kit, because kit imports the training overlay.
++import React, { useEffect } from 'react';
++import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import * as Haptics from 'expo-haptics';
++import { useTheme } from './theme';
++import { useReduceMotion } from './Motion';
++import PulseBox from './HintPulse';
++import { hintLabel, toastMs } from '../lib/hintPulse';
++import type { DockView } from '../state/trainingSession';
++
++export default function HintToast({ view, persist, onClose }: { view: DockView; /** Stay until closed (a window has no bar to keep the text). */ persist: boolean; onClose: () => void }) {
++  const { c } = useTheme(); const reduce = useReduceMotion();
++  const press = view.hintPress ?? 0; const answer = view.canSkip; const label = hintLabel(view.hintLevel, view.hintsLeft, answer);
++  // One effect per press or new text: the tap, the announcement, and (on the main screen) the timer that fades the toast.
++  useEffect(() => {
++    try { void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); } catch { /* no haptics: the pulse is enough */ }
++    try { AccessibilityInfo.announceForAccessibility(`${label}. ${view.say}`); } catch { /* not announced */ }
++    if (persist) return undefined;
++    const t = setTimeout(onClose, toastMs(view.say.length)); return () => clearTimeout(t);
++  }, [press, view.say]); // eslint-disable-line react-hooks/exhaustive-deps
++  return (
++    <PulseBox k={`${press}|${view.say}`} color={c.accent} radius={14} reduce={reduce} style={{ backgroundColor: c.card, borderRadius: 14, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
++      <View accessibilityLiveRegion="polite" style={{ padding: 12, gap: 6 }}>
++        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
++          <Ionicons name={answer ? 'flag' : 'bulb'} size={18} color={c.accent} />
++          <Text style={{ color: c.sub, fontSize: 12, fontWeight: '800', textTransform: 'uppercase', flex: 1 }}>{label}</Text>
++          <Pressable onPress={onClose} hitSlop={10} accessibilityRole="button" accessibilityLabel="Close the hint"><Ionicons name="close" size={20} color={c.sub} /></Pressable>
++        </View>
++        <Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text>
++      </View>
++    </PulseBox>
++  );
++}
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+index 4c1ebd9..bf2800e 100644
+--- a/src/ui/TrainingDock.tsx
++++ b/src/ui/TrainingDock.tsx
+@@ -9,10 +9,12 @@ import { useTraining } from '../state/trainingSession';
+ import { getModule } from '../training';
+ import { STAGE_LABEL } from '../lib/trainingModule';
+ import { trainingActions } from './trainingActions';
+-import { Enter } from './Motion';
++import { Enter, useReduceMotion } from './Motion';
++import PulseBox from './HintPulse';
++import { hintLabel } from '../lib/hintPulse';
+ 
+ export default function TrainingDock() {
+-  const { c } = useTheme(); const sp = useSpotlight(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
++  const reduce = useReduceMotion(); const { c } = useTheme(); const sp = useSpotlight(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
+   const pulse = useRef(new Animated.Value(0)).current; const nudge = !!view?.nudge;
+   useEffect(() => { if (!nudge) { pulse.setValue(0); return undefined; } const l = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: false }), Animated.timing(pulse, { toValue: 0, duration: 600, useNativeDriver: false })])); l.start(); return () => l.stop(); }, [nudge, pulse]);
+   if (!run) return null;
+@@ -25,7 +27,13 @@ export default function TrainingDock() {
+           <View style={{ backgroundColor: sp.ring, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: sp.onRing, fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
+           <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{mod?.title ?? 'Training'} · {STAGE_LABEL[run.stage]}{view ? ` · ${view.counter}` : ''}</Text>
+         </View>
+-        <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{view?.stray ? `Off course: ${view.stray.title}` : check ? (view?.say ? view.say : view?.objective) : view?.title === mod?.title ? 'Follow the arrows.' : view?.title ?? ''}</Text>
++        {view && check && !view.stray && view.hintLevel > 0 && !!view.say ? (
++          // A hint is showing: its box pulses once each time Hint is pressed (and once more if the press changes nothing), so you can see it was given.
++          <PulseBox k={`${view.hintPress ?? 0}|${view.say}`} color={c.accent} radius={8} reduce={reduce} origin="left center" style={{ alignSelf: 'flex-start', maxWidth: '100%', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, marginLeft: -6 }}>
++            <Text style={{ color: c.sub, fontSize: 11, fontWeight: '800', textTransform: 'uppercase' }}>{hintLabel(view.hintLevel, view.hintsLeft, view.canSkip)}</Text>
++            <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{view.say}</Text>
++          </PulseBox>
++        ) : <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{view?.stray ? `Off course: ${view.stray.title}` : check ? (view?.say ? view.say : view?.objective) : view?.title === mod?.title ? 'Follow the arrows.' : view?.title ?? ''}</Text>}
+         {check && view?.say ? <Text style={{ color: c.sub, fontSize: 12 }} numberOfLines={2}>Goal: {view.objective}</Text> : null}
+         {nudge ? <Text style={{ color: c.warn, fontSize: 12, fontWeight: '700' }}>Stuck? Tap Hint.</Text> : null}
+       </View>
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 49c2df0..597b447 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -61,7 +61,8 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+     };
+     trainingActions.next = () => { nextTap.current = true; };
+     // While off course the card is what is on screen, so Hint opens its steps instead of spending a hint the person cannot see.
+-    trainingActions.hint = () => { const t = useTraining.getState(); if (t.view?.stray?.how.length) { t.openHow(); return; } const cur = current(); if (cur?.goal) t.pressHint(cur.goal.id, cur.goal.ladder); };
++    // A press asks for an immediate check, so the hint (and its toast and pulse) shows within a frame or two instead of waiting for the next poll.
++    trainingActions.hint = () => { const t = useTraining.getState(); if (t.view?.stray?.how.length) { t.openHow(); return; } const cur = current(); if (cur?.goal) { t.pressHint(cur.goal.id, cur.goal.ladder); kickRef.current?.(); } };
+     trainingActions.restart = () => {
+       const cur = current(); if (!cur?.goal && !cur?.step) return; const st = useTraining.getState();
+       if (!st.restartGoal(cur.goal?.inject)) return;
+@@ -124,7 +125,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           let strayView: DockView['stray'];
+           if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
+           setGate(null);
+-          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
++          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+         }
+         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
+         if (s !== sig.current) { sig.current = s; useTraining.getState().setView(view); }
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index ae959e1..2c3c90c 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -14,7 +14,8 @@ import * as Haptics from 'expo-haptics';
+ import { useTheme } from './theme';
+ import { useSpotlight } from './spotlight';
+ import Swap from './Swap';
+-import { useReduceMotion } from './Motion';
++import HintToast from './HintToast';
++import { Enter, useReduceMotion } from './Motion';
+ import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
+ import { centred, grow, onScreen, placeBubble, placeNotice, type Rect, type Size, type Slot } from '../lib/trainingGeometry';
+ import { HOLD_MS, glideMs, irisStart, isTinyMove, segments } from '../lib/guideMotion';
+@@ -165,6 +166,8 @@ function StrayCard({ stray }: { stray: StrayView }) {
+ export default function TrainingOverlay({ layer }: { layer: string }) {
+   const { c } = useTheme(); const sp = useSpotlight(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
+   const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(150);
++  // The press whose hint toast has been closed (by the person, or by its timer on the main screen). Each layer keeps its own, so a window shows the current hint when it opens.
++  const [shut, setShut] = useState(-1);
+   const measure = () => box.current?.measureInWindow((x, y, w, h) => { setOrigin({ x, y }); if (w > 0 && h > 0) setSize({ w, h }); });
+   // Window coordinates from the driver become local to this layer, and a target outside this layer's frame counts as not there.
+   const local: Rect | null = view?.rect ? { x: view.rect.x - origin.x, y: view.rect.y - origin.y, w: view.rect.w, h: view.rect.h } : null;
+@@ -251,7 +254,9 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+           <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={{ backgroundColor: c.fill, borderRadius: 999, paddingHorizontal: 14, paddingVertical: 9 }}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
+         </View>
+       ) : null}
+-      {!isRoot && view.mode === 'check' && view.say && !view.stray ? <Floating avoid={avoid} screen={size} top={56} prefer="bottom" pointerEvents="none"><View style={{ backgroundColor: c.card, borderRadius: 14, padding: 12, borderWidth: 1, borderColor: c.line }}><Swap k={view.say} dy={6} appear><Text style={{ color: c.text, fontSize: 15, lineHeight: 21 }}>{view.say}</Text></Swap></View></Floating> : null}
++      {/* The hint toast. It shows on every layer, not just windows, and an off-course notice always wins over it (the notice is the thing to act on). */}
++      {view.mode === 'check' && view.hintLevel > 0 && !!view.say && !view.stray && shut !== (view.hintPress ?? 0)
++        ? <Floating avoid={avoid} screen={size} top={isRoot ? 12 : 56} prefer={isRoot ? 'top' : 'bottom'} pointerEvents="box-none"><Enter from="up" distance={18} duration={300}><HintToast view={view} persist={!isRoot} onClose={() => setShut(view.hintPress ?? 0)} /></Enter></Floating> : null}
+     </View>
+   );
+ }
+diff --git a/tests/hintpulse.test.ts b/tests/hintpulse.test.ts
+new file mode 100644
+index 0000000..c7a2471
+--- /dev/null
++++ b/tests/hintpulse.test.ts
+@@ -0,0 +1,74 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { PULSE_PEAK, PULSE_PEAK_AT, PULSE_SCALE_GAIN, PULSE_SECONDS, PULSE_TINT_ALPHA, hintLabel, pulseIntensity, pulseMix, pulseSamples, pulseScale, toastMs } from '../src/lib/hintPulse';
++
++// The curve exactly as it was asked for, written out here so the test does not just compare the code with itself.
++const asked = (t: number): number => 48.225 * Math.pow(t, 2) * Math.pow(0.8 - t, 3);
++
++test('the pulse is the requested curve at every point inside 0 to 0.8 seconds', () => {
++  for (let i = 1; i < 800; i++) { const t = i / 1000; assert.equal(pulseIntensity(t), asked(t), `t = ${t}`); }
++  assert.equal(pulseIntensity(0.1), asked(0.1)); assert.equal(pulseIntensity(0.5), asked(0.5));
++});
++
++test('it starts and ends at zero, and is held at zero outside the pulse (the raw expression goes negative after 0.8)', () => {
++  assert.equal(pulseIntensity(0), 0); assert.equal(pulseIntensity(PULSE_SECONDS), 0);
++  assert.ok(asked(0.9) < 0, 'the raw expression really does go negative, so the hold matters');
++  assert.equal(pulseIntensity(0.9), 0); assert.equal(pulseIntensity(5), 0); assert.equal(pulseIntensity(-0.3), 0);
++  assert.equal(pulseIntensity(NaN), 0); assert.equal(pulseIntensity(Infinity), 0); assert.equal(pulseIntensity(-Infinity), 0);
++});
++
++test('it never goes below zero or to a non-number, and it rises once then falls once', () => {
++  let prev = 0; let peaked = false; let turns = 0;
++  for (let i = 0; i <= 900; i++) {
++    const v = pulseIntensity(i / 1000); assert.ok(Number.isFinite(v) && v >= 0, `t = ${i / 1000}`);
++    if (i > 0 && i <= 800) { const rising = v > prev; if (!rising && !peaked) { peaked = true; turns += 1; } if (rising && peaked) turns += 100; }
++    prev = v;
++  }
++  assert.equal(turns, 1, 'one turning point only');
++});
++
++test('the peak is at 0.32 seconds and is about 0.546, not 1', () => {
++  assert.equal(PULSE_PEAK_AT, 0.32); assert.equal(PULSE_PEAK, pulseIntensity(0.32));
++  assert.ok(PULSE_PEAK > 0.54 && PULSE_PEAK < 0.55, `peak ${PULSE_PEAK}`);
++  let best = 0; let at = 0; for (let i = 0; i <= 8000; i++) { const t = i / 10000; const v = pulseIntensity(t); if (v > best) { best = v; at = t; } }
++  assert.ok(Math.abs(at - 0.32) < 0.0005, `peak found at ${at}`); assert.ok(Math.abs(best - PULSE_PEAK) < 1e-6);
++});
++
++test('size and colour are read off the curve: size grows by about 8% at the peak, colour is full strength exactly at the peak', () => {
++  assert.equal(pulseScale(0), 1); assert.ok(Math.abs(pulseScale(PULSE_PEAK) - (1 + PULSE_SCALE_GAIN * PULSE_PEAK)) < 1e-12);
++  assert.ok(pulseScale(PULSE_PEAK) > 1.07 && pulseScale(PULSE_PEAK) < 1.09);
++  assert.equal(pulseMix(0), 0); assert.ok(Math.abs(pulseMix(PULSE_PEAK) - 1) < 1e-12);
++  assert.equal(pulseMix(-1), 0); assert.equal(pulseMix(99), 1, 'never stronger than the full colour');
++  assert.ok(PULSE_TINT_ALPHA > 0 && PULSE_TINT_ALPHA < 0.5, 'a tint, not a block of colour (the text sits on it)');
++});
++
++test('the samples used by the animation: strictly increasing, start and end at rest, hit the peak exactly, and stay close to the true curve between samples', () => {
++  const s = pulseSamples();
++  assert.equal(s.t.length, s.intensity.length); assert.equal(s.t.length, s.scale.length); assert.equal(s.t.length, s.mix.length);
++  for (let i = 1; i < s.t.length; i++) assert.ok(s.t[i] > s.t[i - 1], 'interpolate needs a strictly increasing input range');
++  assert.equal(s.t[0], 0); assert.equal(s.t[s.t.length - 1], PULSE_SECONDS);
++  assert.equal(s.intensity[0], 0); assert.equal(s.intensity[s.intensity.length - 1], 0); assert.equal(s.scale[0], 1); assert.equal(s.mix[0], 0);
++  const k = s.t.indexOf(PULSE_PEAK_AT); assert.ok(k > 0, 'the peak is a sample'); assert.equal(s.intensity[k], PULSE_PEAK); assert.ok(Math.abs(s.mix[k] - 1) < 1e-12);
++  assert.ok(Math.max(...s.scale) < 1.09 && Math.min(...s.scale) >= 1); assert.ok(Math.max(...s.mix) <= 1 && Math.min(...s.mix) >= 0);
++  // Straight lines between samples (what the native interpolation does) against the real curve, at every point.
++  let worst = 0;
++  for (let i = 1; i < 800; i++) {
++    const t = i / 1000; let j = 1; while (s.t[j] < t) j++; const a = s.t[j - 1]; const b = s.t[j]; const f = (t - a) / (b - a);
++    const lerp = s.intensity[j - 1] + (s.intensity[j] - s.intensity[j - 1]) * f; worst = Math.max(worst, Math.abs(lerp - pulseIntensity(t)));
++  }
++  assert.ok(worst < 0.005, `the sampled curve is within ${worst} of the real one`);
++});
++
++test('fewer samples still keep the peak and the two ends', () => {
++  const s = pulseSamples(8); assert.ok(s.t.includes(0.32) && s.t.includes(0) && s.t.includes(0.8)); assert.equal(s.intensity[s.t.indexOf(0.32)], PULSE_PEAK);
++});
++
++test('the toast title says which hint this is, or that it is the answer', () => {
++  assert.equal(hintLabel(1, 3, false), 'Hint 1 of 4'); assert.equal(hintLabel(3, 0, false), 'Hint 3 of 3'); assert.equal(hintLabel(4, 0, true), 'The answer');
++  assert.equal(hintLabel(0, 0, false), 'Hint 1 of 1', 'never says Hint 0'); assert.equal(hintLabel(2, -5, false), 'Hint 2 of 2');
++});
++
++test('the toast stays long enough to read, never too short or too long', () => {
++  assert.equal(toastMs(0), 6000); assert.equal(toastMs(10), 6000); assert.equal(toastMs(1000), 14000); assert.equal(toastMs(-4), 6000);
++  assert.ok(toastMs(100) > toastMs(60) && toastMs(100) < 14000, 'a longer hint stays longer');
++});

@@ -17,6 +17,7 @@ import { useUi } from './uiProfile';
 import { openHelpPage, useNav } from './nav';
 import { helpForError } from '../lib/helpContext';
 import { spotPressed, useSpotRef } from './Spot';
+import { SPOT } from '../lib/trainingSpots';
 import { TrainingLayer } from './TrainingLayer';
 
 export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
@@ -128,7 +129,7 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 54, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
-        {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} /> : <View style={{ width: 12 }} />}
+        {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} spot={SPOT.back} /> : <View style={{ width: 12 }} />}
         <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}{helpId ? <HelpButton id={helpId} label={`Help for ${title}`} /> : null}
       </View>
       {scroll ? <RevealScroll inset contentContainerStyle={{ paddingBottom: 40, paddingTop: pad ? 4 : 0 }}>{children}</RevealScroll> : <View style={{ flex: 1 }}>{children}</View>}
@@ -145,7 +146,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
         <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 }}>
-            <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} /> : null}
+            <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} spot={SPOT.sheetClose} /> : null}
           </View>
           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
         </View>

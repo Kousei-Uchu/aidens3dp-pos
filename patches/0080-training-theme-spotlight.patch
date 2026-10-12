@@ -1,0 +1,385 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index e6739db..33caa83 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -82,6 +82,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0077 | 2026-10-12 | Training corrections (list of 5), 1b: the **off-course card moves out of the way** of what you need to tap. It sits at the top or bottom edge, or in a corner on a wide screen (narrower and taller), keeps its place while that is still clear, glides to a new one when the target moves under it, and never covers the Hint and Exit buttons of a window. The Check's goal bar over windows does the same. New pure `placeNotice` in `src/lib/trainingGeometry.ts` and a `Floating` card in `src/ui/TrainingOverlay.tsx` | B6 |
+ | 0078 | 2026-10-12 | Training corrections (list of 5), 1c: **every way of straying names the module that teaches the fix**. A table (`src/lib/trainingRemedies.ts`) gives each stray its plain steps and its teaching module (cart, discounts, price-adjust, customer, welcome). The off-course card shows the steps at once if the person has not finished that module, otherwise they wait behind a small ? button; Hint opens them while the card shows (it used to do nothing visible). Modules can give their own `watch` rules `how` and `taughtIn`. The modules named are the ones in the planned list, so they use these ids | B6 |
+ | 0079 | 2026-10-12 | Training corrections (list of 4), 1: the **cursor can swipe, scroll, double or triple tap and press and hold** (Guide and Show), course correction is **context aware** (no more "use the minus button" then "close this window"), and the **Guide allows only the interactions it asks for** (a swipe step blocks the tap that opened the line window; a Guide step allows no window unless it says so; the screen stays dimmed while off course with only the fix open). New `src/lib/pointerGesture.ts`, `src/lib/trainingGate.ts`, `fixCandidates` in `src/lib/trainingCourse.ts`; spots `line.minus` and `line.remove`; welcome Show gains a swipe step | B6 |
++| 0080 | 2026-10-12 | Training corrections (list of 4), 2: the **highlight ring and its surroundings follow the theme**. The ring, glow, dim, cursor ripple, progress bar, PRACTICE badge and the Show note border use the theme's accent (brand peach, the dark theme's near white, or the colour you chose in Settings, lightened if it is too dark to stand out) instead of one fixed amber; the dim is the theme's own dark; the ring always keeps a 3:1 contrast against the dim. New `src/lib/trainingPalette.ts` (pure, tested) and `src/ui/spotlight.ts` | B6 |
+ 
+ ---
+ 
+diff --git a/src/lib/trainingPalette.ts b/src/lib/trainingPalette.ts
+new file mode 100644
+index 0000000..d3820bf
+--- /dev/null
++++ b/src/lib/trainingPalette.ts
+@@ -0,0 +1,51 @@
++// Location: src/lib/trainingPalette.ts
++// The colours of the training spotlight (B6): the ring, the dim, the glow and the text on the ring. They come from the current theme, so the highlight
++// belongs to the app instead of being one amber for every look. The ring sits on the dimmed screen, so it must stand out from the DIM, not from the page:
++// the theme's accent is used when it does (brand peach, the dark theme's near white, a chosen colour that is light enough), a chosen colour that is too dark is
++// lightened until it does, and an accent that is almost black (the light theme) falls back to the theme's card surface. Pure, tested (tests/trainingpalette.test.ts).
++export type Rgb = { r: number; g: number; b: number; a: number };
++const hex2 = (n: number): string => Math.round(Math.max(0, Math.min(255, n))).toString(16).padStart(2, '0');
++
++/** Reads #RGB, #RRGGBB, #RRGGBBAA, rgb() and rgba(). Anything else is null. */
++export function parseColor(s: string | undefined | null): Rgb | null {
++  if (!s) return null; const t = s.trim();
++  let m = /^#([0-9a-f]{3})$/i.exec(t); if (m) { const [r, g, b] = m[1].split('').map(h => parseInt(h + h, 16)); return { r, g, b, a: 1 }; }
++  m = /^#([0-9a-f]{6})([0-9a-f]{2})?$/i.exec(t); if (m) { const v = m[1]; return { r: parseInt(v.slice(0, 2), 16), g: parseInt(v.slice(2, 4), 16), b: parseInt(v.slice(4, 6), 16), a: m[2] ? parseInt(m[2], 16) / 255 : 1 }; }
++  m = /^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)(?:[\s,/]+([\d.]+%?))?\s*\)$/i.exec(t);
++  if (m) { const a = m[4] === undefined ? 1 : m[4].endsWith('%') ? parseFloat(m[4]) / 100 : parseFloat(m[4]); return { r: +m[1], g: +m[2], b: +m[3], a: Math.max(0, Math.min(1, a)) }; }
++  return null;
++}
++export const toHex = (c: Rgb): string => `#${hex2(c.r)}${hex2(c.g)}${hex2(c.b)}`;
++export const rgba = (c: Rgb, a: number): string => `rgba(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)}, ${Math.round(a * 1000) / 1000})`;
++/** `over` painted on `under` (alpha respected). */
++export const blend = (over: Rgb, under: Rgb): Rgb => ({ r: over.r * over.a + under.r * (1 - over.a), g: over.g * over.a + under.g * (1 - over.a), b: over.b * over.a + under.b * (1 - over.a), a: 1 });
++export const mix = (a: Rgb, b: Rgb, t: number): Rgb => ({ r: a.r + (b.r - a.r) * t, g: a.g + (b.g - a.g) * t, b: a.b + (b.b - a.b) * t, a: 1 });
++/** WCAG relative luminance, 0 (black) to 1 (white). */
++export function luminance(c: Rgb): number { const f = (v: number): number => { const s = v / 255; return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4); }; return 0.2126 * f(c.r) + 0.7152 * f(c.g) + 0.0722 * f(c.b); }
++/** WCAG contrast ratio, 1 to 21. */
++export function contrast(a: Rgb, b: Rgb): number { const x = luminance(a); const y = luminance(b); return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05); }
++
++export type SpotlightPalette = { ring: string; onRing: string; dim: string; glow: string };
++type ThemeLike = { bg: string; card: string; text: string; accent: string };
++const WHITE: Rgb = { r: 255, g: 255, b: 255, a: 1 }; const BLACK: Rgb = { r: 17, g: 17, b: 17, a: 1 };
++/** The ring must be at least this far from the dim (3:1 is the usual line for a graphic that has to be seen). */
++export const RING_CONTRAST = 3;
++/** An accent darker than this is treated as "the theme's ink" (the light theme's near black), and the ring uses the surface instead of a grey. */
++const NEAR_BLACK = 0.05;
++
++/** The dim: the theme's own dark (its background when the theme is dark, its ink when it is light), strong enough that the lit box is clear. */
++export function dimOf(c: ThemeLike, dark: boolean): Rgb { const base = parseColor(dark ? c.bg : c.text) ?? BLACK; return { ...base, a: dark ? 0.74 : 0.6 }; }
++
++export function spotlightPalette(c: ThemeLike, dark: boolean): SpotlightPalette {
++  const page = parseColor(c.bg) ?? (dark ? BLACK : WHITE); const dim = dimOf(c, dark); const seen = blend(dim, page); // what the ring is drawn over
++  const accent = parseColor(c.accent); const card = parseColor(c.card);
++  const ok = (x: Rgb): boolean => contrast(x, seen) >= RING_CONTRAST;
++  let ring: Rgb | null = null;
++  if (accent && luminance(accent) >= NEAR_BLACK) {
++    if (ok(accent)) ring = accent;
++    else for (let t = 0.1; t <= 0.8 && !ring; t += 0.1) { const lighter = mix(accent, WHITE, t); if (ok(lighter)) ring = lighter; }
++  }
++  if (!ring) ring = card && luminance(card) >= 0.4 && ok(card) ? card : WHITE;
++  const onRing = contrast(ring, BLACK) >= contrast(ring, WHITE) ? '#111111' : '#FFFFFF';
++  return { ring: toHex(ring), onRing, dim: rgba(dim, dim.a), glow: toHex(ring) };
++}
+diff --git a/src/screens/TrainingRun.tsx b/src/screens/TrainingRun.tsx
+index 15e2bae..1b5a55c 100644
+--- a/src/screens/TrainingRun.tsx
++++ b/src/screens/TrainingRun.tsx
+@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
+ import * as Haptics from 'expo-haptics';
+ import { Btn, Page, Txt, alertMsg } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
++import { useSpotlight } from '../ui/spotlight';
+ import { useNav, type Tab } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { useTraining } from '../state/trainingSession';
+@@ -87,7 +88,7 @@ function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
+ }
+ 
+ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
+-  const { c } = useTheme(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
++  const { c } = useTheme(); const sp = useSpotlight(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
+   if (!t) return null;
+   const start = async () => {
+     const early = trainingBlocker(useApp.getState()); if (early) { alertMsg('Training cannot start yet', early); return; } // say so before the screen dips, not after
+@@ -99,7 +100,7 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
+   };
+   return (
+     <Enter style={{ gap: 14 }}>
+-      <View style={{ backgroundColor: '#F59E0B', alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color="#111">PRACTICE DATA</Txt></View>
++      <View style={{ backgroundColor: sp.ring, alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color={sp.onRing}>PRACTICE DATA</Txt></View>
+       <Txt size={22} weight="700">{t.title}</Txt>
+       <Txt>{t.body}</Txt>
+       <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, gap: 6 }}>
+diff --git a/src/training/README.md b/src/training/README.md
+index eed0425..c077888 100644
+--- a/src/training/README.md
++++ b/src/training/README.md
+@@ -57,6 +57,10 @@ For a Guide step the three rules are optional. `allow` is worked out when left o
+ 
+ Each deviation is explained in one plain sentence, with the control to tap ringed and pointed at. It appears after about a second, so a normal path is never flagged. If it can only be fixed by starting over (a sale went through, a payment was started), or the person is still stuck after 12 seconds, **Start this part again** is offered. Each deviation also carries the steps that put it right and the module that teaches them, from the table in `src/lib/trainingRemedies.ts`. The card shows the steps at once when the person has not finished that module, and keeps them behind a small "?" button when they have (Hint opens them too while the card is showing), so nobody is stuck on a fix they have forgotten. **If you build a module, use the ids that table names** (`cart`, `discounts`, `price-adjust`, `customer`, and so on), so "taught in" points at it. A **Start again** button is always on the bar in a Check. It puts the practice till back exactly as the goal began, so nobody can get stuck. The rules are in `src/lib/trainingCourse.ts`.
+ 
++## Colours
++
++The spotlight (the ring, the dim, the glow, the PRACTICE badge and the Show note border) takes its colours from the current theme: `useSpotlight()` in `src/ui/spotlight.ts`, worked out by `spotlightPalette` in `src/lib/trainingPalette.ts`. Use it, never a fixed colour. The ring is the theme's accent when it stands out from the dim, a chosen accent that is too dark is lightened, and an almost black accent (the light theme) uses the theme's card surface.
++
+ ## Injections
+ 
+ - `cart`: start with these lines in the cart (practice item ids, see `src/lib/trainingSandbox.ts`)
+diff --git a/src/ui/DemoView.tsx b/src/ui/DemoView.tsx
+index 2b2a306..8626873 100644
+--- a/src/ui/DemoView.tsx
++++ b/src/ui/DemoView.tsx
+@@ -10,16 +10,17 @@ import { AccessibilityInfo, Animated, Easing, Text, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { TILE_COLORS, useTheme, type Colors } from './theme';
+ import { tap } from './kit';
++import { useSpotlight } from './spotlight';
+ import { MAX_ZOOM, demoStateAfter, fitBox, planStep, renderScale, type Note, type NodeView } from '../lib/trainingDemo';
+ import type { Demo } from '../lib/trainingModule';
+ import { gesturePlan, isPress } from '../lib/pointerGesture';
+ 
+-const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)'; const BIG = 3000;
++const BIG = 3000;
+ const toneColor = (c: Colors, t?: string, fallback?: string) => (t === 'good' ? c.good : t === 'bad' ? c.bad : t === 'accent' ? c.accent : fallback ?? c.text);
+ 
+ /** Fades a node in or out when a step shows or hides it, dips it when the pointer taps it, and draws it by kind. */
+ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
+-  const { c } = useTheme(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
++  const { c } = useTheme(); const sp = useSpotlight(); const u = (v: number) => v * k; const o = useRef(new Animated.Value(n.hidden ? 0 : 1)).current; const s = useRef(new Animated.Value(1)).current; const knob = useRef(new Animated.Value(n.on ? 1 : 0)).current;
+   useEffect(() => { Animated.timing(o, { toValue: n.hidden ? 0 : 1, duration: 280, useNativeDriver: false }).start(); }, [n.hidden]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { Animated.timing(knob, { toValue: n.on ? 1 : 0, duration: 260, useNativeDriver: false }).start(); }, [n.on]); // eslint-disable-line react-hooks/exhaustive-deps
+   useEffect(() => { if (press > 0) Animated.sequence([Animated.timing(s, { toValue: 0.93, duration: 110, useNativeDriver: false }), Animated.spring(s, { toValue: 1, friction: 5, useNativeDriver: false })]).start(); }, [press]); // eslint-disable-line react-hooks/exhaustive-deps
+@@ -33,7 +34,7 @@ function MockNode({ n, press, k }: { n: NodeView; press: number; k: number }) {
+     case 'text': body = <View style={{ flex: 1, justifyContent: 'center' }}><Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(n.size ?? 13), fontWeight: '600', textAlign: n.align ?? 'left' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: c.sub, fontSize: u(Math.max(9, (n.size ?? 13) - 2)), textAlign: n.align ?? 'left' }}>{n.sub}</Text> : null}</View>; break;
+     case 'button': { const solid = n.tone === undefined || n.tone === 'accent'; const bg = solid ? c.accent : n.tone === 'good' ? c.good : n.tone === 'bad' ? c.bad : c.fill; const fg = solid ? c.onAccent : n.tone === 'good' || n.tone === 'bad' ? '#FFFFFF' : c.text;
+       body = <View style={{ flex: 1, backgroundColor: bg, borderRadius: u(10), flexDirection: 'row', gap: u(5), alignItems: 'center', justifyContent: 'center', paddingHorizontal: u(6) }}>{n.icon ? <Ionicons name={n.icon as any} size={u(14)} color={fg} /> : null}<Text {...one} style={{ color: fg, fontSize: u(n.size ?? 12), fontWeight: '700' }}>{n.label}</Text></View>; break; }
+-    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: u(10), padding: u(7), justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? u(3) : 0, borderColor: RING }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color="#111" /> : <View />}<View><Text {...one} style={{ color: '#111', fontSize: u(11), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: u(10) }}>{n.sub}</Text> : null}</View></View>; break;
++    case 'tile': body = <View style={{ flex: 1, backgroundColor: n.color ?? TILE_COLORS[3], borderRadius: u(10), padding: u(7), justifyContent: 'space-between', borderWidth: n.tone === 'accent' ? u(3) : 0, borderColor: sp.ring }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color="#111" /> : <View />}<View><Text {...one} style={{ color: '#111', fontSize: u(11), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...txt} style={{ color: '#374151', fontSize: u(10) }}>{n.sub}</Text> : null}</View></View>; break;
+     case 'row': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: u(8), paddingHorizontal: u(8), borderBottomWidth: u(1), borderBottomColor: c.line }}>{n.icon ? <Ionicons name={n.icon as any} size={u(16)} color={c.sub} /> : null}<View style={{ flex: 1 }}><Text {...one} style={{ color: c.text, fontSize: u(12), fontWeight: '700' }}>{n.label}</Text>{n.sub ? <Text {...one} style={{ color: c.sub, fontSize: u(10) }}>{n.sub}</Text> : null}</View>{n.value ? <Text {...txt} style={{ color: toneColor(c, n.tone), fontSize: u(12), fontWeight: '700' }}>{n.value}</Text> : null}</View>; break;
+     case 'toggle': body = <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: u(8) }}><Text {...txt} style={{ color: c.text, fontSize: u(12), fontWeight: '600', flex: 1 }}>{n.label}</Text>
+       <Animated.View style={{ width: u(38), height: u(22), borderRadius: u(11), backgroundColor: knob.interpolate({ inputRange: [0, 1], outputRange: [c.line, c.good] }), justifyContent: 'center' }}><Animated.View style={{ width: u(18), height: u(18), borderRadius: u(9), backgroundColor: '#fff', transform: [{ translateX: knob.interpolate({ inputRange: [0, 1], outputRange: [u(2), u(18)] }) }] }} /></Animated.View></View>; break;
+@@ -53,16 +54,16 @@ function MockScreen({ nodes, on, press, k }: { nodes: NodeView[]; on: boolean; p
+ }
+ 
+ function NoteBubble({ note, k }: { note: Note; k: number }) {
+-  const { c } = useTheme(); const o = useRef(new Animated.Value(0)).current; const u = (v: number) => v * k;
++  const { c } = useTheme(); const sp = useSpotlight(); const o = useRef(new Animated.Value(0)).current; const u = (v: number) => v * k;
+   useEffect(() => { Animated.timing(o, { toValue: 1, duration: 300, useNativeDriver: false }).start(); }, [o]);
+   const bw = u(2);
+-  const arrow = { position: 'absolute' as const, width: u(12), height: u(12), backgroundColor: c.card, borderColor: RING, transform: [{ rotate: '45deg' }] };
++  const arrow = { position: 'absolute' as const, width: u(12), height: u(12), backgroundColor: c.card, borderColor: sp.ring, transform: [{ rotate: '45deg' }] };
+   const place = note.side === 'below' ? { left: u(note.arrow - 6), top: u(-7), borderLeftWidth: bw, borderTopWidth: bw }
+     : note.side === 'above' ? { left: u(note.arrow - 6), bottom: u(-7), borderRightWidth: bw, borderBottomWidth: bw }
+     : note.side === 'right' ? { top: u(note.arrow - 6), left: u(-7), borderLeftWidth: bw, borderBottomWidth: bw }
+     : { top: u(note.arrow - 6), right: u(-7), borderRightWidth: bw, borderTopWidth: bw };
+   return (
+-    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: u(note.x), top: u(note.y), width: u(note.w), minHeight: u(note.h), opacity: o, backgroundColor: c.card, borderRadius: u(10), borderWidth: u(2), borderColor: RING, padding: u(7), justifyContent: 'center' }}>
++    <Animated.View pointerEvents="none" style={{ position: 'absolute', left: u(note.x), top: u(note.y), width: u(note.w), minHeight: u(note.h), opacity: o, backgroundColor: c.card, borderRadius: u(10), borderWidth: u(2), borderColor: sp.ring, padding: u(7), justifyContent: 'center' }}>
+       <View style={[arrow, place]} />
+       <Text allowFontScaling={false} style={{ color: c.text, fontSize: u(12), fontWeight: '700', textAlign: 'center' }}>{note.text}</Text>
+     </Animated.View>
+@@ -75,7 +76,7 @@ const ease = Easing.inOut(Easing.cubic);
+  * count: back and jumps settle straight on the finished picture, and a replay plays the step again from the one before it.
+  */
+ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; index: number; replay?: number }) {
+-  const { c } = useTheme(); const CW = demo.canvas.w; const CH = demo.canvas.h;
++  const { c } = useTheme(); const sp = useSpotlight(); const CW = demo.canvas.w; const CH = demo.canvas.h;
+   const [area, setArea] = useState({ w: 0, h: 0 }); const box = fitBox(area, demo.canvas); const vw = box.w; const vh = box.h; const b = vw / CW; const k = renderScale(vw, CW);
+   const [applied, setApplied] = useState(-1); const [note, setNote] = useState<Note | null>(null); const [press, setPress] = useState({ id: '', n: 0 }); const [reduce, setReduce] = useState(false);
+   const zoom = useRef(new Animated.Value(1)).current; const cx = useRef(new Animated.Value(CW / 2)).current; const cy = useRef(new Animated.Value(CH / 2)).current;
+@@ -133,7 +134,7 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
+   // The canvas is laid out at k per canvas unit (the largest it is ever shown), so the camera only scales by zoom / MAX_ZOOM, never above 1.
+   const S = Animated.multiply(zoom, 1 / MAX_ZOOM);
+   const tx = Animated.multiply(Animated.subtract(CW / 2, cx), Animated.multiply(S, k)); const ty = Animated.multiply(Animated.subtract(CH / 2, cy), Animated.multiply(S, k));
+-  const panel = { position: 'absolute' as const, backgroundColor: DIM };
++  const panel = { position: 'absolute' as const, backgroundColor: sp.dim };
+   const lbl = demo.steps[Math.max(0, Math.min(index, demo.steps.length - 1))];
+   return (
+     <View onLayout={e => setArea({ w: e.nativeEvent.layout.width, h: e.nativeEvent.layout.height })} style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
+@@ -146,7 +147,7 @@ export default function DemoView({ demo, index, replay = 0 }: { demo: Demo; inde
+           <Animated.View style={[panel, { left: -BIG, top: Animated.add(Animated.multiply(hy, k), Animated.multiply(hh, k)), width: CW * k + BIG * 2, height: BIG * 2 }]} />
+           <Animated.View style={[panel, { left: -BIG, top: Animated.multiply(hy, k), width: Animated.add(Animated.multiply(hx, k), BIG), height: Animated.multiply(hh, k) }]} />
+           <Animated.View style={[panel, { left: Animated.add(Animated.multiply(hx, k), Animated.multiply(hw, k)), top: Animated.multiply(hy, k), width: BIG * 2, height: Animated.multiply(hh, k) }]} />
+-          <Animated.View style={{ position: 'absolute', left: Animated.multiply(hx, k), top: Animated.multiply(hy, k), width: Animated.multiply(hw, k), height: Animated.multiply(hh, k), borderRadius: 12 * k, borderWidth: 3 * k, borderColor: RING, opacity: pulse }} />
++          <Animated.View style={{ position: 'absolute', left: Animated.multiply(hx, k), top: Animated.multiply(hy, k), width: Animated.multiply(hw, k), height: Animated.multiply(hh, k), borderRadius: 12 * k, borderWidth: 3 * k, borderColor: sp.ring, opacity: pulse }} />
+         </Animated.View>
+         {note ? <NoteBubble key={`${index}-${replay}`} note={note} k={k} /> : null}
+         <Animated.View pointerEvents="none" style={{ position: 'absolute', left: Animated.subtract(Animated.multiply(px, k), 22 * k), top: Animated.subtract(Animated.multiply(py, k), 22 * k), width: 44 * k, height: 44 * k, alignItems: 'center', justifyContent: 'center', opacity: po }}>
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+index 9264057..4c1ebd9 100644
+--- a/src/ui/TrainingDock.tsx
++++ b/src/ui/TrainingDock.tsx
+@@ -4,6 +4,7 @@ import React, { useEffect, useRef } from 'react';
+ import { Animated, Pressable, Text, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useLayout, useTheme } from './theme';
++import { useSpotlight } from './spotlight';
+ import { useTraining } from '../state/trainingSession';
+ import { getModule } from '../training';
+ import { STAGE_LABEL } from '../lib/trainingModule';
+@@ -11,7 +12,7 @@ import { trainingActions } from './trainingActions';
+ import { Enter } from './Motion';
+ 
+ export default function TrainingDock() {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
++  const { c } = useTheme(); const sp = useSpotlight(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
+   const pulse = useRef(new Animated.Value(0)).current; const nudge = !!view?.nudge;
+   useEffect(() => { if (!nudge) { pulse.setValue(0); return undefined; } const l = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: false }), Animated.timing(pulse, { toValue: 0, duration: 600, useNativeDriver: false })])); l.start(); return () => l.stop(); }, [nudge, pulse]);
+   if (!run) return null;
+@@ -21,7 +22,7 @@ export default function TrainingDock() {
+     <Enter from="up" distance={56} duration={340}><View style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 12, paddingTop: 10, paddingBottom: tablet ? 12 : 26, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+       <View style={{ flex: 1, gap: 2 }}>
+         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+-          <View style={{ backgroundColor: '#F59E0B', borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: '#111', fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
++          <View style={{ backgroundColor: sp.ring, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: sp.onRing, fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
+           <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{mod?.title ?? 'Training'} · {STAGE_LABEL[run.stage]}{view ? ` · ${view.counter}` : ''}</Text>
+         </View>
+         <Text style={{ color: c.text, fontSize: 15, fontWeight: '600' }} numberOfLines={3}>{view?.stray ? `Off course: ${view.stray.title}` : check ? (view?.say ? view.say : view?.objective) : view?.title === mod?.title ? 'Follow the arrows.' : view?.title ?? ''}</Text>
+@@ -29,7 +30,7 @@ export default function TrainingDock() {
+         {nudge ? <Text style={{ color: c.warn, fontSize: 12, fontWeight: '700' }}>Stuck? Tap Hint.</Text> : null}
+       </View>
+       {check ? (
+-        <Animated.View style={{ borderRadius: 999, borderWidth: 2, borderColor: pulse.interpolate({ inputRange: [0, 1], outputRange: ['transparent', '#F59E0B'] }) }}>
++        <Animated.View style={{ borderRadius: 999, borderWidth: 2, borderColor: pulse.interpolate({ inputRange: [0, 1], outputRange: ['transparent', sp.ring] }) }}>
+           <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={[btn, { backgroundColor: c.accent }]}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable>
+         </Animated.View>
+       ) : null}
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index 3444173..ae959e1 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -12,6 +12,7 @@ import { Animated, Easing, Pressable, StyleSheet, Text, View, useWindowDimension
+ import { Ionicons } from '@expo/vector-icons';
+ import * as Haptics from 'expo-haptics';
+ import { useTheme } from './theme';
++import { useSpotlight } from './spotlight';
+ import Swap from './Swap';
+ import { useReduceMotion } from './Motion';
+ import { ROOT_LAYER, layersVersion, subscribeLayers, topLayer } from '../lib/trainingLayers';
+@@ -21,7 +22,6 @@ import { GESTURE_LABEL, gesturePlan, tapCount, type Gesture } from '../lib/point
+ import { useTraining, type DockView } from '../state/trainingSession';
+ import { trainingActions } from './trainingActions';
+ 
+-const RING = '#F59E0B'; const DIM = 'rgba(0,0,0,0.62)';
+ export const useIsTopLayer = (layer: string): boolean => { useSyncExternalStore(subscribeLayers, layersVersion, layersVersion); return topLayer() === layer; };
+ const clampPos = (v: Animated.AnimatedInterpolation<number> | Animated.AnimatedSubtraction<number> | Animated.AnimatedAddition<number> | Animated.Value) => v.interpolate({ inputRange: [0, 100000], outputRange: [0, 100000], extrapolate: 'clamp' });
+ type RectVals = { x: Animated.Value; y: Animated.Value; w: Animated.Value; h: Animated.Value };
+@@ -60,7 +60,7 @@ function Ring({ vals, color }: { vals: RectVals; color: string }) {
+  * with a count by the cursor, press and hold with a ring that fills, a swipe that drags across the target, or a two-stroke scroll.
+  * All native driven. The ripple and the hold ring ride with the cursor, so they always land where the finger is.
+  */
+-function Pointer({ hole, color, reduce, gesture }: { hole: Rect; color: string; reduce: boolean; gesture: Gesture }) {
++function Pointer({ hole, color, on, reduce, gesture }: { hole: Rect; color: string; on: string; reduce: boolean; gesture: Gesture }) {
+   const key = `${gesture}|${Math.round(hole.x)},${Math.round(hole.y)},${Math.round(hole.w)},${Math.round(hole.h)}`;
+   const plan = useMemo(() => gesturePlan(gesture, hole), [key]); // eslint-disable-line react-hooks/exhaustive-deps
+   const px = useRef(new Animated.Value(plan.start.x)).current; const py = useRef(new Animated.Value(plan.start.y)).current; const o = useRef(new Animated.Value(0)).current;
+@@ -88,7 +88,7 @@ function Pointer({ hole, color, reduce, gesture }: { hole: Rect; color: string;
+       <Animated.View style={{ position: 'absolute', left: -12, top: -12, width: 28, height: 28, transform: [{ scale: down.interpolate({ inputRange: [0, 1], outputRange: [1, 0.84] }) }] }}>
+         <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={28} color="#111" style={{ textShadowColor: '#fff', textShadowRadius: 4 }} /></View>
+       </Animated.View>
+-      {n > 1 ? <View style={{ position: 'absolute', left: 14, top: -30, backgroundColor: color, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: '#111', fontSize: 12, fontWeight: '800' }}>×{n}</Text></View> : null}
++      {n > 1 ? <View style={{ position: 'absolute', left: 14, top: -30, backgroundColor: color, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: on, fontSize: 12, fontWeight: '800' }}>×{n}</Text></View> : null}
+     </Animated.View>
+   );
+ }
+@@ -163,7 +163,7 @@ function StrayCard({ stray }: { stray: StrayView }) {
+ }
+ 
+ export default function TrainingOverlay({ layer }: { layer: string }) {
+-  const { c } = useTheme(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
++  const { c } = useTheme(); const sp = useSpotlight(); const view = useTraining(s => s.view); const top = useIsTopLayer(layer); const win = useWindowDimensions(); const reduce = useReduceMotion();
+   const box = useRef<View>(null); const [origin, setOrigin] = useState({ x: 0, y: 0 }); const [size, setSize] = useState({ w: win.width, h: win.height }); const [bh, setBh] = useState(150);
+   const measure = () => box.current?.measureInWindow((x, y, w, h) => { setOrigin({ x, y }); if (w > 0 && h > 0) setSize({ w, h }); });
+   // Window coordinates from the driver become local to this layer, and a target outside this layer's frame counts as not there.
+@@ -216,21 +216,21 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+       {dim ? (
+         <Animated.View pointerEvents="box-none" style={[StyleSheet.absoluteFill, { opacity: dimO }]}>
+           {hole ? <>
+-            <Animated.View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: dimBlocks.top, backgroundColor: DIM }} />
+-            <Animated.View style={{ position: 'absolute', left: 0, top: dimBlocks.below, right: 0, height: dimBlocks.bottom, backgroundColor: DIM }} />
+-            <Animated.View style={{ position: 'absolute', left: 0, top: vals.y, width: dimBlocks.left, height: vals.h, backgroundColor: DIM }} />
+-            <Animated.View style={{ position: 'absolute', left: dimBlocks.after, top: vals.y, width: dimBlocks.right, height: vals.h, backgroundColor: DIM }} />
++            <Animated.View style={{ position: 'absolute', left: 0, top: 0, right: 0, height: dimBlocks.top, backgroundColor: sp.dim }} />
++            <Animated.View style={{ position: 'absolute', left: 0, top: dimBlocks.below, right: 0, height: dimBlocks.bottom, backgroundColor: sp.dim }} />
++            <Animated.View style={{ position: 'absolute', left: 0, top: vals.y, width: dimBlocks.left, height: vals.h, backgroundColor: sp.dim }} />
++            <Animated.View style={{ position: 'absolute', left: dimBlocks.after, top: vals.y, width: dimBlocks.right, height: vals.h, backgroundColor: sp.dim }} />
+             {view.next ? <Animated.View style={{ position: 'absolute', left: vals.x, top: vals.y, width: vals.w, height: vals.h }} /> : null}
+-          </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: DIM }]} />}
++          </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: sp.dim }]} />}
+         </Animated.View>
+       ) : null}
+-      {showRing && hole ? <Ring vals={vals} color={RING} /> : null}
++      {showRing && hole ? <Ring vals={vals} color={sp.ring} /> : null}
+       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
+-      {showRing && hole && !view.next ? <Pointer hole={hole} color={RING} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
++      {showRing && hole && !view.next ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
+       {guide && !view.stray ? (
+         <Animated.View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bx, top: by, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+           {hole ? <Animated.View style={{ position: 'absolute', [bub.side === 'below' ? 'top' : 'bottom']: -8, left: Animated.subtract(ax, 8), width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bub.side === 'below' ? 1 : 0, borderLeftWidth: bub.side === 'below' ? 1 : 0, borderBottomWidth: bub.side === 'above' ? 1 : 0, borderRightWidth: bub.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
+-          <View style={{ flexDirection: 'row', gap: 4 }}>{seg.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? c.line : s === 'done' ? c.good : RING }} />)}</View>
++          <View style={{ flexDirection: 'row', gap: 4 }}>{seg.map((s, i) => <View key={i} style={{ flex: 1, height: 4, borderRadius: 2, backgroundColor: s === 'todo' ? c.line : s === 'done' ? c.good : sp.ring }} />)}</View>
+           <Swap k={`${view.counter}|${view.say}`} dy={8} out={120} inn={260} appear style={{ gap: 8 }}>
+             <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{view.counter}</Text>
+             <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.say}</Text>
+diff --git a/src/ui/spotlight.ts b/src/ui/spotlight.ts
+new file mode 100644
+index 0000000..5758070
+--- /dev/null
++++ b/src/ui/spotlight.ts
+@@ -0,0 +1,7 @@
++// Location: src/ui/spotlight.ts
++// The training spotlight colours for the current theme (see src/lib/trainingPalette.ts). Not in kit.tsx, because kit imports the overlay.
++import { useMemo } from 'react';
++import { useTheme } from './theme';
++import { spotlightPalette, type SpotlightPalette } from '../lib/trainingPalette';
++
++export function useSpotlight(): SpotlightPalette { const { c, dark } = useTheme(); return useMemo(() => spotlightPalette(c, dark), [c.bg, c.card, c.text, c.accent, dark]); } // eslint-disable-line react-hooks/exhaustive-deps
+diff --git a/tests/trainingpalette.test.ts b/tests/trainingpalette.test.ts
+new file mode 100644
+index 0000000..a5e90a0
+--- /dev/null
++++ b/tests/trainingpalette.test.ts
+@@ -0,0 +1,56 @@
++// Location: tests/trainingpalette.test.ts
++// The spotlight takes its colours from the theme, and the ring is always clearly visible on the dim.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import { RING_CONTRAST, blend, contrast, dimOf, luminance, mix, parseColor, spotlightPalette } from '../src/lib/trainingPalette';
++
++// The three built-in looks, copied from src/ui/theme.tsx (a test below checks they have not drifted).
++const light = { bg: '#F4F4F5', card: '#FFFFFF', text: '#111111', accent: '#111111' };
++const dark = { bg: '#0B0B0C', card: '#1A1A1C', text: '#F4F4F5', accent: '#F4F4F5' };
++const brand = { bg: '#13111C', card: '#1C1924', text: '#EFD8C9', accent: '#FAE9DC' };
++const seenOn = (t: typeof light, isDark: boolean) => blend(dimOf(t, isDark), parseColor(t.bg)!);
++
++test('colour maths: parsing, luminance and contrast', () => {
++  assert.deepEqual(parseColor('#fff'), { r: 255, g: 255, b: 255, a: 1 }); assert.deepEqual(parseColor('#13111C'), { r: 19, g: 17, b: 28, a: 1 });
++  assert.equal(parseColor('rgba(239,216,201,0.16)')!.a, 0.16); assert.equal(parseColor('nonsense'), null); assert.equal(parseColor(undefined), null);
++  const w = parseColor('#fff')!; const k = parseColor('#000')!; assert.ok(Math.abs(contrast(w, k) - 21) < 0.01); assert.equal(luminance(k), 0); assert.ok(Math.abs(luminance(w) - 1) < 1e-6);
++  assert.deepEqual(mix(k, w, 0.5), { r: 127.5, g: 127.5, b: 127.5, a: 1 });
++});
++
++test('the brand look uses its own peach accent, the dark look its near white, the light look a white ring', () => {
++  assert.equal(spotlightPalette(brand, true).ring.toLowerCase(), '#fae9dc'); assert.equal(spotlightPalette(dark, true).ring.toLowerCase(), '#f4f4f5');
++  assert.equal(spotlightPalette(light, false).ring.toLowerCase(), '#ffffff'); // the accent is near black, which the dim would swallow
++});
++
++test('the ring stands out from the dim in every look and for any accent a person could choose', () => {
++  const accents = ['#2563EB', '#DC2626', '#16A34A', '#7C3AED', '#DB2777', '#F59E0B', '#0EA5E9', '#000000', '#222222', '#FFFFFF', '#444444', '#1E3A8A', '#064E3B', '#831843', '#E5E7EB'];
++  for (const [t, isDark] of [[light, false], [dark, true], [brand, true]] as const) for (const a of accents) {
++    const p = spotlightPalette({ ...t, accent: a }, isDark); const ring = parseColor(p.ring)!;
++    assert.ok(contrast(ring, seenOn(t, isDark)) >= RING_CONTRAST, `accent ${a} on ${isDark ? 'dark' : 'light'} gives ring ${p.ring} (contrast ${contrast(ring, seenOn(t, isDark)).toFixed(2)})`);
++  }
++});
++
++test('a chosen accent is kept when it already stands out, and lightened (not replaced) when it does not', () => {
++  assert.equal(spotlightPalette({ ...dark, accent: '#F59E0B' }, true).ring.toLowerCase(), '#f59e0b');
++  const lifted = parseColor(spotlightPalette({ ...light, accent: '#2563EB' }, false).ring)!; const orig = parseColor('#2563EB')!;
++  assert.ok(lifted.b > lifted.r && lifted.b >= orig.b, 'still blue'); assert.ok(luminance(lifted) > luminance(orig), 'lighter than the chosen blue');
++});
++
++test('the text on the ring is readable, and the dim belongs to the theme', () => {
++  for (const [t, isDark] of [[light, false], [dark, true], [brand, true]] as const) {
++    const p = spotlightPalette(t, isDark); const on = parseColor(p.onRing)!; assert.ok(contrast(on, parseColor(p.ring)!) >= 4.5, `${p.onRing} on ${p.ring}`);
++  }
++  assert.match(spotlightPalette(brand, true).dim, /^rgba\(19, 17, 28, /, 'the brand dim is the plum, not black'); assert.match(spotlightPalette(light, false).dim, /^rgba\(17, 17, 17, /);
++  assert.ok(dimOf(dark, true).a > dimOf(light, false).a, 'a dark page needs a stronger dim to read as dimmed');
++});
++
++test('unreadable theme values fall back to something visible', () => {
++  const p = spotlightPalette({ bg: 'weird', card: 'weird', text: 'weird', accent: 'weird' }, true); assert.equal(p.ring.toLowerCase(), '#ffffff'); assert.ok(p.dim.startsWith('rgba('));
++});
++
++test('the built-in looks above match the app theme file, and no training screen hard codes the old amber', () => {
++  const theme = fs.readFileSync('src/ui/theme.tsx', 'utf8');
++  for (const t of [light, dark, brand]) for (const v of [t.bg, t.card, t.accent]) assert.ok(theme.includes(`'${v}'`), `${v} is in theme.tsx`);
++  for (const f of ['src/ui/TrainingOverlay.tsx', 'src/ui/DemoView.tsx', 'src/ui/TrainingDock.tsx', 'src/screens/TrainingRun.tsx']) assert.ok(!/F59E0B/i.test(fs.readFileSync(f, 'utf8')), `${f} still hard codes the amber`);
++});

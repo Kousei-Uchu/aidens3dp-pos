@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Btn, Page, Txt, alertMsg } from '../ui/kit';
 import { useTheme } from '../ui/theme';
+import { useSpotlight } from '../ui/spotlight';
 import { useNav, type Tab } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useTraining } from '../state/trainingSession';
@@ -87,7 +88,7 @@ function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
 }
 
 function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
-  const { c } = useTheme(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
+  const { c } = useTheme(); const sp = useSpotlight(); const nav = useNav(); const t = INTRO[run.stage]; const [busy, setBusy] = useState(false);
   if (!t) return null;
   const start = async () => {
     const early = trainingBlocker(useApp.getState()); if (early) { alertMsg('Training cannot start yet', early); return; } // say so before the screen dips, not after
@@ -99,7 +100,7 @@ function Intro({ mod, run }: { mod: TrainingModule; run: Run }) {
   };
   return (
     <Enter style={{ gap: 14 }}>
-      <View style={{ backgroundColor: '#F59E0B', alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color="#111">PRACTICE DATA</Txt></View>
+      <View style={{ backgroundColor: sp.ring, alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 }}><Txt size={11} weight="700" color={sp.onRing}>PRACTICE DATA</Txt></View>
       <Txt size={22} weight="700">{t.title}</Txt>
       <Txt>{t.body}</Txt>
       <View style={{ backgroundColor: c.fill, borderRadius: 14, padding: 14, gap: 6 }}>

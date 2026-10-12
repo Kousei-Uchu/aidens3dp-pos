@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
+import { SPOT } from '../lib/trainingSpots';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced, usePricer } from '../state/selectors';
 import { digitsToCents, fmt } from '../lib/money';
@@ -167,7 +168,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
     <>
       <Sheet visible={!disc && !price && !adj} onClose={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} title={line.title}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 22, marginBottom: 12 }}>
-          <Btn title="−" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty - 1))} style={{ width: 64 }} />
+          <Btn spot={SPOT.lineMinus} title="−" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty - 1))} style={{ width: 64 }} />
           <Txt size={30} weight="700">{line.qty}</Txt>
           <Btn title="+" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty + 1))} style={{ width: 64 }} />
         </View>
@@ -204,7 +205,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
           </View>
         ) : null}
         <Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" />
-        <Btn title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
+        <Btn spot={SPOT.lineRemove} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
         <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
       </Sheet>
       <DiscountSheet visible={disc} onClose={() => setDisc(false)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
