@@ -8,37 +8,21 @@ import { useUi } from '../ui/uiProfile';
 import { cashHint } from '../lib/simpleLabels';
 import { Btn, HelpButton, Money, Sheet, Txt } from '../ui/kit';
 import { DenomPad } from '../ui/DenomPad';
+import { CountSquares } from '../ui/CountSquares';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
-import { addCounts, DENOMS, denomLabel, draftCounts, summariseCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
+import { addCounts, draftCounts, totalOf, type Counts, type Draft } from '../lib/cashLedger';
 import { cashStatus, countsToDraft, handBackOptions, ledgerEmpty, partCashOption, planChange } from '../lib/cashSale';
 import { planChangeSmart } from '../lib/changeScore';
 import { useCashProfile } from '../state/cashProfile';
 import { fmt } from '../lib/money';
+import { applyShortChoice, shortChoices, type ShortChoice, type SplitPlan } from '../lib/splitPlan';
 import type { Tender } from '../lib/types';
 
 /** The denominations physically received and given; `applyCents` marks a part-cash payment. */
-export type CashResult = { tendered: number; received: Counts; given: Counts; applyCents?: number };
+export type CashResult = { tendered: number; received: Counts; given: Counts; applyCents?: number; plan?: SplitPlan };
 
-function ChangeBreakdown({ counts }: { counts: Counts }) {
-  const { c } = useTheme();
-  const present = DENOMS.filter(d => (counts[String(d.cents)] ?? 0) > 0);
-  return (
-    <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 10, paddingVertical: 4 }}>
-      {present.map(d => {
-        const count = counts[String(d.cents)];
-        return (
-          <View key={d.cents} accessibilityLabel={`${denomLabel(d.cents)}, ${count}`} style={{ width: 70, height: 66, borderRadius: 14, backgroundColor: c.fill, borderWidth: 1, borderColor: c.line, alignItems: 'center', justifyContent: 'center' }}>
-            <Txt size={22} weight="700">{denomLabel(d.cents)}</Txt>
-            <View style={{ position: 'absolute', right: -5, bottom: -5, minWidth: 30, height: 24, borderRadius: 12, paddingHorizontal: 6, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}>
-              <Txt size={12} weight="700" color={c.onAccent}>x{count}</Txt>
-            </View>
-          </View>
-        );
-      })}
-    </View>
-  );
-}
+const ChangeBreakdown = CountSquares; // the squares layout lives in src/ui/CountSquares.tsx so every screen shows money the same way
 
 /** Notes and coins to hand to the customer: the suggestion from `pool`, or tap what is really given. */
 export function GiveCash({ pool, owed, headline = 'Give the customer', detail, onConfirm }: { pool: Counts; owed: number; headline?: string; detail?: string; onConfirm: (given: Counts) => void }) {
@@ -104,14 +88,14 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
           {collectManually ? <>
             <Txt weight="600">Collect back the previously given change ({fmt(cashOutTarget)}). Enter the exact notes and coins collected.</Txt>
             <DenomPad draft={collectDraft} onChange={draft => setDrafts(s => ({ ...s, [`${current.id}:collect`]: draft }))} totalLabel="Change collected" />
-          </> : <Txt weight="600">Collect back the exact change previously given: {summariseCounts(collected)} ({fmt(totalOf(collected))}).</Txt>}
+          </> : <><Txt weight="600">Collect back the exact change previously given ({fmt(totalOf(collected))}).</Txt><CountSquares counts={collected} /></>}
           <Btn title="Change collected · next return exact cash" disabled={!canConfirmCollect} onPress={() => setStage('return')} />
         </> : null}
         {stage === 'return' || cashOutTarget === 0 ? <>
           {returnManually ? <>
             <Txt weight="600">These notes were not recorded. Enter the exact notes and coins now being returned (target {fmt(expected)}); this is a manual count, not an optimized suggestion.</Txt>
             <DenomPad draft={returnDraft} onChange={draft => setDrafts(s => ({ ...s, [`${current.id}:return`]: draft }))} totalLabel="Cash returned" />
-          </> : <Txt weight="600">Return exactly what the customer handed over: {summariseCounts(returned)} ({fmt(totalOf(returned))}).</Txt>}
+          </> : <><Txt weight="600">Return exactly what the customer handed over ({fmt(totalOf(returned))}).</Txt><CountSquares counts={returned} /></>}
           <Btn title={index === tenders.length - 1 ? 'Cash returned and change collected' : 'Next cash payment'} disabled={!canConfirmReturn} onPress={() => {
             if (index < tenders.length - 1) { setIndex(i => i + 1); setStage('collect'); }
             else onDone(Object.fromEntries(tenders.map(t => [t.id, { returned: t.cashIn ?? draftCounts(drafts[`${t.id}:return`] ?? []), collected: t.cashOut ?? draftCounts(drafts[`${t.id}:collect`] ?? []) }])));
@@ -122,7 +106,7 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
   );
 }
 
-export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void }) {
+export function CashSheet({ visible, onClose, due, onTake, plan = [], onChangeSplit }: { visible: boolean; onClose: () => void; due: number; onTake: (r: CashResult) => void; plan?: SplitPlan; onChangeSplit?: () => void }) {
   const { c } = useTheme(); const ui = useUi(); const drawer = useApp(s => s.pos.ledger.counts);
   const [step, setStep] = useState<'receive' | 'change'>('receive'); const [draft, setDraft] = useState<Draft>([]); const [partX, setPartX] = useState<number | null>(null); const [force, setForce] = useState(false);
   useEffect(() => { if (visible) { setStep('receive'); setDraft([]); setPartX(null); setForce(false); } }, [visible]);
@@ -135,7 +119,12 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
   const hand = useMemo(() => (blocked ? handBackOptions(drawer, received, billDue) : null), [blocked, drawer, received, billDue]);
   const part = useMemo(() => (blocked && partX === null ? partCashOption(drawer, received, due) : null), [blocked, partX, drawer, received, due]);
 
-  const finish = (given: Counts = {}) => onTake({ tendered: got, received, given, ...(partX !== null ? { applyCents: partX } : {}) });
+  const finish = (given: Counts = {}, next?: SplitPlan) => onTake({ tendered: got, received, given, ...(partX !== null ? { applyCents: partX } : {}), ...(next ? { plan: next } : {}) });
+  // a split bill with too little cash for this part: say where the rest goes (or go back and change the split), instead of splitting it again
+  const livePlan = useMemo(() => (plan.length > 1 ? [billDue, ...plan.slice(1)] : plan), [plan, billDue]); // this payment is what is due on screen
+  const choices = st.state === 'short' && partX === null && onChangeSplit ? shortChoices(livePlan, got) : [];
+  const choiceTitle = (k: ShortChoice) => (k.kind === 'next' ? `Add ${fmt(k.shortBy)} to payment 2 (${fmt(k.was)} → ${fmt(k.now)})` : k.kind === 'part' ? `Add ${fmt(k.shortBy)} to payment ${k.part} (${fmt(k.was)} → ${fmt(k.now)})` : k.kind === 'spread' ? `Spread ${fmt(k.shortBy)} over the other ${k.parts} payments (+${fmt(k.each)} each)` : 'Go back and change the split');
+  const takeChoice = (k: ShortChoice) => { if (k.kind === 'modify') { onChangeSplit?.(); return; } finish({}, applyShortChoice(livePlan, k)); };
 
   return (
     <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'}>
@@ -149,7 +138,12 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
           {cashHint(ui.explain) ? <Txt size={13} sub style={{ textAlign: 'center' }}>{cashHint(ui.explain)}</Txt> : null}
           <DenomPad draft={draft} onChange={d => { setDraft(d); setForce(false); }} totalLabel="Received" />
 
-          {st.state === 'short' ? (
+          {st.state === 'short' && choices.length ? (
+            <>
+              <Txt size={13} sub style={{ textAlign: 'center' }}>That is {fmt(st.shortBy)} short for this payment. Ask for {fmt(st.shortBy)} more, or take {fmt(got)} now and choose where the rest goes:</Txt>
+              {choices.map((k, i) => <Btn key={k.kind + i + (k.kind === 'part' ? k.part : '')} title={choiceTitle(k)} kind={k.kind === 'modify' ? 'ghost' : 'secondary'} onPress={() => takeChoice(k)} />)}
+            </>
+          ) : st.state === 'short' ? (
             <>
               <Txt size={13} sub style={{ textAlign: 'center' }}>That doesn't cover the bill. Ask for {fmt(st.shortBy)} more, or take this as a part payment and put the other {fmt(st.shortBy)} on card or another method.</Txt>
               <Btn title={`Take ${fmt(got)} as part payment`} onPress={() => finish()} />
@@ -164,7 +158,7 @@ export function CashSheet({ visible, onClose, due, onTake }: { visible: boolean;
                   <Txt weight="700" color={c.bad}>{empty ? 'No cash in the ledger' : `Can't make ${fmt(change)} change`}</Txt>
                   <Txt size={13}>{empty ? 'The ledger shows an empty drawer (it was never opened or counted), so change can\'t be suggested.' : 'The drawer ledger doesn\'t hold the notes and coins for exact change.'} Options:</Txt>
                   <HelpButton id="fix/cant-make-change" label="Change troubleshooting" />
-                  {hand ? <Txt size={13}>• Ask for less: take {summariseCounts(hand.take)} and hand back {summariseCounts(hand.handBack)}.</Txt> : null}
+                  {hand ? <View style={{ gap: 2 }}><Txt size={13}>• Ask for less:</Txt><CountSquares counts={hand.take} label="Take" align="start" />{totalOf(hand.handBack) > 0 ? <CountSquares counts={hand.handBack} label="Hand back" align="start" /> : null}</View> : null}
                   {part ? <Txt size={13}>• Take {fmt(part.cashCents)} in cash and put the other {fmt(part.restCents)} on card.</Txt> : null}
                   <Txt size={13}>• Or take the full {fmt(billDue)} by card.</Txt>
                   {hand ? <Btn title="Use that smaller handover" kind="secondary" small onPress={() => { setDraft(countsToDraft(hand.take)); setForce(false); }} /> : null}

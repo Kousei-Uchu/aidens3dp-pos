@@ -7,7 +7,8 @@ import { Btn, Money, Sheet, Txt, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff } from '../state/store';
 import { useCashProfile } from '../state/cashProfile';
-import { applyEntry, newEntry, summariseCounts, totalOf } from '../lib/cashLedger';
+import { applyEntry, newEntry, summariseCounts, totalOf, type Counts } from '../lib/cashLedger';
+import { CountSquares } from '../ui/CountSquares';
 import { ledgerTakings, recommendFloat, type FloatOption } from '../lib/floatReport';
 import { profileNote } from '../lib/changeScore';
 import { fmt } from '../lib/money';
@@ -28,20 +29,20 @@ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { vis
     const entry = newEntry('paid_out', Object.fromEntries(Object.entries(shown.takeOut).map(([v, n]) => [v, -n])), { staff: currentStaff()?.name, note: 'Daily banking (float report)' });
     patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, entry), ...(shift.open ? { shift: { ...shift, paidOutCents: shift.paidOutCents + shown.takeOutTotal } } : {}) }); onClose();
   };
-  const box = (title: string, body: string, tone?: string) => (
-    <View style={{ backgroundColor: (tone ?? c.fill) + (tone ? '18' : ''), borderRadius: 14, padding: 14, gap: 2, ...(tone ? { borderWidth: 1.5, borderColor: tone } : {}) }}><Txt size={13} sub weight="600">{title}</Txt><Txt size={18} weight="700">{body}</Txt></View>
+  const box = (title: string, counts: Counts, tone?: string) => (
+    <View style={{ backgroundColor: (tone ?? c.fill) + (tone ? '18' : ''), borderRadius: 14, padding: 14, gap: 2, ...(tone ? { borderWidth: 1.5, borderColor: tone } : {}) }}><CountSquares counts={counts} label={title} total /></View>
   );
   return (
     <Sheet visible={visible} onClose={onClose} title="Daily float report" full>
       <View style={{ gap: 14 }}>
         <View style={{ alignItems: 'center', gap: 2 }}><Txt sub>Cash takings {label}</Txt><Money cents={takings} size={34} weight="700" /><Txt size={12} sub style={{ textAlign: 'center' }}>Cash sales minus cash refunds. The drawer ledger holds {fmt(rep.drawerTotal)}{seen.sales ? `, and saw ${fmt(seen.cents)} from ${seen.sales} tracked sale${seen.sales === 1 ? '' : 's'}` : ''}.</Txt></View>
         {takings > 0 && Math.abs(seen.cents - takings) >= 5 ? <Txt size={13} color="#B45309" style={{ textAlign: 'center' }}>The ledger saw {fmt(seen.cents)} but sales say {fmt(takings)}. Some sales weren't tracked, so count the drawer (Count &amp; close) before banking.</Txt> : null}
-        {totalOf(shown.takeOut) > 0 ? box('Take out (bank)', `${summariseCounts(shown.takeOut)} · ${fmt(shown.takeOutTotal)}`) : null}
-        {box('Leave in the drawer as the float', `${summariseCounts(shown.keep)} · ${fmt(shown.keepTotal)}`, c.good)}
+        {totalOf(shown.takeOut) > 0 ? box('Take out (bank)', shown.takeOut) : null}
+        {box('Leave in the drawer as the float', shown.keep, c.good)}
         {options.length > 1 ? <Btn title={alt === 0 ? 'Show another way' : alt < options.length - 1 ? 'Show the next way' : 'Back to the suggested way'} kind="secondary" onPress={() => setAlt(a => (a + 1) % options.length)} /> : null}
         {rep.usedProfile && rep.coverageKeep !== null ? <Txt size={13} sub style={{ textAlign: 'center' }}>This float could make change for {pct(rep.coverageKeep)} of your usual change amounts{rep.coverageNow !== null ? ` (the drawer now: ${pct(rep.coverageNow)})` : ''}.{rep.ideal !== null ? ` A good float for your sales is about ${fmt(rep.ideal)}.` : ''}</Txt> : null}
-        {totalOf(rep.topUp) > 0 ? box('Top up if you can', `${summariseCounts(rep.topUp)} · ${fmt(totalOf(rep.topUp))}`, '#B45309') : null}
-        {totalOf(rep.bankable) > 0 ? <Txt size={13} sub style={{ textAlign: 'center' }}>{summariseCounts(rep.bankable)} in the float {Object.keys(rep.bankable).length > 1 ? 'are' : 'is'} never used as change, so {Object.keys(rep.bankable).length > 1 ? 'they are' : 'it is'} usually better banked.</Txt> : null}
+        {totalOf(rep.topUp) > 0 ? box('Top up if you can', rep.topUp, '#B45309') : null}
+        {totalOf(rep.bankable) > 0 ? <View style={{ gap: 2 }}><CountSquares counts={rep.bankable} label="In the float but never used as change" /><Txt size={13} sub style={{ textAlign: 'center' }}>{Object.keys(rep.bankable).length > 1 ? 'These are' : 'This is'} usually better banked.</Txt></View> : null}
         {rep.notes.map((n, i) => <Txt key={i} size={13} sub style={{ textAlign: 'center' }}>{n}</Txt>)}
         {rep.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
         <Txt size={12} sub style={{ textAlign: 'center' }}>{profileNote(profile).replace('Smart change is on', 'Based on')}</Txt>

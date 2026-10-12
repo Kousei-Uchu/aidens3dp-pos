@@ -58,14 +58,16 @@ export function checkChange(drawer: Counts, offered: Counts, due: number, maxSub
   return { verdict: 'change', take: b.take, handBack, change, tight: profileUsable(profile) ? smartTightness(pool, change, profile) : tightness(drawer, b.take, change) };
 }
 
-/** One-line advice for the cashier. */
-export function adviceFor(r: CheckChangeResult, fmt: (c: number) => string): { tone: 'good' | 'warn' | 'bad'; title: string; detail: string } {
+/** Advice for the cashier: a verdict, plain words, and the notes and coins to show as squares (`groups`). `detail` is the same advice as one line of text. */
+export type Advice = { tone: 'good' | 'warn' | 'bad'; title: string; detail: string; groups: { label: string; counts: Counts }[]; note: string };
+export function adviceFor(r: CheckChangeResult, fmt: (c: number) => string): Advice {
+  const ask = (take: Counts, back: Counts) => [{ label: 'Ask for', counts: take }, ...(totalOf(back) ? [{ label: 'They keep', counts: back }] : [])];
   switch (r.verdict) {
-    case 'short': return { tone: 'bad', title: `They're ${fmt(r.shortBy)} short in cash`, detail: 'Ask for card, or take what they have as a part payment and put the rest on card.' };
-    case 'exact': return { tone: 'good', title: 'Cash works: no change needed', detail: `Ask for ${summariseCounts(r.take)}${totalOf(r.handBack) ? ` (they keep ${summariseCounts(r.handBack)})` : ''}.` };
+    case 'short': { const note = 'Ask for card, or take what they have as a part payment and put the rest on card.'; return { tone: 'bad', title: `They're ${fmt(r.shortBy)} short in cash`, detail: note, groups: [], note }; }
+    case 'exact': return { tone: 'good', title: 'Cash works: no change needed', detail: `Ask for ${summariseCounts(r.take)}${totalOf(r.handBack) ? ` (they keep ${summariseCounts(r.handBack)})` : ''}.`, groups: ask(r.take, r.handBack), note: '' };
     case 'change': return r.tight.length
-      ? { tone: 'warn', title: `We can make ${fmt(totalOf(r.change))} change, but it may not be worth it`, detail: `Ask for ${summariseCounts(r.take)} and give ${summariseCounts(r.change)}. That ${r.tight.join(' and ')}. Card is the safer choice.` }
-      : { tone: 'good', title: `Cash works: ${fmt(totalOf(r.change))} change`, detail: `Ask for ${summariseCounts(r.take)}${totalOf(r.handBack) ? ` (they keep ${summariseCounts(r.handBack)})` : ''} and give ${summariseCounts(r.change)}.` };
-    case 'card': return { tone: 'bad', title: "We can't make the change", detail: r.part ? `Ask for card, or take ${fmt(r.part.cashCents)} in cash and put the other ${fmt(r.part.restCents)} on card.` : 'Ask for card.' };
+      ? { tone: 'warn', title: `We can make ${fmt(totalOf(r.change))} change, but it may not be worth it`, detail: `Ask for ${summariseCounts(r.take)} and give ${summariseCounts(r.change)}. That ${r.tight.join(' and ')}. Card is the safer choice.`, groups: [...ask(r.take, r.handBack), { label: 'Give as change', counts: r.change }], note: `That ${r.tight.join(' and ')}. Card is the safer choice.` }
+      : { tone: 'good', title: `Cash works: ${fmt(totalOf(r.change))} change`, detail: `Ask for ${summariseCounts(r.take)}${totalOf(r.handBack) ? ` (they keep ${summariseCounts(r.handBack)})` : ''} and give ${summariseCounts(r.change)}.`, groups: [...ask(r.take, r.handBack), { label: 'Give as change', counts: r.change }], note: '' };
+    case 'card': { const note = r.part ? `Ask for card, or take ${fmt(r.part.cashCents)} in cash and put the other ${fmt(r.part.restCents)} on card.` : 'Ask for card.'; return { tone: 'bad', title: "We can't make the change", detail: note, groups: [], note }; }
   }
 }

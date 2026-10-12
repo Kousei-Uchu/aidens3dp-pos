@@ -1,0 +1,34 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index fa6bc35..81ae570 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -87,6 +87,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0082 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 1 of 3. A drawn terminal built from what is public about the Terminal 2 (6.5 inch touchscreen, light and dark screens, tap or insert with no swipe, PIN keyed on the screen, branded sleep screen, QR/email/SMS receipt, no printer): ten screens (sleep, amount, PIN, processing, approved, declined, remove card, cancelled, receipt, not available). The practice terminal now drives it with the same events as the real one, in two modes: automatic (the terminal plays the customer, same timing as before) or manual (you tap or insert the card and key the PIN). Idle screen uses your screensaver logo and colour. More ▸ Training ▸ Virtual terminal is a playground with every screen side by side. Wording on each screen is an approximation until checked against photos (N34). Practice and Show do not use it yet (0083, 0084) | B6 |
+ | 0083 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 2 of 3. The terminal now shows during Guide and Check whenever a card payment starts (bottom left, can be hidden, goes away when the terminal sleeps), drawn under the dim so the ring and pointer work on it. Its buttons are spots a course can point at and wait for: `terminal.tap`, `terminal.insert`, `terminal.pinpad`, `terminal.pinok`, `terminal.cancel`, `terminal.remove`, `terminal.done`. A course says who plays the customer with `card: 'auto' \| 'manual'` (manual: the person taps or inserts the card and keys the PIN). Check 2's decline injection takes an optional response `code` (default 51) and the terminal shows that reason; the checker refuses unknown codes and counts outside 1 to 5. New `src/ui/PracticeTerminal.tsx`, `spotRefFor` in `src/ui/Spot.tsx`, `declineCodeOf` | B6 |
+ | 0084 | 2026-10-12 | Training correction: **virtual Zeller Terminal 2**, part 3 of 3. Show and Info can draw the terminal: a new `terminal` node kind (`value` is the screen, `amount` the payment in cents, `on` dark mode) that steps change like any other node, so a demo can show the customer's side (amount, tap, PIN, approved or declined) beside the till. The checker refuses an unknown screen, a squashed or stretched terminal and a negative amount. Writer's guide updated. Finishes the virtual terminal except for matching its look to photos (N34) | B6 |
++| 0085 | 2026-10-12 | Device test T1.6: the **variation picker no longer closes when you tap a variation**. It adds the item (toast and spotlight as before) and stays put, so you can add several variations in a row; the back arrow or the path leaves it. One line in `pick` in `src/screens/Checkout.tsx` | A14.2 |
+ 
+ ---
+ 
+@@ -220,7 +221,7 @@ Added from your A12 notes. Replaces today's single per-item price override.
+ 
+ ### A14. Collections: image in grid/lists, variant picker as in-grid sub-menu
+ - [x] A14.1 (done in 0016) Collection image on tiles + lists. Category tiles and groups that act like a collection show the collection's Shopify picture, and so do the category rows in Add tile and the sub-category picker. The Inventory and Items category filters are chip lists, so they stay text only.
+-- [x] A14.2 (done in 0017) Variant picker as a grid sub-page instead of a popup. Tapping a product with several variations replaces the grid with one tile per variation (photo, name, price, stock line). The path above reads `Home > Dragons > Highland cow`; the back arrow, or tapping any earlier name, returns to where you were. Picking a variation adds it and goes back. The quantity chips stay on screen, so ×3 still works. It also replaces the popup on the **All products** tab (`All products > Highland cow`). Out of stock and oversold variations stay tappable (stock may go negative by design). Changing tab, page, level or edit mode closes it. The Bluetooth scanner keeps working while it is open, because it is no longer a modal. Code: `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts`.
++- [x] A14.2 (done in 0017) Variant picker as a grid sub-page instead of a popup. Tapping a product with several variations replaces the grid with one tile per variation (photo, name, price, stock line). The path above reads `Home > Dragons > Highland cow`; the back arrow, or tapping any earlier name, returns to where you were. Picking a variation adds it and stays on the picker (changed in 0085: it used to go back a level); the back arrow or the path leaves it. The quantity chips stay on screen, so ×3 still works. It also replaces the popup on the **All products** tab (`All products > Highland cow`). Out of stock and oversold variations stay tappable (stock may go negative by design). Changing tab, page, level or edit mode closes it. The Bluetooth scanner keeps working while it is open, because it is no longer a modal. Code: `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts`.
+ 
+ ### A15. New grid buttons: Lock POS, Price check, Stock check
+ - [x] A15.1 (done in 0017) **Lock POS** tile. Locks to the sign-in screen (PIN or cashier pass) and leaves the cart exactly as it is, a part-paid cart included. It works whenever staff exist, whether or not "Require PIN" is on (the lock screen now shows when staff exist and nobody is signed in). It refuses with a message when there are no staff (nothing could unlock it) or while a card payment waits on the reader (same rule as switching staff). The screensaver follows the same rule. Logged to the events CSV as a staff change. Code: `lockNow()` in `src/lib/staffAuth.ts`, rules in `src/lib/posLock.ts`.
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index 585fae2..f5438f3 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -83,7 +83,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
+   };
+   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
+-  const pick = (v: Variant) => { add(v); setVariants(null); }; // a tap in the variation picker adds it and goes back to where you were
++  const pick = (v: Variant) => { add(v); }; // a tap in the variation picker adds it and stays on the picker, so several variations can be added in a row; the back arrow or the path leaves it
+   const onScan = (code: string): string | null => {
+     if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
+     const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);

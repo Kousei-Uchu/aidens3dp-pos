@@ -50,3 +50,10 @@ test('advice wording for each verdict', () => {
   assert.equal(adviceFor(checkChange({ '500': 1, '2000': 4 }, { '5000': 1 }, 4500), fmt).tone, 'warn');
   assert.equal(adviceFor(checkChange({ '500': 4 }, { '2000': 1 }, 1000), fmt).title, 'Cash works: $10.00 change');
 });
+
+test('advice also hands the screen the notes and coins to draw as squares (0087)', () => {
+  const ok = adviceFor(checkChange({ '500': 4 }, { '2000': 1 }, 1000), fmt);
+  assert.deepEqual(ok.groups.map(g => g.label), ['Ask for', 'Give as change']); assert.deepEqual(ok.groups[0].counts, { '2000': 1 }); assert.equal(totalOf(ok.groups[1].counts), 1000); assert.equal(ok.note, '');
+  const exact = adviceFor(checkChange({}, { '2000': 1, '500': 1 }, 2000), fmt); assert.deepEqual(exact.groups.map(g => g.label), ['Ask for', 'They keep']);
+  const bad = adviceFor(checkChange({ '500': 1 }, { '5000': 1 }, 3700), fmt); assert.deepEqual(bad.groups, []); assert.ok(bad.note.length > 0);
+});

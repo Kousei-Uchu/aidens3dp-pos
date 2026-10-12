@@ -16,7 +16,7 @@ Go to **More ▸ Cash drawer** and tap **Daily float report**. If the drawer is 
 
 ### Read the figures
 - **Cash takings** is cash sales minus cash refunds for the chosen period.
-- **Take out (bank)** suggests notes and coins to remove. **Leave in the drawer as the float** shows what the ledger expects to remain.
+- **Take out (bank)** suggests notes and coins to remove. **Leave in the drawer as the float** shows what the ledger expects to remain. Each is drawn as notes and coins in squares with a count badge (**x3**), the same as the change screen, with the total beside the heading.
 - **Show another way** cycles through up to two other suggestions, when available.
 - A warning may say the ledger and sales disagree. Count the drawer before banking if the count might be wrong.
 - **Top up if you can** suggests notes and coins to add if the remaining float is below the recommended amount. Notes that are rarely used as change may be listed as better banked.

@@ -9,7 +9,8 @@ import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type Pa
 import { getTerminal, checkReader } from '../zellerBridge';
 import { csv } from '../lib/csvStore';
 import { applyLocalStock, recordSale, updateSaved } from '../lib/sync';
-import { digitsToCents, fmt, allocate } from '../lib/money';
+import { digitsToCents, fmt } from '../lib/money';
+import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
 import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
 import { lookupGiftCard, debitGiftCard, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
@@ -30,7 +31,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const { c } = useTheme(); const ui = useUi(); const cart = useApp(s => s.pos.cart); const settings = useApp(s => s.settings); const zeller = useApp(s => s.zeller);
   const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue();
   const tenders = cart.tenders ?? []; const total = priced.netCents; const paid = paidTotal(tenders); const remaining = Math.max(0, total - paid);
-  const [equalLeft, setEqualLeft] = useState(0); const [chunk, setChunk] = useState<number | null>(null);
+  const [plan, setPlan] = useState<SplitPlan>([]); // the payments still to take when the bill is split, in cents (src/lib/splitPlan.ts); empty = not split
   const [splitOpen, setSplitOpen] = useState(false); const [splitDigits, setSplitDigits] = useState(''); const [cashOpen, setCashOpen] = useState(false);
   const [gift, setGift] = useState(false); const [card, setCard] = useState<Card>({ phase: 'idle' });
   const [cancelBusy, setCancelBusy] = useState(false);
@@ -38,12 +39,13 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const [done, setDone] = useState<SaleRecord | null>(null); const [change, setChange] = useState<number | null>(null); const cancelRef = useRef<(() => void) | null>(null);
   const unknownRef = useRef<string | null>(null);
 
-  const target = Math.min(remaining, chunk ?? (equalLeft > 1 ? allocate(remaining, Array(equalLeft).fill(1))[0] : remaining));
+  const split = isSplit(plan); const target = planTarget(plan, remaining);
   const staffName = currentStaff()?.name;
   const saleUuid = () => { if (cart.saleUuid) return cart.saleUuid; const id = uid(); setCart(cc => ({ ...cc, saleUuid: id })); return id; };
 
-  const addTender = (t: Tender, uuid: string) => {
-    setCart(cc => ({ ...cc, saleUuid: uuid, tenders: [...(cc.tenders ?? []), t] })); setChunk(null); setEqualLeft(l => Math.max(0, l - 1));
+  const addTender = (t: Tender, uuid: string, next?: SplitPlan) => {
+    // every payment uses up one part of a split; what is left is shared over the later parts unless the cashier chose where the shortfall goes
+    setCart(cc => ({ ...cc, saleUuid: uuid, tenders: [...(cc.tenders ?? []), t] })); setPlan(p => next ?? planAfter(p, Math.max(0, remaining - t.amountCents)));
   };
 
   const finishCancellation = (cash: Record<string, { returned: Record<string, number>; collected: Record<string, number> }> = {}) => {
@@ -131,7 +133,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
     if (!settles && r.tendered <= 0) return;
     const uuid = saleUuid(); const t: Tender = { ...tender, cashIn: r.received, cashOut: r.given };
     useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) });
-    addTender(t, uuid); setCashOpen(false);
+    addTender(t, uuid, r.plan); setCashOpen(false);
   };
 
   // ── gift card ──
@@ -185,7 +187,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       <View style={{ alignItems: 'center', paddingVertical: 24 }}>
         <Txt sub>{tenders.length ? 'Remaining' : 'Total due'}</Txt><Money cents={remaining} size={46} weight="700" />
         {tenders.length ? <Txt sub size={13}>of {fmt(total)}</Txt> : null}
-        {chunk !== null || equalLeft > 1 ? <Txt size={14} weight="600" style={{ marginTop: 6 }}>Next payment: {fmt(target)}</Txt> : null}
+        {split ? <Txt size={14} weight="600" style={{ marginTop: 6 }}>Next payment: {fmt(target)}{plan.length > 1 ? ` · then ${plan.slice(1).map(v => fmt(v)).join(', ')}` : ''}</Txt> : null}
       </View>
       {showsWaitingStrip(card.phase) && card.phase === 'waiting' ? (
         <View style={{ marginHorizontal: 16, marginBottom: 12, padding: 12, borderRadius: 14, backgroundColor: c.fill, flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -206,7 +208,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
           <PayOption hint={payHint('cash', ui.explain)}><Btn title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
           <PayOption hint={payHint('gift', ui.explain)}><Btn title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
           <PayOption hint={payHint('split', ui.explain)}><Btn title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
-          {chunk !== null || equalLeft > 1 ? <Btn title="Cancel split" kind="ghost" onPress={() => { setChunk(null); setEqualLeft(0); }} /> : null}
+          {split ? <Btn title="Cancel split" kind="ghost" onPress={() => setPlan([])} /> : null}
         </View>
       ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: {}, given: {} })} /></View> : null}
 
@@ -225,14 +227,14 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       </Sheet>
 
       {/* cash */}
-      <CashSheet visible={cashOpen} onClose={() => setCashOpen(false)} due={cashDue(target, remaining, settings.cashRounding)} onTake={takeCash} />
+      <CashSheet visible={cashOpen} onClose={() => setCashOpen(false)} due={cashDue(target, remaining, settings.cashRounding)} onTake={takeCash} plan={plan} onChangeSplit={() => { setCashOpen(false); setSplitDigits(''); setSplitOpen(true); }} />
 
       {/* split */}
       <Sheet visible={splitOpen} onClose={() => setSplitOpen(false)} title="Split amount">
         <Txt sub style={{ textAlign: 'center' }}>First payment</Txt>
         <Txt size={34} weight="700" style={{ textAlign: 'center', marginVertical: 8 }}>{fmt(digitsToCents(splitDigits))}</Txt>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>{[2, 3, 4].map(n => <Chip key={n} label={`Split equally ${n}`} onPress={() => { setEqualLeft(n); setChunk(null); setSplitOpen(false); }} />)}</View>
-        <Keypad value={splitDigits} onChange={setSplitDigits} submitLabel="Continue" onSubmit={() => { const v = digitsToCents(splitDigits); if (v >= remaining) { alertMsg('Amount must be less than the remaining total'); return; } setChunk(v); setEqualLeft(0); setSplitOpen(false); }} />
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>{[2, 3, 4].map(n => <Chip key={n} label={`Split equally ${n}`} onPress={() => { setPlan(equalPlan(remaining, n)); setSplitOpen(false); }} />)}</View>
+        <Keypad value={splitDigits} onChange={setSplitDigits} submitLabel="Continue" onSubmit={() => { const v = digitsToCents(splitDigits); if (v >= remaining) { alertMsg('Amount must be less than the remaining total'); return; } setPlan(firstPlan(remaining, v)); setSplitOpen(false); }} />
       </Sheet>
 
       <GiftCheckSheet visible={gift} onClose={() => setGift(false)} onUse={(g, code) => void useGift(g, code)} />

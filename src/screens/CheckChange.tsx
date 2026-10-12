@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Keypad, Money, Sheet, Txt } from '../ui/kit';
 import { DenomPad } from '../ui/DenomPad';
+import { CountSquares } from '../ui/CountSquares';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { usePriced } from '../state/selectors';
@@ -46,7 +47,7 @@ export function CheckChangeSheet({ visible, onClose }: { visible: boolean; onClo
           <DenomPad draft={draft} onChange={setDraft} totalLabel="Customer has" />
           {adv ? (
             <View style={{ backgroundColor: tone + '18', borderRadius: 14, padding: 14, gap: 4, borderWidth: 1.5, borderColor: tone }}>
-              <Txt weight="700" size={17} color={tone}>{adv.title}</Txt><Txt size={14}>{adv.detail}</Txt>
+              <Txt weight="700" size={17} color={tone}>{adv.title}</Txt>{adv.groups.map(g => <CountSquares key={g.label} counts={g.counts} label={g.label} align="start" />)}{adv.note ? <Txt size={14}>{adv.note}</Txt> : null}
             </View>
           ) : <Txt size={13} sub style={{ textAlign: 'center' }}>{due > 0 ? 'Tap their notes and coins to see what we can do.' : 'Enter an amount to check.'}</Txt>}
           {profile ? <Txt size={12} sub style={{ textAlign: 'center' }}>{profileNote(profile)}</Txt> : null}
