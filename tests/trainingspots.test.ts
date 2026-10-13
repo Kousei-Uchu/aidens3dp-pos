@@ -7,7 +7,7 @@ import path from 'node:path';
 import { SPOT, STATIC_SPOTS, isKnownSpot } from '../src/lib/trainingSpots';
 import { MODULES } from '../src/training';
 import { validateModule, type Goal, type Step } from '../src/lib/trainingModule';
-import { FIXTURE_COLLECTIONS, FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
+import { FIXTURE_COLLECTIONS, FIXTURE_CUSTOMERS, FIXTURE_VARIANTS, fixtureGrid } from '../src/lib/trainingSandbox';
 
 const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap(e => (e.isDirectory() ? walk(path.join(d, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(d, e.name)] : []));
 const ui = [...walk('src/screens'), ...walk('src/ui'), 'App.tsx'].filter(f => !f.includes('Training')).map(f => fs.readFileSync(f, 'utf8')).join('\n');
@@ -32,6 +32,7 @@ test('every module is valid, and every record spot it names exists in the practi
     assert.deepEqual(validateModule(m, isKnownSpot), []);
     for (const s of spots(m)) {
       if (s.startsWith('grid.item:')) assert.ok(tileIds.has(s.slice(10)), `${m.id}: no grid tile for ${s}`);
+      if (s.startsWith('customer.row:')) assert.ok(FIXTURE_CUSTOMERS.some(c => c.id === s.slice(13)), `${m.id}: no practice customer for ${s}`);
       if (s.startsWith('cart.line:')) assert.ok(vids.has(s.slice(10)), `${m.id}: no practice item for ${s}`);
       if (s.startsWith('grid.page:')) assert.ok(pageIds.has(s.slice(10)), `${m.id}: no practice page for ${s}`);
       if (s.startsWith('grid.cat:')) assert.ok(collectionIds.has(s.slice(9)), `${m.id}: no practice category for ${s}`);

@@ -3,7 +3,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
-import { SPOT, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
+import { isTraining } from '../lib/trainingGuard';
+import { setCustomerQuery, setNoteDraftProbe } from '../lib/trainingProbe';
+import { SPOT, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { Spot } from '../ui/Spot';
 import { useApp } from '../state/store';
@@ -74,12 +76,17 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
   const local = useApp(s => s.data.customers); const [q, setQ] = useState(''); const [remote, setRemote] = useState<Customer[]>([]); const [creating, setCreating] = useState(false);
   const [f, setF] = useState({ first: '', last: '', email: '', phone: '' }); const [busy, setBusy] = useState(false);
   React.useEffect(() => { if (visible) setCreating(startCreating); }, [visible, startCreating]);
+  React.useEffect(() => { setCustomerQuery(visible && !creating ? q : ''); return () => setCustomerQuery(''); }, [visible, creating, q]); // training reads what is typed
   const hits = useMemo(() => { const t = q.trim().toLowerCase(); if (!t) return local.slice(0, 30); return local.filter(c => `${c.name} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, local]);
   const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
   const create = async () => {
     if (!f.first.trim() && !f.last.trim() && !f.email.trim() && !f.phone.trim()) return alertMsg('Add at least a name, email or phone');
     setBusy(true);
+    if (isTraining()) { // practice: the customer is made on this iPad only, nothing goes to Shopify
+      const c: Customer = { id: `train-cu-new-${Date.now()}`, name: [f.first.trim(), f.last.trim()].filter(Boolean).join(' ') || f.email.trim() || f.phone.trim(), email: f.email.trim() || undefined, phone: f.phone.trim() || undefined, orders: 0, spentCents: 0 };
+      useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); setBusy(false); onPick(c); onClose(); return;
+    }
     try {
       const c = await createCustomer({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); onPick(c); onClose();
@@ -89,17 +96,19 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
     <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
       {creating ? (
         <View>
-          <Field kind="name" label="First name" value={f.first} onChangeText={v => setF({ ...f, first: v })} /><Field kind="name" label="Last name" value={f.last} onChangeText={v => setF({ ...f, last: v })} />
-          <Field kind="email" label="Email" value={f.email} onChangeText={v => setF({ ...f, email: v })} />
-          <Field kind="phone" label="Mobile" value={f.phone} onChangeText={v => setF({ ...f, phone: v })} />
-          <Btn title="Create & attach" onPress={create} busy={busy} /><Btn title="Back" kind="ghost" onPress={() => setCreating(false)} />
+          <Spot id={SPOT.customerForm}>
+            <Field kind="name" label="First name" value={f.first} onChangeText={v => setF({ ...f, first: v })} /><Field kind="name" label="Last name" value={f.last} onChangeText={v => setF({ ...f, last: v })} />
+            <Field kind="email" label="Email" value={f.email} onChangeText={v => setF({ ...f, email: v })} />
+            <Field kind="phone" label="Mobile" value={f.phone} onChangeText={v => setF({ ...f, phone: v })} />
+          </Spot>
+          <Btn spot={SPOT.customerSave} title="Create & attach" onPress={create} busy={busy} /><Btn title="Back" kind="ghost" onPress={() => setCreating(false)} />
         </View>
       ) : (
         <View>
-          <Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={search} />
-          {shown.map(cu => <Row key={cu.id} title={cu.name || cu.email || cu.phone || 'Customer'} sub={[cu.email, cu.phone].filter(Boolean).join(' · ')} onPress={() => { onPick(cu); onClose(); }} />)}
-          {q.trim() && !busy ? <Btn title="Search Shopify" kind="secondary" small onPress={search} style={{ marginTop: 8 }} /> : null}
-          {allowCreate ? <Btn title="Create customer" icon="person-add-outline" kind="secondary" onPress={() => setCreating(true)} style={{ marginTop: 12 }} /> : null}
+          <Spot id={SPOT.customerSearch}><Field kind="search" placeholder="Search name, email or phone" value={q} onChangeText={setQ} onSubmitEditing={search} /></Spot>
+          {shown.map(cu => <Row key={cu.id} spot={customerRowSpot(cu.id)} title={cu.name || cu.email || cu.phone || 'Customer'} sub={[cu.email, cu.phone].filter(Boolean).join(' · ')} onPress={() => { onPick(cu); onClose(); }} />)}
+          {q.trim() && !busy && !isTraining() ? <Btn title="Search Shopify" kind="secondary" small onPress={search} style={{ marginTop: 8 }} /> : null}
+          {allowCreate ? <Btn spot={SPOT.customerCreate} title="Create customer" icon="person-add-outline" kind="secondary" onPress={() => setCreating(true)} style={{ marginTop: 12 }} /> : null}
         </View>
       )}
     </Sheet>
@@ -153,6 +162,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
   const mayItem = useAdjustAllowed('item'); const mayLine = useAdjustAllowed('line'); // A16.9
   const lineKey = line ? line.variantId ?? line.id : undefined; // training: which line's window this is
   useEffect(() => { setOpenLine(lineKey); return () => setOpenLine(undefined); }, [lineKey]);
+  useEffect(() => { setNoteDraftProbe(noteDraft ?? ''); return () => setNoteDraftProbe(''); }, [noteDraft]); // training reads what is typed
   if (!line) return null;
   const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
   const canAll = line.kind === 'item' && !!line.variantId;
@@ -210,7 +220,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         ) : null}
         <Spot id={lineNoteSpot(lineKey!)}><Field kind="text" label="Note" value={note} onChangeText={setNoteDraft} placeholder="Add a note to this item" /></Spot>
         <Btn spot={lineRemoveSpot(lineKey!)} title="Remove item" kind="danger" icon="trash-outline" onPress={() => { setCart(cc => ops.removeLine(cc, line.id)); onClose(); }} />
-        <Btn title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
+        <Btn spot={SPOT.lineDone} title="Done" kind="secondary" onPress={() => { if (noteDraft !== null) setCart(cc => ops.patchLine(cc, line.id, { note: noteDraft.trim() || undefined })); setNoteDraft(null); onClose(); }} style={{ marginTop: 8 }} />
       </Sheet>
       <DiscountSheet visible={disc} onClose={() => setDisc(false)} offSpot={lineDiscountOffSpot(lineKey!)} current={line.discount} title="Item discount" onApply={d => setCart(cc => ops.setLineDiscount(cc, line.id, d))} />
       <Sheet visible={price} onClose={() => setPrice(false)} title="Item price adjustment">

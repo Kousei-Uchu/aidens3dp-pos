@@ -44,7 +44,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
     <View style={{ flex: 1, backgroundColor: c.card }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: onClose ? 54 : 12, paddingHorizontal: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: c.line }}>
         {onClose ? <IconBtn icon="chevron-back" label="Back" onPress={onClose} /> : null}
-        <Pressable onPress={() => setSheet('customer')} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 }} accessibilityRole="button" accessibilityLabel="Attach customer">
+        <Pressable ref={spotRefFor(SPOT.cartCustomer)} collapsable={false} onPress={() => setSheet('customer')} style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, padding: 8 }} accessibilityRole="button" accessibilityLabel="Attach customer">
           <Ionicons name={cart.customer ? 'person-circle' : 'person-add-outline'} size={22} color={c.text} />
           <Txt weight="600" numberOfLines={1} style={{ flex: 1 }}>{customerRowText(ui.explain, cart.customer?.name, !!cart.customer)}</Txt>
           {cart.customer ? <Pressable ref={spotRefFor(SPOT.cartCustomerOff)} collapsable={false} onPress={() => setCart(cc => ({ ...cc, customer: undefined }))} hitSlop={10} accessibilityLabel="Remove customer"><Ionicons name="close-circle" size={20} color={c.sub} /></Pressable> : null}

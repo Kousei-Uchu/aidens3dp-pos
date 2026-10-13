@@ -252,3 +252,15 @@ On the iPad and on a phone: **More ▸ Training ▸ Finish a sale and send the r
 
 Tell me: pass or fail for each step, and especially whether any real app opened in practice.
 
+## T21. Training: Customers and notes (B6, 0106)
+
+On the iPad and on a phone: **More ▸ Training ▸ Customers and notes**.
+
+1. **Info and Show.** Step through both with Next. Pass: the cards appear one at a time, and the Show goes list, search, pick, line note, take off, then creates a new customer.
+2. **Guide.** Follow the arrows. Pass: tapping the customer row opens the Customer window (on a phone it first points at the bar that opens the cart), typing priya narrows the list and finishes the step, tapping Priya Patel attaches her, typing a note then Done saves it, the x takes her off, and Create customer ▸ form ▸ Create & attach makes a new one.
+3. **Keyboard.** Pass: the keyboard opens and you can type in the search box, the note box and the form fields while their step is ringed, and Done is reachable.
+4. **Check 1.** Pass: attaching Alex, noting the Bumble Bee line and taking Alex off each finish the moment you do them.
+5. **Check 2.** Pass: Sam Rivera is already on the sale and picking Priya replaces him. The second goal starts with nobody attached, and a new customer finishes it.
+6. **Leave.** Pass: after leaving, your real till is as you left it, and **Customers** (More) does not list the practice customer you created.
+
+Tell me: pass or fail for each step, and a screenshot of anything that is hard to tap.

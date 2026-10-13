@@ -29,6 +29,7 @@ The moving cursor shows how to do each thing: a tap, a double or triple tap, a p
 - **Sign in, lock and switch staff**: sign in with a PIN or a cashier pass, hand the till to a colleague from the grid, and lock it when you step away. Practice uses two practice people, **Casey** (a cashier, PIN 1234) and **Morgan** (a manager, PIN 2468, with a cashier pass). They exist only inside practice. When a step asks you to scan a pass, a drawn practice pass appears with a **Scan this pass** button, because a camera cannot scan a pass that is not real.
 
 - **Build a cart**: add items by tapping tiles, add more of the same, and take an item out by swiping its line to the left and tapping Remove.
+- **Customers and notes**: attach a customer by picking or searching, create one who is not on the list (made on this iPad only in practice), put a note on a line with Done, and take the customer off with the small x.
 
 More courses are added one at a time, most important first.
 

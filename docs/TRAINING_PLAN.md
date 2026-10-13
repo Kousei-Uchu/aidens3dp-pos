@@ -6,8 +6,8 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
 
 ## State of play
 
-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099) and `receipts` (0105).
-- **Next:** `pay-cash` (#6, skipped for now at your request), then `customer` (#8).
+- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105) and `customer` (0106).
+- **Next:** `discounts` (#9), then `price-adjust` (#10); `pay-cash` (#6) is still skipped at your request.
 - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
 - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
 
@@ -37,7 +37,8 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
 
 ## Tier 2: everyday variations on a sale
 
-8. **`customer`: Customers and notes.** Attach, find or create a customer, line notes, and remove the customer.
+8. **`customer`: Customers and notes** (done, 0106). Attach, find or create a customer, line notes, and remove the customer.
+   - As built: Guide adds a sale, searches for priya, picks her, types a note on a line and taps Done, takes her off with the x, then creates a new customer. Check 2: the wrong customer is on the sale (Sam, should be Priya), and a new customer who is not on the list. In practice Create customer is made on this iPad only and Search Shopify is hidden.
 9. **`discounts`: Discounts.** Line and cart discounts, code presets, a custom % or $, automatic deals, and what is excluded (`no-discount`).
    - Guide: apply to a line, apply to the cart, remove it.
    - Check 2: a customer asks for a discount you should not give, or a deal does not apply because the minimum quantity is not met.
