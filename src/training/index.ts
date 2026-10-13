@@ -8,6 +8,7 @@ import { findItems } from './modules/find-items';
 import { payCard } from './modules/pay-card';
 import { receipts } from './modules/receipts';
 import { customer } from './modules/customer';
+import { discounts } from './modules/discounts';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, receipts, customer];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, receipts, customer, discounts];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);

@@ -264,3 +264,16 @@ On the iPad and on a phone: **More ▸ Training ▸ Customers and notes**.
 6. **Leave.** Pass: after leaving, your real till is as you left it, and **Customers** (More) does not list the practice customer you created.
 
 Tell me: pass or fail for each step, and a screenshot of anything that is hard to tap.
+
+## T22. Training: Discounts (B6, 0107)
+
+On the iPad and on a phone: **More ▸ Training ▸ Discounts**.
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, and the Show goes cart, line window, discount window, new price, cart menu, preset, Not discountable, the automatic deal, and Remove.
+2. **Guide.** Pass: Red Dragon tile, its line, Discount, a key press, Apply discount (the line shows the new price), Done, the cart menu, Apply cart discount, the Practice 10% off button, then back through the same menu to Remove. On a phone the first line and menu steps point at the cart bar first. Nothing should be called a mistake when a discount goes on.
+3. **Check 1.** Pass: the first goal needs the Dragon discounted and the Bee **not**. The second wants a cart discount. The third finishes when it is removed.
+4. **Check 2.** Pass: open the Clearance Print and see Not discountable (the row cannot be tapped). Give the Bee 10% instead. Next, with two Keyrings, add one more. Last, a 15% cart discount is already on; remove it.
+5. **After training.** Add a real item. Pass: the real presets and no practice deal or print appear.
+
+Tell me: pass or fail for each step, and whether the Discount window keys and chips are easy to point at on a phone.
+

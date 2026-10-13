@@ -78,7 +78,7 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
-  | { kind: 'cart'; items: { variantId: string; qty: number }[]; customer?: string }       // start the run with these lines in the cart
+  | { kind: 'cart'; items: { variantId: string; qty: number }[]; customer?: string; /** Start with this percentage off the whole cart (a discount to be taken off again). */ discountPct?: number }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
   | { kind: 'ledger'; counts: Record<string, number> }
   | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)

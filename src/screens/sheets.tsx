@@ -5,7 +5,7 @@ import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, 
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
 import { setCustomerQuery, setNoteDraftProbe } from '../lib/trainingProbe';
-import { SPOT, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
+import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { Spot } from '../ui/Spot';
 import { useApp } from '../state/store';
@@ -34,10 +34,10 @@ export function DiscountSheet({ visible, onClose, onApply, offSpot, current, tit
   };
   return (
     <Sheet visible={visible} onClose={onClose} title={title}>
-      {presets.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>{presets.map(p => <Chip key={p.id} label={p.label} onPress={() => { onApply({ kind: p.kind, value: p.value, label: p.label }); onClose(); }} />)}</View> : null}
+      {presets.length ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>{presets.map(p => <Chip key={p.id} spot={discountPresetSpot(p.id)} label={p.label} onPress={() => { onApply({ kind: p.kind, value: p.value, label: p.label }); onClose(); }} />)}</View> : null}
       <Segmented value={mode} onChange={m => { setMode(m); setDigits(''); }} options={[{ v: 'pct', label: '% percent' }, { v: 'amt', label: '$ amount' }]} />
       <Txt size={34} weight="700" style={{ textAlign: 'center', marginVertical: 14 }}>{mode === 'pct' ? `${digits || 0}%` : fmt(digitsToCents(digits))}</Txt>
-      <Keypad value={digits} onChange={setDigits} decimal={mode === 'amt'} onSubmit={apply} submitLabel="Apply discount" />
+      <Keypad value={digits} onChange={setDigits} decimal={mode === 'amt'} onSubmit={apply} submitLabel="Apply discount" keysSpot={SPOT.discountKeys} submitSpot={SPOT.discountApply} />
       {current ? <Btn spot={offSpot} title={`Remove “${current.label}”`} kind="ghost" onPress={() => { onApply(undefined); onClose(); }} style={{ marginTop: 8 }} /> : null}
     </Sheet>
   );
