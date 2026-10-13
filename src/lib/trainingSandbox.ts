@@ -85,7 +85,7 @@ export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined)
   let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
   for (const i of inj ?? []) {
     if (i.kind === 'staff') who = i.who;
-    if (i.kind === 'cart') { cart = cart ?? emptyCart(); for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } }
+    if (i.kind === 'cart') { cart = cart ?? emptyCart(); for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } const cu = i.customer ? FIXTURE_CUSTOMERS.find(c => c.id === i.customer) : undefined; if (cu) cart = { ...cart, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }; }
     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
   }
   let out: Swap = cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;

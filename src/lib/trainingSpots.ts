@@ -46,19 +46,27 @@ export const SPOT = {
   receiptEmail: 'receipt.email',       // Email link (Email receipt when receipts are not published), in the Receipt window
   receiptText: 'receipt.text',         // Text link (Text receipt), in the Receipt window
   receiptShare: 'receipt.share',       // Share, in the Receipt window
+  cartCustomer: 'cart.customer',       // the customer row at the top of the cart (tap it to attach someone)
+  customerSearch: 'customer.search',   // the search box in the Customer window
+  customerCreate: 'customer.create',   // Create customer, in the Customer window
+  customerForm: 'customer.form',       // the four boxes in the New customer window (ring the whole form)
+  customerSave: 'customer.save',       // Create & attach, in the New customer window
+  lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
+export const DYNAMIC_PREFIXES = ['grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
 export const gridActionSpot = (action: string): string => `grid.action:${action}`;
+/** One customer row in the Customer window. */
+export const customerRowSpot = (id: string): string => `customer.row:${id}`;
 export const cartLineSpot = (variantId: string): string => `cart.line:${variantId}`;
 /** A page chip above the grid. */
 export const gridPageSpot = (pageId: string): string => `grid.page:${pageId}`;

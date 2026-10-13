@@ -55,6 +55,7 @@ export type TrainSnap = {
   /** The Cash, Gift card or Split choice that is open on the Payment page, when one is. */ payOpen?: 'cash' | 'gift' | 'split';
   /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
+  /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
 export type Until =
@@ -77,7 +78,7 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
-  | { kind: 'cart'; items: { variantId: string; qty: number }[] }       // start the run with these lines in the cart
+  | { kind: 'cart'; items: { variantId: string; qty: number }[]; customer?: string }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
   | { kind: 'ledger'; counts: Record<string, number> }
   | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)
