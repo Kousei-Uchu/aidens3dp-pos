@@ -2,7 +2,7 @@
 // Practice data for the Guide and Check stages, and the swap in and out. Pure: no store imports except types.
 // Every id starts with "train-" so practice data can never be mistaken for the real thing.
 import type { App, Settings } from '../state/store';
-import type { Variant, Collection, Customer, ManualPreset, Cart } from './types';
+import type { Variant, Collection, Customer, ManualPreset, Cart, AutoDiscount } from './types';
 import type { Grid, Tile } from './grid';
 import { addVariant, emptyCart } from './cartOps';
 import { emptyLedger, type CashLedger } from './cashLedger';
@@ -23,6 +23,7 @@ export const FIXTURE_VARIANTS: Variant[] = [
   v('bee', 'bee', 'Bumble Bee', '', 800, 30, 'TR-BEE'), v('dragon', 'dragon', 'Red Dragon', '', 2500, 8, 'TR-DRG'),
   v('egg', 'egg', 'Dragon Egg', '', 600, 25, 'TR-EGG'), v('key', 'key', 'Keyring', '', 500, 40, 'TR-KEY'),
   v('sticker', 'sticker', 'Sticker Pack', '', 300, 50, 'TR-STK'),
+  { ...v('print', 'print', 'Clearance Print', '', 1500, 6, 'TR-PRT'), tags: ['no-discount'] }, // can never be discounted
 ];
 export const FIXTURE_COLLECTIONS: Collection[] = [
   { id: `${TRAIN_PREFIX}c-animals`, title: 'Animals', productIds: [`${TRAIN_PREFIX}p-cow`, `${TRAIN_PREFIX}p-bee`] },
@@ -33,7 +34,9 @@ export const FIXTURE_CUSTOMERS: Customer[] = [
   { id: `${TRAIN_PREFIX}cu-2`, name: 'Priya Patel', phone: '0400 000 111', orders: 1, spentCents: 1200 },
   { id: `${TRAIN_PREFIX}cu-3`, name: 'Alex Chen', email: 'alex@example.com', orders: 0, spentCents: 0 },
 ];
-export const FIXTURE_PRESETS: ManualPreset[] = [{ id: `${TRAIN_PREFIX}pre-10`, kind: 'pct', value: 10, label: 'Practice 10% off' }];
+export const FIXTURE_PRESETS: ManualPreset[] = [{ id: `${TRAIN_PREFIX}pre-10`, kind: 'pct', value: 10, label: 'Practice 10% off' }, { id: `${TRAIN_PREFIX}pre-5`, kind: 'amt', value: 500, label: 'Practice $5 off' }];
+/** An automatic deal for the Discounts course: 20% off Keyrings, but only from three in the cart. */
+export const FIXTURE_AUTOS: AutoDiscount[] = [{ id: `${TRAIN_PREFIX}auto-keys`, title: 'Practice: 3 Keyrings, 20% off', kind: 'basic', pct: 20, target: { variantIds: [`${TRAIN_PREFIX}v-key`] }, minQty: 3 }];
 const HOME_TILES: Tile[] = [
   { type: 'item', productId: `${TRAIN_PREFIX}p-cow` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-bee` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-dragon` },
   { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
@@ -74,7 +77,7 @@ export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean } = {})
   const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, x]));
   return {
     settings: opts.practiceStaff ? { ...sandboxSettings(real.settings), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings),
-    data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: [], presets: FIXTURE_PRESETS },
+    data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: FIXTURE_AUTOS, presets: FIXTURE_PRESETS },
     grid: fixtureGrid(), gridVersion: 0,
     pos: { saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
     sync: { state: 'idle' }, zeller: { ready: true }, staffId: opts.practiceStaff ? PRACTICE_CASEY : real.staffId, unlocked: true,
@@ -85,7 +88,7 @@ export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined)
   let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
   for (const i of inj ?? []) {
     if (i.kind === 'staff') who = i.who;
-    if (i.kind === 'cart') { cart = cart ?? emptyCart(); for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } const cu = i.customer ? FIXTURE_CUSTOMERS.find(c => c.id === i.customer) : undefined; if (cu) cart = { ...cart, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }; }
+    if (i.kind === 'cart') { cart = cart ?? emptyCart(); if (i.discountPct) cart = { ...cart, discount: { kind: 'pct', value: i.discountPct, label: `${i.discountPct}% off` } }; for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) cart = addVariant(cart, v, it.qty, true); } const cu = i.customer ? FIXTURE_CUSTOMERS.find(c => c.id === i.customer) : undefined; if (cu) cart = { ...cart, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }; }
     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
   }
   let out: Swap = cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
