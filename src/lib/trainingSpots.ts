@@ -42,9 +42,14 @@ export const SPOT = {
   payRetry: 'pay.retry',               // Try card again, in the Not approved window
   payOther: 'pay.other',               // Use another method, in the Not approved window
   receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
+  receiptQr: 'receipt.qr',             // Show QR code, in the Receipt window
+  receiptEmail: 'receipt.email',       // Email link (Email receipt when receipts are not published), in the Receipt window
+  receiptText: 'receipt.text',         // Text link (Text receipt), in the Receipt window
+  receiptShare: 'receipt.share',       // Share, in the Receipt window
+  receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
 export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);

@@ -1,6 +1,7 @@
 // Location: src/screens/Receipt.tsx
 import React, { useEffect, useState } from 'react';
 import { SPOT } from '../lib/trainingSpots';
+import { isTraining } from '../lib/trainingGuard';
 import { Image, Linking, Share, View } from 'react-native';
 import { Btn, HelpButton, Sheet, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
@@ -26,7 +27,7 @@ export const receiptText = (s: SaleRecord): string => {
 /** After payment: QR / text / email the receipt link (merged order + card receipt page), or the plain-text fallback when no receipt server is set. */
 export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDone: () => void }) {
   const url = useApp(s => s.settings.passServerUrl); const rc = useApp(s => s.settings.receipt); const shop = useApp(s => s.settings.shopName);
-  const [qr, setQr] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
+  const [qr, setQr] = useState(false); const [busy, setBusy] = useState(false); const [note, setNote] = useState(''); const [practiceSent, setPracticeSent] = useState('');
   const claimBase = useApp(s => s.settings.giftClaimUrl); const [claimSecret, setClaimSecretState] = useState('');
   const [giftView, setGiftView] = useState<null | { kind: 'claim' | 'card'; i: number }>(null);
   useEffect(() => { void getClaimSecret().then(setClaimSecretState); }, []);
@@ -37,7 +38,8 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
   const body = enabled ? `${rc.name || shop || 'Receipt'}\nYour ${rc.gstRegistered ? 'tax invoice' : 'receipt'}: ${link}` : receiptText(sale);
   const gifts = sale.lines.filter(l => l.kind === 'gift_card' && l.giftCardCode); const gift = gifts[0];
   const claimable = gifts.filter(l => !l.giftRecipient && claimUrl(claimBase, claimSecret, l.giftCardCode!)); // A10: no email given at the till, so the customer can add theirs
-  const open = async (u: string) => { try { await Linking.openURL(u); } catch { alertMsg('Could not open that app', undefined, 'pay/receipts'); } };
+  const practice = isTraining(); // in training nothing may leave the till, so an app is never opened: the screen says what would have happened
+  const open = async (u: string) => { if (practice) { setPracticeSent(`Practice: ${u.startsWith('sms') ? 'Messages' : 'Mail'} would open now with the receipt ready to send.`); return; } try { await Linking.openURL(u); } catch { alertMsg('Could not open that app', undefined, 'pay/receipts'); } };
   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
   return (
     <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
@@ -62,17 +64,18 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
         <QR value={link} size={230} />
         <Txt size={13} sub style={{ textAlign: 'center' }}>Scan to open the {rc.gstRegistered ? 'tax invoice' : 'receipt'}: itemised, with card details, PDF and image download.</Txt>
         {note ? <Txt size={13} color="#B45309" style={{ textAlign: 'center' }}>{note}</Txt> : null}
-        <Btn title="Back" kind="secondary" onPress={() => setQr(false)} />
+        <Btn spot={SPOT.receiptQrBack} title="Back" kind="secondary" onPress={() => setQr(false)} />
       </View> : <View style={{ gap: 8 }}>
-        {enabled ? <Btn title="Show QR code" icon="qr-code-outline" busy={busy} onPress={() => void showQr()} /> : null}
-        <Btn title={enabled ? 'Email link' : 'Email receipt'} icon="mail-outline" kind="secondary" onPress={() => { const to = sale.customer?.email ?? ''; void open(`mailto:${to}?subject=${encodeURIComponent(enabled ? (rc.gstRegistered ? 'Your tax invoice' : 'Your receipt') : 'Your receipt')}&body=${encodeURIComponent(body)}`); }} />
-        <Btn title={enabled ? 'Text link' : 'Text receipt'} icon="chatbubble-outline" kind="secondary" onPress={() => { const to = sale.customer?.phone ?? ''; void open(`sms:${to}&body=${encodeURIComponent(body)}`); }} />
-        <Btn title="Share…" icon="share-outline" kind="secondary" onPress={() => void Share.share({ message: body })} />
+        {enabled ? <Btn spot={SPOT.receiptQr} title="Show QR code" icon="qr-code-outline" busy={busy} onPress={() => void showQr()} /> : null}
+        <Btn spot={SPOT.receiptEmail} title={enabled ? 'Email link' : 'Email receipt'} icon="mail-outline" kind="secondary" onPress={() => { const to = sale.customer?.email ?? ''; void open(`mailto:${to}?subject=${encodeURIComponent(enabled ? (rc.gstRegistered ? 'Your tax invoice' : 'Your receipt') : 'Your receipt')}&body=${encodeURIComponent(body)}`); }} />
+        <Btn spot={SPOT.receiptText} title={enabled ? 'Text link' : 'Text receipt'} icon="chatbubble-outline" kind="secondary" onPress={() => { const to = sale.customer?.phone ?? ''; void open(`sms:${to}&body=${encodeURIComponent(body)}`); }} />
+        <Btn spot={SPOT.receiptShare} title="Share…" icon="share-outline" kind="secondary" onPress={() => { if (practice) { setPracticeSent('Practice: the Share sheet would open now.'); return; } void Share.share({ message: body }); }} />
         <HelpButton id={gift ? 'pay/gift-card' : 'pay/receipts'} label="Receipt help" />
         {GIFT_CARD_PASSES && gift && url ? <Btn title="Add gift card to Apple Wallet" icon="wallet-outline" kind="secondary" onPress={async () => { const secret = await getPassSecret(); if (!secret) return alertMsg('Pass server secret missing', 'Add it in Settings ▸ Gift cards.', 'gift'); void open(signedPassUrl(url, secret, gift.giftCardCode!)); }} /> : null}
         {claimable.length ? <Btn title="Claim QR: customer adds their email" icon="qr-code-outline" kind="secondary" onPress={() => setGiftView({ kind: 'claim', i: 0 })} /> : null}
         {gift ? <Btn title="Gift card QR (for scanning at a register)" icon="gift-outline" kind="secondary" onPress={() => setGiftView({ kind: 'card', i: 0 })} /> : null}
         {gift ? <Txt size={13} sub style={{ textAlign: 'center' }}>Gift card code: {gift.giftCardCode}{gift.giftRecipient ? ` · emailing to ${gift.giftRecipient.email}` : ''}</Txt> : null}
+        {practiceSent ? <Txt size={13} color="#B45309" style={{ textAlign: 'center' }}>{practiceSent}</Txt> : null}
         <Btn spot={SPOT.receiptNone} title="No receipt" onPress={onDone} />
       </View>}
     </Sheet>
