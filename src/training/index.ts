@@ -6,6 +6,7 @@ import { signIn } from './modules/sign-in';
 import { cart } from './modules/cart';
 import { findItems } from './modules/find-items';
 import { payCard } from './modules/pay-card';
+import { receipts } from './modules/receipts';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, receipts];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);

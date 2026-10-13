@@ -61,8 +61,10 @@ export function practiceStaff(): StaffMember[] {
   ];
 }
 /** Settings for the sandbox: the real staff list and display mode stay (so roles and text size apply); everything that points outside the till is blanked. */
+/** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
+export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
 export function sandboxSettings(real: Settings): Settings {
-  return { ...real, receipt: { ...real.receipt, serverUrl: '' }, passServerUrl: '', giftClaimUrl: '', bundlesJson: '', adjustPerms: {}, smartChange: false, cashRounding: true };
+  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', bundlesJson: '', adjustPerms: {}, smartChange: false, cashRounding: true };
 }
 export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
 /** The real state to put back afterwards. */

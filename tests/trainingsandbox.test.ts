@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { useApp, flushPersist } from '../src/state/store';
 import { kvGet, kvSet, kvDel, kvUseMemory } from '../src/lib/kv';
 import { TRAINING_PROGRESS_KEY, isTraining, kvWriteAllowed, setTrainingGuard } from '../src/lib/trainingGuard';
-import { FIXTURE_VARIANTS, FIXTURE_CUSTOMERS, FIXTURE_COLLECTIONS, applyInjections, buildSandbox, declinesOf, fixtureGrid, isTrainId, takeSnapshot, trainingBlocker } from '../src/lib/trainingSandbox';
+import { PRACTICE_RECEIPT_URL, FIXTURE_VARIANTS, FIXTURE_CUSTOMERS, FIXTURE_COLLECTIONS, applyInjections, buildSandbox, declinesOf, fixtureGrid, isTrainId, takeSnapshot, trainingBlocker } from '../src/lib/trainingSandbox';
 import { makeTrainingTerminal, resetTrainingTerminal, setDeclines, timing, trainingTerminal } from '../src/lib/trainingTerminal';
 import { startCharge } from '../src/lib/zeller';
 import { totalOf } from '../src/lib/cashLedger';
@@ -35,7 +35,7 @@ test('the sandbox is practice data only, keeps the signed-in person, blanks outs
   useApp.setState({ staffId: 's1', settings: { ...s.settings, staff: [{ id: 's1', name: 'Jo', role: 'cashier', salt: '', pinHash: '' }], requirePin: true, receipt: { ...s.settings.receipt, serverUrl: 'https://r.example' }, passServerUrl: 'https://p.example', giftClaimUrl: 'https://g.example', bundlesJson: '{"x":1}', adjustPerms: { cashier: { line: false } } as any }, unlocked: true });
   const real = takeSnapshot(useApp.getState()); const sb = buildSandbox(real);
   assert.equal(sb.staffId, 's1'); assert.equal(sb.settings.staff[0].name, 'Jo'); assert.equal(sb.unlocked, true);
-  assert.equal(sb.settings.receipt.serverUrl, ''); assert.equal(sb.settings.passServerUrl, ''); assert.equal(sb.settings.giftClaimUrl, ''); assert.equal(sb.settings.bundlesJson, ''); assert.deepEqual(sb.settings.adjustPerms, {});
+  assert.equal(sb.settings.receipt.serverUrl, PRACTICE_RECEIPT_URL); assert.equal(sb.settings.passServerUrl, ''); assert.equal(sb.settings.giftClaimUrl, ''); assert.equal(sb.settings.bundlesJson, ''); assert.deepEqual(sb.settings.adjustPerms, {});
   assert.equal(real.settings.receipt.serverUrl, 'https://r.example', 'the real settings object is untouched');
   for (const v of Object.values(sb.data.variants)) { assert.ok(isTrainId(v.id) && isTrainId(v.productId), v.id); }
   for (const c of [...sb.data.collections, ...sb.data.customers, ...sb.data.presets]) assert.ok(isTrainId(c.id), c.id);

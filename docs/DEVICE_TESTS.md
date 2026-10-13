@@ -239,3 +239,16 @@ On the iPad and on a phone.
 3. **Find the right item:** at the search step, switch to another tab: the ring should point at the Checkout tab.
 
 Tell me: pass or fail for each step, and anything the ring points at that is hidden or wrong.
+
+## T20. Training: Finish a sale and send the receipt (B6, 0105)
+
+On the iPad and on a phone: **More ▸ Training ▸ Finish a sale and send the receipt**.
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, the Show taps Email, Text and Share, switches to a QR code with the Not published yet note, goes Back, and ends on No receipt.
+2. **Guide.** Pass: Bee, Charge, Card, then the practice terminal taps the card by itself and the Receipt window opens. Then each ring finishes its step: Email link, Text link, Share, Show QR code, Back, No receipt. **In practice none of these may open Mail, Messages or the share sheet**: an orange line under the buttons says what would have opened. The QR page must say Not published yet. Nothing in these steps may be called a mistake.
+3. **Check 1.** Pass: the first goal finishes the moment you tap Email link, the second on Text link (the window stays open between goals), the third when the window closes.
+4. **Check 2.** Pass: try Show QR code first and read the note, then Back and Text link. The next goal wants Share, then No receipt. Paying with Cash instead of Card should bring up a note or a restart, not break the course.
+5. **After training.** Take a real sale. Pass: the Receipt window is as before (and Email link still opens Mail).
+
+Tell me: pass or fail for each step, and especially whether any real app opened in practice.
+

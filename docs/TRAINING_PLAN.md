@@ -6,8 +6,8 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
 
 ## State of play
 
-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098) and `pay-card` (0099).
-- **Next:** `pay-cash`, then `receipts`.
+- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099) and `receipts` (0105).
+- **Next:** `pay-cash` (#6, skipped for now at your request), then `customer` (#8).
 - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
 - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
 
@@ -32,7 +32,8 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
 6. **`pay-cash`: Take cash and give change.** Tap the notes and coins handed over (the denomination pad), change from the drawer, 5c rounding.
    - Guide: Charge, Cash, tap denominations, undo or subtract an entry, change shown, done.
    - Check 2: no change available in the drawer (ledger injection), so split or ask for card. Also a customer who hands over too little.
-7. **`receipts`: Finish a sale and send the receipt.** Email, text, QR, share or no receipt, plus the "not published yet" case.
+7. **`receipts`: Finish a sale and send the receipt** (done, 0105). Email, text, QR, share or no receipt, plus the "not published yet" case.
+   - As built: the card is taken automatically (`card: 'auto'`), then Guide steps through Email link, Text link, Share, Show QR code (which says Not published yet) and No receipt. In practice the Receipt window is given a made-up receipt server so it offers the QR code, and Email, Text and Share never open another app: they say what would have opened. Check 1 and Check 2 chain on the one open window (email, text, none; QR then text, share, none), so a goal can be finished by a button press. Gift card receipts (claim QR, Wallet) are not covered.
 
 ## Tier 2: everyday variations on a sale
 
