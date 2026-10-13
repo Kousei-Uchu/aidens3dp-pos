@@ -6,6 +6,8 @@ export type CheckoutWhere = { tab: 'keypad' | 'quick' | 'all'; depth: number; si
 let openLine: string | undefined; export const setOpenLine = (k: string | undefined): void => { openLine = k; }; export const getOpenLine = (): string | undefined => openLine;
 let payOpen: 'cash' | 'gift' | 'split' | undefined; export const setPayOpen = (m: typeof payOpen): void => { payOpen = m; }; export const getPayOpen = (): typeof payOpen => payOpen;
 let customerQuery = ''; export const setCustomerQuery = (q: string): void => { customerQuery = q; }; export const getCustomerQuery = (): string => customerQuery;
+export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
+let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
 let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
 export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };

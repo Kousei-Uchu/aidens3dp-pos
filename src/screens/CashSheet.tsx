@@ -18,6 +18,8 @@ import { useCashProfile } from '../state/cashProfile';
 import { fmt } from '../lib/money';
 import { applyShortChoice, shortChoices, type ShortChoice, type SplitPlan } from '../lib/splitPlan';
 import type { Tender } from '../lib/types';
+import { SPOT } from '../lib/trainingSpots';
+import { setCashProbe } from '../lib/trainingProbe';
 
 /** The denominations physically received and given; `applyCents` marks a part-cash payment. */
 export type CashResult = { tendered: number; received: Counts; given: Counts; applyCents?: number; plan?: SplitPlan };
@@ -42,7 +44,7 @@ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, o
             {plan.smart ? <Txt size={12} sub style={{ textAlign: 'center' }}>{alt === 0 ? plan.why : 'Another way to make the same change.'}</Txt> : null}
             {plan.truncated ? <Txt size={12} sub style={{ textAlign: 'center' }}>The drawer holds a lot, so this is a good answer, not the only one.</Txt> : null}
           </View>
-          <Btn title="Gave this" onPress={() => onConfirm(shown)} />
+          <Btn spot={SPOT.cashGave} title="Gave this" onPress={() => onConfirm(shown)} />
           {options.length > 1 ? <Btn title={alt === 0 ? 'Show another way' : alt < options.length - 1 ? 'Show the next way' : 'Back to the suggested way'} kind="secondary" onPress={() => setAlt(a => (a + 1) % options.length)} /> : null}
           <Btn title="I'll give different notes and coins" kind="secondary" onPress={() => { setManual(true); setDraft([]); }} />
         </>
@@ -51,7 +53,7 @@ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, o
           {plan.kind === 'impossible' ? <Txt size={14} color={c.bad} style={{ textAlign: 'center' }}>{none ? 'The ledger shows no cash in the drawer, so nothing can be suggested.' : `The drawer can't make exactly ${fmt(owed)} from what it holds.`} Tap what you actually give.</Txt> : <Txt size={14} sub style={{ textAlign: 'center' }}>Tap the notes and coins you give.</Txt>}
           <DenomPad draft={draft} onChange={setDraft} totalLabel="Given" />
           {gave !== owed ? <Txt weight="600" color={gave > owed ? c.bad : c.sub} style={{ textAlign: 'center' }}>{gave > owed ? `${fmt(gave - owed)} too much` : `${fmt(owed - gave)} still to give`}</Txt> : null}
-          <Btn title="Gave this" disabled={gave !== owed} onPress={() => onConfirm(giving)} />
+          <Btn spot={SPOT.cashGave} title="Gave this" disabled={gave !== owed} onPress={() => onConfirm(giving)} />
         </>
       )}
     </View>
@@ -116,6 +118,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [],
   const plan = useMemo(() => (change > 0 ? planChange(pool, change) : { kind: 'none' as const }), [pool, change]);
   const blocked = st.state === 'change' && plan.kind === 'impossible' && !force;
   const empty = ledgerEmpty(drawer);
+  useEffect(() => { setCashProbe(visible ? { received: got, due: billDue, step } : undefined); return () => setCashProbe(undefined); }, [visible, got, billDue, step]); // training reads this
   const hand = useMemo(() => (blocked ? handBackOptions(drawer, received, billDue) : null), [blocked, drawer, received, billDue]);
   const part = useMemo(() => (blocked && partX === null ? partCashOption(drawer, received, due) : null), [blocked, partX, drawer, received, due]);
 
@@ -136,7 +139,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [],
             {st.state === 'short' ? <Txt weight="600" color={c.bad}>Short by {fmt(st.shortBy)}</Txt> : st.state === 'change' ? <Txt weight="600" color={blocked ? c.bad : c.good}>Change to give: {fmt(st.change)}</Txt> : st.state === 'exact' && got > 0 ? <Txt weight="600" color={c.good}>Exact</Txt> : <Txt sub>Tap what the customer hands over</Txt>}
           </View>
           {cashHint(ui.explain) ? <Txt size={13} sub style={{ textAlign: 'center' }}>{cashHint(ui.explain)}</Txt> : null}
-          <DenomPad draft={draft} onChange={d => { setDraft(d); setForce(false); }} totalLabel="Received" />
+          <DenomPad draft={draft} onChange={d => { setDraft(d); setForce(false); }} totalLabel="Received" spots={{ pad: SPOT.cashPad, undo: SPOT.cashUndo }} />
 
           {st.state === 'short' && choices.length ? (
             <>
@@ -149,7 +152,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [],
               <Btn title={`Take ${fmt(got)} as part payment`} onPress={() => finish()} />
             </>
           ) : null}
-          {st.state === 'exact' && got > 0 ? <Btn title="Take cash" onPress={() => finish()} /> : null}
+          {st.state === 'exact' && got > 0 ? <Btn spot={SPOT.cashTake} title="Take cash" onPress={() => finish()} /> : null}
 
           {st.state === 'change' ? (
             <>
@@ -161,11 +164,11 @@ export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [],
                   {hand ? <View style={{ gap: 2 }}><Txt size={13}>• Ask for less:</Txt><CountSquares counts={hand.take} label="Take" align="start" />{totalOf(hand.handBack) > 0 ? <CountSquares counts={hand.handBack} label="Hand back" align="start" /> : null}</View> : null}
                   {part ? <Txt size={13}>• Take {fmt(part.cashCents)} in cash and put the other {fmt(part.restCents)} on card.</Txt> : null}
                   <Txt size={13}>• Or take the full {fmt(billDue)} by card.</Txt>
-                  {hand ? <Btn title="Use that smaller handover" kind="secondary" small onPress={() => { setDraft(countsToDraft(hand.take)); setForce(false); }} /> : null}
-                  {part ? <Btn title={`Cash ${fmt(part.cashCents)} + the rest another way`} kind="secondary" small onPress={() => setPartX(part.cashCents)} /> : null}
+                  {hand ? <Btn spot={SPOT.cashSmaller} title="Use that smaller handover" kind="secondary" small onPress={() => { setDraft(countsToDraft(hand.take)); setForce(false); }} /> : null}
+                  {part ? <Btn spot={SPOT.cashPartCash} title={`Cash ${fmt(part.cashCents)} + the rest another way`} kind="secondary" small onPress={() => setPartX(part.cashCents)} /> : null}
                 </View>
               ) : null}
-              <Btn title={`Next: give ${fmt(change)} change`} disabled={blocked} onPress={() => setStep('change')} />
+              <Btn spot={SPOT.cashNext} title={`Next: give ${fmt(change)} change`} disabled={blocked} onPress={() => setStep('change')} />
               {blocked ? <Btn title="The drawer has it (ledger is out of date)" kind="ghost" onPress={() => { setForce(true); setStep('change'); }} /> : null}
             </>
           ) : null}

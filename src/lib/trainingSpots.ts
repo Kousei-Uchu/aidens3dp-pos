@@ -53,16 +53,23 @@ export const SPOT = {
   customerSave: 'customer.save',       // Create & attach, in the New customer window
   discountKeys: 'discount.keys',       // the number keys in the Discount window (any key)
   discountApply: 'discount.apply',     // Apply discount, in the Discount window
+  cashPad: 'cash.pad',                 // the notes and coins pad in the Cash window (a tap on one is `cash.denom:<cents>`)
+  cashUndo: 'cash.undo',               // Undo under the pad
+  cashTake: 'cash.take',               // Take cash, when the amount handed over is exact
+  cashNext: 'cash.next',               // Next: give change
+  cashGave: 'cash.gave',               // Gave this, on the change step
+  cashSmaller: 'cash.smaller',         // Use that smaller handover, when the drawer cannot make change
+  cashPartCash: 'cash.partcash',       // Cash $x + the rest another way, when the drawer cannot make change
   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('discount.preset:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
+export const DYNAMIC_PREFIXES = ['discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -93,6 +100,8 @@ export const findKeySpot = (key: string): string => `find.key:${key}`;
 export const allProductSpot = (productId: string): string => `all.product:${productId}`;
 /** A variation tile in the variation picker. */
 export const pickVariantSpot = (variantId: string): string => `pick.variant:${variantId}`;
+/** One note or coin on the Cash window's pad, by its value in cents ($20 is 2000). */
+export const cashDenomSpot = (cents: number): string => `cash.denom:${cents}`;
 /** A preset chip (for example Practice 10% off) in the Discount window. */
 export const discountPresetSpot = (presetId: string): string => `discount.preset:${presetId}`;
 /** An item row in the Search window. */

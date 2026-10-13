@@ -56,6 +56,8 @@ export type TrainSnap = {
   /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
+  /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
+  /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
 export type Until =
