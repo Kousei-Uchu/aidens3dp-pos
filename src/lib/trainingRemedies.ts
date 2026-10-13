@@ -14,6 +14,7 @@ export const PLANNED_TITLES: Record<string, string> = {
   'price-adjust': 'Change a price',
   customer: 'Customers and notes',
   'pay-card': 'Take a card payment',
+  refund: 'Refunds and exchanges',
 };
 export type Remedy = { module?: string; how: string[] };
 /** `module` is where the skill is taught. Left out, there is nothing to learn: the only fix is starting the part again. */

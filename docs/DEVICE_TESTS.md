@@ -288,3 +288,16 @@ On the iPad and on a phone: **More ▸ Training ▸ Take cash and give change**.
 5. **Leave.** Pass: after leaving, open **More ▸ Drawer**. The ledger is exactly as before, with none of the practice notes.
 
 Tell me: pass or fail for each step, and a screenshot of the pad with the ring on it.
+
+## T24. Training: Refunds and exchanges (B6, 0109)
+
+On the iPad and on a phone: **More ▸ Training ▸ Refunds and exchanges**.
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, the Show opens an order, picks an item, switches to Amount and back, adds a swap (button reads Charge) and takes it off, shows the card refund failing, switches to Cash and gives the cash.
+2. **Guide.** Pass: More, Orders and the three practice orders appear (#T1001 to #T1003, not your real orders). Each ring finishes its step. At the Refund button the **Confirm pop-up is a native alert**: check the step text still makes sense and that Confirm finishes the step. Cash order: the Give cash refund window appears and Gave this works.
+3. **Check 1.** Pass: card refund of one Dragon Egg, cash refund of the Bumble Bee, gift card refund of the Red Dragon (the Done window shows a TRAIN code). A wrong refund brings up a note offering Start this part again.
+4. **Check 2.** Pass: Refund to Original on the first goal says the card is expired and records nothing; switching to Cash finishes it. Next goals: Restock off, then one Keyring.
+5. **Never real.** Pass: no card refund ever reaches the real reader, Shopify shows no new refunds, and the Notifications tab has nothing new.
+6. **After training.** Open More ▸ Orders. Pass: your real orders are listed as before and a real refund still works.
+
+Tell me: pass or fail for each step.

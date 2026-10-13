@@ -22,6 +22,7 @@ import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
 import { getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere } from '../lib/trainingProbe';
+import { getLastPracticeRefund } from '../lib/trainingOrders';
 import { hintView, shouldNudge } from '../lib/trainingHints';
 import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
 import { gateFor, type Gesture } from '../lib/pointerGesture';
@@ -37,7 +38,7 @@ const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed
 
 /** What the customer handed over and the change given on the last finished sale's cash payment, or undefined if it had none. */
 const lastCash = (sales: { tenders: { kind: string; tenderedCents?: number; changeCents?: number }[] }[]): { tendered: number; change: number } | undefined => {
-  const t = sales.length ? [...sales[sales.length - 1].tenders].reverse().find(x => x.kind === 'cash') : undefined;
+  const t = sales.length ? [...sales[0].tenders].reverse().find(x => x.kind === 'cash') : undefined;
   return t ? { tendered: t.tenderedCents ?? 0, change: t.changeCents ?? 0 } : undefined;
 };
 export default function TrainingHost({ children }: { children: React.ReactNode }) {
@@ -99,7 +100,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const fresh = key.current !== k;
         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[app.pos.sales.length - 1].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
