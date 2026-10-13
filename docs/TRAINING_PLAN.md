@@ -6,7 +6,7 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
 
 ## State of play
 
-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) and `pay-cash` (0108).
+- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) `pay-cash` (0108) and `refund` (0109, the first of tier 3, built out of order at your request).
 - **Next:** `price-adjust` (#10), then `bundles-deals` (#11).
 - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
 - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
@@ -56,8 +56,9 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
 
 ## Tier 3: regular but not every sale
 
-18. **`refund`: Refunds and exchanges.** Pick items or an amount, reason, refund method, restock, and charge or refund the difference.
+18. **`refund`: Refunds and exchanges** (done, 0109). Pick items or an amount, reason, refund method, restock, and charge or refund the difference.
     - Check 2: the original card refund fails, so switch method.
+    - As built: practice orders in `src/lib/trainingOrders.ts` (#T1001 card, #T1002 cash, #T1003 card). Guide goes More ▸ Orders ▸ order ▸ Refund or return and covers items, Amount, reason, Refund to (Original, Cash, Gift card), Restock, a replacement item (shown, never paid), a card refund and a cash refund with the Give cash window. Check 2 makes the card refund fail with code 33 every time so Cash is the way out, then a damaged item (Restock off) and a single Keyring. A real swap is not taken in practice because it ends on the Payment page.
 19. **`orders`: Find a past sale.** Orders vs Transactions, search, reprint or new receipt, and mark fulfilled.
 20. **`drawer-day`: Open, paid in/out, count and close.** Float, the Z-report, and count vs expected.
 21. **`check-change`: Check change before taking notes.** Enter what the customer has, and read "worth it" vs "ask for card".

@@ -62,14 +62,22 @@ export const SPOT = {
   cashPartCash: 'cash.partcash',       // Cash $x + the rest another way, when the drawer cannot make change
   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
+  moreOrders: 'more.orders',           // the Orders row on the More tab
+  ordersRefund: 'orders.refund',       // Refund or return, in an order's window
+  refundMode: 'refund.mode',           // the Items | Amount switch on the Return page (a tap on a part of it is `refund.mode:<items|amount>`)
+  refundMethod: 'refund.method',       // the Original | Cash | Gift card switch ("Refund to"; a part of it is `refund.method:<original|cash|gift>`)
+  refundRestock: 'refund.restock',     // the Restock returned items switch
+  refundReplace: 'refund.replace',     // Add replacement item
+  refundGo: 'refund.go',               // the big button at the bottom: Refund $X, Charge $X or Even exchange
+  refundDone: 'refund.done',           // OK, in the Done window after a refund
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
+export const DYNAMIC_PREFIXES = ['discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -106,6 +114,20 @@ export const cashDenomSpot = (cents: number): string => `cash.denom:${cents}`;
 export const discountPresetSpot = (presetId: string): string => `discount.preset:${presetId}`;
 /** An item row in the Search window. */
 export const searchResultSpot = (variantId: string): string => `search.result:${variantId}`;
+/** A row on the Orders page. */
+export const orderRowSpot = (orderId: string): string => `order.row:${orderId}`;
+/** One part of the Items | Amount switch on the Return page. */
+export const refundModeSpot = (mode: 'items' | 'amount'): string => `refund.mode:${mode}`;
+/** One part of the "Refund to" switch: 'original', 'cash' or 'gift'. */
+export const refundMethodSpot = (m: 'original' | 'cash' | 'gift'): string => `refund.method:${m}`;
+/** The + and − buttons on one line of the Return page (the key is the order line's own id). */
+export const refundPlusSpot = (lineId: string): string => `refund.plus:${lineId}`;
+export const refundMinusSpot = (lineId: string): string => `refund.minus:${lineId}`;
+/** A reason chip on the Return page (the reason's own words). */
+export const refundReasonSpot = (reason: string): string => `refund.reason:${reason}`;
+/** A result in the Replacement item window, and a replacement line already added on the Return page. */
+export const refundPickSpot = (variantId: string): string => `refund.pick:${variantId}`;
+export const refundReplSpot = (variantId: string): string => `refund.repl:${variantId}`;
 /** The spot id a grid tile carries, or undefined for tile types training does not point at. */
 export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
   if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }

@@ -36,7 +36,7 @@ export default function More() {
           <Section key={gi}>
             {g.map((id, i) => {
               const r = ROWS[id];
-              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : undefined} last={i === g.length - 1}
+              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : id === 'orders' ? SPOT.moreOrders : undefined} last={i === g.length - 1}
                 onPress={() => (r.route ? nav.push(r.route) : useApp.getState().set({ unlocked: false, staffId: undefined }))} />;
             })}
           </Section>

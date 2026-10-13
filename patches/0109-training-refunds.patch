@@ -1,0 +1,799 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 1e89d09..0ce1b94 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -288,3 +288,16 @@ On the iPad and on a phone: **More ▸ Training ▸ Take cash and give change**.
+ 5. **Leave.** Pass: after leaving, open **More ▸ Drawer**. The ledger is exactly as before, with none of the practice notes.
+ 
+ Tell me: pass or fail for each step, and a screenshot of the pad with the ring on it.
++
++## T24. Training: Refunds and exchanges (B6, 0109)
++
++On the iPad and on a phone: **More ▸ Training ▸ Refunds and exchanges**.
++
++1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, the Show opens an order, picks an item, switches to Amount and back, adds a swap (button reads Charge) and takes it off, shows the card refund failing, switches to Cash and gives the cash.
++2. **Guide.** Pass: More, Orders and the three practice orders appear (#T1001 to #T1003, not your real orders). Each ring finishes its step. At the Refund button the **Confirm pop-up is a native alert**: check the step text still makes sense and that Confirm finishes the step. Cash order: the Give cash refund window appears and Gave this works.
++3. **Check 1.** Pass: card refund of one Dragon Egg, cash refund of the Bumble Bee, gift card refund of the Red Dragon (the Done window shows a TRAIN code). A wrong refund brings up a note offering Start this part again.
++4. **Check 2.** Pass: Refund to Original on the first goal says the card is expired and records nothing; switching to Cash finishes it. Next goals: Restock off, then one Keyring.
++5. **Never real.** Pass: no card refund ever reaches the real reader, Shopify shows no new refunds, and the Notifications tab has nothing new.
++6. **After training.** Open More ▸ Orders. Pass: your real orders are listed as before and a real refund still works.
++
++Tell me: pass or fail for each step.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 5947664..f7fe657 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -111,6 +111,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0106 | 2026-10-13 | Training (B6), task course 8 of the plan: **Customers and notes** (`customer`). Info, Show, Guide (add a sale, search, pick, note with Done, take off with the x, create a new customer), Check 1 (attach Alex, note a line, take Alex off) and Check 2 (the wrong customer is on the sale; a new customer who is not on the list). Spots for the customer row, the Customer window (search, Create customer, the form, Create & attach, each customer row) and Done in a line window; training can now read the customer search text and the note being typed; a `cart` injection can attach a practice customer; in practice Create customer is made on this iPad only and Search Shopify is hidden. | B6 |
+ | 0107 | 2026-10-13 | Training (B6), task course 9 of the plan: **Discounts** (`discounts`). Info, Show (line discount, cart menu, preset, Not discountable, automatic deal, remove), Guide (14 steps), Check 1 (line discount, cart preset, remove) and Check 2 (a no-discount item, a deal that needs three Keyrings, a mistaken cart discount). Real screens gained spots on the Discount window: the number keys (`discount.keys`), Apply discount (`discount.apply`) and each preset chip (`discount.preset:<id>`). Practice data gained a Clearance Print tagged no-discount, a Practice $5 off preset and an automatic deal (3 Keyrings, 20% off). Cart injections can start with `discountPct`. New `tests/trainingdiscounts.test.ts` (6). Device test T22 | B6 |
+ | 0108 | 2026-10-13 | Training (B6), task course 6 of the plan: **Take cash and give change** (`pay-cash`). Info, Show, Guide (a $14.00 sale: $10 short, $5 change, Undo, $10 again, Next, Gave this, No receipt), Check 1 (exact cash, $20 for $14) and Check 2 (short and finds more, 5c rounding, a drawer that cannot make change). Spots for the notes and coins pad (and each note and coin), Undo, Take cash, Next, Gave this, Use that smaller handover and Cash + the rest another way; training can read what has been tapped into the Cash window and the last cash sale (handed over, change). A real-logic test checks the rounding scenario ($7.44 to $7.45) and the no-change scenario. | B6 |
++| 0109 | 2026-10-13 | Training (B6), tier 3 starts: task course 18 of the plan, **Refunds and exchanges** (`refund`). Info, Show (open an order, Return page, items or amount, a swap and its Charge button, a failed card refund, Cash, the confirm pop-up, give the cash), Guide (29 steps: More ▸ Orders ▸ order ▸ Refund or return, +, reason, Refund to Cash / Gift card / Original, Restock, Amount, a replacement item, then a card refund and a cash refund with the Give cash window), Check 1 (card refund, cash refund, gift card refund) and Check 2 (card expired so refund in Cash with the card refund failing every time, a damaged item with Restock off, one of two Keyrings). **Practice orders:** new `src/lib/trainingOrders.ts` holds three made-up orders; Orders lists them instead of calling Shopify, Mark fulfilled works on them, and a refund lowers what is left to refund; they are put back on leaving, on each stage and when a Check goal is started again. `executeRefund` in practice records on the practice order, makes a practice gift card code, and never calls Shopify. The practice terminal's refund already existed and now declines with the Check's code. Real screens gained spots (More ▸ Orders, order rows, Refund or return, Items/Amount and Refund to switches, + and −, reason chips, Restock, replacement item, the Refund button, Gave this, OK). The snapshot gains `refund` (which refund, how much, restock, which money). **Fixes found on the way:** (1) the training driver read the OLDEST sale as the last one (`sales[length-1]`, but new sales go to the front), so a second sale in a Check was judged by the first; now `sales[0]`; (2) the same mistake in the cash course's `lastCash` helper (it too read the oldest sale), now `sales[0]`; (3) Amount mode on the Return page no longer sends items picked earlier (it refunds the amount only); (4) the Orders list reloads when you leave the Return page, so what is left to refund is current. Swaps are shown but never paid in practice. New `tests/trainingrefund.test.ts` (11). Device test T24. | B6 |
+ 
+ ---
+ 
+@@ -442,6 +443,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N39 **Non-blocking (B6, 0106):** device check for the customer course (More ▸ Training ▸ Customers and notes). Check typing in the Customer search box and in a line's Note box with the on-screen keyboard (the highlight must not block typing or Done), the ring on the customer row on both the iPad and a phone, and that Create & attach in practice makes the customer on this iPad only (nothing in Shopify). See T21 in `docs/DEVICE_TESTS.md`.
+ - [ ] N40 **Non-blocking (B6, 0107):** device check for the discounts course (More ▸ Training ▸ Discounts), steps in `docs/DEVICE_TESTS.md` T22.
+ - [ ] N41 **Non-blocking (B6, 0108):** device check for the cash course (More ▸ Training ▸ Take cash and give change). Check the highlight ring on single notes and coins in the pad, that Undo and the pad stay tappable while a step is ringed, that the change step shows the notes and coins to take, and that the practice drawer never changes the real ledger (open Drawer afterwards). See T23 in `docs/DEVICE_TESTS.md`.
++- [ ] N42 **Non-blocking (B6, 0109):** device check for the refund course (More ▸ Training ▸ Refunds and exchanges), steps in `docs/DEVICE_TESTS.md` T24. Most important: the Confirm pop-up is a native alert, so the ring sits under it; check the step still reads clearly. Also check a card refund never reaches the real reader, and that your real Orders list is as before afterwards.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/TRAINING_PLAN.md b/docs/TRAINING_PLAN.md
+index 4f50ba0..b9ba38a 100644
+--- a/docs/TRAINING_PLAN.md
++++ b/docs/TRAINING_PLAN.md
+@@ -6,7 +6,7 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
+ 
+ ## State of play
+ 
+-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) and `pay-cash` (0108).
++- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) `pay-cash` (0108) and `refund` (0109, the first of tier 3, built out of order at your request).
+ - **Next:** `price-adjust` (#10), then `bundles-deals` (#11).
+ - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
+ - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
+@@ -56,8 +56,9 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
+ 
+ ## Tier 3: regular but not every sale
+ 
+-18. **`refund`: Refunds and exchanges.** Pick items or an amount, reason, refund method, restock, and charge or refund the difference.
++18. **`refund`: Refunds and exchanges** (done, 0109). Pick items or an amount, reason, refund method, restock, and charge or refund the difference.
+     - Check 2: the original card refund fails, so switch method.
++    - As built: practice orders in `src/lib/trainingOrders.ts` (#T1001 card, #T1002 cash, #T1003 card). Guide goes More ▸ Orders ▸ order ▸ Refund or return and covers items, Amount, reason, Refund to (Original, Cash, Gift card), Restock, a replacement item (shown, never paid), a card refund and a cash refund with the Give cash window. Check 2 makes the card refund fail with code 33 every time so Cash is the way out, then a damaged item (Restock off) and a single Keyring. A real swap is not taken in practice because it ends on the Payment page.
+ 19. **`orders`: Find a past sale.** Orders vs Transactions, search, reprint or new receipt, and mark fulfilled.
+ 20. **`drawer-day`: Open, paid in/out, count and close.** Float, the Z-report, and count vs expected.
+ 21. **`check-change`: Check change before taking notes.** Enter what the customer has, and read "worth it" vs "ask for card".
+diff --git a/src/lib/refundFlow.ts b/src/lib/refundFlow.ts
+index c7ceb2c..0fbd823 100644
+--- a/src/lib/refundFlow.ts
++++ b/src/lib/refundFlow.ts
+@@ -8,6 +8,8 @@ import { startRefund, type TerminalLike } from './zeller';
+ import { refundOrderInShopify, type PosOrder } from './shopify/orders';
+ import { allGiftCardTransactions, creditGiftCardOnce, createGiftCard, newGiftCode } from './shopify/giftcards';
+ import { refundOperationKey } from './refundKey';
++import { isTraining } from './trainingGuard';
++import { applyPracticeRefund } from './trainingOrders';
+ import type { SaleLine, SaleRecord, Tender } from './types';
+ 
+ export const REFUND_REASONS = ['Returned Goods', 'Accidental Charge', 'Cancelled Order', 'Fraudulent Charge', 'Other'] as const;
+@@ -45,7 +47,10 @@ export async function executeRefund(a: {
+     done.card = got;
+   }
+   // 2. gift card
+-  if (plan.gift_card) {
++  if (plan.gift_card && isTraining()) {
++    // Practice: a made-up code, nothing is created in Shopify.
++    const code = `TRAIN-${newGiftCode()}`; newGiftCodeOut = code; tenders.push({ id: uid(), kind: 'gift_card', amountCents: plan.gift_card, giftCardCode: code, at: stamp() }); done.gift_card = plan.gift_card;
++  } else if (plan.gift_card) {
+     try {
+       if (a.method === 'original' || (a.method === 'gift_card' && a.giftCardDestination === 'original')) {
+         const giftTenderRows = order.tenders.filter(t => t.kind === 'gift_card');
+@@ -83,7 +88,8 @@ export async function executeRefund(a: {
+   async function finish(ok: boolean, message?: string, abortIfNothing = false): Promise<RefundOutcome> {
+     const money = Object.values(done).reduce((x, y) => x + (y ?? 0), 0);
+     if (abortIfNothing && !money) return { ok, message, done, cashOwedCents: 0 };
+-    try { await refundOrderInShopify(order, a.lines.map(l => ({ lineItemId: l.lineId, quantity: l.qty, restock: a.restock })), done, `${a.reason} (POS)`, s.settings.locationId, refundKey); }
++    if (isTraining()) applyPracticeRefund(order.id, a.lines, done, a.restock); // practice: the practice order is updated and Shopify is never called
++    else try { await refundOrderInShopify(order, a.lines.map(l => ({ lineItemId: l.lineId, quantity: l.qty, restock: a.restock })), done, `${a.reason} (POS)`, s.settings.locationId, refundKey); }
+     catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Shopify refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it — see Notifications.'; }
+     const lines: SaleLine[] = a.lines.map(rl => {
+       const ol = order.lines.find(l => l.id === rl.lineId)!; const cost = a.restock ? Math.round((ol.costCents ?? 0)) * rl.qty : 0;
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index 6cd4b21..08b3c26 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -15,10 +15,10 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+ }
+ /** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
+ type CartLike = { id?: string; variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; unitCents?: number; note?: string };
+-export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; customerQuery?: string; noteDraft?: string; cash?: TrainSnap['cash']; lastSaleCash?: TrainSnap['lastSaleCash']; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: { id?: string } | unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
++export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; refund?: TrainSnap['refund']; customerQuery?: string; noteDraft?: string; cash?: TrainSnap['cash']; lastSaleCash?: TrainSnap['lastSaleCash']; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: { id?: string } | unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
+   return {
+     tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
+-    hasCustomer: !!s.cart.customer, customerId: (s.cart.customer as { id?: string } | undefined)?.id, customerQuery: s.customerQuery, noteDraft: s.noteDraft, cash: s.cash, lastSaleCash: s.lastSaleCash, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds,
++    hasCustomer: !!s.cart.customer, customerId: (s.cart.customer as { id?: string } | undefined)?.id, customerQuery: s.customerQuery, noteDraft: s.noteDraft, cash: s.cash, lastSaleCash: s.lastSaleCash, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds, refund: s.refund,
+     cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents, lineId: l.id, itemPriced: l.overrideCents !== undefined, lineAdjusted: !!l.adjust, noted: !!(l.note && l.note.trim()) })),
+     cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
+   };
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 9459418..051cfbc 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -58,6 +58,8 @@ export type TrainSnap = {
+   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
+   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
+   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
++  /** The last refund made on a practice order (`n` is how many refunds so far): what it came to, whether the items went back into stock, which kinds of money it went back as, and how many items. Left out until a refund is made. */
++  refund?: { n: number; cents: number; restock: boolean; kinds: string[]; items: number; orderId: string };
+   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
+ };
+ export type Until =
+diff --git a/src/lib/trainingOrders.ts b/src/lib/trainingOrders.ts
+new file mode 100644
+index 0000000..0b1ae80
+--- /dev/null
++++ b/src/lib/trainingOrders.ts
+@@ -0,0 +1,71 @@
++// Location: src/lib/trainingOrders.ts
++// Practice orders for the refund course (B6): a few made-up past sales kept in memory, so Orders and Refund work in practice without Shopify.
++// Every id starts with "train-". Nothing here is saved or sent: leaving training (or starting a part again) puts the orders back as they were.
++import type { PosOrder } from './shopify/orderModel';
++import type { Tender } from './types';
++import { TRAIN_PREFIX } from './trainingSandbox';
++
++export type OrdersTab = 'open' | 'unfulfilled' | 'completed';
++
++const P = TRAIN_PREFIX;
++const WHEN = '2026-10-12T02:10:00.000Z';
++const card = (id: string, cents: number): Tender => ({ id: `${P}t-${id}`, kind: 'card', amountCents: cents, at: WHEN, card: { externalReference: `${P}ref-${id}`, panMasked: 'XXXXXXXXXXXX0000', scheme: 'Visa' } });
++const cash = (id: string, cents: number): Tender => ({ id: `${P}t-${id}`, kind: 'cash', amountCents: cents, at: WHEN });
++const sale = (id: string, gateway: 'Zeller' | 'Cash', cents: number) => ({ id: `${P}tx-${id}`, kind: 'SALE', status: 'SUCCESS', gateway, amountCents: cents });
++
++/** Three orders: Sam's, paid by card (a Highland Cow and two Dragon Eggs); Priya's, paid in cash (a Bumble Bee and two Keyrings); and a card order with a Red Dragon and a Sticker Pack. */
++export function fixtureOrders(): PosOrder[] {
++  return [
++    { id: `${P}o-1001`, name: '#T1001', createdAt: WHEN, financial: 'PAID', fulfillment: 'UNFULFILLED', totalCents: 2400, refundedCents: 0, tags: ['pos'], customer: { id: `${P}cu-1`, name: 'Sam Rivera', email: 'sam@example.com' }, attrs: {}, roundingCents: 0,
++      lines: [
++        { id: `${P}ol-1001-a`, title: 'Highland Cow', variantTitle: 'Small', qty: 1, refundableQty: 1, unitCents: 1200, originalUnitCents: 1200, variantId: `${P}v-cow-s`, costCents: 400 },
++        { id: `${P}ol-1001-b`, title: 'Dragon Egg', qty: 2, refundableQty: 2, unitCents: 600, originalUnitCents: 600, variantId: `${P}v-egg`, costCents: 200 },
++      ], tenders: [card('1001', 2400)], transactions: [sale('1001', 'Zeller', 2400)] },
++    { id: `${P}o-1002`, name: '#T1002', createdAt: WHEN, financial: 'PAID', fulfillment: 'FULFILLED', totalCents: 1800, refundedCents: 0, tags: ['pos'], customer: { id: `${P}cu-2`, name: 'Priya Patel', phone: '0400 000 111' }, attrs: {}, roundingCents: 0,
++      lines: [
++        { id: `${P}ol-1002-a`, title: 'Bumble Bee', qty: 1, refundableQty: 1, unitCents: 800, originalUnitCents: 800, variantId: `${P}v-bee`, costCents: 250 },
++        { id: `${P}ol-1002-b`, title: 'Keyring', qty: 2, refundableQty: 2, unitCents: 500, originalUnitCents: 500, variantId: `${P}v-key`, costCents: 150 },
++      ], tenders: [cash('1002', 1800)], transactions: [sale('1002', 'Cash', 1800)] },
++    { id: `${P}o-1003`, name: '#T1003', createdAt: WHEN, financial: 'PAID', fulfillment: 'FULFILLED', totalCents: 2800, refundedCents: 0, tags: ['pos'], attrs: {}, roundingCents: 0,
++      lines: [
++        { id: `${P}ol-1003-a`, title: 'Red Dragon', qty: 1, refundableQty: 1, unitCents: 2500, originalUnitCents: 2500, variantId: `${P}v-dragon`, costCents: 900 },
++        { id: `${P}ol-1003-b`, title: 'Sticker Pack', qty: 1, refundableQty: 1, unitCents: 300, originalUnitCents: 300, variantId: `${P}v-sticker`, costCents: 60 },
++      ], tenders: [card('1003', 2800)], transactions: [sale('1003', 'Zeller', 2800)] },
++  ];
++}
++export const PRACTICE_ORDER_CARD = `${P}o-1001`; export const PRACTICE_ORDER_CASH = `${P}o-1002`; export const PRACTICE_ORDER_CARD2 = `${P}o-1003`;
++export const PRACTICE_ORDER_NAMES: Record<string, string> = { [PRACTICE_ORDER_CARD]: '#T1001', [PRACTICE_ORDER_CASH]: '#T1002', [PRACTICE_ORDER_CARD2]: '#T1003' };
++
++/** What the last practice refund did, for the course to check. `n` counts the refunds made so far. */
++export type PracticeRefund = { n: number; cents: number; restock: boolean; kinds: string[]; items: number; orderId: string };
++type Held = { orders: PosOrder[]; last: PracticeRefund | undefined };
++let orders: PosOrder[] = fixtureOrders(); let last: PracticeRefund | undefined; let count = 0;
++const copy = (o: PosOrder[]): PosOrder[] => o.map(x => ({ ...x, lines: x.lines.map(l => ({ ...l })), transactions: x.transactions.map(t => ({ ...t })), tenders: x.tenders.map(t => ({ ...t })) }));
++
++/** Puts every practice order back as new, and forgets the refunds. */
++export function resetPracticeOrders(): void { orders = fixtureOrders(); last = undefined; count = 0; }
++export const getLastPracticeRefund = (): PracticeRefund | undefined => last;
++/** A copy of the practice orders and refund history, to be put back with `restorePracticeOrders` (used to start a Check goal again). */
++export const capturePracticeOrders = (): Held => ({ orders: copy(orders), last: last ? { ...last, kinds: [...last.kinds] } : undefined });
++export function restorePracticeOrders(h: Held): void { orders = copy(h.orders); last = h.last ? { ...h.last, kinds: [...h.last.kinds] } : undefined; count = last?.n ?? 0; }
++
++/** The orders an Orders tab shows: Open is everything, Unfulfilled and Completed split on fulfilment. Newest first (they share a date, so the list keeps its order). */
++export function listPracticeOrders(tab: OrdersTab): PosOrder[] {
++  const fulfilled = (o: PosOrder) => /^fulfilled$/i.test(o.fulfillment);
++  return copy(orders).filter(o => tab === 'open' || (tab === 'completed' ? fulfilled(o) : !fulfilled(o)));
++}
++export const getPracticeOrder = (id: string): PosOrder | undefined => copy(orders).find(o => o.id === id);
++export function markPracticeFulfilled(id: string): void { orders = orders.map(o => (o.id === id ? { ...o, fulfillment: 'FULFILLED' } : o)); }
++
++/** Records a refund on a practice order: what is left to refund goes down, the money is recorded against the gateway it went back to, and the course can see what happened. Does nothing for an order that is not a practice order. */
++export function applyPracticeRefund(orderId: string, lines: { lineId: string; qty: number }[], done: Partial<Record<Tender['kind'], number>>, restock: boolean): void {
++  const gateway = { card: 'Zeller', cash: 'Cash', gift_card: 'Gift card', exchange_credit: 'Exchange' } as const;
++  let cents = 0; let items = 0;
++  orders = orders.map(o => {
++    if (o.id !== orderId) return o;
++    const txs = (Object.entries(done) as [Tender['kind'], number][]).filter(([, c]) => c > 0).map(([k, c]) => { cents += c; return { id: `${TRAIN_PREFIX}tx-r${count + 1}-${k}`, kind: 'REFUND', status: 'SUCCESS', gateway: gateway[k], amountCents: c }; });
++    for (const l of lines) items += l.qty;
++    return { ...o, refundedCents: o.refundedCents + cents, financial: o.refundedCents + cents >= o.totalCents ? 'REFUNDED' : 'PARTIALLY_REFUNDED', transactions: [...o.transactions, ...txs], lines: o.lines.map(l => { const r = lines.find(x => x.lineId === l.id); return r ? { ...l, refundableQty: Math.max(0, l.refundableQty - r.qty) } : l; }) };
++  });
++  count += 1; last = { n: count, cents, restock, kinds: (Object.keys(done) as Tender['kind'][]).filter(k => (done[k] ?? 0) > 0), items, orderId };
++}
+diff --git a/src/lib/trainingRemedies.ts b/src/lib/trainingRemedies.ts
+index 7112869..250785a 100644
+--- a/src/lib/trainingRemedies.ts
++++ b/src/lib/trainingRemedies.ts
+@@ -14,6 +14,7 @@ export const PLANNED_TITLES: Record<string, string> = {
+   'price-adjust': 'Change a price',
+   customer: 'Customers and notes',
+   'pay-card': 'Take a card payment',
++  refund: 'Refunds and exchanges',
+ };
+ export type Remedy = { module?: string; how: string[] };
+ /** `module` is where the skill is taught. Left out, there is nothing to learn: the only fix is starting the part again. */
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index bc7c5fb..a63b7e9 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -62,14 +62,22 @@ export const SPOT = {
+   cashPartCash: 'cash.partcash',       // Cash $x + the rest another way, when the drawer cannot make change
+   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
+   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
++  moreOrders: 'more.orders',           // the Orders row on the More tab
++  ordersRefund: 'orders.refund',       // Refund or return, in an order's window
++  refundMode: 'refund.mode',           // the Items | Amount switch on the Return page (a tap on a part of it is `refund.mode:<items|amount>`)
++  refundMethod: 'refund.method',       // the Original | Cash | Gift card switch ("Refund to"; a part of it is `refund.method:<original|cash|gift>`)
++  refundRestock: 'refund.restock',     // the Restock returned items switch
++  refundReplace: 'refund.replace',     // Add replacement item
++  refundGo: 'refund.go',               // the big button at the bottom: Refund $X, Charge $X or Even exchange
++  refundDone: 'refund.done',           // OK, in the Done window after a refund
+ } as const;
+ /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
+-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack];
++export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone];
+ /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
+-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
++export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+ export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
+ /** Spots whose id ends in a record id: a grid tile, or a cart line. */
+-export const DYNAMIC_PREFIXES = ['discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:'] as const;
++export const DYNAMIC_PREFIXES = ['discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:'] as const;
+ export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
+ export const gridItemSpot = (id: string): string => `grid.item:${id}`;
+ export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
+@@ -106,6 +114,20 @@ export const cashDenomSpot = (cents: number): string => `cash.denom:${cents}`;
+ export const discountPresetSpot = (presetId: string): string => `discount.preset:${presetId}`;
+ /** An item row in the Search window. */
+ export const searchResultSpot = (variantId: string): string => `search.result:${variantId}`;
++/** A row on the Orders page. */
++export const orderRowSpot = (orderId: string): string => `order.row:${orderId}`;
++/** One part of the Items | Amount switch on the Return page. */
++export const refundModeSpot = (mode: 'items' | 'amount'): string => `refund.mode:${mode}`;
++/** One part of the "Refund to" switch: 'original', 'cash' or 'gift'. */
++export const refundMethodSpot = (m: 'original' | 'cash' | 'gift'): string => `refund.method:${m}`;
++/** The + and − buttons on one line of the Return page (the key is the order line's own id). */
++export const refundPlusSpot = (lineId: string): string => `refund.plus:${lineId}`;
++export const refundMinusSpot = (lineId: string): string => `refund.minus:${lineId}`;
++/** A reason chip on the Return page (the reason's own words). */
++export const refundReasonSpot = (reason: string): string => `refund.reason:${reason}`;
++/** A result in the Replacement item window, and a replacement line already added on the Return page. */
++export const refundPickSpot = (variantId: string): string => `refund.pick:${variantId}`;
++export const refundReplSpot = (variantId: string): string => `refund.repl:${variantId}`;
+ /** The spot id a grid tile carries, or undefined for tile types training does not point at. */
+ export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
+   if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index 9932714..1ee222b 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -36,7 +36,7 @@ export default function More() {
+           <Section key={gi}>
+             {g.map((id, i) => {
+               const r = ROWS[id];
+-              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : undefined} last={i === g.length - 1}
++              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : id === 'orders' ? SPOT.moreOrders : undefined} last={i === g.length - 1}
+                 onPress={() => (r.route ? nav.push(r.route) : useApp.getState().set({ unlocked: false, staffId: undefined }))} />;
+             })}
+           </Section>
+diff --git a/src/screens/Orders.tsx b/src/screens/Orders.tsx
+index fc2a445..4af72d6 100644
+--- a/src/screens/Orders.tsx
++++ b/src/screens/Orders.tsx
+@@ -6,27 +6,31 @@ import { fulfillOrder, listOrders, type PosOrder } from '../lib/shopify/orders';
+ import RefundScreen from './Refund';
+ import { ReceiptPrompt } from './Receipt';
+ import { fmt } from '../lib/money';
++import { isTraining } from '../lib/trainingGuard';
++import { listPracticeOrders, markPracticeFulfilled } from '../lib/trainingOrders';
++import { SPOT, orderRowSpot } from '../lib/trainingSpots';
+ import type { SaleRecord } from '../lib/types';
+ 
+ const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_status:unfulfilled', completed: 'tag:pos fulfillment_status:fulfilled' } as const;
+ /** Orders: Open | Unfulfilled | Completed – Mark fulfilled, refund and receipt. */
+ export default function Orders() {
+   const nav = useNav(); const [tab, setTab] = useState<keyof typeof Q>('open'); const [orders, setOrders] = useState<PosOrder[]>([]); const [busy, setBusy] = useState(false); const [sel, setSel] = useState<PosOrder | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
+-  const load = useCallback(async () => { setBusy(true); try { setOrders((await listOrders({ query: Q[tab], first: 30 })).orders); } catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
++  const load = useCallback(async () => { setBusy(true); try { setOrders(isTraining() ? listPracticeOrders(tab) : (await listOrders({ query: Q[tab], first: 30 })).orders); } // practice: made-up orders, never Shopify
++     catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
+   useEffect(() => { void load(); }, [tab]);
+-  if (refund) return <RefundScreen order={refund} onClose={() => setRefund(null)} onGoPay={() => nav.push('pay')} />;
+-  const mark = async (o: PosOrder) => { try { await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
++  if (refund) return <RefundScreen order={refund} onClose={() => { setRefund(null); void load(); }} onGoPay={() => nav.push('pay')} />;
++  const mark = async (o: PosOrder) => { try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
+   return (
+     <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
+       <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></View>
+       <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} />}>
+-        {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
++        {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} spot={orderRowSpot(o.id)} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
+       </ScrollView>
+       <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name}>
+         {sel?.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title} — {fmt(l.unitCents * l.qty)}</Txt>)}
+         <View style={{ gap: 8, marginTop: 14 }}>
+           {sel && !/^fulfilled$/i.test(sel.fulfillment) ? <Btn title="Mark fulfilled" onPress={() => void mark(sel)} /> : null}
+-          <Btn title="Refund or return" kind="secondary" onPress={() => { setRefund(sel); setSel(null); }} />
++          <Btn spot={SPOT.ordersRefund} title="Refund or return" kind="secondary" onPress={() => { setRefund(sel); setSel(null); }} />
+           <Btn title="Receipt" kind="secondary" onPress={() => { if (!sel) return; setReceipt({ uuid: sel.id, type: 'sale', ts: sel.createdAt, registerId: '', registerName: '', customer: sel.customer, orderName: sel.name, receiptLink: sel.receiptLink, lines: sel.lines.map(l => ({ title: l.title, variantTitle: l.variantTitle, qty: l.qty, baseUnitCents: l.originalUnitCents, grossCents: l.originalUnitCents * l.qty, discountCents: 0, netCents: l.unitCents * l.qty, costCents: 0, discountLabels: [], kind: 'item' as const })), itemsCents: sel.totalCents, discountCents: 0, netCents: sel.totalCents, tipCents: 0, totalCents: sel.totalCents, cogsCents: 0, feesCents: 0, roundingCents: 0, tenders: sel.tenders, deals: [] }); setSel(null); }} />
+         </View>
+       </Sheet>
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index 3bad625..5821365 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -1,7 +1,9 @@
+-import React, { useMemo, useState } from 'react';
++import React, { useEffect, useMemo, useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, Card, Chip, Field, Keypad, Money, Page, Row, Segmented, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
++import { Spot, registerSlice, spotPressed } from '../ui/Spot';
++import { SPOT, refundMethodSpot, refundModeSpot, refundMinusSpot, refundPickSpot, refundPlusSpot, refundReasonSpot, refundReplSpot } from '../lib/trainingSpots';
+ import { useApp, currentStaff } from '../state/store';
+ import { useCatalogue } from '../state/selectors';
+ import { priceCart } from '../lib/pricing';
+@@ -25,12 +27,14 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+   const [giftCardDestination, setGiftCardDestination] = useState<GiftCardDestination>();
+   const [repl, setRepl] = useState<Cart>(ops.emptyCart()); const [pick, setPick] = useState(false); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [result, setResult] = useState<string | null>(null); const [cashGive, setCashGive] = useState<{ amount: number; text: string; uuid?: string } | null>(null);
+   const refundable = refundableByGateway(order.transactions); const maxMoney = refundable.card + refundable.cash + refundable.gift_card;
++  // Training (B6): lets the course point at one part of each switch.
++  useEffect(() => { const off = [...(['items', 'amount'] as const).map((m, i) => registerSlice(refundModeSpot(m), SPOT.refundMode, i, 2)), ...(['original', 'cash', 'gift'] as const).map((m, i) => registerSlice(refundMethodSpot(m), SPOT.refundMethod, i, 3))]; return () => off.forEach(f => f()); }, []);
+   const hasOriginalGiftCard = order.tenders.some(t => t.kind === 'gift_card' && t.giftCardId);
+ 
+   const returnCents = mode === 'items' ? order.lines.reduce((s, l) => s + (qty[l.id] ?? 0) * l.unitCents, 0) : Math.min(digitsToCents(digits), maxMoney);
+   const replPriced = useMemo(() => priceCart(repl, { variants: cat.variants, collectionsOfProduct: cat.collectionsOfProduct, autoDiscounts: autos, bundles: bundleConfig() }), [repl, cat, autos]);
+   const sum = exchangeSummary(returnCents, replPriced.netCents);
+-  const picked = order.lines.filter(l => (qty[l.id] ?? 0) > 0);
++  const picked = mode === 'items' ? order.lines.filter(l => (qty[l.id] ?? 0) > 0) : []; // Amount mode refunds money only, so items picked earlier are not sent
+   const hits = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, cat.list]);
+   const label = returnCents <= 0 && !repl.lines.length ? 'Nothing selected' : sum.mode === 'even' ? 'Even exchange' : sum.mode === 'refund' ? `Refund ${fmt(sum.amountCents)}` : `Charge ${fmt(sum.amountCents)}`;
+ 
+@@ -57,24 +61,24 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+ 
+   return (
+     <Page title={`Return · ${order.name}`} onBack={onClose} helpId="orders/refunds">
+-      <View style={{ padding: 16 }}><Segmented value={mode} onChange={setMode} options={[{ v: 'items', label: 'Items' }, { v: 'amount', label: 'Amount' }]} /></View>
++      <View style={{ padding: 16 }}><Spot id={SPOT.refundMode}><Segmented value={mode} onChange={m => { spotPressed(refundModeSpot(m)); setMode(m); }} options={[{ v: 'items', label: 'Items' }, { v: 'amount', label: 'Amount' }]} /></Spot></View>
+       {mode === 'items' ? <Card style={{ marginHorizontal: 16 }}>{order.lines.map((l, i) => (
+         <Row key={l.id} last={i === order.lines.length - 1} title={l.title} sub={`${l.variantTitle ? l.variantTitle + ' · ' : ''}${fmt(l.unitCents)} each · ${l.refundableQty} refundable`}
+-          right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Btn title="−" small kind="secondary" disabled={!(qty[l.id] > 0)} onPress={() => setQty(s => ({ ...s, [l.id]: Math.max(0, (s[l.id] ?? 0) - 1) }))} /><Txt weight="700" style={{ minWidth: 18, textAlign: 'center' }}>{qty[l.id] ?? 0}</Txt><Btn title="+" small kind="secondary" disabled={(qty[l.id] ?? 0) >= l.refundableQty} onPress={() => setQty(s => ({ ...s, [l.id]: Math.min(l.refundableQty, (s[l.id] ?? 0) + 1) }))} /></View>} />))}</Card>
++          right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}><Btn spot={refundMinusSpot(l.id)} title="−" small kind="secondary" disabled={!(qty[l.id] > 0)} onPress={() => setQty(s => ({ ...s, [l.id]: Math.max(0, (s[l.id] ?? 0) - 1) }))} /><Txt weight="700" style={{ minWidth: 18, textAlign: 'center' }}>{qty[l.id] ?? 0}</Txt><Btn spot={refundPlusSpot(l.id)} title="+" small kind="secondary" disabled={(qty[l.id] ?? 0) >= l.refundableQty} onPress={() => setQty(s => ({ ...s, [l.id]: Math.min(l.refundableQty, (s[l.id] ?? 0) + 1) }))} /></View>} />))}</Card>
+         : <View style={{ padding: 16 }}><Txt size={36} weight="700" style={{ textAlign: 'center', marginBottom: 10 }}>{fmt(digitsToCents(digits))}</Txt><Keypad value={digits} onChange={setDigits} /><Txt size={12} sub style={{ textAlign: 'center', marginTop: 8 }}>Up to {fmt(maxMoney)} can be refunded.</Txt></View>}
+ 
+       <View style={{ padding: 16, gap: 8 }}>
+         <Txt weight="700">Replacement items</Txt>
+-        {repl.lines.map(l => <Row key={l.id} title={`${l.qty} × ${l.title}`} sub={l.variantTitle} right={<Money cents={l.unitCents * l.qty} />} onPress={() => setRepl(r => ops.removeLine(r, l.id))} />)}
+-        <Btn title="Add replacement item" icon="add" kind="secondary" onPress={() => setPick(true)} />
++        {repl.lines.map(l => <Row key={l.id} spot={l.variantId ? refundReplSpot(l.variantId) : undefined} title={`${l.qty} × ${l.title}`} sub={l.variantTitle} right={<Money cents={l.unitCents * l.qty} />} onPress={() => setRepl(r => ops.removeLine(r, l.id))} />)}
++        <Btn spot={SPOT.refundReplace} title="Add replacement item" icon="add" kind="secondary" onPress={() => setPick(true)} />
+         {repl.lines.length ? <Txt size={13} sub>Replacement total {fmt(replPriced.netCents)} (discounts applied). Tap a line to remove it.</Txt> : null}
+       </View>
+ 
+       <View style={{ paddingHorizontal: 16, gap: 10 }}>
+         <Txt weight="700">Reason</Txt>
+-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{REFUND_REASONS.map(r => <Chip key={r} label={r} active={reason === r} onPress={() => setReason(r)} />)}</View>
++        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{REFUND_REASONS.map(r => <Chip key={r} spot={refundReasonSpot(r)} label={r} active={reason === r} onPress={() => setReason(r)} />)}</View>
+         {sum.mode === 'refund' || (repl.lines.length === 0) ? <><Txt weight="700" style={{ marginTop: 6 }}>Refund to</Txt>
+-          <Segmented value={method} onChange={v => { setMethod(v); setGiftCardDestination(undefined); }} options={[{ v: 'original', label: 'Original' }, { v: 'cash', label: 'Cash' }, { v: 'gift_card', label: 'Gift card' }]} />
++          <Spot id={SPOT.refundMethod}><Segmented value={method} onChange={v => { spotPressed(refundMethodSpot(v === 'gift_card' ? 'gift' : v)); setMethod(v); setGiftCardDestination(undefined); }} options={[{ v: 'original', label: 'Original' }, { v: 'cash', label: 'Cash' }, { v: 'gift_card', label: 'Gift card' }]} /></Spot>
+           {method === 'original' ? <Txt size={12} sub>Returns to the original tenders: card refunds use the terminal, and gift-card amounts go back to the same original card. Card {fmt(refundable.card)} · Cash {fmt(refundable.cash)} · Gift card {fmt(refundable.gift_card)} refundable.</Txt>
+             : method === 'gift_card' ? <>
+               {hasOriginalGiftCard ? <>
+@@ -85,16 +89,16 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+                 </View>
+               </> : <Txt size={12} sub>A new gift card will be created for this refund.</Txt>}
+             </> : null}</> : null}
+-        <Card><Toggle label="Restock returned items" sub="Adds the quantity back to stock" value={restock} onChange={setRestock} /></Card>
+-        <Btn title={label} busy={busy} disabled={(returnCents <= 0 && !repl.lines.length) || (method === 'gift_card' && hasOriginalGiftCard && !giftCardDestination)} onPress={() => void go()} style={{ marginTop: 6 }} />
++        <Spot id={SPOT.refundRestock}><Card><Toggle label="Restock returned items" sub="Adds the quantity back to stock" value={restock} onChange={setRestock} /></Card></Spot>
++        <Btn spot={SPOT.refundGo} title={label} busy={busy} disabled={(returnCents <= 0 && !repl.lines.length) || (method === 'gift_card' && hasOriginalGiftCard && !giftCardDestination)} onPress={() => void go()} style={{ marginTop: 6 }} />
+       </View>
+ 
+       <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" full>
+         <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
+-        {hits.map((v: Variant) => <Row key={v.id} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
++        {hits.map((v: Variant) => <Row key={v.id} spot={refundPickSpot(v.id)} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
+       </Sheet>
+       <GiveCashSheet visible={!!cashGive} amount={cashGive?.amount ?? 0} onDone={given => { const g = cashGive; setCashGive(null); if (!g) return; if (given) useApp.getState().patchPos({ ledger: postCashRefund(useApp.getState().pos.ledger, { saleUuid: g.uuid, given, staff: currentStaff()?.name }) }); setResult(g.text); }} />
+-      <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
++      <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn spot={SPOT.refundDone} title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
+       <View style={{ height: 0, backgroundColor: c.bg }} />
+     </Page>
+   );
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index cf698ed..848f81b 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -8,6 +8,7 @@ import { TRAINING_PROGRESS_KEY, setTrainingGuard } from '../lib/trainingGuard';
+ import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot, trainingBlocker, type Swap } from '../lib/trainingSandbox';
+ import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
+ import { resetCheckout } from '../lib/trainingProbe';
++import { capturePracticeOrders, resetPracticeOrders, restorePracticeOrders } from '../lib/trainingOrders';
+ import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
+ import { getModule } from '../training';
+ import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
+@@ -50,7 +51,7 @@ type Sess = {
+   restartGoal: (inj: readonly Injection[] | undefined) => boolean;  // put it back exactly as it was
+ };
+ let real: Swap | null = null;
+-let goalStart: Swap | null = null;
++let goalStart: Swap | null = null; let goalOrders: ReturnType<typeof capturePracticeOrders> | null = null;
+ 
+ /** Who plays the customer at the practice terminal for this course (the course's `card` setting; automatic when it says nothing). */
+ const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
+@@ -69,7 +70,7 @@ export const useTraining = create<Sess>((set, get) => ({
+       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
+       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
+     }
+-    resetTrainingTerminal(); resetPass(); resetCheckout(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff })); set({ sandbox: true, hint: freshHints(), view: null });
++    resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff })); set({ sandbox: true, hint: freshHints(), view: null });
+     const r = get().run; if (r) set({ run: seeIntro(r) });
+     return null;
+   },
+@@ -78,8 +79,8 @@ export const useTraining = create<Sess>((set, get) => ({
+     useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj));
+   },
+   leave: () => {
+-    goalStart = null; setGate(null);
+-    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); } // restore first, then drop the guard
++    goalStart = null; goalOrders = null; setGate(null);
++    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); } // restore first, then drop the guard
+     set({ sandbox: false, view: null });
+   },
+   completeStage: () => {
+@@ -91,10 +92,10 @@ export const useTraining = create<Sess>((set, get) => ({
+   },
+   pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), hintPress: s.hintPress + 1, run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
+   setView: v => set({ view: v }),
+-  captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); },
++  captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); goalOrders = capturePracticeOrders(); },
+   restartGoal: inj => {
+     if (!goalStart) return false;
+-    resetTrainingTerminal(); resetCheckout(); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
++    resetTrainingTerminal(); resetCheckout(); if (goalOrders) restorePracticeOrders(goalOrders); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
+   },
+ }));
+ export const isPractising = (): boolean => real !== null;
+diff --git a/src/training/index.ts b/src/training/index.ts
+index 236efc7..737e865 100644
+--- a/src/training/index.ts
++++ b/src/training/index.ts
+@@ -10,6 +10,7 @@ import { receipts } from './modules/receipts';
+ import { payCash } from './modules/pay-cash';
+ import { customer } from './modules/customer';
+ import { discounts } from './modules/discounts';
++import { refund } from './modules/refund';
+ 
+-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts];
++export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, refund];
+ export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
+diff --git a/src/training/modules/refund.ts b/src/training/modules/refund.ts
+new file mode 100644
+index 0000000..c804563
+--- /dev/null
++++ b/src/training/modules/refund.ts
+@@ -0,0 +1,182 @@
++// Location: src/training/modules/refund.ts
++// "Refunds and exchanges": find a past order under More ▸ Orders, choose what comes back, why, and where the money goes, and give the cash.
++// Practice orders are made up (src/lib/trainingOrders.ts). A card refund goes through the practice terminal and nothing is sent to Shopify or the bank.
++// Swaps (a replacement item) are shown but never paid in practice: a swap ends on the Payment page, which this course does not use.
++import type { TrainingModule, TrainSnap, Watch } from '../../lib/trainingModule';
++import { SPOT, orderRowSpot, refundMethodSpot, refundModeSpot, refundPickSpot, refundPlusSpot, refundReasonSpot, refundReplSpot } from '../../lib/trainingSpots';
++import { PRACTICE_ORDER_CARD, PRACTICE_ORDER_CARD2, PRACTICE_ORDER_CASH } from '../../lib/trainingOrders';
++
++const O1 = PRACTICE_ORDER_CARD; const O2 = PRACTICE_ORDER_CASH; const O3 = PRACTICE_ORDER_CARD2;
++const COW_L = 'train-v-cow-l';
++const L_COW = 'train-ol-1001-a'; const L_EGG = 'train-ol-1001-b'; const L_BEE = 'train-ol-1002-a'; const L_KEY = 'train-ol-1002-b'; const L_DRAGON = 'train-ol-1003-a';
++void L_COW;
++type Refund = NonNullable<TrainSnap['refund']>;
++
++const base = { tabs: ['checkout', 'more'], routes: ['orders'] };
++const list = { ...base, sheets: false }; const win = { ...base, sheets: true };
++const noRoute = { tabs: ['checkout', 'more'], routes: [] as string[], sheets: false };
++
++/** A swap that was confirmed starts a sale with the replacement in the cart. This course never takes that sale, so the person is told to start again. */
++const swapStarted: Watch = { id: 'swap-started', when: s => s.tenders > 0 || s.lines > 0, say: 'That started a swap sale. This part is a plain refund. Tap Start this part again.', fix: 'restart', how: ['Tap Start this part again.'] };
++/** The goal is done when the `n`th refund is the right one and the windows are closed again. */
++const done = (n: number, ok: (r: Refund) => boolean) => (s: TrainSnap): boolean => !!s.refund && s.refund.n === n && ok(s.refund) && s.sheets === 0;
++/** The `n`th refund (or a later one) is not the right one: it cannot be undone by a tap, so the person starts the part again. */
++const wrong = (n: number, ok: (r: Refund) => boolean, say: string): Watch => ({ id: `wrong-refund-${n}`, when: s => !!s.refund && s.refund.n >= n && !ok(s.refund), say, fix: 'restart', how: ['Tap Start this part again.', 'The practice orders go back to how this part began.'] });
++const only = (r: Refund, kind: string): boolean => r.kinds.length === 1 && r.kinds[0] === kind;
++
++export const refund: TrainingModule = {
++  id: 'refund', title: 'Refunds and exchanges', summary: 'Find a past order, choose what comes back, why, and where the money goes, and hand over cash. Ten minutes with practice orders, nothing is refunded.', minutes: 10,
++  flow: 'standard', tabs: ['checkout', 'more'], routes: ['orders'],
++  info: {
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'overview', nodes: [
++        { id: 'in-title', kind: 'text', x: 40, y: 20, w: 560, h: 34, label: 'Refunds and exchanges', size: 22, align: 'center' },
++        { id: 'in-sub', kind: 'text', x: 60, y: 58, w: 520, h: 40, label: 'A refund starts from the order the customer bought, never from the cart.', size: 13, align: 'center', hidden: true },
++        { id: 'c-find', kind: 'panel', x: 40, y: 108, w: 270, h: 96, label: 'FIND THE ORDER', hidden: true },
++        { id: 'i-find', kind: 'icon', x: 52, y: 138, w: 44, h: 44, icon: 'receipt', tone: 'accent', size: 34, hidden: true },
++        { id: 't-find', kind: 'text', x: 104, y: 130, w: 198, h: 66, label: 'More, then Orders', sub: 'Tap the order, then Refund or return.', size: 15, hidden: true },
++        { id: 'c-pick', kind: 'panel', x: 330, y: 108, w: 270, h: 96, label: 'WHAT COMES BACK', hidden: true },
++        { id: 'i-pick', kind: 'icon', x: 342, y: 138, w: 44, h: 44, icon: 'cube', tone: 'accent', size: 34, hidden: true },
++        { id: 't-pick', kind: 'text', x: 394, y: 130, w: 198, h: 66, label: 'Items or an amount', sub: 'Tap + for each item, or type a sum.', size: 15, hidden: true },
++        { id: 'c-where', kind: 'panel', x: 40, y: 216, w: 270, h: 96, label: 'WHERE THE MONEY GOES', hidden: true },
++        { id: 'i-where', kind: 'icon', x: 52, y: 246, w: 44, h: 44, icon: 'cash', tone: 'accent', size: 34, hidden: true },
++        { id: 't-where', kind: 'text', x: 104, y: 238, w: 198, h: 66, label: 'Original, Cash or Gift', sub: 'Original puts it back how they paid.', size: 15, hidden: true },
++        { id: 'c-swap', kind: 'panel', x: 330, y: 216, w: 270, h: 96, label: 'A SWAP', hidden: true },
++        { id: 'i-swap', kind: 'icon', x: 342, y: 246, w: 44, h: 44, icon: 'swap-horizontal', tone: 'accent', size: 34, hidden: true },
++        { id: 't-swap', kind: 'text', x: 394, y: 238, w: 198, h: 66, label: 'Add a replacement', sub: 'The button says who pays the difference.', size: 15, hidden: true },
++        { id: 'c-fail', kind: 'panel', x: 40, y: 324, w: 560, h: 60, label: 'IF THE CARD REFUND FAILS', hidden: true },
++        { id: 'i-fail', kind: 'icon', x: 52, y: 338, w: 36, h: 36, icon: 'alert-circle', tone: 'bad', size: 28, hidden: true },
++        { id: 't-fail', kind: 'text', x: 98, y: 338, w: 490, h: 40, label: 'Nothing is recorded. Choose Cash or Gift card instead and refund again.', size: 13, hidden: true },
++      ] },
++    ],
++    steps: [
++      { id: 'what', title: 'From the order', say: 'A refund is taken from the order the customer bought. The order knows what they paid for, how, and how much of it is still refundable.', set: { 'in-sub': { hidden: false } }, focus: 'in-sub', note: 'Start at the order' },
++      { id: 'find', title: 'Find it', say: 'Open More, then Orders. Tap the order, then Refund or return. Return is the page where you choose everything.', set: { 'c-find': { hidden: false }, 'i-find': { hidden: false }, 't-find': { hidden: false } }, focus: 'c-find', note: 'More, Orders' },
++      { id: 'pick', title: 'What comes back', say: 'Tap + beside each item the customer brings back, as many as they return. Or switch to Amount and type a sum when there is no item to pick.', set: { 'c-pick': { hidden: false }, 'i-pick': { hidden: false }, 't-pick': { hidden: false } }, focus: 'c-pick', note: 'Never more than was bought' },
++      { id: 'where', title: 'Where the money goes', say: 'Refund to says where the money goes. Original sends it back the way the customer paid. Cash is handed over from the drawer. A gift card holds it as store credit.', set: { 'c-where': { hidden: false }, 'i-where': { hidden: false }, 't-where': { hidden: false } }, focus: 'c-where', note: 'Your choice' },
++      { id: 'swap', title: 'A swap', say: 'If the customer wants something else instead, add a replacement item. The big button changes: Refund when they are owed money, Charge when they owe some, Even exchange when it matches.', set: { 'c-swap': { hidden: false }, 'i-swap': { hidden: false }, 't-swap': { hidden: false } }, focus: 'c-swap', note: 'Read the button' },
++      { id: 'fail', title: 'If a card refund fails', say: 'A card refund can fail, for instance when the card has expired. Nothing is recorded when it fails. Choose Cash or Gift card and refund again.', set: { 'c-fail': { hidden: false }, 'i-fail': { hidden: false }, 't-fail': { hidden: false } }, focus: 'c-fail', note: 'Try another way' },
++    ],
++  },
++  show: {
++    canvas: { w: 640, h: 400 },
++    screens: [
++      { id: 'orders', nodes: [
++        { id: 'o-bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Orders', sub: 'Practice data' },
++        { id: 'o-1', kind: 'row', x: 20, y: 52, w: 600, h: 40, label: '#T1001 · Sam Rivera', sub: 'Today · paid · unfulfilled', value: '$24.00' },
++        { id: 'o-2', kind: 'row', x: 20, y: 96, w: 600, h: 40, label: '#T1002 · Priya Patel', sub: 'Today · paid · fulfilled', value: '$18.00' },
++        { id: 'o-3', kind: 'row', x: 20, y: 140, w: 600, h: 40, label: '#T1003', sub: 'Today · paid · fulfilled', value: '$28.00' },
++        { id: 'o-sheet', kind: 'panel', x: 130, y: 120, w: 380, h: 190, label: '#T1001', hidden: true },
++        { id: 'o-l1', kind: 'text', x: 150, y: 146, w: 340, h: 18, label: '1 × Highland Cow · Small   $12.00', size: 13, hidden: true },
++        { id: 'o-l2', kind: 'text', x: 150, y: 168, w: 340, h: 18, label: '2 × Dragon Egg   $12.00', size: 13, hidden: true },
++        { id: 'o-b1', kind: 'button', x: 150, y: 200, w: 340, h: 32, label: 'Mark fulfilled', hidden: true },
++        { id: 'o-b2', kind: 'button', x: 150, y: 238, w: 340, h: 32, label: 'Refund or return', tone: 'neutral', hidden: true },
++        { id: 'o-b3', kind: 'button', x: 150, y: 276, w: 340, h: 26, label: 'Receipt', tone: 'neutral', hidden: true },
++        { id: 'o-dock', kind: 'panel', x: 0, y: 366, w: 640, h: 34 },
++        { id: 'o-say', kind: 'text', x: 14, y: 370, w: 612, h: 26, label: 'Every order you have sold is listed here.', size: 13 },
++      ] },
++      { id: 'return', nodes: [
++        { id: 'bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Return · #T1001', sub: 'Practice data' },
++        { id: 'm-items', kind: 'chip', x: 20, y: 46, w: 90, h: 24, label: 'Items', tone: 'accent' },
++        { id: 'm-amount', kind: 'chip', x: 116, y: 46, w: 90, h: 24, label: 'Amount', tone: 'neutral' },
++        { id: 'l-1', kind: 'row', x: 20, y: 76, w: 600, h: 32, label: 'Highland Cow · Small', sub: '$12.00 each · 1 refundable' },
++        { id: 'l-1q', kind: 'text', x: 540, y: 82, w: 24, h: 18, label: '0', size: 13, align: 'center' },
++        { id: 'l-2', kind: 'row', x: 20, y: 112, w: 600, h: 32, label: 'Dragon Egg', sub: '$6.00 each · 2 refundable' },
++        { id: 'l-2m', kind: 'button', x: 490, y: 117, w: 26, h: 22, label: '-', tone: 'neutral' },
++        { id: 'l-2q', kind: 'text', x: 518, y: 118, w: 24, h: 18, label: '0', size: 13, align: 'center' },
++        { id: 'l-2p', kind: 'button', x: 546, y: 117, w: 26, h: 22, label: '+', tone: 'neutral' },
++        { id: 'b-repl', kind: 'button', x: 20, y: 150, w: 600, h: 24, label: 'Add replacement item', icon: 'add', tone: 'neutral' },
++        { id: 'r-repl', kind: 'row', x: 20, y: 178, w: 600, h: 30, label: '1 × Highland Cow', sub: 'Large', value: '$18.00', hidden: true },
++        { id: 'why', kind: 'text', x: 20, y: 212, w: 200, h: 16, label: 'Reason', size: 12 },
++        { id: 'c-1', kind: 'chip', x: 20, y: 230, w: 110, h: 22, label: 'Returned Goods', tone: 'accent' },
++        { id: 'c-2', kind: 'chip', x: 136, y: 230, w: 110, h: 22, label: 'Cancelled Order', tone: 'neutral' },
++        { id: 'c-3', kind: 'chip', x: 252, y: 230, w: 70, h: 22, label: 'Other', tone: 'neutral' },
++        { id: 'to', kind: 'text', x: 20, y: 258, w: 200, h: 16, label: 'Refund to', size: 12 },
++        { id: 'p-orig', kind: 'chip', x: 20, y: 276, w: 90, h: 22, label: 'Original', tone: 'accent' },
++        { id: 'p-cash', kind: 'chip', x: 116, y: 276, w: 90, h: 22, label: 'Cash', tone: 'neutral' },
++        { id: 'p-gift', kind: 'chip', x: 212, y: 276, w: 90, h: 22, label: 'Gift card', tone: 'neutral' },
++        { id: 'stock', kind: 'toggle', x: 20, y: 304, w: 400, h: 24, label: 'Restock returned items', on: true },
++        { id: 'go', kind: 'button', x: 20, y: 334, w: 600, h: 28, label: 'Nothing selected', tone: 'neutral' },
++        { id: 'ask', kind: 'panel', x: 170, y: 120, w: 300, h: 130, label: 'REFUND $6.00', hidden: true },
++        { id: 'ask-t', kind: 'text', x: 186, y: 146, w: 268, h: 40, label: 'Returned Goods · 1 item type(s)', size: 13, align: 'center', hidden: true },
++        { id: 'ask-y', kind: 'button', x: 186, y: 200, w: 268, h: 30, label: 'Confirm', hidden: true },
++        { id: 'dock', kind: 'panel', x: 0, y: 366, w: 640, h: 34 },
++        { id: 'dock-say', kind: 'text', x: 14, y: 370, w: 612, h: 26, label: 'Choose what is coming back.', size: 13 },
++      ] },
++    ],
++    steps: [
++      { id: 'list', title: 'The orders', say: 'Orders lists every sale, newest first, under More. Each row shows the order number, the customer, how it was paid and the total.', focus: 'o-1', note: 'More, Orders' },
++      { id: 'open', title: 'Open an order', say: 'Tap the order the customer is returning. A window lists what they bought.', tap: 'o-1', set: { 'o-sheet': { hidden: false }, 'o-l1': { hidden: false }, 'o-l2': { hidden: false }, 'o-b1': { hidden: false }, 'o-b2': { hidden: false }, 'o-b3': { hidden: false }, 'o-say': { label: 'The window shows what was bought.' } }, focus: 'o-sheet', note: 'What they bought' },
++      { id: 'start', title: 'Refund or return', say: 'Tap Refund or return. The Return page opens for this order.', tap: 'o-b2', screen: 'return', focus: 'bar', note: 'This order' },
++      { id: 'plus', title: 'What comes back', say: 'Tap + beside an item for each one the customer is returning. Here, one Dragon Egg. The button at the bottom shows the amount.', tap: 'l-2p', set: { 'l-2q': { label: '1' }, go: { label: 'Refund $6.00', tone: 'accent' }, 'dock-say': { label: 'One Dragon Egg, $6.00 back to them.' } }, focus: 'go', note: 'Amount to refund' },
++      { id: 'amount', title: 'Or an amount', say: 'No item to pick, such as a goodwill refund? Tap Amount and type a sum, up to what is left on the order.', tap: 'm-amount', set: { 'm-amount': { tone: 'accent' }, 'm-items': { tone: 'neutral' }, 'dock-say': { label: 'Amount mode: type a sum instead of picking items.' } }, focus: 'm-amount', note: 'Items or Amount' },
++      { id: 'items-back', title: 'Back to items', say: 'Tap Items to go back. Your picked items are still there.', tap: 'm-items', set: { 'm-items': { tone: 'accent' }, 'm-amount': { tone: 'neutral' }, 'dock-say': { label: 'Back on Items.' } }, focus: 'm-items', note: 'Still picked' },
++      { id: 'swap', title: 'A swap', say: 'The customer wants the Large cow instead? Add a replacement item. The Large costs $12.00 more than the egg, so the button changes to Charge.', tap: 'b-repl', set: { 'r-repl': { hidden: false }, go: { label: 'Charge $12.00' }, 'dock-say': { label: 'They owe the difference. Not used in this course.' } }, focus: 'go', note: 'Customer pays the rest' },
++      { id: 'unswap', title: 'Take it off again', say: 'Tap the replacement line to take it off. The button reads Refund again. This course only refunds, so we go on without the swap.', tap: 'r-repl', set: { 'r-repl': { hidden: true }, go: { label: 'Refund $6.00' }, 'dock-say': { label: 'Plain refund again.' } }, focus: 'go', note: 'Refund again' },
++      { id: 'reason', title: 'The reason', say: 'The reason is kept with the refund and shows in reports. Returned Goods is the usual one. Tap another if it fits better.', tap: 'c-1', set: { 'dock-say': { label: 'Returned Goods is already chosen.' } }, focus: 'c-1', note: 'Why it came back' },
++      { id: 'card-fails', title: 'The card refund fails', say: 'Refund to Original sends the money back to the card. If the card has expired the refund fails. Nothing is recorded and the order is not changed.', tap: 'go', set: { 'dock-say': { label: 'Card expired. Try another card. Nothing was refunded.' }, dock: { tone: 'bad' } }, focus: 'dock', note: 'Nothing recorded' },
++      { id: 'cash', title: 'Choose Cash', say: 'Switch Refund to to Cash, then refund again. You hand the customer the money from the drawer.', tap: 'p-cash', set: { 'p-cash': { tone: 'accent' }, 'p-orig': { tone: 'neutral' }, dock: { tone: 'neutral' }, 'dock-say': { label: 'Cash: you give them the money.' } }, focus: 'p-cash', note: 'Cash instead' },
++      { id: 'confirm', title: 'Confirm', say: 'Tap Refund $6.00. A pop-up asks you to confirm. Read the amount, then tap Confirm.', tap: 'go', set: { ask: { hidden: false }, 'ask-t': { hidden: false }, 'ask-y': { hidden: false } }, focus: 'ask', note: 'Check the amount' },
++      { id: 'give', title: 'Give the cash', say: 'The Give cash refund window shows which notes and coins to take from the drawer. Hand them over, then tap Gave this.', tap: 'ask-y', set: { ask: { hidden: true }, 'ask-t': { hidden: true }, 'ask-y': { hidden: true }, 'dock-say': { label: 'Give the customer $6.00: a $5 note and a $1 coin.' } }, focus: 'dock', note: 'From the drawer' },
++    ],
++  },
++  guide: [
++    { id: 'g-intro', say: 'You will give refunds on practice orders. Nothing is really refunded or sent anywhere. Orders are under More.', until: { kind: 'next' } },
++    { id: 'g-more', target: SPOT.tabMore, say: 'Tap More at the bottom of the screen.', until: { kind: 'state', test: s => s.tab === 'more' || s.route === 'orders' }, gesture: 'tap', allow: [], at: noRoute },
++    { id: 'g-orders', target: SPOT.moreOrders, say: 'Tap Orders.', until: { kind: 'state', test: s => s.route === 'orders' }, gesture: 'tap', allow: [], at: { ...base, sheets: false }, recover: { say: 'Tap the More tab at the bottom, then Orders.', target: SPOT.tabMore } },
++    { id: 'g-list', say: 'This is the list of past sales, newest first. Each row has the order number, the customer, how it stands, and the total. These three are practice orders.', until: { kind: 'next' }, at: list },
++    { id: 'g-open', target: orderRowSpot(O1), say: 'Sam bought a Highland Cow and two Dragon Eggs and paid by card. Tap order #T1001.', until: { kind: 'press', id: orderRowSpot(O1) }, gesture: 'tap', at: list, recover: { say: 'Tap the More tab, then Orders, then order #T1001.', target: SPOT.tabMore } },
++    { id: 'g-refund-btn', target: SPOT.ordersRefund, say: 'The window lists what was bought. Tap Refund or return.', until: { kind: 'press', id: SPOT.ordersRefund }, gesture: 'tap', at: win, recoverFrom: [{ say: 'Tap order #T1001 first.', target: orderRowSpot(O1) }], recover: { say: 'Tap the More tab, then Orders, then order #T1001.', target: SPOT.tabMore } },
++    { id: 'g-plus', target: refundPlusSpot(L_EGG), say: 'This is the Return page. Sam brings back one Dragon Egg. Tap + beside Dragon Egg once. The button at the bottom shows the amount.', until: { kind: 'press', id: refundPlusSpot(L_EGG) }, gesture: 'tap', at: list,
++      recoverFrom: [{ say: 'Tap Refund or return.', target: SPOT.ordersRefund }, { say: 'Tap order #T1001.', target: orderRowSpot(O1) }], recover: { say: 'Tap the More tab, then Orders, then order #T1001.', target: SPOT.tabMore } },
++    { id: 'g-reason', target: refundReasonSpot('Returned Goods'), say: 'The reason is kept with the refund and shows in reports. Returned Goods is already chosen, which fits here. Tap it.', until: { kind: 'press', id: refundReasonSpot('Returned Goods') }, gesture: 'tap', at: list, recover: { say: 'Go back to Orders and open #T1001 again.', target: SPOT.back } },
++    { id: 'g-method-cash', target: refundMethodSpot('cash'), say: 'Refund to says where the money goes. Original sends it back the way the customer paid. Tap Cash to see another choice. If a card refund ever fails, this is the way out.', until: { kind: 'press', id: refundMethodSpot('cash') }, gesture: 'tap', at: list, recover: { say: 'Go back to Orders and open #T1001 again.', target: SPOT.back } },
++    { id: 'g-method-gift', target: refundMethodSpot('gift'), say: 'Gift card keeps the money as store credit on a new gift card. Tap Gift card.', until: { kind: 'press', id: refundMethodSpot('gift') }, gesture: 'tap', at: list },
++    { id: 'g-method-orig', target: refundMethodSpot('original'), say: 'Tap Original again. For a card sale the money goes back to the card, using the terminal.', until: { kind: 'press', id: refundMethodSpot('original') }, gesture: 'tap', at: list },
++    { id: 'g-restock', target: SPOT.refundRestock, say: 'Restock returned items puts the quantity back in stock. Turn it off for something damaged that cannot be sold again. Leave it on here.', until: { kind: 'next' }, at: list },
++    { id: 'g-amount', target: refundModeSpot('amount'), say: 'No item to pick, such as a goodwill refund? Tap Amount.', until: { kind: 'press', id: refundModeSpot('amount') }, gesture: 'tap', at: list },
++    { id: 'g-amount-read', target: SPOT.refundMode, say: 'Amount shows a keypad. You type a sum up to what is left on the order, and it says how much that is. We will not use it now.', until: { kind: 'next' }, at: list },
++    { id: 'g-items-back', target: refundModeSpot('items'), say: 'Tap Items to go back. The Dragon Egg you picked is still picked.', until: { kind: 'press', id: refundModeSpot('items') }, gesture: 'tap', at: list },
++    { id: 'g-replace', target: SPOT.refundReplace, say: 'A customer who wants something else instead is a swap. Tap Add replacement item.', until: { kind: 'press', id: SPOT.refundReplace }, gesture: 'tap', at: list },
++    { id: 'g-pick', target: refundPickSpot(COW_L), say: 'Tap Highland Cow, Large, in the list.', until: { kind: 'press', id: refundPickSpot(COW_L) }, gesture: 'tap', at: win, recoverFrom: [{ say: 'Tap Add replacement item.', target: SPOT.refundReplace }] },
++    { id: 'g-diff', target: SPOT.refundGo, say: 'Look at the big button: it now says Charge $12.00. The Large cow costs $12.00 more than the egg coming back. If the return were worth more, it would say Refund, and if they matched, Even exchange.', until: { kind: 'next' }, at: list },
++    { id: 'g-unswap', target: refundReplSpot(COW_L), say: 'This course only refunds, so take the replacement off. Tap its line.', until: { kind: 'press', id: refundReplSpot(COW_L) }, gesture: 'tap', at: list },
++    { id: 'g-go', target: SPOT.refundGo, say: 'The button reads Refund $6.00 again. Tap it.', until: { kind: 'press', id: SPOT.refundGo }, gesture: 'tap', at: list, watch: [swapStarted] },
++    { id: 'g-confirm', target: SPOT.refundGo, say: 'A pop-up asks you to confirm the refund. Read the amount and tap Confirm. In practice the practice terminal refunds the card for you. If the pop-up went away, tap the button again.', until: { kind: 'state', test: s => !!s.refund && s.refund.orderId === O1 }, gesture: 'tap', allow: ['sale'], at: { ...list, sheets: true }, watch: [swapStarted] },
++    { id: 'g-done', target: SPOT.refundDone, say: 'The Done window says the refund is complete. The order now shows one less Dragon Egg to refund. Tap OK.', until: { kind: 'press', id: SPOT.refundDone }, gesture: 'tap', allow: ['sale'], at: win, recover: { say: 'Wait a moment for the Done window.', target: SPOT.refundGo } },
++    { id: 'g-cash-intro', say: 'Now a cash order. Priya paid in cash and wants her Bumble Bee refunded. You will give her the cash.', until: { kind: 'next' }, allow: ['sale'], at: list },
++    { id: 'g-open2', target: orderRowSpot(O2), say: 'Tap order #T1002.', until: { kind: 'press', id: orderRowSpot(O2) }, gesture: 'tap', allow: ['sale'], at: list, recover: { say: 'Tap the More tab, then Orders.', target: SPOT.tabMore } },
++    { id: 'g-refund-btn2', target: SPOT.ordersRefund, say: 'Tap Refund or return.', until: { kind: 'press', id: SPOT.ordersRefund }, gesture: 'tap', allow: ['sale'], at: win, recoverFrom: [{ say: 'Tap order #T1002 first.', target: orderRowSpot(O2) }], recover: { say: 'Tap the More tab, then Orders, then order #T1002.', target: SPOT.tabMore } },
++    { id: 'g-plus2', target: refundPlusSpot(L_BEE), say: 'Tap + beside Bumble Bee once.', until: { kind: 'press', id: refundPlusSpot(L_BEE) }, gesture: 'tap', allow: ['sale'], at: list, recoverFrom: [{ say: 'Tap Refund or return.', target: SPOT.ordersRefund }, { say: 'Tap order #T1002.', target: orderRowSpot(O2) }], recover: { say: 'Tap the More tab, then Orders, then order #T1002.', target: SPOT.tabMore } },
++    { id: 'g-go2', target: SPOT.refundGo, say: 'With Original, a cash order is refunded in cash. Tap Refund $8.00, then Confirm in the pop-up.', until: { kind: 'state', test: s => !!s.refund && s.refund.orderId === O2 }, gesture: 'tap', allow: ['sale'], at: { ...list, sheets: true }, watch: [swapStarted] },
++    { id: 'g-cash', target: SPOT.cashGave, say: 'The window shows the notes and coins to take from the drawer. Hand them to Priya, then tap Gave this.', until: { kind: 'press', id: SPOT.cashGave }, gesture: 'tap', allow: ['sale'], at: win, recover: { say: 'Wait a moment for the Give cash refund window.', target: SPOT.refundGo } },
++    { id: 'g-done2', target: SPOT.refundDone, say: 'Done. Tap OK.', until: { kind: 'press', id: SPOT.refundDone }, gesture: 'tap', allow: ['sale'], at: win },
++    { id: 'g-end', say: 'The refund is recorded against the order and in the reports. A card refund goes back to the card, a cash refund comes out of the drawer, and a gift card refund makes store credit.', until: { kind: 'next' }, allow: ['sale'], at: list },
++  ],
++  check1: [
++    { id: 'refund-card', title: 'Sam brings back one Dragon Egg from order #T1001, which he paid for by card. Refund it to his card', until: { kind: 'state', test: done(1, r => r.orderId === O1 && r.items === 1 && r.cents === 600 && only(r, 'card')) },
++      ladder: ['Orders are under the More tab.', 'Open Orders, tap order #T1001, then Refund or return.', 'Tap + beside Dragon Egg once, tap the Refund button, confirm, and tap OK.'], reveal: orderRowSpot(O1), via: SPOT.moreOrders, gesture: 'tap', allow: ['sale'], at: win,
++      watch: [swapStarted, wrong(1, r => r.orderId === O1 && r.items === 1 && r.cents === 600 && only(r, 'card'), 'That refund was not one Dragon Egg back to the card. Tap Start this part again.')] },
++    { id: 'refund-cash', title: 'Priya brings back her Bumble Bee from order #T1002, which she paid for in cash. Refund it and give her the cash', until: { kind: 'state', test: done(2, r => r.orderId === O2 && r.items === 1 && r.cents === 800 && only(r, 'cash')) },
++      ladder: ['Back on the Orders list, a cash order is refunded in cash.', 'Open order #T1002, then Refund or return, and tap + beside Bumble Bee.', 'Tap Refund, confirm, tap Gave this once the cash is handed over, then OK.'], reveal: orderRowSpot(O2), via: SPOT.moreOrders, gesture: 'tap', allow: ['sale'], at: win,
++      watch: [swapStarted, wrong(2, r => r.orderId === O2 && r.items === 1 && r.cents === 800 && only(r, 'cash'), 'That refund was not the Bumble Bee in cash. Tap Start this part again.')] },
++    { id: 'refund-gift', title: 'A customer wants store credit instead of money for the Red Dragon from order #T1003. Refund it to a gift card', until: { kind: 'state', test: done(3, r => r.orderId === O3 && r.items === 1 && r.cents === 2500 && only(r, 'gift_card')) },
++      ladder: ['Where the money goes is chosen on the Return page.', 'Open order #T1003, Refund or return, tap + beside Red Dragon, then choose Gift card under Refund to.', 'Tap the Refund button, confirm, then tap OK. The window shows the new gift card code.'], reveal: orderRowSpot(O3), via: SPOT.moreOrders, gesture: 'tap', allow: ['sale'], at: win,
++      watch: [swapStarted, wrong(3, r => r.orderId === O3 && r.items === 1 && r.cents === 2500 && only(r, 'gift_card'), 'That refund was not the Red Dragon on a gift card. Tap Start this part again.')] },
++  ],
++  check2: [
++    { id: 'card-expired', title: 'Sam wants the Highland Cow from order #T1001 refunded, but his card has expired, so a card refund will fail. Refund the $12.00 to Cash instead', until: { kind: 'state', test: done(1, r => r.orderId === O1 && r.items === 1 && r.cents === 1200 && only(r, 'cash')) },
++      inject: [{ kind: 'decline', times: 5, code: '33' }], taughtBy: 'g-method-cash',
++      ladder: ['Try the refund to Original first and read what the pop-up says.', 'The card refund cannot go through. Nothing was recorded, so the order is untouched.', 'Change Refund to from Original to Cash, tap the Refund button again, confirm, give the cash, and tap OK.'], reveal: SPOT.moreOrders, via: SPOT.tabMore, gesture: 'tap', allow: ['sale'], at: win,
++      watch: [swapStarted, wrong(1, r => r.orderId === O1 && r.items === 1 && r.cents === 1200 && only(r, 'cash'), 'That refund was not the $12.00 Highland Cow in cash. Tap Start this part again.')] },
++    { id: 'damaged', title: 'The Bumble Bee Priya brings back from order #T1002 is damaged and cannot be sold again. Refund it in cash and turn off Restock returned items', until: { kind: 'state', test: done(2, r => r.orderId === O2 && r.items === 1 && r.cents === 800 && only(r, 'cash') && !r.restock) },
++      ladder: ['Damaged goods should not go back into stock.', 'On the Return page there is a switch for that, below Refund to.', 'Tap + beside Bumble Bee, switch off Restock returned items, tap Refund, confirm, give the cash, and tap OK.'], reveal: SPOT.refundRestock, via: orderRowSpot(O2), gesture: 'tap', allow: ['sale'], at: win,
++      watch: [swapStarted, wrong(2, r => r.orderId === O2 && r.items === 1 && r.cents === 800 && only(r, 'cash') && !r.restock, 'That refund put the damaged Bumble Bee back in stock, or was the wrong item. Tap Start this part again.')] },
++    { id: 'one-keyring', title: 'Priya also wants just one of her two Keyrings from order #T1002 refunded in cash. Refund one only', until: { kind: 'state', test: done(3, r => r.orderId === O2 && r.items === 1 && r.cents === 500 && only(r, 'cash')) },
++      ladder: ['The order had two Keyrings, and only one is coming back.', 'Open order #T1002, tap Refund or return, and tap + once beside Keyring.', 'Tap Refund, confirm, give the cash, and tap OK.'], reveal: orderRowSpot(O2), via: SPOT.moreOrders, gesture: 'tap', allow: ['sale'], at: win,
++      watch: [swapStarted, wrong(3, r => r.orderId === O2 && r.items === 1 && r.cents === 500 && only(r, 'cash'), 'That refund was not one Keyring in cash. Tap Start this part again.')] },
++  ],
++  recap: ['You can find a past order under More, then Orders, and start a refund from it.', 'You can choose items or an amount, a reason, and where the money goes: back to the card, as cash from the drawer, or on a gift card.', 'You know a failed card refund records nothing, so you can choose Cash or Gift card and refund again, and that a swap shows who pays the difference.'],
++};
++void L_DRAGON; void L_KEY;
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 07d529f..de26721 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -22,6 +22,7 @@ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
+ import { isMet, snapOf, type Events } from '../lib/trainingConds';
+ import { getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere } from '../lib/trainingProbe';
++import { getLastPracticeRefund } from '../lib/trainingOrders';
+ import { hintView, shouldNudge } from '../lib/trainingHints';
+ import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+ import { gateFor, type Gesture } from '../lib/pointerGesture';
+@@ -37,7 +38,7 @@ const mutable = (): { pressed: Set<string>; visible: Set<string> } => ({ pressed
+ 
+ /** What the customer handed over and the change given on the last finished sale's cash payment, or undefined if it had none. */
+ const lastCash = (sales: { tenders: { kind: string; tenderedCents?: number; changeCents?: number }[] }[]): { tendered: number; change: number } | undefined => {
+-  const t = sales.length ? [...sales[sales.length - 1].tenders].reverse().find(x => x.kind === 'cash') : undefined;
++  const t = sales.length ? [...sales[0].tenders].reverse().find(x => x.kind === 'cash') : undefined;
+   return t ? { tendered: t.tenderedCents ?? 0, change: t.changeCents ?? 0 } : undefined;
+ };
+ export default function TrainingHost({ children }: { children: React.ReactNode }) {
+@@ -99,7 +100,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         const fresh = key.current !== k;
+         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
+         const app = useApp.getState();
+-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[app.pos.sales.length - 1].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+         const until = item.until;
+         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
+diff --git a/tests/trainingrefund.test.ts b/tests/trainingrefund.test.ts
+new file mode 100644
+index 0000000..b4b2120
+--- /dev/null
++++ b/tests/trainingrefund.test.ts
+@@ -0,0 +1,101 @@
++// Location: tests/trainingrefund.test.ts
++// The "Refunds and exchanges" course: registered, valid, finished only by the right thing, and the practice orders behave like real ones.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import { refund } from '../src/training/modules/refund';
++import { MODULES, getModule } from '../src/training';
++import { validateModule, type TrainSnap } from '../src/lib/trainingModule';
++import { SPOT, isKnownSpot, isWindowSpot, orderRowSpot, refundMethodSpot, refundModeSpot, refundPickSpot, refundPlusSpot, refundReasonSpot, refundReplSpot } from '../src/lib/trainingSpots';
++import { isMet, noEvents, snapOf } from '../src/lib/trainingConds';
++import { stepRules } from '../src/lib/trainingCourse';
++import { FIXTURE_VARIANTS, declinesOf, declineCodeOf } from '../src/lib/trainingSandbox';
++import { PRACTICE_ORDER_CARD, PRACTICE_ORDER_CARD2, PRACTICE_ORDER_CASH, applyPracticeRefund, capturePracticeOrders, fixtureOrders, getLastPracticeRefund, getPracticeOrder, listPracticeOrders, resetPracticeOrders, restorePracticeOrders } from '../src/lib/trainingOrders';
++import { refundableByGateway } from '../src/lib/returns';
++import { RESPONSE_CODES } from '../src/lib/responseCodes';
++
++type R = NonNullable<TrainSnap['refund']>;
++const snap = (o: { sheets?: number; route?: string; tab?: string; refund?: R; lines?: any[] } = {}): TrainSnap => snapOf({ tab: o.tab ?? 'more', route: o.route ?? '', sheets: o.sheets ?? 0, cart: { lines: o.lines ?? [] }, sales: 0, paying: false, refund: o.refund });
++const rf = (n: number, orderId: string, cents: number, kinds: string[], items = 1, restock = true): R => ({ n, orderId, cents, kinds, items, restock });
++const by = (list: any[], id: string) => list.find(x => x.id === id);
++const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
++const O1 = PRACTICE_ORDER_CARD; const O2 = PRACTICE_ORDER_CASH; const O3 = PRACTICE_ORDER_CARD2;
++
++test('the course is registered, comes last so far, and is valid', () => {
++  assert.equal(getModule('refund'), refund); assert.equal(MODULES[MODULES.length - 1], refund);
++  assert.deepEqual(validateModule(refund, isKnownSpot), []); assert.ok(refund.tabs.includes('more')); assert.ok(refund.routes.includes('orders'));
++});
++
++test('every record spot the course names exists in the practice data', () => {
++  const orders = fixtureOrders(); const lines = new Set(orders.flatMap(o => o.lines.map(l => l.id))); const ids = new Set(orders.map(o => o.id)); const variants = new Set(FIXTURE_VARIANTS.map(v => v.id));
++  const all = [...refund.guide.flatMap(s => [s.target, s.recover?.target, ...(s.recoverFrom ?? []).map(r => r.target), s.until.kind === 'press' ? s.until.id : undefined]), ...[...refund.check1, ...refund.check2].flatMap(g => [g.reveal, g.via, g.until.kind === 'press' ? g.until.id : undefined])].filter(Boolean) as string[];
++  for (const s of all) {
++    if (s.startsWith('order.row:')) assert.ok(ids.has(s.slice(10)), s); if (s.startsWith('refund.plus:')) assert.ok(lines.has(s.slice(12)), s);
++    if (s.startsWith('refund.pick:') || s.startsWith('refund.repl:')) assert.ok(variants.has(s.slice(12)), s);
++  }
++  assert.ok(isWindowSpot(refundPickSpot('x')) && isWindowSpot(SPOT.ordersRefund) && isWindowSpot(SPOT.refundDone) && isWindowSpot(SPOT.cashGave));
++  for (const s of refund.guide.filter(x => x.target && isWindowSpot(x.target))) assert.equal(stepRules(s).at?.sheets, true, s.id);
++});
++
++test('the refund screens carry the spots the course points at', () => {
++  const ref = fs.readFileSync('src/screens/Refund.tsx', 'utf8'); const ord = fs.readFileSync('src/screens/Orders.tsx', 'utf8'); const more = fs.readFileSync('src/screens/More.tsx', 'utf8'); const cash = fs.readFileSync('src/screens/CashSheet.tsx', 'utf8');
++  for (const t of ['SPOT.refundMode', 'SPOT.refundMethod', 'SPOT.refundRestock', 'SPOT.refundReplace', 'SPOT.refundGo', 'SPOT.refundDone', 'refundPlusSpot(', 'refundMinusSpot(', 'refundReasonSpot(', 'refundPickSpot(', 'refundReplSpot(', 'refundModeSpot(', 'refundMethodSpot(']) assert.ok(ref.includes(t), t);
++  assert.ok(ord.includes('orderRowSpot(') && ord.includes('SPOT.ordersRefund')); assert.ok(more.includes('SPOT.moreOrders')); assert.ok(cash.includes('SPOT.cashGave'));
++});
++
++test('Orders and the refund run on practice data only while training: no Shopify call is reachable', () => {
++  const ord = fs.readFileSync('src/screens/Orders.tsx', 'utf8'); assert.ok(ord.indexOf('isTraining() ? listPracticeOrders') >= 0); assert.ok(ord.indexOf('if (isTraining()) markPracticeFulfilled') >= 0);
++  const flow = fs.readFileSync('src/lib/refundFlow.ts', 'utf8'); assert.ok(flow.indexOf('if (isTraining()) applyPracticeRefund') < flow.indexOf('await refundOrderInShopify')); assert.ok(flow.indexOf('plan.gift_card && isTraining()') < flow.indexOf('creditGiftCardOnce('));
++});
++
++test('Guide steps are finished by the right press or state', () => {
++  const g = (id: string) => by(refund.guide, id).until;
++  assert.ok(isMet(g('g-more'), snap({ tab: 'more' }), noEvents())); assert.ok(!isMet(g('g-more'), snap({ tab: 'checkout' }), noEvents()));
++  assert.ok(isMet(g('g-orders'), snap({ route: 'orders' }), noEvents())); assert.ok(!isMet(g('g-orders'), snap({ route: '' }), noEvents()));
++  const presses: [string, string][] = [['g-open', orderRowSpot(O1)], ['g-refund-btn', SPOT.ordersRefund], ['g-plus', refundPlusSpot('train-ol-1001-b')], ['g-reason', refundReasonSpot('Returned Goods')], ['g-method-cash', refundMethodSpot('cash')], ['g-method-gift', refundMethodSpot('gift')], ['g-method-orig', refundMethodSpot('original')],
++    ['g-amount', refundModeSpot('amount')], ['g-items-back', refundModeSpot('items')], ['g-replace', SPOT.refundReplace], ['g-pick', refundPickSpot('train-v-cow-l')], ['g-unswap', refundReplSpot('train-v-cow-l')], ['g-go', SPOT.refundGo], ['g-done', SPOT.refundDone], ['g-open2', orderRowSpot(O2)], ['g-plus2', refundPlusSpot('train-ol-1002-a')], ['g-cash', SPOT.cashGave], ['g-done2', SPOT.refundDone]];
++  for (const [step, spot] of presses) { assert.ok(isMet(g(step), snap(), ev([spot])), step); assert.ok(!isMet(g(step), snap(), ev(['something.else'])), `${step} needs its own button`); }
++  assert.ok(isMet(g('g-confirm'), snap({ refund: rf(1, O1, 600, ['card']) }), noEvents())); assert.ok(!isMet(g('g-confirm'), snap({ refund: rf(1, O2, 800, ['cash']) }), noEvents()), 'a refund of another order is not this one'); assert.ok(!isMet(g('g-confirm'), snap(), noEvents()));
++  assert.ok(isMet(g('g-go2'), snap({ refund: rf(2, O2, 800, ['cash']) }), noEvents())); assert.ok(!isMet(g('g-go2'), snap({ refund: rf(1, O1, 600, ['card']) }), noEvents()));
++});
++
++test('Check goals start unfinished and are finished only by the right refund with the windows shut', () => {
++  for (const gl of [...refund.check1, ...refund.check2]) assert.ok(!isMet(gl.until, snap(), noEvents()), `${gl.id} does not start finished`);
++  const u = (list: any[], id: string, s: TrainSnap) => isMet(by(list, id).until, s, noEvents());
++  assert.ok(u(refund.check1, 'refund-card', snap({ refund: rf(1, O1, 600, ['card']) }))); assert.ok(!u(refund.check1, 'refund-card', snap({ refund: rf(1, O1, 600, ['card']), sheets: 1 })), 'the Done window is still open');
++  assert.ok(!u(refund.check1, 'refund-card', snap({ refund: rf(1, O1, 600, ['cash']) })), 'wrong money'); assert.ok(!u(refund.check1, 'refund-card', snap({ refund: rf(1, O1, 1200, ['card'], 2) })), 'two eggs');
++  assert.ok(u(refund.check1, 'refund-cash', snap({ refund: rf(2, O2, 800, ['cash']) }))); assert.ok(!u(refund.check1, 'refund-cash', snap({ refund: rf(1, O2, 800, ['cash']) })), 'an old refund does not finish a later goal');
++  assert.ok(u(refund.check1, 'refund-gift', snap({ refund: rf(3, O3, 2500, ['gift_card']) }))); assert.ok(!u(refund.check1, 'refund-gift', snap({ refund: rf(3, O3, 2500, ['card']) })));
++  assert.ok(u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['cash']) }))); assert.ok(!u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['card']) })), 'card is the thing that fails');
++  assert.ok(u(refund.check2, 'damaged', snap({ refund: rf(2, O2, 800, ['cash'], 1, false) }))); assert.ok(!u(refund.check2, 'damaged', snap({ refund: rf(2, O2, 800, ['cash'], 1, true) })), 'it must not be restocked');
++  assert.ok(u(refund.check2, 'one-keyring', snap({ refund: rf(3, O2, 500, ['cash']) })));
++});
++
++test('a wrong refund or a started swap is spotted, and stale refunds from an earlier goal are not a mistake', () => {
++  const w = (list: any[], id: string, wid: string) => by(by(list, id).watch, wid);
++  const second = w(refund.check1, 'refund-cash', 'wrong-refund-2'); assert.ok(!second.when(snap({ refund: rf(1, O1, 600, ['card']) })), 'the first goal refund is history'); assert.ok(second.when(snap({ refund: rf(2, O1, 600, ['card']) }))); assert.ok(!second.when(snap({ refund: rf(2, O2, 800, ['cash']) }))); assert.equal(second.fix, 'restart');
++  const swap = w(refund.check1, 'refund-card', 'swap-started'); assert.ok(swap.when({ ...snap(), tenders: 1 })); assert.ok(swap.when(snap({ lines: [{ variantId: 'x', title: 'x', kind: 'item', qty: 1 }] }))); assert.ok(!swap.when(snap()));
++});
++
++test('Check 2 makes the card refund fail with a real code, says where it was taught, and every goal can use the windows', () => {
++  const g = by(refund.check2, 'card-expired'); assert.equal(declinesOf(g.inject), 5); assert.ok(RESPONSE_CODES[declineCodeOf(g.inject)]); assert.equal(declineCodeOf(g.inject), '33'); assert.equal(g.taughtBy, 'g-method-cash'); assert.ok(by(refund.guide, 'g-method-cash'));
++  for (const gl of [...refund.check1, ...refund.check2]) { assert.equal(gl.at?.sheets, true, gl.id); assert.deepEqual(gl.allow, ['sale'], gl.id); assert.ok(isKnownSpot(gl.reveal!), gl.id); }
++});
++
++test('practice orders: a refund lowers what is left to refund, records the money, and can be put back', () => {
++  resetPracticeOrders(); assert.equal(listPracticeOrders('open').length, 3); assert.deepEqual(listPracticeOrders('unfulfilled').map(o => o.id), [O1]); assert.deepEqual(listPracticeOrders('completed').map(o => o.id), [O2, O3]);
++  const before = capturePracticeOrders();
++  applyPracticeRefund(O1, [{ lineId: 'train-ol-1001-b', qty: 1 }], { card: 600 }, true);
++  const o = getPracticeOrder(O1)!; assert.equal(o.lines[1].refundableQty, 1); assert.equal(o.refundedCents, 600); assert.equal(o.financial, 'PARTIALLY_REFUNDED'); assert.deepEqual(refundableByGateway(o.transactions), { card: 1800, cash: 0, gift_card: 0 });
++  assert.deepEqual(getLastPracticeRefund(), { n: 1, cents: 600, restock: true, kinds: ['card'], items: 1, orderId: O1 });
++  applyPracticeRefund(O2, [{ lineId: 'train-ol-1002-a', qty: 1 }], { cash: 800 }, false); assert.equal(getLastPracticeRefund()!.n, 2); assert.equal(getLastPracticeRefund()!.restock, false);
++  restorePracticeOrders(before); assert.equal(getPracticeOrder(O1)!.refundedCents, 0); assert.equal(getLastPracticeRefund(), undefined);
++  applyPracticeRefund(O1, [], { cash: 100 }, true); assert.equal(getLastPracticeRefund()!.n, 1, 'the count restarts with the restored history');
++  resetPracticeOrders(); assert.equal(getPracticeOrder(O1)!.refundedCents, 0);
++  for (const x of fixtureOrders()) { assert.ok(x.id.includes('train-')); for (const l of x.lines) assert.ok(l.id.includes('train-') && FIXTURE_VARIANTS.some(v => v.id === l.variantId)); assert.equal(x.totalCents, x.lines.reduce((n, l) => n + l.qty * l.unitCents, 0)); assert.equal(refundableByGateway(x.transactions).card + refundableByGateway(x.transactions).cash, x.totalCents); }
++});
++
++test('the newest sale is read from the front of the list (new sales are added at the front)', () => {
++  const host = fs.readFileSync('src/ui/TrainingHost.tsx', 'utf8'); assert.ok(host.includes('app.pos.sales[0].tenders')); assert.ok(!host.includes('sales[app.pos.sales.length - 1]'));
++  const sync = fs.readFileSync('src/lib/sync.ts', 'utf8'); assert.ok(sync.includes('sales: [sale, ...s.pos.sales]'));
++});

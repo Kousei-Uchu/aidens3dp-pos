@@ -58,6 +58,8 @@ export type TrainSnap = {
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
+  /** The last refund made on a practice order (`n` is how many refunds so far): what it came to, whether the items went back into stock, which kinds of money it went back as, and how many items. Left out until a refund is made. */
+  refund?: { n: number; cents: number; restock: boolean; kinds: string[]; items: number; orderId: string };
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
 export type Until =

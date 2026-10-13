@@ -8,6 +8,8 @@ import { startRefund, type TerminalLike } from './zeller';
 import { refundOrderInShopify, type PosOrder } from './shopify/orders';
 import { allGiftCardTransactions, creditGiftCardOnce, createGiftCard, newGiftCode } from './shopify/giftcards';
 import { refundOperationKey } from './refundKey';
+import { isTraining } from './trainingGuard';
+import { applyPracticeRefund } from './trainingOrders';
 import type { SaleLine, SaleRecord, Tender } from './types';
 
 export const REFUND_REASONS = ['Returned Goods', 'Accidental Charge', 'Cancelled Order', 'Fraudulent Charge', 'Other'] as const;
@@ -45,7 +47,10 @@ export async function executeRefund(a: {
     done.card = got;
   }
   // 2. gift card
-  if (plan.gift_card) {
+  if (plan.gift_card && isTraining()) {
+    // Practice: a made-up code, nothing is created in Shopify.
+    const code = `TRAIN-${newGiftCode()}`; newGiftCodeOut = code; tenders.push({ id: uid(), kind: 'gift_card', amountCents: plan.gift_card, giftCardCode: code, at: stamp() }); done.gift_card = plan.gift_card;
+  } else if (plan.gift_card) {
     try {
       if (a.method === 'original' || (a.method === 'gift_card' && a.giftCardDestination === 'original')) {
         const giftTenderRows = order.tenders.filter(t => t.kind === 'gift_card');
@@ -83,7 +88,8 @@ export async function executeRefund(a: {
   async function finish(ok: boolean, message?: string, abortIfNothing = false): Promise<RefundOutcome> {
     const money = Object.values(done).reduce((x, y) => x + (y ?? 0), 0);
     if (abortIfNothing && !money) return { ok, message, done, cashOwedCents: 0 };
-    try { await refundOrderInShopify(order, a.lines.map(l => ({ lineItemId: l.lineId, quantity: l.qty, restock: a.restock })), done, `${a.reason} (POS)`, s.settings.locationId, refundKey); }
+    if (isTraining()) applyPracticeRefund(order.id, a.lines, done, a.restock); // practice: the practice order is updated and Shopify is never called
+    else try { await refundOrderInShopify(order, a.lines.map(l => ({ lineItemId: l.lineId, quantity: l.qty, restock: a.restock })), done, `${a.reason} (POS)`, s.settings.locationId, refundKey); }
     catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Shopify refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it — see Notifications.'; }
     const lines: SaleLine[] = a.lines.map(rl => {
       const ol = order.lines.find(l => l.id === rl.lineId)!; const cost = a.restock ? Math.round((ol.costCents ?? 0)) * rl.qty : 0;
