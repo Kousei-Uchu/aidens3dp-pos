@@ -18,7 +18,7 @@ const real: any = { settings: { staff: [], requirePin: false, receipt: { serverU
 const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
 
 test('the course is registered after the card course, is valid, and lets the terminal tap the card', () => {
-  assert.equal(getModule('receipts'), receipts); assert.equal(MODULES.findIndex(m => m.id === 'receipts'), MODULES.findIndex(m => m.id === 'pay-card') + 1);
+  assert.equal(getModule('receipts'), receipts); assert.ok(MODULES.findIndex(m => m.id === 'receipts') > MODULES.findIndex(m => m.id === 'pay-card'), 'the card course comes first');
   assert.deepEqual(validateModule(receipts, isKnownSpot), []); assert.equal(receipts.card, 'auto'); assert.ok(receipts.routes.includes('pay'));
 });
 

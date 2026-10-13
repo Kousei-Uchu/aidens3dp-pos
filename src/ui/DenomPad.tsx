@@ -8,10 +8,13 @@ import { Btn, Chip, Segmented, Txt, tap as haptic } from './kit';
 import { useTheme } from './theme';
 import { DENOMS, countOf, describeTap, draftCounts, tapDenom, totalOf, undoLast, type Counts, type Draft } from '../lib/cashLedger';
 import { fmt } from '../lib/money';
+import { Spot, spotRefFor } from './Spot';
+import { cashDenomSpot } from '../lib/trainingSpots';
 
 const MULTS = [1, 5, 10] as const;
 
-export function DenomPad({ draft, onChange, base = {}, totalLabel }: { draft: Draft; onChange: (d: Draft) => void; base?: Counts; totalLabel?: string }) {
+/** `spots` lets training point at the pad, at each note and coin, and at Undo. Left out, nothing is marked (the drawer and the other screens that use the pad). */
+export function DenomPad({ draft, onChange, base = {}, totalLabel, spots }: { draft: Draft; onChange: (d: Draft) => void; base?: Counts; totalLabel?: string; spots?: { pad: string; undo: string } }) {
   const { c } = useTheme(); const [mode, setMode] = useState<'add' | 'remove'>('add'); const [mult, setMult] = useState<number>(1); const [msg, setMsg] = useState('');
   const counts = draftCounts(draft, base); const total = totalOf(counts);
   const press = (cents: number) => {
@@ -26,7 +29,7 @@ export function DenomPad({ draft, onChange, base = {}, totalLabel }: { draft: Dr
       <Txt size={12} sub weight="600">{label}</Txt>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
         {DENOMS.filter(d => d.kind === kind).map(d => { const n = countOf(counts, d.cents); return (
-          <Pressable key={d.cents} onPress={() => { haptic(); press(d.cents); }} accessibilityRole="button" accessibilityLabel={`${mode === 'add' ? 'Add' : 'Remove'} ${d.label}, ${n} now`}
+          <Pressable key={d.cents} ref={spots ? spotRefFor(cashDenomSpot(d.cents)) : undefined} collapsable={false} onPress={() => { haptic(); press(d.cents); }} accessibilityRole="button" accessibilityLabel={`${mode === 'add' ? 'Add' : 'Remove'} ${d.label}, ${n} now`}
             style={({ pressed }) => ({ width: '47%', height: 56, borderRadius: 12, backgroundColor: mode === 'remove' ? c.bad + '22' : kind === 'note' ? c.accent + '18' : c.fill, opacity: pressed ? 0.6 : 1, alignItems: 'center', justifyContent: 'center', borderWidth: n ? 1.5 : 0, borderColor: mode === 'remove' ? c.bad : c.accent })}>
             <Txt size={18} weight="700">{d.label}</Txt>
             <Txt size={11} sub weight="600">{n ? `× ${n}` : '–'}</Txt>
@@ -42,13 +45,15 @@ export function DenomPad({ draft, onChange, base = {}, totalLabel }: { draft: Dr
       </View>
       <Segmented value={mode} onChange={m => { setMode(m); setMsg(''); }} options={[{ v: 'add', label: 'Add' }, { v: 'remove', label: 'Remove' }]} />
       <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}><Txt size={13} sub weight="600">Each tap</Txt>{MULTS.map(m => <Chip key={m} label={`×${m}`} active={mult === m} onPress={() => setMult(m)} />)}</View>
-      <View style={{ flexDirection: 'row', alignItems: 'stretch', borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingVertical: 8 }}>
-        {group('note', 'Notes')}
-        <View style={{ width: 1, backgroundColor: c.line }} />
-        {group('coin', 'Coins')}
-      </View>
+      <Spot id={spots?.pad}>
+        <View style={{ flexDirection: 'row', alignItems: 'stretch', borderRadius: 14, borderWidth: 1, borderColor: c.line, paddingVertical: 8 }}>
+          {group('note', 'Notes')}
+          <View style={{ width: 1, backgroundColor: c.line }} />
+          {group('coin', 'Coins')}
+        </View>
+      </Spot>
       <View style={{ flexDirection: 'row', gap: 8 }}>
-        <Btn title={lastTap ? `Undo ${describeTap(lastTap).replace(/ \(.*\)$/, '')}` : 'Undo'} kind="secondary" small disabled={!draft.length} onPress={undo} style={{ flex: 2 }} />
+        <Btn title={lastTap ? `Undo ${describeTap(lastTap).replace(/ \(.*\)$/, '')}` : 'Undo'} kind="secondary" small disabled={!draft.length} onPress={undo} style={{ flex: 2 }} spot={spots?.undo} />
         <Btn title="Start over" kind="secondary" small disabled={!draft.length} onPress={() => { onChange([]); setMsg('Back to the start.'); }} style={{ flex: 1 }} />
       </View>
     </View>

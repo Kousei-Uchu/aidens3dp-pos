@@ -277,3 +277,14 @@ On the iPad and on a phone: **More ▸ Training ▸ Discounts**.
 
 Tell me: pass or fail for each step, and whether the Discount window keys and chips are easy to point at on a phone.
 
+## T23. Training: Take cash and give change (B6, 0108)
+
+On the iPad and on a phone: **More ▸ Training ▸ Take cash and give change**.
+
+1. **Info and Show.** Step through both with Next. Pass: the Show goes Payment page, Cash window, $10 (Short), $5 (Change), Undo, $10 again, the change step, sale complete, then the rounding and no-change screens.
+2. **Guide.** Follow the arrows. Pass: each ring sits on the right note (the $10, the $5, Undo, the $10 again), a wrong tap is explained and undone, Next opens the change step, and Gave this finishes the sale. No receipt closes the Receipt window.
+3. **Check 1.** Pass: exact cash finishes only when the window says Exact and the sale is closed. $20 for $14 finishes with $6.00 change.
+4. **Check 2.** Pass: (a) taking $10 as a part payment brings up the restart note, taking $15 in all finishes it; (b) the Cash window shows Due $7.45 for the $7.44 sale, and exactly $7.45 finishes it; (c) with only big notes in the drawer, $20 shows "Can't make $6.00 change" and Cash $10.00 + the rest another way works, with the card taken by the practice terminal.
+5. **Leave.** Pass: after leaving, open **More ▸ Drawer**. The ledger is exactly as before, with none of the practice notes.
+
+Tell me: pass or fail for each step, and a screenshot of the pad with the ring on it.

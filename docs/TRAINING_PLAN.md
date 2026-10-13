@@ -6,8 +6,8 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
 
 ## State of play
 
-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106) and `discounts` (0107).
-- **Next:** `price-adjust` (#10); `pay-cash` (#6) is still skipped at your request.
+- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) and `pay-cash` (0108).
+- **Next:** `price-adjust` (#10), then `bundles-deals` (#11).
 - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
 - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
 
@@ -29,9 +29,10 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
    - Guide: Charge, Card, customer taps, approved, receipt prompt.
    - Check 2: a declined card (51), then retry or switch method. Also reader not ready, and a result that comes back unknown ("Checking...", never re-charge).
    - As built: Guide takes one sale by card with the person playing the customer at the terminal (`card: 'manual'`). Check 1 adds a sale over $100 that needs a PIN. Check 2 declines once (51) and then twice (54), so the person retries. **Not in Check 2:** reader not ready and an unknown result. There is no injection for either, so the Show teaches them and a later patch can add the injections.
-6. **`pay-cash`: Take cash and give change.** Tap the notes and coins handed over (the denomination pad), change from the drawer, 5c rounding.
+6. **`pay-cash`: Take cash and give change** (done, 0108). Tap the notes and coins handed over (the denomination pad), change from the drawer, 5c rounding.
    - Guide: Charge, Cash, tap denominations, undo or subtract an entry, change shown, done.
    - Check 2: no change available in the drawer (ledger injection), so split or ask for card. Also a customer who hands over too little.
+   - As built: Guide takes a $14.00 sale: taps $10 (Short by $4.00), $5 (Change $1.00), Undo, $10 again ($20.00, change $6.00), Next, Gave this, No receipt. Check 1: exact cash; $20 for $14. Check 2: a customer short by $4.00 who finds more (taking it as a part payment restarts the goal), 5c rounding ($7.44 becomes $7.45 in cash, set up with a 7% cart discount), and a drawer with only big notes (the window offers $10.00 cash plus the rest another way). Practice uses the practice drawer (`train-` ledger), never the real one.
 7. **`receipts`: Finish a sale and send the receipt** (done, 0105). Email, text, QR, share or no receipt, plus the "not published yet" case.
    - As built: the card is taken automatically (`card: 'auto'`), then Guide steps through Email link, Text link, Share, Show QR code (which says Not published yet) and No receipt. In practice the Receipt window is given a made-up receipt server so it offers the QR code, and Email, Text and Share never open another app: they say what would have opened. Check 1 and Check 2 chain on the one open window (email, text, none; QR then text, share, none), so a goal can be finished by a button press. Gift card receipts (claim QR, Wallet) are not covered.
 
