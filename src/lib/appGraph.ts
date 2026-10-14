@@ -127,6 +127,12 @@ function spotOfStep(step: InstructionStep, meta: JsonObject): string | undefined
   return undefined;
 }
 
+/** How many times a step's action is performed in a row, when the graph asks for more than one (shown as "xN"). */
+function repeatOfStep(step: InstructionStep): number | undefined {
+  for (const a of step.actions) if (typeof a.repeat === 'number' && a.repeat > 1) return a.repeat;
+  return undefined;
+}
+
 /** Turn one graph step into the candidate the dock and overlay already know how to draw. */
 function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate | null {
   const meta = edgeMeta(step.edge);
@@ -134,7 +140,7 @@ function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate 
   if (!spot) return null;
   const prefix = typeof meta.say === 'string' ? meta.say : '';
   const say = [prefix, fixSay].filter(Boolean).join(' ').trim();
-  return { target: spot, say, gesture: gestureFromStep(step, meta) };
+  return { target: spot, say, gesture: gestureFromStep(step, meta), repeat: repeatOfStep(step) };
 }
 
 /**
@@ -182,8 +188,11 @@ export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' |
  * everyday till. This is the per-instance half of a scope: screens and edges are tagged in `src/app.navgraph`, while
  * the records a run builds (products, tiles, rows, users) are tagged here, so a run never names an instance it does not
  * have even when two runs share the same screen.
+ *
+ * `repeat` is how many times the control is used in a row (the minus button, to take more than one out). It rides on
+ * the action node and comes back on the candidate the dock draws, as "xN". Left out: once.
  */
-export type RuntimeSpot = string | { spot: string; modules?: readonly string[] };
+export type RuntimeSpot = string | { spot: string; modules?: readonly string[]; repeat?: number };
 
 /**
  * Put one line's window on the graph, a copy of the shared `sheet_line` template named `sheet_line:<key>` (the copy's
@@ -206,14 +215,15 @@ export function registerRuntimeSpots(spots: readonly RuntimeSpot[]): void {
   for (const entry of spots) {
     const spot = typeof entry === 'string' ? entry : entry.spot;
     const modules = typeof entry === 'string' ? undefined : entry.modules;
+    const repeat = typeof entry === 'string' ? undefined : entry.repeat;
     const node = nodeForSpot(spot); if (registered.has(node)) continue;
     const screen = screenOfSpot(spot); if (!screen) continue;
     if (screen.startsWith('sheet_line:')) ensureLineWindow(t, screen.slice('sheet_line:'.length));
     if (!t.hasScreen(screen)) continue;
     const gesture = gestureOfSpot(spot);
     const action = gesture === 'swipe-left'
-      ? { type: 'SWIPE', data: { direction: 'left', target: spot } as JsonObject }
-      : { type: 'TAP', data: { target: spot } as JsonObject };
+      ? { type: 'SWIPE', data: { direction: 'left', target: spot } as JsonObject, ...(repeat && repeat > 1 ? { repeat } : {}) }
+      : { type: 'TAP', data: { target: spot } as JsonObject, ...(repeat && repeat > 1 ? { repeat } : {}) };
     const meta = modules && modules.length ? { modules: [...modules] } : undefined;
     try { registerActions(t, screen, { [node]: meta ? { name: spot, actions: [action], meta } : { name: spot, actions: [action] } }, { onDuplicate: 'skip' }); registered.add(node); }
     catch { /* a control that cannot be added never blocks guidance */ }

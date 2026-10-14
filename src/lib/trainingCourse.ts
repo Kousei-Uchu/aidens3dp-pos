@@ -23,7 +23,8 @@ export type Deviation = {
   /** The same fix when a window (a sheet) is already open: the control inside it, and what to say. Left out: the window is in the way, so close it first. */
   /** Steps inside windows, deepest first: the first one on screen is shown, so the highlight follows the person down into the fix and back out of a wrong turn. */
   chain?: { target: string; say: string; gesture?: Gesture }[];
-  window?: { say: string; target: string };
+  /** `repeat` is how many times the control is used in a row (the minus button, to take more than one out), so the dock can show it. */
+  window?: { say: string; target: string; repeat?: number };
   /** `undo`: the person can put it right with the control pointed at. `restart`: only starting this part again fixes it. */
   fix: 'undo' | 'restart';
   /** The plain steps to put it right, and the module that teaches them (see trainingRemedies.ts). Filled in by `diagnose`. */
@@ -107,7 +108,7 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
     if (c.qty > wanted && !allow.has('qty')) {
       const extra = c.qty - wanted; const take = extra === 1 ? 'one' : plural(extra, 'unit');
       return { id: `qty:${k}`, kind: 'qty', fix: 'undo', title: `Too many ${name(l)}`, say: b === 0 ? `You have ${c.qty} of the ${name(l)}, and one is enough here. Take ${take} out.` : `The ${name(l)} was only meant to be ${b}. Take ${take} out.`, target, via: SPOT.cartOpen,
-        ...(lineKeyOf(l) ? { window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: lineMinusSpot(lineKeyOf(l)!) } } : {}) };
+        ...(lineKeyOf(l) ? { window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: lineMinusSpot(lineKeyOf(l)!), repeat: extra } } : {}) };
     }
   }
 
@@ -133,8 +134,8 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
   return null;
 }
 
-/** One place to point at, with the words for it and how the person gets there. */
-export type FixCandidate = { target?: string; say: string; gesture: Gesture };
+/** One place to point at, with the words for it and how the person gets there. `repeat` is how many times to use it in a row (only the minus button asks for more than one). */
+export type FixCandidate = { target?: string; say: string; gesture: Gesture; repeat?: number };
 /**
  * The places to point at for a stray, best first, given whether a window is open. The driver takes the first whose target is really on screen.
  * With a window open, a mistake that has a fix inside it points there (and says so), otherwise it asks for the window to be closed first, so the card
@@ -149,7 +150,7 @@ export function fixCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
   const page: FixCandidate = { target: d.target, say: d.say, gesture: d.gesture ?? 'tap' };
   if (windowOpen) {
     const closeFirst: FixCandidate = { target: SPOT.sheetClose, say: d.target === SPOT.sheetClose ? d.say : `Close this window first. ${d.say}`, gesture: 'tap' };
-    return d.window ? [{ target: d.window.target, say: d.window.say, gesture: 'tap' }, closeFirst] : d.target === SPOT.sheetClose || d.target === SPOT.back ? [page] : [page, closeFirst];
+    return d.window ? [{ target: d.window.target, say: d.window.say, gesture: 'tap', repeat: d.window.repeat }, closeFirst] : d.target === SPOT.sheetClose || d.target === SPOT.back ? [page] : [page, closeFirst];
   }
   const out: FixCandidate[] = [page];
   if (d.via) out.push({ target: d.via, say: d.via === SPOT.cartOpen ? `Open the cart first. ${d.say}` : d.say, gesture: 'tap' });

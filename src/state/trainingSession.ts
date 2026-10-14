@@ -28,6 +28,8 @@ export type DockView = {
   scroll?: { dir: 'up' | 'down'; fully: boolean };
   /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
   gesture?: Gesture;
+  /** How many times the pointed-at control is used in a row (the minus button, to take more than one out). Set only when more than one. */
+  repeat?: number;
   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
   stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean; how: string[]; taught?: { id: string; title: string; done: boolean }; showHow: boolean };
 };

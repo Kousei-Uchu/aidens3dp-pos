@@ -109,16 +109,16 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
         if (met) { advance(); return; }
         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
-        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture } | null> => {
+        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture; repeat?: number } | null> => {
           const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
           // Point at the first place that is really on screen, in the words that fit what is open now (the fix's own words first, then the app graph's walk back), so the card never contradicts itself.
-          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0, scopeForModule(mod)); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
-          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
+          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0, scopeForModule(mod)); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture; let repeat = cands[0].repeat;
+          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; repeat = cnd.repeat; break; } }
           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
           const done = taughtIn ? isComplete(st.progress, staffKey(realStaffId()), taughtIn) : false;
           const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
-          return { rect, gesture, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
+          return { rect, gesture, repeat, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
         };
         let view: DockView;
         if (cur.step) {
@@ -133,7 +133,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           const gesture: Gesture = off ? off.gesture : step.gesture ?? 'tap';
           // Inside the ringed box only what this step asks for works: a swipe step never lets a tap open the line underneath (see lib/trainingGate.ts).
           setGate(!off && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
-          view = { mode: 'guide', stage: 'guide', gesture, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
         } else {
           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
@@ -142,7 +142,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           let strayView: DockView['stray'];
           if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
           setGate(null);
-          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', repeat: off?.repeat, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
         if (need.current) view = { ...view, scroll: need.current, say: scrollSay(view.say, need.current) };
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
