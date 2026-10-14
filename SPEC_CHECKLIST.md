@@ -2,13 +2,13 @@
 Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified · ⛔ not built. **No row has been verified on a device.**
 
 ## Layout & status
-- ✅ iPad grid left / cart right; iPhone grid + bottom cart bar ("N items · $X" + Charge) → full-screen cart; size class (width ≥ 700) decides, not model — `Checkout.tsx`, `CartPane.tsx`, `theme.useLayout`
-- ✅ Tab bar Checkout / Inventory / Transactions / Notifications / More — `App.tsx`
-- ✅ Status strip: reader + sync (iPad always, iPhone only on issue) — `StatusStrip`
+- ✅ iPad grid left / cart right; iPhone grid + bottom cart bar ("N items · $X" + Charge) → full-screen cart; size class (width ≥ 700) decides, not model: `Checkout.tsx`, `CartPane.tsx`, `theme.useLayout`
+- ✅ Tab bar Checkout / Inventory / Transactions / Notifications / More: `App.tsx`
+- ✅ Status strip: reader + sync (iPad always, iPhone only on issue): `StatusStrip`
 
 ## Setup
-- ✅ Settings ▸ Shopify (domain + Client ID/secret in Keychain), Import from Shopify — `Settings.tsx`, `sync.importFromShopify`
-- ✅ Diagnostics ▸ Zeller: Setup + $1 test (+ refund) — `Diagnostics.tsx`
+- ✅ Settings ▸ Shopify (domain + Client ID/secret in Keychain), Import from Shopify: `Settings.tsx`, `sync.importFromShopify`
+- ✅ Diagnostics ▸ Zeller: Setup + $1 test (+ refund): `Diagnostics.tsx`
 - ⚠️ Square grid import by paste/file: accepts our `grid.json` only (Square export format unknown)
 
 ## Selling
@@ -25,7 +25,7 @@ Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified
 - ✅ Receipt prompt Email / Text / No receipt (+ Share); card sales include Zeller `receiptLink`; no surcharge text
 
 ## Grid editing
-- ✅ Pencil ▸ Edit grid: pages (add/rename/reorder/delete), tiles for Items, Categories, Display groups, Actions (all 8), Discounts; ⊖ remove; reorder arrows; auto-save + push to other registers — `Tiles.tsx`, `grid.ts` 🧪
+- ✅ Pencil ▸ Edit grid: pages (add/rename/reorder/delete), tiles for Items, Categories, Display groups, Actions (all 8), Discounts; ⊖ remove; reorder arrows; auto-save + push to other registers: `Tiles.tsx`, `grid.ts` 🧪
 - ⚠️ Reordering uses arrow buttons, not drag-and-drop
 
 ## Saved carts
@@ -38,7 +38,7 @@ Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified
 
 ## Gift cards
 - ✅ Sell/load, check balance (scan or type), redeem as tender, report tab (sold/redeemed/outstanding), history
-- ⚠️ Apple Wallet pass server (`pass-server/`) written and hardened (signed 5-min links, webhook HMAC, rate limits; link-signing logic 🧪) but the pass signing/APNs parts are UNTESTED — need your certs
+- ⚠️ Apple Wallet pass server (`pass-server/`) written and hardened (signed 5-min links, webhook HMAC, rate limits; link-signing logic 🧪) but the pass signing/APNs parts are UNTESTED; need your certs
 
 ## Reports
 - 🧪 Sales: 1D/1W/1M/3M/1Y, compare previous period / last year, top categories, custom range, device filter, share (text); gross, discounts, refunds, net, card fees (1.4%), COGS separate (never subtracted from Net)

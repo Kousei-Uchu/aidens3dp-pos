@@ -1,7 +1,7 @@
 # Writing assistant
 
 How this repo keeps its writing free of AI tells and in Australian English, and which model any
-writing helper is allowed to use.
+writing helper or the in-app AI assistant chatbot is allowed to use.
 
 ## The style rules
 
@@ -35,9 +35,25 @@ node .opencode/skills/ai-writing-detector/scripts/detect.js --file docs/PROGRESS
 `scripts/style-check.mjs` lists dashes by file and line and flags the commonest AI phrasings, so one
 command covers the mechanical part of the audit.
 
+## The in-app AI assistant (Help menu chatbot)
+
+A chatbot lives in the Help menu. It answers questions, guides the cashier to the right screen, looks up
+Shopify data (products, customers, orders, gift cards), and searches the docs. It is given a set of
+read-only tools:
+
+- navgraph search (find a screen by name or purpose)
+- docs search (training manuals, specs, checklists)
+- Shopify data search (products, variants, customers, orders, gift cards)
+- local CSV export (sales history)
+
+The assistant **never** performs actions that modify state: no price changes, no refunds, no cart edits,
+no settings changes. It only answers and points.
+
+The assistant must follow the same style rules as the rest of the app (Australian English, no em/en dashes).
+
 ## The model, if one is ever used
 
-Requirement, from the owner: any model a writing helper uses must be **free forever** and have a
+Requirement, from the owner: any model the assistant uses must be **free forever** and have a
 **validated zero retention policy**. An **on-device or local network model is preferred**.
 
 Finding on 15 October 2026 (from OpenRouter's own provider table at
@@ -51,7 +67,7 @@ Finding on 15 October 2026 (from OpenRouter's own provider table at
 
 Decision:
 
-- **Use a local model.** Run a writing model through Ollama (or another local server) on the same machine or
+- **Use a local model.** Run a model through Ollama (or another local server) on the same machine or
   the local network. This is free forever and zero retention by construction, because the text never leaves
   the machine. Any current instruction tuned model will do; the vendored checker needs no model at all, so a
   local model is only for rewriting prose by hand when wanted.

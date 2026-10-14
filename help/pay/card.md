@@ -17,7 +17,7 @@ Card payments go through the Zeller terminal. The POS tells the terminal the amo
 3. The customer taps, inserts or swipes their card, and enters their PIN or signs if the terminal asks.
 4. When it is approved the payment is added to the list, and if nothing remains the sale finishes.
 
-The line on the strip changes as it goes. You may see: *Tap, insert or swipe card on the terminal*, *Customer is choosing the card application* or *the account*, *Customer is entering their PIN*, *Waiting for signature*, *Signature cleared — sign again*, *Retrying — present the card again*, *Processing…*, and *Customer is choosing a tip*.
+The line on the strip changes as it goes. You may see: *Tap, insert or swipe card on the terminal*, *Customer is choosing the card application* or *the account*, *Customer is entering their PIN*, *Waiting for signature*, *Signature cleared - sign again*, *Retrying - present the card again*, *Processing…*, and *Customer is choosing a tip*.
 
 Wait for the result before touching anything else. While the terminal is working the other payment buttons are greyed out and there is no Back button, so a second charge cannot start by accident.
 
@@ -25,13 +25,13 @@ Wait for the result before touching anything else. While the terminal is working
 **Cancel** on the strip asks the terminal to stop. If the customer has not paid yet, the strip disappears and you can choose any payment method again. If the customer had already paid by the time you cancelled, the POS finds the payment and counts it, so you will not charge twice. If the customer cancels on the terminal itself, you are simply back at the payment buttons with nothing taken.
 
 ### Not approved
-A sheet called **Not approved** says why in plain words, for example *Insufficient funds — try another card or split with another tender* or *Card expired. Try another card.* A number such as *Code 51* is the bank's code. **The cart is kept.** Choose:
+A sheet called **Not approved** says why in plain words, for example *Insufficient funds - try another card or split with another tender* or *Card expired. Try another card.* A number such as *Code 51* is the bank's code. **The cart is kept.** Choose:
 - **Try card again**: starts a new card payment for the same amount.
 - **Use another method**: closes the sheet so you can pay by cash, gift card or a split.
 
 For more detail on responding safely to a decline, see [[fix/card-declined]].
 
-A few messages mean the customer can fix it: *Incorrect PIN — try again*, *Please insert the card*, *Card read failed — tap, insert or swipe again*. Others mean the card cannot be used and they need another one. If the message says *contact Zeller*, the terminal's set-up needs attention and card payments will keep failing until Zeller fixes it. Take cash in the meantime.
+A few messages mean the customer can fix it: *Incorrect PIN - try again*, *Please insert the card*, *Card read failed - tap, insert or swipe again*. Others mean the card cannot be used and they need another one. If the message says *contact Zeller*, the terminal's set-up needs attention and card payments will keep failing until Zeller fixes it. Take cash in the meantime.
 
 ### Payment status unknown
 Sometimes the POS loses contact in the middle of a payment (the internet drops, the terminal times out) and cannot tell whether the customer was charged. A sheet called **Payment status unknown** opens and says *Checking…*.
@@ -50,10 +50,10 @@ Both of the middle buttons ask you to confirm, and your name is saved with the d
 
 ### Reader not ready
 If the terminal cannot be used, a **Reader** sheet says what is wrong, with **Retry** and **Close**. The messages are:
-- *Terminal not paired — open Diagnostics ▸ Zeller ▸ Setup.* The terminal has never been paired with this iPad (or the app was reinstalled).
-- *No internet — card payments need a connection. Cash still works.*
+- *Terminal not paired - open Diagnostics ▸ Zeller ▸ Setup.* The terminal has never been paired with this iPad (or the app was reinstalled).
+- *No internet - card payments need a connection. Cash still works.*
 - *Terminal is busy. Please wait and try again.* Or *The terminal is serving another register.*
-- *Can’t reach the terminal — check its power and Wi‑Fi.* Or *Couldn’t connect to the terminal.*
+- *Can’t reach the terminal - check its power and Wi‑Fi.* Or *Couldn’t connect to the terminal.*
 
 If the reader is not ready you also see **Reader issue** in red at the top right of the Payment screen, and a **Reader issue** notice is added to your notifications.
 
@@ -140,7 +140,7 @@ Events are written to the history CSV with `csv.event`: `declined`, `cancelled`,
 
 ### Reading the code for a fault
 - **Card button does nothing.** The amount is $0 (`runCard` returns when it is 0 or less), the buttons are locked by a waiting card phase, or an `unknown` attempt exists for this sale.
-- **"Reader issue" that will not clear.** In More ▸ Support & diagnostics tap **Check reader**: it calls `initialise` on the terminal. `Setup Required` means pair it. `Network Failure` shows as *Reader offline — no internet*.
+- **"Reader issue" that will not clear.** In More ▸ Support & diagnostics tap **Check reader**: it calls `initialise` on the terminal. `Setup Required` means pair it. `Network Failure` shows as *Reader offline - no internet*.
 - **The customer was charged but the sale shows no card payment.** It is an `unknown` attempt: check **Card attempts (this device)** in Support & diagnostics (the last eight, with their reference and who resolved them) and look for the same reference in the Zeller dashboard. The reference is the sale id followed by the attempt number.
 - **A decline message is vague.** The code is not in `RESPONSE_CODES`, so the SDK's own text is shown. Add it there if you want better wording.
 - **The reader says busy.** *Paired Device Busy* means another register is using the terminal. Only one register can charge at a time.

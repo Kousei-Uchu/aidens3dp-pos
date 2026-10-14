@@ -13,7 +13,7 @@ Use **More ▸ Staff** to add the people who use the register, choose their role
 
 ### Add a staff member
 1. Tap **Add staff member**.
-2. Enter their name and a unique PIN of **4–6 digits**.
+2. Enter their name and a unique PIN of **4-6 digits**.
 3. Choose **Cashier**, **Manager** or **Owner**, then tap **Add**.
 
 PINs must not be shared between staff members. The app stores each PIN as a salted hash and shares the staff list with your other registers.

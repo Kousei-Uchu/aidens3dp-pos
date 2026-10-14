@@ -20,7 +20,7 @@ Inventory shows stock for the Shopify location selected on this register. Refres
 If this register is connected to the wrong location, select the correct active location and refresh again. For the filter meanings and stock update controls, see [[stock/inventory]].
 
 ### Check whether the item is tracked
-**—** means inventory is not tracked; **0** means tracked and currently out of stock. A negative number means more units have been sold than the available count. Check the tracked setting and available quantity for that exact variant in Shopify.
+**-** means inventory is not tracked; **0** means tracked and currently out of stock. A negative number means more units have been sold than the available count. Check the tracked setting and available quantity for that exact variant in Shopify.
 
 ## Deep
 

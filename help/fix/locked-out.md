@@ -12,7 +12,7 @@ Check whether the register expects a staff PIN or an issued cashier pass. A forg
 ## Basic
 
 ### Check the sign-in method
-- Enter the PIN assigned to your staff account. PINs are 4–6 digits.
+- Enter the PIN assigned to your staff account. PINs are 4-6 digits.
 - For a pass, scan the current cashier pass barcode. A cancelled or replaced pass no longer signs in.
 - If the pass is not recognised, use the PIN or ask an owner to check your Staff record and issue a replacement.
 
