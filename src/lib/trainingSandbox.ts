@@ -24,6 +24,7 @@ export const FIXTURE_VARIANTS: Variant[] = [
   v('egg', 'egg', 'Dragon Egg', '', 600, 25, 'TR-EGG'), v('key', 'key', 'Keyring', '', 500, 40, 'TR-KEY'),
   v('sticker', 'sticker', 'Sticker Pack', '', 300, 50, 'TR-STK'),
   { ...v('print', 'print', 'Clearance Print', '', 1500, 6, 'TR-PRT'), tags: ['no-discount'] }, // can never be discounted
+  v('tad', 'tad', 'Tadling', '', 400, 60, 'TR-TAD'),
 ];
 export const FIXTURE_COLLECTIONS: Collection[] = [
   { id: `${TRAIN_PREFIX}c-animals`, title: 'Animals', productIds: [`${TRAIN_PREFIX}p-cow`, `${TRAIN_PREFIX}p-bee`] },
@@ -36,10 +37,18 @@ export const FIXTURE_CUSTOMERS: Customer[] = [
 ];
 export const FIXTURE_PRESETS: ManualPreset[] = [{ id: `${TRAIN_PREFIX}pre-10`, kind: 'pct', value: 10, label: 'Practice 10% off' }, { id: `${TRAIN_PREFIX}pre-5`, kind: 'amt', value: 500, label: 'Practice $5 off' }];
 /** An automatic deal for the Discounts course: 20% off Keyrings, but only from three in the cart. */
-export const FIXTURE_AUTOS: AutoDiscount[] = [{ id: `${TRAIN_PREFIX}auto-keys`, title: 'Practice: 3 Keyrings, 20% off', kind: 'basic', pct: 20, target: { variantIds: [`${TRAIN_PREFIX}v-key`] }, minQty: 3 }];
+export const FIXTURE_AUTOS: AutoDiscount[] = [
+  { id: `${TRAIN_PREFIX}auto-keys`, title: 'Practice: 3 Keyrings, 20% off', kind: 'basic', pct: 20, target: { variantIds: [`${TRAIN_PREFIX}v-key`] }, minQty: 3 },
+  // The "How deals show up" course (the worked example in the help): 2 cows $2 off, 3 Tadlings $5 off, 5 Tadlings $10 off. Eight Tadlings take the 5 deal and then the 3 deal.
+  { id: `${TRAIN_PREFIX}auto-cows`, title: '2 Highland cows', kind: 'basic', amtCents: 200, target: { productIds: [`${TRAIN_PREFIX}p-cow`] }, minQty: 2 },
+  { id: `${TRAIN_PREFIX}auto-tad3`, title: '3 Tadlings', kind: 'basic', amtCents: 500, target: { variantIds: [`${TRAIN_PREFIX}v-tad`] }, minQty: 3 },
+  { id: `${TRAIN_PREFIX}auto-tad5`, title: '5 Tadlings', kind: 'basic', amtCents: 1000, target: { variantIds: [`${TRAIN_PREFIX}v-tad`] }, minQty: 5 },
+];
+/** A bundle for the same course: one Highland cow with one Tadling takes $3 off. Small cow with a Tadling is the recommended pair. */
+export const PRACTICE_BUNDLES = JSON.stringify({ version: 1, items: { cows: [`${TRAIN_PREFIX}p-cow`], tads: [`${TRAIN_PREFIX}v-tad`] }, discounts: [{ id: `${TRAIN_PREFIX}bun-pair`, label: 'Cow and Tadling pair', sets: ['cows', 'tads'], price_delta_cents: -300, recommended: [[`${TRAIN_PREFIX}v-cow-s`, `${TRAIN_PREFIX}v-tad`]] }] });
 const HOME_TILES: Tile[] = [
   { type: 'item', productId: `${TRAIN_PREFIX}p-cow` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-bee` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-dragon` },
-  { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` },
+  { type: 'item', variantId: `${TRAIN_PREFIX}v-egg` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-key` }, { type: 'item', variantId: `${TRAIN_PREFIX}v-tad` },
   { type: 'action', action: 'custom_amount' }, { type: 'action', action: 'clear_cart' },
   { type: 'action', action: 'switch_staff' }, { type: 'action', action: 'lock_pos' },
   { type: 'category', collectionId: `${TRAIN_PREFIX}c-animals` }, { type: 'category', collectionId: `${TRAIN_PREFIX}c-dragons` },
@@ -67,7 +76,7 @@ export function practiceStaff(): StaffMember[] {
 /** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
 export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
 export function sandboxSettings(real: Settings): Settings {
-  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', bundlesJson: '', adjustPerms: {}, smartChange: false, cashRounding: true };
+  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', bundlesJson: PRACTICE_BUNDLES, adjustPerms: {}, smartChange: false, cashRounding: true };
 }
 export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
 /** The real state to put back afterwards. */

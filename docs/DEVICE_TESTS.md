@@ -314,3 +314,16 @@ On the iPad and on a phone: **More ▸ Training ▸ Change a price**.
 6. **Leave.** Pass: after leaving, your real cart and catalogue prices are exactly as you left them.
 
 Tell me: pass or fail for each step, and a screenshot of the review sheet.
+
+## T26. Training: How deals show up (B6, 0111)
+
+On the iPad and on a phone: **More ▸ Training ▸ How deals show up**.
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits. The Show goes eight Tadlings, the two deal rows, the bundle taking a Tadling (the 3 row goes), Recommended pair, Not a recommended pair with the window, and Continue.
+2. **Guide.** Pass: tap the Tadling tile eight times. The rings then land on the Tadling line, the `5 Tadlings` row, the `3 Tadlings` row, the deals total above Charge, then the Highland Cow tile, Small, and the Bundle deals box (twice). On a phone the rings should point at the cart bar when the cart is not showing. The `3 Tadlings` row must disappear once the cow is in.
+3. **Check 1.** Pass: exactly three Tadlings, then five, then a Small cow.
+4. **Check 2.** Pass: four Tadlings to five; swap a Large cow for a Small one (the box says Not a recommended pair first); then tap Charge with the Large cow and a Tadling, see Check these bundles, and tap Continue to payment.
+5. **After training.** The real grid has no Tadling tile and real deals apply as before.
+
+Tell me: pass or fail for each step, and whether the rings on the discount rows are easy to see on a phone.
+

@@ -25,7 +25,7 @@ test('practice data has a no-discount item, two presets and an automatic deal wi
   const print = FIXTURE_VARIANTS.find(v => v.id === 'train-v-print')!; assert.ok(print.tags.includes(NO_DISCOUNT_TAG));
   assert.ok(FIXTURE_PRESETS.some(p => p.id === 'train-pre-10') && FIXTURE_PRESETS.length >= 2);
   assert.equal(FIXTURE_AUTOS[0].minQty, 3); assert.deepEqual(FIXTURE_AUTOS[0].target?.variantIds, ['train-v-key']);
-  const sb = buildSandbox(real); assert.equal(sb.data.autos.length, 1); assert.ok(sb.data.autos.every(a => a.id.startsWith('train-')));
+  const sb = buildSandbox(real); assert.equal(sb.data.autos.length, FIXTURE_AUTOS.length); assert.ok(sb.data.autos.every(a => a.id.startsWith('train-')));
 });
 
 test('Guide steps are finished by the right press, window or cart change', () => {

@@ -1,6 +1,6 @@
 // Location: src/screens/CartPane.tsx
 import { Spot, spotRefFor } from '../ui/Spot';
-import { SPOT, cartLineSpot } from '../lib/trainingSpots';
+import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
 import { gateAllowsTap } from '../lib/trainingGate';
 import React, { useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
@@ -81,26 +81,26 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
                     </View>
                   </View>
                   {rows.map((r, i) => (
-                    <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingLeft: l.kind === 'item' ? 58 : 0 }}>
+                    <Spot key={i} id={l.variantId ? dealRowSpot(l.variantId, r.label) : undefined} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, paddingLeft: l.kind === 'item' ? 58 : 0 }}>
                       <Txt size={13} color={c.good} weight="600" style={{ flex: 1 }}>{r.label}</Txt>
                       <Txt size={13} color={c.good} weight="600">−{fmt(r.cents)}</Txt>
-                    </View>
+                    </Spot>
                   ))}
                   {flag ? <View style={{ flexDirection: 'row', gap: 6, alignItems: 'center', paddingLeft: l.kind === 'item' ? 58 : 0 }}><Ionicons name="alert-circle" size={15} color={c.warn} /><Txt size={12} weight="600" color={c.warn} style={{ flex: 1 }}>{flag.reasons.join(' · ')}</Txt></View> : null}
                 </Pressable>
               </SwipeRow></Spot>
             );
           })}
-          {priced.bundles.length ? <View style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
+          {priced.bundles.length ? <Spot id={SPOT.cartBundles} style={{ padding: 14, gap: 8, backgroundColor: c.fill }}>
             <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase' }}>Bundle deals</Txt>
             {priced.bundles.map((b, i) => <BundleRow key={i} b={b} />)}
-          </View> : null}
+          </Spot> : null}
         </ScrollView>
       )}
 
       <View style={{ padding: 16, gap: 6, borderTopWidth: 1, borderTopColor: c.line }}>
-        {priced.discountCents > 0 ? <><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt sub>Items</Txt><Money cents={priced.itemsCents} /></View>
-          {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt color={c.good}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</> : null}
+        {priced.discountCents > 0 ? <Spot id={SPOT.cartDeals} style={{ gap: 6 }}><View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt sub>Items</Txt><Money cents={priced.itemsCents} /></View>
+          {priced.deals.map((d, i) => <View key={i} style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Txt color={c.good}>{d.label}</Txt><Money cents={-d.cents} color={c.good} /></View>)}</Spot> : null}
         {cart.discount ? <Txt size={13} sub>{cart.discount.label} applied to the cart</Txt> : null}
         <Btn spot={SPOT.cartCharge} title={empty ? 'Charge' : `Charge  ${fmt(priced.netCents)}`} disabled={empty} onPress={charge} />
         {!empty ? <Txt size={12} sub style={{ textAlign: 'center' }}>{qty} item{qty === 1 ? '' : 's'}{!consolidate ? '' : ''}</Txt> : null}
@@ -122,8 +122,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
         <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
         <View style={{ gap: 8, marginTop: 16 }}>
-          <Btn title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); setTimeout(() => nav.push('pay'), 250); }} />
-          <Btn title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
+          <Btn spot={SPOT.bundleContinue} title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); setTimeout(() => nav.push('pay'), 250); }} />
+          <Btn spot={SPOT.bundleEdit} title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
         </View>
       </Sheet>
       <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
