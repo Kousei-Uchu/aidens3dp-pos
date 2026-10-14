@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { APP_NAVGRAPH, APP_NAVSCHEMA } from '../src/lib/appNavgraph.generated';
-import { SPOT, STATIC_SPOTS, DYNAMIC_PREFIXES, gridItemSpot, cartLineSpot, lineMinusSpot, scanCardSpot } from '../src/lib/trainingSpots';
+import { SPOT, STATIC_SPOTS, DYNAMIC_PREFIXES, gridItemSpot, cartLineSpot, lineMinusSpot, lineNoteSpot, scanCardSpot } from '../src/lib/trainingSpots';
 import { screenOfSpot, gestureOfSpot } from '../src/lib/appControls';
 import { tree, stateNode, reachable, roleCanReach, guidanceCandidates, routeNavSteps, planToSpot, nodeForSpot, hasSpotNode, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule, scopeForReal, metaInScope, screenInScope } from '../src/lib/appGraph';
 import { fixCandidates, type Deviation } from '../src/lib/trainingCourse';
@@ -230,5 +230,33 @@ test('a runtime instance with no run tag is in every run', () => {
   assert.equal(screenInScope(node, cartOnly), true);
   const walk = planToSpot(gridItemSpot('tad'), 'tab_checkout', scopeForReal());
   assert.equal(walk[walk.length - 1]?.target, gridItemSpot('tad'));
+  clearRuntimeSpots();
+});
+
+// ------------------------------------------------------- per line windows ----
+// Each cart line's editor is its own node (sheet_line:<key>, a copy of the sheet_line template), so a walk names the
+// exact window a fix is in: it points at that line to open its window, and, while the window is open, it knows the
+// person is already there rather than telling them to close it.
+test('each item window is its own node, named by the line it is for', () => {
+  clearRuntimeSpots();
+  registerRuntimeSpots([lineNoteSpot('bee')]);
+  assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: false, openLine: 'bee' }), 'sheet_line:bee');
+  const steps = planToSpot(lineNoteSpot('bee'), 'tab_checkout');
+  assert.equal(steps[0].target, cartLineSpot('bee'), 'the walk points at that line to open its window');
+  assert.match(steps[0].say, /Open the item's window first\./);
+  assert.equal(steps[steps.length - 1].target, lineNoteSpot('bee'));
+  clearRuntimeSpots();
+});
+
+test('a fix inside the open item window is not told to close it, and one outside walks out through it', () => {
+  clearRuntimeSpots();
+  registerRuntimeSpots([lineMinusSpot('bee')]);
+  const open = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1, openLine: 'bee' };
+  const inside = deviation({ target: cartLineSpot('bee'), window: { say: 'Tap the minus button.', target: lineMinusSpot('bee') } });
+  assert.deepEqual(routeNavSteps(inside, open, true).filter(c => c.target === SPOT.sheetClose), [], 'no close step for a fix in the open window');
+  const outside = deviation({ target: gridItemSpot('bee') });
+  const nav = routeNavSteps(outside, open, true);
+  assert.equal(nav[0].target, SPOT.sheetClose, 'a fix outside the window closes it first');
+  assert.ok(nav.some(c => c.target === SPOT.lineDone), 'and walks out through Done');
   clearRuntimeSpots();
 });

@@ -125,15 +125,6 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'search.result:', screen: 'tab_checkout' },
   { prefix: 'customer.row:', screen: 'tab_checkout' },
   { prefix: 'pick.variant:', screen: 'tab_checkout' },
-  { prefix: 'line.minus:', screen: 'tab_checkout' },
-  { prefix: 'line.remove:', screen: 'tab_checkout' },
-  { prefix: 'line.note:', screen: 'tab_checkout' },
-  { prefix: 'line.discount:', screen: 'tab_checkout' },
-  { prefix: 'line.discountoff:', screen: 'tab_checkout' },
-  { prefix: 'line.price:', screen: 'tab_checkout' },
-  { prefix: 'line.priceoff:', screen: 'tab_checkout' },
-  { prefix: 'line.adjust:', screen: 'tab_checkout' },
-  { prefix: 'line.adjustoff:', screen: 'tab_checkout' },
   { prefix: 'find.tab:', screen: 'tab_checkout' },
   { prefix: 'find.key:', screen: 'view_keypad' },
   { prefix: 'all.product:', screen: 'view_all' },
@@ -149,9 +140,21 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'scan.card:', screen: 'overlay_practice_camera' },
 ];
 
+/**
+ * Controls that live in ONE line's window (the item editor and its sub windows). The key names the line (its
+ * variant, or the line's own id for a custom amount), so each line's window is its own node: a walk can plan into
+ * the exact window a fix is in (`sheet_line:<key>`, a copy of the `sheet_line` template registered at runtime by
+ * `ensureLineWindow` in appGraph), instead of every line window's controls hanging off the one shared screen. The
+ * sub windows (discount, item price, line price) are layers over the line window, so their controls fold into it.
+ */
+const LINE_WINDOW_PREFIXES = ['line.minus:', 'line.remove:', 'line.note:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:'] as const;
+/** The graph node for one line's window, from the line key. Registered on demand; see `ensureLineWindow` in appGraph. */
+export const lineWindowScreen = (key: string): string => `sheet_line:${key}`;
+
 /** The screen a spot lives on, or undefined when it is universal (always on screen where it is used) or unknown. */
 export function screenOfSpot(spot: string): string | undefined {
   if (SPOT_SCREEN[spot]) return SPOT_SCREEN[spot];
+  for (const prefix of LINE_WINDOW_PREFIXES) if (spot.startsWith(prefix)) return lineWindowScreen(spot.slice(prefix.length));
   for (const { prefix, screen } of PREFIX_SCREEN) if (spot.startsWith(prefix)) return screen;
   return undefined;
 }
