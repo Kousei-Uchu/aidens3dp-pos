@@ -146,7 +146,7 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'refund.reason:', screen: 'page_orders' },
   { prefix: 'refund.pick:', screen: 'page_orders' },
   { prefix: 'refund.repl:', screen: 'page_orders' },
-  { prefix: 'scan.card:', screen: 'overlay_lock' },
+  { prefix: 'scan.card:', screen: 'overlay_practice_camera' },
 ];
 
 /** The screen a spot lives on, or undefined when it is universal (always on screen where it is used) or unknown. */

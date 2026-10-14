@@ -7,7 +7,7 @@
 // logic could not do. When the person is already where the fix lives, the answer is exactly what it was.
 //
 // Everything is pure and guarded: a broken graph never breaks training, it just leaves the old behaviour in place.
-import { indexTreeFromText, resolveSchema, planRoute, registerActions, clearDynamic, findReachable, type NavigationTree, type InstructionStep, type JsonObject } from 'routegraph';
+import { indexTreeFromText, resolveSchema, planRoute, registerActions, clearDynamic, findReachable, type NavigationTree, type Edge, type InstructionStep, type JsonObject } from 'routegraph';
 import { APP_NAVGRAPH, APP_NAVSCHEMA } from './appNavgraph.generated';
 import { screenOfSpot, gestureOfSpot } from './appControls';
 import { SPOT, isWindowSpot, cartLineSpot, lineMinusSpot, lineRemoveSpot, lineNoteSpot, lineDiscountSpot, lineDiscountOffSpot, linePriceSpot, linePriceOffSpot, lineAdjustSpot, lineAdjustOffSpot, lineKeyOf } from './trainingSpots';
@@ -43,10 +43,57 @@ const edgeMeta = (id: string): JsonObject => edgeById?.get(id)?.meta ?? {};
 export function screenMeta(id: string): JsonObject | undefined { return tree()?.screen(id)?.meta; }
 /** The display name of a screen, or the id itself when it is not on the graph. */
 export function screenName(id: string): string { return tree()?.screen(id)?.name ?? id; }
-/** Every screen reachable from `from` (used by tests and by wording helpers). */
-export function reachable(from: string): string[] { const t = tree(); if (!t || !t.screen(from)) return []; try { return findReachable(t, from); } catch { return []; } }
 /** True when a role may be at this screen (matches screen meta `roles`; empty or missing means anyone). */
 export function roleCanReach(role: string, id: string): boolean { const roles = screenMeta(id)?.roles; return !Array.isArray(roles) || roles.length === 0 || roles.includes(role); }
+
+/**
+ * Which run a plan is for. A training module (its id, and the tabs and routes the course allows the person to use),
+ * or the everyday till ("real"). Left out, nothing is filtered and every place is fair game, which is what the plain
+ * tests and the old behaviour use.
+ */
+export type GuideScope = {
+  /** The scope keys this run is in: a training module id, or "real". Missing means do not filter by tag. */
+  keys?: readonly string[];
+  /** When set, a place that names a tab may only be used when the tab is here (a course's `tabs`). */
+  tabs?: readonly string[];
+  /** When set, a place that names a route may only be used when the route is here (a course's `routes`). */
+  routes?: readonly string[];
+};
+
+/** The scope of a training module's Guide or Check run. */
+export const scopeForModule = (m: { id: string; tabs: readonly string[]; routes: readonly string[] }): GuideScope => ({ keys: [m.id], tabs: m.tabs, routes: m.routes });
+/** The scope of the everyday till (Demo mode, Help), where nothing may guide a person through a practice-only place. */
+export const scopeForReal = (): GuideScope => ({ keys: ['real'] });
+
+/**
+ * True when a place's metadata is inside the run's scope. A place with no `modules` tag is in every scope, so only the
+ * places that differ carry it (the practice camera, the practice pass, the real camera). A place that names a tab or a
+ * route the course does not allow is out of scope even without a tag, because the course already says it does not exist
+ * there: that is what keeps a module from guiding a person to a page it never lets them open.
+ */
+export function metaInScope(meta: JsonObject, scope?: GuideScope): boolean {
+  if (!scope) return true;
+  const tags = meta.modules;
+  if (scope.keys && Array.isArray(tags) && tags.length && !tags.some(k => typeof k === 'string' && scope.keys!.includes(k))) return false;
+  const tab = meta.tab; if (scope.tabs && typeof tab === 'string' && !scope.tabs.includes(tab)) return false;
+  const route = meta.route; if (scope.routes && typeof route === 'string' && !scope.routes.includes(route)) return false;
+  return true;
+}
+
+/** True when a screen is inside the run's scope. */
+export function screenInScope(id: string, scope?: GuideScope): boolean { const m = screenMeta(id); return !!m && metaInScope(m, scope); }
+
+/**
+ * The veto routegraph applies while searching: an edge is dropped when the place it arrives at, or the edge itself, is
+ * outside the run. Left out (no scope), search is unfiltered. `findReachable` and `planRoute` both accept it.
+ */
+function scopeFilter(t: NavigationTree, scope?: GuideScope): ((e: Edge) => boolean) | undefined {
+  if (!scope) return undefined;
+  return (e: Edge): boolean => { const to = t.screen(e.to); return !!to && metaInScope(to.meta, scope) && metaInScope(e.meta, scope); };
+}
+
+/** Every screen reachable from `from` (used by tests and by wording helpers), optionally within a run's scope. */
+export function reachable(from: string, scope?: GuideScope): string[] { const t = tree(); if (!t || !t.screen(from)) return []; try { return findReachable(t, from, { edgeFilter: scopeFilter(t, scope) }); } catch { return []; } }
 
 /** The graph node a person is on right now, from what training can see. Sheets are folded into the page or tab under
  * them, because the walk after closing a window starts there. */
@@ -89,9 +136,10 @@ function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate 
 
 /**
  * The navigation a stray needs from where the person is to the screen the fix lives on, deepest first. Empty when
- * they are already there, when the fix is a universal control, or when the walk cannot be planned.
+ * they are already there, when the fix is a universal control, when the fix lives outside this run's scope, or when the
+ * walk cannot be planned.
  */
-export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets'>, windowOpen = snap.sheets > 0): FixCandidate[] {
+export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
   const t = tree(); if (!t) return [];
   const base = fixCandidates(d, windowOpen);
   const primary = base.find(c => c.target);
@@ -101,8 +149,8 @@ export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
   // A window is in the way of a fix that is not itself inside a window: close it first, exactly as the old wording does.
   const forcedByWindow = windowOpen && !!primary?.target && primary.target !== SPOT.sheetClose && primary.target !== SPOT.back && !isWindowSpot(primary.target);
   if (forcedByWindow) out.push({ target: SPOT.sheetClose, say: `Close this window first. ${d.say}`, gesture: 'tap' });
-  if (dest && dest !== from && t.screen(from) && t.screen(dest)) {
-    const plan = planRoute(t, from, [{ screen: dest }]);
+  if (dest && dest !== from && t.screen(from) && t.screen(dest) && (!scope || screenInScope(dest, scope))) {
+    const plan = planRoute(t, from, [{ screen: dest }], { edgeFilter: scopeFilter(t, scope) });
     if (plan.ok) for (const step of plan.instructions.steps) { const c = candidateFromStep(step, d.say); if (c) out.push(c); }
   }
   return out;
@@ -113,11 +161,12 @@ export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
  * always used (`fixCandidates`), so nothing about how a normal stray reads or looks changes. Behind it come the graph's
  * extra waypoints: a fix hidden under a window, and the walk back from wherever the person actually is. The driver
  * points at the first one really on screen, so the graph only shows through when the plain answer is not reachable.
+ * The optional scope keeps the walk inside the run (a course's tabs and routes, and the practice or real places).
  */
-export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets'>, windowOpen = snap.sheets > 0): FixCandidate[] {
+export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
   const base = fixCandidates(d, windowOpen);
   let nav: FixCandidate[] = [];
-  try { nav = routeNavSteps(d, snap, windowOpen); } catch { nav = []; }
+  try { nav = routeNavSteps(d, snap, windowOpen, scope); } catch { nav = []; }
   if (!nav.length) return base;
   const seen = new Set(base.map(c => c.target).filter((t): t is string => !!t));
   return [...base, ...nav.filter(c => c.target && !seen.has(c.target))];
@@ -156,14 +205,17 @@ export function clearRuntimeSpots(): void { const t = tree(); if (t) { try { cle
 
 /**
  * The walk to one control from `from`, at control level, ending on the control itself. Registers the control first if
- * it came from runtime data. Used to draw a gesture (a swipe a decision needs) and by tests.
+ * it came from runtime data. Used to draw a gesture (a swipe a decision needs) and by tests. The optional scope keeps
+ * the walk inside a run, and refuses a control whose own place is outside it.
  */
-export function planToSpot(spot: string, from: string): FixCandidate[] {
+export function planToSpot(spot: string, from: string, scope?: GuideScope): FixCandidate[] {
   const t = tree(); if (!t || !t.screen(from)) return [];
+  const dest = screenOfSpot(spot);
+  if (scope && dest && !screenInScope(dest, scope)) return [];
   registerRuntimeSpots([spot]);
   const node = nodeForSpot(spot);
   if (!t.screen(node)) return [];
-  const plan = planRoute(t, from, [{ action: node }]);
+  const plan = planRoute(t, from, [{ action: node }], { edgeFilter: scopeFilter(t, scope) });
   if (!plan.ok) return [];
   const out: FixCandidate[] = [];
   for (const step of plan.instructions.steps) { const c = candidateFromStep(step, ''); if (c) out.push(c); }
@@ -171,7 +223,7 @@ export function planToSpot(spot: string, from: string): FixCandidate[] {
 }
 
 /** True when a control is on the graph (after registration), for tests and diagnostics. */
-export function hasSpotNode(spot: string): boolean { const t = tree(); return !!t?.screen(nodeForSpot(spot)); }
+export function hasSpotNode(spot: string): boolean { const t = tree(); if (!t) return false; try { return !!t.screen(nodeForSpot(spot)); } catch { return false; } }
 
 /** All controls currently on the graph, for tests and diagnostics. */
 export function runtimeNodes(): string[] { return [...registered]; }

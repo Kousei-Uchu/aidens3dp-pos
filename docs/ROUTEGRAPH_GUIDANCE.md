@@ -30,6 +30,7 @@ Wording, look and feel do not change. `diagnose` still decides what is wrong and
 - Gestures: tap, double, triple, hold, swipe left/right/up/down, scroll (see `src/lib/pointerGesture.ts`). Graph action types carry these (`TAP`, `LONG_PRESS`, `SWIPE`, `SCROLL`).
 - Roles: cashier, manager, owner (`src/lib/adjustPerms.ts`). Recorded as screen metadata (`roles`) and checked with `roleCanReach`, so guidance can explain a control a role cannot reach without ever failing a path.
 - Display modes narrow what exists (tabs, More rows). Recorded as screen metadata so guidance can name the reason a control is missing.
+- Runs: the everyday till and each training module. Recorded as screen/edge metadata (`modules`), so guidance never walks a person through a place their run does not have (see "Runs and scopes" below).
 
 ## Where routegraph plugs in
 
@@ -50,6 +51,27 @@ planRoute(tree, stateNode, [spotNode])  // the way there, with gestures
 
 `routeNavSteps` is empty when the person is already where the fix lives, when the fix has no owning screen (a universal control, or an unknown spot), or when the route cannot be planned.
 
+## Runs and scopes (practice vs the everyday till)
+
+Guidance runs twice over the same app: inside a training module (on pretend data) and in the real till (Demo / Help). The two are not the same place. A course swaps in practice data, and some screens and controls exist in only one run: the everyday till shows the real scanner (`overlay_camera`), a course that teaches card scanning shows the practice scanner (`overlay_practice_camera`); the practice pass (`overlay_practice_pass`) exists only in the sign-in course. Pointing a person at a place their run has no screen for would send them nowhere.
+
+So a plan is asked for a **scope**: which run it is for.
+
+- `keys` - the module id(s) the run is for, plus the sentinel `real` for the everyday till. `scopeForModule(mod)` returns `{ keys: [mod.id], tabs: mod.tabs, routes: mod.routes }`; `scopeForReal()` returns `{ keys: ['real'] }`. `undefined` means unfiltered (the old behaviour, kept for tests).
+- `tabs` and `routes` - runtime knowledge copied from the module: the tabs a course uses and the pushed routes it opens. A screen naming a tab or route outside these is out of scope, so a course never reaches a page its own definition disallows, even with no hand tag.
+
+A screen or edge may carry a `modules` list (values are module ids and/or `real`). The rule (`metaInScope`):
+
+- No `modules` tag -> in every scope (most of the app).
+- A `modules` tag -> in scope only when the run's `keys` intersect it.
+- A screen whose `tab` or `route` is outside the run's `tabs`/`routes` -> out of scope.
+
+`screenInScope(id, scope)` looks a screen up and applies both; `scopeFilter(scope)` is the routegraph `edgeFilter` handed to every walk. routegraph already applies an `edgeFilter` in both `findReachable` and the pathfinder, so **no library change was needed**; we reuse `PathOptions.edgeFilter`. An edge is dropped when its destination screen is out of scope or the edge's own `modules` tag is.
+
+Only the places that really differ carry a tag. `overlay_camera` is `["real"]`; `overlay_practice_pass` is `["sign-in"]`; `overlay_practice_camera` is `["scanning"]` (with `tab_checkout -> overlay_practice_camera [scan.camera]` and the way back). Everything else is untagged and reachable in every run.
+
+The engine threads the scope through `reachable`, `routeNavSteps`, `guidanceCandidates` and `planToSpot`. `TrainingHost` passes `scopeForModule(mod)` and calls `clearRuntimeSpots()` when a run ends, so a finished run's pretend controls do not linger on the graph and colour the next plan.
+
 ## Plan
 
 1. Plan doc (this file). **Done.**
@@ -61,6 +83,7 @@ planRoute(tree, stateNode, [spotNode])  // the way there, with gestures
 7. Wire `guidanceCandidates` into `TrainingHost`, and register the sale and the mounted controls each tick. **Done.**
 8. Tests. **Done** (see the log).
 9. Update this file. **Done.**
+10. Runs and scopes: `modules` metadata on screens and edges, `GuideScope` in `appGraph` (`scopeForModule`/`scopeForReal`, `metaInScope`, `screenInScope`, `scopeFilter`), threaded through the walk and `TrainingHost`, plus `clearRuntimeSpots` when a run ends. **Done.**
 
 ## Log
 
@@ -73,6 +96,7 @@ planRoute(tree, stateNode, [spotNode])  // the way there, with gestures
 - `src/ui/Spot.tsx` now exposes `mountedSpotIds()` (the ids of every control on screen, including the equal parts of a segmented control). It stays free of any graph knowledge.
 - `src/ui/TrainingHost.tsx` wired: the stray handler now calls `guidanceCandidates`, which returns the old `fixCandidates` result first (same words, same order) and the graph's walk behind it. Each tick it also puts the sale's cart lines on the graph (`syncRuntimeFromSnap`) and every control currently on screen (`registerRuntimeSpots(mountedSpotIds())`). Because `Row`, `Btn`, `Chip` and `IconBtn` all register through the spot layer, this covers orders, refunds, search results, customer rows, discount presets, cash denominations and the rest, with no change to any screen.
 - `tests/appnavgraph.test.ts` written (18 tests): the embedded mirror matches the file, the graph validates, reachability, direct tab taps, every static spot and dynamic prefix has a home, gestures, state mapping, role gating, the plain fix always leads with its own words, the graph adds the window-close and the walk behind it, runtime controls join with their gesture, the sale on the till puts its cart lines on the graph, unknown spots are handled honestly, node ids are safe.
+- Runs and scopes added. `src/app.navschema` gained a `modules` field on screens and edges. `src/app.navgraph` tagged the three places that differ (`overlay_camera` real, `overlay_practice_pass` sign-in, and a new `overlay_practice_camera` for scanning) - 69 screens, 157 transitions. `src/lib/appGraph.ts` gained `GuideScope`, `scopeForModule`, `scopeForReal`, `metaInScope`, `screenInScope` and `scopeFilter`, and threads a scope through `reachable`, `routeNavSteps`, `guidanceCandidates` and `planToSpot` (reusing routegraph's own `PathOptions.edgeFilter`; no library change). `src/lib/appControls.ts` corrected `scan.card:` to the practice camera. `src/ui/TrainingHost.tsx` passes `scopeForModule(mod)` and clears runtime controls when the run ends. The scope tests bring `tests/appnavgraph.test.ts` to 25.
 
 ### What the graph adds over the old logic
 
@@ -81,11 +105,13 @@ The old `fixCandidates` is already good at the local fix, and it stays the leadi
 - The walk back from any page, tab or view the person has wandered to, planned by `planRoute` and expressed with each edge's own words and gesture, instead of the handful of hand written `via`/`window`/`chain` cases. When the fix's screen is not the person's node, the graph adds the steps (for example `page_orders -> tab_more -> tab_checkout`) behind the plain answer; the driver measures each in turn and points at Back, or the Checkout tab, only if the fix's own control is not on screen.
 - Every control and every runtime list (grid tiles, variations, cart lines and their sub controls, customer rows, refund picks, and the rest) is on the graph, with its gesture, so guidance can name things that only exist at runtime.
 - Roles are recorded on the admin screens, so guidance can explain a missing control.
+- Runs are recorded on the few screens that differ (`modules`), so a course is never pointed at a control the everyday till owns, and the everyday till is never pointed into a course. Where a course's own `tabs`/`routes` say a page is out of reach, no hand tag is needed.
 
 The graph also mirrors the old window rule (close a window first when a fix sits under one). The old answer already covers it, so this only matters when the graph is asked on its own, which is why `routeNavSteps` is tested directly.
 
 ### Still to do
 
-- Use `cloneTree`/`registerScreens` with a `sheet_line` template so each item window is its own node and a walk can name the exact window, instead of every line window's controls hanging off the one `sheet_line` screen.
+- Use `cloneTree`/`registerScreens` with a `sheet_line` template so each item window is its own node and a walk can name the exact window, instead of every line window's controls hanging off the one `sheet_line` screen. (A scope already keeps such a walk inside the run that owns the window; this is only about naming the exact window.)
 - Let the dock show the `repeat` a walk asks for (tap the minus button N times) once wording is agreed.
 - Move the control-to-screen table's last rough edges onto screen metadata once the graph is the only source.
+- Tag more places as modules grow: today only the camera (practice vs real) and the practice pass differ, so only they carry `modules`. Any future module-only screen (a new practice sheet, a course-only page) should be tagged the same way rather than special-cased in code.

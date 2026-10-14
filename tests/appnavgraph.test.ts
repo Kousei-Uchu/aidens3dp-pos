@@ -7,9 +7,9 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { APP_NAVGRAPH, APP_NAVSCHEMA } from '../src/lib/appNavgraph.generated';
-import { SPOT, STATIC_SPOTS, DYNAMIC_PREFIXES, gridItemSpot, cartLineSpot, lineMinusSpot } from '../src/lib/trainingSpots';
+import { SPOT, STATIC_SPOTS, DYNAMIC_PREFIXES, gridItemSpot, cartLineSpot, lineMinusSpot, scanCardSpot } from '../src/lib/trainingSpots';
 import { screenOfSpot, gestureOfSpot } from '../src/lib/appControls';
-import { tree, stateNode, reachable, roleCanReach, guidanceCandidates, routeNavSteps, planToSpot, nodeForSpot, hasSpotNode, registerRuntimeSpots, syncRuntimeFromSnap } from '../src/lib/appGraph';
+import { tree, stateNode, reachable, roleCanReach, guidanceCandidates, routeNavSteps, planToSpot, nodeForSpot, hasSpotNode, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule, scopeForReal, metaInScope, screenInScope } from '../src/lib/appGraph';
 import { fixCandidates, type Deviation } from '../src/lib/trainingCourse';
 
 const root = path.resolve(import.meta.dirname, '..');
@@ -143,4 +143,68 @@ test('an unknown spot is placed nowhere and guided honestly', () => {
 test('nodeForSpot is a safe screen id', () => {
   assert.match(nodeForSpot('line.minus:bee'), /^[A-Za-z_][A-Za-z0-9_]*$/);
   assert.equal(nodeForSpot(gridItemSpot('bee')), 'do_grid_item_bee');
+});
+
+// ----------------------------------------------------------------- scopes ----
+// The same control can live on a different place in a course and in the everyday till, and a course only ever exists on
+// the tabs and routes it allows. A scope says which run a plan is for, so guidance never walks a person through a place
+// outside it (a practice-only window in the real till, the real camera in practice, a page the course never opens).
+const scanning = scopeForModule({ id: 'scanning', tabs: ['checkout'], routes: ['cart', 'pay'] });
+const signIn = scopeForModule({ id: 'sign-in', tabs: ['checkout'], routes: [] });
+const cartOnly = scopeForModule({ id: 'cart', tabs: ['checkout'], routes: ['cart'] });
+
+test('a place with no scope tag is in every run', () => {
+  assert.equal(metaInScope({}, scopeForReal()), true);
+  assert.equal(metaInScope({}, cartOnly), true);
+  assert.equal(metaInScope({ modules: ['scanning'] }, cartOnly), false);
+  assert.equal(metaInScope({ modules: ['scanning'] }, scanning), true);
+  assert.equal(screenInScope('tab_checkout', cartOnly), true);
+  assert.equal(screenInScope('page_pay', cartOnly), false);
+});
+
+test('the real camera and the practice camera are kept apart by scope', () => {
+  const practice = new Set(reachable('tab_checkout', scanning));
+  assert.ok(practice.has('overlay_practice_camera'), 'practice reaches the practice camera');
+  assert.ok(!practice.has('overlay_camera'), 'practice never reaches the real camera');
+  const real = new Set(reachable('tab_checkout', scopeForReal()));
+  assert.ok(real.has('overlay_camera'), 'the everyday till reaches the real camera');
+  assert.ok(!real.has('overlay_practice_camera'), 'the everyday till never reaches the practice camera');
+});
+
+test('the practice pass exists only in the sign-in course', () => {
+  assert.ok(new Set(reachable('overlay_lock', signIn)).has('overlay_practice_pass'));
+  assert.ok(!new Set(reachable('overlay_lock', cartOnly)).has('overlay_practice_pass'));
+});
+
+test('a course never reaches a page its routes do not allow', () => {
+  const cart = new Set(reachable('tab_checkout', cartOnly));
+  assert.ok(cart.has('page_cart'), 'the cart page is in the cart course');
+  assert.ok(!cart.has('page_pay'), 'payment is not in a cart-only course');
+  assert.ok(!cart.has('page_orders'), 'orders is not in a cart-only course');
+  assert.ok(new Set(reachable('tab_checkout', scanning)).has('page_pay'), 'payment is in a course that allows it');
+});
+
+test('a fix whose place is outside the run adds no walk', () => {
+  const d = deviation({ target: SPOT.payCash, say: 'Tap Cash.' });
+  const snap = { tab: 'more', route: '', where: undefined, locked: false, sheets: 0 };
+  assert.ok(routeNavSteps(d, snap, false).length >= 1, 'without a scope the walk is planned');
+  assert.deepEqual(routeNavSteps(d, snap, false, cartOnly), []);
+  assert.deepEqual(guidanceCandidates(d, snap, false, cartOnly), fixCandidates(d, false));
+});
+
+test('a practice-only control walks in through the practice camera, and is refused elsewhere', () => {
+  const d = deviation({ target: scanCardSpot('bee'), say: 'Scan the Bumble Bee.' });
+  const snap = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 0 };
+  const steps = routeNavSteps(d, snap, false, scanning);
+  assert.ok(steps.some(c => c.target === SPOT.scanCamera), 'the walk opens the camera');
+  assert.deepEqual(routeNavSteps(d, snap, false, cartOnly), []);
+  const toSpot = planToSpot(scanCardSpot('bee'), 'tab_checkout', scanning);
+  assert.equal(toSpot[toSpot.length - 1].target, scanCardSpot('bee'));
+});
+
+test('runtime controls can be forgotten when the practice data is swapped out', () => {
+  registerRuntimeSpots([cartLineSpot('moth')]);
+  assert.ok(hasSpotNode(cartLineSpot('moth')));
+  clearRuntimeSpots();
+  assert.equal(hasSpotNode(cartLineSpot('moth')), false);
 });
