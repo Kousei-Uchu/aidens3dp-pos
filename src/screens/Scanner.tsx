@@ -7,10 +7,12 @@ import { noteActivity } from '../lib/idle';
 import { isUserTyping } from '../lib/focusGuard';
 import { isTraining } from '../lib/trainingGuard';
 import { PracticePassSheet } from '../ui/PracticePass';
+import { PracticeScanSheet } from '../ui/PracticeScan';
 
-/** Camera scanner. `onScan` returns a short confirmation ("Added Dragon plush") or null if the code was unknown. Stays open until Done. */
+/** Camera scanner. `onScan` returns a short confirmation ("Added Dragon plush") or null if the code was unknown. Stays open until Done. In practice a window of drawn practice barcodes stands in for the camera. */
 export function CameraScanner(p: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string; /** Scanning a cashier pass. In practice a drawn pass stands in for the camera. */ pass?: boolean }) {
-  return p.pass && isTraining() ? <PracticePassSheet visible={p.visible} onClose={p.onClose} onScan={p.onScan} title={p.title} /> : <RealCameraScanner {...p} />;
+  if (isTraining()) return p.pass ? <PracticePassSheet visible={p.visible} onClose={p.onClose} onScan={p.onScan} title={p.title} /> : <PracticeScanSheet visible={p.visible} onClose={p.onClose} onScan={p.onScan} title={p.title} />;
+  return <RealCameraScanner {...p} />;
 }
 function RealCameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }: { visible: boolean; onClose: () => void; onScan: (code: string) => string | null | Promise<string | null>; title?: string }) {
   const { c } = useTheme(); const [perm, ask] = useCameraPermissions();

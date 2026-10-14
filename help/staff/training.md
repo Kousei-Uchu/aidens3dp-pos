@@ -32,6 +32,7 @@ The moving cursor shows how to do each thing: a tap, a double or triple tap, a p
 - **Customers and notes**: attach a customer by picking or searching, create one who is not on the list (made on this iPad only in practice), put a note on a line with Done, and take the customer off with the small x.
 - **Take cash and give change**: tap the notes and coins the customer hands over, fix a slip with Undo, read Short, Exact or Change, give the change the screen shows, and handle cash rounding and a drawer that cannot make change. Practice uses its own drawer, never your real ledger.
 - **Change a price**: change the price of one item (one unit, or all of it in the cart), one whole line, or the whole order for this sale only, take each off again, give a reason, and check the adjustments before payment, including a price that changed after you set it.
+- **Scan items**: open the camera, scan items into the cart, read the green and red messages, add an item by hand when its label will not read, and send a customer's gift card to Charge. Practice uses a window of drawn barcodes in place of the camera.
 
 More courses are added one at a time, most important first.
 

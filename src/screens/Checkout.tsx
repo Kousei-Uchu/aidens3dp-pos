@@ -71,7 +71,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   useEffect(() => { setProbe({ search: sheet === 'search' ? q : '', keypad: digits }, { tab, depth: path.length, sizes: !!variants }); }, [sheet, q, digits, tab, path, variants]);
   useEffect(() => () => clearProbe(), []);
   useEffect(() => { const off = (['keypad', 'quick', 'all'] as const).map((t, i) => registerSlice(findTabSpot(t), SPOT.findTabs, i, 3)); return () => off.forEach(f => f()); }, []);
-  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setQty(1); setDigits(''); setVariants(null); setSheet('none'); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
+  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setQty(1); setDigits(''); setVariants(null); setSheet('none'); setCam(false); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
   const spotlightTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
@@ -167,7 +167,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
             <Ionicons name="search" size={18} color={c.sub} /><Txt sub>Search items, customers, discounts</Txt></Pressable>
           {staffList.length && !guided ? <Pressable onPress={() => setSheet('staff')} accessibilityRole="button" accessibilityLabel={curStaff ? `Signed in as ${curStaff.name}. Switch staff` : 'Sign in'} style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 10, height: 40, maxWidth: 140 }}>
             <Ionicons name="person-circle-outline" size={20} color={c.text} /><Txt size={13} weight="600" numberOfLines={1} style={{ flexShrink: 1 }}>{curStaff?.name ?? 'Sign in'}</Txt></Pressable> : null}
-          <IconBtn icon="barcode-outline" label="Scan with camera" onPress={() => setCam(true)} />
+          <IconBtn icon="barcode-outline" label="Scan with camera" onPress={() => setCam(true)} spot={SPOT.scanCamera} />
           {!guided ? <HelpButton id="sales" label="Checkout help" /> : null}
           {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
         </View>

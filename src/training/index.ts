@@ -13,6 +13,7 @@ import { bundlesDeals } from './modules/bundles-deals';
 import { discounts } from './modules/discounts';
 import { priceAdjust } from './modules/price-adjust';
 import { refund } from './modules/refund';
+import { scanning } from './modules/scanning';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, priceAdjust, refund, bundlesDeals];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);

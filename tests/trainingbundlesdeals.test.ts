@@ -21,8 +21,8 @@ const by = (list: any[], id: string) => list.find(x => x.id === id);
 const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
 const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
 
-test('the course is registered after refunds, is valid, and may use the Payment page', () => {
-  assert.equal(getModule('bundles-deals'), bundlesDeals); assert.equal(MODULES[MODULES.length - 1], bundlesDeals); assert.deepEqual(validateModule(bundlesDeals, isKnownSpot), []); assert.ok(bundlesDeals.routes.includes('pay'));
+test('the course is registered, is valid, and may use the Payment page', () => {
+  assert.equal(getModule('bundles-deals'), bundlesDeals); assert.ok(MODULES.includes(bundlesDeals)); assert.deepEqual(validateModule(bundlesDeals, isKnownSpot), []); assert.ok(bundlesDeals.routes.includes('pay'));
 });
 
 test('the practice deals price exactly as the course says: eight Tadlings take the 5 deal and the 3 deal, as two rows', () => {

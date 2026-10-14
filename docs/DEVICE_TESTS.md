@@ -327,3 +327,15 @@ On the iPad and on a phone: **More ▸ Training ▸ How deals show up**.
 
 Tell me: pass or fail for each step, and whether the rings on the discount rows are easy to see on a phone.
 
+## T27. Training: Scan items (B6, 0112)
+
+On the iPad and on a phone: **More ▸ Training ▸ Scan items**.
+
+1. **Info and Show.** Step through both with Next. Pass: nothing moves by itself, the text fits, and the Show opens the camera, scans two items (green), a torn label and a gift card (red), taps Done and ends with the Keyring from the Bluetooth scanner.
+2. **Guide.** Pass: the ring lands on the barcode button next to Search, and tapping it opens a **practice camera window** with five barcode cards (Bumble Bee, Red Dragon, Sticker Pack, Torn label, Gift card). It must not open the real camera or ask for camera permission. Scan the Bumble Bee and the Red Dragon (green message each), the torn label and the gift card (red message each, nothing added), tap Done, then tap the Keyring tile. The cart then has three items.
+3. **Close it two ways.** Pass: in any step, the Done button and the Close (x) at the top of the window both leave the window, and a Guide step that needs the window reopened points you back at the barcode button.
+4. **Check 1.** Pass: the Red Dragon only counts when scanned in the window (adding it from the grid does not finish the goal); then a Bumble Bee and a Sticker Pack and Done; then a second Bumble Bee and Done.
+5. **Check 2.** Pass: with a Red Dragon in the cart, a Keyring can only be added by tile or search (no card scans it); with a Bumble Bee in the cart, the goal finishes when the Gift card window opens from Charge.
+6. **Leave.** Pass: after leaving, the barcode button opens your real camera again, and your real cart is exactly as you left it.
+
+Tell me: pass or fail for each step, and whether the five cards fit the window without awkward scrolling on a phone.
