@@ -30,6 +30,10 @@ export type DockView = {
   gesture?: Gesture;
   /** How many times the pointed-at control is used in a row (the minus button, to take more than one out). Set only when more than one. */
   repeat?: number;
+  /** The person types in the ringed area, so touches pass through it and no cursor is drawn (a Step with `typing`). */
+  typing?: boolean;
+  /** A Next button that is greyed out until the step's `ready` test passes. */
+  nextBlocked?: boolean;
   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
   stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean; how: string[]; taught?: { id: string; title: string; done: boolean }; showHow: boolean };
 };

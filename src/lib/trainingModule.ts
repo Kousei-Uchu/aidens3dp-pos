@@ -58,6 +58,7 @@ export type TrainSnap = {
   /** The graph screen node of the window open on top (a `sheet_*` screen, or the per line `sheet_line:<key>`), when the window is one the graph knows. */
   sheet?: string;
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
+  /** What is typed in the New customer form (undefined when that form is not open). */ customerDraft?: { first: string; last: string; email: string; phone: string };
   /** What is keyed in an open price window, as `item:2000`, `line:1200` or `order:3000` (cents), and the whole order price (cents) when one is set. */ priceDraft?: string; orderAdjustCents?: number;
   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
@@ -78,6 +79,10 @@ export type Until =
 export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[];
   /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
   gesture?: Gesture;
+  /** The person types into the ringed area. Touches pass through the ring (a step that waits on Next otherwise blocks them) and no cursor is drawn over the field. Needs a `target`. */
+  typing?: boolean;
+  /** For a step that waits on Next: Next stays greyed out, and does nothing, until this is true (the form has been filled in). */
+  ready?: (s: TrainSnap) => boolean;
   /** Looked at on every check, before `target`. Returns what to say and point at right now (the next key to tap, the way back to the grid), or null to use `say` and `target` as written. */
   aim?: (s: TrainSnap) => { say: string; target: string } | null;
   /** Where to point, deepest first, when the target is gone because the person closed a window or backed out. The first one that is on screen wins, and `recover` (the shallowest) is the last resort. */
@@ -142,6 +147,8 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
     if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
     if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
+    if (s.ready && s.until.kind !== 'next') at('guide', `step ${s.id} has \`ready\`, which only a step that waits on Next can use`);
+    if (s.typing && !s.target) at('guide', `step ${s.id} says the person types, so it needs a target`);
     for (const t of (s.recoverFrom ?? []).map(r => r.target)) if (t && !spotOk(t)) at('guide', `step ${s.id} falls back to the unknown spot "${t}"`);
     for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);

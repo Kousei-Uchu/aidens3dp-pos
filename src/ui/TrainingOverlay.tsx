@@ -1,5 +1,5 @@
 // Location: src/ui/TrainingOverlay.tsx
-// Draws the spotlight, the ring, the pointer and the speech bubble. Guide dims everything but the target (taps pass through the hole).
+// Draws the spotlight, the ring, the pointer and the speech bubble. The pointer is the ring's orange, a little see-through, and never takes a touch; it is left out on steps that wait for Next or where the person types (0113). Guide dims everything but the target (taps pass through the hole).
 // Check never dims: it only rings the answer when the hints run out. Only the topmost layer (the page, or the newest sheet) draws.
 // Uses plain React Native views, not ../ui/kit, because kit imports this file.
 //
@@ -94,11 +94,11 @@ function Pointer({ hole, color, on, reduce, gesture }: { hole: Rect; color: stri
   }, [plan, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
   const n = tapCount(gesture);
   return (
-    <Animated.View accessibilityLabel={GESTURE_LABEL[gesture]} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, opacity: o, transform: [{ translateX: px }, { translateY: py }] }}>
+    <Animated.View accessibilityLabel={GESTURE_LABEL[gesture]} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, opacity: o.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }), transform: [{ translateX: px }, { translateY: py }] }}>
       <Animated.View style={{ position: 'absolute', left: -22, top: -22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: color, opacity: rip.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }), transform: [{ scale: rip.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.6] }) }] }} />
       {gesture === 'hold' ? <Animated.View style={{ position: 'absolute', left: -26, top: -26, width: 52, height: 52, borderRadius: 26, borderWidth: 4, borderColor: color, opacity: ring.interpolate({ inputRange: [0, 0.05, 1], outputRange: [0, 0.9, 0.9] }), transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.15] }) }] }} /> : null}
       <Animated.View style={{ position: 'absolute', left: -12, top: -12, width: 28, height: 28, transform: [{ scale: down.interpolate({ inputRange: [0, 1], outputRange: [1, 0.84] }) }] }}>
-        <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={28} color="#111" style={{ textShadowColor: '#fff', textShadowRadius: 4 }} /></View>
+        <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={28} color={color} style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 3 }} /></View>
       </Animated.View>
       {n > 1 ? <View style={{ position: 'absolute', left: 14, top: -30, backgroundColor: color, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: on, fontSize: 12, fontWeight: '800' }}>×{n}</Text></View> : null}
     </Animated.View>
@@ -192,7 +192,8 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
   // In Guide the screen dims and only the target takes taps. While off course the dim stays when there is a fix to point at (only that takes taps, so nothing else can be
   // opened by accident); it lifts only when there is nothing to point at, because then the fix could be anywhere.
-  const dim = guide && (!view?.stray || !!hole) && !view?.scroll?.fully; // a spot that is off screen leaves the screen free to scroll
+  // With no target on screen nothing is dimmed or blocked (0113): a full-screen block over a target that is gone (a window closed, a page changed) was a soft lock that even Exit could not escape.
+  const dim = guide && !!hole && !view?.scroll?.fully; // a spot that is off screen leaves the screen free to scroll
 
   // Dim fades in the first time guide mode shows, and out when it ends.
   const dimO = useRef(new Animated.Value(0)).current;
@@ -234,14 +235,14 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
             <Animated.View style={{ position: 'absolute', left: 0, top: dimBlocks.below, right: 0, height: dimBlocks.bottom, backgroundColor: sp.dim }} />
             <Animated.View style={{ position: 'absolute', left: 0, top: vals.y, width: dimBlocks.left, height: vals.h, backgroundColor: sp.dim }} />
             <Animated.View style={{ position: 'absolute', left: dimBlocks.after, top: vals.y, width: dimBlocks.right, height: vals.h, backgroundColor: sp.dim }} />
-            {view.next ? <Animated.View style={{ position: 'absolute', left: vals.x, top: vals.y, width: vals.w, height: vals.h }} /> : null}
-          </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: sp.dim }]} />}
+            {view.next && !view.typing ? <Animated.View style={{ position: 'absolute', left: vals.x, top: vals.y, width: vals.w, height: vals.h }} /> : null}
+          </> : null}
         </Animated.View>
       ) : null}
       {showRing && hole ? <Ring vals={vals} color={sp.ring} /> : null}
       {view?.scroll ? <ScrollCue dir={view.scroll.dir} color={sp.ring} on={sp.onRing} /> : null}
       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
-      {showRing && hole && !view.next ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
+      {showRing && hole && !view.next && !view.typing ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
       {guide && !view.stray ? (
         <Animated.View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bx, top: by, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
           {hole ? <Animated.View style={{ position: 'absolute', [bub.side === 'below' ? 'top' : 'bottom']: -8, left: Animated.subtract(ax, 8), width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bub.side === 'below' ? 1 : 0, borderLeftWidth: bub.side === 'below' ? 1 : 0, borderBottomWidth: bub.side === 'above' ? 1 : 0, borderRightWidth: bub.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
@@ -250,7 +251,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
             <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{view.counter}</Text>
             <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.say}</Text>
           </Swap>
-          {view.next ? <Pressable onPress={() => trainingActions.next()} accessibilityRole="button" accessibilityLabel="Next" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
+          {view.next ? <Pressable onPress={() => trainingActions.next()} disabled={view.nextBlocked} accessibilityRole="button" accessibilityLabel="Next" accessibilityState={{ disabled: !!view.nextBlocked }} style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10, opacity: view.nextBlocked ? 0.4 : 1 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
         </Animated.View>
       ) : null}
       {view.stray ? (

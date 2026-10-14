@@ -12,6 +12,8 @@ let customerQuery = ''; export const setCustomerQuery = (q: string): void => { c
 export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
 let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;
 const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (source: string, v: string): void => { priceDrafts[source] = v; }; export const getPriceDraft = (): string => Object.values(priceDrafts).find(Boolean) ?? '';
+export type CustomerDraft = { first: string; last: string; email: string; phone: string };
+let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
 let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
 export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };

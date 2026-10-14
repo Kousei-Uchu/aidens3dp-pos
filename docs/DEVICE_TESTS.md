@@ -361,3 +361,15 @@ This patch changes only **which places the guidance may use**; the words and the
 4. **Nothing leaks after a run.** Finish or leave a course, then use the till. Pass: no course-only window is ever ringed, and the app behaves exactly as before.
 
 Tell me: pass or fail for each step, and whether the ring ever lands on a control the current run has no place for.
+
+## T30. Training: soft locks and the cursor (B6, 0119)
+
+1. **Discounts, Check 2.** Finish the first goal (10% off the Bumble Bee, Apply). Pass: the second goal starts, the screen still responds, and Exit works. Do it three times.
+2. **Windows swapping.** On a cart line, open the line window, then Discount, then Apply, then Item price adjustment, then back. Pass: each window opens (a short pause, under half a second, when one closes as the next opens) and nothing is ever stuck.
+3. **Price adjustments, Guide.** Step 8 (Reason): you can tap the box and type, and Next works. Step 19 (Remove adjustment): if you close the window early, the guide points at Line price (or the line) instead of freezing.
+4. **Customers, Guide.** The note step finishes only when you type Gift wrap. The new customer step lets you type your own details, and Next is greyed out until there is a first name and a real email or a mobile. Nothing is kept afterwards.
+5. **Scan items, Guide, start to finish.** Pass: every card the Guide asks for is on screen without scrolling (iPad and phone), the result box says Nothing scanned yet before the first scan, and you are never pointed at the camera button while its window is open.
+6. **Deals, Check 2, last goal.** Tap Charge, Continue to payment. Pass: you go straight to the finished screen, never to a Payment page showing $0.
+7. **Cursor.** Pass: it is the highlight orange and you can see through it a little; it is not drawn on a Next step or while you type; it never stops a tap, including on the ringed button.
+
+Tell me: pass or fail for each step. If anything freezes, tell me exactly which step and what was open.
