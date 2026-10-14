@@ -18,7 +18,7 @@ test('every static spot is attached to something in the UI', () => {
 });
 test('the dynamic spot kinds are really attached (grid tiles, cart lines)', () => {
   assert.ok(ui.includes('tileSpotId('), 'grid tiles carry spots'); assert.ok(ui.includes('cartLineSpot('), 'cart lines carry spots');
-  for (const fn of ['gridPageSpot(', 'findTabSpot(', 'allProductSpot(', 'pickVariantSpot(', 'searchResultSpot(']) assert.ok(ui.includes(fn), `${fn} is attached to something in the UI`);
+  for (const fn of ['gridPageSpot(', 'findTabSpot(', 'allProductSpot(', 'pickVariantSpot(', 'searchResultSpot(', 'scanCardSpot(']) assert.ok(ui.includes(fn), `${fn} is attached to something in the UI`);
 });
 test('every module is valid, and every record spot it names exists in the practice data', () => {
   const vids = new Set(FIXTURE_VARIANTS.map(v => v.id)); const grid = fixtureGrid(); const tiles = grid.pages.flatMap(p => p.tiles);
