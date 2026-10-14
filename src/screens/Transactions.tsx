@@ -22,7 +22,7 @@ const dayLabel = (ts: string) => { const d = new Date(ts); const t = new Date();
 
 export default function Transactions() {
   const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const sales = useApp(s => s.pos.sales); const outbox = useApp(s => s.pos.outbox);
-  const [orders, setOrders] = useState<PosOrder[]>([]); const [next, setNext] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [q, setQ] = useState(''); const [remoteQ, setRemoteQ] = useState<PosOrder[] | null>(null);
+  const [orders, setOrders] = useState<PosOrder[]>([]); const [next, setNext] = useState<string | null>(null); const [busy, setBusy] = useState(false); const [q, setQ] = useState('');
   const [showSq, setShowSq] = useState(false); const [sqSales, setSqSales] = useState<SaleRecord[]>([]); const [sqBusy, setSqBusy] = useState(false);
   const toggleSq = async () => { if (showSq) { setShowSq(false); return; } setShowSq(true); if (!sqSales.length) { setSqBusy(true); try { setSqSales(await loadSquareSales()); } catch (e: any) { alertMsg('Could not load Square history', e.message); } setSqBusy(false); } };
   const [sel, setSel] = useState<Entry | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
@@ -34,33 +34,31 @@ export default function Transactions() {
   }, [next]);
   useEffect(() => { void load(false); }, []);
 
+  // Transactions is the POS's own sales log. Shopify orders are fetched only to link a sale to its order
+  // (for the receipt name and the return flow); they are listed on More ▸ Orders, never here.
   const entries = useMemo<Entry[]>(() => {
-    const byUuid = new Map<string, PosOrder>(); for (const o of [...orders, ...(remoteQ ?? [])]) if (o.saleUuid) byUuid.set(o.saleUuid, o);
-    const out: Entry[] = []; const seen = new Set<string>(); const pending = new Set(outbox.map(o => o.id));
-    for (const s of sales) { const o = byUuid.get(s.uuid); seen.add(s.uuid);
+    const byUuid = new Map<string, PosOrder>(); for (const o of orders) if (o.saleUuid) byUuid.set(o.saleUuid, o);
+    const out: Entry[] = []; const pending = new Set(outbox.map(o => o.id));
+    for (const s of sales) { const o = byUuid.get(s.uuid);
       out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? o?.name ?? (s.type === 'refund' ? 'Refund' : 'Sale'), totalCents: s.netCents, customer: s.customer?.name, kind: s.type, order: o, sale: s, pending: pending.has(s.uuid) && !o,
         summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
-    for (const o of [...orders, ...(remoteQ ?? [])]) { const k = o.saleUuid ?? o.id; if (seen.has(k)) continue; seen.add(k);
-      out.push({ key: k, ts: o.createdAt, name: o.name, totalCents: o.totalCents, customer: o.customer?.name, kind: 'sale', order: o, pending: false, summary: o.tenders.map(t => tenderWord(t.kind)).join(' + ') || 'Order', haystack: [o.name, o.customer?.name, o.note, ...o.lines.map(l => l.title)].join(' ').toLowerCase() }); }
     if (showSq) for (const s of sqSales) out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? 'Square', totalCents: s.netCents, customer: s.customer?.name, kind: s.type, sale: s, pending: false,
       summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
     return out.sort((a, b) => b.ts.localeCompare(a.ts));
-  }, [sales, orders, remoteQ, outbox, showSq, sqSales]);
+  }, [sales, orders, outbox, showSq, sqSales]);
   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);
   const rows = useMemo(() => { const out: ({ h: string } | Entry)[] = []; let last = ''; for (const e of shown) { const d = dayLabel(e.ts); if (d !== last) { out.push({ h: d }); last = d; } out.push(e); } return out; }, [shown]);
-
-  const searchRemote = async () => { if (!q.trim()) return; setBusy(true); try { setRemoteQ((await listOrders({ query: `tag:pos ${q.trim()}`, first: 25 })).orders); } catch (e: any) { alertMsg('Search failed', e.message, 'orders'); } setBusy(false); };
 
   const list = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: 8, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 4 }}><Txt size={24} weight="700" style={{ flex: 1 }}>Transactions</Txt><HelpButton id="orders" label="Transactions help" /></View>
-        <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
+        <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => setQ(t)} style={{ marginBottom: 0 }} />
         <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
       </View>
       <FlatList data={rows} keyExtractor={(r, i) => ('h' in r ? `h${r.h}${i}` : r.key)} refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load(false)} />}
-        ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'Press search to look in Shopify.' : 'Completed sales appear here.'} />}
-        ListFooterComponent={<View style={{ padding: 16, gap: 8 }}>{q.trim() ? <Btn title="Search Shopify" kind="secondary" small onPress={searchRemote} /> : null}{next && !q ? <Btn title="Load more" kind="secondary" small onPress={() => void load(true)} /> : null}</View>}
+        ListEmptyComponent={<Empty icon="receipt-outline" title="No transactions yet" sub={q ? 'No sale or refund matches that.' : 'Completed sales appear here.'} />}
+        ListFooterComponent={<View style={{ padding: 16, gap: 8 }}>{next && !q ? <Btn title="Load more" kind="secondary" small onPress={() => void load(true)} /> : null}</View>}
         renderItem={({ item: r }) => 'h' in r ? <Txt size={13} sub weight="600" style={{ marginTop: 14, marginBottom: 4, marginHorizontal: 20, textTransform: 'uppercase' }}>{r.h}</Txt> : (
           <View style={{ marginHorizontal: 16 }}><Card style={{ borderRadius: 0, borderTopWidth: 0, backgroundColor: sel?.key === r.key ? c.fill : c.card }}>
             <Row title={`${r.name}${r.customer ? ' · ' + r.customer : ''}`} sub={`${new Date(r.ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} · ${r.summary}${r.pending ? ' · waiting to sync' : ''}`} last
