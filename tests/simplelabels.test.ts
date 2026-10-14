@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { cartEmptyText, cashHint, chargeHint, customerRowText, payHint, payQuestion, payTitle, qtyHint } from '../src/lib/simpleLabels';
 
 test('with explanations off the wording is exactly today\'s', () => {
-  assert.equal(payTitle('card', false, 1250), 'Card — $12.50'); assert.equal(payTitle('cash', false, 1250), 'Cash');
+  assert.equal(payTitle('card', false, 1250), 'Card - $12.50'); assert.equal(payTitle('cash', false, 1250), 'Cash');
   assert.equal(payTitle('gift', false, 1250), 'Gift card'); assert.equal(payTitle('split', false, 1250), 'Split amount');
   assert.equal(cartEmptyText(false), 'Cart is empty'); assert.equal(customerRowText(false), 'Add customer');
   for (const m of ['card', 'cash', 'gift', 'split'] as const) assert.equal(payHint(m, false), undefined);

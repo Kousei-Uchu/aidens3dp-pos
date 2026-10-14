@@ -50,7 +50,7 @@ test('sale conversion: lines, discounts, tip, tenders, fee, customer', () => {
   assert.equal(s.lines[1].title, 'No SKU Item - Big - blue'); assert.equal(s.lines[2].title, 'Custom Amount'); assert.equal(s.lines[3].kind, 'gift_card');
   assert.equal(s.tenders[0].kind, 'card'); assert.equal(s.tenders[0].amountCents, 5500); assert.equal(s.tenders[0].feeCents, 90); assert.equal(s.tenders[0].card?.scheme, 'VISA'); assert.equal(s.tenders[0].card?.cardMedia, 'NFC');
   assert.equal(s.tenders[1].kind, 'cash'); assert.equal(s.tenders[1].tenderedCents, 2000); assert.equal(s.tenders[1].changeCents, 1000); assert.equal(s.feesCents, 90);
-  assert.equal(s.customer?.name, 'Sam Smith'); assert.equal(s.registerId, 'square'); assert.equal(s.registerName, 'Square – Market'); assert.equal(s.deals[0].cents, 200);
+  assert.equal(s.customer?.name, 'Sam Smith'); assert.equal(s.registerId, 'square'); assert.equal(s.registerName, 'Square - Market'); assert.equal(s.deals[0].cents, 200);
 });
 
 test('refunds: itemised return counted once; amount-only refund kept; failed + cancelled skipped', () => {
