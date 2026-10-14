@@ -11,6 +11,6 @@ export async function kvGet<T>(key: string, fallback: T): Promise<T> {
 export async function kvSet(key: string, value: unknown): Promise<void> {
   if (!kvWriteAllowed(key)) return; // training: nothing real is written
   const s = JSON.stringify(value);
-  try { if (AS) await AS.setItem(key, s); else mem.set(key, s); } catch { /* storage full – next write retries */ }
+  try { if (AS) await AS.setItem(key, s); else mem.set(key, s); } catch { /* storage full - next write retries */ }
 }
 export async function kvDel(key: string): Promise<void> { if (!kvWriteAllowed(key)) return; try { if (AS) await AS.removeItem(key); else mem.delete(key); } catch {} }

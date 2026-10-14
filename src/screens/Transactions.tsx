@@ -41,9 +41,9 @@ export default function Transactions() {
     const out: Entry[] = []; const pending = new Set(outbox.map(o => o.id));
     for (const s of sales) { const o = byUuid.get(s.uuid);
       out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? o?.name ?? (s.type === 'refund' ? 'Refund' : 'Sale'), totalCents: s.netCents, customer: s.customer?.name, kind: s.type, order: o, sale: s, pending: pending.has(s.uuid) && !o,
-        summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
+        summary: s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-', haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() }); }
     if (showSq) for (const s of sqSales) out.push({ key: s.uuid, ts: s.ts, name: s.orderName ?? 'Square', totalCents: s.netCents, customer: s.customer?.name, kind: s.type, sale: s, pending: false,
-      summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '—'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
+      summary: `Square · ${s.tenders.map(t => tenderWord(t.kind)).join(' + ') || '-'}`, haystack: [s.orderName, s.customer?.name, s.note, ...s.lines.map(l => l.title)].join(' ').toLowerCase() });
     return out.sort((a, b) => b.ts.localeCompare(a.ts));
   }, [sales, orders, outbox, showSq, sqSales]);
   const shown = useMemo(() => { const t = q.trim().toLowerCase().replace(/^#/, ''); return t ? entries.filter(e => e.haystack.replace(/#/g, '').includes(t)) : entries; }, [entries, q]);

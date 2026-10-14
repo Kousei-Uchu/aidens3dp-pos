@@ -113,7 +113,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
   /** Never re-charge before an unknown result resolves: poll getTransactions({reference}); manual resolve is logged. */
   const recheck = async (ref: string, amount: number, uuid: string) => {
-    const t = getTerminal(); if (!t) return setCard({ phase: 'unknown', ref, amount, text: 'Can’t check right now — reader unavailable.', checking: false });
+    const t = getTerminal(); if (!t) return setCard({ phase: 'unknown', ref, amount, text: 'Can’t check right now - reader unavailable.', checking: false });
     for (let i = 0; i < 6; i++) {
       setCard({ phase: 'unknown', ref, amount, text: 'Checking…', checking: true });
       const r = await reconcile(t, ref);

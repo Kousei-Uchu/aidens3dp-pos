@@ -27,7 +27,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 }
 export const useTheme = () => useContext(Ctx);
 
-/** Size class decides phone vs tablet (compact width), not device model – so iPad Split View behaves like a phone. */
+/** Size class decides phone vs tablet (compact width), not device model - so iPad Split View behaves like a phone. */
 export function useLayout() {
   const { width, height } = useWindowDimensions();
   return { width, height, tablet: width >= 700, landscape: width > height };

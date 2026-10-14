@@ -9,13 +9,13 @@ import { CameraScanner } from './Scanner';
 import { isManifestUrl } from '../lib/squareHistory';
 import { installFromPicked, installFromUrl, rebuild, removeSquareHistory, squareMeta, type SquareMeta } from '../lib/squareHistoryIO';
 
-const day = (s?: string) => (s ? new Date(s).toLocaleDateString() : '—');
+const day = (s?: string) => (s ? new Date(s).toLocaleDateString() : '-');
 
 export function SquareHistorySettings() {
   const [meta, setMeta] = useState<SquareMeta | null>(null); const [busy, setBusy] = useState(''); const [scan, setScan] = useState(false); const [url, setUrl] = useState('');
   useEffect(() => { void squareMeta().then(setMeta); }, []);
   const run = async (fn: () => Promise<SquareMeta>) => {
-    setBusy('Starting…'); try { const m = await fn(); setMeta(m); alertMsg('Square history ready', `${m.sales} sales and ${m.refunds} refunds (${day(m.from)} – ${day(m.to)}). ${m.linkedLines} of ${m.lines} item lines matched a Shopify variant by SKU; the rest show as custom items.`); }
+    setBusy('Starting…'); try { const m = await fn(); setMeta(m); alertMsg('Square history ready', `${m.sales} sales and ${m.refunds} refunds (${day(m.from)} - ${day(m.to)}). ${m.linkedLines} of ${m.lines} item lines matched a Shopify variant by SKU; the rest show as custom items.`); }
     catch (e: any) { alertMsg('Import failed', e.message, 'orders/square-history'); } setBusy('');
   };
   const fromUrl = (u: string) => run(() => installFromUrl(u.trim(), setBusy));
@@ -26,7 +26,7 @@ export function SquareHistorySettings() {
   return (
     <>
       <Section title="Imported history" footer="Old Square sales and refunds, kept compressed on this device. They add to Reports (as register “square”) and show in Transactions when you turn on Square history there. Nothing here changes stock, items, customers or Shopify.">
-        <Row icon="archive-outline" title={meta ? `${meta.sales} sales · ${meta.refunds} refunds` : 'Nothing imported yet'} sub={meta ? `${day(meta.from)} – ${day(meta.to)} · ${meta.linkedLines}/${meta.lines} lines matched to Shopify by SKU` : 'Run the script on your PC first (tools/square-history/README.md)'} last />
+        <Row icon="archive-outline" title={meta ? `${meta.sales} sales · ${meta.refunds} refunds` : 'Nothing imported yet'} sub={meta ? `${day(meta.from)} - ${day(meta.to)} · ${meta.linkedLines}/${meta.lines} lines matched to Shopify by SKU` : 'Run the script on your PC first (tools/square-history/README.md)'} last />
       </Section>
       <Section title="Import" footer={busy || 'On the PC: run the script, then scan the QR code it shows (same Wi-Fi). No luck with Wi-Fi? Copy the files from the script’s out folder to this iPad and use Pick files.'}>
         <Row icon="qr-code-outline" title="Scan QR from PC" onPress={() => !busy && setScan(true)} />

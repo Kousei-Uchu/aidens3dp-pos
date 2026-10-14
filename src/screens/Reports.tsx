@@ -77,7 +77,7 @@ export default function Reports() {
           </Card>
         </> : null}
         <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Cost of goods</Txt>
-        <Card style={{ marginHorizontal: 16 }}><Stat label="COGS" cents={d.cogs} before={was?.cogs} sub="Shown separately — never subtracted from Net sales" /><Stat label="Gross profit" cents={d.grossProfit} bold before={was?.grossProfit} sub="Net sales − COGS" /></Card>
+        <Card style={{ marginHorizontal: 16 }}><Stat label="COGS" cents={d.cogs} before={was?.cogs} sub="Shown separately - never subtracted from Net sales" /><Stat label="Gross profit" cents={d.grossProfit} bold before={was?.grossProfit} sub="Net sales − COGS" /></Card>
         <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Payment types</Txt>
         <Card style={{ marginHorizontal: 16 }}>{Object.entries(now.tenders).length ? Object.entries(now.tenders).map(([k, v]) => <Row key={k} title={k === 'card' ? 'Card' : k === 'cash' ? 'Cash' : k === 'gift_card' ? 'Gift card' : 'Exchange credit'} right={<Money cents={v} />} />) : <Row title="No sales in this period" last />}</Card>
         <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Top categories</Txt>

@@ -14,7 +14,7 @@ import type { Variant } from '../lib/types';
 
 const STOCK_LABEL: [StockFilter, string][] = [['all', 'All'], ['low', 'Low'], ['zero', 'Out (0)'], ['neg', 'Negative'], ['tracked', 'Tracked'], ['untracked', 'Not tracked']];
 const STATUS_LABEL: [StatusFilter, string][] = [['active', 'Active'], ['draft', 'Draft'], ['archived', 'Archived'], ['all', 'All']];
-const SORT_LABEL: [InvSort, string][] = [['name', 'Name A–Z'], ['stock-asc', 'Stock: low first'], ['stock-desc', 'Stock: high first'], ['price-asc', 'Price: low first'], ['price-desc', 'Price: high first'], ['updated', 'Recently updated']];
+const SORT_LABEL: [InvSort, string][] = [['name', 'Name A-Z'], ['stock-asc', 'Stock: low first'], ['stock-desc', 'Stock: high first'], ['price-asc', 'Price: low first'], ['price-desc', 'Price: high first'], ['updated', 'Recently updated']];
 
 /** Inventory: receive stock, adjust, stock counts. Negative stock is shown red (allowed by design). Lists EVERY variant (no row cap). */
 export default function Inventory() {
@@ -46,12 +46,12 @@ export default function Inventory() {
     setBusy(false);
   };
 
-  const stockText = (x: Variant) => <Txt weight="700" size={17} color={(x.stock ?? 0) < 0 ? c.bad : undefined}>{x.stock === null ? '—' : x.stock}</Txt>;
+  const stockText = (x: Variant) => <Txt weight="700" size={17} color={(x.stock ?? 0) < 0 ? c.bad : undefined}>{x.stock === null ? '-' : x.stock}</Txt>;
   const renderRow = ({ item: r }: { item: InvRow }) => {
     if (r.kind === 'group') {
       const g = r.group;
       return <Row image={g.image ?? null} title={g.title} sub={`${g.variants.length} variations · ${g.minPrice === g.maxPrice ? '' : 'from '}${(g.minPrice / 100).toFixed(2)}`} onPress={() => toggle(g.productId)}
-        right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ alignItems: 'flex-end' }}>{g.stock === null ? <Txt weight="700" size={17}>—</Txt> : <Txt weight="700" size={17} color={g.stock < 0 ? c.bad : undefined}>{g.stock}</Txt>}<Txt size={11} sub>total</Txt></View><Ionicons name={r.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={c.sub} /></View>} />;
+        right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ alignItems: 'flex-end' }}>{g.stock === null ? <Txt weight="700" size={17}>-</Txt> : <Txt weight="700" size={17} color={g.stock < 0 ? c.bad : undefined}>{g.stock}</Txt>}<Txt size={11} sub>total</Txt></View><Ionicons name={r.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={c.sub} /></View>} />;
     }
     const x = r.v; const draft = statusOf(x) !== 'ACTIVE';
     const row = <Row image={r.nested ? undefined : x.image ?? null} title={r.nested ? (x.variantTitle || 'Default') : x.productTitle} sub={[r.nested ? undefined : x.variantTitle, x.sku, draft ? statusOf(x).toLowerCase() : undefined].filter(Boolean).join(' · ') || undefined} onPress={() => pick(x)}

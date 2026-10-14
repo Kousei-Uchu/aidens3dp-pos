@@ -21,7 +21,7 @@ async function runBulk(inner: string, onProgress?: (s: string) => void): Promise
       if (/already in progress|already running/i.test(errs[0].message)) { onProgress?.('Waiting for another bulk job…'); await sleep(3000); continue; }
       throwUserErrors(errs, 'Bulk import');
     }
-    throw new ShopifyUserError('Bulk import is busy — try again in a minute.');
+    throw new ShopifyUserError('Bulk import is busy - try again in a minute.');
   };
   await start();
   for (let i = 0; i < 400; i++) {

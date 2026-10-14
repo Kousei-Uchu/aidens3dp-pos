@@ -11,7 +11,7 @@ export type Variant = {
   barcode?: string;
   priceCents: number;
   compareAtCents?: number;
-  costCents?: number; // InventoryItem.unitCost – COGS snapshot source
+  costCents?: number; // InventoryItem.unitCost - COGS snapshot source
   inventoryItemId?: string;
   tracked: boolean;
   stock: number | null; // null = not tracked. May be negative (allowed by design).
@@ -118,7 +118,7 @@ export type Cart = {
   /** Per-tender progress while cancelling a part-paid sale; protects remote refunds/credits from being repeated. */
   cancelPending?: boolean;
   returnedTenderIds?: string[];
-  /** Saved cart this cart was opened from – voided once the sale completes. */
+  /** Saved cart this cart was opened from - voided once the sale completes. */
   savedFrom?: string;
 };
 

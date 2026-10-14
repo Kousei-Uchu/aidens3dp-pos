@@ -12,7 +12,7 @@ import { SPOT, orderRowSpot } from '../lib/trainingSpots';
 import type { SaleRecord } from '../lib/types';
 
 const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_status:unfulfilled', completed: 'tag:pos fulfillment_status:fulfilled' } as const;
-/** Orders: Open | Unfulfilled | Completed – Mark fulfilled, refund and receipt. */
+/** Orders: Open | Unfulfilled | Completed - Mark fulfilled, refund and receipt. */
 export default function Orders() {
   const nav = useNav(); const [tab, setTab] = useState<keyof typeof Q>('open'); const [orders, setOrders] = useState<PosOrder[]>([]); const [busy, setBusy] = useState(false); const [sel, setSel] = useState<PosOrder | null>(null); const [refund, setRefund] = useState<PosOrder | null>(null); const [receipt, setReceipt] = useState<SaleRecord | null>(null);
   const load = useCallback(async () => { setBusy(true); try { setOrders(isTraining() ? listPracticeOrders(tab) : (await listOrders({ query: Q[tab], first: 30 })).orders); } // practice: made-up orders, never Shopify
@@ -27,7 +27,7 @@ export default function Orders() {
         {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} spot={orderRowSpot(o.id)} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
       </ScrollView>
       <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name} screen="sheet_order">
-        {sel?.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title} — {fmt(l.unitCents * l.qty)}</Txt>)}
+        {sel?.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title} - {fmt(l.unitCents * l.qty)}</Txt>)}
         <View style={{ gap: 8, marginTop: 14 }}>
           {sel && !/^fulfilled$/i.test(sel.fulfillment) ? <Btn title="Mark fulfilled" onPress={() => void mark(sel)} /> : null}
           <Btn spot={SPOT.ordersRefund} title="Refund or return" kind="secondary" onPress={() => { setRefund(sel); setSel(null); }} />

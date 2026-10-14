@@ -1,12 +1,12 @@
 // Local pricing engine (instant totals). Order of application:
-//   1. bundle deals (in-app config)      – consume units, block manual line discount on those lines
-//   2. Shopify automatic discounts       – several can apply to one order; each unit takes at most one; the combination
+//   1. bundle deals (in-app config)      - consume units, block manual line discount on those lines
+//   2. Shopify automatic discounts       - several can apply to one order; each unit takes at most one; the combination
 //                                          with the biggest total saving wins (Shopify's own combination rules are not read)
-//   3. manual line discount              – % or $ off the line's remaining value
-//   4. cart discount                     – % or $ spread over remaining value of discountable lines (lines with an active
+//   3. manual line discount              - % or $ off the line's remaining value
+//   4. cart discount                     - % or $ spread over remaining value of discountable lines (lines with an active
 //                                          line price adjustment are left out: their price is already fixed)
-//   5. line price adjustment (A16.1)     – sets the final price of the whole line; stored as the difference. Only ever lowers.
-//   6. whole order adjustment (A16.4)    – sets the total of the cart; the difference is shared over the lines by value (gift
+//   5. line price adjustment (A16.1)     - sets the final price of the whole line; stored as the difference. Only ever lowers.
+//   6. whole order adjustment (A16.4)    - sets the total of the cart; the difference is shared over the lines by value (gift
 //                                          cards are never reduced). Only ever lowers.
 // Items excluded from discounts: gift cards, tag "no-discount", lines flagged noDiscount.
 import { allocate, pctOf } from './money';

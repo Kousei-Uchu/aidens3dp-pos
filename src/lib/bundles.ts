@@ -1,4 +1,4 @@
-// Bundle / combo deals – in-app config (research doc §4.7a).
+// Bundle / combo deals - in-app config (research doc §4.7a).
 // Semantics:
 //  1. A product GID in a set matches ALL its variants; a variant GID matches only that variant.
 //  2. A deal matches when the cart can supply one unit from EACH listed set (`sets` may repeat a set).

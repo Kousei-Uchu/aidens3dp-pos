@@ -1,5 +1,5 @@
 // Money is ALWAYS integer cents inside the app (matches the Zeller SDK).
-// Shopify returns decimal strings – convert at the edge only.
+// Shopify returns decimal strings - convert at the edge only.
 
 export const CURRENCY = 'AUD';
 

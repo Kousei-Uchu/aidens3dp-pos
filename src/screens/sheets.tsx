@@ -65,7 +65,7 @@ export function SaveCartSheet({ visible, onClose, onSaved }: { visible: boolean;
   return (
     <Sheet visible={visible} onClose={onClose} title="Save cart">
       {cart.orderAdjust ? <Txt size={13} color={c.warn} style={{ marginBottom: 8 }}>This cart's whole order price ({fmt(cart.orderAdjust.finalCents)}) is not kept in a saved cart. It will come back at its normal total.</Txt> : null}
-      <Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam – holding for Friday'} value={name} onChangeText={setName} autoFocus />
+      <Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam - holding for Friday'} value={name} onChangeText={setName} autoFocus />
       <Field kind="text" label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
       <Btn title="Save to Saved carts" onPress={save} />
     </Sheet>

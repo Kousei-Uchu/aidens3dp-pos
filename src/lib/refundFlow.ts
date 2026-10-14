@@ -34,14 +34,14 @@ export async function executeRefund(a: {
 
   // 1. card → Zeller
   if (plan.card) {
-    if (!a.terminal) return { ok: false, message: 'Reader not ready — card refunds need the terminal.', done, cashOwedCents: 0 };
+    if (!a.terminal) return { ok: false, message: 'Reader not ready - card refunds need the terminal.', done, cashOwedCents: 0 };
     let got = 0;
     for (const [i, part] of splitAcrossCards(plan.card, order.tenders).entries()) {
       const ref = part.tender.card?.externalReference ?? part.tender.id; const rr = `${refundKey}-card-${i}`;
       const r = await startRefund(a.terminal, { purchaseRef: ref, amountCents: part.cents, reference: rr }, { onStarted: () => csv.event({ kind: 'override', saleUuid, reference: rr, amountCents: part.cents, message: 'card refund started', staff }) }).promise;
       if (r.kind === 'APPROVED') { got += part.cents; tenders.push({ id: rr, kind: 'card', amountCents: part.cents, card: { externalReference: rr, receiptLink: r.txn.receiptLink, approvalCode: r.txn.approvalCode, transactionUuid: r.txn.transactionUuid, panMasked: part.tender.card?.panMasked }, at: stamp() }); continue; }
       void csv.event({ kind: 'refund_failed', saleUuid, reference: rr, amountCents: part.cents, message: JSON.stringify(r), staff });
-      if (!got) return { ok: false, message: r.kind === 'FAILED' ? r.text : r.kind === 'UNKNOWN' ? 'The card refund status is unknown — check the Zeller dashboard before trying again.' : 'Card refund cancelled.', done, cashOwedCents: 0 };
+      if (!got) return { ok: false, message: r.kind === 'FAILED' ? r.text : r.kind === 'UNKNOWN' ? 'The card refund status is unknown - check the Zeller dashboard before trying again.' : 'Card refund cancelled.', done, cashOwedCents: 0 };
       done.card = got; return await finish(false, `Card refund partly completed (${got / 100} of ${plan.card / 100}). Check Zeller before retrying the rest.`);
     }
     done.card = got;
@@ -90,7 +90,7 @@ export async function executeRefund(a: {
     if (abortIfNothing && !money) return { ok, message, done, cashOwedCents: 0 };
     if (isTraining()) applyPracticeRefund(order.id, a.lines, done, a.restock); // practice: the practice order is updated and Shopify is never called
     else try { await refundOrderInShopify(order, a.lines.map(l => ({ lineItemId: l.lineId, quantity: l.qty, restock: a.restock })), done, `${a.reason} (POS)`, s.settings.locationId, refundKey); }
-    catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Shopify refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it — see Notifications.'; }
+    catch (e: any) { void csv.event({ kind: 'error', saleUuid, message: `Shopify refund failed: ${e.message}`, staff }); useApp.getState().notify({ kind: 'refund', title: 'Refund not recorded in Shopify', body: `${order.name}: ${e.message}. The money was already returned.`, route: 'notifications' }); message = (message ? message + ' ' : '') + 'Refund taken but Shopify did not record it - see Notifications.'; }
     const lines: SaleLine[] = a.lines.map(rl => {
       const ol = order.lines.find(l => l.id === rl.lineId)!; const cost = a.restock ? Math.round((ol.costCents ?? 0)) * rl.qty : 0;
       return { variantId: ol.variantId, title: ol.title, variantTitle: ol.variantTitle, qty: rl.qty, baseUnitCents: ol.originalUnitCents, grossCents: ol.originalUnitCents * rl.qty, discountCents: (ol.originalUnitCents - ol.unitCents) * rl.qty, netCents: ol.unitCents * rl.qty, costCents: cost, discountLabels: ol.discount ? [ol.discount] : [], kind: 'item' };

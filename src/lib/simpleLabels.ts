@@ -5,7 +5,7 @@ import { fmt } from './money';
 
 export type PayMethod = 'card' | 'cash' | 'gift' | 'split';
 export function payTitle(m: PayMethod, explain: boolean, targetCents: number): string {
-  if (!explain) return m === 'card' ? `Card — ${fmt(targetCents)}` : m === 'cash' ? 'Cash' : m === 'gift' ? 'Gift card' : 'Split amount';
+  if (!explain) return m === 'card' ? `Card - ${fmt(targetCents)}` : m === 'cash' ? 'Cash' : m === 'gift' ? 'Gift card' : 'Split amount';
   return m === 'card' ? `Pay by card  ${fmt(targetCents)}` : m === 'cash' ? 'Pay with cash' : m === 'gift' ? 'Pay with a gift card' : 'Split the payment';
 }
 const PAY_HINT: Record<PayMethod, string> = {

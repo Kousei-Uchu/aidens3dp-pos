@@ -38,7 +38,7 @@ export function contribution(r: SaleRecord): Totals {
     t.cogsCents += sign * l.costCents;
     const cat = l.collectionTitles?.[0] ?? 'Uncategorised';
     bump(t.byCategory, cat, sign * l.qty, sign * l.grossCents);
-    bump(t.byItem, l.variantTitle ? `${l.title} – ${l.variantTitle}` : l.title, sign * l.qty, sign * l.grossCents);
+    bump(t.byItem, l.variantTitle ? `${l.title} - ${l.variantTitle}` : l.title, sign * l.qty, sign * l.grossCents);
   }
   if (r.type === 'sale') for (const a of r.adjustments ?? []) bump((t.byAdjustReason ??= {}), reasonKey(a.reason), 1, a.cents);
   bump((t.byStaff ??= {}), r.staff?.trim() || 'Unattributed', 1, sign * r.netCents);

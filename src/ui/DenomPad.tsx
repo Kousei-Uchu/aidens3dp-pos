@@ -32,7 +32,7 @@ export function DenomPad({ draft, onChange, base = {}, totalLabel, spots }: { dr
           <Pressable key={d.cents} ref={spots ? spotRefFor(cashDenomSpot(d.cents)) : undefined} collapsable={false} onPress={() => { haptic(); press(d.cents); }} accessibilityRole="button" accessibilityLabel={`${mode === 'add' ? 'Add' : 'Remove'} ${d.label}, ${n} now`}
             style={({ pressed }) => ({ width: '47%', height: 56, borderRadius: 12, backgroundColor: mode === 'remove' ? c.bad + '22' : kind === 'note' ? c.accent + '18' : c.fill, opacity: pressed ? 0.6 : 1, alignItems: 'center', justifyContent: 'center', borderWidth: n ? 1.5 : 0, borderColor: mode === 'remove' ? c.bad : c.accent })}>
             <Txt size={18} weight="700">{d.label}</Txt>
-            <Txt size={11} sub weight="600">{n ? `× ${n}` : '–'}</Txt>
+            <Txt size={11} sub weight="600">{n ? `× ${n}` : '-'}</Txt>
           </Pressable>); })}
       </View>
     </View>);

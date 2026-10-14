@@ -1,5 +1,5 @@
 // Zeller Payments SDK wrapper (research doc §6.8). Errors are RETURNED by the SDK, never thrown.
-// Everything outside this file talks to PaymentResult – never to raw SDK results.
+// Everything outside this file talks to PaymentResult - never to raw SDK results.
 import { lookupResponse, type Category } from './responseCodes';
 import { cardLast4 } from './cards';
 import type { CardInfo } from './types';
@@ -48,8 +48,8 @@ export function describeEvent(e: ZellerEvent): string {
     case 'AWAITING_PIN_ENTRY': return 'Customer is entering their PIN';
     case 'AWAITING_SIGNATURE': return 'Waiting for signature';
     case 'SIGNATURE_SUBMITTED': return 'Signature received';
-    case 'SIGNATURE_CLEARED': return 'Signature cleared — sign again';
-    case 'RETRYING_PAYMENT_METHOD': return 'Retrying — present the card again';
+    case 'SIGNATURE_CLEARED': return 'Signature cleared - sign again';
+    case 'RETRYING_PAYMENT_METHOD': return 'Retrying - present the card again';
     case 'PROCESSING': return 'Processing…';
     case 'DISPLAYING_PAYMENT_MESSAGE': return e.message || 'Showing result on the terminal';
     case 'AWAITING_TIP_ENTRY': return 'Customer is choosing a tip';
@@ -74,19 +74,19 @@ export function normalise(r: ZellerTxn | ZellerError, seen: Seen): PaymentResult
     const type = (r as ZellerError).type ?? 'Operation Failure';
     const m = r.message || type;
     switch (type) {
-      case 'Setup Required': return { kind: 'NOT_READY', reason: 'SETUP_REQUIRED', message: 'Terminal not paired — open Diagnostics ▸ Zeller ▸ Setup.' };
-      case 'Network Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Network failed during payment' } : { kind: 'NOT_READY', reason: 'OFFLINE', message: 'No internet — card payments need a connection. Cash still works.' };
+      case 'Setup Required': return { kind: 'NOT_READY', reason: 'SETUP_REQUIRED', message: 'Terminal not paired - open Diagnostics ▸ Zeller ▸ Setup.' };
+      case 'Network Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Network failed during payment' } : { kind: 'NOT_READY', reason: 'OFFLINE', message: 'No internet - card payments need a connection. Cash still works.' };
       case 'Operation Busy': return { kind: 'NOT_READY', reason: 'BUSY', message: 'Terminal is busy. Please wait and try again.' };
       case 'Paired Device Busy': return { kind: 'NOT_READY', reason: 'BUSY', message: 'The terminal is serving another register.' };
-      case 'Paired Device Not Available': return { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Can’t reach the terminal — check its power and Wi‑Fi.' };
+      case 'Paired Device Not Available': return { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Can’t reach the terminal - check its power and Wi‑Fi.' };
       case 'Connection Failure': return seen.any ? { kind: 'UNKNOWN', reason: 'Connection dropped during payment' } : { kind: 'NOT_READY', reason: 'TERMINAL_UNAVAILABLE', message: 'Couldn’t connect to the terminal.' };
       case 'Operation Request Invalid': return { kind: 'NOT_READY', reason: 'INVALID_REQUEST', message: m };
       case 'Cancelled': return { kind: 'CANCELLED' };
-      case 'Inactivity Timeout': return { kind: 'DECLINED', text: 'Customer didn’t respond — try again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
+      case 'Inactivity Timeout': return { kind: 'DECLINED', text: 'Customer didn’t respond - try again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
       case 'Card Declined': case 'Transaction Declined': return { kind: 'DECLINED', text: 'Card declined. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
       case 'Card Blocked': return { kind: 'DECLINED', text: 'Card blocked. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
       case 'Card Not Supported': return { kind: 'DECLINED', text: 'Card not supported. Try another card.', category: 'DECLINED_TRY_OTHER_CARD', retryable: true };
-      case 'Card Read Failure': return { kind: 'DECLINED', text: 'Card read failed — tap, insert or swipe again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
+      case 'Card Read Failure': return { kind: 'DECLINED', text: 'Card read failed - tap, insert or swipe again.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
       case 'Card Insert Required': return { kind: 'DECLINED', text: 'Please insert the card.', category: 'DECLINED_CUSTOMER_ACTION', retryable: true };
       default: return { kind: 'UNKNOWN', reason: `${type}: ${m}` }; // incl. Operation Interrupted & Transaction * timeouts
     }
@@ -133,7 +133,7 @@ export function startCharge(terminal: TerminalLike, o: ChargeOpts, hooks: Charge
     const r = await op;
     let res = normalise(r, seen);
     if (res.kind === 'CANCELLED' || res.kind === 'UNKNOWN' || (res.kind === 'DECLINED' && seen.processing) || cancelled) {
-      // "Cancel" only ATTEMPTS to cancel – the payment may still have completed.
+      // "Cancel" only ATTEMPTS to cancel - the payment may still have completed.
       if (res.kind !== 'APPROVED' && (seen.any || res.kind === 'UNKNOWN')) {
         const rec = await reconcile(terminal, o.reference);
         if (rec.kind === 'APPROVED') res = rec;
@@ -164,7 +164,7 @@ export function startRefund(terminal: TerminalLike, o: { purchaseRef: string; am
       if (type === 'Transaction Not Found') return { kind: 'FAILED', text: 'Zeller can’t find the original payment for this refund.' };
       if (type === 'Cancelled' && !seen.processing) return { kind: 'CANCELLED' };
       if (type === 'Setup Required') return { kind: 'FAILED', text: 'Terminal not paired.' };
-      if (type === 'Operation Busy') return { kind: 'FAILED', text: 'Terminal is busy — try again.' };
+      if (type === 'Operation Busy') return { kind: 'FAILED', text: 'Terminal is busy - try again.' };
       const rec = await reconcile(terminal, o.reference);
       if (rec.kind === 'APPROVED') return { kind: 'APPROVED', txn: rec.txn };
       if (rec.kind === 'NOT_FOUND' && !seen.processing) return { kind: 'FAILED', text: r.message || type };

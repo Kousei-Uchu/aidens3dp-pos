@@ -1,4 +1,4 @@
-// Processing fees – the Zeller SDK result has NO fee field, so fees are always computed locally and
+// Processing fees - the Zeller SDK result has NO fee field, so fees are always computed locally and
 // are "estimated" until reconciled against Zeller's statements (research doc §4.9 / §6.9).
 export type FeeSettings = {
   cardPresentRate: number; // 0.014 = 1.4 %

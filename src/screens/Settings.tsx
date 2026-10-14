@@ -55,12 +55,12 @@ export default function Settings() {
           <Row icon="color-palette-outline" title="Theme" onPress={() => setSub('theme')} />
           <Row icon="information-circle-outline" title="About" last onPress={() => setSub('about')} /></Section>
         <Section title="Checkout"><Toggle label="Consolidate identical items" sub="Tapping the same item again adds to its quantity" value={s.consolidate} onChange={v => patch({ consolidate: v })} />
-          <Row title="Tax" sub="Off — prices are tax-inclusive and no tax is added" last /></Section></> : null}
+          <Row title="Tax" sub="Off - prices are tax-inclusive and no tax is added" last /></Section></> : null}
       {sub === 'shopify' ? <ShopifySettings /> : null}
       {sub === 'receipts' ? <ReceiptSettings /> : null}
       {sub === 'backup' ? <BackupSettings /> : null}
       {sub === 'display' ? <DisplaySettings /> : null}
-      {sub === 'payments' ? <Section footer="Fees are estimated from these rates – the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
+      {sub === 'payments' ? <Section footer="Fees are estimated from these rates - the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
         <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
         {s.smartChange ? <SmartChangeNote /> : null}
@@ -128,7 +128,7 @@ function HardwareTest() {
       <Txt>Pair your Bluetooth scanner in iOS Settings (HID keyboard mode), then scan any barcode:</Txt>
       <HidScanner onScan={c => setLast(l => [c, ...l].slice(0, 8))} />
       <Card>{last.length ? last.map((c, i) => <Row key={i} title={c} last={i === last.length - 1} />) : <Row title="Waiting for a scan…" last />}</Card>
-      <Txt size={12} sub>Scans here only test the scanner – nothing is added to the cart.</Txt>
+      <Txt size={12} sub>Scans here only test the scanner - nothing is added to the cart.</Txt>
     </View>
   );
 }

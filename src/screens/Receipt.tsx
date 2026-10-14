@@ -18,7 +18,7 @@ import type { SaleRecord } from '../lib/types';
 import { BUSINESS_LOGO_URL } from '../lib/screensaver';
 
 export const receiptText = (s: SaleRecord): string => {
-  const lines = s.lines.map(l => `${l.qty} × ${l.title}${l.variantTitle ? ` (${l.variantTitle})` : ''} — ${fmt(l.netCents)}`);
+  const lines = s.lines.map(l => `${l.qty} × ${l.title}${l.variantTitle ? ` (${l.variantTitle})` : ''} - ${fmt(l.netCents)}`);
   const paid = s.tenders.map(t => `${t.kind === 'card' ? 'Card' : t.kind === 'cash' ? 'Cash' : t.kind === 'gift_card' ? 'Gift card' : 'Credit'}: ${fmt(t.amountCents)}`);
   return [`${useApp.getState().settings.shopName || 'Receipt'}`, new Date(s.ts).toLocaleString(), s.orderName ? `Order ${s.orderName}` : '', '', ...lines, '',
     s.discountCents ? `Discounts: −${fmt(s.discountCents)}` : '', `Total: ${fmt(s.netCents)}`, ...paid, s.receiptLink ? `\nCard receipt: ${s.receiptLink}` : '', '\nThank you!'].filter((x, i, a) => x !== '' || a[i - 1] !== '').join('\n');

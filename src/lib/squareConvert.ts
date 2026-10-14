@@ -84,7 +84,7 @@ const orderName = (id: string) => `Sq ${id.slice(-6).toUpperCase()}`;
 
 function base(o: SqOrder, ctx: SqContext, uuid: string, type: 'sale' | 'refund', ts: string): Omit<HistSale, 'lines' | 'tenders'> {
   return {
-    uuid, type, ts, registerId: SQUARE_REGISTER_ID, registerName: `Square${ctx.locations[o.locationId] ? ' – ' + ctx.locations[o.locationId] : ''}`, customer: person(ctx, o.customerId),
+    uuid, type, ts, registerId: SQUARE_REGISTER_ID, registerName: `Square${ctx.locations[o.locationId] ? ' - ' + ctx.locations[o.locationId] : ''}`, customer: person(ctx, o.customerId),
     itemsCents: 0, discountCents: 0, netCents: 0, tipCents: 0, totalCents: 0, cogsCents: 0, feesCents: 0, roundingCents: 0, deals: [], orderName: orderName(o.id),
     note: [o.ticketName, o.referenceId].filter(Boolean).join(' | ') || undefined, source: 'square', squareOrderId: o.id,
   };

@@ -82,7 +82,7 @@ export const clearLineAdjusts = (c: Cart): Cart => (hasLineAdjusts(c) ? { ...c, 
 export const setCartDiscount = (c: Cart, d?: ManualDiscount): Cart => ({ ...c, discount: d });
 export const setLineDiscount = (c: Cart, id: string, d?: ManualDiscount) => patchLine(c, id, { discount: d });
 
-/** "Merge Carts?" – lines of `from` are appended into `into` (identical plain lines consolidate). */
+/** "Merge Carts?" - lines of `from` are appended into `into` (identical plain lines consolidate). */
 export function mergeCarts(into: Cart, from: Cart, consolidate = true): Cart {
   // A16.3: an "All in cart" price on either side covers that item on both, so the units can consolidate.
   const allPrices = allInCartPrices([...into.lines, ...from.lines]);

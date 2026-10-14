@@ -190,7 +190,7 @@ async function pullSaved() {
       assignedTo: r.f.status?.startsWith('assigned:') ? r.f.status.slice(9) : undefined, remoteId: r.id, version: Number(r.f.version) || 1 };
     const i = next.findIndex(c => c.id === id); if (i >= 0) next[i] = rec; else next.push(rec);
   }
-  // carts deleted remotely (not in the newest 100 AND not dirty) are left alone – no destructive guesses.
+  // carts deleted remotely (not in the newest 100 AND not dirty) are left alone - no destructive guesses.
   st().patchPos({ saved: next.sort((a, b) => b.ts.localeCompare(a.ts)) });
 }
 

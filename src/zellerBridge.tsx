@@ -1,4 +1,4 @@
-// Keeps ONE Zeller terminal handle for the whole app (Provider must stay mounted at the root – never unmount mid-payment).
+// Keeps ONE Zeller terminal handle for the whole app (Provider must stay mounted at the root - never unmount mid-payment).
 import React, { useEffect } from 'react';
 import * as Zeller from '@zeller-public/payments-sdk-react-native';
 import { useApp } from './state/store';
@@ -23,8 +23,8 @@ export async function checkReader(): Promise<boolean> {
   const r: any = await handle.initialise();
   if (r instanceof Error) {
     const offline = (r as any).type === 'Network Failure';
-    set({ zeller: { ready: false, message: offline ? 'Reader offline — no internet' : 'Reader not set up' } });
-    useApp.getState().notify({ kind: 'reader', title: 'Reader issue', body: offline ? 'No internet — card payments need a connection.' : 'Pair the terminal in More ▸ Support ▸ Zeller.', route: 'diagnostics' });
+    set({ zeller: { ready: false, message: offline ? 'Reader offline - no internet' : 'Reader not set up' } });
+    useApp.getState().notify({ kind: 'reader', title: 'Reader issue', body: offline ? 'No internet - card payments need a connection.' : 'Pair the terminal in More ▸ Support ▸ Zeller.', route: 'diagnostics' });
     return false;
   }
   set({ zeller: { ready: true } });

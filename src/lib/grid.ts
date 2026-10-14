@@ -1,4 +1,4 @@
-// grid.json  {version:1, pages:[{id,name,tiles:[…]}]}  (research doc §Grid) – stored in the pos_layout metaobject.
+// grid.json  {version:1, pages:[{id,name,tiles:[…]}]}  (research doc §Grid) - stored in the pos_layout metaobject.
 import { uid } from './ids';
 
 export const ACTIONS = ['custom_amount', 'add_gift_card', 'clear_cart', 'create_item', 'customers', 'discounts', 'discount', 'saved_carts', 'switch_staff', 'lock_pos', 'price_check', 'stock_check', 'check_change'] as const;

@@ -11,7 +11,7 @@ const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/off
 export default function Notifications() {
   const { c } = useTheme(); const nav = useNav(); const list = useApp(s => s.pos.notices); const outbox = useApp(s => s.pos.outbox); const patchPos = useApp(s => s.patchPos);
   const stuck = outbox.filter(o => o.blocked);
-  // live low/negative stock summary, derived – not stored
+  // live low/negative stock summary, derived - not stored
   const variants = useApp(s => s.data.variants); const neg = Object.values(variants).filter(v => (v.stock ?? 0) < 0).length; const low = Object.values(variants).filter(v => v.stock !== null && v.stock >= 0 && v.stock <= 2 && v.active).length;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>

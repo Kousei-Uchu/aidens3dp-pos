@@ -15,7 +15,7 @@ export default function Diagnostics() {
   const test = async () => {
     const t = getTerminal(); if (!t) return alertMsg('Reader not started yet'); setBusy(true); const ref = attemptRef(`test-${Date.now()}`, 1); add('Starting $1.00 test…');
     const h = startCharge(t, { amountCents: 100, reference: ref }, { onEvent: e => add(describeEvent(e)) }); const r = await h.promise; setBusy(false);
-    if (r.kind === 'APPROVED') { add('Approved ✔ — you can refund the test below.'); setLastRef(ref); } else add(r.kind === 'DECLINED' ? `Declined: ${r.text}` : r.kind === 'NOT_READY' ? r.message : r.kind === 'UNKNOWN' ? `Unknown: ${r.reason}` : 'Cancelled');
+    if (r.kind === 'APPROVED') { add('Approved ✔ - you can refund the test below.'); setLastRef(ref); } else add(r.kind === 'DECLINED' ? `Declined: ${r.text}` : r.kind === 'NOT_READY' ? r.message : r.kind === 'UNKNOWN' ? `Unknown: ${r.reason}` : 'Cancelled');
   };
   const refund = async () => { const t = getTerminal(); if (!t || !lastRef) return; setBusy(true); const r = await startRefund(t, { purchaseRef: lastRef, amountCents: 100, reference: `${lastRef}-refund` }, { onEvent: e => add(describeEvent(e)) }).promise; setBusy(false); add(r.kind === 'APPROVED' ? 'Refund approved ✔' : `Refund: ${r.kind}`); if (r.kind === 'APPROVED') setLastRef(null); };
   return (

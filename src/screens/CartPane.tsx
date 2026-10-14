@@ -92,7 +92,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
 
       {empty ? <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 }}><Ionicons name="cart-outline" size={44} color={c.sub} /><Txt sub style={{ textAlign: 'center', paddingHorizontal: 24 }}>{cartEmptyText(ui.explain)}</Txt></View> : (
         <ScrollView style={{ flex: 1 }}>
-          {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale — finish payment to edit</Txt></View> : null}
+          {locked ? <View style={{ backgroundColor: c.fill, padding: 10 }}><Txt size={13} weight="600" style={{ textAlign: 'center' }}>Part-paid sale - finish payment to edit</Txt></View> : null}
           {orderReasons.length ? <Pressable onPress={() => { if (!locked) setSheet('orderadj'); }} accessibilityRole="button" style={{ backgroundColor: c.fill, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' }}>
             <Ionicons name="alert-circle" size={18} color={c.warn} /><Txt size={13} weight="600" color={c.warn} style={{ flex: 1 }}>The whole order price needs a check: {orderReasons.join(' · ')}. Tap to review.</Txt></Pressable> : null}
           {flagged.length ? <Pressable onPress={() => { const l = cart.lines.find(x => x.id === flagged[0].lineId); if (l && !locked) setEdit(l); }} accessibilityRole="button" style={{ backgroundColor: c.fill, padding: 10, flexDirection: 'row', gap: 8, alignItems: 'center' }}>

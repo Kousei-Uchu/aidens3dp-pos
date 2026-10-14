@@ -19,7 +19,7 @@ export default function Staff() {
   const nav = useNav(); const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
   const [open, setOpen] = useState(false); const [sel, setSel] = useState<string | null>(null); const [passFor, setPassFor] = useState<string | null>(null); const [f, setF] = useState<{ name: string; pin: string; role: Role }>({ name: '', pin: '', role: 'cashier' });
   const save = async () => {
-    if (!f.name.trim() || !/^\d{4,6}$/.test(f.pin)) return alertMsg('Name and a 4–6 digit PIN are required');
+    if (!f.name.trim() || !/^\d{4,6}$/.test(f.pin)) return alertMsg('Name and a 4-6 digit PIN are required');
     for (const m of s.staff) if (await verifyPin(m.salt, f.pin, m.pinHash)) return alertMsg('That PIN is already used');
     const salt = newSalt(); patch({ staff: [...s.staff, { id: uid(), name: f.name.trim(), role: f.role, salt, pinHash: await hashPin(salt, f.pin) }] }); void pushSharedSettings().catch(() => {}); setOpen(false); setF({ name: '', pin: '', role: 'cashier' });
   };
@@ -60,7 +60,7 @@ export default function Staff() {
       </Sheet>
       <StaffPassSheet memberId={passFor} visible={!!passFor} onClose={() => setPassFor(null)} />
       <Sheet visible={open} onClose={() => setOpen(false)} title="New staff member">
-        <Field kind="name" label="Name" value={f.name} onChangeText={t => setF({ ...f, name: t })} /><Field kind="pin" label="PIN (4–6 digits)" value={f.pin} onChangeText={t => setF({ ...f, pin: t.replace(/\D/g, '').slice(0, 6) })} />
+        <Field kind="name" label="Name" value={f.name} onChangeText={t => setF({ ...f, name: t })} /><Field kind="pin" label="PIN (4-6 digits)" value={f.pin} onChangeText={t => setF({ ...f, pin: t.replace(/\D/g, '').slice(0, 6) })} />
         <Segmented value={f.role} onChange={role => setF({ ...f, role })} options={[{ v: 'cashier', label: 'Cashier' }, { v: 'manager', label: 'Manager' }, { v: 'owner', label: 'Owner' }]} /><View style={{ height: 12 }} /><Btn title="Add" onPress={() => void save()} />
       </Sheet>
     </Page>

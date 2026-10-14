@@ -57,7 +57,7 @@ export const tokenScopes = () => (token?.scope ? token.scope.split(',') : []);
 
 export async function getToken(force = false): Promise<string> {
   if (isTraining()) throw new TrainingBlockedError('Shopify');
-  if (!creds) throw new ShopifyUserError('Shopify is not set up — open More ▸ Settings ▸ Shopify.');
+  if (!creds) throw new ShopifyUserError('Shopify is not set up - open More ▸ Settings ▸ Shopify.');
   if (!force && token && token.exp - Date.now() > 5 * 60_000) return token.value;
   if (inflight) return inflight;
   const c = creds;
@@ -90,7 +90,7 @@ let notBefore = 0;
 
 export async function gql<T = any>(query: string, variables: Record<string, any> = {}): Promise<T> {
   if (isTraining()) throw new TrainingBlockedError('Shopify');
-  if (!creds) throw new ShopifyUserError('Shopify is not set up — open More ▸ Settings ▸ Shopify.');
+  if (!creds) throw new ShopifyUserError('Shopify is not set up - open More ▸ Settings ▸ Shopify.');
   let authRetried = false;
   for (let attempt = 0; ; attempt++) {
     const wait = notBefore - Date.now();

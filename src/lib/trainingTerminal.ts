@@ -26,7 +26,7 @@ export function makeTrainingTerminal(opts: { next: () => Outcome; stepMs?: numbe
     const emit = (e: ZellerEvent) => subs.forEach(cb => cb(e));
     const p = new Promise<ZellerTxn | (Error & { type: string })>(res => { finish = v => { if (done) return; done = true; off?.(); res(v); }; }) as Op<ZellerTxn>;
     const outcome = opts.next(); const code = outcome === 'decline' ? (opts.declineCode?.() ?? '51') : '00';
-    const text = outcome === 'decline' ? (code === '51' ? 'Insufficient funds' : lookupResponse(code).message.replace(/ — .*$/, '').replace(/\.$/, '')) : undefined;
+    const text = outcome === 'decline' ? (code === '51' ? 'Insufficient funds' : lookupResponse(code).message.replace(/ - .*$/, '').replace(/\.$/, '')) : undefined;
     const txn = (): ZellerTxn => ({
       type: kind, amount: o.amount, currency: 'AUD', externalReference: o.reference, transactionUuid: `train-txn-${++n}`, timestampLocal: new Date().toISOString(), scheme: 'Visa', cardMedia: vt?.get().media === 'INSERT' ? 'INSERT' : 'TAP', panMasked: 'XXXXXXXXXXXX0000',
       ...(outcome === 'approve' ? { $type: 'Approved' as const, status: 'APPROVED' as const, approvalCode: 'TRAIN1', responseCode: '00' } : { $type: 'Declined' as const, status: 'DECLINED' as const, responseCode: code, responseText: text }),

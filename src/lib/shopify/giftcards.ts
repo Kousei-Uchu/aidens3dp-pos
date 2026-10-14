@@ -39,7 +39,7 @@ export async function createGiftCard(valueCents: number, code: string, saleUuid:
     { i: { initialValue: toDecimal(valueCents), code: normaliseCode(code), note, ...(customerId ? { customerId } : {}), ...(recipientAttributes ? { recipientAttributes } : {}) } });
   const errs = d.giftCardCreate.userErrors as any[];
   if (errs?.length && /taken|already/i.test(`${errs[0].code} ${errs[0].message}`)) {
-    const existing = await lookupGiftCard(code); // a retry after a lost reply – the card already exists
+    const existing = await lookupGiftCard(code); // a retry after a lost reply - the card already exists
     if (existing) return existing;
   }
   throwUserErrors(errs, 'Creating the gift card');

@@ -1,5 +1,5 @@
 // Location: src/screens/AdjustmentReview.tsx
-// A16.5: "Check the price adjustments" – shown by Charge before payment (normal and guided checkout).
+// A16.5: "Check the price adjustments" - shown by Charge before payment (normal and guided checkout).
 import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { Btn, Card, Sheet, Txt } from '../ui/kit';
