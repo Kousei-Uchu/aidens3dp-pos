@@ -33,6 +33,8 @@ export function registerSlice(id: string, parent: string, index: number, count: 
   slices.set(id, { parent, index, count }); return () => { slices.delete(id); };
 }
 export const spotMounted = (id: string): boolean => (refs.get(id)?.size ?? 0) > 0 || (slices.has(id) && spotMounted(slices.get(id)!.parent));
+/** Every spot id currently on screen, including the equal parts of a segmented control. Training puts these on the app graph, so controls that only exist at runtime get named too. */
+export const mountedSpotIds = (): string[] => [...refs.keys(), ...slices.keys()];
 
 const measure = (node: any): Promise<Rect | null> => new Promise(res => { try { node.measureInWindow((x: number, y: number, w: number, h: number) => res(w > 0 && h > 0 ? { x, y, w, h } : null)); } catch { res(null); } });
 /** Where this spot is in the window right now. A hidden or unmounted spot gives null. If several share an id, the first one on screen wins. */

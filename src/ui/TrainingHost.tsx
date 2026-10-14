@@ -9,7 +9,7 @@ import { useApp } from '../state/store';
 import { useTraining, realStaffId, type DockView } from '../state/trainingSession';
 import { isLockScreen } from '../lib/posLock';
 import { getModule } from '../training';
-import { measureSpot, onSpotPressed } from './Spot';
+import { measureSpot, onSpotPressed, mountedSpotIds } from './Spot';
 import { confirm } from './kit';
 import TrainingOverlay from './TrainingOverlay';
 import TrainingDock from './TrainingDock';
@@ -24,7 +24,8 @@ import { isMet, snapOf, type Events } from '../lib/trainingConds';
 import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere } from '../lib/trainingProbe';
 import { getLastPracticeRefund } from '../lib/trainingOrders';
 import { hintView, shouldNudge } from '../lib/trainingHints';
-import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap } from '../lib/appGraph';
 import { gateFor, type Gesture } from '../lib/pointerGesture';
 import { setGate } from '../lib/trainingGate';
 import { layerDepth } from '../lib/trainingLayers';
@@ -102,6 +103,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const app = useApp.getState();
         const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+        syncRuntimeFromSnap(snap); registerRuntimeSpots(mountedSpotIds()); // put this sale's cart lines, and every control on screen right now, on the app graph
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
@@ -109,8 +111,8 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
         const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture } | null> => {
           const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
-          // Point at the first place that is really on screen, in the words that fit what is open now (see fixCandidates), so the card never contradicts itself.
-          const cands = fixCandidates(tr.show, snap.sheets > 0); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
+          // Point at the first place that is really on screen, in the words that fit what is open now (the fix's own words first, then the app graph's walk back), so the card never contradicts itself.
+          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
           for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
