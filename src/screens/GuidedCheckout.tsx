@@ -22,6 +22,7 @@ import AdjustmentReviewSheet from './AdjustmentReview';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import type { CartLine } from '../lib/types';
 import { useUi } from '../ui/uiProfile';
+import { registerCheckoutReset } from '../lib/trainingProbe';
 import { Enter, TabPane } from '../ui/Motion';
 
 export default function GuidedCheckout() {
@@ -30,6 +31,8 @@ export default function GuidedCheckout() {
   const [step, setStep] = useState<StepId>('items');
   const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change' | 'orderadj'>('none');
   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
+  // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
+  useEffect(() => registerCheckoutReset(() => { setSheet('none'); setAdjReview(false); setAdjAck(''); setEdit(null); }), []);
   const [edit, setEdit] = useState<CartLine | null>(null);
   const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
   const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };

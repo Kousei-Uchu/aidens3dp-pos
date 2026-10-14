@@ -1,0 +1,248 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 3963cc7..1294b48 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -373,3 +373,10 @@ Tell me: pass or fail for each step, and whether the ring ever lands on a contro
+ 7. **Cursor.** Pass: it is the highlight orange and you can see through it a little; it is not drawn on a Next step or while you type; it never stops a tap, including on the ringed button.
+ 
+ Tell me: pass or fail for each step. If anything freezes, tell me exactly which step and what was open.
++
++## T31. Training: the window hand-off and the review note (B6, 0120)
++
++1. **Discounts, Check 2, goal 2.** Same as T30 step 1, but this is the exact case that froze: give the Bumble Bee 10% off and tap Apply (the Discount window closes as the line window comes back). Pass: the second goal (make three Keyrings) starts, the screen still responds, and Exit works. Do it three times.
++2. **Change a price, Check 2, goal 1.** It injects a wrong $6.00 on the Bumble Bee. Open the Bee line, Item price, Reset to catalogue price; open the Red Dragon line, Item price, key 2 0 0 0, Set price, Done. Pass: every window opens (a short pause when one closes as the next opens) and the goal ticks once both windows are shut.
++3. **Change a price, Guide, run twice.** Finish the Guide (through the price review at steps 25–27), then open the Guide stage again and start it. Pass: at step 25 ("Tap Charge") the "Check the price adjustments" review opens again, and Continue carries on. It must not wait forever on a review that does not appear.
++4. **Windows swapping.** On a cart line, open the line window, then Discount, then Apply, then Item price adjustment, then back. Pass: each window opens and nothing is ever stuck. Also try it with the price window's Reset button.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 3039e52..6baabed 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -119,6 +119,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0114 | 2026-10-14 | Training (B6) infrastructure: **a run only walks through places it has**. The guidance engine now plans within a *scope* so a course never guides a person through a place the everyday till owns, and the everyday till is never guided into a course. `src/app.navschema` gained a `modules` field on screens and edges (a list of module ids, or `"real"`; empty/missing means every scope, so only the places that differ carry it). `src/app.navgraph` tagged the real camera `overlay_camera` `["real"]`, the practice pass `overlay_practice_pass` `["sign-in"]`, and a new practice camera `overlay_practice_camera` `["scanning"]` (69 screens, 157 transitions). `src/lib/appGraph.ts` gained `GuideScope`, `scopeForModule`/`scopeForReal`, `metaInScope`/`screenInScope` and `scopeFilter`, threaded through `reachable`, `routeNavSteps`, `guidanceCandidates` and `planToSpot`; it reuses routegraph's own `PathOptions.edgeFilter`, so no library change. A place with no tag is in every run; a place whose tab/route the course disallows is out of scope without a tag, and a fix outside the run adds no walk. `src/lib/appControls.ts` corrected `scan.card:` to the practice camera. `TrainingHost` passes `scopeForModule(mod)` and clears runtime controls when a run ends (`clearRuntimeSpots`). `tests/appnavgraph.test.ts` (25). Living plan and log `docs/ROUTEGRAPH_GUIDANCE.md` | B6 |
+ | 0115 | 2026-10-14 | Training (B6) infrastructure: **per-instance scopes**. Finishes the scope work by letting a runtime instance, not just a screen or an edge, belong to a run. `registerRuntimeSpots` (`src/lib/appGraph.ts`) now takes a spot id or `{ spot, modules }` (`RuntimeSpot`); the tag becomes the action node's metadata, which routegraph carries and the existing `scopeFilter` checks, so a product tile, a customer row, a grid page or a practice user that belongs to one run is refused in another even though both runs share the same screen (no library change). Untagged instances are in every run. Records the honest state of the practice world: every course runs the one shared sandbox, and only `practiceStaff`, `flow`, `tabs`/`routes` and per-goal `inject`s differ, so the item library, grid and users are the same across courses and are swapped inside the same screens (not a place-scope concern). `tests/appnavgraph.test.ts` (27). Living plan and log `docs/ROUTEGRAPH_GUIDANCE.md` | B6 |
+ | 0119 | 2026-10-14 | Training (B6), device-test corrections part 1: **soft locks and the cursor** (`docs/TRAINING_CORRECTIONS.md`, sections 1 and 2). **Windows no longer open in the same moment another closes** (`src/lib/sheetGate.ts`, used by every `Sheet`; the same iOS invisible-window cause as 0097, and the likely cause of the Discounts Check 2 lock after Apply). **The guide never blocks the whole screen when its target is gone** (it did, which locked Price adjustments step 19 and the scan Guide, Exit included), and **a fallback never points at a spot hidden behind an open window** (the scan Guide's "tiny gap" loop). **`Step.typing`**: a step where you type lets touches through the ring and draws no cursor (Customers step 13, Price step 8, Customers note); **`Step.ready`**: Next stays greyed until the form is filled in (Customers: a name plus a real email or a mobile; nothing is kept). The note step now needs Gift wrap typed. **Cursor:** the ring's orange, a little see-through, never takes a touch, hidden on typing and Next steps. **Scan:** the practice cards are compact and ordered so the Guide's are on screen, and the result box is always there. **Deals:** the last Check 2 goal ends when Payment is open, and the delayed push to Payment can no longer land after practice has ended (the $0 page). Found by reading the code, **not reproduced** (no device here): device test T30. New `tests/trainingsoftlocks.test.ts` | B6 |
++| 0120 | 2026-10-14 | Training (B6), corrections part 1b: the two follow-ups from the 0119 device test (`docs/patches/0120-plan.md`). **A closing window now says so during the render, not in an effect** (`src/ui/kit.tsx`): when a line window reopens as its Discount or price window closes, both change in the same render and the opening window's effect ran first, so it waited no time and iOS left its invisible window over the screen. That is the Discounts Check 2 goal 2 freeze and the Change a price Check 2 goal 1 stall (the same 0097 cause, now closed for sibling windows). **A practice run resets the cart pane's "I have seen this price review" note** (`src/lib/trainingProbe.ts` now takes many resets; `CartPane` and `GuidedCheckout` register one): Checkout stays mounted between a course's stages, so the note survived a replayed Guide and its step 25 "Tap Charge" found no review to show. Device test T31. Extends `tests/trainingsoftlocks.test.ts` | B6 |
+ 
+ 
+ ---
+@@ -456,6 +457,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N44 **Non-blocking (B6, 0111):** device check for the deals course (More ▸ Training ▸ How deals show up), steps in `docs/DEVICE_TESTS.md` T26.
+ - [ ] N45 **Non-blocking (B6, 0112):** device check for the scanning course (More ▸ Training ▸ Scan items), steps in `docs/DEVICE_TESTS.md` T27. Most important: the camera button must open the **practice** window (drawn barcode cards), never the real camera or a camera permission prompt, and your real camera scan on the real Checkout must still work as before. Also check the ring on a card button and on the green or red message, and that Done and the close button both leave the window.
+ - [ ] N46 **Non-blocking (B6, 0113):** device check for the soft lock and cursor fixes, steps in `docs/DEVICE_TESTS.md` T28. Most important: Discounts Check 2 (apply a discount, then the next goal), Price adjustments Guide steps 8 and 19, the scan Guide in one go, and the last Deals Check 2 goal.
++- [ ] N47 **Blocking for the corrections work (B6, 0120):** after 0119 you reported that Discounts Check 2 goal 2 still froze, Change a price Check 2 goal 1 did not work, and a replayed Guide step 25 had no price review. 0120 fixes all three by reading the code (no device here). Steps in `docs/DEVICE_TESTS.md` T31: the Discounts Apply hand-off, the Change a price wrong-item goal, and the Guide run twice. Tell me pass or fail for each.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/TRAINING_CORRECTIONS.md b/docs/TRAINING_CORRECTIONS.md
+index 623bc9a..3e73557 100644
+--- a/docs/TRAINING_CORRECTIONS.md
++++ b/docs/TRAINING_CORRECTIONS.md
+@@ -6,7 +6,8 @@ Legend: **[LOCK]** soft lock or cannot progress · **[BUG]** wrong behaviour ·
+ 
+ ## Status
+ 
+-- **0119 (done, awaiting device test T30):** 1.1 to 1.7 and all of section 2 (soft locks, typing steps, the cursor), plus the scan window's order and result box and the note validation in Customers. 1.2 was found by reading the code and not reproduced; the best explanation is the iOS two-windows problem (see 0097), fixed for every window.
++- **0119 (device-tested, follow-ups in 0120):** 1.1 to 1.7 and all of section 2 (soft locks, typing steps, the cursor), plus the scan window's order and result box and the note validation in Customers. 1.2 was found by reading the code and not reproduced; the best explanation is the iOS two-windows problem (see 0097), fixed for every window. The device test found the window hand-off still failed when a **sub-window** closed (see 0120): 1.2 and the Change a price Check 2 goal 1 still froze, and a replayed Guide step 25 had no review to show.
++- **0120 (awaiting device test T31):** the two follow-ups from the 0119 device test. A window now says it is closing during the render, so the line window that opens as its Discount or price window closes really waits (fixes 1.2 and Change a price Check 2 goal 1). And a practice run clears the cart pane's "I have seen this price review" note, so a replayed Guide still opens the review at step 25.
+ - **Still to do:** section 3 (Show animation), section 4 (per module), section 5 (app changes).
+ 
+ ## 1. Soft locks and dead ends (fix first)
+diff --git a/docs/patches/0120-plan.md b/docs/patches/0120-plan.md
+new file mode 100644
+index 0000000..1eab79e
+--- /dev/null
++++ b/docs/patches/0120-plan.md
+@@ -0,0 +1,64 @@
++# Patch 0120: Training corrections part 1b, the window hand-off and the review note
++
++Stacks on 0119 (soft locks and the cursor). Follow-up from the first device test of 0119 (T30).
++
++## What you found on the iPad
++
++1. **Discounts, Check 2, goal 2 of 3 still freezes touch** — nothing can be pressed, not even Exit.
++2. **Change a price, Check 2, goal 1 of 3 does not work**, and its Guide step 25 ("Tap Charge") does
++   not present the price review the second time around.
++3. Your hunch: between some stages it does not reset the "order status" between the fake orders.
++
++All three reproduced by reading the code and the tests; none reproduced on a device here (no iPad in
++the sandbox).
++
++## Causes found
++
++### A. A window that closes is noted too late (fixes 1 and 2)
++
++`Sheet` (in `src/ui/kit.tsx`) waits out `sheetGate` before it opens, and it said "a window has begun to
++close" (`noteSheetHide`) from a `useEffect`. But a line window and its sub-window are **siblings in the
++same render**: on a cart line, the line `Sheet` is `visible={!disc && !price && !adj}`, and the Discount
++/ Item price / Line price `Sheet` sits next to it. When the sub-window closes, the line window opens in
++the same render. React runs the two `useEffect`s in tree order, so the **opening** window's effect runs
++**before** the closing window's effect has noted the hide. It therefore saw no close, waited no time,
++and both windows changed in the same instant — the 0097 invisible-window soft lock, which is what
++started the sheet gate in 0119.
++
++- Discounts Check 2: goal 1 ends the moment Apply sets the line discount; Apply closes the Discount
++  window and reopens the line window together. The touch-dead overlay lands right there, so goal 2 is
++  unreachable.
++- Change a price Check 2: Set price / Reset close the price window and reopen the line window the same
++  way, so goal 1 stalls as soon as a price is set.
++
++**Fix:** a closing window notes the hide **during the render**, not in the effect. Both windows still
++render in one commit, but every effect runs after every render, so the opening window's effect always
++sees the fresh hide and waits its 450 ms. (`src/ui/kit.tsx`.)
++
++### B. The cart pane keeps "I have seen this review" across a practice run (fixes 3 and the step 25 part)
++
++`CartPane` (and `GuidedCheckout`) hold `adjAck`, the fingerprint of the price-adjustment review the
++person has already acknowledged. Charge shows the review once and again only when the adjustments
++change. Checkout **stays mounted between a course's stages** ("tabs stay mounted: cart/scan state
++survives navigation", `App.tsx`), and starting a stage called `resetCheckout()`, which back then only
++reset Checkout's own screen state — never the cart pane's `adjAck`. So replaying the Guide left the
++acknowledgement from the run before; the Guide's step 25 taps Charge, `needsAdjustReview` says the
++person has already seen it, the review never opens, and the step cannot finish. This is your "it
++forgets to reset the order status between the fake orders".
++
++**Fix:** `trainingProbe` keeps a **set** of run-start resets, not one. `CartPane` and `GuidedCheckout`
++each register one that clears the review acknowledgement (and any open window / stale cart line), so
++`resetCheckout()` — called when a run starts and when a goal is started again — puts the checkout back
++to how a practice run begins.
++
++## Files
++
++- `src/ui/kit.tsx` — the closing window notes the hide in the render.
++- `src/lib/trainingProbe.ts` — `registerCheckoutReset` now takes many resets.
++- `src/screens/CartPane.tsx`, `src/screens/GuidedCheckout.tsx` — register a run-start reset.
++- `tests/trainingsoftlocks.test.ts` — two tests: the render-time hide, and the multi-reset registry.
++
++## Not covered
++
++Sections 3 to 5 of `docs/TRAINING_CORRECTIONS.md`. The other 0119 device-test results (soft lock in
++the scan Guide, typing, cursor) were not re-reported, so they are assumed to hold.
+diff --git a/src/lib/trainingProbe.ts b/src/lib/trainingProbe.ts
+index 8307e8e..bd23644 100644
+--- a/src/lib/trainingProbe.ts
++++ b/src/lib/trainingProbe.ts
+@@ -15,11 +15,12 @@ const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (so
+ export type CustomerDraft = { first: string; last: string; email: string; phone: string };
+ let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
+ let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
+-let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
++let typed: Typed = {}; let where: CheckoutWhere | undefined; const resets = new Set<() => void>();
+ export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
+ export const clearProbe = (): void => { typed = {}; where = undefined; };
+ export const getTyped = (): Typed => typed;
+ export const getWhere = (): CheckoutWhere | undefined => where;
+-export const registerCheckoutReset = (f: () => void): (() => void) => { reset = f; return () => { if (reset === f) reset = null; }; };
+-/** Puts Checkout back on Quick Menu, first page, nothing typed. Does nothing when Checkout is not mounted. */
+-export const resetCheckout = (): void => { try { reset?.(); } catch { /* a reset must never break training */ } };
++/** Several screens hold "how a run starts" state (Checkout itself, and the cart pane's "I have seen this review" note). Each registers its own reset. */
++export const registerCheckoutReset = (f: () => void): (() => void) => { resets.add(f); return () => { resets.delete(f); }; };
++/** Puts Checkout back to how a practice run starts: Quick Menu, first page, nothing typed, and no note that a price review has been seen. Does nothing when none of it is mounted. */
++export const resetCheckout = (): void => { for (const f of resets) { try { f(); } catch { /* a reset must never break training */ } } };
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 42f55fd..8694282 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -2,7 +2,7 @@
+ import { Spot, spotRefFor } from '../ui/Spot';
+ import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
+ import { gateAllowsTap } from '../lib/trainingGate';
+-import React, { useState } from 'react';
++import React, { useEffect, useState } from 'react';
+ import { isTraining } from '../lib/trainingGuard';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -23,6 +23,7 @@ import { gateAdjust } from '../ui/adjustGate';
+ import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
+ import { CheckChangeSheet } from './CheckChange';
+ import { useUi } from '../ui/uiProfile';
++import { registerCheckoutReset } from '../lib/trainingProbe';
+ import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
+ import type { CartLine } from '../lib/types';
+@@ -32,6 +33,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
+   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
+   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj'>('none');
++  // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
++  useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); }), []);
+   const flagged = flaggedLines(priced); const orderReasons = orderReviewReasons(cart, priced); const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
+   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
+   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
+diff --git a/src/screens/GuidedCheckout.tsx b/src/screens/GuidedCheckout.tsx
+index 2b7917e..eaa60c0 100644
+--- a/src/screens/GuidedCheckout.tsx
++++ b/src/screens/GuidedCheckout.tsx
+@@ -22,6 +22,7 @@ import AdjustmentReviewSheet from './AdjustmentReview';
+ import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+ import type { CartLine } from '../lib/types';
+ import { useUi } from '../ui/uiProfile';
++import { registerCheckoutReset } from '../lib/trainingProbe';
+ import { Enter, TabPane } from '../ui/Motion';
+ 
+ export default function GuidedCheckout() {
+@@ -30,6 +31,8 @@ export default function GuidedCheckout() {
+   const [step, setStep] = useState<StepId>('items');
+   const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change' | 'orderadj'>('none');
+   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
++  // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
++  useEffect(() => registerCheckoutReset(() => { setSheet('none'); setAdjReview(false); setAdjAck(''); setEdit(null); }), []);
+   const [edit, setEdit] = useState<CartLine | null>(null);
+   const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
+   const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 4d3c398..73cb3ea 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -142,10 +142,13 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll
+ export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
+   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
+   // A window never opens in the same moment another is closing (see lib/sheetGate.ts): iOS can leave an invisible window over the screen if it does.
++  // A window that is closing says so here, during the render, and not in the effect below: when a line window comes back as its Discount or
++  // price window closes, both change in the same render, and the opening window's effect can run first. It must already know to wait.
+   const [shown, setShown] = useState(visible); const shownRef = useRef(visible); shownRef.current = shown; const want = useRef(visible);
++  if (!visible && shown) noteSheetHide();
+   useEffect(() => {
+     if (visible === want.current) return undefined; want.current = visible;
+-    if (!visible) { noteSheetHide(); setShown(false); return undefined; }
++    if (!visible) { setShown(false); return undefined; }
+     const wait = sheetOpenDelay(); if (wait <= 0) { setShown(true); return undefined; }
+     const t = setTimeout(() => setShown(true), wait); return () => clearTimeout(t);
+   }, [visible]);
+diff --git a/tests/trainingsoftlocks.test.ts b/tests/trainingsoftlocks.test.ts
+index 57e2024..e2a7ff0 100644
+--- a/tests/trainingsoftlocks.test.ts
++++ b/tests/trainingsoftlocks.test.ts
+@@ -4,6 +4,7 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import { SHEET_GAP_MS, noteSheetHide, resetSheetGate, sheetOpenDelay } from '../src/lib/sheetGate';
++import { registerCheckoutReset, resetCheckout } from '../src/lib/trainingProbe';
+ import { customer } from '../src/training/modules/customer';
+ import { priceAdjust } from '../src/training/modules/price-adjust';
+ import { scanning } from '../src/training/modules/scanning';
+@@ -29,6 +30,25 @@ test('every Sheet goes through the gate, and its training layer follows the wind
+   const kit = src('src/ui/kit.tsx'); assert.match(kit, /noteSheetHide/); assert.match(kit, /sheetOpenDelay/); assert.match(kit, /<Modal visible=\{shown\}/); assert.match(kit, /<TrainingLayer visible=\{shown\}[^>]*\/>/);
+ });
+ 
++test('a window says it is closing during the render, so the window that opens as it closes waits', () => {
++  // The line window comes back as its Discount or price window closes: both change in the same render, and the opening
++  // window's effect runs first. If the hide is only noted in the effect, that window sees no close and opens in the same
++  // moment, and iOS leaves an invisible window over the whole screen (the Discounts Check 2 and Price Check 2 freezes).
++  const kit = src('src/ui/kit.tsx');
++  assert.match(kit, /if \(!visible && shown\) noteSheetHide\(\);/);
++  assert.doesNotMatch(kit, /if \(!visible\) \{ noteSheetHide\(\)/, 'the hide must not wait for the effect');
++});
++
++test('a practice run clears the cart pane\'s "I have seen this review" note, so a replayed Guide still opens the check', () => {
++  // Checkout and its cart pane stay mounted between a course\'s stages, so the note that the price review has been seen
++  // must be cleared when a run starts, or the Guide\'s "tap Charge" step finds nothing to show the second time around.
++  let n = 0; const offA = registerCheckoutReset(() => { n += 1; }); const offB = registerCheckoutReset(() => { n += 10; });
++  resetCheckout(); assert.equal(n, 11, 'every registered screen is reset');
++  offA(); resetCheckout(); assert.equal(n, 21, 'an unmounted screen is not reset'); offB();
++  assert.match(src('src/screens/CartPane.tsx'), /registerCheckoutReset\(\(\) => \{ setMenu\(false\); setSheet\('none'\); setEdit\(null\); setAdjReview\(false\); setAdjAck\(''\)/);
++  assert.match(src('src/screens/GuidedCheckout.tsx'), /registerCheckoutReset\(\(\) => \{ setSheet\('none'\); setAdjReview\(false\); setAdjAck\(''\)/);
++});
++
+ test('the overlay never blocks the whole screen when there is no target, and a typing step lets touches through and draws no cursor', () => {
+   const o = src('src/ui/TrainingOverlay.tsx');
+   assert.match(o, /const dim = guide && !!hole && !view\?\.scroll\?\.fully/); assert.doesNotMatch(o, /<View style=\{\[StyleSheet\.absoluteFill, \{ backgroundColor: sp\.dim \}\]\} \/>/, 'no full-screen block when there is no target');

@@ -142,10 +142,13 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll 
 export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
   // A window never opens in the same moment another is closing (see lib/sheetGate.ts): iOS can leave an invisible window over the screen if it does.
+  // A window that is closing says so here, during the render, and not in the effect below: when a line window comes back as its Discount or
+  // price window closes, both change in the same render, and the opening window's effect can run first. It must already know to wait.
   const [shown, setShown] = useState(visible); const shownRef = useRef(visible); shownRef.current = shown; const want = useRef(visible);
+  if (!visible && shown) noteSheetHide();
   useEffect(() => {
     if (visible === want.current) return undefined; want.current = visible;
-    if (!visible) { noteSheetHide(); setShown(false); return undefined; }
+    if (!visible) { setShown(false); return undefined; }
     const wait = sheetOpenDelay(); if (wait <= 0) { setShown(true); return undefined; }
     const t = setTimeout(() => setShown(true), wait); return () => clearTimeout(t);
   }, [visible]);
