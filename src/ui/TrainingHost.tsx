@@ -25,7 +25,7 @@ import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLin
 import { getLastPracticeRefund } from '../lib/trainingOrders';
 import { hintView, shouldNudge } from '../lib/trainingHints';
 import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
-import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap } from '../lib/appGraph';
+import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule } from '../lib/appGraph';
 import { gateFor, type Gesture } from '../lib/pointerGesture';
 import { setGate } from '../lib/trainingGate';
 import { layerDepth } from '../lib/trainingLayers';
@@ -112,7 +112,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture } | null> => {
           const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
           // Point at the first place that is really on screen, in the words that fit what is open now (the fix's own words first, then the app graph's walk back), so the card never contradicts itself.
-          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
+          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0, scopeForModule(mod)); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
           for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
@@ -156,7 +156,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     const kick = () => { if (busy.current) { again = true; return; } if (pending) return; pending = setTimeout(() => { pending = null; void tick().then(() => { if (again) { again = false; kick(); } }); }, 30); };
     kickRef.current = kick; const unsub = useApp.subscribe(kick);
     const t = setInterval(() => void tick(), 120); void tick();
-    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; setGate(null); };
+    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; setGate(null); clearRuntimeSpots(); };
   }, [sandbox]);
 
   return (
