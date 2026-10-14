@@ -6,7 +6,7 @@ import React, { useEffect, useState } from 'react';
 import { isTraining } from '../lib/trainingGuard';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, Field, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm, useToast } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced } from '../state/selectors';
@@ -17,6 +17,7 @@ import { invoiceRows, unitLine } from '../lib/invoiceRows';
 import { flaggedLines } from '../lib/lineAdjust';
 import { orderReviewReasons } from '../lib/orderAdjust';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+import { uid } from '../lib/ids';
 import AdjustmentReviewSheet from './AdjustmentReview';
 import SwipeRow from '../ui/SwipeRow';
 import { gateAdjust } from '../ui/adjustGate';
@@ -26,13 +27,18 @@ import { useUi } from '../ui/uiProfile';
 import { registerCheckoutReset } from '../lib/trainingProbe';
 import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
+import { CameraScanner, HidScanner } from './Scanner';
+import { isGiftQr, normaliseCode } from '../lib/giftCode';
+import { lookupGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
 import type { CartLine } from '../lib/types';
 
 export default function CartPane({ onClose }: { onClose?: () => void }) {
   const { c } = useTheme(); const ui = useUi(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
+  const toast = useToast();
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
-  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj'>('none');
+  const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj' | 'scan'>('none');
+  const [scanCam, setScanCam] = useState(false); const [scanCode, setScanCode] = useState(''); const [scanInfo, setScanInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [scanBusy, setScanBusy] = useState(false);
   // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
   useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); }), []);
   const flagged = flaggedLines(priced); const orderReasons = orderReviewReasons(cart, priced); const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
@@ -43,6 +49,33 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
   const adjRows = adjustmentRows(cart, priced);
   const charge = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else proceed(); };
   const doClear = async () => { setMenu(false); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (empty || await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) setCart(ops.emptyCart()); };
+
+  const look = async (raw: string) => {
+    setScanBusy(true);
+    try {
+      const clean = normaliseCode(raw);
+      setScanCode(clean);
+      if (isGiftQr(raw)) {
+        setScanInfo(await lookupGiftCard(clean));
+      } else {
+        // treat as a discount code
+        const presets = useApp.getState().data.presets;
+        const match = presets.find(p => normaliseCode(p.label) === clean);
+        if (match) {
+          setScanInfo({ last4: '', balanceCents: 0, initialCents: 0, enabled: true, verified: true } as GiftCardInfo);
+          setCart(cc => ops.setCartDiscount(cc, { kind: match.kind, value: match.value, label: match.label }));
+          toast.show(`Discount applied: ${match.label}`);
+        } else {
+          setScanInfo(null);
+          alertMsg('Not found', 'No gift card or discount matches that code.');
+        }
+      }
+    } catch (e: any) {
+      alertMsg('Lookup failed', e.message);
+      setScanInfo(null);
+    }
+    setScanBusy(false);
+  };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.card }}>
@@ -111,6 +144,9 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
       </View>
 
+      <HidScanner enabled={!locked && sheet === 'none' && !menu && !scanCam} onScan={code => void look(code)} />
+      <CameraScanner visible={scanCam} onClose={() => { setScanCam(false); setScanInfo(undefined); setScanCode(''); }} onScan={c => { setScanCam(false); void look(c); return 'Scanned'; }} />
+
       <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart" screen="sheet_cart_menu">
         <Row icon="trash-outline" title="Clear cart" danger onPress={doClear} />
         <Row icon="bookmark-outline" title="Save cart" onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
@@ -120,6 +156,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row spot={SPOT.cartMenuOrder} icon="cut-outline" title="Whole order price" sub={cart.orderAdjust ? `Total set to ${fmt(cart.orderAdjust.finalCents)}` : 'Set what the whole order costs'} onPress={async () => { if (empty || locked) return alertMsg(locked ? 'Payment in progress' : 'Cart is empty'); if (await gateAdjust('order', !!cart.orderAdjust, () => setCart(cc => ops.setOrderAdjust(cc, undefined)))) open('orderadj'); }} />
         <Row icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
+        <Row icon="qr-code-outline" title="Scan gift card / discount" onPress={() => { setScanCam(true); setScanCode(''); setScanInfo(undefined); open('scan'); }} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
       </Sheet>
       <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles" screen="sheet_bundles">
@@ -142,6 +179,30 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
       <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
       <SaveCartSheet visible={sheet === 'save'} onClose={() => setSheet('none')} onSaved={() => setCart(ops.emptyCart())} />
       <CustomerSheet startCreating={sheet === 'newcustomer'} visible={sheet === 'customer' || sheet === 'newcustomer'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
+      <Sheet visible={sheet === 'scan' && !scanCam} onClose={() => { setSheet('none'); setScanInfo(undefined); setScanCode(''); }} title="Scan gift card / discount">
+        <Field kind="code" label="Code" value={scanCode} onChangeText={t => { setScanCode(normaliseCode(t)); setScanInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
+        <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setScanCam(true)} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(scanCode)} busy={scanBusy} disabled={scanCode.trim().length < 4} style={{ flex: 1 }} /></View>
+        {scanInfo === null ? <Txt color="#DC2626" style={{ marginTop: 14 }}>No gift card or discount found for that code.</Txt> : null}
+        {scanInfo && scanInfo.balanceCents > 0 && scanInfo.enabled ? (
+          <View style={{ marginTop: 16, gap: 4 }}>
+            <Txt sub>Gift card ••••{scanInfo.last4}</Txt>
+            <Money cents={scanInfo.balanceCents} size={34} weight="700" />
+            <Txt sub size={13}>{scanInfo.enabled ? 'Active' : 'Disabled'}{scanInfo.verified ? '' : ' · code could not be verified'}{scanInfo.expiresOn ? ` · expires ${scanInfo.expiresOn}` : ''}</Txt>
+            <Btn title="Use as payment" onPress={() => {
+              const code = scanCode; const info = scanInfo;
+              setCart(cc => ({ ...cc, tenders: [...(cc.tenders ?? []), { id: uid(), kind: 'gift_card', amountCents: Math.min(info.balanceCents, priced.netCents), giftCardId: info.id, giftCardCode: normaliseCode(code), at: new Date().toISOString() }] }));
+              setSheet('none'); setScanInfo(undefined); setScanCode(''); nav.push('pay');
+            }} style={{ marginTop: 10 }} />
+          </View>
+        ) : null}
+        {scanInfo && scanInfo.balanceCents === 0 && scanInfo.enabled && scanInfo.verified ? (
+          <View style={{ marginTop: 16, gap: 4 }}>
+            <Txt sub>Discount code recognised</Txt>
+            <Txt sub size={13}>The discount has been applied to the cart.</Txt>
+          </View>
+        ) : null}
+      </Sheet>
+      <CameraScanner visible={scanCam} onClose={() => { setScanCam(false); setScanInfo(undefined); setScanCode(''); }} title="Scan gift card / discount" onScan={c => { setScanCam(false); void look(c); return 'Scanned'; }} />
     </View>
   );
 }

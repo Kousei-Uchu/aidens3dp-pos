@@ -15,9 +15,10 @@ import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } 
 import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
 import { lookupGiftCard, debitGiftCard, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
-import { normaliseCode } from '../lib/giftCode';
+import { normaliseCode, isGiftQr } from '../lib/giftCode';
 import { maskedLast4 } from '../lib/cards';
 import { GiftCheckSheet } from './sheets';
+import { CameraScanner, HidScanner } from './Scanner';
 import { CancelCashSheet, CashSheet, type CashResult } from './CashSheet';
 import { cashDue, postCashSale, recordCancelledCashTender } from '../lib/cashSale';
 import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
@@ -242,6 +243,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
         <Keypad value={splitDigits} onChange={setSplitDigits} submitLabel="Continue" onSubmit={() => { const v = digitsToCents(splitDigits); if (v >= remaining) { alertMsg('Amount must be less than the remaining total'); return; } setPlan(firstPlan(remaining, v)); setSplitOpen(false); }} />
       </Sheet>
 
+      <HidScanner enabled={!gift && !splitOpen && !cashOpen && card.phase === 'idle'} onScan={code => { if (isGiftQr(code)) { setGift(true); setTimeout(() => { const sheet = document.querySelector('[screen="sheet_gift_check"]'); } , 300); } else { alertMsg('Not a gift card', 'Scan a gift card QR code to pay with a gift card.'); } }} />
       <GiftCheckSheet visible={gift} onClose={() => setGift(false)} onUse={(g, code) => void useGift(g, code)} />
       <CancelCashSheet visible={!!cancelCash} tenders={cancelCash ?? []} onDone={returned => finishCancellation(returned)} />
       {done ? <ReceiptPrompt sale={done} onDone={finishAll} /> : null}
