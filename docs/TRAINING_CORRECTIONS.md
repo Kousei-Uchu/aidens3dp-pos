@@ -6,7 +6,8 @@ Legend: **[LOCK]** soft lock or cannot progress · **[BUG]** wrong behaviour · 
 
 ## Status
 
-- **0119 (done, awaiting device test T30):** 1.1 to 1.7 and all of section 2 (soft locks, typing steps, the cursor), plus the scan window's order and result box and the note validation in Customers. 1.2 was found by reading the code and not reproduced; the best explanation is the iOS two-windows problem (see 0097), fixed for every window.
+- **0119 (device-tested, follow-ups in 0120):** 1.1 to 1.7 and all of section 2 (soft locks, typing steps, the cursor), plus the scan window's order and result box and the note validation in Customers. 1.2 was found by reading the code and not reproduced; the best explanation is the iOS two-windows problem (see 0097), fixed for every window. The device test found the window hand-off still failed when a **sub-window** closed (see 0120): 1.2 and the Change a price Check 2 goal 1 still froze, and a replayed Guide step 25 had no review to show.
+- **0120 (awaiting device test T31):** the two follow-ups from the 0119 device test. A window now says it is closing during the render, so the line window that opens as its Discount or price window closes really waits (fixes 1.2 and Change a price Check 2 goal 1). And a practice run clears the cart pane's "I have seen this price review" note, so a replayed Guide still opens the review at step 25.
 - **Still to do:** section 3 (Show animation), section 4 (per module), section 5 (app changes).
 
 ## 1. Soft locks and dead ends (fix first)

@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { SHEET_GAP_MS, noteSheetHide, resetSheetGate, sheetOpenDelay } from '../src/lib/sheetGate';
+import { registerCheckoutReset, resetCheckout } from '../src/lib/trainingProbe';
 import { customer } from '../src/training/modules/customer';
 import { priceAdjust } from '../src/training/modules/price-adjust';
 import { scanning } from '../src/training/modules/scanning';
@@ -27,6 +28,25 @@ test('a window waits for the one before it to finish closing, and opens at once 
 
 test('every Sheet goes through the gate, and its training layer follows the window that is really showing', () => {
   const kit = src('src/ui/kit.tsx'); assert.match(kit, /noteSheetHide/); assert.match(kit, /sheetOpenDelay/); assert.match(kit, /<Modal visible=\{shown\}/); assert.match(kit, /<TrainingLayer visible=\{shown\}[^>]*\/>/);
+});
+
+test('a window says it is closing during the render, so the window that opens as it closes waits', () => {
+  // The line window comes back as its Discount or price window closes: both change in the same render, and the opening
+  // window's effect runs first. If the hide is only noted in the effect, that window sees no close and opens in the same
+  // moment, and iOS leaves an invisible window over the whole screen (the Discounts Check 2 and Price Check 2 freezes).
+  const kit = src('src/ui/kit.tsx');
+  assert.match(kit, /if \(!visible && shown\) noteSheetHide\(\);/);
+  assert.doesNotMatch(kit, /if \(!visible\) \{ noteSheetHide\(\)/, 'the hide must not wait for the effect');
+});
+
+test('a practice run clears the cart pane\'s "I have seen this review" note, so a replayed Guide still opens the check', () => {
+  // Checkout and its cart pane stay mounted between a course\'s stages, so the note that the price review has been seen
+  // must be cleared when a run starts, or the Guide\'s "tap Charge" step finds nothing to show the second time around.
+  let n = 0; const offA = registerCheckoutReset(() => { n += 1; }); const offB = registerCheckoutReset(() => { n += 10; });
+  resetCheckout(); assert.equal(n, 11, 'every registered screen is reset');
+  offA(); resetCheckout(); assert.equal(n, 21, 'an unmounted screen is not reset'); offB();
+  assert.match(src('src/screens/CartPane.tsx'), /registerCheckoutReset\(\(\) => \{ setMenu\(false\); setSheet\('none'\); setEdit\(null\); setAdjReview\(false\); setAdjAck\(''\)/);
+  assert.match(src('src/screens/GuidedCheckout.tsx'), /registerCheckoutReset\(\(\) => \{ setSheet\('none'\); setAdjReview\(false\); setAdjAck\(''\)/);
 });
 
 test('the overlay never blocks the whole screen when there is no target, and a typing step lets touches through and draws no cursor', () => {

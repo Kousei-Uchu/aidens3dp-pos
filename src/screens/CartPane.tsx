@@ -2,7 +2,7 @@
 import { Spot, spotRefFor } from '../ui/Spot';
 import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
 import { gateAllowsTap } from '../lib/trainingGate';
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { isTraining } from '../lib/trainingGuard';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -23,6 +23,7 @@ import { gateAdjust } from '../ui/adjustGate';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
 import { CheckChangeSheet } from './CheckChange';
 import { useUi } from '../ui/uiProfile';
+import { registerCheckoutReset } from '../lib/trainingProbe';
 import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
 import type { CartLine } from '../lib/types';
@@ -32,6 +33,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj'>('none');
+  // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
+  useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); }), []);
   const flagged = flaggedLines(priced); const orderReasons = orderReviewReasons(cart, priced); const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.

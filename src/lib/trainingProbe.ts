@@ -15,11 +15,12 @@ const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (so
 export type CustomerDraft = { first: string; last: string; email: string; phone: string };
 let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
-let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
+let typed: Typed = {}; let where: CheckoutWhere | undefined; const resets = new Set<() => void>();
 export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
 export const clearProbe = (): void => { typed = {}; where = undefined; };
 export const getTyped = (): Typed => typed;
 export const getWhere = (): CheckoutWhere | undefined => where;
-export const registerCheckoutReset = (f: () => void): (() => void) => { reset = f; return () => { if (reset === f) reset = null; }; };
-/** Puts Checkout back on Quick Menu, first page, nothing typed. Does nothing when Checkout is not mounted. */
-export const resetCheckout = (): void => { try { reset?.(); } catch { /* a reset must never break training */ } };
+/** Several screens hold "how a run starts" state (Checkout itself, and the cart pane's "I have seen this review" note). Each registers its own reset. */
+export const registerCheckoutReset = (f: () => void): (() => void) => { resets.add(f); return () => { resets.delete(f); }; };
+/** Puts Checkout back to how a practice run starts: Quick Menu, first page, nothing typed, and no note that a price review has been seen. Does nothing when none of it is mounted. */
+export const resetCheckout = (): void => { for (const f of resets) { try { f(); } catch { /* a reset must never break training */ } } };
