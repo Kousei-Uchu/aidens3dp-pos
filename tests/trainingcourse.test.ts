@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, stepRules, trackStray } from '../src/lib/trainingCourse';
+import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, fixCandidates, freshStray, stepRules, trackStray } from '../src/lib/trainingCourse';
 import { snapOf } from '../src/lib/trainingConds';
-import { SPOT, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
+import { SPOT, cartLineSpot, gridItemSpot, lineMinusSpot } from '../src/lib/trainingSpots';
 import { validateModule, type Goal, type TrainSnap } from '../src/lib/trainingModule';
 import { welcome } from '../src/training/modules/welcome';
 import { isKnownSpot } from '../src/lib/trainingSpots';
@@ -37,6 +37,15 @@ test('too many of one item is caught only when quantity changes are not allowed'
   const d = diagnose(goal(['add']), frame, snap(), snap({ lines: [line('train-v-egg', 2)] }))!; assert.equal(d.kind, 'qty'); assert.match(d.say, /one is enough/);
   assert.equal(diagnose(goal(['add', 'qty']), frame, snap(), snap({ lines: [line('train-v-egg', 2)] })), null);
   const b = snap({ lines: [line('train-v-bee', 2)] }); assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee', 3)] }))!.kind, 'qty');
+});
+test('the minus fix asks for as many taps as it takes, so the dock can show it', () => {
+  const q = diagnose(goal(['add']), frame, snap(), snap({ lines: [line('train-v-egg', 3)] }))!;
+  assert.equal(q.kind, 'qty');
+  const open = fixCandidates(q, true);
+  assert.equal(open[0].target, lineMinusSpot('train-v-egg'));
+  assert.equal(open[0].repeat, 2, 'three items where one is enough is two presses of minus');
+  // With no window open the count rides only on the window fix; the plain answer is the swipe, which takes no count.
+  assert.equal(fixCandidates(q, false)[0].repeat, undefined);
 });
 test('discounts, price changes, customers, notes and payments the goal did not ask for', () => {
   const b = snap({ lines: [line('train-v-bee')] });

@@ -260,3 +260,12 @@ test('a fix inside the open item window is not told to close it, and one outside
   assert.ok(nav.some(c => c.target === SPOT.lineDone), 'and walks out through Done');
   clearRuntimeSpots();
 });
+
+test('a runtime control can ask for a repeat, and the walk carries it', () => {
+  clearRuntimeSpots();
+  registerRuntimeSpots([{ spot: lineMinusSpot('bee'), repeat: 3 }]);
+  const steps = planToSpot(lineMinusSpot('bee'), 'tab_checkout');
+  assert.equal(steps[steps.length - 1].target, lineMinusSpot('bee'));
+  assert.equal(steps[steps.length - 1].repeat, 3, 'three presses of minus rides on the step, not as three steps');
+  clearRuntimeSpots();
+});
