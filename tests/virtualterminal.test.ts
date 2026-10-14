@@ -53,9 +53,9 @@ test('light and dark mode survive a reset and a new payment', () => {
 });
 test('every screen has copy, a preview, and screens that wait for a person have no automatic move', () => {
   for (const sc of VT_SCREENS) { assert.ok(COPY[sc], sc); assert.equal(previewState(sc).screen, sc); }
-  // `unavailable` waits for a person too (the terminal offers no way to move it on), so it has no automatic move.
-  for (const sc of ['sleep', 'amount', 'pin', 'processing', 'unavailable'] as const) assert.equal(autoAction(previewState(sc)), null, sc);
-  for (const sc of ['approved', 'declined', 'cancelled', 'receipt', 'removeCard'] as const) { assert.ok(DWELL_MS[sc] > 0); assert.ok(autoAction(previewState(sc)), sc); }
+  // `unavailable` is a message screen like the rest: it moves on by itself, so the terminal never sticks on it.
+  for (const sc of ['sleep', 'amount', 'pin', 'processing'] as const) assert.equal(autoAction(previewState(sc)), null, sc);
+  for (const sc of ['approved', 'declined', 'cancelled', 'receipt', 'removeCard', 'unavailable'] as const) { assert.ok(DWELL_MS[sc] > 0); assert.ok(autoAction(previewState(sc)), sc); }
   assert.deepEqual(autoAction(previewState('removeCard')), { t: 'removed' });
   assert.match(screenText(previewState('amount', false, 4500)).line, /\$45\.00/);
 });

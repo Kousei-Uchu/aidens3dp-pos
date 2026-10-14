@@ -68,7 +68,7 @@ export function vtReduce(s: VtState, a: VtAction): VtState {
 export const isIdle = (s: VtState): boolean => s.screen === 'sleep';
 
 /** How long a message screen stays when nobody is in charge of moving on (the automatic mode). Zero means it waits for somebody. */
-export const DWELL_MS: Readonly<Record<VtScreen, number>> = { sleep: 0, amount: 0, pin: 0, processing: 0, approved: 1800, declined: 2600, removeCard: 1200, cancelled: 1500, receipt: 3500, unavailable: 0 };
+export const DWELL_MS: Readonly<Record<VtScreen, number>> = { sleep: 0, amount: 0, pin: 0, processing: 0, approved: 1800, declined: 2600, removeCard: 1200, cancelled: 1500, receipt: 3500, unavailable: 3000 };
 /** What an unattended terminal does next, or null if it waits. The removeCard screen is the only one that needs a different action. */
 export const autoAction = (s: VtState): VtAction | null => (DWELL_MS[s.screen] === 0 ? null : s.screen === 'removeCard' ? { t: 'removed' } : { t: 'next' });
 
