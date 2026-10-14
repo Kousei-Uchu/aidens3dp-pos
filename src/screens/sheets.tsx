@@ -93,7 +93,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
     } catch (e: any) { alertMsg('Could not create customer', e.message, 'sales/customers'); } setBusy(false);
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
+    <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} screen={creating ? 'sheet_customer_new' : 'sheet_customer'} full>
       {creating ? (
         <View>
           <Spot id={SPOT.customerForm}>

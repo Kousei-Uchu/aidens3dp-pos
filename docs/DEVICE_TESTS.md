@@ -339,3 +339,25 @@ On the iPad and on a phone: **More ▸ Training ▸ Scan items**.
 6. **Leave.** Pass: after leaving, the barcode button opens your real camera again, and your real cart is exactly as you left it.
 
 Tell me: pass or fail for each step, and whether the five cards fit the window without awkward scrolling on a phone.
+
+## T28. Training: off-course guidance reads the whole app (B6, 0113)
+
+This patch changes only how the off-course card decides **where to point**; the words, the ring, the look and the feel are unchanged. Check that nothing regressed and that the ring is never left off screen. On the iPad and on a phone, in **More ▸ Training** run **Build a cart** (and any other course), and while in a Guide step or a Check goal go off course on purpose:
+
+1. **The usual ways still read the same.** Remove the wrong item, add an extra item, open a window the step did not ask for, and stray to another tab or page. Pass: each shows the same sentence and rings the same control as before this patch (check against `docs/DEVICE_TESTS.md` T12 and T22 for the exact wording).
+2. **The ring always lands on something.** On a phone especially, when the fix's own control is not on screen, the ring should land on the way back (the **Back** arrow, or the **Checkout** tab in the bottom bar) rather than showing the sentence with no ring. Pass: there is always a ring or a clear cue at the edge.
+3. **Windows.** With a window open, a fix that is not inside it still says **Close this window first.** and rings the window's x. A fix that is inside the window rings the control inside it, not the x.
+4. **Nothing from training leaks.** Leave training and use the till normally for a minute (open sheets, tabs, the cart). Pass: no course-correction card appears, nothing is ringed, and the app behaves exactly as before.
+
+Tell me: pass or fail for each step, and whether the ring ever ends up on the wrong control or off screen.
+
+## T29. Training: a run is guided only through places it has (B6, 0114)
+
+This patch changes only **which places the guidance may use**; the words and the look are unchanged. A course must never be pointed at a control the everyday till owns (the real camera), and the everyday till must never be pointed into a course. On the iPad and on a phone:
+
+1. **Practice stays in practice.** In **More ▸ Training** run **Scan items** and go off course in a way whose fix is the scan button. Pass: the ring lands on the **practice camera** button (the drawn cards window), never the real camera.
+2. **The real till stays real.** In the everyday till (Demo mode / Help) open the camera and go off course. Pass: the ring lands on the real camera control and never on a practice-only window; nothing from a course appears.
+3. **A course does not open pages it forbids.** In a course whose definition allows only the cart and pay routes, stray onto More or Orders. Pass: the card still speaks, but its walk never sends you to a page that course does not open (it points back to a place the course allows).
+4. **Nothing leaks after a run.** Finish or leave a course, then use the till. Pass: no course-only window is ever ringed, and the app behaves exactly as before.
+
+Tell me: pass or fail for each step, and whether the ring ever lands on a control the current run has no place for.

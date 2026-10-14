@@ -107,7 +107,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
       </View>
 
-      <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart">
+      <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart" screen="sheet_cart_menu">
         <Row icon="trash-outline" title="Clear cart" danger onPress={doClear} />
         <Row icon="bookmark-outline" title="Save cart" onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
@@ -118,7 +118,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
       </Sheet>
-      <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles">
+      <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles" screen="sheet_bundles">
         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
         <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
         <View style={{ gap: 8, marginTop: 16 }}>

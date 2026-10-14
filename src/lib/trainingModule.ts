@@ -55,6 +55,8 @@ export type TrainSnap = {
   /** The Cash, Gift card or Split choice that is open on the Payment page, when one is. */ payOpen?: 'cash' | 'gift' | 'split';
   /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
+  /** The graph screen node of the window open on top (a `sheet_*` screen, or the per line `sheet_line:<key>`), when the window is one the graph knows. */
+  sheet?: string;
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
   /** What is keyed in an open price window, as `item:2000`, `line:1200` or `order:3000` (cents), and the whole order price (cents) when one is set. */ priceDraft?: string; orderAdjustCents?: number;
   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };

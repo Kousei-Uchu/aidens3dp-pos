@@ -42,7 +42,7 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
   const open = async (u: string) => { if (practice) { setPracticeSent(`Practice: ${u.startsWith('sms') ? 'Messages' : 'Mail'} would open now with the receipt ready to send.`); return; } try { await Linking.openURL(u); } catch { alertMsg('Could not open that app', undefined, 'pay/receipts'); } };
   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
   return (
-    <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
+    <Sheet visible onClose={onDone} title="Receipt" dismissable={false} screen="sheet_receipt">
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
         <Image source={{ uri: BUSINESS_LOGO_URL }} resizeMode="contain" style={{ width: 32, height: 32 }} accessibilityLabel="Aiden’s 3D Printing logo" />
         <Txt size={16} weight="600">{rc.name || shop || 'Thank you for shopping with us'}</Txt>

@@ -9,7 +9,7 @@ import { useApp } from '../state/store';
 import { useTraining, realStaffId, type DockView } from '../state/trainingSession';
 import { isLockScreen } from '../lib/posLock';
 import { getModule } from '../training';
-import { measureSpot, onSpotPressed } from './Spot';
+import { measureSpot, onSpotPressed, mountedSpotIds } from './Spot';
 import { confirm } from './kit';
 import TrainingOverlay from './TrainingOverlay';
 import TrainingDock from './TrainingDock';
@@ -21,13 +21,14 @@ import { SPOT } from '../lib/trainingSpots';
 import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
-import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere } from '../lib/trainingProbe';
+import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
 import { getLastPracticeRefund } from '../lib/trainingOrders';
 import { hintView, shouldNudge } from '../lib/trainingHints';
-import { diagnose, fixCandidates, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule, isKnownScreen } from '../lib/appGraph';
 import { gateFor, type Gesture } from '../lib/pointerGesture';
 import { setGate } from '../lib/trainingGate';
-import { layerDepth } from '../lib/trainingLayers';
+import { layerDepth, topLayer } from '../lib/trainingLayers';
 import { moduleTitle, showHowAtOnce } from '../lib/trainingRemedies';
 import { isComplete, staffKey } from '../lib/trainingProgress';
 import { advanceGoal, advanceStep } from '../lib/trainingRun';
@@ -100,23 +101,29 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const fresh = key.current !== k;
         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        // The deepest window that names itself is the node the person is on; a non-window screen that replaces a page
+        // (the Return page) names itself the same way. An unnamed window (or none) leaves both out, and the page or tab
+        // under the person stands in, exactly as before.
+        const layer = topLayer();
+        const sheet = layer !== ROOT_LAYER && isKnownScreen(layer) ? layer : getRuntimeScreen();
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+        syncRuntimeFromSnap(snap); registerRuntimeSpots(mountedSpotIds()); // put this sale's cart lines, and every control on screen right now, on the app graph
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
         if (met) { advance(); return; }
         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
-        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture } | null> => {
+        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture; repeat?: number } | null> => {
           const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
-          // Point at the first place that is really on screen, in the words that fit what is open now (see fixCandidates), so the card never contradicts itself.
-          const cands = fixCandidates(tr.show, snap.sheets > 0); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
-          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
+          // Point at the first place that is really on screen, in the words that fit what is open now (the fix's own words first, then the app graph's walk back), so the card never contradicts itself.
+          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0, scopeForModule(mod)); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture; let repeat = cands[0].repeat;
+          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; repeat = cnd.repeat; break; } }
           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
           const done = taughtIn ? isComplete(st.progress, staffKey(realStaffId()), taughtIn) : false;
           const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
-          return { rect, gesture, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
+          return { rect, gesture, repeat, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
         };
         let view: DockView;
         if (cur.step) {
@@ -131,7 +138,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           const gesture: Gesture = off ? off.gesture : step.gesture ?? 'tap';
           // Inside the ringed box only what this step asks for works: a swipe step never lets a tap open the line underneath (see lib/trainingGate.ts).
           setGate(!off && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
-          view = { mode: 'guide', stage: 'guide', gesture, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
         } else {
           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
@@ -140,7 +147,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           let strayView: DockView['stray'];
           if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
           setGate(null);
-          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', repeat: off?.repeat, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
         }
         if (need.current) view = { ...view, scroll: need.current, say: scrollSay(view.say, need.current) };
         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
@@ -154,7 +161,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
     const kick = () => { if (busy.current) { again = true; return; } if (pending) return; pending = setTimeout(() => { pending = null; void tick().then(() => { if (again) { again = false; kick(); } }); }, 30); };
     kickRef.current = kick; const unsub = useApp.subscribe(kick);
     const t = setInterval(() => void tick(), 120); void tick();
-    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; setGate(null); };
+    return () => { clearInterval(t); unsub(); if (pending) clearTimeout(pending); kickRef.current = null; setGate(null); clearRuntimeSpots(); };
   }, [sandbox]);
 
   return (

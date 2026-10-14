@@ -26,6 +26,7 @@ export default function TrainingDock() {
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <View style={{ backgroundColor: sp.ring, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: sp.onRing, fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
           <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{mod?.title ?? 'Training'} · {STAGE_LABEL[run.stage]}{view ? ` · ${view.counter}` : ''}</Text>
+          {view && view.repeat && view.repeat > 1 ? <View style={{ backgroundColor: sp.ring, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: sp.onRing, fontSize: 11, fontWeight: '800' }}>{`x${view.repeat}`}</Text></View> : null}
         </View>
         {view && check && !view.stray && view.hintLevel > 0 && !!view.say ? (
           // A hint is showing: its box pulses once each time Hint is pressed (and once more if the press changes nothing), so you can see it was given.

@@ -1,0 +1,268 @@
+diff --git a/docs/ROUTEGRAPH_GUIDANCE.md b/docs/ROUTEGRAPH_GUIDANCE.md
+index e3884b8..e2ef920 100644
+--- a/docs/ROUTEGRAPH_GUIDANCE.md
++++ b/docs/ROUTEGRAPH_GUIDANCE.md
+@@ -102,6 +102,7 @@ The engine threads the scope through `reachable`, `routeNavSteps`, `guidanceCand
+ - Runs and scopes added. `src/app.navschema` gained a `modules` field on screens and edges. `src/app.navgraph` tagged the three places that differ (`overlay_camera` real, `overlay_practice_pass` sign-in, and a new `overlay_practice_camera` for scanning) - 69 screens, 157 transitions. `src/lib/appGraph.ts` gained `GuideScope`, `scopeForModule`, `scopeForReal`, `metaInScope`, `screenInScope` and `scopeFilter`, and threads a scope through `reachable`, `routeNavSteps`, `guidanceCandidates` and `planToSpot` (reusing routegraph's own `PathOptions.edgeFilter`; no library change). `src/lib/appControls.ts` corrected `scan.card:` to the practice camera. `src/ui/TrainingHost.tsx` passes `scopeForModule(mod)` and clears runtime controls when the run ends. The scope tests bring `tests/appnavgraph.test.ts` to 25.
+ - Per-instance scopes added. `registerRuntimeSpots` now takes a spot id or `{ spot, modules }`, and passes the tag as the action node's metadata, so an instance registered on a shared screen (a product tile, a customer row, a practice user) is filtered exactly like a tagged screen. routegraph carries the metadata on the action node and `scopeFilter` checks the destination's meta, so no library change. Two tests added (`tests/appnavgraph.test.ts`, 27): a tagged instance is refused in another run, an untagged instance is in every run.
+ - Per-line item windows added. The `sheet_line` screen is now a template: `src/app.navgraph` declares `VAR ITEM_KEY` and the opening edges fill it in (`cart.line:$ITEM_KEY$`), and `ensureLineWindow` (`src/lib/appGraph.ts`) registers one copy per open line, `sheet_line:<key>`, with `params: { ITEM_KEY: key }` (routegraph resolves the variable inside the action data, so the walk points at that exact cart line). `screenOfSpot` (`src/lib/appControls.ts`) maps the line-window prefixes to `lineWindowScreen(key)` and folds the three sub sheets into it; `registerRuntimeSpots` puts the window on the graph first. `stateNode` returns `sheet_line:<key>` while a line window is open, and `sheet_line -> tab_checkout` (new) closes it, so a fix inside it is not told to close it and one outside is walked out through it. The opening edges say "Open the item's window first.", and `edgeMeta` now reads live edges so a copied edge keeps its words. 69 screens, 158 transitions; two tests (`tests/appnavgraph.test.ts`, 29).
++- A walk can carry a `repeat`. `FixCandidate` gained `repeat?: number`; the qty deviation puts its count on the window fix (`repeat: extra`), and a runtime control can too (`RuntimeSpot` gained `repeat`, which rides on the action node). routegraph resolves it onto the instruction action (`InstructionAction.repeat`), `candidateFromStep` reads it back, `DockView` gained `repeat`, and the dock shows a small `xN` chip. The words are unchanged (the qty fix already says "take two out"), so this is the visual count beside them. One test each in `tests/trainingcourse.test.ts` and `tests/appnavgraph.test.ts`.
+ 
+ ### What the graph adds over the old logic
+ 
+@@ -116,7 +117,6 @@ The graph also mirrors the old window rule (close a window first when a fix sits
+ 
+ ### Still to do
+ 
+-- Let the dock show the `repeat` a walk asks for (tap the minus button N times) once wording is agreed.
+-- Move the control-to-screen table's last rough edges onto screen metadata once the graph is the only source.
++- Move the control-to-screen table's last rough edges onto screen metadata once the graph is the only source. This needs a new capability first: the graph must know *which* window is open, not just that one is (like `openLine` does for a line). Today `stateNode` folds every sheet into the page under it, so a control that really lives on a sheet (`bundle.continue` on `sheet_bundles`, `receipt.none` on `sheet_receipt`, `refund.go` on `sheet_refund`, `customer.create` on `sheet_customer`, and the rest) is listed on the tab in `appControls.ts` on purpose. Moving them onto their sheet screens now would make the graph add a spurious "open the window" step while that window is already open; it is hidden behind the plain answer today, but it is wrong and would surface as soon as the graph leads.
+ - Tag more places as modules grow: today only the camera (practice vs real) and the practice pass differ as *places*, so only they carry `modules` on a screen. Any future module-only screen (a new practice sheet, a course-only page) should be tagged the same way rather than special-cased in code. An instance that differs (a product a course has, a user it runs as) is tagged when it is registered.
+ - Give a module its own practice data. Today every course runs the one shared sandbox (`buildSandbox` in `src/lib/trainingSandbox.ts`) and only `practiceStaff`, `flow`, `tabs`/`routes` and per-goal `inject`s differ; a course's item library, grid and users are the same as every other course's. If a course should have a world of its own (its own items, its own grid pages, its own fake users), add a module field for it and build it in `buildSandbox`, then tag the instances that only that course has (`{ spot, modules }`), which the engine already filters.
+diff --git a/docs/patches/0117-plan.md b/docs/patches/0117-plan.md
+new file mode 100644
+index 0000000..0af7494
+--- /dev/null
++++ b/docs/patches/0117-plan.md
+@@ -0,0 +1,25 @@
++# Patch 0117: Routegraph walk repeat (show "xN" when a control is used more than once)
++
++Stacks on 0116. Not a training course: this lets a fix or a walk carry the number of times a control is used in a row, and shows it. The living plan and log is `docs/ROUTEGRAPH_GUIDANCE.md`.
++
++## What you asked
++> do all of the above :3 lets start with 1-4
++
++This is item 3 of the "Still to do" list (the dock's `repeat`). Item 1 was already answered (`src/lib/trainingSandbox.ts`), item 2 landed in 0116, and item 4 is deferred on purpose (see below).
++
++## How it works
++- **A fix can ask for more than one press.** `FixCandidate` (`src/lib/trainingCourse.ts`) gained `repeat?: number`, and the qty deviation puts its count on the window fix (`repeat: extra`), where `extra` is how many units too many there are. So "three items where one is enough" carries `repeat: 2`.
++- **The graph can too.** `RuntimeSpot` (`src/lib/appGraph.ts`) gained `repeat`, which rides on the action node (`registerActions` accepts `repeat`). routegraph resolves it onto the instruction action (`InstructionAction.repeat`), and `candidateFromStep` reads it back, so a walk with a repeat comes out as one step with a count, not repeated steps.
++- **The dock shows it.** `DockView` (`src/state/trainingSession.ts`) gained `repeat`; `TrainingHost` carries it from the chosen candidate; `TrainingDock` draws a small `xN` chip beside the counter. The words are untouched: the qty fix already says "take two out", so this is the count beside them, not a replacement.
++- **Tests**: `tests/trainingcourse.test.ts` (the qty window fix carries the count, the plain swipe does not); `tests/appnavgraph.test.ts` (a runtime control's repeat rides on the planned step, not as repeated steps).
++
++## Not covered
++Item 4 (moving the control-to-screen table's last rough edges onto screen metadata) is deferred, and the reason is now written down: it needs the graph to know *which* window is open (like `openLine` does for a line window). Today every sheet folds into the page under it, so listing a sheet control on the tab is deliberate; moving it onto the sheet now would make the graph add a spurious "open the window" step while it is already open. That is hidden behind the plain answer today, but it is wrong, and it would surface the moment the graph leads. Items 5-7 (device tests, the next course, the stashes) are unchanged.
++
++## Checklist
++1. [x] `src/lib/trainingCourse.ts`: `Deviation.window.repeat`, `FixCandidate.repeat`, the qty window carries the count.
++2. [x] `src/lib/appGraph.ts`: `RuntimeSpot.repeat`, `repeatOfStep`, `candidateFromStep`.
++3. [x] `src/state/trainingSession.ts`, `src/ui/TrainingHost.tsx`, `src/ui/TrainingDock.tsx`: carry and draw `repeat`.
++4. [x] Tests: `tests/trainingcourse.test.ts`, `tests/appnavgraph.test.ts`.
++5. [x] `npm run typecheck` clean; full suite (the one failure is pre-existing on `origin/main`: `tests/virtualterminal.test.ts`, "every screen has copy...").
++6. [x] `docs/ROUTEGRAPH_GUIDANCE.md` (living plan/log).
+diff --git a/src/lib/appGraph.ts b/src/lib/appGraph.ts
+index 1a13cc8..7b824fd 100644
+--- a/src/lib/appGraph.ts
++++ b/src/lib/appGraph.ts
+@@ -127,6 +127,12 @@ function spotOfStep(step: InstructionStep, meta: JsonObject): string | undefined
+   return undefined;
+ }
+ 
++/** How many times a step's action is performed in a row, when the graph asks for more than one (shown as "xN"). */
++function repeatOfStep(step: InstructionStep): number | undefined {
++  for (const a of step.actions) if (typeof a.repeat === 'number' && a.repeat > 1) return a.repeat;
++  return undefined;
++}
++
+ /** Turn one graph step into the candidate the dock and overlay already know how to draw. */
+ function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate | null {
+   const meta = edgeMeta(step.edge);
+@@ -134,7 +140,7 @@ function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate
+   if (!spot) return null;
+   const prefix = typeof meta.say === 'string' ? meta.say : '';
+   const say = [prefix, fixSay].filter(Boolean).join(' ').trim();
+-  return { target: spot, say, gesture: gestureFromStep(step, meta) };
++  return { target: spot, say, gesture: gestureFromStep(step, meta), repeat: repeatOfStep(step) };
+ }
+ 
+ /**
+@@ -182,8 +188,11 @@ export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' |
+  * everyday till. This is the per-instance half of a scope: screens and edges are tagged in `src/app.navgraph`, while
+  * the records a run builds (products, tiles, rows, users) are tagged here, so a run never names an instance it does not
+  * have even when two runs share the same screen.
++ *
++ * `repeat` is how many times the control is used in a row (the minus button, to take more than one out). It rides on
++ * the action node and comes back on the candidate the dock draws, as "xN". Left out: once.
+  */
+-export type RuntimeSpot = string | { spot: string; modules?: readonly string[] };
++export type RuntimeSpot = string | { spot: string; modules?: readonly string[]; repeat?: number };
+ 
+ /**
+  * Put one line's window on the graph, a copy of the shared `sheet_line` template named `sheet_line:<key>` (the copy's
+@@ -206,14 +215,15 @@ export function registerRuntimeSpots(spots: readonly RuntimeSpot[]): void {
+   for (const entry of spots) {
+     const spot = typeof entry === 'string' ? entry : entry.spot;
+     const modules = typeof entry === 'string' ? undefined : entry.modules;
++    const repeat = typeof entry === 'string' ? undefined : entry.repeat;
+     const node = nodeForSpot(spot); if (registered.has(node)) continue;
+     const screen = screenOfSpot(spot); if (!screen) continue;
+     if (screen.startsWith('sheet_line:')) ensureLineWindow(t, screen.slice('sheet_line:'.length));
+     if (!t.hasScreen(screen)) continue;
+     const gesture = gestureOfSpot(spot);
+     const action = gesture === 'swipe-left'
+-      ? { type: 'SWIPE', data: { direction: 'left', target: spot } as JsonObject }
+-      : { type: 'TAP', data: { target: spot } as JsonObject };
++      ? { type: 'SWIPE', data: { direction: 'left', target: spot } as JsonObject, ...(repeat && repeat > 1 ? { repeat } : {}) }
++      : { type: 'TAP', data: { target: spot } as JsonObject, ...(repeat && repeat > 1 ? { repeat } : {}) };
+     const meta = modules && modules.length ? { modules: [...modules] } : undefined;
+     try { registerActions(t, screen, { [node]: meta ? { name: spot, actions: [action], meta } : { name: spot, actions: [action] } }, { onDuplicate: 'skip' }); registered.add(node); }
+     catch { /* a control that cannot be added never blocks guidance */ }
+diff --git a/src/lib/trainingCourse.ts b/src/lib/trainingCourse.ts
+index 86e0f7e..7edda57 100644
+--- a/src/lib/trainingCourse.ts
++++ b/src/lib/trainingCourse.ts
+@@ -23,7 +23,8 @@ export type Deviation = {
+   /** The same fix when a window (a sheet) is already open: the control inside it, and what to say. Left out: the window is in the way, so close it first. */
+   /** Steps inside windows, deepest first: the first one on screen is shown, so the highlight follows the person down into the fix and back out of a wrong turn. */
+   chain?: { target: string; say: string; gesture?: Gesture }[];
+-  window?: { say: string; target: string };
++  /** `repeat` is how many times the control is used in a row (the minus button, to take more than one out), so the dock can show it. */
++  window?: { say: string; target: string; repeat?: number };
+   /** `undo`: the person can put it right with the control pointed at. `restart`: only starting this part again fixes it. */
+   fix: 'undo' | 'restart';
+   /** The plain steps to put it right, and the module that teaches them (see trainingRemedies.ts). Filled in by `diagnose`. */
+@@ -107,7 +108,7 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
+     if (c.qty > wanted && !allow.has('qty')) {
+       const extra = c.qty - wanted; const take = extra === 1 ? 'one' : plural(extra, 'unit');
+       return { id: `qty:${k}`, kind: 'qty', fix: 'undo', title: `Too many ${name(l)}`, say: b === 0 ? `You have ${c.qty} of the ${name(l)}, and one is enough here. Take ${take} out.` : `The ${name(l)} was only meant to be ${b}. Take ${take} out.`, target, via: SPOT.cartOpen,
+-        ...(lineKeyOf(l) ? { window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: lineMinusSpot(lineKeyOf(l)!) } } : {}) };
++        ...(lineKeyOf(l) ? { window: { say: `You are in the right place. Tap the minus button until the quantity is right (take ${take} out), then tap Close.`, target: lineMinusSpot(lineKeyOf(l)!), repeat: extra } } : {}) };
+     }
+   }
+ 
+@@ -133,8 +134,8 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
+   return null;
+ }
+ 
+-/** One place to point at, with the words for it and how the person gets there. */
+-export type FixCandidate = { target?: string; say: string; gesture: Gesture };
++/** One place to point at, with the words for it and how the person gets there. `repeat` is how many times to use it in a row (only the minus button asks for more than one). */
++export type FixCandidate = { target?: string; say: string; gesture: Gesture; repeat?: number };
+ /**
+  * The places to point at for a stray, best first, given whether a window is open. The driver takes the first whose target is really on screen.
+  * With a window open, a mistake that has a fix inside it points there (and says so), otherwise it asks for the window to be closed first, so the card
+@@ -149,7 +150,7 @@ export function fixCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
+   const page: FixCandidate = { target: d.target, say: d.say, gesture: d.gesture ?? 'tap' };
+   if (windowOpen) {
+     const closeFirst: FixCandidate = { target: SPOT.sheetClose, say: d.target === SPOT.sheetClose ? d.say : `Close this window first. ${d.say}`, gesture: 'tap' };
+-    return d.window ? [{ target: d.window.target, say: d.window.say, gesture: 'tap' }, closeFirst] : d.target === SPOT.sheetClose || d.target === SPOT.back ? [page] : [page, closeFirst];
++    return d.window ? [{ target: d.window.target, say: d.window.say, gesture: 'tap', repeat: d.window.repeat }, closeFirst] : d.target === SPOT.sheetClose || d.target === SPOT.back ? [page] : [page, closeFirst];
+   }
+   const out: FixCandidate[] = [page];
+   if (d.via) out.push({ target: d.via, say: d.via === SPOT.cartOpen ? `Open the cart first. ${d.say}` : d.say, gesture: 'tap' });
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index 848f81b..6e30000 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -28,6 +28,8 @@ export type DockView = {
+   scroll?: { dir: 'up' | 'down'; fully: boolean };
+   /** How the cursor reaches the ringed spot: a tap, a swipe, a scroll, a hold. Left out: a tap. */
+   gesture?: Gesture;
++  /** How many times the pointed-at control is used in a row (the minus button, to take more than one out). Set only when more than one. */
++  repeat?: number;
+   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
+   stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean; how: string[]; taught?: { id: string; title: string; done: boolean }; showHow: boolean };
+ };
+diff --git a/src/ui/TrainingDock.tsx b/src/ui/TrainingDock.tsx
+index bf2800e..bd33aea 100644
+--- a/src/ui/TrainingDock.tsx
++++ b/src/ui/TrainingDock.tsx
+@@ -26,6 +26,7 @@ export default function TrainingDock() {
+         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+           <View style={{ backgroundColor: sp.ring, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: sp.onRing, fontSize: 11, fontWeight: '800' }}>PRACTICE</Text></View>
+           <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700' }} numberOfLines={1}>{mod?.title ?? 'Training'} · {STAGE_LABEL[run.stage]}{view ? ` · ${view.counter}` : ''}</Text>
++          {view && view.repeat && view.repeat > 1 ? <View style={{ backgroundColor: sp.ring, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2 }}><Text style={{ color: sp.onRing, fontSize: 11, fontWeight: '800' }}>{`x${view.repeat}`}</Text></View> : null}
+         </View>
+         {view && check && !view.stray && view.hintLevel > 0 && !!view.say ? (
+           // A hint is showing: its box pulses once each time Hint is pressed (and once more if the press changes nothing), so you can see it was given.
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 1f26ce4..0e75bbf 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -109,16 +109,16 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
+         if (met) { advance(); return; }
+         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
+-        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture } | null> => {
++        const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture; repeat?: number } | null> => {
+           const tr = trackStray(stray.current, dev, Date.now()); stray.current = tr.tracker; if (!tr.show) return null;
+           // Point at the first place that is really on screen, in the words that fit what is open now (the fix's own words first, then the app graph's walk back), so the card never contradicts itself.
+-          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0, scopeForModule(mod)); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture;
+-          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; break; } }
++          const cands = guidanceCandidates(tr.show, snap, snap.sheets > 0, scopeForModule(mod)); let rect: Rect | null = null; let sayNow = cands[0].say; let gesture: Gesture = cands[0].gesture; let repeat = cands[0].repeat;
++          for (const cnd of cands) { const r = await spot(cnd.target); if (r) { rect = r; sayNow = cnd.say; gesture = cnd.gesture; repeat = cnd.repeat; break; } }
+           // Where the fix is taught, and whether this person has finished it. Finished: the steps wait behind a small button. Not finished: they show at once.
+           const taughtIn = tr.show.taughtIn ?? (tr.show.kind === 'watch' ? mod.id : undefined);
+           const done = taughtIn ? isComplete(st.progress, staffKey(realStaffId()), taughtIn) : false;
+           const taught = taughtIn ? { id: taughtIn, title: moduleTitle(taughtIn, getModule(taughtIn)), done } : undefined;
+-          return { rect, gesture, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
++          return { rect, gesture, repeat, view: { title: tr.show.title, say: sayNow, fix: tr.show.fix, offerRestart: tr.offerRestart, how: tr.show.how ?? [], taught, showHow: showHowAtOnce(taughtIn, done) } };
+         };
+         let view: DockView;
+         if (cur.step) {
+@@ -133,7 +133,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           const gesture: Gesture = off ? off.gesture : step.gesture ?? 'tap';
+           // Inside the ringed box only what this step asks for works: a swipe step never lets a tap open the line underneath (see lib/trainingGate.ts).
+           setGate(!off && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
+-          view = { mode: 'guide', stage: 'guide', gesture, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
++          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+         } else {
+           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
+           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
+@@ -142,7 +142,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           let strayView: DockView['stray'];
+           if (off) { rect = off.rect; say = off.view!.say; strayView = off.view; }
+           setGate(null);
+-          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
++          view = { mode: 'check', stage: st.run.stage, gesture: off ? off.gesture : goal.gesture ?? 'tap', repeat: off?.repeat, title: goal.title, objective: goal.title, say, rect, next: false, reveal: (hv.reveal || !!strayView) && !!rect, nudge: !strayView && shouldNudge(idleMs(), hv.level), hintLevel: hv.level, hintsLeft: hv.left, hintPress: st.hintPress, canSkip: hv.reveal, counter: `Goal ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: strayView };
+         }
+         if (need.current) view = { ...view, scroll: need.current, say: scrollSay(view.say, need.current) };
+         const s = JSON.stringify(view, (_k, v) => (typeof v === 'number' ? Math.round(v) : v));
+diff --git a/tests/appnavgraph.test.ts b/tests/appnavgraph.test.ts
+index 8346e8e..efa9ba5 100644
+--- a/tests/appnavgraph.test.ts
++++ b/tests/appnavgraph.test.ts
+@@ -260,3 +260,12 @@ test('a fix inside the open item window is not told to close it, and one outside
+   assert.ok(nav.some(c => c.target === SPOT.lineDone), 'and walks out through Done');
+   clearRuntimeSpots();
+ });
++
++test('a runtime control can ask for a repeat, and the walk carries it', () => {
++  clearRuntimeSpots();
++  registerRuntimeSpots([{ spot: lineMinusSpot('bee'), repeat: 3 }]);
++  const steps = planToSpot(lineMinusSpot('bee'), 'tab_checkout');
++  assert.equal(steps[steps.length - 1].target, lineMinusSpot('bee'));
++  assert.equal(steps[steps.length - 1].repeat, 3, 'three presses of minus rides on the step, not as three steps');
++  clearRuntimeSpots();
++});
+diff --git a/tests/trainingcourse.test.ts b/tests/trainingcourse.test.ts
+index fd8805d..b337567 100644
+--- a/tests/trainingcourse.test.ts
++++ b/tests/trainingcourse.test.ts
+@@ -1,8 +1,8 @@
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, freshStray, stepRules, trackStray } from '../src/lib/trainingCourse';
++import { STRAY_GRACE_MS, STRAY_OFFER_RESTART_MS, diagnose, fixCandidates, freshStray, stepRules, trackStray } from '../src/lib/trainingCourse';
+ import { snapOf } from '../src/lib/trainingConds';
+-import { SPOT, cartLineSpot, gridItemSpot } from '../src/lib/trainingSpots';
++import { SPOT, cartLineSpot, gridItemSpot, lineMinusSpot } from '../src/lib/trainingSpots';
+ import { validateModule, type Goal, type TrainSnap } from '../src/lib/trainingModule';
+ import { welcome } from '../src/training/modules/welcome';
+ import { isKnownSpot } from '../src/lib/trainingSpots';
+@@ -38,6 +38,15 @@ test('too many of one item is caught only when quantity changes are not allowed'
+   assert.equal(diagnose(goal(['add', 'qty']), frame, snap(), snap({ lines: [line('train-v-egg', 2)] })), null);
+   const b = snap({ lines: [line('train-v-bee', 2)] }); assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee', 3)] }))!.kind, 'qty');
+ });
++test('the minus fix asks for as many taps as it takes, so the dock can show it', () => {
++  const q = diagnose(goal(['add']), frame, snap(), snap({ lines: [line('train-v-egg', 3)] }))!;
++  assert.equal(q.kind, 'qty');
++  const open = fixCandidates(q, true);
++  assert.equal(open[0].target, lineMinusSpot('train-v-egg'));
++  assert.equal(open[0].repeat, 2, 'three items where one is enough is two presses of minus');
++  // With no window open the count rides only on the window fix; the plain answer is the swipe, which takes no count.
++  assert.equal(fixCandidates(q, false)[0].repeat, undefined);
++});
+ test('discounts, price changes, customers, notes and payments the goal did not ask for', () => {
+   const b = snap({ lines: [line('train-v-bee')] });
+   assert.equal(diagnose(goal([]), frame, b, snap({ lines: [line('train-v-bee')], discount: true }))!.kind, 'discount');

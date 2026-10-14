@@ -15,7 +15,7 @@ export function PracticePassSheet({ visible, onClose, onScan, title }: { visible
   const pass = practicePass();
   const scan = async () => { const r = await onScan(pass.code); setLast(r ? { ok: true, text: r } : { ok: false, text: 'Not recognised. The pass may have been cancelled or replaced. Close this window and key your PIN instead.' }); };
   return (
-    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan your cashier pass'}>
+    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan your cashier pass'} screen="overlay_practice_pass">
       <View style={{ gap: 12, alignItems: 'center' }}>
         <Txt sub style={{ textAlign: 'center' }}>Practice pass. On a real till you would hold the pass under the scanner or the camera.</Txt>
         <View style={{ width: '100%', borderRadius: 16, borderWidth: 1, borderColor: c.line, backgroundColor: c.card, padding: 16, alignItems: 'center', gap: 6, opacity: pass.cancelled ? 0.6 : 1 }}>

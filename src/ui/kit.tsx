@@ -138,7 +138,7 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll 
 }
 
 /** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
-export function Sheet({ visible, onClose, title, children, full, dismissable = true }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean }) {
+export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
@@ -150,7 +150,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
           </View>
           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
         </View>
-        <TrainingLayer visible={visible} />
+        <TrainingLayer visible={visible} screen={screen} />
       </View>
     </Modal>
   );
