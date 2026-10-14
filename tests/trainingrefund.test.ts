@@ -21,8 +21,8 @@ const by = (list: any[], id: string) => list.find(x => x.id === id);
 const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
 const O1 = PRACTICE_ORDER_CARD; const O2 = PRACTICE_ORDER_CASH; const O3 = PRACTICE_ORDER_CARD2;
 
-test('the course is registered, comes last so far, and is valid', () => {
-  assert.equal(getModule('refund'), refund); assert.equal(MODULES[MODULES.length - 1], refund);
+test('the course is registered, comes before the deals course, and is valid', () => {
+  assert.equal(getModule('refund'), refund); assert.equal(MODULES.indexOf(refund) + 1, MODULES.findIndex(m => m.id === 'bundles-deals'));
   assert.deepEqual(validateModule(refund, isKnownSpot), []); assert.ok(refund.tabs.includes('more')); assert.ok(refund.routes.includes('orders'));
 });
 

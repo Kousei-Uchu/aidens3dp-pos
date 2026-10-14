@@ -6,8 +6,8 @@ Writer's guide for building a module: `src/training/README.md`. How training wor
 
 ## State of play
 
-- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) `pay-cash` (0108) and `refund` (0109, the first of tier 3, built out of order at your request) and `price-adjust` (0110).
-- **Next:** `bundles-deals` (#11).
+- **Built:** `welcome` (earlier patches), `sign-in` (0093), `cart` (0094), `find-items` (0098), `pay-card` (0099), `receipts` (0105), `customer` (0106), `discounts` (0107) `pay-cash` (0108) and `refund` (0109, the first of tier 3, built out of order at your request) `price-adjust` (0110) and `bundles-deals` (0111).
+- **Next:** `scanning` (#12).
 - **Reserved ids:** `src/lib/trainingRemedies.ts` points stray mistakes at `cart`, `discounts`, `price-adjust`, `customer` and `pay-card`, so those must use exactly those ids. `cart` now exists, so its "taught in" links work.
 - **Per-module checklist:** add the file, register it in `src/training/index.ts`, add any new spot ids to `src/lib/trainingSpots.ts`, and fill in `PLANNED_TITLES`. Each Check 2 failure needs `taughtBy`, and Check 2 never covers admin problems. A course that needs known staff sets `practiceStaff` (see 0093).
 
@@ -46,7 +46,8 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
    - As built: Guide discounts the Red Dragon on its line (keys 1, 0, Apply), then the cart with the Practice 10% preset, then removes it. Check 1 repeats that. Check 2: a no-discount item (Clearance Print, Discount row says Not discountable), an automatic deal that needs three Keyrings, and a cart discount that was put on by mistake. Practice data gained the print, a second preset and the Keyring deal. The cart injection can now start with `discountPct`. The Show covers custom $ amounts only in passing; a code preset is the same as a preset chip here.
 10. **`price-adjust`: Change a price** (done, 0110). Item, line and whole-order adjustments, reasons, and the review flag.
    - As built: Guide changes the Bumble Bee's item price ($6.00, All in cart, optional reason) and resets it, sets the Red Dragon's line price ($20.00) and removes it, sets a whole order price ($30.00), then Charge shows the review and Continue to payment. Check 1: item, line and order prices. Check 2: a price on the wrong item, a price that must cover every Sticker Pack including later ones, and a flagged price at the review (a second Bumble Bee added after the line price was set). Practice allows every role to adjust, so permission limits are explained, not practised.
-11. **`bundles-deals`: How deals show up.** Bundles and compound discounts, using the Highland cow and Tadling example. This is read-and-spot, not setup.
+11. **`bundles-deals`: How deals show up** (done, 0111). Bundles and compound discounts, using the Highland cow and Tadling example. This is read-and-spot, not setup.
+   - As built: read-and-spot, with nothing to set up. Guide builds eight Tadlings, then rings the `5 Tadlings` and `3 Tadlings` rows and the totals, adds a Small cow, and rings the Bundle deals box. Check 1: three Tadlings, five, a Small cow. Check 2: a fifth Tadling for the bigger deal, swap a Large cow for a Small one (not a recommended pair), and continue past the Check these bundles window. Practice data gained a Tadling (on the Home grid), the deals from the help's worked example (titled `2 Highland cows`, `3 Tadlings`, `5 Tadlings`, so the rows read clearly) and a practice bundle (`PRACTICE_BUNDLES`: cow with Tadling, $3 off, Small cow recommended). Note the help's worked example calls the rows `5x Tadlings`: the till shows the deal's own title, so the practice titles carry the count.
 12. **`scanning`: Scan items.** Bluetooth scanner and camera, the Done pop-up, and what a scan does on each screen.
     - Check 2: a barcode that matches nothing, and a cashier pass or gift card scanned by mistake.
 13. **`split-pay`: Split and part payments.** Equal split, by amount, and cash plus card.

@@ -9,9 +9,10 @@ import { payCard } from './modules/pay-card';
 import { receipts } from './modules/receipts';
 import { payCash } from './modules/pay-cash';
 import { customer } from './modules/customer';
+import { bundlesDeals } from './modules/bundles-deals';
 import { discounts } from './modules/discounts';
 import { priceAdjust } from './modules/price-adjust';
 import { refund } from './modules/refund';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, priceAdjust, refund];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, priceAdjust, refund, bundlesDeals];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
