@@ -17,7 +17,7 @@ export function PracticeScanSheet({ visible, onClose, onScan, title }: { visible
   useEffect(() => { if (!visible) setLast(null); }, [visible]);
   const scan = async (code: string) => { const r = await onScan(code); setLast(r ? { ok: true, text: r } : { ok: false, text: `Not found: ${code}` }); };
   return (
-    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan barcode'}>
+    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan barcode'} screen="overlay_practice_camera">
       <View style={{ gap: 12 }}>
         <Txt sub>Practice camera. On a real till you would hold each barcode in front of the camera. Here, tap Scan this on a card.</Txt>
         {last ? <Spot id={SPOT.scanResult} style={{ backgroundColor: last.ok ? '#15803D' : '#B91C1C', padding: 14, borderRadius: 14 }}><Txt color="#fff" weight="600" style={{ textAlign: 'center' }}>{last.text}</Txt></Spot> : null}

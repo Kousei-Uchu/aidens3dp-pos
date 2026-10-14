@@ -50,6 +50,24 @@ test('every dynamic spot prefix has a home on the graph', () => {
   for (const prefix of DYNAMIC_PREFIXES) assert.ok(screenOfSpot(`${prefix}x`), `no screen for prefix ${prefix}`);
 });
 
+// Item 4: the control-to-screen table and the graph must agree now that the graph knows which window is open. Every
+// screen a control names must be a screen the graph has, and every window a control lives on must be one the graph can
+// actually open (it is the target of an edge). A sheet whose control is listed on a tab instead would make the graph add
+// a spurious "open the window" step while that window is already open, so this keeps the two in step.
+test('every control home is a real place, and a sheet home can be opened', () => {
+  const t = tree()!;
+  const homes = new Set<string>();
+  for (const spot of STATIC_SPOTS) { const s = screenOfSpot(spot); if (s) homes.add(s); }
+  for (const prefix of DYNAMIC_PREFIXES) { const s = screenOfSpot(`${prefix}x`); if (s) homes.add(s); }
+  // A line's window (`sheet_line:<key>`) is registered on demand, not written in the file; materialise one per key.
+  for (const s of homes) if (s.startsWith('sheet_line:')) registerRuntimeSpots([lineMinusSpot(s.slice('sheet_line:'.length))]);
+  const targets = new Set(t.edges.map(e => e.to));
+  for (const s of homes) {
+    assert.ok(t.hasScreen(s), `a control names a screen that is not on the graph: ${s}`);
+    if (t.screen(s)?.meta?.kind === 'sheet') assert.ok(targets.has(s), `a sheet a control lives on is never opened by any edge: ${s}`);
+  }
+});
+
 test('controls know their gesture', () => {
   assert.equal(gestureOfSpot(cartLineSpot('bee')), 'swipe-left');
   assert.equal(gestureOfSpot(gridItemSpot('bee')), 'tap');
@@ -62,6 +80,11 @@ test('stateNode reads where the person is', () => {
   assert.equal(stateNode({ tab: 'checkout', route: '', where: { tab: 'keypad', depth: 0, sizes: false }, locked: false }), 'view_keypad');
   assert.equal(stateNode({ tab: 'checkout', route: '', where: { tab: 'all', depth: 0, sizes: false }, locked: false }), 'view_all');
   assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: true }), 'overlay_lock');
+  // A window that names itself is the node (item 4), not the page under it. A name the graph does not know is ignored.
+  assert.equal(stateNode({ tab: 'more', route: 'orders', where: undefined, locked: false, sheet: 'sheet_receipt' }), 'sheet_receipt');
+  assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: false, sheet: 'not_a_screen' }), 'tab_checkout');
+  // Lock still wins: the sign-in overlay is above the pass window it opens.
+  assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: true, sheet: 'overlay_practice_pass' }), 'overlay_lock');
 });
 
 test('roles gate the admin pages', () => {
@@ -110,10 +133,20 @@ test('routeNavSteps offers closing the window first when a fix sits under one', 
   assert.match(nav[0].say, /^Close this window first\./);
 });
 
-test('a fix inside the window is not told to close it', () => {
+test('a fix inside the open window is not told to close it, and not told to open it', () => {
   const d = deviation({ target: SPOT.customerCreate, say: 'Tap Create customer.' });
-  const snap = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1 };
-  assert.deepEqual(routeNavSteps(d, snap, true).filter(c => c.target === SPOT.sheetClose), []);
+  const open = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1, sheet: 'sheet_customer' };
+  const nav = routeNavSteps(d, open, true);
+  assert.deepEqual(nav.filter(c => c.target === SPOT.sheetClose), [], 'no close step for a fix in the open window');
+  assert.deepEqual(nav, [], 'already in the window the fix lives on, so nothing at all is added');
+});
+
+test('a fix under an open window is still told to close it', () => {
+  const d = deviation({ target: SPOT.tabCheckout, say: 'Go to Checkout.' });
+  const open = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1, sheet: 'sheet_customer' };
+  const nav = routeNavSteps(d, open, true);
+  assert.equal(nav[0].target, SPOT.sheetClose, 'the window is in the way');
+  assert.match(nav[0].say, /^Close this window first\./);
 });
 
 test('runtime controls join the graph and carry their gesture', () => {

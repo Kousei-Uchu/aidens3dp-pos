@@ -20,7 +20,7 @@ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, on
   const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
   const may = (k: AdjustRow['kind']) => canAdjust(perms, role, k);
   return (
-    <Sheet visible={visible} onClose={onClose} title="Check the price adjustments">
+    <Sheet visible={visible} onClose={onClose} title="Check the price adjustments" screen="sheet_review">
       <Txt sub style={{ marginBottom: 10 }}>{rows.length === 0 ? 'There are no price adjustments on this sale.' : todo.length ? 'Some adjustments need a second look. Keep, adjust or remove each flagged one to carry on. If your role can\'t keep them, remove them or ask a manager.' : 'These prices were changed by hand. Check they are what you meant.'}</Txt>
       <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 10 }}>
         {rows.map(r => (

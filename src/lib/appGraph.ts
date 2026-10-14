@@ -40,6 +40,8 @@ const edgeMeta = (id: string): JsonObject => tree()?.edge(id)?.meta ?? {};
 
 /** Screen metadata (kind, label, roles), or undefined when there is no such screen. */
 export function screenMeta(id: string): JsonObject | undefined { return tree()?.screen(id)?.meta; }
+/** True when the graph has a screen with this id (used by the driver to trust a window's name). */
+export function isKnownScreen(id: string | undefined): boolean { return !!id && !!tree()?.hasScreen(id); }
 /** The display name of a screen, or the id itself when it is not on the graph. */
 export function screenName(id: string): string { return tree()?.screen(id)?.name ?? id; }
 /** True when a role may be at this screen (matches screen meta `roles`; empty or missing means anyone). */
@@ -94,12 +96,14 @@ function scopeFilter(t: NavigationTree, scope?: GuideScope): ((e: Edge) => boole
 /** Every screen reachable from `from` (used by tests and by wording helpers), optionally within a run's scope. */
 export function reachable(from: string, scope?: GuideScope): string[] { const t = tree(); if (!t || !t.screen(from)) return []; try { return findReachable(t, from, { edgeFilter: scopeFilter(t, scope) }); } catch { return []; } }
 
-/** The graph node a person is on right now, from what training can see. Sheets are folded into the page or tab under
- * them, because the walk after closing a window starts there. The one exception is an open line window: it is its own
- * node (`sheet_line:<key>`, see `ensureLineWindow`), so a fix inside it is not told to close it and one outside it is
- * walked out through it. */
-export function stateNode(snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'openLine'>): string {
+/** The graph node a person is on right now, from what training can see. A window that names itself (`snap.sheet`,
+ * set from the layer stack) is the node: a fix inside it is not told to close it and one outside it is walked out
+ * through it. This replaces the fold-every-sheet-into-the-page behaviour. An open line window is the same idea with a
+ * per line name: the editor announces `sheet_line:<key>` (see `ensureLineWindow`); `openLine` is the fallback for when
+ * it does not. Sheets that do not name themselves still fold into the page or tab under them. */
+export function stateNode(snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'openLine' | 'sheet'>): string {
   if (snap.locked) return 'overlay_lock';
+  if (snap.sheet && tree()?.hasScreen(snap.sheet)) return snap.sheet;
   if (snap.openLine) { const w = lineWindowScreen(snap.openLine); if (tree()?.hasScreen(w)) return w; }
   if (snap.route && ROUTE_SCREEN[snap.route]) return ROUTE_SCREEN[snap.route];
   if (!snap.route && snap.where) { if (snap.where.tab === 'keypad') return 'view_keypad'; if (snap.where.tab === 'all') return 'view_all'; }
@@ -148,7 +152,7 @@ function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate 
  * they are already there, when the fix is a universal control, when the fix lives outside this run's scope, or when the
  * walk cannot be planned.
  */
-export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
+export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine' | 'sheet'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
   const t = tree(); if (!t) return [];
   const base = fixCandidates(d, windowOpen);
   const primary = base.find(c => c.target);
@@ -156,7 +160,10 @@ export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
   const from = stateNode(snap);
   const out: FixCandidate[] = [];
   // A window is in the way of a fix that is not itself inside a window: close it first, exactly as the old wording does.
-  const forcedByWindow = windowOpen && !!primary?.target && primary.target !== SPOT.sheetClose && primary.target !== SPOT.back && !isWindowSpot(primary.target);
+  // When the window names itself (`snap.sheet`) and the fix lives on that same window, it is not in the way.
+  const fixScreen = primary?.target ? screenOfSpot(primary.target) : undefined;
+  const inOpenWindow = !!snap.sheet && fixScreen === snap.sheet;
+  const forcedByWindow = windowOpen && !inOpenWindow && !!primary?.target && primary.target !== SPOT.sheetClose && primary.target !== SPOT.back && !isWindowSpot(primary.target);
   if (forcedByWindow) out.push({ target: SPOT.sheetClose, say: `Close this window first. ${d.say}`, gesture: 'tap' });
   if (dest && dest !== from && t.screen(from) && t.screen(dest) && (!scope || screenInScope(dest, scope))) {
     const plan = planRoute(t, from, [{ screen: dest }], { edgeFilter: scopeFilter(t, scope) });
@@ -172,7 +179,7 @@ export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
  * points at the first one really on screen, so the graph only shows through when the plain answer is not reachable.
  * The optional scope keeps the walk inside the run (a course's tabs and routes, and the practice or real places).
  */
-export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
+export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine' | 'sheet'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
   const base = fixCandidates(d, windowOpen);
   let nav: FixCandidate[] = [];
   try { nav = routeNavSteps(d, snap, windowOpen, scope); } catch { nav = []; }

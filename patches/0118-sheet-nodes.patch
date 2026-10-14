@@ -1,0 +1,659 @@
+diff --git a/docs/ROUTEGRAPH_GUIDANCE.md b/docs/ROUTEGRAPH_GUIDANCE.md
+index e2ef920..99d42de 100644
+--- a/docs/ROUTEGRAPH_GUIDANCE.md
++++ b/docs/ROUTEGRAPH_GUIDANCE.md
+@@ -87,6 +87,7 @@ The engine threads the scope through `reachable`, `routeNavSteps`, `guidanceCand
+ 9. Update this file. **Done.**
+ 10. Runs and scopes: `modules` metadata on screens and edges, `GuideScope` in `appGraph` (`scopeForModule`/`scopeForReal`, `metaInScope`, `screenInScope`, `scopeFilter`), threaded through the walk and `TrainingHost`, plus `clearRuntimeSpots` when a run ends. **Done.**
+ 11. Per-instance scopes: `registerRuntimeSpots` takes `{ spot, modules }`, so a runtime record (a product, a row, a user) can belong to a run even though it sits on a shared screen. **Done.**
++12. Sheets as first-class runtime nodes (item 4): the `Sheet` `screen` prop, `snap.sheet` from the layer stack, `stateNode` using it, and the control table moved onto the window screens. **Done.**
+ 
+ ## Log
+ 
+@@ -103,6 +104,7 @@ The engine threads the scope through `reachable`, `routeNavSteps`, `guidanceCand
+ - Per-instance scopes added. `registerRuntimeSpots` now takes a spot id or `{ spot, modules }`, and passes the tag as the action node's metadata, so an instance registered on a shared screen (a product tile, a customer row, a practice user) is filtered exactly like a tagged screen. routegraph carries the metadata on the action node and `scopeFilter` checks the destination's meta, so no library change. Two tests added (`tests/appnavgraph.test.ts`, 27): a tagged instance is refused in another run, an untagged instance is in every run.
+ - Per-line item windows added. The `sheet_line` screen is now a template: `src/app.navgraph` declares `VAR ITEM_KEY` and the opening edges fill it in (`cart.line:$ITEM_KEY$`), and `ensureLineWindow` (`src/lib/appGraph.ts`) registers one copy per open line, `sheet_line:<key>`, with `params: { ITEM_KEY: key }` (routegraph resolves the variable inside the action data, so the walk points at that exact cart line). `screenOfSpot` (`src/lib/appControls.ts`) maps the line-window prefixes to `lineWindowScreen(key)` and folds the three sub sheets into it; `registerRuntimeSpots` puts the window on the graph first. `stateNode` returns `sheet_line:<key>` while a line window is open, and `sheet_line -> tab_checkout` (new) closes it, so a fix inside it is not told to close it and one outside is walked out through it. The opening edges say "Open the item's window first.", and `edgeMeta` now reads live edges so a copied edge keeps its words. 69 screens, 158 transitions; two tests (`tests/appnavgraph.test.ts`, 29).
+ - A walk can carry a `repeat`. `FixCandidate` gained `repeat?: number`; the qty deviation puts its count on the window fix (`repeat: extra`), and a runtime control can too (`RuntimeSpot` gained `repeat`, which rides on the action node). routegraph resolves it onto the instruction action (`InstructionAction.repeat`), `candidateFromStep` reads it back, `DockView` gained `repeat`, and the dock shows a small `xN` chip. The words are unchanged (the qty fix already says "take two out"), so this is the visual count beside them. One test each in `tests/trainingcourse.test.ts` and `tests/appnavgraph.test.ts`.
++- Item 4: sheets are first-class runtime nodes. The graph now knows *which* window is open. `Sheet` (`src/ui/kit.tsx`) gained an optional `screen` prop, handed to `TrainingLayer`, which pushes it as the layer's name (else an anonymous `useId`); the layer stack (`src/lib/trainingLayers.ts`) already reports the deepest layer through `topLayer()`. `TrainSnap`/`snapOf` gained `sheet`, and `TrainingHost` sets it from `topLayer()` when that name is a known screen, else from the page that replaces one inline (the Return page names itself through `setRuntimeScreen` in `src/lib/trainingProbe.ts`). `stateNode` returns that sheet when the graph has it (after `locked`, before `openLine`/route/tab), so a fix inside the open window is no longer told to close it and one under it is walked out through it. Every sheet a control really lives on now names itself: the cart menu, bundles, customer / new customer, the price-adjust review, receipt, cash receive / change / give / return, order, the refund picker / done and the Return page, and the practice pass and practice camera. `src/lib/appControls.ts` moved the last rough edges onto those screens (the whole contents of each wired sheet, not only the 13 that had been listed on a tab: `cart.menu.discount`, `customer.create`, `review.continue`, `bundle.continue`, `bundle.edit`, `receipt.none`, `cash.next`, `cash.gave`, `orders.refund`, `refund.replace`, `refund.go`, `refund.done`, `pass.scan` and the rest of each sheet's controls and prefixes). A shared, multi-home sheet (the discount sheet, the line sub-sheets) stays anonymous on purpose, so it folds into the page or tab it sits over and its controls stay where the old words point. Two tests added (`tests/appnavgraph.test.ts`, 32): a fix in the open window adds nothing and one under it still closes it; and every control home is a real place with every sheet home opened by an edge.
+ 
+ ### What the graph adds over the old logic
+ 
+@@ -117,6 +119,6 @@ The graph also mirrors the old window rule (close a window first when a fix sits
+ 
+ ### Still to do
+ 
+-- Move the control-to-screen table's last rough edges onto screen metadata once the graph is the only source. This needs a new capability first: the graph must know *which* window is open, not just that one is (like `openLine` does for a line). Today `stateNode` folds every sheet into the page under it, so a control that really lives on a sheet (`bundle.continue` on `sheet_bundles`, `receipt.none` on `sheet_receipt`, `refund.go` on `sheet_refund`, `customer.create` on `sheet_customer`, and the rest) is listed on the tab in `appControls.ts` on purpose. Moving them onto their sheet screens now would make the graph add a spurious "open the window" step while that window is already open; it is hidden behind the plain answer today, but it is wrong and would surface as soon as the graph leads.
++- ~~Move the control-to-screen table's last rough edges onto screen metadata once the graph is the only source.~~ **Done (item 4).** The capability it needed is in: the graph now knows *which* window is open (`snap.sheet`, from the layer stack; `Sheet` takes a `screen`, `stateNode` returns it), and `src/lib/appControls.ts` moved the controls that really live on a sheet onto that sheet. What is left in the table is deliberate: the universal controls (`page.back`, `sheet.close`) and the shared, multi-home sheets (the discount sheet, the line sub-sheets), which stay anonymous so they fold into the page or tab under them.
+ - Tag more places as modules grow: today only the camera (practice vs real) and the practice pass differ as *places*, so only they carry `modules` on a screen. Any future module-only screen (a new practice sheet, a course-only page) should be tagged the same way rather than special-cased in code. An instance that differs (a product a course has, a user it runs as) is tagged when it is registered.
+ - Give a module its own practice data. Today every course runs the one shared sandbox (`buildSandbox` in `src/lib/trainingSandbox.ts`) and only `practiceStaff`, `flow`, `tabs`/`routes` and per-goal `inject`s differ; a course's item library, grid and users are the same as every other course's. If a course should have a world of its own (its own items, its own grid pages, its own fake users), add a module field for it and build it in `buildSandbox`, then tag the instances that only that course has (`{ spot, modules }`), which the engine already filters.
+diff --git a/docs/patches/0118-plan.md b/docs/patches/0118-plan.md
+new file mode 100644
+index 0000000..ca29efa
+--- /dev/null
++++ b/docs/patches/0118-plan.md
+@@ -0,0 +1,52 @@
++# Patch 0118: Sheets as first-class runtime nodes (the graph knows which window is open)
++
++Stacks on 0117. Not a training course: this makes every window a place on the graph, so guidance never tells a person
++to close the window they are already in, and never forgets one that is in the way. The living plan and log is
++`docs/ROUTEGRAPH_GUIDANCE.md`.
++
++## What you asked
++> item 4 … the be-all-end-all (plumbing + the control-table move), then item 5-7 as allowed.
++
++This is item 4 of the "Still to do" list, both halves: the plumbing that lets the graph know *which* window is open,
++and the move of the control-to-screen table onto those window screens. (It is the first bullet that the 0117 plan
++deferred with a written reason; that reason is now the capability that landed.)
++
++## The problem
++`stateNode` could only fold every sheet into the page under it. So a control that really lives on a sheet
++(`bundle.continue` on `sheet_bundles`, `receipt.none` on `sheet_receipt`, `refund.go` on `sheet_refund`,
++`customer.create` on `sheet_customer`, and 13 in all) had to be listed on the tab in `appControls.ts` on purpose.
++Listing it on its sheet would have made the graph add a spurious "open the window" step while that window was already
++open. That was hidden behind the plain answer, but it was wrong.
++
++## How it works
++- **A window can name itself.** `Sheet` (`src/ui/kit.tsx`) gained an optional `screen` prop, passed to `TrainingLayer`.
++  `TrainingLayer` (`src/ui/TrainingLayer.tsx`) pushes that name as the layer's name when present, else an anonymous
++  `useId`; the layer stack (`src/lib/trainingLayers.ts`) already reports the deepest layer through `topLayer()`.
++- **The run reads the top layer.** `TrainSnap`/`snapOf` (`src/lib/trainingModule.ts`, `src/lib/trainingConds.ts`)
++  gained `sheet`. `TrainingHost` sets it from `topLayer()` when that name is a known screen (`isKnownScreen`), else
++  from the page that replaces one inline: the Return page names itself through `setRuntimeScreen` in
++  `src/lib/trainingProbe.ts` (it is returned in place of Orders, not pushed, so it has no route of its own).
++- **The engine uses it.** `stateNode` returns `snap.sheet` when the graph has that screen: after `locked` (the sign-in
++  overlay is above the windows it opens), before `openLine`/route/tab. A fix inside the open window is no longer told
++  to close it; one under it is still walked out through it (`forcedByWindow` now excepts the window the fix lives on).
++- **Every sheet a control lives on names itself**, and `src/lib/appControls.ts` moved the whole contents of each onto
++  that screen: cart menu, bundles, customer / new customer, price-adjust review, receipt, cash receive / change / give
++  / return, order, the refund picker / done / Return page, and the practice pass and practice camera.
++- **Shared, multi-home sheets stay anonymous on purpose.** The discount sheet and the line price / adjustment sub
++  sheets are opened from more than one place and their controls are multi-home, so they fold into the page or tab they
++  sit over; their controls keep pointing where the old words point.
++
++## Checklist
++1. [x] `src/ui/kit.tsx`: `Sheet` `screen` prop; `src/ui/TrainingLayer.tsx` pushes it.
++2. [x] `src/lib/trainingModule.ts`, `src/lib/trainingConds.ts`: `TrainSnap.sheet`.
++3. [x] `src/lib/trainingProbe.ts`: `setRuntimeScreen`/`getRuntimeScreen`.
++4. [x] `src/ui/TrainingHost.tsx`: derive `sheet` from `topLayer()`/`getRuntimeScreen()`.
++5. [x] `src/lib/appGraph.ts`: `stateNode` uses `sheet`; `forcedByWindow` spares the fix's own window; `isKnownScreen`.
++6. [x] `src/lib/appControls.ts`: control table moved onto the window screens.
++7. [x] `Sheet` call sites wired: `CartPane`, `CashSheet`, `sheets.tsx` (customer), `Orders`, `Receipt`, `Refund`
++       (pick / done / the Return page), `AdjustmentReview`, `PracticePass`, `PracticeScan`.
++8. [x] Tests: `tests/appnavgraph.test.ts` (32) - `stateNode` with a window, a fix in the open window adds nothing and
++       one under it still closes it, every control home is a real place with every sheet home opened by an edge.
++9. [x] `npm run typecheck` clean; `npm run graph:check` ok (69 screens, 158 edges); full suite (the one failure is
++       pre-existing: `tests/virtualterminal.test.ts`, "every screen has copy...").
++10. [x] `docs/ROUTEGRAPH_GUIDANCE.md` (living plan/log).
+diff --git a/src/lib/appControls.ts b/src/lib/appControls.ts
+index 3f187e6..1c548ba 100644
+--- a/src/lib/appControls.ts
++++ b/src/lib/appControls.ts
+@@ -15,9 +15,10 @@ export type ControlPlace = { screen: string; gesture?: Gesture };
+  * Where each static spot lives. Universal controls (`page.back`, `sheet.close`) are not listed: they are always on
+  * screen in the place they are used, so guidance never needs to walk to them.
+  *
+- * Checkout domain controls all sit on the Checkout tab, because the cart is part of Checkout (inline on a wide
+- * screen, a pushed page on a phone, which base guidance already copes with). Payment and refund controls sit on the
+- * pages that own them.
++ * A control sits on the screen it is really on. Page and tab controls sit on their page or tab. A control inside a
++ * window sits on that window's screen (`sheet_*`), so when the window is open the walk knows the person is already
++ * there instead of telling them to close it. The cart is part of Checkout (inline on a wide screen, a pushed page on
++ * a phone), and a cart line's editor is its own per line node (see `lineWindowScreen`).
+  */
+ export const SPOT_SCREEN: Record<string, string> = {
+   // Checkout tab: the grid, search, the cart and everything opened from it.
+@@ -32,16 +33,16 @@ export const SPOT_SCREEN: Record<string, string> = {
+   [SPOT.findKeypadAdd]: 'view_keypad',
+   [SPOT.searchField]: 'tab_checkout',
+   [SPOT.cartMenu]: 'tab_checkout',
+-  [SPOT.cartMenuDiscount]: 'tab_checkout',
+-  [SPOT.cartMenuOrder]: 'tab_checkout',
++  [SPOT.cartMenuDiscount]: 'sheet_cart_menu',
++  [SPOT.cartMenuOrder]: 'sheet_cart_menu',
+   [SPOT.cartDiscountOff]: 'tab_checkout',
+   [SPOT.cartOrderOff]: 'tab_checkout',
+   [SPOT.cartCustomerOff]: 'tab_checkout',
+   [SPOT.cartCustomer]: 'tab_checkout',
+-  [SPOT.customerSearch]: 'tab_checkout',
+-  [SPOT.customerCreate]: 'tab_checkout',
+-  [SPOT.customerForm]: 'tab_checkout',
+-  [SPOT.customerSave]: 'tab_checkout',
++  [SPOT.customerSearch]: 'sheet_customer',
++  [SPOT.customerCreate]: 'sheet_customer',
++  [SPOT.customerForm]: 'sheet_customer_new',
++  [SPOT.customerSave]: 'sheet_customer_new',
+   [SPOT.discountKeys]: 'tab_checkout',
+   [SPOT.discountApply]: 'tab_checkout',
+   [SPOT.priceItemKeys]: 'tab_checkout',
+@@ -53,14 +54,14 @@ export const SPOT_SCREEN: Record<string, string> = {
+   [SPOT.priceReason]: 'tab_checkout',
+   [SPOT.priceScopeQty]: 'tab_checkout',
+   [SPOT.priceScopeAll]: 'tab_checkout',
+-  [SPOT.reviewContinue]: 'tab_checkout',
+-  [SPOT.reviewKeep]: 'tab_checkout',
+-  [SPOT.reviewAdjust]: 'tab_checkout',
+-  [SPOT.reviewRemove]: 'tab_checkout',
++  [SPOT.reviewContinue]: 'sheet_review',
++  [SPOT.reviewKeep]: 'sheet_review',
++  [SPOT.reviewAdjust]: 'sheet_review',
++  [SPOT.reviewRemove]: 'sheet_review',
+   [SPOT.cartBundles]: 'tab_checkout',
+   [SPOT.cartDeals]: 'tab_checkout',
+-  [SPOT.bundleContinue]: 'tab_checkout',
+-  [SPOT.bundleEdit]: 'tab_checkout',
++  [SPOT.bundleContinue]: 'sheet_bundles',
++  [SPOT.bundleEdit]: 'sheet_bundles',
+   [SPOT.lineDone]: 'tab_checkout',
+   [SPOT.scanCamera]: 'tab_checkout',
+   [SPOT.scanDone]: 'tab_checkout',
+@@ -78,19 +79,19 @@ export const SPOT_SCREEN: Record<string, string> = {
+   [SPOT.payCard]: 'page_pay',
+   [SPOT.payRetry]: 'page_pay',
+   [SPOT.payOther]: 'page_pay',
+-  [SPOT.receiptNone]: 'page_pay',
+-  [SPOT.receiptQr]: 'page_pay',
+-  [SPOT.receiptEmail]: 'page_pay',
+-  [SPOT.receiptText]: 'page_pay',
+-  [SPOT.receiptShare]: 'page_pay',
+-  [SPOT.receiptQrBack]: 'page_pay',
+-  [SPOT.cashPad]: 'page_pay',
+-  [SPOT.cashUndo]: 'page_pay',
+-  [SPOT.cashTake]: 'page_pay',
+-  [SPOT.cashNext]: 'page_pay',
+-  [SPOT.cashGave]: 'page_pay',
+-  [SPOT.cashSmaller]: 'page_pay',
+-  [SPOT.cashPartCash]: 'page_pay',
++  [SPOT.receiptNone]: 'sheet_receipt',
++  [SPOT.receiptQr]: 'sheet_receipt',
++  [SPOT.receiptEmail]: 'sheet_receipt',
++  [SPOT.receiptText]: 'sheet_receipt',
++  [SPOT.receiptShare]: 'sheet_receipt',
++  [SPOT.receiptQrBack]: 'sheet_receipt',
++  [SPOT.cashPad]: 'sheet_cash_receive',
++  [SPOT.cashUndo]: 'sheet_cash_receive',
++  [SPOT.cashTake]: 'sheet_cash_receive',
++  [SPOT.cashNext]: 'sheet_cash_receive',
++  [SPOT.cashGave]: 'sheet_cash_give',
++  [SPOT.cashSmaller]: 'sheet_cash_receive',
++  [SPOT.cashPartCash]: 'sheet_cash_receive',
+   [SPOT.terminalTap]: 'page_pay',
+   [SPOT.terminalInsert]: 'page_pay',
+   [SPOT.terminalRemove]: 'page_pay',
+@@ -99,18 +100,18 @@ export const SPOT_SCREEN: Record<string, string> = {
+   [SPOT.terminalCancel]: 'page_pay',
+   [SPOT.terminalDone]: 'page_pay',
+   // Orders and refunds.
+-  [SPOT.ordersRefund]: 'page_orders',
+-  [SPOT.refundMode]: 'page_orders',
+-  [SPOT.refundMethod]: 'page_orders',
+-  [SPOT.refundRestock]: 'page_orders',
+-  [SPOT.refundReplace]: 'page_orders',
+-  [SPOT.refundGo]: 'page_orders',
+-  [SPOT.refundDone]: 'page_orders',
++  [SPOT.ordersRefund]: 'sheet_order',
++  [SPOT.refundMode]: 'sheet_refund',
++  [SPOT.refundMethod]: 'sheet_refund',
++  [SPOT.refundRestock]: 'sheet_refund',
++  [SPOT.refundReplace]: 'sheet_refund',
++  [SPOT.refundGo]: 'sheet_refund',
++  [SPOT.refundDone]: 'sheet_refund_done',
+   // Sign in and passes.
+   [SPOT.loginPinpad]: 'overlay_lock',
+   [SPOT.loginUnlock]: 'overlay_lock',
+   [SPOT.loginScanPass]: 'overlay_lock',
+-  [SPOT.passScan]: 'overlay_lock',
++  [SPOT.passScan]: 'overlay_practice_pass',
+ };
+ 
+ /** Where each dynamic (per record) spot lives, by its id prefix. */
+@@ -123,20 +124,20 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
+   { prefix: 'cart.deal:', screen: 'tab_checkout' },
+   { prefix: 'discount.preset:', screen: 'tab_checkout' },
+   { prefix: 'search.result:', screen: 'tab_checkout' },
+-  { prefix: 'customer.row:', screen: 'tab_checkout' },
++  { prefix: 'customer.row:', screen: 'sheet_customer' },
+   { prefix: 'pick.variant:', screen: 'tab_checkout' },
+   { prefix: 'find.tab:', screen: 'tab_checkout' },
+   { prefix: 'find.key:', screen: 'view_keypad' },
+   { prefix: 'all.product:', screen: 'view_all' },
+-  { prefix: 'cash.denom:', screen: 'page_pay' },
++  { prefix: 'cash.denom:', screen: 'sheet_cash_receive' },
+   { prefix: 'order.row:', screen: 'page_orders' },
+-  { prefix: 'refund.mode:', screen: 'page_orders' },
+-  { prefix: 'refund.method:', screen: 'page_orders' },
+-  { prefix: 'refund.plus:', screen: 'page_orders' },
+-  { prefix: 'refund.minus:', screen: 'page_orders' },
+-  { prefix: 'refund.reason:', screen: 'page_orders' },
+-  { prefix: 'refund.pick:', screen: 'page_orders' },
+-  { prefix: 'refund.repl:', screen: 'page_orders' },
++  { prefix: 'refund.mode:', screen: 'sheet_refund' },
++  { prefix: 'refund.method:', screen: 'sheet_refund' },
++  { prefix: 'refund.plus:', screen: 'sheet_refund' },
++  { prefix: 'refund.minus:', screen: 'sheet_refund' },
++  { prefix: 'refund.reason:', screen: 'sheet_refund' },
++  { prefix: 'refund.pick:', screen: 'sheet_refund_pick' },
++  { prefix: 'refund.repl:', screen: 'sheet_refund' },
+   { prefix: 'scan.card:', screen: 'overlay_practice_camera' },
+ ];
+ 
+diff --git a/src/lib/appGraph.ts b/src/lib/appGraph.ts
+index 7b824fd..c2d38f8 100644
+--- a/src/lib/appGraph.ts
++++ b/src/lib/appGraph.ts
+@@ -40,6 +40,8 @@ const edgeMeta = (id: string): JsonObject => tree()?.edge(id)?.meta ?? {};
+ 
+ /** Screen metadata (kind, label, roles), or undefined when there is no such screen. */
+ export function screenMeta(id: string): JsonObject | undefined { return tree()?.screen(id)?.meta; }
++/** True when the graph has a screen with this id (used by the driver to trust a window's name). */
++export function isKnownScreen(id: string | undefined): boolean { return !!id && !!tree()?.hasScreen(id); }
+ /** The display name of a screen, or the id itself when it is not on the graph. */
+ export function screenName(id: string): string { return tree()?.screen(id)?.name ?? id; }
+ /** True when a role may be at this screen (matches screen meta `roles`; empty or missing means anyone). */
+@@ -94,12 +96,14 @@ function scopeFilter(t: NavigationTree, scope?: GuideScope): ((e: Edge) => boole
+ /** Every screen reachable from `from` (used by tests and by wording helpers), optionally within a run's scope. */
+ export function reachable(from: string, scope?: GuideScope): string[] { const t = tree(); if (!t || !t.screen(from)) return []; try { return findReachable(t, from, { edgeFilter: scopeFilter(t, scope) }); } catch { return []; } }
+ 
+-/** The graph node a person is on right now, from what training can see. Sheets are folded into the page or tab under
+- * them, because the walk after closing a window starts there. The one exception is an open line window: it is its own
+- * node (`sheet_line:<key>`, see `ensureLineWindow`), so a fix inside it is not told to close it and one outside it is
+- * walked out through it. */
+-export function stateNode(snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'openLine'>): string {
++/** The graph node a person is on right now, from what training can see. A window that names itself (`snap.sheet`,
++ * set from the layer stack) is the node: a fix inside it is not told to close it and one outside it is walked out
++ * through it. This replaces the fold-every-sheet-into-the-page behaviour. An open line window is the same idea with a
++ * per line name: the editor announces `sheet_line:<key>` (see `ensureLineWindow`); `openLine` is the fallback for when
++ * it does not. Sheets that do not name themselves still fold into the page or tab under them. */
++export function stateNode(snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'openLine' | 'sheet'>): string {
+   if (snap.locked) return 'overlay_lock';
++  if (snap.sheet && tree()?.hasScreen(snap.sheet)) return snap.sheet;
+   if (snap.openLine) { const w = lineWindowScreen(snap.openLine); if (tree()?.hasScreen(w)) return w; }
+   if (snap.route && ROUTE_SCREEN[snap.route]) return ROUTE_SCREEN[snap.route];
+   if (!snap.route && snap.where) { if (snap.where.tab === 'keypad') return 'view_keypad'; if (snap.where.tab === 'all') return 'view_all'; }
+@@ -148,7 +152,7 @@ function candidateFromStep(step: InstructionStep, fixSay: string): FixCandidate
+  * they are already there, when the fix is a universal control, when the fix lives outside this run's scope, or when the
+  * walk cannot be planned.
+  */
+-export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
++export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine' | 'sheet'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
+   const t = tree(); if (!t) return [];
+   const base = fixCandidates(d, windowOpen);
+   const primary = base.find(c => c.target);
+@@ -156,7 +160,10 @@ export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
+   const from = stateNode(snap);
+   const out: FixCandidate[] = [];
+   // A window is in the way of a fix that is not itself inside a window: close it first, exactly as the old wording does.
+-  const forcedByWindow = windowOpen && !!primary?.target && primary.target !== SPOT.sheetClose && primary.target !== SPOT.back && !isWindowSpot(primary.target);
++  // When the window names itself (`snap.sheet`) and the fix lives on that same window, it is not in the way.
++  const fixScreen = primary?.target ? screenOfSpot(primary.target) : undefined;
++  const inOpenWindow = !!snap.sheet && fixScreen === snap.sheet;
++  const forcedByWindow = windowOpen && !inOpenWindow && !!primary?.target && primary.target !== SPOT.sheetClose && primary.target !== SPOT.back && !isWindowSpot(primary.target);
+   if (forcedByWindow) out.push({ target: SPOT.sheetClose, say: `Close this window first. ${d.say}`, gesture: 'tap' });
+   if (dest && dest !== from && t.screen(from) && t.screen(dest) && (!scope || screenInScope(dest, scope))) {
+     const plan = planRoute(t, from, [{ screen: dest }], { edgeFilter: scopeFilter(t, scope) });
+@@ -172,7 +179,7 @@ export function routeNavSteps(d: Pick<Deviation, 'say' | 'target' | 'via' | 'ges
+  * points at the first one really on screen, so the graph only shows through when the plain answer is not reachable.
+  * The optional scope keeps the walk inside the run (a course's tabs and routes, and the practice or real places).
+  */
+-export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
++export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' | 'gesture' | 'window' | 'chain'>, snap: Pick<TrainSnap, 'tab' | 'route' | 'where' | 'locked' | 'sheets' | 'openLine' | 'sheet'>, windowOpen = snap.sheets > 0, scope?: GuideScope): FixCandidate[] {
+   const base = fixCandidates(d, windowOpen);
+   let nav: FixCandidate[] = [];
+   try { nav = routeNavSteps(d, snap, windowOpen, scope); } catch { nav = []; }
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index 45fba67..72ea59d 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -15,10 +15,10 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+ }
+ /** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
+ type CartLike = { id?: string; variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; overrideAll?: boolean; unitCents?: number; note?: string };
+-export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; refund?: TrainSnap['refund']; customerQuery?: string; noteDraft?: string; priceDraft?: string; cash?: TrainSnap['cash']; lastSaleCash?: TrainSnap['lastSaleCash']; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: { id?: string } | unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
++export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; sheet?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; refund?: TrainSnap['refund']; customerQuery?: string; noteDraft?: string; priceDraft?: string; cash?: TrainSnap['cash']; lastSaleCash?: TrainSnap['lastSaleCash']; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: { id?: string } | unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
+   return {
+     tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
+-    hasCustomer: !!s.cart.customer, customerId: (s.cart.customer as { id?: string } | undefined)?.id, customerQuery: s.customerQuery, noteDraft: s.noteDraft, priceDraft: s.priceDraft, orderAdjustCents: (s.cart.orderAdjust as { finalCents?: number } | undefined)?.finalCents, cash: s.cash, lastSaleCash: s.lastSaleCash, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds, refund: s.refund,
++    hasCustomer: !!s.cart.customer, customerId: (s.cart.customer as { id?: string } | undefined)?.id, customerQuery: s.customerQuery, noteDraft: s.noteDraft, priceDraft: s.priceDraft, orderAdjustCents: (s.cart.orderAdjust as { finalCents?: number } | undefined)?.finalCents, cash: s.cash, lastSaleCash: s.lastSaleCash, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, sheet: s.sheet, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds, refund: s.refund,
+     cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents, lineId: l.id, itemPriced: l.overrideCents !== undefined, overrideCents: l.overrideCents, overrideAll: !!l.overrideAll, adjustCents: (l.adjust as { finalCents?: number } | undefined)?.finalCents, lineAdjusted: !!l.adjust, noted: !!(l.note && l.note.trim()) })),
+     cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
+   };
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 50a01cd..8d9c26d 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -55,6 +55,8 @@ export type TrainSnap = {
+   /** The Cash, Gift card or Split choice that is open on the Payment page, when one is. */ payOpen?: 'cash' | 'gift' | 'split';
+   /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
+   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
++  /** The graph screen node of the window open on top (a `sheet_*` screen, or the per line `sheet_line:<key>`), when the window is one the graph knows. */
++  sheet?: string;
+   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
+   /** What is keyed in an open price window, as `item:2000`, `line:1200` or `order:3000` (cents), and the whole order price (cents) when one is set. */ priceDraft?: string; orderAdjustCents?: number;
+   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
+diff --git a/src/lib/trainingProbe.ts b/src/lib/trainingProbe.ts
+index d2826b2..9d7ce9d 100644
+--- a/src/lib/trainingProbe.ts
++++ b/src/lib/trainingProbe.ts
+@@ -4,6 +4,9 @@
+ export type Typed = { search?: string; keypad?: string };
+ export type CheckoutWhere = { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
+ let openLine: string | undefined; export const setOpenLine = (k: string | undefined): void => { openLine = k; }; export const getOpenLine = (): string | undefined => openLine;
++/** A screen that replaces a page without being a window (the Return page, shown in place of Orders). It names its graph
++ * screen here so guidance knows where the person is; cleared when it unmounts. */
++let runtimeScreen: string | undefined; export const setRuntimeScreen = (id: string | undefined): void => { runtimeScreen = id; }; export const getRuntimeScreen = (): string | undefined => runtimeScreen;
+ let payOpen: 'cash' | 'gift' | 'split' | undefined; export const setPayOpen = (m: typeof payOpen): void => { payOpen = m; }; export const getPayOpen = (): typeof payOpen => payOpen;
+ let customerQuery = ''; export const setCustomerQuery = (q: string): void => { customerQuery = q; }; export const getCustomerQuery = (): string => customerQuery;
+ export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
+diff --git a/src/screens/AdjustmentReview.tsx b/src/screens/AdjustmentReview.tsx
+index a0b6f8e..0ce5b8b 100644
+--- a/src/screens/AdjustmentReview.tsx
++++ b/src/screens/AdjustmentReview.tsx
+@@ -20,7 +20,7 @@ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, on
+   const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
+   const may = (k: AdjustRow['kind']) => canAdjust(perms, role, k);
+   return (
+-    <Sheet visible={visible} onClose={onClose} title="Check the price adjustments">
++    <Sheet visible={visible} onClose={onClose} title="Check the price adjustments" screen="sheet_review">
+       <Txt sub style={{ marginBottom: 10 }}>{rows.length === 0 ? 'There are no price adjustments on this sale.' : todo.length ? 'Some adjustments need a second look. Keep, adjust or remove each flagged one to carry on. If your role can\'t keep them, remove them or ask a manager.' : 'These prices were changed by hand. Check they are what you meant.'}</Txt>
+       <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 10 }}>
+         {rows.map(r => (
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index ed72e50..6767053 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -107,7 +107,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
+       </View>
+ 
+-      <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart">
++      <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart" screen="sheet_cart_menu">
+         <Row icon="trash-outline" title="Clear cart" danger onPress={doClear} />
+         <Row icon="bookmark-outline" title="Save cart" onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
+         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
+@@ -118,7 +118,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
+         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
+       </Sheet>
+-      <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles">
++      <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles" screen="sheet_bundles">
+         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
+         <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
+         <View style={{ gap: 8, marginTop: 16 }}>
+diff --git a/src/screens/CashSheet.tsx b/src/screens/CashSheet.tsx
+index a934733..6b4dfea 100644
+--- a/src/screens/CashSheet.tsx
++++ b/src/screens/CashSheet.tsx
+@@ -63,7 +63,7 @@ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, o
+ /** Cash refund: which notes and coins to hand the customer. */
+ export function GiveCashSheet({ visible, amount, onDone }: { visible: boolean; amount: number; onDone: (given: Counts) => void }) {
+   const drawer = useApp(s => s.pos.ledger.counts);
+-  return <Sheet visible={visible} onClose={() => {}} title="Give cash refund" dismissable={false}><GiveCash pool={drawer} owed={amount} headline="Give the customer" onConfirm={onDone} /></Sheet>;
++  return <Sheet visible={visible} onClose={() => {}} title="Give cash refund" dismissable={false} screen="sheet_cash_give"><GiveCash pool={drawer} owed={amount} headline="Give the customer" onConfirm={onDone} /></Sheet>;
+ }
+ 
+ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean; tenders: Tender[]; onDone: (cash: Record<string, { returned: Counts; collected: Counts }>) => void }) {
+@@ -83,7 +83,7 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
+   const canConfirmCollect = !collectManually || totalOf(collected) === cashOutTarget;
+   const canConfirmReturn = !returnManually || totalOf(returned) === expected;
+   return (
+-    <Sheet visible={visible} onClose={() => {}} title="Return cash for cancelled sale" dismissable={false}>
++    <Sheet visible={visible} onClose={() => {}} title="Return cash for cancelled sale" dismissable={false} screen="sheet_cash_return">
+       <View style={{ gap: 12 }}>
+         <Txt size={13} sub>Cash payment {index + 1} of {tenders.length}. Do not use the change suggestion for a cancellation.</Txt>
+         {stage === 'collect' && cashOutTarget > 0 ? <>
+@@ -130,7 +130,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [],
+   const takeChoice = (k: ShortChoice) => { if (k.kind === 'modify') { onChangeSplit?.(); return; } finish({}, applyShortChoice(livePlan, k)); };
+ 
+   return (
+-    <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'}>
++    <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'} screen={step === 'receive' ? 'sheet_cash_receive' : 'sheet_cash_change'}>
+       {step === 'receive' ? (
+         <View style={{ gap: 14 }}>
+           <View style={{ alignItems: 'center', gap: 2 }}>
+diff --git a/src/screens/Orders.tsx b/src/screens/Orders.tsx
+index 4af72d6..3f8fc45 100644
+--- a/src/screens/Orders.tsx
++++ b/src/screens/Orders.tsx
+@@ -26,7 +26,7 @@ export default function Orders() {
+       <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} />}>
+         {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} spot={orderRowSpot(o.id)} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
+       </ScrollView>
+-      <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name}>
++      <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name} screen="sheet_order">
+         {sel?.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title} — {fmt(l.unitCents * l.qty)}</Txt>)}
+         <View style={{ gap: 8, marginTop: 14 }}>
+           {sel && !/^fulfilled$/i.test(sel.fulfillment) ? <Btn title="Mark fulfilled" onPress={() => void mark(sel)} /> : null}
+diff --git a/src/screens/Receipt.tsx b/src/screens/Receipt.tsx
+index e240856..6e6d2ad 100644
+--- a/src/screens/Receipt.tsx
++++ b/src/screens/Receipt.tsx
+@@ -42,7 +42,7 @@ export function ReceiptPrompt({ sale, onDone }: { sale: SaleRecord | null; onDon
+   const open = async (u: string) => { if (practice) { setPracticeSent(`Practice: ${u.startsWith('sms') ? 'Messages' : 'Mail'} would open now with the receipt ready to send.`); return; } try { await Linking.openURL(u); } catch { alertMsg('Could not open that app', undefined, 'pay/receipts'); } };
+   const showQr = async () => { setBusy(true); try { await uploadReceipt(sale); setNote(''); } catch (e: any) { setNote('Not published yet. It goes live when this iPad can reach the receipt server.'); } setBusy(false); setQr(true); };
+   return (
+-    <Sheet visible onClose={onDone} title="Receipt" dismissable={false}>
++    <Sheet visible onClose={onDone} title="Receipt" dismissable={false} screen="sheet_receipt">
+       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginBottom: 12 }}>
+         <Image source={{ uri: BUSINESS_LOGO_URL }} resizeMode="contain" style={{ width: 32, height: 32 }} accessibilityLabel="Aiden’s 3D Printing logo" />
+         <Txt size={16} weight="600">{rc.name || shop || 'Thank you for shopping with us'}</Txt>
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index 5821365..a09398b 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -4,6 +4,7 @@ import { Btn, Card, Chip, Field, Keypad, Money, Page, Row, Segmented, Sheet, Tog
+ import { useTheme } from '../ui/theme';
+ import { Spot, registerSlice, spotPressed } from '../ui/Spot';
+ import { SPOT, refundMethodSpot, refundModeSpot, refundMinusSpot, refundPickSpot, refundPlusSpot, refundReasonSpot, refundReplSpot } from '../lib/trainingSpots';
++import { setRuntimeScreen } from '../lib/trainingProbe';
+ import { useApp, currentStaff } from '../state/store';
+ import { useCatalogue } from '../state/selectors';
+ import { priceCart } from '../lib/pricing';
+@@ -27,6 +28,8 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+   const [giftCardDestination, setGiftCardDestination] = useState<GiftCardDestination>();
+   const [repl, setRepl] = useState<Cart>(ops.emptyCart()); const [pick, setPick] = useState(false); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [result, setResult] = useState<string | null>(null); const [cashGive, setCashGive] = useState<{ amount: number; text: string; uuid?: string } | null>(null);
+   const refundable = refundableByGateway(order.transactions); const maxMoney = refundable.card + refundable.cash + refundable.gift_card;
++  // Training (item 4): the Return page replaces Orders in place, so it names its own graph screen while mounted.
++  useEffect(() => { setRuntimeScreen('sheet_refund'); return () => setRuntimeScreen(undefined); }, []);
+   // Training (B6): lets the course point at one part of each switch.
+   useEffect(() => { const off = [...(['items', 'amount'] as const).map((m, i) => registerSlice(refundModeSpot(m), SPOT.refundMode, i, 2)), ...(['original', 'cash', 'gift'] as const).map((m, i) => registerSlice(refundMethodSpot(m), SPOT.refundMethod, i, 3))]; return () => off.forEach(f => f()); }, []);
+   const hasOriginalGiftCard = order.tenders.some(t => t.kind === 'gift_card' && t.giftCardId);
+@@ -93,12 +96,12 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+         <Btn spot={SPOT.refundGo} title={label} busy={busy} disabled={(returnCents <= 0 && !repl.lines.length) || (method === 'gift_card' && hasOriginalGiftCard && !giftCardDestination)} onPress={() => void go()} style={{ marginTop: 6 }} />
+       </View>
+ 
+-      <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" full>
++      <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" screen="sheet_refund_pick" full>
+         <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
+         {hits.map((v: Variant) => <Row key={v.id} spot={refundPickSpot(v.id)} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
+       </Sheet>
+       <GiveCashSheet visible={!!cashGive} amount={cashGive?.amount ?? 0} onDone={given => { const g = cashGive; setCashGive(null); if (!g) return; if (given) useApp.getState().patchPos({ ledger: postCashRefund(useApp.getState().pos.ledger, { saleUuid: g.uuid, given, staff: currentStaff()?.name }) }); setResult(g.text); }} />
+-      <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn spot={SPOT.refundDone} title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
++      <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done" screen="sheet_refund_done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn spot={SPOT.refundDone} title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
+       <View style={{ height: 0, backgroundColor: c.bg }} />
+     </Page>
+   );
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 68e9083..f9fe9c0 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -93,7 +93,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+     } catch (e: any) { alertMsg('Could not create customer', e.message, 'sales/customers'); } setBusy(false);
+   };
+   return (
+-    <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} full>
++    <Sheet visible={visible} onClose={onClose} title={creating ? 'New customer' : 'Customer'} screen={creating ? 'sheet_customer_new' : 'sheet_customer'} full>
+       {creating ? (
+         <View>
+           <Spot id={SPOT.customerForm}>
+diff --git a/src/ui/PracticePass.tsx b/src/ui/PracticePass.tsx
+index ef2681d..5c351c3 100644
+--- a/src/ui/PracticePass.tsx
++++ b/src/ui/PracticePass.tsx
+@@ -15,7 +15,7 @@ export function PracticePassSheet({ visible, onClose, onScan, title }: { visible
+   const pass = practicePass();
+   const scan = async () => { const r = await onScan(pass.code); setLast(r ? { ok: true, text: r } : { ok: false, text: 'Not recognised. The pass may have been cancelled or replaced. Close this window and key your PIN instead.' }); };
+   return (
+-    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan your cashier pass'}>
++    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan your cashier pass'} screen="overlay_practice_pass">
+       <View style={{ gap: 12, alignItems: 'center' }}>
+         <Txt sub style={{ textAlign: 'center' }}>Practice pass. On a real till you would hold the pass under the scanner or the camera.</Txt>
+         <View style={{ width: '100%', borderRadius: 16, borderWidth: 1, borderColor: c.line, backgroundColor: c.card, padding: 16, alignItems: 'center', gap: 6, opacity: pass.cancelled ? 0.6 : 1 }}>
+diff --git a/src/ui/PracticeScan.tsx b/src/ui/PracticeScan.tsx
+index 8b4925e..7dea061 100644
+--- a/src/ui/PracticeScan.tsx
++++ b/src/ui/PracticeScan.tsx
+@@ -17,7 +17,7 @@ export function PracticeScanSheet({ visible, onClose, onScan, title }: { visible
+   useEffect(() => { if (!visible) setLast(null); }, [visible]);
+   const scan = async (code: string) => { const r = await onScan(code); setLast(r ? { ok: true, text: r } : { ok: false, text: `Not found: ${code}` }); };
+   return (
+-    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan barcode'}>
++    <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan barcode'} screen="overlay_practice_camera">
+       <View style={{ gap: 12 }}>
+         <Txt sub>Practice camera. On a real till you would hold each barcode in front of the camera. Here, tap Scan this on a card.</Txt>
+         {last ? <Spot id={SPOT.scanResult} style={{ backgroundColor: last.ok ? '#15803D' : '#B91C1C', padding: 14, borderRadius: 14 }}><Txt color="#fff" weight="600" style={{ textAlign: 'center' }}>{last.text}</Txt></Spot> : null}
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 0e75bbf..5d58e10 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -21,14 +21,14 @@ import { SPOT } from '../lib/trainingSpots';
+ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
+ import { isMet, snapOf, type Events } from '../lib/trainingConds';
+-import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere } from '../lib/trainingProbe';
++import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
+ import { getLastPracticeRefund } from '../lib/trainingOrders';
+ import { hintView, shouldNudge } from '../lib/trainingHints';
+ import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+-import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule } from '../lib/appGraph';
++import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule, isKnownScreen } from '../lib/appGraph';
+ import { gateFor, type Gesture } from '../lib/pointerGesture';
+ import { setGate } from '../lib/trainingGate';
+-import { layerDepth } from '../lib/trainingLayers';
++import { layerDepth, topLayer } from '../lib/trainingLayers';
+ import { moduleTitle, showHowAtOnce } from '../lib/trainingRemedies';
+ import { isComplete, staffKey } from '../lib/trainingProgress';
+ import { advanceGoal, advanceStep } from '../lib/trainingRun';
+@@ -101,7 +101,12 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         const fresh = key.current !== k;
+         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
+         const app = useApp.getState();
+-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        // The deepest window that names itself is the node the person is on; a non-window screen that replaces a page
++        // (the Return page) names itself the same way. An unnamed window (or none) leaves both out, and the page or tab
++        // under the person stands in, exactly as before.
++        const layer = topLayer();
++        const sheet = layer !== ROOT_LAYER && isKnownScreen(layer) ? layer : getRuntimeScreen();
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+         syncRuntimeFromSnap(snap); registerRuntimeSpots(mountedSpotIds()); // put this sale's cart lines, and every control on screen right now, on the app graph
+         const until = item.until;
+diff --git a/src/ui/TrainingLayer.tsx b/src/ui/TrainingLayer.tsx
+index ca9cb17..44b48f1 100644
+--- a/src/ui/TrainingLayer.tsx
++++ b/src/ui/TrainingLayer.tsx
+@@ -1,13 +1,15 @@
+ // Location: src/ui/TrainingLayer.tsx
+ // Put inside a native Modal (our Sheet) so the training overlay can be drawn above it. Does nothing when training is off.
++// `screen` is the graph screen node this window is (a `sheet_*` screen), so the guidance engine can tell which window
++// is open (`topLayer()`); left out, the layer is anonymous and guidance folds the window into the page under it.
+ import React, { useEffect, useId } from 'react';
+ import { popLayer, pushLayer } from '../lib/trainingLayers';
+ import { useTraining } from '../state/trainingSession';
+ import TrainingOverlay from './TrainingOverlay';
+ 
+-export function TrainingLayer({ visible }: { visible: boolean }) {
+-  const sandbox = useTraining(s => s.sandbox); const id = useId();
+-  useEffect(() => { if (visible && sandbox) { pushLayer(id); return () => popLayer(id); } return undefined; }, [visible, sandbox, id]);
++export function TrainingLayer({ visible, screen }: { visible: boolean; screen?: string }) {
++  const sandbox = useTraining(s => s.sandbox); const id = useId(); const name = screen ?? id;
++  useEffect(() => { if (visible && sandbox) { pushLayer(name); return () => popLayer(name); } return undefined; }, [visible, sandbox, name]);
+   if (!visible || !sandbox) return null;
+-  return <TrainingOverlay layer={id} />;
++  return <TrainingOverlay layer={name} />;
+ }
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 7cdd5c4..a444297 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -138,7 +138,7 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll
+ }
+ 
+ /** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
+-export function Sheet({ visible, onClose, title, children, full, dismissable = true }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean }) {
++export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
+   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
+   return (
+     <Modal visible={visible} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
+@@ -150,7 +150,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
+           </View>
+           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
+         </View>
+-        <TrainingLayer visible={visible} />
++        <TrainingLayer visible={visible} screen={screen} />
+       </View>
+     </Modal>
+   );
+diff --git a/tests/appnavgraph.test.ts b/tests/appnavgraph.test.ts
+index efa9ba5..52c705c 100644
+--- a/tests/appnavgraph.test.ts
++++ b/tests/appnavgraph.test.ts
+@@ -50,6 +50,24 @@ test('every dynamic spot prefix has a home on the graph', () => {
+   for (const prefix of DYNAMIC_PREFIXES) assert.ok(screenOfSpot(`${prefix}x`), `no screen for prefix ${prefix}`);
+ });
+ 
++// Item 4: the control-to-screen table and the graph must agree now that the graph knows which window is open. Every
++// screen a control names must be a screen the graph has, and every window a control lives on must be one the graph can
++// actually open (it is the target of an edge). A sheet whose control is listed on a tab instead would make the graph add
++// a spurious "open the window" step while that window is already open, so this keeps the two in step.
++test('every control home is a real place, and a sheet home can be opened', () => {
++  const t = tree()!;
++  const homes = new Set<string>();
++  for (const spot of STATIC_SPOTS) { const s = screenOfSpot(spot); if (s) homes.add(s); }
++  for (const prefix of DYNAMIC_PREFIXES) { const s = screenOfSpot(`${prefix}x`); if (s) homes.add(s); }
++  // A line's window (`sheet_line:<key>`) is registered on demand, not written in the file; materialise one per key.
++  for (const s of homes) if (s.startsWith('sheet_line:')) registerRuntimeSpots([lineMinusSpot(s.slice('sheet_line:'.length))]);
++  const targets = new Set(t.edges.map(e => e.to));
++  for (const s of homes) {
++    assert.ok(t.hasScreen(s), `a control names a screen that is not on the graph: ${s}`);
++    if (t.screen(s)?.meta?.kind === 'sheet') assert.ok(targets.has(s), `a sheet a control lives on is never opened by any edge: ${s}`);
++  }
++});
++
+ test('controls know their gesture', () => {
+   assert.equal(gestureOfSpot(cartLineSpot('bee')), 'swipe-left');
+   assert.equal(gestureOfSpot(gridItemSpot('bee')), 'tap');
+@@ -62,6 +80,11 @@ test('stateNode reads where the person is', () => {
+   assert.equal(stateNode({ tab: 'checkout', route: '', where: { tab: 'keypad', depth: 0, sizes: false }, locked: false }), 'view_keypad');
+   assert.equal(stateNode({ tab: 'checkout', route: '', where: { tab: 'all', depth: 0, sizes: false }, locked: false }), 'view_all');
+   assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: true }), 'overlay_lock');
++  // A window that names itself is the node (item 4), not the page under it. A name the graph does not know is ignored.
++  assert.equal(stateNode({ tab: 'more', route: 'orders', where: undefined, locked: false, sheet: 'sheet_receipt' }), 'sheet_receipt');
++  assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: false, sheet: 'not_a_screen' }), 'tab_checkout');
++  // Lock still wins: the sign-in overlay is above the pass window it opens.
++  assert.equal(stateNode({ tab: 'checkout', route: '', where: undefined, locked: true, sheet: 'overlay_practice_pass' }), 'overlay_lock');
+ });
+ 
+ test('roles gate the admin pages', () => {
+@@ -110,10 +133,20 @@ test('routeNavSteps offers closing the window first when a fix sits under one',
+   assert.match(nav[0].say, /^Close this window first\./);
+ });
+ 
+-test('a fix inside the window is not told to close it', () => {
++test('a fix inside the open window is not told to close it, and not told to open it', () => {
+   const d = deviation({ target: SPOT.customerCreate, say: 'Tap Create customer.' });
+-  const snap = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1 };
+-  assert.deepEqual(routeNavSteps(d, snap, true).filter(c => c.target === SPOT.sheetClose), []);
++  const open = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1, sheet: 'sheet_customer' };
++  const nav = routeNavSteps(d, open, true);
++  assert.deepEqual(nav.filter(c => c.target === SPOT.sheetClose), [], 'no close step for a fix in the open window');
++  assert.deepEqual(nav, [], 'already in the window the fix lives on, so nothing at all is added');
++});
++
++test('a fix under an open window is still told to close it', () => {
++  const d = deviation({ target: SPOT.tabCheckout, say: 'Go to Checkout.' });
++  const open = { tab: 'checkout', route: '', where: undefined, locked: false, sheets: 1, sheet: 'sheet_customer' };
++  const nav = routeNavSteps(d, open, true);
++  assert.equal(nav[0].target, SPOT.sheetClose, 'the window is in the way');
++  assert.match(nav[0].say, /^Close this window first\./);
+ });
+ 
+ test('runtime controls join the graph and carry their gesture', () => {

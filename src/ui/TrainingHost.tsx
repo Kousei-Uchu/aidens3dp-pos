@@ -21,14 +21,14 @@ import { SPOT } from '../lib/trainingSpots';
 import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
-import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere } from '../lib/trainingProbe';
+import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
 import { getLastPracticeRefund } from '../lib/trainingOrders';
 import { hintView, shouldNudge } from '../lib/trainingHints';
 import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
-import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule } from '../lib/appGraph';
+import { guidanceCandidates, registerRuntimeSpots, syncRuntimeFromSnap, clearRuntimeSpots, scopeForModule, isKnownScreen } from '../lib/appGraph';
 import { gateFor, type Gesture } from '../lib/pointerGesture';
 import { setGate } from '../lib/trainingGate';
-import { layerDepth } from '../lib/trainingLayers';
+import { layerDepth, topLayer } from '../lib/trainingLayers';
 import { moduleTitle, showHowAtOnce } from '../lib/trainingRemedies';
 import { isComplete, staffKey } from '../lib/trainingProgress';
 import { advanceGoal, advanceStep } from '../lib/trainingRun';
@@ -101,7 +101,12 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         const fresh = key.current !== k;
         if (fresh) { key.current = k; ev.current = mutable(); nextTap.current = false; stray.current = freshStray(); base.current = null; if (cur.goal) st.inject(cur.goal.inject); } // a new step or goal starts from a clean slate, and carries straight on (no wasted tick)
         const app = useApp.getState();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        // The deepest window that names itself is the node the person is on; a non-window screen that replaces a page
+        // (the Return page) names itself the same way. An unnamed window (or none) leaves both out, and the page or tab
+        // under the person stands in, exactly as before.
+        const layer = topLayer();
+        const sheet = layer !== ROOT_LAYER && isKnownScreen(layer) ? layer : getRuntimeScreen();
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
         syncRuntimeFromSnap(snap); registerRuntimeSpots(mountedSpotIds()); // put this sale's cart lines, and every control on screen right now, on the app graph
         const until = item.until;
