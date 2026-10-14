@@ -60,6 +60,19 @@ export const SPOT = {
   cashGave: 'cash.gave',               // Gave this, on the change step
   cashSmaller: 'cash.smaller',         // Use that smaller handover, when the drawer cannot make change
   cashPartCash: 'cash.partcash',       // Cash $x + the rest another way, when the drawer cannot make change
+  priceItemKeys: 'price.item.keys',    // the number keys in the Item price adjustment window (any key)
+  priceItemSet: 'price.item.set',      // Set price, in the Item price adjustment window
+  priceLineKeys: 'price.line.keys',    // the number keys in the Line price adjustment window
+  priceLineSet: 'price.line.set',      // Set line price
+  priceOrderKeys: 'price.order.keys',  // the number keys in the Whole order price window
+  priceOrderSet: 'price.order.set',    // Set order total
+  priceReason: 'price.reason',         // the Reason box in any of the three price windows
+  priceScopeQty: 'price.scope.qty',    // Fixed quantity, in the Item price adjustment window
+  priceScopeAll: 'price.scope.all',    // All in cart, in the Item price adjustment window
+  reviewContinue: 'review.continue',   // Continue to payment, in Check the price adjustments
+  reviewKeep: 'review.keep',           // Keep, on a flagged adjustment in the review
+  reviewAdjust: 'review.adjust',       // Adjust, on an adjustment in the review
+  reviewRemove: 'review.remove',       // Remove, on an adjustment in the review
   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
   moreOrders: 'more.orders',           // the Orders row on the More tab
@@ -72,7 +85,7 @@ export const SPOT = {
   refundDone: 'refund.done',           // OK, in the Done window after a refund
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.priceItemKeys, SPOT.priceItemSet, SPOT.priceLineKeys, SPOT.priceLineSet, SPOT.priceOrderKeys, SPOT.priceOrderSet, SPOT.priceReason, SPOT.priceScopeQty, SPOT.priceScopeAll, SPOT.reviewContinue, SPOT.reviewKeep, SPOT.reviewAdjust, SPOT.reviewRemove, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
 export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);

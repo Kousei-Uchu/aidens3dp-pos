@@ -44,7 +44,7 @@ export type DemoStep = {
 export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
 
 /** One cart line as training sees it. */
-export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
+export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** The line's own item price (cents) and whether it covers every one in the cart, and its whole-line price (cents). */ overrideCents?: number; overrideAll?: boolean; adjustCents?: number; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
 export type TrainSnap = {
   tab: string; route: string; sheets: number; lines: number; qty: number; sales: number; hasCustomer: boolean; tenders: number; paying: boolean;
@@ -56,6 +56,7 @@ export type TrainSnap = {
   /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
+  /** What is keyed in an open price window, as `item:2000`, `line:1200` or `order:3000` (cents), and the whole order price (cents) when one is set. */ priceDraft?: string; orderAdjustCents?: number;
   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
   /** The last refund made on a practice order (`n` is how many refunds so far): what it came to, whether the items went back into stock, which kinds of money it went back as, and how many items. Left out until a refund is made. */
@@ -82,7 +83,7 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
-  | { kind: 'cart'; items: { variantId: string; qty: number }[]; customer?: string; /** Start with this percentage off the whole cart (a discount to be taken off again). */ discountPct?: number }       // start the run with these lines in the cart
+  | { kind: 'cart'; items: { variantId: string; qty: number; /** An item price of its own, in cents, for these units. */ priceCents?: number; /** A whole-line price set when only `seenQty` were on the line, so adding more flags it at the review. */ adjust?: { finalCents: number; seenQty: number } }[]; customer?: string; /** Start with this percentage off the whole cart (a discount to be taken off again). */ discountPct?: number }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
   | { kind: 'ledger'; counts: Record<string, number> }
   | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)

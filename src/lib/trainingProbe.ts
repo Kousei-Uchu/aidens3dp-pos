@@ -8,6 +8,7 @@ let payOpen: 'cash' | 'gift' | 'split' | undefined; export const setPayOpen = (m
 let customerQuery = ''; export const setCustomerQuery = (q: string): void => { customerQuery = q; }; export const getCustomerQuery = (): string => customerQuery;
 export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
 let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;
+const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (source: string, v: string): void => { priceDrafts[source] = v; }; export const getPriceDraft = (): string => Object.values(priceDrafts).find(Boolean) ?? '';
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
 let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
 export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
