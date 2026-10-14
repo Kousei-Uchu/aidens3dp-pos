@@ -11,7 +11,7 @@ import { fmt } from '../lib/money';
 import { maskedLast4 } from '../lib/cards';
 import { ReceiptPrompt, receiptText } from './Receipt';
 import RefundScreen from './Refund';
-import type { SaleRecord } from '../lib/types';
+import type { SaleRecord, Tender } from '../lib/types';
 import { Share } from 'react-native';
 import { loadSquareSales } from '../lib/squareHistoryIO';
 
@@ -81,19 +81,38 @@ const orderAsSale = (o: PosOrder): SaleRecord => ({ uuid: o.saleUuid ?? o.id, ty
   lines: o.lines.map(l => ({ title: l.title, variantTitle: l.variantTitle, qty: l.qty, baseUnitCents: l.originalUnitCents, grossCents: l.originalUnitCents * l.qty, discountCents: (l.originalUnitCents - l.unitCents) * l.qty, netCents: l.unitCents * l.qty, costCents: 0, discountLabels: [], kind: 'item' as const })),
   itemsCents: o.totalCents, discountCents: 0, netCents: o.totalCents, tipCents: 0, totalCents: o.totalCents, cogsCents: 0, feesCents: 0, roundingCents: o.roundingCents, tenders: o.tenders, deals: [], adjustments: o.adjustments?.length ? o.adjustments : undefined });
 
+const tenderSub = (t: Tender): string | undefined => {
+  if (t.kind === 'cash') return [t.tenderedCents != null ? `Tendered ${fmt(t.tenderedCents)}` : '', t.changeCents ? `Change ${fmt(t.changeCents)}` : '', t.roundingCents ? `Rounding ${fmt(t.roundingCents)}` : ''].filter(Boolean).join(' · ') || undefined;
+  return [t.card?.approvalCode ? `Approval ${t.card.approvalCode}` : '', t.card?.rrn ? `RRN ${t.card.rrn}` : '', t.card?.cardMedia ?? '', t.feeCents ? `Fee ${fmt(t.feeCents)}` : '', t.giftCardId ? 'Gift card' : ''].filter(Boolean).join(' · ') || undefined;
+};
+
 function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClose: () => void; onRefund: (o: PosOrder) => void; onReceipt: (s: SaleRecord) => void; embedded: boolean }) {
   const { c } = useTheme(); const sale = e.sale ?? (e.order ? orderAsSale(e.order) : null); if (!sale) return null;
   const lines = e.sale?.lines ?? sale.lines; const tenders = e.sale?.tenders ?? sale.tenders;
   const body = (
     <View style={{ padding: 16, gap: 14 }}>
       <View style={{ alignItems: 'center' }}><Money cents={sale.netCents} size={36} weight="700" color={e.kind === 'refund' ? c.bad : undefined} /><Txt sub>{new Date(sale.ts).toLocaleString()}</Txt>{e.pending ? <Txt size={13} color={c.warn}>Waiting to sync to Shopify</Txt> : null}</View>
-      <Card>{lines.map((l, i) => <Row key={i} last={i === lines.length - 1} title={`${l.qty} × ${l.title}`} sub={[l.variantTitle, l.discountLabels?.join(', ')].filter(Boolean).join(' · ') || undefined} right={<Money cents={l.netCents} />} />)}</Card>
+      <Card>{lines.map((l, i) => <Row key={i} last={i === lines.length - 1} title={`${l.qty} × ${l.title}`} sub={[l.variantTitle, l.giftCardCode ? `Gift card ${l.giftCardCode}${l.giftRecipient ? ` for ${l.giftRecipient}` : ''}` : undefined, l.discountLabels?.join(', ')].filter(Boolean).join(' · ') || undefined} right={<Money cents={l.netCents} />} />)}</Card>
       {sale.adjustments?.length ? <Card>{sale.adjustments.map((a, i, all) => <Row key={i} last={i === all.length - 1} icon="cut-outline" title={`${a.kind === 'item' ? 'Item price' : a.kind === 'line' ? 'Line price' : 'Whole order price'} · ${a.title}`} sub={a.reason ? `Reason: ${a.reason}` : 'No reason given'} right={<Txt weight="600">{signedSaving(a.cents)}</Txt>} />)}</Card> : null}
       <Card>{tenders.map((t, i) => <Row key={t.id + i} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'}
-        title={t.kind === 'card' ? ['Card', t.card?.scheme, maskedLast4(t.card?.panMasked, t.card?.last4)].filter(Boolean).join(' · ') : tenderWord(t.kind)} sub={t.card?.approvalCode ? `Approval ${t.card.approvalCode}` : t.roundingCents ? `Rounding ${fmt(t.roundingCents)}` : undefined} right={<Money cents={t.amountCents} />} />)}</Card>
-      {sale.staff ? <Txt sub>Cashier: {sale.staff}</Txt> : null}
-      {sale.customer ? <Txt sub>Customer: {sale.customer.name}</Txt> : null}
-      {e.order?.note ? <Txt sub>Note: {e.order.note}</Txt> : null}
+        title={t.kind === 'card' ? ['Card', t.card?.scheme, maskedLast4(t.card?.panMasked, t.card?.last4)].filter(Boolean).join(' · ') : t.kind === 'gift_card' && t.giftCardCode ? `${tenderWord(t.kind)} ${t.giftCardCode}` : tenderWord(t.kind)}
+        sub={tenderSub(t)} right={<Money cents={t.amountCents} />} />)}</Card>
+      <Card>
+        {sale.type === 'sale' ? <Row title="Items" right={<Money cents={sale.itemsCents} />} /> : null}
+        {sale.discountCents ? <Row title="Discounts" right={<Txt weight="600">{signedSaving(-sale.discountCents)}</Txt>} /> : null}
+        {sale.tipCents ? <Row title="Tip" right={<Money cents={sale.tipCents} />} /> : null}
+        {sale.feesCents ? <Row title="Card fees" right={<Txt>{fmt(sale.feesCents)}</Txt>} /> : null}
+        {sale.roundingCents ? <Row title="Cash rounding" right={<Txt>{fmt(sale.roundingCents)}</Txt>} /> : null}
+        <Row title="Total" right={<Money cents={sale.totalCents} weight="700" />} last />
+      </Card>
+      <Card>
+        {sale.staff ? <Row title="Cashier" right={<Txt>{sale.staff}</Txt>} /> : null}
+        {sale.registerName ? <Row title="Register" right={<Txt>{sale.registerName}</Txt>} /> : null}
+        {sale.orderName ? <Row title="Order" right={<Txt>{sale.orderName}</Txt>} /> : null}
+        {sale.customer ? <Row title="Customer" right={<Txt>{sale.customer.name}</Txt>} /> : null}
+        <Row title="Receipt file" right={<Txt>{sale.receiptLink ? 'Yes' : 'None'}</Txt>} last />
+      </Card>
+      {(e.order?.note || sale.note) ? <Txt sub>Note: {e.order?.note ?? sale.note}</Txt> : null}
       <Btn title="New receipt" icon="receipt-outline" kind="secondary" onPress={() => onReceipt(sale)} />
       {e.kind === 'sale' && sale.registerId !== 'square' ? <Btn title="Return or exchange" icon="return-down-back-outline" disabled={!e.order} onPress={() => e.order && onRefund(e.order)} /> : null}
       {e.kind === 'sale' && !e.order && sale.registerId !== 'square' ? <Txt size={12} sub style={{ textAlign: 'center' }}>Returns unlock once this sale has synced to Shopify.</Txt> : null}
