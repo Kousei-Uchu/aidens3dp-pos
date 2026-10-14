@@ -16,6 +16,7 @@ import { uid } from '../lib/ids';
 import { emptyCart } from '../lib/cartOps';
 import { lookupGiftCard, debitGiftCard, creditGiftCardOnce, type GiftCardInfo } from '../lib/shopify/giftcards';
 import { normaliseCode } from '../lib/giftCode';
+import { maskedLast4 } from '../lib/cards';
 import { GiftCheckSheet } from './sheets';
 import { CancelCashSheet, CashSheet, type CashResult } from './CashSheet';
 import { cashDue, postCashSale, recordCancelledCashTender } from '../lib/cashSale';
@@ -200,7 +201,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
           <Btn title="Cancel" kind="secondary" small onPress={() => cancelRef.current?.()} />
         </View>
       ) : null}
-      {tenders.length ? <View style={{ marginHorizontal: 16, marginBottom: 12 }}><Card>{tenders.map((t, i) => <Row key={t.id} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'} title={t.kind === 'card' ? `Card ${t.card?.panMasked ? '•••• ' + t.card.panMasked : ''}` : t.kind === 'cash' ? 'Cash' : 'Gift card'} right={<Money cents={t.amountCents} />} />)}</Card></View> : null}
+      {tenders.length ? <View style={{ marginHorizontal: 16, marginBottom: 12 }}><Card>{tenders.map((t, i) => <Row key={t.id} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'} title={t.kind === 'card' ? ['Card', t.card?.scheme, maskedLast4(t.card?.panMasked, t.card?.last4)].filter(Boolean).join(' ') : t.kind === 'cash' ? 'Cash' : 'Gift card'} right={<Money cents={t.amountCents} />} />)}</Card></View> : null}
       {cart.cancelPending ? <View style={{ padding: 16, gap: 10 }}>
         <Txt weight="700">Sale cancellation is in progress.</Txt>
         <Txt sub>Payment methods already returned are remembered. Retry cancellation to return the remaining tenders; do not take another payment for this sale.</Txt>

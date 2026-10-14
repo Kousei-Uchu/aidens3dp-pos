@@ -114,11 +114,11 @@ test('csv rows quote properly and keep columns aligned', () => {
 });
 
 test('tender codec round-trips and stays under 255 chars', () => {
-  const t = { id: 'x', kind: 'card' as const, amountCents: 1234, feeCents: 17, at: '', card: { externalReference: 'uuid-1-1', transactionUuid: 'abcd-efgh-ijkl', approvalCode: '123456', scheme: 'EFTPOS', panMasked: '4242', cardMedia: 'NFC', receiptLink: 'https://sdk.myzeller.com/receipt/abcdefghijklmnop' } };
+  const t = { id: 'x', kind: 'card' as const, amountCents: 1234, feeCents: 17, at: '', card: { externalReference: 'uuid-1-1', transactionUuid: 'abcd-efgh-ijkl', approvalCode: '123456', scheme: 'EFTPOS', panMasked: 'XXXXXXXXXXXX4242', last4: '4242', cardMedia: 'NFC', receiptLink: 'https://sdk.myzeller.com/receipt/abcdefghijklmnop' } };
   const s = encodeTender(t);
   assert.ok(s.length < 255, String(s.length));
   const back = decodeTender(s)!;
-  assert.equal(back.kind, 'card'); assert.equal(back.amountCents, 1234); assert.equal(back.card?.externalReference, 'uuid-1-1'); assert.equal(back.card?.receiptLink, t.card.receiptLink);
+  assert.equal(back.kind, 'card'); assert.equal(back.amountCents, 1234); assert.equal(back.card?.externalReference, 'uuid-1-1'); assert.equal(back.card?.receiptLink, t.card.receiptLink); assert.equal(back.card?.last4, '4242');
   const g = decodeTender(encodeTender({ id: 'g', kind: 'gift_card', amountCents: 500, at: '', giftCardId: 'gid://shopify/GiftCard/1', giftCardCode: 'ABCD1234EFGH5678' }))!;
   assert.equal(g.giftCardCode, '••••5678'); assert.equal(g.giftCardId, 'gid://shopify/GiftCard/1');
 });

@@ -5,6 +5,7 @@ import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
 import type { ReceiptDoc, ReceiptPayment } from '../../receipt-server/src/types';
 import { CURRENCY } from './money';
+import { cardLast4 } from './cards';
 import type { SaleRecord, Tender } from './types';
 
 export type ReceiptProfile = {
@@ -22,12 +23,12 @@ export const receiptUrl = (base: string, id: string) => `${base.trim().replace(/
 export const gstIncluded = (lines: { netCents: number; kind: string }[], registered: boolean): number =>
   registered ? Math.round(lines.filter(l => l.kind !== 'gift_card').reduce((s, l) => s + l.netCents, 0) / 11) : 0;
 
-const last4 = (m?: string) => (m ? m.replace(/\D/g, '').slice(-4) : '');
+const last4 = cardLast4;
 function payment(t: Tender): ReceiptPayment {
   const amountCents = t.amountCents + (t.roundingCents ?? 0); // cash rounding is part of what was actually paid
   switch (t.kind) {
     case 'card': {
-      const c = t.card; const l4 = last4(c?.panMasked);
+      const c = t.card; const l4 = last4(c?.last4 || c?.panMasked);
       return { kind: 'card', label: `${c?.scheme || 'Card'}${l4 ? ` •••• ${l4}` : ''}${c?.cardMedia ? ` (${c.cardMedia})` : ''}`, amountCents,
         card: { scheme: c?.scheme, masked: c?.panMasked, approval: c?.approvalCode, rrn: c?.rrn, txn: c?.transactionUuid?.slice(0, 8), ref: c?.externalReference, at: c?.timestampLocal, link: c?.receiptLink } };
     }

@@ -165,6 +165,7 @@ export type PricedCart = {
 export type TenderKind = 'card' | 'cash' | 'gift_card' | 'exchange_credit';
 export type CardInfo = {
   transactionUuid?: string; externalReference?: string; approvalCode?: string; scheme?: string; panMasked?: string;
+  last4?: string;
   cardMedia?: string; rrn?: string; receiptLink?: string; responseCode?: string; timestampLocal?: string;
   tipAmount?: number; surchargeAmount?: number;
 };

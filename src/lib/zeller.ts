@@ -1,6 +1,7 @@
 // Zeller Payments SDK wrapper (research doc §6.8). Errors are RETURNED by the SDK, never thrown.
 // Everything outside this file talks to PaymentResult – never to raw SDK results.
 import { lookupResponse, type Category } from './responseCodes';
+import { cardLast4 } from './cards';
 import type { CardInfo } from './types';
 
 export type ZellerEvent = { type: string; message?: string };
@@ -8,6 +9,7 @@ export type ZellerTxn = {
   $type?: 'Approved' | 'Declined'; type?: 'PURCHASE' | 'REFUND'; status?: 'APPROVED' | 'DECLINED' | 'FAILED';
   amount: number; currency?: string; responseCode?: string; responseText?: string; timestampLocal?: string;
   transactionUuid?: string; approvalCode?: string; cardMedia?: string; externalReference?: string; panMasked?: string;
+  last4?: string;
   receiptLink?: string; rrn?: string; scheme?: string; tipAmount?: number; surchargeAmount?: number; taxAmount?: number;
   sessionUuid?: string;
 };
@@ -59,7 +61,7 @@ export function describeEvent(e: ZellerEvent): string {
 export function txnToCard(t: ZellerTxn): CardInfo {
   return {
     transactionUuid: t.transactionUuid, externalReference: t.externalReference, approvalCode: t.approvalCode,
-    scheme: t.scheme, panMasked: t.panMasked, cardMedia: t.cardMedia, rrn: t.rrn, receiptLink: t.receiptLink,
+    scheme: t.scheme, panMasked: t.panMasked, last4: t.last4 ?? cardLast4(t.panMasked), cardMedia: t.cardMedia, rrn: t.rrn, receiptLink: t.receiptLink,
     responseCode: t.responseCode, timestampLocal: t.timestampLocal, tipAmount: t.tipAmount, surchargeAmount: t.surchargeAmount,
   };
 }
