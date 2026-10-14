@@ -4,6 +4,7 @@ import { Btn, Card, Chip, Field, Keypad, Money, Page, Row, Segmented, Sheet, Tog
 import { useTheme } from '../ui/theme';
 import { Spot, registerSlice, spotPressed } from '../ui/Spot';
 import { SPOT, refundMethodSpot, refundModeSpot, refundMinusSpot, refundPickSpot, refundPlusSpot, refundReasonSpot, refundReplSpot } from '../lib/trainingSpots';
+import { setRuntimeScreen } from '../lib/trainingProbe';
 import { useApp, currentStaff } from '../state/store';
 import { useCatalogue } from '../state/selectors';
 import { priceCart } from '../lib/pricing';
@@ -27,6 +28,8 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
   const [giftCardDestination, setGiftCardDestination] = useState<GiftCardDestination>();
   const [repl, setRepl] = useState<Cart>(ops.emptyCart()); const [pick, setPick] = useState(false); const [q, setQ] = useState(''); const [busy, setBusy] = useState(false); const [result, setResult] = useState<string | null>(null); const [cashGive, setCashGive] = useState<{ amount: number; text: string; uuid?: string } | null>(null);
   const refundable = refundableByGateway(order.transactions); const maxMoney = refundable.card + refundable.cash + refundable.gift_card;
+  // Training (item 4): the Return page replaces Orders in place, so it names its own graph screen while mounted.
+  useEffect(() => { setRuntimeScreen('sheet_refund'); return () => setRuntimeScreen(undefined); }, []);
   // Training (B6): lets the course point at one part of each switch.
   useEffect(() => { const off = [...(['items', 'amount'] as const).map((m, i) => registerSlice(refundModeSpot(m), SPOT.refundMode, i, 2)), ...(['original', 'cash', 'gift'] as const).map((m, i) => registerSlice(refundMethodSpot(m), SPOT.refundMethod, i, 3))]; return () => off.forEach(f => f()); }, []);
   const hasOriginalGiftCard = order.tenders.some(t => t.kind === 'gift_card' && t.giftCardId);
@@ -93,12 +96,12 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
         <Btn spot={SPOT.refundGo} title={label} busy={busy} disabled={(returnCents <= 0 && !repl.lines.length) || (method === 'gift_card' && hasOriginalGiftCard && !giftCardDestination)} onPress={() => void go()} style={{ marginTop: 6 }} />
       </View>
 
-      <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" full>
+      <Sheet visible={pick} onClose={() => setPick(false)} title="Replacement item" screen="sheet_refund_pick" full>
         <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
         {hits.map((v: Variant) => <Row key={v.id} spot={refundPickSpot(v.id)} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
       </Sheet>
       <GiveCashSheet visible={!!cashGive} amount={cashGive?.amount ?? 0} onDone={given => { const g = cashGive; setCashGive(null); if (!g) return; if (given) useApp.getState().patchPos({ ledger: postCashRefund(useApp.getState().pos.ledger, { saleUuid: g.uuid, given, staff: currentStaff()?.name }) }); setResult(g.text); }} />
-      <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn spot={SPOT.refundDone} title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
+      <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done" screen="sheet_refund_done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn spot={SPOT.refundDone} title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
       <View style={{ height: 0, backgroundColor: c.bg }} />
     </Page>
   );

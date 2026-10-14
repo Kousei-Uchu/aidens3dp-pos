@@ -4,6 +4,9 @@
 export type Typed = { search?: string; keypad?: string };
 export type CheckoutWhere = { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 let openLine: string | undefined; export const setOpenLine = (k: string | undefined): void => { openLine = k; }; export const getOpenLine = (): string | undefined => openLine;
+/** A screen that replaces a page without being a window (the Return page, shown in place of Orders). It names its graph
+ * screen here so guidance knows where the person is; cleared when it unmounts. */
+let runtimeScreen: string | undefined; export const setRuntimeScreen = (id: string | undefined): void => { runtimeScreen = id; }; export const getRuntimeScreen = (): string | undefined => runtimeScreen;
 let payOpen: 'cash' | 'gift' | 'split' | undefined; export const setPayOpen = (m: typeof payOpen): void => { payOpen = m; }; export const getPayOpen = (): typeof payOpen => payOpen;
 let customerQuery = ''; export const setCustomerQuery = (q: string): void => { customerQuery = q; }; export const getCustomerQuery = (): string => customerQuery;
 export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };

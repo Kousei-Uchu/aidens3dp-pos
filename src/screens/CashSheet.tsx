@@ -63,7 +63,7 @@ export function GiveCash({ pool, owed, headline = 'Give the customer', detail, o
 /** Cash refund: which notes and coins to hand the customer. */
 export function GiveCashSheet({ visible, amount, onDone }: { visible: boolean; amount: number; onDone: (given: Counts) => void }) {
   const drawer = useApp(s => s.pos.ledger.counts);
-  return <Sheet visible={visible} onClose={() => {}} title="Give cash refund" dismissable={false}><GiveCash pool={drawer} owed={amount} headline="Give the customer" onConfirm={onDone} /></Sheet>;
+  return <Sheet visible={visible} onClose={() => {}} title="Give cash refund" dismissable={false} screen="sheet_cash_give"><GiveCash pool={drawer} owed={amount} headline="Give the customer" onConfirm={onDone} /></Sheet>;
 }
 
 export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean; tenders: Tender[]; onDone: (cash: Record<string, { returned: Counts; collected: Counts }>) => void }) {
@@ -83,7 +83,7 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
   const canConfirmCollect = !collectManually || totalOf(collected) === cashOutTarget;
   const canConfirmReturn = !returnManually || totalOf(returned) === expected;
   return (
-    <Sheet visible={visible} onClose={() => {}} title="Return cash for cancelled sale" dismissable={false}>
+    <Sheet visible={visible} onClose={() => {}} title="Return cash for cancelled sale" dismissable={false} screen="sheet_cash_return">
       <View style={{ gap: 12 }}>
         <Txt size={13} sub>Cash payment {index + 1} of {tenders.length}. Do not use the change suggestion for a cancellation.</Txt>
         {stage === 'collect' && cashOutTarget > 0 ? <>
@@ -130,7 +130,7 @@ export function CashSheet({ visible, onClose, due, onTake, plan: splitPlan = [],
   const takeChoice = (k: ShortChoice) => { if (k.kind === 'modify') { onChangeSplit?.(); return; } finish({}, applyShortChoice(livePlan, k)); };
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'}>
+    <Sheet visible={visible} onClose={onClose} title={step === 'receive' ? 'Cash received' : 'Give change'} screen={step === 'receive' ? 'sheet_cash_receive' : 'sheet_cash_change'}>
       {step === 'receive' ? (
         <View style={{ gap: 14 }}>
           <View style={{ alignItems: 'center', gap: 2 }}>

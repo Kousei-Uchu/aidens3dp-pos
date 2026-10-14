@@ -26,7 +26,7 @@ export default function Orders() {
       <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} />}>
         {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} spot={orderRowSpot(o.id)} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
       </ScrollView>
-      <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name}>
+      <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name} screen="sheet_order">
         {sel?.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title} — {fmt(l.unitCents * l.qty)}</Txt>)}
         <View style={{ gap: 8, marginTop: 14 }}>
           {sel && !/^fulfilled$/i.test(sel.fulfillment) ? <Btn title="Mark fulfilled" onPress={() => void mark(sel)} /> : null}
