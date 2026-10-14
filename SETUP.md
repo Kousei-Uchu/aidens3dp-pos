@@ -6,7 +6,7 @@
 ## 1. One-time prerequisites (on a Mac)
 - Xcode 16.1+ and your Apple Developer account signed in (Xcode ▸ Settings ▸ Accounts), Node 20.19.4+ (or 22 LTS). The project is on Expo SDK 54 / React Native 0.81, inside Zeller's supported React Native range (0.76–0.81). Upgrading an older checkout: `sh scripts/upgrade-sdk54.sh`.
 - Unzip, then in the project folder: `npm install`
-- Copy the **Zeller Payments SDK tarballs** you were given into `vendor/` and run `npm run zeller` (it's not on npm).
+- **`npm install` succeeds without the Zeller SDK on purpose.** The SDK is closed-source and not on public npm, so it is declared as an *optional* dependency: the install does not fail, and a short notice is printed when the SDK is missing. **Do not retry the install to try to fetch it** — there is nothing to fetch and every retry fails the same way. To actually install it, copy the **Zeller Payments SDK tarballs** you were given into `vendor/` and run `npm run zeller` (see `scripts/install-zeller.sh`). The app only builds and runs on a machine that has the SDK.
 - Edit `app.json` → `ios.bundleIdentifier` (e.g. `com.yourname.shopifypos`).
 
 ## 2. Shopify (Dev Dashboard app, client-credentials)
