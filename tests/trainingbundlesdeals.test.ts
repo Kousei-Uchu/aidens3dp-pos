@@ -71,7 +71,9 @@ test('Check 2: four Tadlings, a Large cow to swap, and a not-recommended pair to
   const [short, swap, odd] = bundlesDeals.check2;
   assert.equal(applyInjections(buildSandbox(real), short.inject).pos.cart.lines[0].qty, 4); assert.ok(!isMet(short.until, snap([line('train-v-tad', 4)]), noEvents())); assert.ok(isMet(short.until, snap([line('train-v-tad', 5)]), noEvents()));
   assert.ok(!isMet(swap.until, snap([line('train-v-cow-l'), line('train-v-tad')]), noEvents())); assert.ok(!isMet(swap.until, snap([line('train-v-cow-l'), line('train-v-cow-s')]), noEvents()), 'the Large must go'); assert.ok(isMet(swap.until, snap([line('train-v-cow-s'), line('train-v-tad')]), noEvents()));
-  assert.ok(isMet(odd.until, snap([]), ev([SPOT.bundleContinue]))); assert.ok(!isMet(odd.until, snap([]), ev([SPOT.bundleEdit])));
+  // The goal ends when Payment has opened, not on the press: finishing on the press let Payment open on top of the finish screen (0113).
+  const onPay = snapOf({ tab: 'checkout', route: 'pay', sheets: 0, cart: { lines: [] }, sales: 0, paying: true });
+  assert.ok(isMet(odd.until, onPay, noEvents())); assert.ok(!isMet(odd.until, snap([]), ev([SPOT.bundleContinue])), 'the press alone does not finish it');
   const start = applyInjections(buildSandbox(real), odd.inject); assert.deepEqual(start.pos.cart.lines.map((l: any) => l.variantId).sort(), ['train-v-cow-l', 'train-v-tad']);
   for (const g of bundlesDeals.check2) { assert.ok(g.taughtBy, g.id); assert.ok(bundlesDeals.show.steps.some(s => s.id === g.taughtBy) || bundlesDeals.guide.some(s => s.id === g.taughtBy), g.id); assert.ok(isKnownSpot(g.reveal!), g.id); }
   assert.equal(odd.at?.sheets, true); assert.ok(odd.at?.routes?.includes('pay')); assert.equal(pickVariantSpot('train-v-cow-s'), 'pick.variant:train-v-cow-s');

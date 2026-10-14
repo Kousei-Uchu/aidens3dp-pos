@@ -19,6 +19,7 @@ import { helpForError } from '../lib/helpContext';
 import { Spot, spotPressed, spotRefFor, useSpotRef } from './Spot';
 import { SPOT, findKeySpot } from '../lib/trainingSpots';
 import { TrainingLayer } from './TrainingLayer';
+import { noteSheetHide, sheetOpenDelay } from '../lib/sheetGate';
 
 export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
 export type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -140,8 +141,17 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll 
 /** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
 export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
+  // A window never opens in the same moment another is closing (see lib/sheetGate.ts): iOS can leave an invisible window over the screen if it does.
+  const [shown, setShown] = useState(visible); const shownRef = useRef(visible); shownRef.current = shown; const want = useRef(visible);
+  useEffect(() => {
+    if (visible === want.current) return undefined; want.current = visible;
+    if (!visible) { noteSheetHide(); setShown(false); return undefined; }
+    const wait = sheetOpenDelay(); if (wait <= 0) { setShown(true); return undefined; }
+    const t = setTimeout(() => setShown(true), wait); return () => clearTimeout(t);
+  }, [visible]);
+  useEffect(() => () => { if (shownRef.current) noteSheetHide(); }, []);
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
+    <Modal visible={shown} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
       <View onTouchStart={noteActivity} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay, paddingBottom: overlap }}>
         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
         <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
@@ -150,7 +160,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
           </View>
           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
         </View>
-        <TrainingLayer visible={visible} screen={screen} />
+        <TrainingLayer visible={shown} screen={screen} />
       </View>
     </Modal>
   );

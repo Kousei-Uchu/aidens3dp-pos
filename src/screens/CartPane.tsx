@@ -3,6 +3,7 @@ import { Spot, spotRefFor } from '../ui/Spot';
 import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
 import { gateAllowsTap } from '../lib/trainingGate';
 import React, { useState } from 'react';
+import { isTraining } from '../lib/trainingGuard';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
@@ -122,7 +123,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
         <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
         <View style={{ gap: 8, marginTop: 16 }}>
-          <Btn spot={SPOT.bundleContinue} title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); setTimeout(() => nav.push('pay'), 250); }} />
+          <Btn spot={SPOT.bundleContinue} title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); const practising = isTraining(); setTimeout(() => { if (isTraining() === practising) nav.push('pay'); }, 250); }} />
           <Btn spot={SPOT.bundleEdit} title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
         </View>
       </Sheet>

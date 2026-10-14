@@ -17,11 +17,11 @@ import PracticeTerminal from './PracticeTerminal';
 import { Enter } from './Motion';
 import { Veil, dipThrough } from './Veil';
 import { trainingActions } from './trainingActions';
-import { SPOT } from '../lib/trainingSpots';
+import { SPOT, isWindowSpot } from '../lib/trainingSpots';
 import { ROOT_LAYER } from '../lib/trainingLayers';
 import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
 import { isMet, snapOf, type Events } from '../lib/trainingConds';
-import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
+import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getCustomerDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
 import { getLastPracticeRefund } from '../lib/trainingOrders';
 import { hintView, shouldNudge } from '../lib/trainingHints';
 import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
@@ -106,12 +106,12 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
         // under the person stands in, exactly as before.
         const layer = topLayer();
         const sheet = layer !== ROOT_LAYER && isKnownScreen(layer) ? layer : getRuntimeScreen();
-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), customerDraft: getCustomerDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
         syncRuntimeFromSnap(snap); registerRuntimeSpots(mountedSpotIds()); // put this sale's cart lines, and every control on screen right now, on the app graph
         const until = item.until;
         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
-        const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
+        const met = until.kind === 'next' ? nextTap.current && (!cur.step?.ready || cur.step.ready(snap)) : isMet(until, snap, ev.current as Events);
         if (met) { advance(); return; }
         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
         const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture; repeat?: number } | null> => {
@@ -131,14 +131,16 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
           // `aim` says what to point at right now (the next key, the way back to the grid). It wins when what it points at is on screen.
           const aimed = step.aim?.(snap) ?? null; if (aimed) { rect = await spot(aimed.target); if (rect) say = aimed.say; }
           if (!rect) rect = await spot(step.target);
-          if (step.target && !rect) for (const r of step.recoverFrom ?? []) { rect = await spot(r.target); if (rect) { say = r.say; break; } }
-          if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
+          // A spot on the page under an open window cannot be tapped, so a fallback never points at one (0113: it left only that hidden spot tappable, and the window could not be used).
+          const behind = (t?: string) => !!t && snap.sheets > 0 && !isWindowSpot(t);
+          if (step.target && !rect) for (const r of step.recoverFrom ?? []) { if (behind(r.target)) continue; rect = await spot(r.target); if (rect) { say = r.say; break; } }
+          if (step.target && !rect && step.recover && !behind(step.recover.target)) { say = step.recover.say; rect = await spot(step.recover.target); }
           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
           if (off) { rect = off.rect; say = off.view!.say; }
           const gesture: Gesture = off ? off.gesture : step.gesture ?? 'tap';
           // Inside the ringed box only what this step asks for works: a swipe step never lets a tap open the line underneath (see lib/trainingGate.ts).
-          setGate(!off && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
-          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+          setGate(!off && !step.typing && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
+          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, typing: !!step.typing && !off, nextBlocked: !!step.ready && !step.ready(snap), title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
         } else {
           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }

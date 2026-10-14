@@ -1,0 +1,702 @@
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index afae0fd..3963cc7 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -361,3 +361,15 @@ This patch changes only **which places the guidance may use**; the words and the
+ 4. **Nothing leaks after a run.** Finish or leave a course, then use the till. Pass: no course-only window is ever ringed, and the app behaves exactly as before.
+ 
+ Tell me: pass or fail for each step, and whether the ring ever lands on a control the current run has no place for.
++
++## T30. Training: soft locks and the cursor (B6, 0119)
++
++1. **Discounts, Check 2.** Finish the first goal (10% off the Bumble Bee, Apply). Pass: the second goal starts, the screen still responds, and Exit works. Do it three times.
++2. **Windows swapping.** On a cart line, open the line window, then Discount, then Apply, then Item price adjustment, then back. Pass: each window opens (a short pause, under half a second, when one closes as the next opens) and nothing is ever stuck.
++3. **Price adjustments, Guide.** Step 8 (Reason): you can tap the box and type, and Next works. Step 19 (Remove adjustment): if you close the window early, the guide points at Line price (or the line) instead of freezing.
++4. **Customers, Guide.** The note step finishes only when you type Gift wrap. The new customer step lets you type your own details, and Next is greyed out until there is a first name and a real email or a mobile. Nothing is kept afterwards.
++5. **Scan items, Guide, start to finish.** Pass: every card the Guide asks for is on screen without scrolling (iPad and phone), the result box says Nothing scanned yet before the first scan, and you are never pointed at the camera button while its window is open.
++6. **Deals, Check 2, last goal.** Tap Charge, Continue to payment. Pass: you go straight to the finished screen, never to a Payment page showing $0.
++7. **Cursor.** Pass: it is the highlight orange and you can see through it a little; it is not drawn on a Next step or while you type; it never stops a tap, including on the ringed button.
++
++Tell me: pass or fail for each step. If anything freezes, tell me exactly which step and what was open.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7629f5b..3039e52 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -118,6 +118,8 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0113 | 2026-10-14 | Training (B6) infrastructure: **course correction now reads the whole app**. A hand-written app graph (`src/app.navgraph` + `src/app.navschema`: 68 screens, 155 transitions) holds every tab, Checkout view, pushed page, sheet and overlay, with a bundleable mirror (`src/lib/appNavgraph.generated.ts`, built by `scripts/build-navgraph.ts`, `npm run graph:build` / `graph:check`). A control table (`src/lib/appControls.ts`) places every static spot and every dynamic prefix (grid tiles, cart lines and their sub controls, search results, customer rows, discount presets, order rows, refund picks, cash denominations, scan cards) on its screen with its gesture. `src/lib/appGraph.ts` (routegraph 0.3.0) maps the app state to a node, plans a walk with `planRoute` and turns steps into the same candidates the dock draws. `guidanceCandidates` returns the old `fixCandidates` first, word for word and in order, then the graph's walk behind it, so nothing a person sees changes unless the fix's own control is off screen, where the ring now lands on the way back (Back, or the Checkout tab). Each tick puts the sale's cart lines and every mounted control on the graph (`Spot.mountedSpotIds()`), so user made and runtime screens are covered, and roles are recorded as screen metadata. New `tests/appnavgraph.test.ts` (18). Living plan and log `docs/ROUTEGRAPH_GUIDANCE.md`. Device test T28 | B6 |
+ | 0114 | 2026-10-14 | Training (B6) infrastructure: **a run only walks through places it has**. The guidance engine now plans within a *scope* so a course never guides a person through a place the everyday till owns, and the everyday till is never guided into a course. `src/app.navschema` gained a `modules` field on screens and edges (a list of module ids, or `"real"`; empty/missing means every scope, so only the places that differ carry it). `src/app.navgraph` tagged the real camera `overlay_camera` `["real"]`, the practice pass `overlay_practice_pass` `["sign-in"]`, and a new practice camera `overlay_practice_camera` `["scanning"]` (69 screens, 157 transitions). `src/lib/appGraph.ts` gained `GuideScope`, `scopeForModule`/`scopeForReal`, `metaInScope`/`screenInScope` and `scopeFilter`, threaded through `reachable`, `routeNavSteps`, `guidanceCandidates` and `planToSpot`; it reuses routegraph's own `PathOptions.edgeFilter`, so no library change. A place with no tag is in every run; a place whose tab/route the course disallows is out of scope without a tag, and a fix outside the run adds no walk. `src/lib/appControls.ts` corrected `scan.card:` to the practice camera. `TrainingHost` passes `scopeForModule(mod)` and clears runtime controls when a run ends (`clearRuntimeSpots`). `tests/appnavgraph.test.ts` (25). Living plan and log `docs/ROUTEGRAPH_GUIDANCE.md` | B6 |
+ | 0115 | 2026-10-14 | Training (B6) infrastructure: **per-instance scopes**. Finishes the scope work by letting a runtime instance, not just a screen or an edge, belong to a run. `registerRuntimeSpots` (`src/lib/appGraph.ts`) now takes a spot id or `{ spot, modules }` (`RuntimeSpot`); the tag becomes the action node's metadata, which routegraph carries and the existing `scopeFilter` checks, so a product tile, a customer row, a grid page or a practice user that belongs to one run is refused in another even though both runs share the same screen (no library change). Untagged instances are in every run. Records the honest state of the practice world: every course runs the one shared sandbox, and only `practiceStaff`, `flow`, `tabs`/`routes` and per-goal `inject`s differ, so the item library, grid and users are the same across courses and are swapped inside the same screens (not a place-scope concern). `tests/appnavgraph.test.ts` (27). Living plan and log `docs/ROUTEGRAPH_GUIDANCE.md` | B6 |
++| 0119 | 2026-10-14 | Training (B6), device-test corrections part 1: **soft locks and the cursor** (`docs/TRAINING_CORRECTIONS.md`, sections 1 and 2). **Windows no longer open in the same moment another closes** (`src/lib/sheetGate.ts`, used by every `Sheet`; the same iOS invisible-window cause as 0097, and the likely cause of the Discounts Check 2 lock after Apply). **The guide never blocks the whole screen when its target is gone** (it did, which locked Price adjustments step 19 and the scan Guide, Exit included), and **a fallback never points at a spot hidden behind an open window** (the scan Guide's "tiny gap" loop). **`Step.typing`**: a step where you type lets touches through the ring and draws no cursor (Customers step 13, Price step 8, Customers note); **`Step.ready`**: Next stays greyed until the form is filled in (Customers: a name plus a real email or a mobile; nothing is kept). The note step now needs Gift wrap typed. **Cursor:** the ring's orange, a little see-through, never takes a touch, hidden on typing and Next steps. **Scan:** the practice cards are compact and ordered so the Guide's are on screen, and the result box is always there. **Deals:** the last Check 2 goal ends when Payment is open, and the delayed push to Payment can no longer land after practice has ended (the $0 page). Found by reading the code, **not reproduced** (no device here): device test T30. New `tests/trainingsoftlocks.test.ts` | B6 |
++
+ 
+ ---
+ 
+@@ -453,6 +455,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N43 **Non-blocking (B6, 0110):** device check for the price course (More ▸ Training ▸ Change a price). Check the three price windows with the on-screen keyboard (the ring must not block the Reason box or the keys), the All in cart chip, the review sheet and its Continue button, and the cart menu route on a phone. See T25 in `docs/DEVICE_TESTS.md`.
+ - [ ] N44 **Non-blocking (B6, 0111):** device check for the deals course (More ▸ Training ▸ How deals show up), steps in `docs/DEVICE_TESTS.md` T26.
+ - [ ] N45 **Non-blocking (B6, 0112):** device check for the scanning course (More ▸ Training ▸ Scan items), steps in `docs/DEVICE_TESTS.md` T27. Most important: the camera button must open the **practice** window (drawn barcode cards), never the real camera or a camera permission prompt, and your real camera scan on the real Checkout must still work as before. Also check the ring on a card button and on the green or red message, and that Done and the close button both leave the window.
++- [ ] N46 **Non-blocking (B6, 0113):** device check for the soft lock and cursor fixes, steps in `docs/DEVICE_TESTS.md` T28. Most important: Discounts Check 2 (apply a discount, then the next goal), Price adjustments Guide steps 8 and 19, the scan Guide in one go, and the last Deals Check 2 goal.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/docs/TRAINING_CORRECTIONS.md b/docs/TRAINING_CORRECTIONS.md
+new file mode 100644
+index 0000000..623bc9a
+--- /dev/null
++++ b/docs/TRAINING_CORRECTIONS.md
+@@ -0,0 +1,99 @@
++# Training corrections (from device testing)
++
++Source: your device test notes after 0111 and 0112. Grouped so each group can be one patch. Soft locks come first because they stop a person finishing a module at all.
++
++Legend: **[LOCK]** soft lock or cannot progress · **[BUG]** wrong behaviour · **[DESIGN]** the course teaches the wrong thing or too little · **[NEW]** a new feature, not a fix.
++
++## Status
++
++- **0119 (done, awaiting device test T30):** 1.1 to 1.7 and all of section 2 (soft locks, typing steps, the cursor), plus the scan window's order and result box and the note validation in Customers. 1.2 was found by reading the code and not reproduced; the best explanation is the iOS two-windows problem (see 0097), fixed for every window.
++- **Still to do:** section 3 (Show animation), section 4 (per module), section 5 (app changes).
++
++## 1. Soft locks and dead ends (fix first)
++
++| # | Module | Problem |
++|---|--------|---------|
++| 1.1 | Customers and notes | **[LOCK]** Guide step 13 blocks the text fields, but the step tells you to fill them in. The rest of the module is then unreachable because the form rejects empty fields. |
++| 1.2 | Discounts | **[LOCK]** Check 2 step 2 locks the whole screen: nothing can be pressed, not even Exit. Only closing and reopening the app recovers. Check 2 beyond it could not be reached. |
++| 1.3 | Price adjustments | **[LOCK]** Guide step 19 points at Remove, but the sheet has already closed, so the target is gone. |
++| 1.4 | Price adjustments | **[BUG]** Guide step 8: the Reason box cannot be typed in. |
++| 1.5 | Scan items | **[LOCK]** Guide step 7 asks for a card that sits off the bottom of the practice camera window. It cannot be scrolled to or tapped. Skip was the only way on. |
++| 1.6 | Scan items | **[LOCK]** Guide step 6 then asks you to tap the camera button while you are still inside the practice window. You have to tap a tiny gap to close it and reopen it. This repeats until step 11 (Done). |
++| 1.7 | How deals show up | **[BUG]** The last Check 2 goal ends on a Payment page showing $0. You must press Back to reach the finished screen with the tick and confetti. |
++
++Suggested approach: audit every Guide step and goal for "target is gone because a window closed", and make the Exit button and the dock always reachable even while a window is dimmed (1.2 is probably the same cause as the 0097 freeze).
++
++## 2. Cursor and highlight (applies to every module and stage)
++
++- Hide the cursor in any step that is not actively using it. It often gets in the way.
++- The cursor must never block touch (`pointerEvents: none`).
++- Make it slightly transparent so what is underneath shows.
++- Use the same orange as the highlight (`#FB873F`), because the current colour has too little contrast on the dark theme.
++- The cursor should guide to the individual buttons, not only the group. Reported in Discounts Guide step 5 (the keys).
++
++## 3. Show and Info animation quality
++
++- **Scan items, Show:** the scan section is only buttons reading "Scan this: ...". Replace it with a camera simulation: a camera frame, and a box with a white sticker carrying a barcode (or at least a QR system icon) sliding into view, then the green or red result. Keep the real practice window for the Guide.
++- **Scan items, Show:** the Cashier Pass and Gift Card QR tiles are skipped (the step reveals them but the camera does not visit them).
++- **Scan items, Show:** the bottom text box animates very poorly in the last two steps.
++- **Discounts, Show:** skips the Whole Cart element.
++
++## 4. Per module
++
++### Take cash and give change
++- **[DESIGN]** Poorly made overall. Review and rework it: Guide, Check 1 and Check 2 against the current Cash window.
++
++### Customers and notes
++- Guide step 8 (typing the note) does not check what was typed. It should finish only on a real note, and say so if it is empty.
++- Guide step 13: let the person type their own details into the form (a name, email and so on), and make clear nothing is saved. Remove the block on the fields. The step should not accept empty fields because the person could not type; once typing works, keep the validation.
++
++### Discounts
++- Guide step 5 does not check that both numbers were typed. Finish only when both are keyed.
++- Guide does not course correct properly. Re-test every step with a wrong tap and a closed window.
++- Check 1, last goal: "never mind" is not something a customer would say. Replace it with a realistic reason to remove a discount (for example the item was rung up at the wrong discount, or a voucher was not valid).
++- Check 2 shows the real grid of tiles. It should show the practice grid.
++- Check 2 step 2 soft lock (see 1.2).
++
++### Change a price
++- Reason box typing (1.4) and Guide step 19 (1.3).
++
++### Refunds and exchanges
++- **[DESIGN]** Check 2 does not really go wrong. It says "this is what is going to happen but by a different route" instead of a normal refund that then fails. It should be a normal refund and then the card refund declines, and the person decides what to do. A test of memory and logic, not menus.
++- The way to handle it must have been shown at least once earlier in the module (Show or Guide), so the person is not dropped in. Then Check 2 asks them to do it unprompted.
++- This applies to a lot of the other modules too. Review every Check 2 against that rule: a normal task, a realistic customer-side failure, a fix that was already taught.
++
++### How deals show up
++- The hint says to add a Small Highland Cow, but doing that changes nothing, because the Large cow is still there and must be removed too. Better: have the person change the variation from the line's details window instead (swap Large for Small on the same line). Add a spot for that control.
++- Last Check 2 goal ends on a $0 Payment page (see 1.7).
++
++### Scan items
++- Guide step 13 only highlights the top item. Minor. Ring the line that matters.
++- Adding too many of an item prompts a fix, but the first fix step (close the window) makes the toast disappear. Keep the correction visible, or re-point at the next step once the window closes.
++- Plus 1.5, 1.6 and the Show items in section 3. The Guide loop (clicking in and out until step 11) needs the steps rewritten so the window stays open across the scanning steps.
++
++## 5. App changes (not training)
++
++- **[NEW] Scanning gift card and discount codes in the cart and on the payment page.**
++  - With a HID scanner, always accept them on both the cart view and the payment page.
++  - Add a button in the three-dots (meatballs) cart menu that opens the camera or text entry.
++  - A scanned gift card shows a preview of how much it takes off. This should also make split gift card payments easier.
++- **[BUG, app] More ▸ Orders should be Shopify orders only.** The Transactions menu is for POS sales. Check what each list shows today and separate them.
++- **[NEW] System status bar.** Hide the iOS status bar (clock, battery, Wi-Fi) and draw the app's own. It currently blocks some buttons and looks out of place.
++- **[NEW] Log the cashier on every sale.** Save the signed-in staff member on each sale, and show it in Reports and on the transaction.
++- **[NEW] Card last four digits.** Check whether the Zeller SDK returns the last four digits of the card for a transaction. If it does, store and show it.
++- **[NEW] Show every data point we can attach to a sale on that sale's entry** (cashier, register, card last four, tender breakdown, cash given and change, adjustments and reasons, customer, receipt method, fees, times, and so on). Start with an inventory of what a sale record already holds and what is missing.
++
++## 6. Questions for you
++
++1. Customers, step 13: is it fine that the person types their own real details into the practice form, given nothing is saved or sent?
++2. Status bar: hide it everywhere, or only while training or the guided flows?
++3. Order of work: soft locks (section 1) first, then the cursor changes (section 2) for all modules at once, then the per-module rework. Does that suit you?
++
++## 7. Proposed patches
++
++1. Soft locks and dead ends (1.1 to 1.7) and the cursor (section 2).
++2. Cash course rework.
++3. Customers and Discounts corrections.
++4. Change a price, Deals and Scan items corrections, plus the Scan Show camera simulation.
++5. Refund and Check 2 review across all modules.
++6. App changes (section 5), each as its own patch.
+diff --git a/docs/patches/0119-plan.md b/docs/patches/0119-plan.md
+new file mode 100644
+index 0000000..9f39ca1
+--- /dev/null
++++ b/docs/patches/0119-plan.md
+@@ -0,0 +1,45 @@
++# Patch 0119: Training corrections part 1, soft locks and the cursor
++
++Stacks on 0118 (routegraph guidance). Sections 1 and 2 of `docs/TRAINING_CORRECTIONS.md`.
++
++This is the pre-PR `0119-training-soft-locks.patch` (written against 3d37ab1, before routegraph 0113-0118
++merged) re-applied on top of the routegraph work. The pre-PR patch did not apply cleanly, so it was
++three-way merged and the overlaps resolved:
++
++- `snapOf` / `TrainSnap` now carry **both** the routegraph `sheet` field and the corrections
++  `customerDraft` field.
++- `TrainingHost` builds the snapshot with `sheet` **and** `customerDraft`, and its guide view keeps
++  routegraph's `repeat` **and** the corrections `typing` / `nextBlocked`.
++- `kit.tsx`'s `Sheet` keeps routegraph's `screen` prop on the training layer and uses the corrections
++  `shown` gate: `<TrainingLayer visible={shown} screen={screen} />`.
++- The soft-lock device test collides with routegraph's T28/T29, so it is now **T30**;
++  `tests/trainingsoftlocks.test.ts` was updated for the `screen` prop.
++- The two rows that both claimed 0113 are now 0113-0115 (routegraph) and **0119** (this patch).
++
++The original patch is left untracked at `patches/0119-training-soft-locks.patch` for reference and is
++**not** part of this commit; this patch takes the 0119 slot.
++
++## What you asked
++> ok now start fixing em. refresh your repo, use the main branch
++
++## Causes found (by reading; no device here, so none reproduced)
++- **Two windows changing in the same moment** (0097's cause). The line window hides itself while Discount, Item price or Line price is open, and shows itself again when it closes, so Apply closes one window and opens another in the same instant. The cart menu does the same. This matches the Discounts Check 2 lock, which began right after Apply. Fix: `src/lib/sheetGate.ts`, used by every `Sheet`; a window opens at least 450 ms after the last one began to close, and at once if none did.
++- **A full-screen dim with no hole.** In Guide, when the target was gone (a window had closed), the overlay dimmed and blocked the whole screen, Exit included (Price step 19, the scan Guide). It now dims only when there is a target to point at.
++- **Pointing at something behind a window.** A fallback could ring a page spot that sat under an open window, leaving only that hidden spot tappable (the scan Guide's "tiny gap"). Fallbacks now skip page spots while a window is open.
++- **Next blocks touches in the ring.** A step that waits on Next put an invisible blocker over the area, so the Customers form and the Reason box could not be typed in. New `Step.typing` lets touches through and draws no cursor.
++- **Deals $0.** The goal finished on the Continue press, but Continue pushes Payment 250 ms later, after the finish screen had opened and the cart was cleared. The goal now ends when Payment is open, and the push is skipped if practice ended.
++
++## Also
++- `Step.ready`: Next is greyed out until it is true. Customers uses it (first name plus a real email or a mobile). The form's typed values reach the guide through a new probe (`customerDraft`).
++- Customers note step needs Gift wrap typed (any case, any spacing). Its form step now says to type your own details and that nothing is kept.
++- Cursor: the ring's orange, 80% opaque, a dark edge, never takes a touch (it already ignored touches), not drawn on Next or typing steps.
++- Scan window: compact cards, the Guide's cards first, and a result box that is always there.
++- Price step 19 falls back to Line price, then the cart line.
++
++## Not covered
++Sections 3 to 5 of the corrections doc. The Bluetooth and cashier pass notes are unchanged.
++
++## Checklist
++1. [x] Code, `tests/trainingsoftlocks.test.ts` (10 tests), updated Deals test.
++2. [x] Full suite and typecheck (744 tests, 0 fail).
++3. [ ] Device test T30.
+diff --git a/src/lib/sheetGate.ts b/src/lib/sheetGate.ts
+new file mode 100644
+index 0000000..26b4555
+--- /dev/null
++++ b/src/lib/sheetGate.ts
+@@ -0,0 +1,11 @@
++// Location: src/lib/sheetGate.ts
++// iOS can leave an invisible window over the whole screen when one window dismisses at the same moment another opens (0097 found it after a pass scan; the
++// line window does the same when a Discount or price window closes and it comes back). Nothing can be pressed after that, not even Exit.
++// So a window waits until the last one has had time to finish closing before it opens. A window that opens with nothing closing before it opens at once. Pure.
++export const SHEET_GAP_MS = 450;
++let lastHide = Number.NEGATIVE_INFINITY;
++/** A window has begun to close. */
++export const noteSheetHide = (now: number = Date.now()): void => { lastHide = now; };
++/** How long a window that wants to open now should wait, in ms (0 when nothing closed recently). */
++export const sheetOpenDelay = (now: number = Date.now()): number => Math.max(0, lastHide + SHEET_GAP_MS - now);
++export const resetSheetGate = (): void => { lastHide = Number.NEGATIVE_INFINITY; };
+diff --git a/src/lib/trainingConds.ts b/src/lib/trainingConds.ts
+index 72ea59d..7c7c26c 100644
+--- a/src/lib/trainingConds.ts
++++ b/src/lib/trainingConds.ts
+@@ -15,10 +15,10 @@ export function isMet(u: Until, snap: TrainSnap, ev: Events): boolean {
+ }
+ /** What the driver reads of the real app state. The optional fields are what a plain test leaves out. */
+ type CartLike = { id?: string; variantId?: string; title?: string; kind?: 'item' | 'custom' | 'gift_card'; qty: number; discount?: unknown; adjust?: unknown; overrideCents?: number; overrideAll?: boolean; unitCents?: number; note?: string };
+-export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; sheet?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; refund?: TrainSnap['refund']; customerQuery?: string; noteDraft?: string; priceDraft?: string; cash?: TrainSnap['cash']; lastSaleCash?: TrainSnap['lastSaleCash']; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: { id?: string } | unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
++export function snapOf(s: { tab: string; route: string; sheets?: number; staffId?: string; locked?: boolean; openLine?: string; sheet?: string; payOpen?: TrainSnap['payOpen']; lastSaleKinds?: string[]; refund?: TrainSnap['refund']; customerQuery?: string; noteDraft?: string; customerDraft?: TrainSnap['customerDraft']; priceDraft?: string; cash?: TrainSnap['cash']; lastSaleCash?: TrainSnap['lastSaleCash']; typed?: TrainSnap['typed']; where?: TrainSnap['where']; cart: { lines: CartLike[]; customer?: { id?: string } | unknown; tenders?: unknown[]; discount?: unknown; orderAdjust?: unknown; note?: string }; sales: number; paying: boolean }): TrainSnap {
+   return {
+     tab: s.tab, route: s.route, sheets: s.sheets ?? 0, lines: s.cart.lines.length, qty: s.cart.lines.reduce((n, l) => n + l.qty, 0), sales: s.sales,
+-    hasCustomer: !!s.cart.customer, customerId: (s.cart.customer as { id?: string } | undefined)?.id, customerQuery: s.customerQuery, noteDraft: s.noteDraft, priceDraft: s.priceDraft, orderAdjustCents: (s.cart.orderAdjust as { finalCents?: number } | undefined)?.finalCents, cash: s.cash, lastSaleCash: s.lastSaleCash, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, sheet: s.sheet, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds, refund: s.refund,
++    hasCustomer: !!s.cart.customer, customerId: (s.cart.customer as { id?: string } | undefined)?.id, customerQuery: s.customerQuery, noteDraft: s.noteDraft, customerDraft: s.customerDraft, priceDraft: s.priceDraft, orderAdjustCents: (s.cart.orderAdjust as { finalCents?: number } | undefined)?.finalCents, cash: s.cash, lastSaleCash: s.lastSaleCash, tenders: s.cart.tenders?.length ?? 0, paying: s.paying, staffId: s.staffId, locked: !!s.locked, typed: s.typed, where: s.where, openLine: s.openLine, sheet: s.sheet, payOpen: s.payOpen, lastSaleKinds: s.lastSaleKinds, refund: s.refund,
+     cart: s.cart.lines.map(l => ({ variantId: l.variantId, title: l.title ?? '', kind: l.kind ?? 'item', qty: l.qty, discounted: !!l.discount, adjusted: !!l.adjust || l.overrideCents !== undefined, unitCents: l.unitCents, lineId: l.id, itemPriced: l.overrideCents !== undefined, overrideCents: l.overrideCents, overrideAll: !!l.overrideAll, adjustCents: (l.adjust as { finalCents?: number } | undefined)?.finalCents, lineAdjusted: !!l.adjust, noted: !!(l.note && l.note.trim()) })),
+     cartDiscount: !!s.cart.discount, orderAdjusted: !!s.cart.orderAdjust, hasNote: !!(s.cart.note && s.cart.note.trim()),
+   };
+diff --git a/src/lib/trainingModule.ts b/src/lib/trainingModule.ts
+index 8d9c26d..36fcc95 100644
+--- a/src/lib/trainingModule.ts
++++ b/src/lib/trainingModule.ts
+@@ -58,6 +58,7 @@ export type TrainSnap = {
+   /** The graph screen node of the window open on top (a `sheet_*` screen, or the per line `sheet_line:<key>`), when the window is one the graph knows. */
+   sheet?: string;
+   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
++  /** What is typed in the New customer form (undefined when that form is not open). */ customerDraft?: { first: string; last: string; email: string; phone: string };
+   /** What is keyed in an open price window, as `item:2000`, `line:1200` or `order:3000` (cents), and the whole order price (cents) when one is set. */ priceDraft?: string; orderAdjustCents?: number;
+   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
+   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
+@@ -78,6 +79,10 @@ export type Until =
+ export type Step = { id: string; say: string; title?: string; target?: string; until: Until; recover?: { say: string; target?: string }; allow?: Allow[]; at?: Place; watch?: Watch[];
+   /** How the person reaches the target, shown by the cursor and enforced inside the ringed box: a swipe step never lets a tap open what is underneath. Left out it is a tap. */
+   gesture?: Gesture;
++  /** The person types into the ringed area. Touches pass through the ring (a step that waits on Next otherwise blocks them) and no cursor is drawn over the field. Needs a `target`. */
++  typing?: boolean;
++  /** For a step that waits on Next: Next stays greyed out, and does nothing, until this is true (the form has been filled in). */
++  ready?: (s: TrainSnap) => boolean;
+   /** Looked at on every check, before `target`. Returns what to say and point at right now (the next key to tap, the way back to the grid), or null to use `say` and `target` as written. */
+   aim?: (s: TrainSnap) => { say: string; target: string } | null;
+   /** Where to point, deepest first, when the target is gone because the person closed a window or backed out. The first one that is on screen wins, and `recover` (the shallowest) is the last resort. */
+@@ -142,6 +147,8 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
+     if (s.until.kind === 'state' && !s.allow) at('guide', `step ${s.id} waits on the till changing, so it must say what may change (allow)`);
+     if (s.gesture !== undefined && !isGesture(s.gesture)) at('guide', `step ${s.id} has the unknown gesture "${String(s.gesture)}"`);
+     if (s.until.kind === 'state' && s.target && !s.gesture) at('guide', `step ${s.id} points at something and waits on the till changing, so it must say how to reach it (gesture), for example swipe-left`);
++    if (s.ready && s.until.kind !== 'next') at('guide', `step ${s.id} has \`ready\`, which only a step that waits on Next can use`);
++    if (s.typing && !s.target) at('guide', `step ${s.id} says the person types, so it needs a target`);
+     for (const t of (s.recoverFrom ?? []).map(r => r.target)) if (t && !spotOk(t)) at('guide', `step ${s.id} falls back to the unknown spot "${t}"`);
+     for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
+     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
+diff --git a/src/lib/trainingProbe.ts b/src/lib/trainingProbe.ts
+index 9d7ce9d..8307e8e 100644
+--- a/src/lib/trainingProbe.ts
++++ b/src/lib/trainingProbe.ts
+@@ -12,6 +12,8 @@ let customerQuery = ''; export const setCustomerQuery = (q: string): void => { c
+ export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
+ let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;
+ const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (source: string, v: string): void => { priceDrafts[source] = v; }; export const getPriceDraft = (): string => Object.values(priceDrafts).find(Boolean) ?? '';
++export type CustomerDraft = { first: string; last: string; email: string; phone: string };
++let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
+ let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
+ let typed: Typed = {}; let where: CheckoutWhere | undefined; let reset: (() => void) | null = null;
+ export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
+diff --git a/src/lib/trainingScan.ts b/src/lib/trainingScan.ts
+index f2f5a20..86dd7c4 100644
+--- a/src/lib/trainingScan.ts
++++ b/src/lib/trainingScan.ts
+@@ -1,5 +1,5 @@
+ // Location: src/lib/trainingScan.ts
+-// The practice barcodes. A camera cannot scan an item that does not exist, so during practice the camera window draws these cards instead
++// The practice barcodes, in the order the Guide uses them (so the ones it asks for are on screen without scrolling). A camera cannot scan an item that does not exist, so during practice the camera window draws these cards instead
+ // and a button on each plays the part of holding that barcode in front of the camera. Pure.
+ // The item cards carry the practice item's SKU (the till matches a scan to a barcode, then to a SKU). The torn label is a code nothing matches.
+ // The gift card carries a real gift card QR prefix, so the till answers exactly as it does for a real card. There is no cashier pass card on purpose:
+@@ -7,10 +7,10 @@
+ export type PracticeScan = { key: string; title: string; sub: string; code: string };
+ 
+ export const PRACTICE_SCANS: readonly PracticeScan[] = [
+-  { key: 'bee', title: 'Bumble Bee', sub: 'The barcode on the item', code: 'TR-BEE' },
+-  { key: 'dragon', title: 'Red Dragon', sub: 'The barcode on the item', code: 'TR-DRG' },
+-  { key: 'sticker', title: 'Sticker Pack', sub: 'The barcode on the item', code: 'TR-STK' },
+-  { key: 'torn', title: 'Torn label', sub: 'The label on a Keyring. It is torn, so the code is wrong.', code: '9300000009421' },
+-  { key: 'gift', title: 'Gift card', sub: 'A customer\u2019s gift card, shown as a QR code on the card', code: 'shopify-giftcard-v1-TRAINPRACTICE1' },
++  { key: 'bee', title: 'Bumble Bee', sub: 'Item barcode', code: 'TR-BEE' },
++  { key: 'dragon', title: 'Red Dragon', sub: 'Item barcode', code: 'TR-DRG' },
++  { key: 'torn', title: 'Torn label', sub: 'A Keyring. The code is damaged.', code: '9300000009421' },
++  { key: 'gift', title: 'Gift card', sub: 'A customer\u2019s gift card QR code', code: 'shopify-giftcard-v1-TRAINPRACTICE1' },
++  { key: 'sticker', title: 'Sticker Pack', sub: 'Item barcode', code: 'TR-STK' },
+ ];
+ export const practiceScanOf = (key: string): PracticeScan | undefined => PRACTICE_SCANS.find(s => s.key === key);
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 6767053..42f55fd 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -3,6 +3,7 @@ import { Spot, spotRefFor } from '../ui/Spot';
+ import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
+ import { gateAllowsTap } from '../lib/trainingGate';
+ import React, { useState } from 'react';
++import { isTraining } from '../lib/trainingGuard';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { Btn, Card, HelpButton, IconBtn, Money, Row, Sheet, Thumb, Txt, alertMsg, confirm } from '../ui/kit';
+@@ -122,7 +123,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
+         <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>
+         <View style={{ gap: 8, marginTop: 16 }}>
+-          <Btn spot={SPOT.bundleContinue} title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); setTimeout(() => nav.push('pay'), 250); }} />
++          <Btn spot={SPOT.bundleContinue} title="Continue to payment" onPress={() => { setAckKey(bundleReviewKey(priced.bundles)); setBundleCheck(false); const practising = isTraining(); setTimeout(() => { if (isTraining() === practising) nav.push('pay'); }, 250); }} />
+           <Btn spot={SPOT.bundleEdit} title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
+         </View>
+       </Sheet>
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index f9fe9c0..eac09e2 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -4,7 +4,7 @@ import { View } from 'react-native';
+ import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { isTraining } from '../lib/trainingGuard';
+-import { setCustomerQuery, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
++import { setCustomerDraftProbe, setCustomerQuery, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
+ import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
+ import { setOpenLine } from '../lib/trainingProbe';
+ import { Spot } from '../ui/Spot';
+@@ -80,6 +80,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+   const hits = useMemo(() => { const t = q.trim().toLowerCase(); if (!t) return local.slice(0, 30); return local.filter(c => `${c.name} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, local]);
+   const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
+   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
++  useEffect(() => { setCustomerDraftProbe(creating ? f : undefined); return () => setCustomerDraftProbe(undefined); }, [creating, f]); // training reads what is typed
+   const create = async () => {
+     if (!f.first.trim() && !f.last.trim() && !f.email.trim() && !f.phone.trim()) return alertMsg('Add at least a name, email or phone');
+     setBusy(true);
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index 6e30000..1180c43 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -30,6 +30,10 @@ export type DockView = {
+   gesture?: Gesture;
+   /** How many times the pointed-at control is used in a row (the minus button, to take more than one out). Set only when more than one. */
+   repeat?: number;
++  /** The person types in the ringed area, so touches pass through it and no cursor is drawn (a Step with `typing`). */
++  typing?: boolean;
++  /** A Next button that is greyed out until the step's `ready` test passes. */
++  nextBlocked?: boolean;
+   /** Set in Check when the person has gone off course: what happened, and whether to offer starting this part again. */
+   stray?: { title: string; say: string; fix: 'undo' | 'restart'; offerRestart: boolean; how: string[]; taught?: { id: string; title: string; done: boolean }; showHow: boolean };
+ };
+diff --git a/src/training/modules/bundles-deals.ts b/src/training/modules/bundles-deals.ts
+index 682c4f6..5f90e57 100644
+--- a/src/training/modules/bundles-deals.ts
++++ b/src/training/modules/bundles-deals.ts
+@@ -102,7 +102,7 @@ export const bundlesDeals: TrainingModule = {
+       ladder: ['The $10 deal is the 5 Tadlings deal.', 'You have four, so only the 3 Tadlings deal applies.', 'Tap the Tadling tile once more.'], reveal: gridItemSpot(TAD), via: SPOT.tabCheckout, gesture: 'tap', allow: ['add', 'qty'], at: place },
+     { id: 'c2-swap', title: 'The Large cow with a Tadling is not a recommended pair. Swap the Large cow for a Small one', until: { kind: 'state', test: s => has(s, COW_S) && !has(s, COW_L) }, inject: [{ kind: 'cart', items: [{ variantId: COW_L, qty: 1 }, { variantId: TAD, qty: 1 }] }], taughtBy: 'recommended',
+       ladder: ['Read the Bundle deals box. It says Not a recommended pair.', 'Small is the recommended size.', 'Add a Small cow, then remove the Large one.'], reveal: pickVariantSpot(COW_S), via: gridItemSpot(COW_P), gesture: 'tap', allow: ['add', 'remove', 'qty'], at: place },
+-    { id: 'c2-odd', title: 'The customer really wants the Large cow. Go to payment and continue past the Check these bundles window', until: { kind: 'press', id: SPOT.bundleContinue }, inject: [{ kind: 'cart', items: [{ variantId: COW_L, qty: 1 }, { variantId: TAD, qty: 1 }] }], taughtBy: 'check',
++    { id: 'c2-odd', title: 'The customer really wants the Large cow. Go to payment and continue past the Check these bundles window', until: { kind: 'state', test: s => s.route === 'pay' }, inject: [{ kind: 'cart', items: [{ variantId: COW_L, qty: 1 }, { variantId: TAD, qty: 1 }] }], taughtBy: 'check',
+       ladder: ['A window appears before payment when a pair is not recommended.', 'It appears when you tap Charge.', 'Tap Charge, then Continue to payment.'], reveal: SPOT.bundleContinue, via: SPOT.cartCharge, gesture: 'tap', allow: [], at: placeWin },
+   ],
+   recap: ['You read which automatic deals applied, one row per deal, and deals can stack on one line.', 'A bundle has its own box and uses up items, so a deal for the same items may no longer apply.', 'A Not a recommended pair note still gives the deal. You look once and continue or edit.', 'None of this is set up in the till.'],
+diff --git a/src/training/modules/customer.ts b/src/training/modules/customer.ts
+index 2026235..8ba3abc 100644
+--- a/src/training/modules/customer.ts
++++ b/src/training/modules/customer.ts
+@@ -101,12 +101,12 @@ export const customer: TrainingModule = {
+     { id: 'g-pick', target: customerRowSpot(PRIYA), say: 'Tap Priya Patel to attach her to the sale.', until: { kind: 'state', test: s => s.customerId === PRIYA }, gesture: 'tap', allow: ['customer'], at: placeWin },
+     { id: 'g-attached', target: SPOT.cartCustomer, say: 'Priya Patel is on the sale, and her name sits at the top of the cart. The sale is saved with her name, and email or text receipts start from her details.', until: { kind: 'next' }, recover: phone, at: place },
+     { id: 'g-line', target: cartLineSpot(BEE), say: 'Now a note. Tap the Bumble Bee line to open its window.', until: { kind: 'visible', id: lineNoteSpot(BEE) }, gesture: 'tap', recover: { say: 'On a phone, tap the cart bar at the bottom of the screen, then tap the Bumble Bee line.', target: SPOT.cartOpen }, at: place },
+-    { id: 'g-note', target: lineNoteSpot(BEE), say: 'Tap the Note box and type Gift wrap.', until: { kind: 'state', test: s => (s.noteDraft ?? '').trim().length > 0 }, gesture: 'tap', allow: ['note'], at: placeWin },
++    { id: 'g-note', target: lineNoteSpot(BEE), say: 'Tap the Note box and type Gift wrap.', until: { kind: 'state', test: s => /gift\s*wrap/i.test(s.noteDraft ?? '') }, typing: true, gesture: 'tap', allow: ['note'], at: placeWin },
+     { id: 'g-note-done', target: SPOT.lineDone, say: 'Tap Done. The note is saved when you close the window.', until: { kind: 'state', test: s => noted(s, BEE) }, gesture: 'tap', allow: ['note'], at: placeWin },
+     { id: 'g-remove', target: SPOT.cartCustomerOff, say: 'To take the customer off the sale, tap the small x next to their name. The items stay.', until: { kind: 'state', test: s => !s.hasCustomer }, gesture: 'tap', allow: ['customer', 'note'], recover: phone, at: place },
+     { id: 'g-create-open', target: SPOT.cartCustomer, say: 'Not everyone is on the list. Tap the customer row again.', until: { kind: 'visible', id: SPOT.customerCreate }, gesture: 'tap', allow: ['note'], recover: phone, at: place },
+     { id: 'g-create', target: SPOT.customerCreate, say: 'Tap Create customer.', until: { kind: 'visible', id: SPOT.customerForm }, gesture: 'tap', allow: ['note'], at: placeWin },
+-    { id: 'g-form', target: SPOT.customerForm, say: 'Fill in a first name, and an email or mobile. Tap Next here when you have.', until: { kind: 'next' }, gesture: 'tap', allow: ['note'], at: placeWin },
++    { id: 'g-form', target: SPOT.customerForm, say: 'Type your own first name, and your own email or mobile. Nothing is kept: practice data is thrown away when you leave. Tap Next when you have.', until: { kind: 'next' }, typing: true, ready: s => !!s.customerDraft && s.customerDraft.first.trim().length > 0 && (/^\S+@\S+\.\S+$/.test(s.customerDraft.email.trim()) || s.customerDraft.phone.replace(/\D/g, '').length >= 6), gesture: 'tap', allow: ['note'], at: placeWin },
+     { id: 'g-save', target: SPOT.customerSave, say: 'Tap Create & attach. In practice the new customer is made on this iPad only, nothing goes to Shopify.', until: { kind: 'state', test: s => !!s.customerId?.startsWith('train-cu-new-') }, gesture: 'tap', allow: ['customer', 'note'], at: placeWin },
+     { id: 'g-done', say: 'You can attach, search, create, note and take off. A customer is always optional, so never hold a sale up for one.', until: { kind: 'next' }, at: place },
+   ],
+diff --git a/src/training/modules/price-adjust.ts b/src/training/modules/price-adjust.ts
+index 013fc44..f2e041a 100644
+--- a/src/training/modules/price-adjust.ts
++++ b/src/training/modules/price-adjust.ts
+@@ -118,7 +118,7 @@ export const priceAdjust: TrainingModule = {
+     { id: 'g-item-row', target: linePriceSpot(BEE), say: 'Tap Item price. It sets a new price for one unit, for this sale only.', until: { kind: 'visible', id: SPOT.priceItemKeys }, gesture: 'tap', allow: [], at: placeWin },
+     { id: 'g-scope', target: SPOT.priceScopeAll, say: 'Tap All in cart. The price then covers every Bumble Bee in the order, even ones added later. Fixed quantity covers only a set number on this line.', until: { kind: 'press', id: SPOT.priceScopeAll }, gesture: 'tap', allow: [], at: placeWin },
+     { id: 'g-item-keys', target: SPOT.priceItemKeys, say: 'Key 6 0 0. The keys work in cents, so the window shows $6.00.', until: { kind: 'state', test: s => s.priceDraft === 'item:600' }, gesture: 'tap', allow: [], at: placeWin },
+-    { id: 'g-reason', target: SPOT.priceReason, say: 'Optional: type a reason, such as price match. It is kept with the sale. Tap Next here when you are ready.', until: { kind: 'next' }, gesture: 'tap', allow: [], at: placeWin },
++    { id: 'g-reason', target: SPOT.priceReason, say: 'Optional: tap the Reason box and type a reason, such as price match. It is kept with the sale. Tap Next when you are ready.', until: { kind: 'next' }, typing: true, gesture: 'tap', allow: [], at: placeWin },
+     { id: 'g-item-set', target: SPOT.priceItemSet, say: 'Tap Set price.', until: { kind: 'state', test: s => line(s, BEE)?.overrideCents === 600 && !!line(s, BEE)?.overrideAll }, gesture: 'tap', allow: ['adjust'], at: placeWin },
+     { id: 'g-item-see', say: 'The Bumble Bee costs $6.00 on this sale only, and the catalogue price is unchanged. The line is marked as price-changed.', until: { kind: 'next' }, at: placeWin },
+     { id: 'g-item-reopen', target: linePriceSpot(BEE), say: 'To take it off, tap Item price again. It shows what is on.', until: { kind: 'visible', id: linePriceOffSpot(BEE) }, gesture: 'tap', allow: [], at: placeWin },
+@@ -129,7 +129,8 @@ export const priceAdjust: TrainingModule = {
+     { id: 'g-line-keys', target: SPOT.priceLineKeys, say: 'Key 2 0 0 0 for $20.00.', until: { kind: 'state', test: s => s.priceDraft === 'line:2000' }, gesture: 'tap', allow: [], at: placeWin },
+     { id: 'g-line-set', target: SPOT.priceLineSet, say: 'Tap Set line price.', until: { kind: 'state', test: s => line(s, DRAGON)?.adjustCents === 2000 }, gesture: 'tap', allow: ['adjust'], at: placeWin },
+     { id: 'g-line-rm-open', target: lineAdjustSpot(DRAGON), say: 'To take a line price off, tap Line price again. It shows what is on.', until: { kind: 'visible', id: lineAdjustOffSpot(DRAGON) }, gesture: 'tap', allow: [], at: placeWin },
+-    { id: 'g-line-rm', target: lineAdjustOffSpot(DRAGON), say: 'Tap Remove adjustment. The Red Dragon goes back to $25.00.', until: { kind: 'state', test: s => line(s, DRAGON)?.adjustCents === undefined }, gesture: 'tap', allow: ['adjust'], at: placeWin },
++    { id: 'g-line-rm', target: lineAdjustOffSpot(DRAGON), say: 'Tap Remove adjustment. The Red Dragon goes back to $25.00.', until: { kind: 'state', test: s => line(s, DRAGON)?.adjustCents === undefined }, gesture: 'tap', allow: ['adjust'], at: placeWin,
++      recoverFrom: [{ target: lineAdjustSpot(DRAGON), say: 'That window closed. Tap Line price on the Red Dragon again to bring Remove adjustment back.' }, { target: cartLineSpot(DRAGON), say: 'Tap the Red Dragon line, then Line price, to bring Remove adjustment back.' }] },
+     { id: 'g-done-dragon', target: SPOT.lineDone, say: 'Tap Done to close the Red Dragon window.', until: { kind: 'state', test: s => s.sheets === 0 }, gesture: 'tap', allow: ['adjust'], at: placeWin },
+     { id: 'g-menu', target: SPOT.cartMenu, say: 'Now a price for the whole order. Tap the three dots at the top of the cart.', until: { kind: 'visible', id: SPOT.cartMenuOrder }, recover: phone, at: place },
+     { id: 'g-order-row', target: SPOT.cartMenuOrder, say: 'Tap Whole order price. It sets what everything costs together.', until: { kind: 'visible', id: SPOT.priceOrderKeys }, allow: [], at: placeWin },
+diff --git a/src/ui/PracticeScan.tsx b/src/ui/PracticeScan.tsx
+index 7dea061..37ce973 100644
+--- a/src/ui/PracticeScan.tsx
++++ b/src/ui/PracticeScan.tsx
+@@ -18,16 +18,19 @@ export function PracticeScanSheet({ visible, onClose, onScan, title }: { visible
+   const scan = async (code: string) => { const r = await onScan(code); setLast(r ? { ok: true, text: r } : { ok: false, text: `Not found: ${code}` }); };
+   return (
+     <Sheet visible={visible} onClose={onClose} title={title ?? 'Scan barcode'} screen="overlay_practice_camera">
+-      <View style={{ gap: 12 }}>
++      <View style={{ gap: 10 }}>
+         <Txt sub>Practice camera. On a real till you would hold each barcode in front of the camera. Here, tap Scan this on a card.</Txt>
+-        {last ? <Spot id={SPOT.scanResult} style={{ backgroundColor: last.ok ? '#15803D' : '#B91C1C', padding: 14, borderRadius: 14 }}><Txt color="#fff" weight="600" style={{ textAlign: 'center' }}>{last.text}</Txt></Spot> : null}
++        {/* Always there (0119), so a step can point at it before the first scan: it says what the last scan did. */}
++        <Spot id={SPOT.scanResult} style={{ backgroundColor: last ? (last.ok ? '#15803D' : '#B91C1C') : c.fill, padding: 12, borderRadius: 14 }}><Txt color={last ? '#fff' : undefined} sub={!last} weight="600" style={{ textAlign: 'center' }}>{last ? last.text : 'Nothing scanned yet'}</Txt></Spot>
+         <Btn title="Done" onPress={onClose} spot={SPOT.scanDone} />
+         {PRACTICE_SCANS.map(s => (
+-          <View key={s.key} style={{ borderRadius: 16, borderWidth: 1, borderColor: c.line, backgroundColor: c.card, padding: 14, gap: 8 }}>
+-            <Txt size={17} weight="700">{s.title}</Txt>
+-            <Txt sub>{s.sub}</Txt>
+-            <Barcode128 value={s.code} width={240} height={48} label={`Practice barcode: ${s.title}`} />
+-            <Btn title="Scan this" icon="scan-outline" kind="secondary" onPress={() => void scan(s.code)} spot={scanCardSpot(s.key)} />
++          <View key={s.key} style={{ borderRadius: 14, borderWidth: 1, borderColor: c.line, backgroundColor: c.card, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
++            <View style={{ flex: 1, gap: 4 }}>
++              <Txt size={15} weight="700">{s.title}</Txt>
++              <Txt size={12} sub>{s.sub}</Txt>
++              <Barcode128 value={s.code} width={150} height={30} label={`Practice barcode: ${s.title}`} />
++            </View>
++            <Btn title="Scan this" icon="scan-outline" kind="secondary" small onPress={() => void scan(s.code)} spot={scanCardSpot(s.key)} />
+           </View>
+         ))}
+       </View>
+diff --git a/src/ui/TrainingHost.tsx b/src/ui/TrainingHost.tsx
+index 5d58e10..24cf826 100644
+--- a/src/ui/TrainingHost.tsx
++++ b/src/ui/TrainingHost.tsx
+@@ -17,11 +17,11 @@ import PracticeTerminal from './PracticeTerminal';
+ import { Enter } from './Motion';
+ import { Veil, dipThrough } from './Veil';
+ import { trainingActions } from './trainingActions';
+-import { SPOT } from '../lib/trainingSpots';
++import { SPOT, isWindowSpot } from '../lib/trainingSpots';
+ import { ROOT_LAYER } from '../lib/trainingLayers';
+ import { onScreen, scrollNeed, scrollSay, type Rect, type ScrollNeed } from '../lib/trainingGeometry';
+ import { isMet, snapOf, type Events } from '../lib/trainingConds';
+-import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
++import { getPriceDraft, getCashProbe, getCustomerQuery, getNoteDraft, getCustomerDraft, getOpenLine, getPayOpen, getTyped, getWhere, getRuntimeScreen } from '../lib/trainingProbe';
+ import { getLastPracticeRefund } from '../lib/trainingOrders';
+ import { hintView, shouldNudge } from '../lib/trainingHints';
+ import { diagnose, freshStray, stepRules, trackStray, type Deviation, type StrayTracker } from '../lib/trainingCourse';
+@@ -106,12 +106,12 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+         // under the person stands in, exactly as before.
+         const layer = topLayer();
+         const sheet = layer !== ROOT_LAYER && isKnownScreen(layer) ? layer : getRuntimeScreen();
+-        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
++        const snap = snapOf({ tab: n.tab, route: top?.name ?? '', sheets: layerDepth(), sheet, typed: getTyped(), where: getWhere(), openLine: getOpenLine(), customerQuery: getCustomerQuery(), noteDraft: getNoteDraft(), customerDraft: getCustomerDraft(), priceDraft: getPriceDraft(), cash: getCashProbe(), lastSaleCash: lastCash(app.pos.sales), payOpen: getPayOpen(), refund: getLastPracticeRefund(), lastSaleKinds: app.pos.sales.length ? app.pos.sales[0].tenders.map(t => t.kind) : undefined, staffId: app.staffId, locked: isLockScreen({ staffCount: app.settings.staff.length, unlocked: app.unlocked }), cart: app.pos.cart, sales: app.pos.sales.length, paying: top?.name === 'pay' });
+         if (fresh || !base.current) { base.current = snap; useTraining.getState().captureGoalStart(); } // where this step or goal began, for spotting and undoing a stray
+         syncRuntimeFromSnap(snap); registerRuntimeSpots(mountedSpotIds()); // put this sale's cart lines, and every control on screen right now, on the app graph
+         const until = item.until;
+         if (until.kind === 'visible' && (await spot(until.id))) ev.current.visible.add(until.id);
+-        const met = until.kind === 'next' ? nextTap.current : isMet(until, snap, ev.current as Events);
++        const met = until.kind === 'next' ? nextTap.current && (!cur.step?.ready || cur.step.ready(snap)) : isMet(until, snap, ev.current as Events);
+         if (met) { advance(); return; }
+         // Off course? Compare with where this step or goal began. The person is told only after it has lasted a moment.
+         const strayOf = async (dev: Deviation | null): Promise<{ rect: Rect | null; view: DockView['stray']; gesture: Gesture; repeat?: number } | null> => {
+@@ -131,14 +131,16 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
+           // `aim` says what to point at right now (the next key, the way back to the grid). It wins when what it points at is on screen.
+           const aimed = step.aim?.(snap) ?? null; if (aimed) { rect = await spot(aimed.target); if (rect) say = aimed.say; }
+           if (!rect) rect = await spot(step.target);
+-          if (step.target && !rect) for (const r of step.recoverFrom ?? []) { rect = await spot(r.target); if (rect) { say = r.say; break; } }
+-          if (step.target && !rect && step.recover) { say = step.recover.say; rect = await spot(step.recover.target); }
++          // A spot on the page under an open window cannot be tapped, so a fallback never points at one (0113: it left only that hidden spot tappable, and the window could not be used).
++          const behind = (t?: string) => !!t && snap.sheets > 0 && !isWindowSpot(t);
++          if (step.target && !rect) for (const r of step.recoverFrom ?? []) { if (behind(r.target)) continue; rect = await spot(r.target); if (rect) { say = r.say; break; } }
++          if (step.target && !rect && step.recover && !behind(step.recover.target)) { say = step.recover.say; rect = await spot(step.recover.target); }
+           const off = await strayOf(base.current ? diagnose(stepRules(step), { tabs: mod.tabs, routes: mod.routes }, base.current, snap) : null);
+           if (off) { rect = off.rect; say = off.view!.say; }
+           const gesture: Gesture = off ? off.gesture : step.gesture ?? 'tap';
+           // Inside the ringed box only what this step asks for works: a swipe step never lets a tap open the line underneath (see lib/trainingGate.ts).
+-          setGate(!off && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
+-          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
++          setGate(!off && !step.typing && step.until.kind !== 'next' ? gateFor(step.gesture ?? 'tap', step.target) : null);
++          view = { mode: 'guide', stage: 'guide', gesture, repeat: off?.repeat, typing: !!step.typing && !off, nextBlocked: !!step.ready && !step.ready(snap), title: step.title ?? mod.title, say, rect, next: step.until.kind === 'next' && !off, reveal: false, nudge: false, hintLevel: 0, hintsLeft: 0, canSkip: !off, counter: `Step ${cur.i + 1} of ${cur.n}`, index: cur.i, total: cur.n, stray: off?.view };
+         } else {
+           const goal = cur.goal!; const hv = hintView(st.hint, goal.id, goal.ladder); let rect: Rect | null = null; let say = hv.text ?? '';
+           if (hv.reveal) { rect = await spot(goal.reveal); if (!rect) { rect = await spot(goal.via); if (rect) say = 'Open this first, then the answer will be shown.'; } }
+diff --git a/src/ui/TrainingOverlay.tsx b/src/ui/TrainingOverlay.tsx
+index 6102442..3f48c99 100644
+--- a/src/ui/TrainingOverlay.tsx
++++ b/src/ui/TrainingOverlay.tsx
+@@ -1,5 +1,5 @@
+ // Location: src/ui/TrainingOverlay.tsx
+-// Draws the spotlight, the ring, the pointer and the speech bubble. Guide dims everything but the target (taps pass through the hole).
++// Draws the spotlight, the ring, the pointer and the speech bubble. The pointer is the ring's orange, a little see-through, and never takes a touch; it is left out on steps that wait for Next or where the person types (0113). Guide dims everything but the target (taps pass through the hole).
+ // Check never dims: it only rings the answer when the hints run out. Only the topmost layer (the page, or the newest sheet) draws.
+ // Uses plain React Native views, not ../ui/kit, because kit imports this file.
+ //
+@@ -94,11 +94,11 @@ function Pointer({ hole, color, on, reduce, gesture }: { hole: Rect; color: stri
+   }, [plan, reduce]); // eslint-disable-line react-hooks/exhaustive-deps
+   const n = tapCount(gesture);
+   return (
+-    <Animated.View accessibilityLabel={GESTURE_LABEL[gesture]} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, opacity: o, transform: [{ translateX: px }, { translateY: py }] }}>
++    <Animated.View accessibilityLabel={GESTURE_LABEL[gesture]} pointerEvents="none" style={{ position: 'absolute', left: 0, top: 0, width: 0, height: 0, opacity: o.interpolate({ inputRange: [0, 1], outputRange: [0, 0.8] }), transform: [{ translateX: px }, { translateY: py }] }}>
+       <Animated.View style={{ position: 'absolute', left: -22, top: -22, width: 44, height: 44, borderRadius: 22, borderWidth: 3, borderColor: color, opacity: rip.interpolate({ inputRange: [0, 0.15, 1], outputRange: [0, 0.9, 0] }), transform: [{ scale: rip.interpolate({ inputRange: [0, 1], outputRange: [0.3, 1.6] }) }] }} />
+       {gesture === 'hold' ? <Animated.View style={{ position: 'absolute', left: -26, top: -26, width: 52, height: 52, borderRadius: 26, borderWidth: 4, borderColor: color, opacity: ring.interpolate({ inputRange: [0, 0.05, 1], outputRange: [0, 0.9, 0.9] }), transform: [{ scale: ring.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1.15] }) }] }} /> : null}
+       <Animated.View style={{ position: 'absolute', left: -12, top: -12, width: 28, height: 28, transform: [{ scale: down.interpolate({ inputRange: [0, 1], outputRange: [1, 0.84] }) }] }}>
+-        <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={28} color="#111" style={{ textShadowColor: '#fff', textShadowRadius: 4 }} /></View>
++        <View style={{ transform: [{ rotate: '-90deg' }] }}><Ionicons name="navigate" size={28} color={color} style={{ textShadowColor: 'rgba(0,0,0,0.55)', textShadowRadius: 3 }} /></View>
+       </Animated.View>
+       {n > 1 ? <View style={{ position: 'absolute', left: 14, top: -30, backgroundColor: color, borderRadius: 999, paddingHorizontal: 7, paddingVertical: 1 }}><Text style={{ color: on, fontSize: 12, fontWeight: '800' }}>×{n}</Text></View> : null}
+     </Animated.View>
+@@ -192,7 +192,8 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+   const guide = view?.mode === 'guide'; const showRing = !!hole && (guide || !!view?.reveal);
+   // In Guide the screen dims and only the target takes taps. While off course the dim stays when there is a fix to point at (only that takes taps, so nothing else can be
+   // opened by accident); it lifts only when there is nothing to point at, because then the fix could be anywhere.
+-  const dim = guide && (!view?.stray || !!hole) && !view?.scroll?.fully; // a spot that is off screen leaves the screen free to scroll
++  // With no target on screen nothing is dimmed or blocked (0113): a full-screen block over a target that is gone (a window closed, a page changed) was a soft lock that even Exit could not escape.
++  const dim = guide && !!hole && !view?.scroll?.fully; // a spot that is off screen leaves the screen free to scroll
+ 
+   // Dim fades in the first time guide mode shows, and out when it ends.
+   const dimO = useRef(new Animated.Value(0)).current;
+@@ -234,14 +235,14 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+             <Animated.View style={{ position: 'absolute', left: 0, top: dimBlocks.below, right: 0, height: dimBlocks.bottom, backgroundColor: sp.dim }} />
+             <Animated.View style={{ position: 'absolute', left: 0, top: vals.y, width: dimBlocks.left, height: vals.h, backgroundColor: sp.dim }} />
+             <Animated.View style={{ position: 'absolute', left: dimBlocks.after, top: vals.y, width: dimBlocks.right, height: vals.h, backgroundColor: sp.dim }} />
+-            {view.next ? <Animated.View style={{ position: 'absolute', left: vals.x, top: vals.y, width: vals.w, height: vals.h }} /> : null}
+-          </> : <View style={[StyleSheet.absoluteFill, { backgroundColor: sp.dim }]} />}
++            {view.next && !view.typing ? <Animated.View style={{ position: 'absolute', left: vals.x, top: vals.y, width: vals.w, height: vals.h }} /> : null}
++          </> : null}
+         </Animated.View>
+       ) : null}
+       {showRing && hole ? <Ring vals={vals} color={sp.ring} /> : null}
+       {view?.scroll ? <ScrollCue dir={view.scroll.dir} color={sp.ring} on={sp.onRing} /> : null}
+       {burst ? <Burst key={burst.id} rect={burst.rect} good={c.good} /> : null}
+-      {showRing && hole && !view.next ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
++      {showRing && hole && !view.next && !view.typing ? <Pointer hole={hole} color={sp.ring} on={sp.onRing} reduce={reduce} gesture={view.gesture ?? 'tap'} /> : null}
+       {guide && !view.stray ? (
+         <Animated.View onLayout={e => setBh(Math.round(e.nativeEvent.layout.height))} style={{ position: 'absolute', left: bx, top: by, width: bw, backgroundColor: c.card, borderRadius: 16, padding: 14, gap: 8, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.25, shadowRadius: 12, shadowOffset: { width: 0, height: 4 } }}>
+           {hole ? <Animated.View style={{ position: 'absolute', [bub.side === 'below' ? 'top' : 'bottom']: -8, left: Animated.subtract(ax, 8), width: 16, height: 16, backgroundColor: c.card, borderColor: c.line, borderTopWidth: bub.side === 'below' ? 1 : 0, borderLeftWidth: bub.side === 'below' ? 1 : 0, borderBottomWidth: bub.side === 'above' ? 1 : 0, borderRightWidth: bub.side === 'above' ? 1 : 0, transform: [{ rotate: '45deg' }] }} /> : null}
+@@ -250,7 +251,7 @@ export default function TrainingOverlay({ layer }: { layer: string }) {
+             <Text style={{ color: c.sub, fontSize: 12, fontWeight: '700', textTransform: 'uppercase' }}>{view.counter}</Text>
+             <Text style={{ color: c.text, fontSize: 16, lineHeight: 22 }}>{view.say}</Text>
+           </Swap>
+-          {view.next ? <Pressable onPress={() => trainingActions.next()} accessibilityRole="button" accessibilityLabel="Next" style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
++          {view.next ? <Pressable onPress={() => trainingActions.next()} disabled={view.nextBlocked} accessibilityRole="button" accessibilityLabel="Next" accessibilityState={{ disabled: !!view.nextBlocked }} style={{ alignSelf: 'flex-end', backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 22, paddingVertical: 10, opacity: view.nextBlocked ? 0.4 : 1 }}><Text style={{ color: c.onAccent, fontWeight: '700', fontSize: 15 }}>Next</Text></Pressable> : null}
+         </Animated.View>
+       ) : null}
+       {view.stray ? (
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index a444297..4d3c398 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -19,6 +19,7 @@ import { helpForError } from '../lib/helpContext';
+ import { Spot, spotPressed, spotRefFor, useSpotRef } from './Spot';
+ import { SPOT, findKeySpot } from '../lib/trainingSpots';
+ import { TrainingLayer } from './TrainingLayer';
++import { noteSheetHide, sheetOpenDelay } from '../lib/sheetGate';
+ 
+ export const tap = () => { try { void Haptics.selectionAsync(); } catch {} };
+ export type IconName = React.ComponentProps<typeof Ionicons>['name'];
+@@ -140,8 +141,17 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll
+ /** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
+ export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
+   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
++  // A window never opens in the same moment another is closing (see lib/sheetGate.ts): iOS can leave an invisible window over the screen if it does.
++  const [shown, setShown] = useState(visible); const shownRef = useRef(visible); shownRef.current = shown; const want = useRef(visible);
++  useEffect(() => {
++    if (visible === want.current) return undefined; want.current = visible;
++    if (!visible) { noteSheetHide(); setShown(false); return undefined; }
++    const wait = sheetOpenDelay(); if (wait <= 0) { setShown(true); return undefined; }
++    const t = setTimeout(() => setShown(true), wait); return () => clearTimeout(t);
++  }, [visible]);
++  useEffect(() => () => { if (shownRef.current) noteSheetHide(); }, []);
+   return (
+-    <Modal visible={visible} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
++    <Modal visible={shown} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
+       <View onTouchStart={noteActivity} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay, paddingBottom: overlap }}>
+         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
+         <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
+@@ -150,7 +160,7 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
+           </View>
+           <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
+         </View>
+-        <TrainingLayer visible={visible} screen={screen} />
++        <TrainingLayer visible={shown} screen={screen} />
+       </View>
+     </Modal>
+   );
+diff --git a/tests/trainingbundlesdeals.test.ts b/tests/trainingbundlesdeals.test.ts
+index b602483..eea44b9 100644
+--- a/tests/trainingbundlesdeals.test.ts
++++ b/tests/trainingbundlesdeals.test.ts
+@@ -71,7 +71,9 @@ test('Check 2: four Tadlings, a Large cow to swap, and a not-recommended pair to
+   const [short, swap, odd] = bundlesDeals.check2;
+   assert.equal(applyInjections(buildSandbox(real), short.inject).pos.cart.lines[0].qty, 4); assert.ok(!isMet(short.until, snap([line('train-v-tad', 4)]), noEvents())); assert.ok(isMet(short.until, snap([line('train-v-tad', 5)]), noEvents()));
+   assert.ok(!isMet(swap.until, snap([line('train-v-cow-l'), line('train-v-tad')]), noEvents())); assert.ok(!isMet(swap.until, snap([line('train-v-cow-l'), line('train-v-cow-s')]), noEvents()), 'the Large must go'); assert.ok(isMet(swap.until, snap([line('train-v-cow-s'), line('train-v-tad')]), noEvents()));
+-  assert.ok(isMet(odd.until, snap([]), ev([SPOT.bundleContinue]))); assert.ok(!isMet(odd.until, snap([]), ev([SPOT.bundleEdit])));
++  // The goal ends when Payment has opened, not on the press: finishing on the press let Payment open on top of the finish screen (0113).
++  const onPay = snapOf({ tab: 'checkout', route: 'pay', sheets: 0, cart: { lines: [] }, sales: 0, paying: true });
++  assert.ok(isMet(odd.until, onPay, noEvents())); assert.ok(!isMet(odd.until, snap([]), ev([SPOT.bundleContinue])), 'the press alone does not finish it');
+   const start = applyInjections(buildSandbox(real), odd.inject); assert.deepEqual(start.pos.cart.lines.map((l: any) => l.variantId).sort(), ['train-v-cow-l', 'train-v-tad']);
+   for (const g of bundlesDeals.check2) { assert.ok(g.taughtBy, g.id); assert.ok(bundlesDeals.show.steps.some(s => s.id === g.taughtBy) || bundlesDeals.guide.some(s => s.id === g.taughtBy), g.id); assert.ok(isKnownSpot(g.reveal!), g.id); }
+   assert.equal(odd.at?.sheets, true); assert.ok(odd.at?.routes?.includes('pay')); assert.equal(pickVariantSpot('train-v-cow-s'), 'pick.variant:train-v-cow-s');
+diff --git a/tests/trainingsoftlocks.test.ts b/tests/trainingsoftlocks.test.ts
+new file mode 100644
+index 0000000..57e2024
+--- /dev/null
++++ b/tests/trainingsoftlocks.test.ts
+@@ -0,0 +1,79 @@
++// Location: tests/trainingsoftlocks.test.ts
++// 0113: the soft locks found on a device. Windows never open in the same moment another closes, typing steps and Next that waits on a filled in form,
++// the scan window's order and result box, and the courses' fixed steps.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { SHEET_GAP_MS, noteSheetHide, resetSheetGate, sheetOpenDelay } from '../src/lib/sheetGate';
++import { customer } from '../src/training/modules/customer';
++import { priceAdjust } from '../src/training/modules/price-adjust';
++import { scanning } from '../src/training/modules/scanning';
++import { MODULES } from '../src/training';
++import { validateModule, type Step, type TrainSnap } from '../src/lib/trainingModule';
++import { isKnownSpot, isWindowSpot, scanCardSpot, SPOT } from '../src/lib/trainingSpots';
++import { isMet, noEvents, snapOf } from '../src/lib/trainingConds';
++import { PRACTICE_SCANS } from '../src/lib/trainingScan';
++import { readFileSync } from 'node:fs';
++import { join } from 'node:path';
++
++const snap = (o: { noteDraft?: string; customerDraft?: TrainSnap['customerDraft']; sheets?: number } = {}): TrainSnap => snapOf({ tab: 'checkout', route: '', sheets: o.sheets ?? 0, noteDraft: o.noteDraft, customerDraft: o.customerDraft, cart: { lines: [] }, sales: 0, paying: false });
++const guide = (m: { guide: Step[] }, id: string): Step => m.guide.find(s => s.id === id)!;
++const src = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
++
++test('a window waits for the one before it to finish closing, and opens at once when nothing closed', () => {
++  resetSheetGate(); assert.equal(sheetOpenDelay(1000), 0, 'nothing has closed');
++  noteSheetHide(1000); assert.equal(sheetOpenDelay(1000), SHEET_GAP_MS); assert.equal(sheetOpenDelay(1000 + SHEET_GAP_MS - 1), 1); assert.equal(sheetOpenDelay(1000 + SHEET_GAP_MS), 0); assert.equal(sheetOpenDelay(5000), 0);
++  assert.ok(SHEET_GAP_MS >= 300 && SHEET_GAP_MS <= 700, 'longer than the slide, short enough to feel instant'); resetSheetGate();
++});
++
++test('every Sheet goes through the gate, and its training layer follows the window that is really showing', () => {
++  const kit = src('src/ui/kit.tsx'); assert.match(kit, /noteSheetHide/); assert.match(kit, /sheetOpenDelay/); assert.match(kit, /<Modal visible=\{shown\}/); assert.match(kit, /<TrainingLayer visible=\{shown\}[^>]*\/>/);
++});
++
++test('the overlay never blocks the whole screen when there is no target, and a typing step lets touches through and draws no cursor', () => {
++  const o = src('src/ui/TrainingOverlay.tsx');
++  assert.match(o, /const dim = guide && !!hole && !view\?\.scroll\?\.fully/); assert.doesNotMatch(o, /<View style=\{\[StyleSheet\.absoluteFill, \{ backgroundColor: sp\.dim \}\]\} \/>/, 'no full-screen block when there is no target');
++  assert.match(o, /view\.next && !view\.typing/); assert.match(o, /!view\.next && !view\.typing \? <Pointer/);
++  assert.match(o, /outputRange: \[0, 0\.8\]/, 'the cursor is a little see-through'); assert.match(o, /name="navigate" size=\{28\} color=\{color\}/, 'and the ring\'s orange');
++  assert.equal((o.match(/pointerEvents="none"/g) ?? []).length >= 4, true, 'the cursor, ring, burst and cue never take a touch');
++  const host = src('src/ui/TrainingHost.tsx'); assert.match(host, /typing: !!step\.typing && !off/); assert.match(host, /!step\.typing && step\.until\.kind !== 'next'/);
++});
++
++test('a fallback never points at a spot on the page under an open window', () => {
++  const host = src('src/ui/TrainingHost.tsx'); assert.match(host, /const behind = \(t\?: string\) => !!t && snap\.sheets > 0 && !isWindowSpot\(t\)/); assert.match(host, /if \(behind\(r\.target\)\) continue/); assert.match(host, /!behind\(step\.recover\.target\)/);
++});
++
++test('the validator rejects a typing step with no target and Next-ready on a step that does not wait on Next', () => {
++  const base = { ...customer, guide: [{ id: 'x', say: 'Type here.', typing: true, until: { kind: 'next' } } as Step, ...customer.guide.slice(1)] };
++  assert.ok(validateModule(base, isKnownSpot).some(e => /types, so it needs a target/.test(e)));
++  const bad = { ...customer, guide: [{ id: 'y', say: 'Go.', target: SPOT.customerForm, ready: () => true, until: { kind: 'press', id: SPOT.customerForm } } as Step, ...customer.guide.slice(1)] };
++  assert.ok(validateModule(bad, isKnownSpot).some(e => /ready/.test(e)));
++});
++
++test('Customers: the note step needs Gift wrap typed, and the form step lets you type and needs a real name and a way to reach you', () => {
++  const note = guide(customer, 'g-note'); assert.equal(note.typing, true);
++  assert.ok(!isMet(note.until, snap({ noteDraft: '' }), noEvents())); assert.ok(!isMet(note.until, snap({ noteDraft: 'hello' }), noEvents())); assert.ok(isMet(note.until, snap({ noteDraft: 'Gift wrap' }), noEvents())); assert.ok(isMet(note.until, snap({ noteDraft: ' gift  wrap please' }), noEvents()));
++  const form = guide(customer, 'g-form'); assert.equal(form.typing, true); assert.equal(form.until.kind, 'next'); assert.match(form.say, /Nothing is kept/); assert.match(form.say, /your own/);
++  const d = (o: Partial<NonNullable<TrainSnap['customerDraft']>>) => snap({ customerDraft: { first: '', last: '', email: '', phone: '', ...o } });
++  assert.ok(!form.ready!(snap()), 'form not open'); assert.ok(!form.ready!(d({})), 'empty'); assert.ok(!form.ready!(d({ first: 'Sam' })), 'a name alone cannot be reached'); assert.ok(!form.ready!(d({ email: 'sam@x.com' })), 'no name');
++  assert.ok(!form.ready!(d({ first: 'Sam', email: 'sam@' })), 'not an email yet'); assert.ok(!form.ready!(d({ first: 'Sam', phone: '0412' })), 'too short for a mobile');
++  assert.ok(form.ready!(d({ first: 'Sam', email: 'sam@x.com' }))); assert.ok(form.ready!(d({ first: 'Sam', phone: '0412 345 678' })));
++  const sheets = src('src/screens/sheets.tsx'); assert.match(sheets, /setCustomerDraftProbe\(creating \? f : undefined\)/);
++});
++
++test('Price: the reason box can be typed in, and Remove adjustment falls back to reopening the window', () => {
++  assert.equal(guide(priceAdjust, 'g-reason').typing, true); assert.equal(guide(priceAdjust, 'g-reason').until.kind, 'next');
++  const rm = guide(priceAdjust, 'g-line-rm'); assert.ok((rm.recoverFrom ?? []).length >= 2); assert.equal(rm.recoverFrom![0].target.startsWith('line.adjust:'), true);
++});
++
++test('Scan: the cards the Guide asks for come first, the result box is always there, and the cards are compact', () => {
++  assert.deepEqual(PRACTICE_SCANS.slice(0, 4).map(s => s.key), ['bee', 'dragon', 'torn', 'gift']);
++  const used = scanning.guide.map(s => s.target).filter((t): t is string => !!t && t.startsWith('scan.card:')); for (const t of used) assert.ok(PRACTICE_SCANS.findIndex(s => scanCardSpot(s.key) === t) < 4, `${t} must be near the top`);
++  const ui = src('src/ui/PracticeScan.tsx'); assert.match(ui, /Nothing scanned yet/); assert.doesNotMatch(ui, /\{last \? <Spot id=\{SPOT\.scanResult\}/); assert.match(ui, /height=\{30\}/);
++  assert.ok(isWindowSpot(SPOT.scanResult));
++});
++
++test('Deals: the last Check 2 goal ends when Payment is open, and a delayed push to Payment cannot land after practice ended', () => {
++  const cart = src('src/screens/CartPane.tsx'); assert.match(cart, /const practising = isTraining\(\); setTimeout\(\(\) => \{ if \(isTraining\(\) === practising\) nav\.push\('pay'\)/);
++});
++
++test('every course still validates', () => { for (const m of MODULES) assert.deepEqual(validateModule(m, isKnownSpot), [], m.id); });

@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
-import { setCustomerQuery, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
+import { setCustomerDraftProbe, setCustomerQuery, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
 import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { Spot } from '../ui/Spot';
@@ -80,6 +80,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
   const hits = useMemo(() => { const t = q.trim().toLowerCase(); if (!t) return local.slice(0, 30); return local.filter(c => `${c.name} ${c.email ?? ''} ${c.phone ?? ''}`.toLowerCase().includes(t)).slice(0, 40); }, [q, local]);
   const search = async () => { if (!q.trim()) return; setBusy(true); try { setRemote(await searchRemote(q.trim())); } catch (e: any) { alertMsg('Search failed', e.message, 'sales/customers'); } setBusy(false); };
   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
+  useEffect(() => { setCustomerDraftProbe(creating ? f : undefined); return () => setCustomerDraftProbe(undefined); }, [creating, f]); // training reads what is typed
   const create = async () => {
     if (!f.first.trim() && !f.last.trim() && !f.email.trim() && !f.phone.trim()) return alertMsg('Add at least a name, email or phone');
     setBusy(true);
