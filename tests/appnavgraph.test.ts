@@ -208,3 +208,27 @@ test('runtime controls can be forgotten when the practice data is swapped out', 
   clearRuntimeSpots();
   assert.equal(hasSpotNode(cartLineSpot('moth')), false);
 });
+
+test('a runtime instance can carry a run tag, so another run never names it', () => {
+  clearRuntimeSpots();
+  registerRuntimeSpots([{ spot: gridItemSpot('bee'), modules: ['scanning'] }]);
+  const node = nodeForSpot(gridItemSpot('bee'));
+  assert.equal(screenInScope(node, scanning), true, 'it is in the scanning run');
+  assert.equal(screenInScope(node, scopeForReal()), false, 'it is not in the everyday till');
+  assert.equal(screenInScope(node, cartOnly), false, 'it is not in a cart-only course');
+  assert.deepEqual(planToSpot(gridItemSpot('bee'), 'tab_checkout', scopeForReal()), [], 'the everyday till cannot walk to a course-only tile');
+  const mine = planToSpot(gridItemSpot('bee'), 'tab_checkout', scanning);
+  assert.equal(mine[mine.length - 1]?.target, gridItemSpot('bee'), 'the scanning run can');
+  clearRuntimeSpots();
+});
+
+test('a runtime instance with no run tag is in every run', () => {
+  clearRuntimeSpots();
+  registerRuntimeSpots([gridItemSpot('tad')]);
+  const node = nodeForSpot(gridItemSpot('tad'));
+  assert.equal(screenInScope(node, scopeForReal()), true);
+  assert.equal(screenInScope(node, cartOnly), true);
+  const walk = planToSpot(gridItemSpot('tad'), 'tab_checkout', scopeForReal());
+  assert.equal(walk[walk.length - 1]?.target, gridItemSpot('tad'));
+  clearRuntimeSpots();
+});

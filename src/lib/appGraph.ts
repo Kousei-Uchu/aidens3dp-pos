@@ -173,19 +173,33 @@ export function guidanceCandidates(d: Pick<Deviation, 'say' | 'target' | 'via' |
 }
 
 /**
- * Put the controls of runtime data on the graph (grid tiles, cart lines, customer rows, refund picks, and the rest),
- * so guidance can name them and their gesture. Call it when a list is (re)built. Safe to call with ids already added.
+ * A runtime control to put on the graph. A bare spot id, or an object when the instance itself belongs to a run: the
+ * grid tile of a product a course has, a customer row, a practice user. `modules` is the same list a screen carries (a
+ * module id, or "real"); left out the instance is in every run, which is right for the shared practice data and the
+ * everyday till. This is the per-instance half of a scope: screens and edges are tagged in `src/app.navgraph`, while
+ * the records a run builds (products, tiles, rows, users) are tagged here, so a run never names an instance it does not
+ * have even when two runs share the same screen.
  */
-export function registerRuntimeSpots(spots: readonly string[]): void {
+export type RuntimeSpot = string | { spot: string; modules?: readonly string[] };
+
+/**
+ * Put the controls of runtime data on the graph (grid tiles, cart lines, customer rows, refund picks, and the rest),
+ * so guidance can name them and their gesture. Call it when a list is (re)built. Safe to call with ids already added
+ * (the first registration of a node wins, so tag it when it first goes on).
+ */
+export function registerRuntimeSpots(spots: readonly RuntimeSpot[]): void {
   const t = tree(); if (!t) return;
-  for (const spot of spots) {
+  for (const entry of spots) {
+    const spot = typeof entry === 'string' ? entry : entry.spot;
+    const modules = typeof entry === 'string' ? undefined : entry.modules;
     const node = nodeForSpot(spot); if (registered.has(node)) continue;
     const screen = screenOfSpot(spot); if (!screen || !t.screen(screen)) continue;
     const gesture = gestureOfSpot(spot);
     const action = gesture === 'swipe-left'
       ? { type: 'SWIPE', data: { direction: 'left', target: spot } as JsonObject }
       : { type: 'TAP', data: { target: spot } as JsonObject };
-    try { registerActions(t, screen, { [node]: { name: spot, actions: [action] } }, { onDuplicate: 'skip' }); registered.add(node); }
+    const meta = modules && modules.length ? { modules: [...modules] } : undefined;
+    try { registerActions(t, screen, { [node]: meta ? { name: spot, actions: [action], meta } : { name: spot, actions: [action] } }, { onDuplicate: 'skip' }); registered.add(node); }
     catch { /* a control that cannot be added never blocks guidance */ }
   }
 }
