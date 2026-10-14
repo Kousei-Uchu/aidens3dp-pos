@@ -129,7 +129,7 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll 
   const { c } = useTheme();
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 54, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, paddingTop: 8, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         {onBack ? <IconBtn icon="chevron-back" label="Back" onPress={onBack} spot={SPOT.back} /> : <View style={{ width: 12 }} />}
         <Txt size={20} weight="700" style={{ flex: 1 }} numberOfLines={1}>{title}</Txt>{right}{helpId ? <HelpButton id={helpId} label={`Help for ${title}`} /> : null}
       </View>

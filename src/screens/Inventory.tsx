@@ -61,7 +61,7 @@ export default function Inventory() {
   const group = (title: string, children: React.ReactNode) => <View style={{ marginBottom: 16 }}><Txt size={13} sub weight="600" style={{ marginBottom: 8, textTransform: 'uppercase' }}>{title}</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{children}</View></View>;
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingTop: 54, padding: 12, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
+      <View style={{ paddingTop: 8, padding: 12, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, marginLeft: 4 }}><Txt size={24} weight="700">Inventory</Txt><Txt size={12} sub>{rows.length ? `${filtered.length} variants · ${productCount} products` : 'Nothing matches'}</Txt></View>
           <HelpButton id="fix/stock-mismatch" label="Inventory help" />

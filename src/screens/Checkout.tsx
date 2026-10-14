@@ -15,7 +15,6 @@ import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { CheckChangeSheet } from './CheckChange';
 import { useUi } from '../ui/uiProfile';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { qtyHint } from '../lib/simpleLabels';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
@@ -55,7 +54,7 @@ const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicon
 
 /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
 export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
-  const { c } = useTheme(); const { tablet } = useLayout(); const insets = useSafeAreaInsets(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
+  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
@@ -157,7 +156,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
 
   const left = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingTop: insets.top, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      <View style={{ paddingTop: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         {!guided ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 8 }}>
           <Image source={require('../../assets/icon.png')} resizeMode="contain" style={{ width: 24, height: 24 }} accessibilityLabel="Aiden’s 3D Printing logo" />
           {shopName ? <Txt size={13} weight="600" sub numberOfLines={1}>{shopName}</Txt> : null}

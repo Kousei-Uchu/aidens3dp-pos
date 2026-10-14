@@ -53,7 +53,7 @@ export default function Transactions() {
 
   const list = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <View style={{ paddingTop: 54, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+      <View style={{ paddingTop: 8, paddingHorizontal: 12, paddingBottom: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8, marginLeft: 4 }}><Txt size={24} weight="700" style={{ flex: 1 }}>Transactions</Txt><HelpButton id="orders" label="Transactions help" /></View>
         <Field kind="search" placeholder="Receipt #, customer, note or item" value={q} onChangeText={t => { setQ(t); setRemoteQ(null); }} onSubmitEditing={searchRemote} style={{ marginBottom: 0 }} />
         <View style={{ flexDirection: 'row', marginTop: 8, marginLeft: 4 }}><Chip label={sqBusy ? 'Loading Square history…' : 'Square history'} icon="archive-outline" active={showSq} onPress={() => void toggleSq()} /></View>
@@ -103,7 +103,7 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
       <Btn title="Share receipt text" kind="ghost" onPress={() => void Share.share({ message: receiptText(sale) })} />
     </View>
   );
-  return embedded ? <View style={{ flex: 1, backgroundColor: c.bg }}><View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={20} weight="700" style={{ flex: 1 }}>{e.name}</Txt><IconBtn icon="close" label="Close" onPress={onClose} /></View>{body}</View>
+  return embedded ? <View style={{ flex: 1, backgroundColor: c.bg }}><View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 8, flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}><Txt size={20} weight="700" style={{ flex: 1 }}>{e.name}</Txt><IconBtn icon="close" label="Close" onPress={onClose} /></View>{body}</View>
     : <Page title={e.name} onBack={onClose} helpId="orders">{body}</Page>;
 }
 void Chip;

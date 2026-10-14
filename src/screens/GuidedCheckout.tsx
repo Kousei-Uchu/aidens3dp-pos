@@ -54,7 +54,7 @@ export default function GuidedCheckout() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       {/* Where we are */}
-      <View style={{ paddingTop: 54, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
+      <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, gap: 8 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
           <Txt size={13} sub weight="600" style={{ flex: 1 }}>Step {pr.n} of {pr.total}</Txt>
           <HelpButton id={step === 'items' ? 'sales' : step === 'pay' ? 'pay' : 'sales/cart-and-prices'} label={`${info.label} help`} />

@@ -32,6 +32,7 @@ import Training from './src/screens/Training';
 import TrainingRun from './src/screens/TrainingRun';
 import TerminalPlay from './src/screens/TerminalPlay';
 import TrainingHost from './src/ui/TrainingHost';
+import AppStatusBar from './src/ui/AppStatusBar';
 import { Spot } from './src/ui/Spot';
 import { SPOT } from './src/lib/trainingSpots';
 import { useTraining } from './src/state/trainingSession';
@@ -97,7 +98,7 @@ function Shell() {
   const hasPage = nav.stack.length > 0; const moving = !!plan; // the tab screen stays drawn underneath while a page slides over it or away from it
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
-      <StatusBar style={c.bg === '#0B0B0C' ? 'light' : 'dark'} />
+      <AppStatusBar />
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
           <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane>
@@ -123,7 +124,7 @@ export default function App() {
   return (
     <ZellerRoot>
       <SafeAreaProvider><ThemeProvider><UiProvider><NavProvider>
-        <View style={{ flex: 1 }} onTouchStart={noteActivity}><TrainingHost><Shell /></TrainingHost></View>
+        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost></View>
         <KeepAwake /><ScreensaverLayer />
       </NavProvider></UiProvider></ThemeProvider></SafeAreaProvider>
     </ZellerRoot>
