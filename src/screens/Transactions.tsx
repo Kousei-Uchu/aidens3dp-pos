@@ -79,7 +79,7 @@ export default function Transactions() {
   );
 }
 
-const orderAsSale = (o: PosOrder): SaleRecord => ({ uuid: o.saleUuid ?? o.id, type: 'sale', ts: o.createdAt, registerId: '', registerName: o.registerName ?? '', customer: o.customer, orderName: o.name, receiptLink: o.receiptLink,
+const orderAsSale = (o: PosOrder): SaleRecord => ({ uuid: o.saleUuid ?? o.id, type: 'sale', ts: o.createdAt, registerId: '', registerName: o.registerName ?? '', staff: o.staff, customer: o.customer, orderName: o.name, receiptLink: o.receiptLink,
   lines: o.lines.map(l => ({ title: l.title, variantTitle: l.variantTitle, qty: l.qty, baseUnitCents: l.originalUnitCents, grossCents: l.originalUnitCents * l.qty, discountCents: (l.originalUnitCents - l.unitCents) * l.qty, netCents: l.unitCents * l.qty, costCents: 0, discountLabels: [], kind: 'item' as const })),
   itemsCents: o.totalCents, discountCents: 0, netCents: o.totalCents, tipCents: 0, totalCents: o.totalCents, cogsCents: 0, feesCents: 0, roundingCents: o.roundingCents, tenders: o.tenders, deals: [], adjustments: o.adjustments?.length ? o.adjustments : undefined });
 
@@ -93,6 +93,7 @@ function Detail({ e, onClose, onRefund, onReceipt, embedded }: { e: Entry; onClo
       {sale.adjustments?.length ? <Card>{sale.adjustments.map((a, i, all) => <Row key={i} last={i === all.length - 1} icon="cut-outline" title={`${a.kind === 'item' ? 'Item price' : a.kind === 'line' ? 'Line price' : 'Whole order price'} · ${a.title}`} sub={a.reason ? `Reason: ${a.reason}` : 'No reason given'} right={<Txt weight="600">{signedSaving(a.cents)}</Txt>} />)}</Card> : null}
       <Card>{tenders.map((t, i) => <Row key={t.id + i} last={i === tenders.length - 1} icon={t.kind === 'card' ? 'card-outline' : t.kind === 'cash' ? 'cash-outline' : 'gift-outline'}
         title={t.kind === 'card' ? ['Card', t.card?.scheme, maskedLast4(t.card?.panMasked, t.card?.last4)].filter(Boolean).join(' · ') : tenderWord(t.kind)} sub={t.card?.approvalCode ? `Approval ${t.card.approvalCode}` : t.roundingCents ? `Rounding ${fmt(t.roundingCents)}` : undefined} right={<Money cents={t.amountCents} />} />)}</Card>
+      {sale.staff ? <Txt sub>Cashier: {sale.staff}</Txt> : null}
       {sale.customer ? <Txt sub>Customer: {sale.customer.name}</Txt> : null}
       {e.order?.note ? <Txt sub>Note: {e.order.note}</Txt> : null}
       <Btn title="New receipt" icon="receipt-outline" kind="secondary" onPress={() => onReceipt(sale)} />

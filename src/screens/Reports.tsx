@@ -9,7 +9,7 @@ import { useApp } from '../state/store';
 import * as meta from '../lib/shopify/metaobjects';
 import { hasCreds } from '../lib/shopify/client';
 import { outstandingBalance } from '../lib/shopify/giftcards';
-import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
+import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, staffSummary, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
 import { fmt } from '../lib/money';
 import { loadSquareRollups } from '../lib/squareHistoryIO';
 
@@ -49,9 +49,10 @@ export default function Reports() {
   const devices = [...new Set(rows.map(r => r.registerId))];
   useEffect(() => { if (tab === 'gift' && hasCreds()) outstandingBalance().then(setGift).catch(() => {}); }, [tab]);
   const adj = adjustmentSummary(now);
+  const staff = staffSummary(now);
   const cats = Object.entries(now.byCategory).sort((a, b) => b[1].grossCents - a[1].grossCents).slice(0, 12);
 
-  const exportText = () => { const L = [`Sales ${range.from} → ${range.to}${dev ? ' · ' + dev : ''}`, '', `Gross sales,${(d.grossSales / 100).toFixed(2)}`, `Discounts,${(d.discounts / 100).toFixed(2)}`, `Refunds,${(d.refunds / 100).toFixed(2)}`, `Net sales,${(d.netSales / 100).toFixed(2)}`, `Card fees (est.),${(d.fees / 100).toFixed(2)}`, `COGS,${(d.cogs / 100).toFixed(2)}`, `Gross profit,${(d.grossProfit / 100).toFixed(2)}`, `Orders,${now.orders}`, '', 'Category,Count,Gross', ...Object.entries(now.byCategory).map(([k, v]) => `"${k.replace(/"/g, '""')}",${v.count},${(v.grossCents / 100).toFixed(2)}`), ...(adj.count ? ['', 'Price adjustments (already inside Discounts),Count,Amount off', ...adj.rows.map(r => `"${reasonLabel(r.key).replace(/"/g, '""')}",${r.count},${(r.cents / 100).toFixed(2)}`)] : [])]; void Share.share({ message: L.join('\n'), title: 'Sales report' }); };
+  const exportText = () => { const L = [`Sales ${range.from} → ${range.to}${dev ? ' · ' + dev : ''}`, '', `Gross sales,${(d.grossSales / 100).toFixed(2)}`, `Discounts,${(d.discounts / 100).toFixed(2)}`, `Refunds,${(d.refunds / 100).toFixed(2)}`, `Net sales,${(d.netSales / 100).toFixed(2)}`, `Card fees (est.),${(d.fees / 100).toFixed(2)}`, `COGS,${(d.cogs / 100).toFixed(2)}`, `Gross profit,${(d.grossProfit / 100).toFixed(2)}`, `Orders,${now.orders}`, '', 'Category,Count,Gross', ...Object.entries(now.byCategory).map(([k, v]) => `"${k.replace(/"/g, '""')}",${v.count},${(v.grossCents / 100).toFixed(2)}`), ...(adj.count ? ['', 'Price adjustments (already inside Discounts),Count,Amount off', ...adj.rows.map(r => `"${reasonLabel(r.key).replace(/"/g, '""')}",${r.count},${(r.cents / 100).toFixed(2)}`)] : []), ...(staff.length ? ['', 'Team member,Count,Net', ...staff.map(s => `"${s.name.replace(/"/g, '""')}",${s.count},${(s.cents / 100).toFixed(2)}`)] : [])]; void Share.share({ message: L.join('\n'), title: 'Sales report' }); };
   const Stat = ({ label, cents, bold, before, sub }: { label: string; cents: number; bold?: boolean; before?: number; sub?: string }) => <Row title={label} sub={sub} last={false} right={<View style={{ alignItems: 'flex-end' }}><Money cents={cents} weight={bold ? '700' : '500'} size={bold ? 18 : 15} /><Trend now={cents} before={before} /></View>} />;
 
   return (
@@ -81,6 +82,10 @@ export default function Reports() {
         <Card style={{ marginHorizontal: 16 }}>{Object.entries(now.tenders).length ? Object.entries(now.tenders).map(([k, v]) => <Row key={k} title={k === 'card' ? 'Card' : k === 'cash' ? 'Cash' : k === 'gift_card' ? 'Gift card' : 'Exchange credit'} right={<Money cents={v} />} />) : <Row title="No sales in this period" last />}</Card>
         <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>Top categories</Txt>
         <Card style={{ marginHorizontal: 16 }}>{cats.length ? cats.map(([k, v], i) => <Row key={k} last={i === cats.length - 1} title={k} sub={`${v.count} sold`} right={<Money cents={v.grossCents} />} />) : <Row title="Nothing yet" last />}</Card>
+        {staff.length ? <>
+          <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>By team member</Txt>
+          <Card style={{ marginHorizontal: 16 }}>{staff.map((s, i) => <Row key={s.name} last={i === staff.length - 1} icon="person-outline" title={s.name} sub={`${s.count} sale${s.count === 1 ? '' : 's'}`} right={<Money cents={s.cents} />} />)}</Card>
+        </> : null}
         <View style={{ padding: 16 }}><Btn title="Cash drawer" kind="secondary" icon="cash-outline" onPress={() => nav.push('drawer')} /><Btn title={busy ? 'Refreshing…' : 'Refresh'} kind="ghost" onPress={() => void load()} /></View>
       </> : (
         <View style={{ marginTop: 4 }}><Card style={{ marginHorizontal: 16 }}>
