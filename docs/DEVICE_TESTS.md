@@ -301,3 +301,16 @@ On the iPad and on a phone: **More ▸ Training ▸ Refunds and exchanges**.
 6. **After training.** Open More ▸ Orders. Pass: your real orders are listed as before and a real refund still works.
 
 Tell me: pass or fail for each step.
+
+## T25. Training: Change a price (B6, 0110)
+
+On the iPad and on a phone: **More ▸ Training ▸ Change a price**.
+
+1. **Info and Show.** Step through both with Next. Pass: the cards appear one at a time, and the Show goes item price, line price, whole order price, the review, then a flagged price.
+2. **Guide.** Follow the arrows. Pass: Item price shows a ring on All in cart, keying 6 0 0 shows $6.00, Set price changes the Bumble Bee, and Reset to catalogue price puts it back. The Red Dragon line price and its removal work the same way. The whole order price is reached from the cart menu (on a phone, open the cart first). Charge shows Check the price adjustments, and Continue to payment opens the Payment page.
+3. **Keyboard.** Pass: you can tap the Reason box and type while its step is ringed, and Next lets you carry on.
+4. **Check 1.** Pass: each of the three goals finishes only when the right price is set and the window is closed.
+5. **Check 2.** Pass: (a) the $6.00 is already on the Bee, and only moving it to the Dragon finishes the goal; (b) three Sticker Packs finish only with All in cart; (c) Charge shows one flagged price with Keep, Adjust and Remove, and any of them lets you continue.
+6. **Leave.** Pass: after leaving, your real cart and catalogue prices are exactly as you left them.
+
+Tell me: pass or fail for each step, and a screenshot of the review sheet.

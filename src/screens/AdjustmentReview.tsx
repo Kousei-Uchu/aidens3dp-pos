@@ -3,6 +3,7 @@
 import React from 'react';
 import { ScrollView, View } from 'react-native';
 import { Btn, Card, Sheet, Txt } from '../ui/kit';
+import { SPOT } from '../lib/trainingSpots';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { usePriced } from '../state/selectors';
@@ -36,16 +37,16 @@ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, on
             {r.reasons.map((x, i) => <Txt key={i} size={13} weight="600" color={c.warn}>{x}</Txt>)}
             {!may(r.kind) ? <Txt size={13} sub>{r.reasons.length ? flaggedDeniedHint(r.kind) : 'Your role can\'t change this one. You can remove it.'}</Txt> : null}
             <View style={{ flexDirection: 'row', gap: 8, marginTop: 4 }}>
-              {r.reasons.length && may(r.kind) ? <Btn title="Keep" small onPress={() => setCart(cc => keepRow(cc, priced, r))} style={{ flex: 1 }} /> : null}
-              {may(r.kind) ? <Btn title="Adjust" small kind="secondary" onPress={() => onAdjust(r)} style={{ flex: 1 }} /> : null}
-              <Btn title="Remove" small kind="danger" onPress={() => setCart(cc => removeRow(cc, r))} style={{ flex: 1 }} />
+              {r.reasons.length && may(r.kind) ? <Btn spot={SPOT.reviewKeep} title="Keep" small onPress={() => setCart(cc => keepRow(cc, priced, r))} style={{ flex: 1 }} /> : null}
+              {may(r.kind) ? <Btn spot={SPOT.reviewAdjust} title="Adjust" small kind="secondary" onPress={() => onAdjust(r)} style={{ flex: 1 }} /> : null}
+              <Btn spot={SPOT.reviewRemove} title="Remove" small kind="danger" onPress={() => setCart(cc => removeRow(cc, r))} style={{ flex: 1 }} />
             </View>
           </Card>
         ))}
       </ScrollView>
       <Txt weight="700" style={{ textAlign: 'center', marginTop: 12 }}>Total {fmt(priced.netCents)}</Txt>
       <View style={{ gap: 8, marginTop: 10 }}>
-        <Btn title="Continue to payment" disabled={todo.length > 0} onPress={onContinue} />
+        <Btn spot={SPOT.reviewContinue} title="Continue to payment" disabled={todo.length > 0} onPress={onContinue} />
         <Btn title="Back to cart" kind="secondary" onPress={onClose} />
       </View>
     </Sheet>

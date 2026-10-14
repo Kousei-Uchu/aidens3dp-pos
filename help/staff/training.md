@@ -31,6 +31,7 @@ The moving cursor shows how to do each thing: a tap, a double or triple tap, a p
 - **Build a cart**: add items by tapping tiles, add more of the same, and take an item out by swiping its line to the left and tapping Remove.
 - **Customers and notes**: attach a customer by picking or searching, create one who is not on the list (made on this iPad only in practice), put a note on a line with Done, and take the customer off with the small x.
 - **Take cash and give change**: tap the notes and coins the customer hands over, fix a slip with Undo, read Short, Exact or Change, give the change the screen shows, and handle cash rounding and a drawer that cannot make change. Practice uses its own drawer, never your real ledger.
+- **Change a price**: change the price of one item (one unit, or all of it in the cart), one whole line, or the whole order for this sale only, take each off again, give a reason, and check the adjustments before payment, including a price that changed after you set it.
 
 More courses are added one at a time, most important first.
 

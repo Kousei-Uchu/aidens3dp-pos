@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
-import { setCustomerQuery, setNoteDraftProbe } from '../lib/trainingProbe';
+import { setCustomerQuery, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
 import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { Spot } from '../ui/Spot';
@@ -123,6 +123,7 @@ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClo
   const base = useMemo(() => price(stripAdjustments(cart)), [cart, price]);
   const reasons = orderReviewReasons(cart, priced); const cents = digitsToCents(digits);
   const problem = digits ? orderAdjustProblem(cents, base) : null; const lineCount = cart.lines.filter(l => l.adjust).length;
+  useEffect(() => { setPriceDraft('order', visible ? `order:${digits}` : ''); return () => setPriceDraft('order', ''); }, [visible, digits]); // training reads what is keyed
   const close = () => { setDigits(''); onClose(); };
   const set = async () => {
     if (!checkAdjustAllowed('order')) return; // A16.9
@@ -147,8 +148,8 @@ export function OrderAdjustSheet({ visible, onClose }: { visible: boolean; onClo
       <Txt size={13} sub style={{ textAlign: 'center' }}>What should the whole order cost? It costs {fmt(base.netCents)} now, after deals and discounts. The difference is shared over the items (gift cards are never reduced).</Txt>
       <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(cents)}</Txt>
       {problem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{problem}</Txt> : null}
-      <Field kind="text" label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="e.g. Damaged box, price match" />
-      <Keypad value={digits} onChange={setDigits} onSubmit={set} submitLabel="Set order total" />
+      <Spot id={SPOT.priceReason}><Field kind="text" label="Reason (optional)" value={reason} onChangeText={setReason} placeholder="e.g. Damaged box, price match" /></Spot>
+      <Keypad value={digits} onChange={setDigits} onSubmit={set} submitLabel="Set order total" keysSpot={SPOT.priceOrderKeys} submitSpot={SPOT.priceOrderSet} />
       {cart.orderAdjust ? <Btn spot={SPOT.cartOrderOff} title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setOrderAdjust(cc, undefined)); close(); }} style={{ marginTop: 6 }} /> : null}
     </Sheet>
   );
@@ -163,6 +164,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
   const lineKey = line ? line.variantId ?? line.id : undefined; // training: which line's window this is
   useEffect(() => { setOpenLine(lineKey); return () => setOpenLine(undefined); }, [lineKey]);
   useEffect(() => { setNoteDraftProbe(noteDraft ?? ''); return () => setNoteDraftProbe(''); }, [noteDraft]); // training reads what is typed
+  useEffect(() => { setPriceDraft('line', price ? `item:${digits}` : adj ? `line:${adjDigits}` : ''); return () => setPriceDraft('line', ''); }, [price, adj, digits, adjDigits]); // training reads what is keyed
   if (!line) return null;
   const pl = priced.lines.find(x => x.line.id === line.id); const reasons = pl ? reviewReasons(pl) : []; const itemReasons = pl ? itemReviewReasons(pl) : [];
   const canAll = line.kind === 'item' && !!line.variantId;
@@ -227,8 +229,8 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
         <Txt size={13} sub style={{ textAlign: 'center' }}>New unit price for this sale only</Txt>
         <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(digitsToCents(digits))}</Txt>
         {canAll ? <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'center', marginBottom: 8 }}>
-          <Chip label="Fixed quantity" active={scope === 'qty'} onPress={() => setScope('qty')} />
-          <Chip label="All in cart" active={scope === 'all'} onPress={() => setScope('all')} />
+          <Chip spot={SPOT.priceScopeQty} label="Fixed quantity" active={scope === 'qty'} onPress={() => setScope('qty')} />
+          <Chip spot={SPOT.priceScopeAll} label="All in cart" active={scope === 'all'} onPress={() => setScope('all')} />
         </View> : null}
         {scope === 'qty' || !canAll ? <>
           {line.qty > 1 ? <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 16, marginBottom: 4 }}>
@@ -238,16 +240,16 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
           </View> : null}
           <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>{scopeQty >= line.qty ? `Applies to the ${line.qty} on this line.` : `Applies to ${scopeQty} of the ${line.qty}. They become their own line; the rest stay at the normal price.`}</Txt>
         </> : <Txt size={12} sub style={{ textAlign: 'center', marginBottom: 6 }}>Applies to every {line.title} in this order, including any you add later.</Txt>}
-        <Field kind="text" label="Reason (optional)" value={itemReason} onChangeText={setItemReason} placeholder="e.g. Damaged box, price match" />
-        <Keypad value={digits} onChange={setDigits} onSubmit={setItemPrice} submitLabel="Set price" />
+        <Spot id={SPOT.priceReason}><Field kind="text" label="Reason (optional)" value={itemReason} onChangeText={setItemReason} placeholder="e.g. Damaged box, price match" /></Spot>
+        <Keypad value={digits} onChange={setDigits} onSubmit={setItemPrice} submitLabel="Set price" keysSpot={SPOT.priceItemKeys} submitSpot={SPOT.priceItemSet} />
         {hasItemPrice(line) ? <Btn spot={linePriceOffSpot(lineKey!)} title={line.overrideAll ? 'Reset to catalogue price (all in cart)' : 'Reset to catalogue price'} kind="ghost" onPress={() => { setCart(cc => ops.clearItemPrice(cc, line.id)); setPrice(false); }} style={{ marginTop: 6 }} /> : null}
       </Sheet>
       <Sheet visible={adj} onClose={() => setAdj(false)} title="Line price adjustment">
         <Txt size={13} sub style={{ textAlign: 'center' }}>What should the whole line cost?{pl ? ` It costs ${fmt(beforeAdjustCents(pl))} now, after deals and discounts.` : ''}</Txt>
         <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }}>{fmt(digitsToCents(adjDigits))}</Txt>
         {adjProblem ? <Txt size={13} color={c.bad} style={{ textAlign: 'center', marginBottom: 6 }}>{adjProblem}</Txt> : null}
-        <Field kind="text" label="Reason (optional)" value={adjReason} onChangeText={setAdjReason} placeholder="e.g. Damaged box, price match" />
-        <Keypad value={adjDigits} onChange={setAdjDigits} onSubmit={setAdjustment} submitLabel="Set line price" />
+        <Spot id={SPOT.priceReason}><Field kind="text" label="Reason (optional)" value={adjReason} onChangeText={setAdjReason} placeholder="e.g. Damaged box, price match" /></Spot>
+        <Keypad value={adjDigits} onChange={setAdjDigits} onSubmit={setAdjustment} submitLabel="Set line price" keysSpot={SPOT.priceLineKeys} submitSpot={SPOT.priceLineSet} />
         {line.adjust ? <Btn spot={lineAdjustOffSpot(lineKey!)} title="Remove adjustment" kind="ghost" onPress={() => { setCart(cc => ops.setLineAdjust(cc, line.id, undefined)); setAdj(false); }} style={{ marginTop: 6 }} /> : null}
       </Sheet>
       <View style={{ height: 0, backgroundColor: c.bg }} />

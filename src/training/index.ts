@@ -10,7 +10,8 @@ import { receipts } from './modules/receipts';
 import { payCash } from './modules/pay-cash';
 import { customer } from './modules/customer';
 import { discounts } from './modules/discounts';
+import { priceAdjust } from './modules/price-adjust';
 import { refund } from './modules/refund';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, refund];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, receipts, customer, discounts, priceAdjust, refund];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
