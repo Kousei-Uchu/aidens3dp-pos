@@ -66,7 +66,7 @@ test('Check goals start unfinished and are finished only by the right refund wit
   assert.ok(!u(refund.check1, 'refund-card', snap({ refund: rf(1, O1, 600, ['cash']) })), 'wrong money'); assert.ok(!u(refund.check1, 'refund-card', snap({ refund: rf(1, O1, 1200, ['card'], 2) })), 'two eggs');
   assert.ok(u(refund.check1, 'refund-cash', snap({ refund: rf(2, O2, 800, ['cash']) }))); assert.ok(!u(refund.check1, 'refund-cash', snap({ refund: rf(1, O2, 800, ['cash']) })), 'an old refund does not finish a later goal');
   assert.ok(u(refund.check1, 'refund-gift', snap({ refund: rf(3, O3, 2500, ['gift_card']) }))); assert.ok(!u(refund.check1, 'refund-gift', snap({ refund: rf(3, O3, 2500, ['card']) })));
-  assert.ok(u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['cash']) }))); assert.ok(!u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['card']) })), 'card is the thing that fails');
+  assert.ok(u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['cash']) }))); assert.ok(u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['gift_card']) })), 'a gift-card refund is also a way out'); assert.ok(!u(refund.check2, 'card-expired', snap({ refund: rf(1, O1, 1200, ['card']) })), 'card is the thing that fails');
   assert.ok(u(refund.check2, 'damaged', snap({ refund: rf(2, O2, 800, ['cash'], 1, false) }))); assert.ok(!u(refund.check2, 'damaged', snap({ refund: rf(2, O2, 800, ['cash'], 1, true) })), 'it must not be restocked');
   assert.ok(u(refund.check2, 'one-keyring', snap({ refund: rf(3, O2, 500, ['cash']) })));
 });
@@ -78,7 +78,7 @@ test('a wrong refund or a started swap is spotted, and stale refunds from an ear
 });
 
 test('Check 2 makes the card refund fail with a real code, says where it was taught, and every goal can use the windows', () => {
-  const g = by(refund.check2, 'card-expired'); assert.equal(declinesOf(g.inject), 5); assert.ok(RESPONSE_CODES[declineCodeOf(g.inject)]); assert.equal(declineCodeOf(g.inject), '33'); assert.equal(g.taughtBy, 'g-method-cash'); assert.ok(by(refund.guide, 'g-method-cash'));
+  const g = by(refund.check2, 'card-expired'); assert.equal(declinesOf(g.inject), 5); assert.ok(RESPONSE_CODES[declineCodeOf(g.inject)]); assert.equal(declineCodeOf(g.inject), '33'); assert.equal(g.taughtBy, 'card-fails'); assert.ok(by(refund.show.steps, 'card-fails'), 'the failure and its way out are shown before Check 2');
   for (const gl of [...refund.check1, ...refund.check2]) { assert.equal(gl.at?.sheets, true, gl.id); assert.deepEqual(gl.allow, ['sale'], gl.id); assert.ok(isKnownSpot(gl.reveal!), gl.id); }
 });
 
