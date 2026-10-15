@@ -5,7 +5,7 @@ import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, 
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
 import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
-import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
+import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot, lineVariantSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { Spot } from '../ui/Spot';
 import { useApp } from '../state/store';
@@ -191,7 +191,7 @@ export function LineEditor({ line, onClose }: { line: CartLine | null; onClose: 
           <Btn title="+" kind="secondary" onPress={() => setCart(cc => ops.setQty(cc, line.id, line.qty + 1))} style={{ width: 64 }} />
         </View>
         {siblings.length > 1 ? <View style={{ marginBottom: 12 }}><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Variation</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
-          {siblings.map(s => <Chip key={s.id} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
+          {siblings.map(s => <Chip key={s.id} spot={lineVariantSpot(lineKey!, s.id)} label={s.variantTitle || 'Default'} active={s.id === line.variantId} onPress={() => setCart(cc => ops.swapVariant(cc, line.id, s))} />)}</View></View> : null}
         <Row spot={lineDiscountSpot(lineKey!)} title="Discount" sub={line.discount?.label ?? (line.noDiscount ? 'Not discountable' : undefined)} icon="pricetag-outline" onPress={line.noDiscount ? undefined : () => setDisc(true)} />
         <Row spot={linePriceSpot(lineKey!)} title="Item price adjustment" icon="create-outline"
           sub={line.kind === 'gift_card' ? 'Not available for gift cards' : hasItemPrice(line) ? `${fmt(line.overrideCents!)} (was ${fmt(line.unitCents)}) · ${line.overrideAll ? 'all in cart' : line.overrideSeenQty !== undefined ? `for ${line.overrideSeenQty} unit${line.overrideSeenQty === 1 ? '' : 's'}` : 'this line'}` : fmt(line.unitCents)}

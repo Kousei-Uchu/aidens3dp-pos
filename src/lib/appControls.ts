@@ -173,6 +173,7 @@ export const lineWindowScreen = (key: string): string => `sheet_line:${key}`;
 /** The screen a spot lives on, or undefined when it is universal (always on screen where it is used) or unknown. */
 export function screenOfSpot(spot: string): string | undefined {
   if (SPOT_SCREEN[spot]) return SPOT_SCREEN[spot];
+  if (spot.startsWith('line.variant:')) return lineWindowScreen(spot.slice('line.variant:'.length).split(':')[0]);
   for (const prefix of LINE_WINDOW_PREFIXES) if (spot.startsWith(prefix)) return lineWindowScreen(spot.slice(prefix.length));
   for (const { prefix, screen } of PREFIX_SCREEN) if (spot.startsWith(prefix)) return screen;
   return undefined;

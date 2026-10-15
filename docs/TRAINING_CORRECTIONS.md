@@ -45,8 +45,8 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 - **[DESIGN]** Poorly made overall. Review and rework it: Guide, Check 1 and Check 2 against the current Cash window.
 
 ### Customers and notes
-- Guide step 8 (typing the note) does not check what was typed. It should finish only on a real note, and say so if it is empty.
-- Guide step 13: let the person type their own details into the form (a name, email and so on), and make clear nothing is saved. Remove the block on the fields. The step should not accept empty fields because the person could not type; once typing works, keep the validation.
+- Guide step 8 (typing the note): **done in 0119.** The step now finishes only on a real note (`gift wrap`), with `typing: true` so the fields accept touch.
+- Guide step 13: **done in 0119.** The person types their own details, the text says nothing is kept, and `ready` keeps Next greyed out until a name and an email or mobile are in, so empty fields are not accepted.
 
 ### Discounts
 - **Done (0123):** Guide step 5 now finishes only when both digits are keyed (the Discount window publishes what is keyed; the step waits for `10`). Wrong taps and closed windows now walk back: `recoverFrom` was added to the line Discount row, the keypad, Apply and the cart-menu steps.
@@ -56,7 +56,7 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 - **Done (0123, section 3):** the Show now lands the whole-cart discount: a cart badge appears and the prices and total drop, then come back on Remove.
 
 ### Change a price
-- Reason box typing (1.4) and Guide step 19 (1.3).
+- Reason box typing (1.4) and Guide step 19 (1.3): both done in 0119/0120.
 
 ### Refunds and exchanges
 - **[DESIGN]** Check 2 does not really go wrong. It says "this is what is going to happen but by a different route" instead of a normal refund that then fails. It should be a normal refund and then the card refund declines, and the person decides what to do. A test of memory and logic, not menus.
@@ -64,8 +64,8 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 - This applies to a lot of the other modules too. Review every Check 2 against that rule: a normal task, a realistic customer-side failure, a fix that was already taught.
 
 ### How deals show up
-- The hint says to add a Small Highland Cow, but doing that changes nothing, because the Large cow is still there and must be removed too. Better: have the person change the variation from the line's details window instead (swap Large for Small on the same line). Add a spot for that control.
-- Last Check 2 goal ends on a $0 Payment page (see 1.7).
+- **Done (0124):** the swap is now done on the line itself. The Show opens the cow's line and taps the other size under Variation (a new `line.variant:<line>:<variant>` spot), and Check 2's hint points at that same control instead of add-Small-remove-Large.
+- Last Check 2 goal ends on a $0 Payment page (see 1.7): done in 0119 (the goal ends when Payment opens).
 
 ### Scan items
 - Guide step 13 only highlights the top item. Minor. Ring the line that matters.
