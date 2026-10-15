@@ -149,7 +149,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
 
       <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart" screen="sheet_cart_menu">
         <Row icon="trash-outline" title="Clear cart" danger onPress={doClear} />
-        <Row icon="bookmark-outline" title="Save cart" onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
+        <Row icon="bookmark-outline" title="Save cart" spot={SPOT.cartMenuSave} onPress={() => (empty || locked ? alertMsg(locked ? 'Payment in progress' : 'Cart is empty') : open('save'))} />
         <Row icon="person-add-outline" title="Create customer" onPress={() => open('newcustomer')} />
         <Row icon="calculator-outline" title="Custom amount" onPress={() => open('custom')} />
         <Row spot={SPOT.cartMenuDiscount} icon="pricetag-outline" title="Apply cart discount" sub={cart.discount?.label} onPress={() => open('discount')} />

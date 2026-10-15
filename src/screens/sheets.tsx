@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
-import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setGiftCheckProbe, setGiftCodeProbe, setLastGiftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
+import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setGiftCheckProbe, setGiftCodeProbe, setLastGiftProbe, setNoteDraftProbe, setPriceDraft, setSavedNameProbe } from '../lib/trainingProbe';
 import { SPOT, discountPresetSpot, customerRowSpot, giftHowSpot, giftPresetSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot, lineVariantSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { registerCheckoutReset } from '../lib/trainingProbe';
@@ -60,16 +60,17 @@ export function CustomAmountSheet({ visible, onClose }: { visible: boolean; onCl
 export function SaveCartSheet({ visible, onClose, onSaved }: { visible: boolean; onClose: () => void; onSaved?: () => void }) {
   const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const [name, setName] = useState(''); const [note, setNote] = useState('');
   const staff = useApp(s => s.settings.staff.find(x => x.id === s.staffId)?.name);
+  useEffect(() => { setSavedNameProbe(visible ? name : ''); return () => setSavedNameProbe(''); }, [visible, name]); // training reads what is typed
   const save = () => {
     saveCartLocal({ id: uid(), name: name.trim() || cart.customer?.name || `Cart ${new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`, note: note.trim() || undefined, cart: { ...cart, name: undefined, orderAdjust: undefined }, ts: new Date().toISOString(), employee: staff });
     setName(''); setNote(''); onClose(); onSaved?.();
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title="Save cart">
+    <Sheet visible={visible} onClose={onClose} title="Save cart" screen="sheet_save_cart">
       {cart.orderAdjust ? <Txt size={13} color={c.warn} style={{ marginBottom: 8 }}>This cart's whole order price ({fmt(cart.orderAdjust.finalCents)}) is not kept in a saved cart. It will come back at its normal total.</Txt> : null}
-      <Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam - holding for Friday'} value={name} onChangeText={setName} autoFocus />
+      <Spot id={SPOT.savedName}><Field kind="name" label="Name" placeholder={cart.customer?.name ?? 'e.g. Sam - holding for Friday'} value={name} onChangeText={setName} autoFocus /></Spot>
       <Field kind="text" label="Notes" placeholder="Optional" value={note} onChangeText={setNote} multiline />
-      <Btn title="Save to Saved carts" onPress={save} />
+      <Btn spot={SPOT.savedSave} title="Save to Saved carts" onPress={save} />
     </Sheet>
   );
 }

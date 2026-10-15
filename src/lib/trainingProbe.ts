@@ -25,6 +25,8 @@ let discountDraft = ''; export const setDiscountDraftProbe = (v: string): void =
 export type CustomerDraft = { first: string; last: string; email: string; phone: string };
 let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
+/** What is typed in the Save cart window's Name box (empty when that window is closed). */
+let savedName = ''; export const setSavedNameProbe = (v: string): void => { savedName = v; }; export const getSavedNameProbe = (): string => savedName;
 let typed: Typed = {}; let where: CheckoutWhere | undefined; const resets = new Set<() => void>();
 export const setProbe = (t: Typed, w: CheckoutWhere): void => { typed = t; where = w; };
 export const clearProbe = (): void => { typed = {}; where = undefined; };
@@ -33,4 +35,4 @@ export const getWhere = (): CheckoutWhere | undefined => where;
 /** Several screens hold "how a run starts" state (Checkout itself, and the cart pane's "I have seen this review" note). Each registers its own reset. */
 export const registerCheckoutReset = (f: () => void): (() => void) => { resets.add(f); return () => { resets.delete(f); }; };
 /** Puts Checkout back to how a practice run starts: Quick Menu, first page, nothing typed, and no note that a price review has been seen. Does nothing when none of it is mounted. */
-export const resetCheckout = (): void => { giftCode = ''; giftCheck = undefined; for (const f of resets) { try { f(); } catch { /* a reset must never break training */ } } };
+export const resetCheckout = (): void => { giftCode = ''; giftCheck = undefined; savedName = ''; for (const f of resets) { try { f(); } catch { /* a reset must never break training */ } } };

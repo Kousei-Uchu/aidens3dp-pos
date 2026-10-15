@@ -46,6 +46,15 @@ Everything in this file is a guess from me, not a decision from you.
 - **Practice gift card codes (0130).** Guess: `GIFT25` ($25.00, active), `GIFT05` ($5.00, active) and `GIFTOFF`
   (disabled). `TRAINPRACTICE1`, the card the scanning course scans, stays and holds the same $25.00, so the two
   courses agree on one card. `GIFT25` is a short stand-in for typing by hand on a device.
+- **Assign a saved cart: to a customer or a staff member? (0131, `saved-carts`).** The plan line says "assign to a
+  customer", but the real Saved carts window assigns a cart to a **staff member** (`saved.assign:<staffId>`, the
+  `Assign → <name>` buttons come from the staff list), and there is no customer field on a saved cart. Guess: the
+  course teaches the **staff member** handover, since that is what the till does. The course runs with
+  `practiceStaff`, so the people offered are the practice pair (Casey, Morgan), never the real staff list.
+- **The Merge Carts? prompt (0131, `saved-carts`).** Guess: it is the till's own native confirm, so the course
+  teaches it in Show (with a drawn prompt) and the Check goals watch the **merged cart** rather than the prompt
+  itself, because a native confirm cannot be ringed or detected the way an in-app window can. The guide step that
+  saves a cart allows `remove` because saving clears the till.
 - **More ▸ Orders should be Shopify orders only.** Guess: yes. Transactions already means "POS sales"; Orders
   should show only orders pulled from Shopify, and a POS sale must never appear there.
 - **Card last four.** Guess: store it when the Zeller result carries it, and show it on the sale. If the SDK

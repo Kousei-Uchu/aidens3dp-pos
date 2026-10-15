@@ -1,7 +1,7 @@
 // Location: src/lib/trainingSandbox.ts
 // Practice data for the Guide and Check stages, and the swap in and out. Pure: no store imports except types.
 // Every id starts with "train-" so practice data can never be mistaken for the real thing.
-import type { App, Settings } from '../state/store';
+import type { App, SavedCart, Settings } from '../state/store';
 import type { Variant, Collection, Customer, ManualPreset, Cart, AutoDiscount } from './types';
 import type { Grid, Tile } from './grid';
 import { addVariant, emptyCart, setItemPrice, setLineAdjust } from './cartOps';
@@ -62,6 +62,17 @@ export const fixtureGrid = (): Grid => ({ version: 1, pages: [{ id: PRACTICE_PAG
 export const FIXTURE_DRAWER: Record<string, number> = { '5000': 2, '2000': 5, '1000': 5, '500': 6, '200': 10, '100': 10, '50': 10, '20': 10, '10': 10, '5': 10 };
 export const fixtureLedger = (): CashLedger => ({ ...emptyLedger(), counts: { ...FIXTURE_DRAWER } });
 
+/** The two saved carts the Saved carts course starts with, both unassigned. Made up and never synced. */
+export const PRACTICE_SAVED_SAM = `${TRAIN_PREFIX}saved-sam`; export const PRACTICE_SAVED_PRIYA = `${TRAIN_PREFIX}saved-priya`;
+export function fixtureSavedCarts(): SavedCart[] {
+  const egg = FIXTURE_VARIANTS.find(x => x.id === `${TRAIN_PREFIX}v-egg`)!;
+  const key = FIXTURE_VARIANTS.find(x => x.id === `${TRAIN_PREFIX}v-key`)!;
+  return [
+    { id: PRACTICE_SAVED_SAM, name: 'Sam, holding for Friday', cart: addVariant(emptyCart(), egg, 2), ts: '2026-10-14T09:00:00.000Z', status: 'open' },
+    { id: PRACTICE_SAVED_PRIYA, name: 'Priya, pickup Tuesday', cart: addVariant(emptyCart(), key, 1), ts: '2026-10-14T10:00:00.000Z', status: 'open' },
+  ];
+}
+
 /** The two practice staff for courses with `practiceStaff`. Known PINs (1234 and 2468) and, for Morgan, the practice cashier pass. Never saved: they live only in the sandbox. */
 export const PRACTICE_CASEY = `${TRAIN_PREFIX}staff-casey`; export const PRACTICE_MORGAN = `${TRAIN_PREFIX}staff-morgan`;
 export const PRACTICE_PINS = { casey: '1234', morgan: '2468' } as const;
@@ -89,7 +100,7 @@ export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?
     settings: opts.practiceStaff ? { ...sandboxSettings(real.settings), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings),
     data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: FIXTURE_AUTOS, presets: FIXTURE_PRESETS },
     grid: fixtureGrid(), gridVersion: 0,
-    pos: { saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
+    pos: { saved: fixtureSavedCarts(), outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
     sync: { state: 'idle' }, zeller: { ready: true }, staffId: opts.practiceStaff ? PRACTICE_CASEY : real.staffId, unlocked: true,
   };
 }

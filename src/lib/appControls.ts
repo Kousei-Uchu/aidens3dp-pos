@@ -70,6 +70,8 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.tabMore]: 'tab_more',
   [SPOT.moreTraining]: 'tab_more',
   [SPOT.moreOrders]: 'tab_more',
+  [SPOT.moreSaved]: 'tab_more',
+  [SPOT.savedOpen]: 'page_saved',
   [SPOT.switchLock]: 'tab_more',
   // Payment page.
   [SPOT.payTotal]: 'page_pay',
@@ -96,6 +98,9 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.splitContinue]: 'sheet_split',
   [SPOT.splitCancel]: 'page_pay',
   [SPOT.cartMenuGift]: 'sheet_cart_menu',
+  [SPOT.cartMenuSave]: 'sheet_cart_menu',
+  [SPOT.savedName]: 'sheet_save_cart',
+  [SPOT.savedSave]: 'sheet_save_cart',
   [SPOT.giftKeys]: 'sheet_gift_sell',
   [SPOT.giftNext]: 'sheet_gift_sell',
   [SPOT.giftHow]: 'sheet_gift_sell_details',
@@ -170,6 +175,8 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'split.equal:', screen: 'sheet_split' },
   { prefix: 'gift.preset:', screen: 'sheet_gift_sell' },
   { prefix: 'gift.how:', screen: 'sheet_gift_sell_details' },
+  { prefix: 'saved.row:', screen: 'page_saved' },
+  { prefix: 'saved.assign:', screen: 'page_saved' },
 ];
 
 /**

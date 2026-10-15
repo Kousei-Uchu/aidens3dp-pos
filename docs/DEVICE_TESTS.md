@@ -433,3 +433,17 @@ On the iPad and on a phone. Use More ▸ Training ▸ Check and pay with a gift 
 6. Check 2, the disabled card: key GIFTOFF, Check. Pass: the window says Disabled and there is no Use as payment, so the goal finishes only after the whole $14.00 is taken by card.
 7. No practice card is a real Shopify card. Pass: leaving restores any real card balances, and no lookup or debit ever reaches Shopify.
 8. **Most important:** with the practice window open, check a balance and pay. Confirm no network call is made and the real cart, sales and gift cards are untouched when you leave.
+
+## T36. Training: Park and resume a sale (B6, 0131)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Park and resume a sale.
+
+1. The Guide adds the Bumble Bee, then rings the three dots in the cart, Save cart in the cart menu, the Name box and Save to Saved carts. Pass: the till is empty again after saving and the cart no longer shows the item.
+2. The Guide rings More, then Saved carts, then Sam's row, then Open. Pass: Sam's two Dragon Eggs come back on the till.
+3. Add another item, then open Priya's cart and Open again. Pass: the Merge Carts? prompt appears (the till is not empty), and Merge adds Priya's Keyring alongside what is already there.
+4. Open Sam's cart and tap Assign → Casey. Pass: the row now shows who it is for (→ Casey), and the person who hands it over is Casey or Morgan, never a real staff member.
+5. Check 1: park a sale; open Sam's cart on an empty till; merge a saved cart into a till that has an item; hand a saved cart to a workmate. Each goal starts fresh with the practice carts.
+6. Check 2, the merge: the till already has an item, so Open asks first; the goal finishes only once Sam's cart has merged into it.
+7. Check 2, the handover: the run signs in as practice manager Morgan. Pass: assign the waiting cart to Casey and the goal finishes.
+8. Leaving the course: the two practice carts (Sam, holding for Friday; Priya, pickup Tuesday) are made up and are gone. Pass: your real saved carts are untouched, nothing was synced to Shopify, and the real staff list never appeared.
+9. **Most important:** with the cart menu and the Saved carts window open, save and open carts. Confirm no real saved cart is created or pushed to Shopify and the real cart, sales and staff are untouched when you leave.

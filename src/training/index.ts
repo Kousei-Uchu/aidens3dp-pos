@@ -11,6 +11,7 @@ import { payCash } from './modules/pay-cash';
 import { splitPay } from './modules/split-pay';
 import { giftSell } from './modules/gift-sell';
 import { giftPay } from './modules/gift-pay';
+import { savedCarts } from './modules/saved-carts';
 import { customer } from './modules/customer';
 import { bundlesDeals } from './modules/bundles-deals';
 import { discounts } from './modules/discounts';
@@ -19,5 +20,5 @@ import { refund } from './modules/refund';
 import { scanning } from './modules/scanning';
 import { inventory } from './modules/inventory';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
