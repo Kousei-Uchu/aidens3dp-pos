@@ -37,7 +37,7 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 - **Scan items, Show:** the scan section is only buttons reading "Scan this: ...". Replace it with a camera simulation: a camera frame, and a box with a white sticker carrying a barcode (or at least a QR system icon) sliding into view, then the green or red result. Keep the real practice window for the Guide.
 - **Scan items, Show:** the Cashier Pass and Gift Card QR tiles are skipped (the step reveals them but the camera does not visit them).
 - **Scan items, Show:** the bottom text box animates very poorly in the last two steps.
-- **Discounts, Show:** skips the Whole Cart element.
+- **Discounts, Show:** skips the Whole Cart element. **Done (0123):** the cart badge and the dropping prices now show the whole-cart discount landing.
 
 ## 4. Per module
 
@@ -49,11 +49,11 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 - Guide step 13: let the person type their own details into the form (a name, email and so on), and make clear nothing is saved. Remove the block on the fields. The step should not accept empty fields because the person could not type; once typing works, keep the validation.
 
 ### Discounts
-- Guide step 5 does not check that both numbers were typed. Finish only when both are keyed.
-- Guide does not course correct properly. Re-test every step with a wrong tap and a closed window.
-- Check 1, last goal: "never mind" is not something a customer would say. Replace it with a realistic reason to remove a discount (for example the item was rung up at the wrong discount, or a voucher was not valid).
-- Check 2 shows the real grid of tiles. It should show the practice grid.
-- Check 2 step 2 soft lock (see 1.2).
+- **Done (0123):** Guide step 5 now finishes only when both digits are keyed (the Discount window publishes what is keyed; the step waits for `10`). Wrong taps and closed windows now walk back: `recoverFrom` was added to the line Discount row, the keypad, Apply and the cart-menu steps.
+- **Done (0123):** Check 1, last goal: "never mind" replaced with a realistic reason (the customer is not entitled to that discount).
+- **Done (0123):** Check 2 deal goal no longer expects a window: adding a Keyring happens on the practice grid (`at` was `sheets: true`, now `sheets: false`), so the grid the person taps is the practice one.
+- Check 2 step 2 soft lock (see 1.2): done in 0119/0120.
+- **Done (0123, section 3):** the Show now lands the whole-cart discount: a cart badge appears and the prices and total drop, then come back on Remove.
 
 ### Change a price
 - Reason box typing (1.4) and Guide step 19 (1.3).

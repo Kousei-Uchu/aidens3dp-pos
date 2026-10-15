@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
-import { setCustomerDraftProbe, setCustomerQuery, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
+import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
 import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { Spot } from '../ui/Spot';
@@ -28,6 +28,7 @@ import type { CartLine, Customer, ManualDiscount } from '../lib/types';
 /** Manual discount: Shopify discount-code presets as tappable chips + custom % / $ keypad. */
 export function DiscountSheet({ visible, onClose, onApply, offSpot, current, title = 'Discount' }: { visible: boolean; onClose: () => void; onApply: (d?: ManualDiscount) => void; offSpot?: string; current?: ManualDiscount; title?: string }) {
   const presets = useApp(s => s.data.presets); const [mode, setMode] = useState<'pct' | 'amt'>('pct'); const [digits, setDigits] = useState('');
+  useEffect(() => { setDiscountDraftProbe(visible ? digits : ''); return () => setDiscountDraftProbe(''); }, [visible, digits]); // training reads what is keyed
   const apply = () => {
     if (mode === 'pct') { const p = Math.min(100, Number(digits) || 0); if (p > 0) { onApply({ kind: 'pct', value: p, label: `${p}% off` }); setDigits(''); onClose(); } }
     else { const cents = digitsToCents(digits); if (cents > 0) { onApply({ kind: 'amt', value: cents, label: `${fmt(cents)} off` }); setDigits(''); onClose(); } }

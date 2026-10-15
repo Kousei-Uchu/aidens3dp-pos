@@ -65,6 +65,7 @@ export type TrainSnap = {
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
   /** What is typed in the New customer form (undefined when that form is not open). */ customerDraft?: { first: string; last: string; email: string; phone: string };
   /** What is keyed in an open price window, as `item:2000`, `line:1200` or `order:3000` (cents), and the whole order price (cents) when one is set. */ priceDraft?: string; orderAdjustCents?: number;
+  /** What is keyed in the open Discount window (the digits only, before Apply). */ discountDraft?: string;
   /** The Cash window while it is open: what has been tapped as received, what is due, and which step it is on. */ cash?: { received: number; due: number; step: 'receive' | 'change' };
   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
   /** The last refund made on a practice order (`n` is how many refunds so far): what it came to, whether the items went back into stock, which kinds of money it went back as, and how many items. Left out until a refund is made. */

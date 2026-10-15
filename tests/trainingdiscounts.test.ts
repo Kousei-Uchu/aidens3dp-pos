@@ -11,7 +11,7 @@ import { FIXTURE_AUTOS, FIXTURE_PRESETS, FIXTURE_VARIANTS, applyInjections, buil
 import { NO_DISCOUNT_TAG } from '../src/lib/pricing';
 
 const line = (variantId: string, qty = 1, discounted = false) => ({ variantId, title: variantId, kind: 'item' as const, qty, discounted, adjusted: false });
-const snap = (lines: any[], o: { sheets?: number; discount?: boolean } = {}): TrainSnap => snapOf({ tab: 'checkout', route: '', sheets: o.sheets ?? 0, cart: { lines: lines.map(l => ({ ...l, id: l.variantId, discount: l.discounted ? { kind: 'pct', value: 10, label: '10% off' } : undefined })), discount: o.discount ? { kind: 'pct', value: 10, label: '10% off' } : undefined }, sales: 0, paying: false });
+const snap = (lines: any[], o: { sheets?: number; discount?: boolean; discountDraft?: string } = {}): TrainSnap => snapOf({ tab: 'checkout', route: '', sheets: o.sheets ?? 0, discountDraft: o.discountDraft, cart: { lines: lines.map(l => ({ ...l, id: l.variantId, discount: l.discounted ? { kind: 'pct', value: 10, label: '10% off' } : undefined })), discount: o.discount ? { kind: 'pct', value: 10, label: '10% off' } : undefined }, sales: 0, paying: false });
 const by = (list: any[], id: string) => list.find(x => x.id === id);
 const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
 const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
@@ -32,7 +32,7 @@ test('Guide steps are finished by the right press, window or cart change', () =>
   const g = (id: string) => by(discounts.guide, id).until;
   assert.ok(isMet(g('g-add'), snap([line('train-v-dragon')]), noEvents())); assert.ok(!isMet(g('g-add'), snap([line('train-v-bee')]), noEvents()));
   assert.ok(isMet(g('g-line'), snap([]), ev([], [lineDiscountSpot('train-v-dragon')]))); assert.ok(!isMet(g('g-line'), snap([]), ev([], [lineDiscountSpot('train-v-bee')])));
-  assert.ok(isMet(g('g-keys'), snap([]), ev([SPOT.discountKeys]))); assert.ok(!isMet(g('g-keys'), snap([]), ev([SPOT.discountApply])));
+  assert.ok(isMet(g('g-keys'), snap([], { sheets: 1, discountDraft: '10' }), noEvents())); assert.ok(!isMet(g('g-keys'), snap([], { sheets: 1, discountDraft: '1' }), noEvents()), 'both digits must be keyed'); assert.ok(!isMet(g('g-keys'), snap([], { sheets: 1 }), noEvents()));
   assert.ok(isMet(g('g-apply'), snap([line('train-v-dragon', 1, true)]), noEvents())); assert.ok(!isMet(g('g-apply'), snap([line('train-v-dragon')]), noEvents()));
   assert.ok(isMet(g('g-line-done'), snap([]), noEvents())); assert.ok(!isMet(g('g-line-done'), snap([], { sheets: 1 }), noEvents()));
   assert.ok(isMet(g('g-menu-item'), snap([]), ev([], [discountPresetSpot('train-pre-10')]))); assert.ok(isMet(g('g-preset'), snap([], { discount: true }), noEvents())); assert.ok(!isMet(g('g-preset'), snap([]), noEvents()));
@@ -57,6 +57,7 @@ test('Check 2: the print cannot be discounted, the deal needs three Keyrings, an
   assert.ok(isMet(never.until, snap([line('train-v-print'), line('train-v-bee', 1, true)]), noEvents())); assert.ok(!isMet(never.until, snap([line('train-v-print', 1, true), line('train-v-bee')]), noEvents()));
   const b = applyInjections(buildSandbox(real), deal.inject); assert.equal(b.pos.cart.lines[0].qty, 2); assert.ok(!isMet(deal.until, snap([line('train-v-key', 2)]), noEvents())); assert.ok(isMet(deal.until, snap([line('train-v-key', 3)]), noEvents()));
   const c = applyInjections(buildSandbox(real), mistake.inject); assert.equal(c.pos.cart.discount?.value, 15); assert.ok(!isMet(mistake.until, snap([], { discount: true }), noEvents())); assert.ok(isMet(mistake.until, snap([]), noEvents()));
-  for (const g of discounts.check2) { assert.ok(g.taughtBy, g.id); assert.equal(g.at?.sheets, true, g.id); assert.ok(isKnownSpot(g.reveal!), g.id); }
+  for (const g of discounts.check2) { assert.ok(g.taughtBy, g.id); assert.ok(isKnownSpot(g.reveal!), g.id); if (g.id !== 'c2-deal') assert.equal(g.at?.sheets, true, g.id); }
+  assert.equal(discounts.check2.find(g => g.id === 'c2-deal')!.at?.sheets, false, 'adding a Keyring on the grid happens with no window open');
   assert.ok(discounts.show.steps.some(s => s.id === never.taughtBy) && discounts.show.steps.some(s => s.id === deal.taughtBy) && discounts.guide.some(s => s.id === mistake.taughtBy));
 });
