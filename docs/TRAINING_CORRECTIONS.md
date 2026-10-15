@@ -101,9 +101,11 @@ Every Check 2 now sets up a normal task, lets a realistic customer-side failure 
 
 ## 6. Questions for you
 
-1. Customers, step 13: is it fine that the person types their own real details into the practice form, given nothing is saved or sent?
-2. Status bar: hide it everywhere, or only while training or the guided flows?
-3. Order of work: soft locks (section 1) first, then the cursor changes (section 2) for all modules at once, then the per-module rework. Does that suit you?
+Answered by guess and recorded in `docs/GUESSES.md` (section 6 there), because you asked me not to stop and ask. Correct anything that is wrong.
+
+1. Customers, step 13: is it fine that the person types their own real details into the practice form, given nothing is saved or sent? **Guessed fine.**
+2. Status bar: hide it everywhere, or only while training or the guided flows? **Guessed: hide it everywhere** (done in 5.3).
+3. Order of work: soft locks (section 1) first, then the cursor changes (section 2) for all modules at once, then the per-module rework. Does that suit you? **Guessed yes** (that is the order used).
 
 ## 7. Proposed patches
 

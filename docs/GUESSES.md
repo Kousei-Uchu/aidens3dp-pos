@@ -6,13 +6,15 @@ Everything in this file is a guess from me, not a decision from you.
 ## How I read your last instructions
 
 - **"Complete 2 (TRAINING_CORRECTIONS.md)"** means: finish the corrections in `docs/TRAINING_CORRECTIONS.md`.
-- **"ignore ALL MODULES"** means: do not change any course content under `src/training/modules/*`. Where a
-  correction lands on a module's own wording or steps, it stays undone and is listed as left. Section 5 of the
-  corrections (app changes, not training) is fair game.
+- **"ignore ALL MODULES"** was the earlier boundary: do not change any course content under `src/training/modules/*`.
+  **Superseded:** you then said "do the training corrections first, then build away at modules", so the per-module
+  corrections in `docs/TRAINING_CORRECTIONS.md` section 4 are done on `dev` (0123 to 0128), and the remaining
+  courses are being built. Section 5 of the corrections (app changes, not training) is done too.
 - **"3.1 delete / 3.2 defer / 3.3 fix it / 3.4 this skill"** answers the loose ends I listed:
-  3.1 the stray `patches/0119-training-soft-locks.patch` (deleted), 3.2 the `split-pay` course (deferred),
-  3.3 the `unavailable` terminal dead end (fixed), 3.4 the writing style (that skill, adopted below).
-- **"the rest you have to walk me through one by one"** means the per-module corrections wait for you.
+  3.1 the stray `patches/0119-training-soft-locks.patch` (deleted), 3.2 the `split-pay` course (deferred, then
+  built as 0122), 3.3 the `unavailable` terminal dead end (fixed), 3.4 the writing style (that skill, adopted below).
+- **"the rest you have to walk me through one by one"** was the earlier note about the per-module corrections; the
+  later "do the training corrections first" supersedes it and they are done.
 
 ## Questions from `docs/TRAINING_CORRECTIONS.md`, section 6
 
