@@ -90,14 +90,23 @@ export const SPOT = {
   scanCamera: 'scan.camera',           // the barcode button next to Search, which opens the camera
   scanDone: 'scan.done',               // Done, in the camera window (in practice, the practice camera window)
   scanResult: 'scan.result',           // the green or red message in the camera window after a scan (it appears after the first scan)
+  // Inventory
+  tabInventory: 'tab.inventory',       // the Inventory tab
+  invSearch: 'inv.search',             // the search box on the Inventory screen
+  invFilters: 'inv.filters',           // the Filters chip on the Inventory screen
+  invLayout: 'inv.layout',             // the Nested / Flat chip on the Inventory screen
+  invModes: 'inv.modes',               // the Receive | Adjust | Count switch on the item window
+  invSign: 'inv.sign',                 // the Add / Remove chip in Adjust mode
+  invKeys: 'inv.keys',                 // the number keys on the item window keypad
+  invApply: 'inv.apply',               // the Apply / Set stock button on the item window
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.bundleContinue, SPOT.bundleEdit, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.priceItemKeys, SPOT.priceItemSet, SPOT.priceLineKeys, SPOT.priceLineSet, SPOT.priceOrderKeys, SPOT.priceOrderSet, SPOT.priceReason, SPOT.priceScopeQty, SPOT.priceScopeAll, SPOT.reviewContinue, SPOT.reviewKeep, SPOT.reviewAdjust, SPOT.reviewRemove, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone, SPOT.scanDone, SPOT.scanResult];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.bundleContinue, SPOT.bundleEdit, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.priceItemKeys, SPOT.priceItemSet, SPOT.priceLineKeys, SPOT.priceLineSet, SPOT.priceOrderKeys, SPOT.priceOrderSet, SPOT.priceReason, SPOT.priceScopeQty, SPOT.priceScopeAll, SPOT.reviewContinue, SPOT.reviewKeep, SPOT.reviewAdjust, SPOT.reviewRemove, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone, SPOT.scanDone, SPOT.scanResult, SPOT.invModes, SPOT.invKeys, SPOT.invApply, SPOT.invSign];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('scan.card:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('scan.card:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj') || id.startsWith('inv.mode:') || id.startsWith('inv.reason:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:'] as const;
+export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -152,6 +161,16 @@ export const refundPickSpot = (variantId: string): string => `refund.pick:${vari
 export const refundReplSpot = (variantId: string): string => `refund.repl:${variantId}`;
 /** The Scan this button on one practice barcode card in the practice camera window (the key is the card's own, such as `bee` or `torn`; see `trainingScan.ts`). */
 export const scanCardSpot = (key: string): string => `scan.card:${key}`;
+/** Inventory chips under the search box: 'all', 'low', 'zero' or 'neg'. */
+export const invChipSpot = (k: string): string => `inv.chip:${k}`;
+/** An item row on the Inventory screen (the key is the variant id). */
+export const invRowSpot = (variantId: string): string => `inv.row:${variantId}`;
+/** A product group header on the Inventory screen (the key is the product id). */
+export const invGroupSpot = (productId: string): string => `inv.group:${productId}`;
+/** A reason chip in the Adjust mode of the item window. */
+export const invReasonSpot = (reason: string): string => `inv.reason:${reason}`;
+/** The Receive | Adjust | Count mode chip in the item window. */
+export const invModeSpot = (mode: 'receive' | 'adjust' | 'count'): string => `inv.mode:${mode}`;
 /** The spot id a grid tile carries, or undefined for tile types training does not point at. */
 export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
   if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }

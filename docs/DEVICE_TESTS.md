@@ -380,3 +380,16 @@ Tell me: pass or fail for each step. If anything freezes, tell me exactly which 
 2. **Change a price, Check 2, goal 1.** It injects a wrong $6.00 on the Bumble Bee. Open the Bee line, Item price, Reset to catalogue price; open the Red Dragon line, Item price, key 2 0 0 0, Set price, Done. Pass: every window opens (a short pause when one closes as the next opens) and the goal ticks once both windows are shut.
 3. **Change a price, Guide, run twice.** Finish the Guide (through the price review at steps 25-27), then open the Guide stage again and start it. Pass: at step 25 ("Tap Charge") the "Check the price adjustments" review opens again, and Continue carries on. It must not wait forever on a review that does not appear.
 4. **Windows swapping.** On a cart line, open the line window, then Discount, then Apply, then Item price adjustment, then back. Pass: each window opens and nothing is ever stuck. Also try it with the price window's Reset button.
+
+## T32. Training: Inventory (B6, 0121)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Inventory.
+
+1. The course opens on the Inventory tab. Tapping the Checkout tab does nothing: it stays on Inventory.
+2. The list starts with the Dragon Egg in red at -3, then the Keyring at 0, then the Sticker Pack at 2. Your own Inventory filters (for example Negative or Nested) are not applied.
+3. Guide: the ring moves from Low to Negative to All, then to the search box. Typing "sticker" moves it to the Sticker Pack row.
+4. In the item window the ring goes to the Receive | Adjust | Count switch, the number keys, then Apply. After Apply the Sticker Pack shows 12.
+5. Adjust: Remove, damaged, 1, Apply shows 11. Count: 6, Set stock to 6 shows 6.
+6. Open the Dragon Egg by mistake during a step that is about the Sticker Pack and apply: the card says another item's stock changed and points at its row.
+7. Check 2, the smashed Keyrings: choosing a reason other than damaged gives the card that says the reason is wrong.
+8. **Most important:** leave the course and look at the real Inventory tab. Nothing changed, and your real filters are back. Shopify stock is untouched.

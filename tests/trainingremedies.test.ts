@@ -13,7 +13,7 @@ const snap = (o: Partial<{ tab: string; route: string; sheets: number; lines: Re
   snapOf({ tab: o.tab ?? 'checkout', route: o.route ?? '', sheets: o.sheets ?? 0, cart: { lines: o.lines ?? [], customer: o.customer ? {} : undefined, discount: o.discount ? {} : undefined, note: o.note }, sales: o.sales ?? 0, paying: false });
 
 test('every way of straying has steps to put it right, in plain words', () => {
-  const kinds = ['sale', 'tender', 'place', 'sheet', 'lost', 'extra', 'qty', 'discount', 'adjust', 'customer', 'note'];
+  const kinds = ['sale', 'tender', 'place', 'sheet', 'lost', 'extra', 'qty', 'discount', 'adjust', 'customer', 'note', 'stock'];
   assert.deepEqual(Object.keys(REMEDIES).sort(), kinds.sort());
   for (const [k, r] of Object.entries(REMEDIES)) {
     assert.ok(r.how.length >= 1, k);

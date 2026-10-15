@@ -74,6 +74,7 @@ Format below: **id**, what it covers, the Guide steps, and the Check 2 failure f
 ## Tier 4: manager and occasional
 
 26. **`inventory`: Inventory.** Search, filter, group variations, receive, adjust and count, and negative stock.
+   - As built (0121): tab `inventory` only, its own starting stock (Dragon Egg -3, Keyring 0, Sticker Pack 2). Guide covers the Low, Negative and All chips, search, Receive, Adjust (Remove, damaged), Count and Nested view; the Filters window (category, status, sort) is described in Info but not practised. Apply changes practice counts only.
 27. **`items`: Items and creating one.** Edit price and identifiers, and create a tracked product.
 28. **`adjust-review`: Review price adjustments.** The manager approval queue.
 29. **`reports`: Reports.** Periods, registers, comparisons, payment and category totals, gift card totals, and sharing.

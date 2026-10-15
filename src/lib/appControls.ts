@@ -112,6 +112,15 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.loginUnlock]: 'overlay_lock',
   [SPOT.loginScanPass]: 'overlay_lock',
   [SPOT.passScan]: 'overlay_practice_pass',
+  // Inventory: the list, its chips and the item window opened from a row.
+  [SPOT.tabInventory]: 'tab_inventory',
+  [SPOT.invSearch]: 'tab_inventory',
+  [SPOT.invFilters]: 'tab_inventory',
+  [SPOT.invLayout]: 'tab_inventory',
+  [SPOT.invModes]: 'sheet_inventory_product',
+  [SPOT.invSign]: 'sheet_inventory_product',
+  [SPOT.invKeys]: 'sheet_inventory_product',
+  [SPOT.invApply]: 'sheet_inventory_product',
 };
 
 /** Where each dynamic (per record) spot lives, by its id prefix. */
@@ -139,6 +148,11 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'refund.pick:', screen: 'sheet_refund_pick' },
   { prefix: 'refund.repl:', screen: 'sheet_refund' },
   { prefix: 'scan.card:', screen: 'overlay_practice_camera' },
+  { prefix: 'inv.chip:', screen: 'tab_inventory' },
+  { prefix: 'inv.row:', screen: 'tab_inventory' },
+  { prefix: 'inv.group:', screen: 'tab_inventory' },
+  { prefix: 'inv.mode:', screen: 'sheet_inventory_product' },
+  { prefix: 'inv.reason:', screen: 'sheet_inventory_product' },
 ];
 
 /**

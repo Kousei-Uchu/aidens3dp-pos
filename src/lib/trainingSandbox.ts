@@ -6,6 +6,7 @@ import type { Variant, Collection, Customer, ManualPreset, Cart, AutoDiscount } 
 import type { Grid, Tile } from './grid';
 import { addVariant, emptyCart, setItemPrice, setLineAdjust } from './cartOps';
 import { emptyLedger, type CashLedger } from './cashLedger';
+import { defaultInvPrefs } from './inventoryView';
 import { hashPinSync } from './pin';
 import { hashBadge } from './badge';
 import { PRACTICE_PASS_CODE } from './trainingPass';
@@ -16,7 +17,7 @@ export const TRAIN_PREFIX = 'train-';
 export const isTrainId = (id: string | undefined): boolean => !!id && id.includes(TRAIN_PREFIX);
 
 const v = (id: string, productId: string, product: string, variant: string, cents: number, stock: number, sku: string): Variant => ({
-  id: `${TRAIN_PREFIX}v-${id}`, productId: `${TRAIN_PREFIX}p-${productId}`, productTitle: product, variantTitle: variant, sku, priceCents: cents, tracked: true, stock, tags: [], active: true, status: 'ACTIVE',
+  id: `${TRAIN_PREFIX}v-${id}`, productId: `${TRAIN_PREFIX}p-${productId}`, productTitle: product, variantTitle: variant, sku, priceCents: cents, tracked: true, stock, tags: [], active: true, status: 'ACTIVE', inventoryItemId: `${TRAIN_PREFIX}inv-${id}`,
 });
 export const FIXTURE_VARIANTS: Variant[] = [
   v('cow-s', 'cow', 'Highland Cow', 'Small', 1200, 20, 'TR-COW-S'), v('cow-l', 'cow', 'Highland Cow', 'Large', 1800, 12, 'TR-COW-L'),
@@ -76,14 +77,14 @@ export function practiceStaff(): StaffMember[] {
 /** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
 export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
 export function sandboxSettings(real: Settings): Settings {
-  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', bundlesJson: PRACTICE_BUNDLES, adjustPerms: {}, smartChange: false, cashRounding: true };
+  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: {}, smartChange: false, cashRounding: true };
 }
 export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
 /** The real state to put back afterwards. */
 export const takeSnapshot = (s: App): Swap => ({ settings: s.settings, data: s.data, grid: s.grid, gridVersion: s.gridVersion, pos: s.pos, sync: s.sync, zeller: s.zeller, staffId: s.staffId, unlocked: s.unlocked });
 /** The practice state. The signed in person stays signed in. */
-export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean } = {}): Swap {
-  const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, x]));
+export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?: Record<string, number | null> } = {}): Swap {
+  const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, opts.stock && x.id in opts.stock ? { ...x, stock: opts.stock[x.id] } : x]));
   return {
     settings: opts.practiceStaff ? { ...sandboxSettings(real.settings), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings),
     data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: FIXTURE_AUTOS, presets: FIXTURE_PRESETS },
@@ -94,12 +95,14 @@ export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean } = {})
 }
 /** What each injection does to the practice state: a cart injection replaces the cart, a ledger injection replaces the drawer. Card declines are not state: the session hands them to the fake terminal. Nothing else changes. */
 export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined): Swap {
-  let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
+  let stock: Record<string, number | null> | undefined; let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
   for (const i of inj ?? []) {
     if (i.kind === 'staff') who = i.who;
+    if (i.kind === 'stock') stock = { ...stock, ...i.counts };
     if (i.kind === 'cart') { cart = cart ?? emptyCart(); if (i.discountPct) cart = { ...cart, discount: { kind: 'pct', value: i.discountPct, label: `${i.discountPct}% off` } }; for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) { cart = addVariant(cart, v, it.qty, true); const ln = cart.lines.find(l => l.variantId === v.id); if (ln && it.priceCents !== undefined) cart = setItemPrice(cart, ln.id, it.priceCents, { scope: 'qty', qty: ln.qty }); if (ln && it.adjust) cart = setLineAdjust(cart, ln.id, { finalCents: it.adjust.finalCents, seenQty: it.adjust.seenQty, seenGrossCents: v.priceCents * it.adjust.seenQty, seenDiscountCents: 0 }); } } const cu = i.customer ? FIXTURE_CUSTOMERS.find(c => c.id === i.customer) : undefined; if (cu) cart = { ...cart, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }; }
     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
   }
+  if (stock) { const st = stock; sw = { ...sw, data: { ...sw.data, variants: Object.fromEntries(Object.entries(sw.data.variants).map(([id, v]) => [id, id in st ? { ...v, stock: st[id] } : v])) } }; }
   let out: Swap = cart || ledger ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}) } } : sw;
   // A staff injection only applies to practice staff, so a course without them can never lock the real till by mistake.
   if (who === 'locked' && out.settings.staff.length) out = { ...out, staffId: undefined, unlocked: false };

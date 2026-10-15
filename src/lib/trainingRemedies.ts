@@ -14,6 +14,7 @@ export const PLANNED_TITLES: Record<string, string> = {
   'price-adjust': 'Change a price',
   customer: 'Customers and notes',
   'pay-card': 'Take a card payment',
+  inventory: 'Inventory',
   refund: 'Refunds and exchanges',
 };
 export type Remedy = { module?: string; how: string[] };
@@ -29,6 +30,7 @@ export const REMEDIES: Record<Exclude<DeviationKind, 'watch'>, Remedy> = {
   discount: { module: 'discounts', how: ['Open the cart.', 'For a discount on one line, tap the line, tap Discount and take it off.', 'For a discount on the whole cart, tap the three dots, tap Apply cart discount and take it off.'] },
   adjust: { module: 'price-adjust', how: ['Open the cart and tap the line.', 'Tap Item price adjustment or Line price adjustment, then tap Remove.', 'For a whole order price, tap the three dots in the cart, tap Whole order price, then tap Remove adjustment.'] },
   customer: { module: 'customer', how: ['Open the cart.', 'Tap the small x next to the customer name at the top.'] },
+  stock: { module: 'inventory', how: ['Open the item whose stock changed.', 'Tap Count, key the number it had before, and tap Set stock.'] },
   note: { module: 'customer', how: ['Open the cart.', 'Tap the line the note is on, clear the note, then tap Done.'] },
 };
 

@@ -21,8 +21,8 @@ const by = (list: any[], id: string) => list.find(x => x.id === id);
 const real: any = { settings: { staff: [], requirePin: false, receipt: {} }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
 const ev = (pressed: string[] = [], visible: string[] = []) => ({ pressed: new Set(pressed), visible: new Set(visible) });
 
-test('the course is registered last, is valid, and may use the Payment page', () => {
-  assert.equal(getModule('scanning'), scanning); assert.equal(MODULES[MODULES.length - 1], scanning); assert.deepEqual(validateModule(scanning, isKnownSpot), []); assert.ok(scanning.routes.includes('pay'));
+test('the course is registered, is valid, and may use the Payment page', () => {
+  assert.equal(getModule('scanning'), scanning); assert.ok(MODULES.includes(scanning)); assert.deepEqual(validateModule(scanning, isKnownSpot), []); assert.ok(scanning.routes.includes('pay'));
 });
 
 test('the practice barcodes resolve exactly as the course says, using the real scan code', () => {

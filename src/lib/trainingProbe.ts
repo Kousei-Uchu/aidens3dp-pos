@@ -1,7 +1,10 @@
 // Location: src/lib/trainingProbe.ts
 // A small read-only window onto Checkout's own screen state (B6): which tab and level it is on, and what has been typed.
 // Checkout publishes here; training reads it. Checkout also registers a reset so a practice run always starts from a clean Checkout.
+import type { InvSnap } from './trainingModule';
 export type Typed = { search?: string; keypad?: string };
+/** The Inventory screen publishes here so training can tell which filter is on, what is searched, and what is keyed in the item window. */
+let inv: InvSnap | undefined; export const setInvProbe = (x: InvSnap): void => { inv = x; }; export const clearInvProbe = (): void => { inv = undefined; }; export const getInvProbe = (): InvSnap | undefined => inv;
 export type CheckoutWhere = { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 let openLine: string | undefined; export const setOpenLine = (k: string | undefined): void => { openLine = k; }; export const getOpenLine = (): string | undefined => openLine;
 /** A screen that replaces a page without being a window (the Return page, shown in place of Orders). It names its graph

@@ -43,6 +43,8 @@ export type DemoStep = {
 };
 export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; steps: DemoStep[] };
 
+/** What training can see of the Inventory screen (see `src/lib/trainingProbe.ts`). */
+export type InvSnap = { q: string; open?: string; mode?: 'receive' | 'adjust' | 'count'; digits?: string; neg?: boolean; reason?: string; expanded: string[]; stock: string; grouped: boolean; collectionId: string | null; status: string; sort: string };
 /** One cart line as training sees it. */
 export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** The line's own item price (cents) and whether it covers every one in the cart, and its whole-line price (cents). */ overrideCents?: number; overrideAll?: boolean; adjustCents?: number; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
@@ -55,6 +57,9 @@ export type TrainSnap = {
   /** The Cash, Gift card or Split choice that is open on the Payment page, when one is. */ payOpen?: 'cash' | 'gift' | 'split';
   /** How the last finished sale was paid (one entry per tender). */ lastSaleKinds?: string[];
   /** Which line's window is open (its variant, or its own id), when one is. */ openLine?: string;
+  /** The stock of every practice variant (null when not tracked), for courses that change it. */ stock?: Record<string, number | null>;
+  /** The Inventory screen: what is typed in its search box, the item window that is open (its variant, the mode, the digits keyed, whether Remove is chosen, the reason), the groups opened, and its filters. */
+  inv?: InvSnap;
   /** The graph screen node of the window open on top (a `sheet_*` screen, or the per line `sheet_line:<key>`), when the window is one the graph knows. */
   sheet?: string;
   /** Who is attached to the sale (their id), what is typed in the Customer window's search box, and the note being typed in a line's window. */ customerId?: string; customerQuery?: string; noteDraft?: string;
@@ -86,7 +91,9 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
   /** Looked at on every check, before `target`. Returns what to say and point at right now (the next key to tap, the way back to the grid), or null to use `say` and `target` as written. */
   aim?: (s: TrainSnap) => { say: string; target: string } | null;
   /** Where to point, deepest first, when the target is gone because the person closed a window or backed out. The first one that is on screen wins, and `recover` (the shallowest) is the last resort. */
-  recoverFrom?: { say: string; target: string }[] };
+  recoverFrom?: { say: string; target: string }[];
+  /** The practice items whose stock may change during this step. Any other item's stock changing is off course. Left out: stock is not watched. */
+  stockAllow?: string[] };
 
 /** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
 export type Injection =
@@ -94,6 +101,7 @@ export type Injection =
   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
   | { kind: 'ledger'; counts: Record<string, number> }
   | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)
+  | { kind: 'stock'; counts: Record<string, number | null> }             // set the stock of these practice variants (null = not tracked) before the goal starts
   | { kind: 'pass'; state: 'cancelled' };                               // the practice cashier pass has been cancelled, so the till will not recognise it                 // replace the drawer contents (for example no small change)
 /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
@@ -108,6 +116,7 @@ export type Watch = { id: string; when: (s: TrainSnap) => boolean; say: string; 
 export type Goal = {
   id: string; title: string;                  // what the person has to achieve, shown in the dock
   until: Until;                               // how the app knows they did it (never 'next')
+  stockAllow?: string[];                      // the practice items whose stock may change in this goal; changing any other item's stock is off course. Left out: stock is not watched
   ladder: string[];                           // hints from vague to specific; the answer is revealed after the last one
   reveal?: string;                            // spot to highlight when the hints are used up
   gesture?: Gesture;                          // how the answer is reached, shown by the cursor when it is revealed (left out: a tap)
@@ -125,6 +134,8 @@ export type TrainingModule = {
   card?: 'auto' | 'manual';
   /** Practice runs with two practice staff (Casey, a cashier, and Morgan, a manager) who have known PINs and a cashier pass, and requires sign-in. Left out, the real staff list is kept. */
   practiceStaff?: boolean;
+  /** Stock for the whole course, by practice variant id (null = not tracked), instead of the fixture's own. */
+  stock?: Record<string, number | null>;
   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
   info: Demo; show: Demo; guide: Step[];
   check1: Goal[]; check2: Goal[];
@@ -151,6 +162,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
     if (s.typing && !s.target) at('guide', `step ${s.id} says the person types, so it needs a target`);
     for (const t of (s.recoverFrom ?? []).map(r => r.target)) if (t && !spotOk(t)) at('guide', `step ${s.id} falls back to the unknown spot "${t}"`);
     for (const t of [s.target, s.recover?.target]) if (t && isWindowSpot(t) && s.at?.sheets !== true) at('guide', `step ${s.id} points at "${t}", which is inside a window, so it must say windows are allowed (at: { sheets: true })`);
+    for (const id of s.stockAllow ?? []) if (!id.startsWith('train-v-')) at('guide', `step ${s.id} lets the stock of "${id}" change, which is not a practice variant id`);
     for (const a of s.allow ?? []) if (!ALLOWS.includes(a)) at('guide', `step ${s.id} allows the unknown change "${a}"`);
     for (const t of s.at?.tabs ?? []) if (!m.tabs.includes(t)) at('guide', `step ${s.id} works on the tab "${t}", which the course does not allow`);
     for (const r of s.at?.routes ?? []) if (!m.routes.includes(r)) at('guide', `step ${s.id} works on the page "${r}", which the course does not allow`);
@@ -173,6 +185,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
       if (!g.reveal) at(name, `goal ${g.id} has nothing to highlight when the hints run out`);
       if (g.gesture !== undefined && !isGesture(g.gesture)) at(name, `goal ${g.id} has the unknown gesture "${String(g.gesture)}"`);
       for (const t of [g.reveal, g.via, g.until.kind === 'press' || g.until.kind === 'visible' ? g.until.id : undefined]) if (t && !spotOk(t)) at(name, `goal ${g.id} uses the unknown spot "${t}"`);
+      for (const id of g.stockAllow ?? []) if (!id.startsWith('train-v-')) at(name, `goal ${g.id} lets the stock of "${id}" change, which is not a practice variant id`);
       if (!Array.isArray(g.allow)) at(name, `goal ${g.id} must say what may change (allow), even if that is an empty list`);
       else for (const a of g.allow) if (!ALLOWS.includes(a)) at(name, `goal ${g.id} allows the unknown change "${a}"`);
       for (const t of g.at?.tabs ?? []) if (!m.tabs.includes(t)) at(name, `goal ${g.id} works on the tab "${t}", which the course does not allow`);
@@ -189,7 +202,9 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
   if (!m.check2.some(g => g.inject?.length)) at('check2', 'must make something go wrong (needs at least one goal with an injection)');
   for (const g of m.check2) { if (g.inject?.length && !g.taughtBy) at('check2', `goal ${g.id} injects a problem but does not say where it was taught`); if (g.taughtBy && !taught.has(g.taughtBy)) at('check2', `goal ${g.id} says it was taught by "${g.taughtBy}", which does not exist`); }
   if (!m.recap.length) at('recap', 'needs at least one line');
-  if (!m.tabs.includes('checkout')) at('header', 'tabs must include checkout');
+  if (!m.tabs.length) at('header', 'needs at least one tab');
+  for (const [id, n] of Object.entries(m.stock ?? {})) if (!id.startsWith('train-v-') || (n !== null && !Number.isInteger(n))) at('header', `stock for ${id} must be a practice variant id and a whole number or null`);
+  for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'stock') for (const [id, n] of Object.entries(i.counts)) if (!id.startsWith('train-v-') || (n !== null && !Number.isInteger(n))) at('check2', `goal ${g.id} sets the stock of ${id} to something that is not a practice variant and a whole number or null`);
   if (m.card !== undefined && m.card !== 'auto' && m.card !== 'manual') at('header', `card must be "auto" or "manual", not "${String(m.card)}"`);
   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) for (const g of goals) for (const i of g.inject ?? []) if ((i.kind === 'staff' || i.kind === 'pass') && !m.practiceStaff) at(name, `goal ${g.id} uses a ${i.kind} injection, which needs practiceStaff on the course`);
   for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'decline') {

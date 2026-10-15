@@ -11,7 +11,7 @@ import { SPOT, cartLineSpot, findTabSpot, gridItemSpot, lineAdjustOffSpot, lineA
 import { remedyOf } from './trainingRemedies';
 import type { Gesture } from './pointerGesture';
 
-export type DeviationKind = 'sale' | 'watch' | 'place' | 'sheet' | 'lost' | 'extra' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender';
+export type DeviationKind = 'sale' | 'watch' | 'place' | 'sheet' | 'lost' | 'extra' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'stock';
 export type Deviation = {
   /** Stable while the same mistake continues, so the driver can tell "still the same problem" from "a new one". */
   id: string; kind: DeviationKind;
@@ -35,12 +35,12 @@ export type Deviation = {
  * The rules for a Guide step, in the same shape as a Check goal's, so one `diagnose` serves both.
  * When the step does not say what may change, it is worked out from what the person is asked to do: tapping a grid tile adds an item, a cart line takes one out.
  */
-export function stepRules(step: Pick<Step, 'until' | 'allow' | 'at' | 'watch'>): Pick<Goal, 'allow' | 'at' | 'watch'> {
+export function stepRules(step: Pick<Step, 'until' | 'allow' | 'at' | 'watch' | 'stockAllow'>): Pick<Goal, 'allow' | 'at' | 'watch' | 'stockAllow'> {
   let allow: Allow[] = step.allow ?? [];
   if (!step.allow && step.until.kind === 'press') allow = step.until.id.startsWith('grid.item:') ? ['add'] : step.until.id.startsWith('cart.line:') ? ['remove'] : [];
   // A Guide step is one small job on the page. A window that opens on top of it is off course unless the step says windows are part of it (or it waits for one to open).
   const at: Place = { ...step.at, sheets: step.at?.sheets ?? (step.until.kind === 'visible' ? true : false) };
-  return { allow, at, watch: step.watch };
+  return { allow, at, watch: step.watch, stockAllow: step.stockAllow };
 }
 
 /** The tabs and pages a goal's work happens on, falling back to the module's own. */
@@ -56,12 +56,12 @@ const name = (l: SnapLine): string => l.title || 'item';
 const plural = (n: number, w: string): string => `${n} ${w}${n === 1 ? '' : 's'}`;
 
 /** The first thing wrong with where the person is now, compared with where the goal began. Null means they are on course. Each answer carries the steps that fix it. Pure. */
-export function diagnose(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
+export function diagnose(goal: Pick<Goal, 'allow' | 'at' | 'watch' | 'stockAllow'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
   const d = firstStray(goal, frame, base, now); if (!d) return null;
   const own = d.kind === 'watch' ? goal.watch?.find(w => `watch:${w.id}` === d.id) : undefined;
   return { ...d, ...remedyOf(d.kind, own) };
 }
-function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
+function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch' | 'stockAllow'>, frame: CourseFrame, base: TrainSnap, now: TrainSnap): Deviation | null {
   const allow = new Set<Allow>(goal.allow ?? []);
 
   // A finished sale cannot be undone.
@@ -125,6 +125,15 @@ function firstStray(goal: Pick<Goal, 'allow' | 'at' | 'watch'>, frame: CourseFra
   if (!allow.has('customer') && now.hasCustomer && !base.hasCustomer) return { id: 'customer', kind: 'customer', fix: 'undo', title: 'A customer was added', say: 'This task does not need a customer on the sale. Open the cart and take the customer off.', target: SPOT.cartCustomerOff, via: SPOT.cartOpen };
   const noteLine = lineNow(x => !!x.noted && !base.cart.some(b => keyOf(b) === keyOf(x) && b.noted));
   if (!allow.has('note') && ((now.hasNote && !base.hasNote) || noteLine)) return { id: 'note', kind: 'note', fix: 'undo', title: 'A note was added', say: 'This task does not need a note. Open the item, clear the note, then tap Done.', target: noteLine?.variantId ? cartLineSpot(noteLine.variantId) : undefined, via: SPOT.cartOpen, ...(noteLine && lineKeyOf(noteLine) ? { chain: [{ target: lineNoteSpot(lineKeyOf(noteLine)!), say: 'Clear the note, then tap Done.' }] } : {}) };
+  // Stock of an item the goal did not touch has changed (Inventory courses). The fix is a Count back to what it was.
+  if (goal.stockAllow && base.stock && now.stock) {
+    for (const [id, was] of Object.entries(base.stock)) {
+      if (goal.stockAllow.includes(id) || now.stock[id] === was) continue;
+      const to = was === null ? 'not tracked' : String(was);
+      return { id: `stock:${id}`, kind: 'stock', fix: 'undo', title: 'Another item\'s stock changed', say: `The stock of another item changed, and this part does not touch it. Open it and use Count to put it back to ${to}.`, target: `inv.row:${id}`,
+        window: { say: 'Close this window first. Then open the item that changed and use Count to put it back.', target: SPOT.sheetClose } };
+    }
+  }
   if (!allow.has('tender') && now.tenders > base.tenders) return { id: 'tender', kind: 'tender', fix: 'restart', title: 'A payment was started', say: 'A payment was started that this part did not need. Tap Start this part again to set it up fresh.' };
 
   // Only when the cart is right: a window this task does not need.

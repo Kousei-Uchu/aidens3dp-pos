@@ -1,5 +1,5 @@
 // Location: src/screens/Inventory.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Chip, Empty, Field, HelpButton, Keypad, Money, Row, Segmented, Sheet, Thumb, Txt, alertMsg } from '../ui/kit';
@@ -10,6 +10,10 @@ import { adjustStock, setStock, type AdjustReason } from '../lib/shopify/invento
 import { isNetworkError } from '../lib/shopify/client';
 import { importFromShopify } from '../lib/sync';
 import { activeFilterCount, buildRows, defaultInvPrefs, filterVariants, groupVariants, sortVariants, statusOf, type InvPrefs, type InvRow, type InvSort, type StatusFilter, type StockFilter } from '../lib/inventoryView';
+import { Spot, registerSlice, spotPressed } from '../ui/Spot';
+import { SPOT, invChipSpot, invGroupSpot, invModeSpot, invReasonSpot, invRowSpot } from '../lib/trainingSpots';
+import { clearInvProbe, setInvProbe } from '../lib/trainingProbe';
+import { isTraining } from '../lib/trainingGuard';
 import type { Variant } from '../lib/types';
 
 const STOCK_LABEL: [StockFilter, string][] = [['all', 'All'], ['low', 'Low'], ['zero', 'Out (0)'], ['neg', 'Negative'], ['tracked', 'Tracked'], ['untracked', 'Not tracked']];
@@ -31,14 +35,19 @@ export default function Inventory() {
   const productCount = useMemo(() => new Set(filtered.map(x => x.productId)).size, [filtered]);
   const nFilters = activeFilterCount(prefs);
   const toggle = (id: string) => setOpen(s => { const next = new Set(s); if (next.has(id)) next.delete(id); else next.add(id); return next; });
-  const pick = (x: Variant) => { setV(x); setMode('receive'); setDigits(''); setNeg(false); };
+  const pick = (x: Variant) => { setV(x); setMode('receive'); setDigits(''); setNeg(false); setReason('correction'); };
   const n = (neg ? -1 : 1) * (Number(digits) || 0);
+  // Training (B6): let it see the filters, the search, and what is keyed in the item window.
+  useEffect(() => { setInvProbe({ q, open: v?.id, mode: v ? mode : undefined, digits, neg, reason, expanded: [...open], stock: prefs.stock, grouped: prefs.grouped, collectionId: prefs.collectionId, status: prefs.status, sort: prefs.sort }); }, [q, v, mode, digits, neg, reason, open, prefs.stock, prefs.grouped, prefs.collectionId, prefs.status, prefs.sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => () => clearInvProbe(), []);
+  useEffect(() => { if (!v) return undefined; const off = (['receive', 'adjust', 'count'] as const).map((m, i) => registerSlice(invModeSpot(m), SPOT.invModes, i, 3)); return () => off.forEach(f => f()); }, [!!v]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const apply = async () => {
     if (!v?.inventoryItemId || !loc) return alertMsg('Not linked', 'This item has no inventory item or no location is set.');
     setBusy(true);
     try {
-      if (mode === 'count') await setStock(v.inventoryItemId, loc, Number(digits) || 0);
+      if (isTraining()) { /* practice: the count changes on this device only, nothing goes to Shopify */ }
+      else if (mode === 'count') await setStock(v.inventoryItemId, loc, Number(digits) || 0);
       else await adjustStock(v.inventoryItemId, loc, mode === 'receive' ? Math.abs(n) : n, mode === 'receive' ? 'received' : reason);
       const next = mode === 'count' ? (Number(digits) || 0) : (v.stock ?? 0) + (mode === 'receive' ? Math.abs(n) : n);
       useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: { ...v, stock: next } } }); setV(null); setDigits(''); setNeg(false);
@@ -50,11 +59,11 @@ export default function Inventory() {
   const renderRow = ({ item: r }: { item: InvRow }) => {
     if (r.kind === 'group') {
       const g = r.group;
-      return <Row image={g.image ?? null} title={g.title} sub={`${g.variants.length} variations · ${g.minPrice === g.maxPrice ? '' : 'from '}${(g.minPrice / 100).toFixed(2)}`} onPress={() => toggle(g.productId)}
+      return <Row spot={invGroupSpot(g.productId)} image={g.image ?? null} title={g.title} sub={`${g.variants.length} variations · ${g.minPrice === g.maxPrice ? '' : 'from '}${(g.minPrice / 100).toFixed(2)}`} onPress={() => toggle(g.productId)}
         right={<View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={{ alignItems: 'flex-end' }}>{g.stock === null ? <Txt weight="700" size={17}>-</Txt> : <Txt weight="700" size={17} color={g.stock < 0 ? c.bad : undefined}>{g.stock}</Txt>}<Txt size={11} sub>total</Txt></View><Ionicons name={r.expanded ? 'chevron-up' : 'chevron-down'} size={18} color={c.sub} /></View>} />;
     }
     const x = r.v; const draft = statusOf(x) !== 'ACTIVE';
-    const row = <Row image={r.nested ? undefined : x.image ?? null} title={r.nested ? (x.variantTitle || 'Default') : x.productTitle} sub={[r.nested ? undefined : x.variantTitle, x.sku, draft ? statusOf(x).toLowerCase() : undefined].filter(Boolean).join(' · ') || undefined} onPress={() => pick(x)}
+    const row = <Row spot={invRowSpot(x.id)} image={r.nested ? undefined : x.image ?? null} title={r.nested ? (x.variantTitle || 'Default') : x.productTitle} sub={[r.nested ? undefined : x.variantTitle, x.sku, draft ? statusOf(x).toLowerCase() : undefined].filter(Boolean).join(' · ') || undefined} onPress={() => pick(x)}
       right={<View style={{ alignItems: 'flex-end' }}>{stockText(x)}<Money cents={x.priceCents} size={12} color={c.sub} /></View>} />;
     return r.nested ? <View style={{ marginLeft: 28, borderLeftWidth: 2, borderLeftColor: c.line }}>{row}</View> : row;
   };
@@ -65,13 +74,13 @@ export default function Inventory() {
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <View style={{ flex: 1, marginLeft: 4 }}><Txt size={24} weight="700">Inventory</Txt><Txt size={12} sub>{rows.length ? `${filtered.length} variants · ${productCount} products` : 'Nothing matches'}</Txt></View>
           <HelpButton id="fix/stock-mismatch" label="Inventory help" />
-          <Chip label={nFilters ? `Filters · ${nFilters}` : 'Filters'} icon="options-outline" active={nFilters > 0} onPress={() => setFilters(true)} />
+          <Chip spot={SPOT.invFilters} label={nFilters ? `Filters · ${nFilters}` : 'Filters'} icon="options-outline" active={nFilters > 0} onPress={() => setFilters(true)} />
         </View>
-        <Field kind="search" placeholder="Search name, SKU or barcode" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} />
+        <Spot id={SPOT.invSearch}><Field kind="search" placeholder="Search name, SKU or barcode" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></Spot>
         <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-          {STOCK_LABEL.slice(0, 4).map(([k, l]) => <Chip key={k} label={l} active={prefs.stock === k} onPress={() => setPrefs({ stock: k })} />)}
+          {STOCK_LABEL.slice(0, 4).map(([k, l]) => <Chip key={k} spot={invChipSpot(k)} label={l} active={prefs.stock === k} onPress={() => setPrefs({ stock: k })} />)}
           {collection ? <Chip label={collection.title} icon="close-circle" active onPress={() => setPrefs({ collectionId: null })} /> : null}
-          <Chip label={prefs.grouped ? 'Nested' : 'Flat'} icon={prefs.grouped ? 'layers' : 'list'} onPress={() => setPrefs({ grouped: !prefs.grouped })} />
+          <Chip spot={SPOT.invLayout} label={prefs.grouped ? 'Nested' : 'Flat'} icon={prefs.grouped ? 'layers' : 'list'} onPress={() => setPrefs({ grouped: !prefs.grouped })} />
         </View>
       </View>
       <FlatList data={rows} keyExtractor={r => r.key} renderItem={renderRow} initialNumToRender={20} maxToRenderPerBatch={20} windowSize={9} keyboardShouldPersistTaps="handled"
@@ -80,11 +89,11 @@ export default function Inventory() {
       <Sheet visible={!!v} onClose={() => setV(null)} title={v?.productTitle ?? ''}>
         {v ? <View style={{ alignItems: 'center', marginBottom: 8 }}><Thumb uri={v.image} size={96} radius={14} /></View> : null}
         <Txt sub style={{ marginBottom: 8 }}>{v?.variantTitle ? v.variantTitle + ' · ' : ''}Current stock: {v?.stock ?? 'not tracked'}</Txt>
-        <Segmented value={mode} onChange={m => { setMode(m); setDigits(''); setNeg(false); }} options={[{ v: 'receive', label: 'Receive' }, { v: 'adjust', label: 'Adjust' }, { v: 'count', label: 'Count' }]} />
+        <Spot id={SPOT.invModes}><Segmented value={mode} onChange={m => { spotPressed(invModeSpot(m)); setMode(m); setDigits(''); setNeg(false); }} options={[{ v: 'receive', label: 'Receive' }, { v: 'adjust', label: 'Adjust' }, { v: 'count', label: 'Count' }]} /></Spot>
         <Txt size={40} weight="700" style={{ textAlign: 'center', marginVertical: 10 }} color={n < 0 ? c.bad : undefined}>{mode === 'adjust' ? (neg ? '−' : '+') : mode === 'receive' ? '+' : ''}{digits || 0}</Txt>
-        {mode === 'adjust' ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}><Chip label={neg ? 'Remove' : 'Add'} icon="swap-vertical" onPress={() => setNeg(x => !x)} />{(['correction', 'damaged', 'shrinkage', 'other'] as AdjustReason[]).map(r => <Chip key={r} label={r} active={reason === r} onPress={() => setReason(r)} />)}</View> : null}
-        <Keypad value={digits} onChange={d => setDigits(d.slice(0, 5))} decimal={false} />
-        <Btn title={mode === 'count' ? `Set stock to ${digits || 0}` : 'Apply'} onPress={() => void apply()} busy={busy} disabled={!digits} style={{ marginTop: 10 }} />
+        {mode === 'adjust' ? <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}><Chip spot={SPOT.invSign} label={neg ? 'Remove' : 'Add'} icon="swap-vertical" onPress={() => setNeg(x => !x)} />{(['correction', 'damaged', 'shrinkage', 'other'] as AdjustReason[]).map(r => <Chip key={r} spot={invReasonSpot(r)} label={r} active={reason === r} onPress={() => setReason(r)} />)}</View> : null}
+        <Keypad value={digits} onChange={d => setDigits(d.slice(0, 5))} decimal={false} keysSpot={SPOT.invKeys} />
+        <Btn spot={SPOT.invApply} title={mode === 'count' ? `Set stock to ${digits || 0}` : 'Apply'} onPress={() => void apply()} busy={busy} disabled={!digits} style={{ marginTop: 10 }} />
       </Sheet>
       <Sheet visible={filters} onClose={() => setFilters(false)} title="Filters & sort" full>
         {group('Category', <><Chip label="All categories" active={!prefs.collectionId} onPress={() => setPrefs({ collectionId: null })} />{cat.collections.map(col => <Chip key={col.id} label={col.title} active={prefs.collectionId === col.id} onPress={() => setPrefs({ collectionId: col.id })} />)}</>)}
