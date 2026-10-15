@@ -8,7 +8,7 @@ Legend: **[LOCK]** soft lock or cannot progress · **[BUG]** wrong behaviour · 
 
 - **0119 (device-tested, follow-ups in 0120):** 1.1 to 1.7 and all of section 2 (soft locks, typing steps, the cursor), plus the scan window's order and result box and the note validation in Customers. 1.2 was found by reading the code and not reproduced; the best explanation is the iOS two-windows problem (see 0097), fixed for every window. The device test found the window hand-off still failed when a **sub-window** closed (see 0120): 1.2 and the Change a price Check 2 goal 1 still froze, and a replayed Guide step 25 had no review to show.
 - **0120 (awaiting device test T31):** the two follow-ups from the 0119 device test. A window now says it is closing during the render, so the line window that opens as its Discount or price window closes really waits (fixes 1.2 and Change a price Check 2 goal 1). And a practice run clears the cart pane's "I have seen this price review" note, so a replayed Guide still opens the review at step 25.
-- **Still to do:** section 3 (Show animation), section 4 (per module), section 5 (app changes).
+- **Still to do:** nothing in sections 1 to 5. Section 1 was done in 0119 and its follow-ups in 0120; section 2 in 0119; section 3 in 0123 (Discounts) and 0128 (Scan items); section 4 in 0119 and 0123 to 0128; section 5 (the app changes) done on `dev` (5.1 to 5.6). Section 6 holds the open questions and the guesses made where the notes were ambiguous.
 
 ## 1. Soft locks and dead ends (fix first)
 
@@ -34,9 +34,9 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 
 ## 3. Show and Info animation quality
 
-- **Scan items, Show:** the scan section is only buttons reading "Scan this: ...". Replace it with a camera simulation: a camera frame, and a box with a white sticker carrying a barcode (or at least a QR system icon) sliding into view, then the green or red result. Keep the real practice window for the Guide.
-- **Scan items, Show:** the Cashier Pass and Gift Card QR tiles are skipped (the step reveals them but the camera does not visit them).
-- **Scan items, Show:** the bottom text box animates very poorly in the last two steps.
+- **Scan items, Show: done (0128).** the scan section is now a camera simulation: a camera frame with a viewfinder, and a sticker carrying a barcode coming into the frame, then the green or red result. The button row is gone. The real practice window is untouched for the Guide.
+- **Scan items, Show: done (0128).** the Cashier Pass is now scanned too (a green "Signed in: Casey", which leaves the cart alone), and the Gift Card QR is scanned as its own red result ("Not an item. Take it at Charge").
+- **Scan items, Show: done (0128).** the last two steps no longer move the bottom text box: the camera settles on the cart and the Keyring line, and the bottom bar is not changed again in the final step.
 - **Discounts, Show:** skips the Whole Cart element. **Done (0123):** the cart badge and the dropping prices now show the whole-cart discount landing.
 
 ## 4. Per module
@@ -82,9 +82,10 @@ Every Check 2 now sets up a normal task, lets a realistic customer-side failure 
 - Last Check 2 goal ends on a $0 Payment page (see 1.7): done in 0119 (the goal ends when Payment opens).
 
 ### Scan items
-- Guide step 13 only highlights the top item. Minor. Ring the line that matters.
-- Adding too many of an item prompts a fix, but the first fix step (close the window) makes the toast disappear. Keep the correction visible, or re-point at the next step once the window closes.
-- Plus 1.5, 1.6 and the Show items in section 3. The Guide loop (clicking in and out until step 11) needs the steps rewritten so the window stays open across the scanning steps.
+- Guide step 13 (the cart recap): **done (0128).** it now rings the Keyring line, the item the person added by hand when the label would not read, rather than the top line.
+- **Reviewed (0128):** the "too many of an item" correction already re-points at the cart once the window closes: `fixCandidates` (src/lib/trainingCourse.ts) uses the page control when no window is open, and its text names the item. The toast going away with the window is not needed, because the correction says what happened. No change.
+- 1.5 and 1.6 (the torn card off the bottom, and tapping the camera button from inside the window): done in 0119. The Guide no longer asks for the camera button from inside the window, and the practice window scrolls.
+- The Show items are done in section 3 above.
 
 ## 5. App changes (not training)
 
