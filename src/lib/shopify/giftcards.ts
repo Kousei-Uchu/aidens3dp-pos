@@ -9,6 +9,8 @@ import { uid } from '../ids';
 import { normaliseCode } from '../giftCode';
 import { createCustomer, searchRemote } from './customers';
 import type { GiftRecipient } from '../types';
+import { isTraining } from '../trainingGuard';
+import { practiceDebitGiftCard, practiceGiftCardHistory, practiceLookupGiftCard } from '../trainingGifts';
 
 export type GiftCardInfo = { id: string; last4: string; balanceCents: number; initialCents: number; enabled: boolean; expiresOn?: string; customerName?: string; verified: boolean };
 
@@ -57,6 +59,7 @@ export async function sendGiftCardEmail(id: string): Promise<boolean> {
 
 /** Find a card by its code. Shopify only lets us search by the last characters, so we verify with the note checksum. */
 export async function lookupGiftCard(rawCode: string): Promise<GiftCardInfo | null> {
+  if (isTraining()) return practiceLookupGiftCard(rawCode);
   const code = normaliseCode(rawCode);
   if (code.length < 4) return null;
   const d = await gql(`query($q:String){ giftCards(first: 10, query: $q) { nodes { ${FIELDS} } } }`, { q: `last_characters:${code.slice(-4).toLowerCase()}` });
@@ -71,6 +74,7 @@ export async function lookupGiftCard(rawCode: string): Promise<GiftCardInfo | nu
 }
 
 export async function debitGiftCard(id: string, cents: number, note: string) {
+  if (isTraining()) { practiceDebitGiftCard(id, cents); return; }
   const d = await gql(`mutation($id:ID!,$i:GiftCardDebitInput!){ giftCardDebit(id:$id, debitInput:$i) { giftCardDebitTransaction { id } userErrors { field message code } } }`,
     { id, i: { debitAmount: { amount: toDecimal(cents), currencyCode: CURRENCY }, note } });
   throwUserErrors(d.giftCardDebit.userErrors, 'Redeeming the gift card');
@@ -86,6 +90,7 @@ type GiftCardTxnNode = { id: string; __typename: string; note?: string | null; p
 type GiftCardTxnPage = { pageInfo: { hasNextPage: boolean; endCursor: string | null }; nodes: GiftCardTxnNode[] };
 const mapTransactions = (nodes: GiftCardTxnNode[]): GiftCardTxn[] => nodes.map(n => ({ id: n.id, cents: toCents(n.amount.amount), at: n.processedAt, note: n.note ?? undefined, kind: n.__typename.includes('Debit') ? 'debit' : 'credit' }));
 export async function giftCardHistory(id: string): Promise<GiftCardTxn[]> {
+  if (isTraining()) return practiceGiftCardHistory(id);
   const d = await gql(`query($id:ID!){ giftCard(id:$id){ transactions(first: 30) { nodes { __typename id note processedAt amount { amount } } } } }`, { id });
   return mapTransactions(d.giftCard.transactions.nodes);
 }

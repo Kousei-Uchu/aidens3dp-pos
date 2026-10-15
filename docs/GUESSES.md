@@ -39,6 +39,13 @@ Everything in this file is a guess from me, not a decision from you.
 
 ## Other guesses
 
+- **Gift card balance check (0130, `gift-pay`).** Guess: a balance is checked in the **Check gift card window**,
+  opened from the Payment page's Gift card button (and, outside the course, from More ▸ Gift cards). The course
+  stays on Checkout and the Payment page, so it teaches the balance check where the card is also redeemed. The
+  More ▸ Gift cards route is left out on purpose to keep the course on a single path.
+- **Practice gift card codes (0130).** Guess: `GIFT25` ($25.00, active), `GIFT05` ($5.00, active) and `GIFTOFF`
+  (disabled). `TRAINPRACTICE1`, the card the scanning course scans, stays and holds the same $25.00, so the two
+  courses agree on one card. `GIFT25` is a short stand-in for typing by hand on a device.
 - **More ▸ Orders should be Shopify orders only.** Guess: yes. Transactions already means "POS sales"; Orders
   should show only orders pulled from Shopify, and a POS sale must never appear there.
 - **Card last four.** Guess: store it when the Zeller result carries it, and show it on the sale. If the SDK

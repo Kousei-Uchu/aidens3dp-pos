@@ -9,6 +9,7 @@ import { applyInjections, buildSandbox, declineCodeOf, declinesOf, takeSnapshot,
 import { resetTrainingTerminal, setDeclines, setManualCard } from '../lib/trainingTerminal';
 import { resetCheckout } from '../lib/trainingProbe';
 import { capturePracticeOrders, resetPracticeOrders, restorePracticeOrders } from '../lib/trainingOrders';
+import { capturePracticeGifts, resetPracticeGifts, restorePracticeGifts } from '../lib/trainingGifts';
 import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
 import { getModule } from '../training';
 import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
@@ -57,7 +58,7 @@ type Sess = {
   restartGoal: (inj: readonly Injection[] | undefined) => boolean;  // put it back exactly as it was
 };
 let real: Swap | null = null;
-let goalStart: Swap | null = null; let goalOrders: ReturnType<typeof capturePracticeOrders> | null = null;
+let goalStart: Swap | null = null; let goalOrders: ReturnType<typeof capturePracticeOrders> | null = null; let goalGifts: ReturnType<typeof capturePracticeGifts> | null = null;
 
 /** Who plays the customer at the practice terminal for this course (the course's `card` setting; automatic when it says nothing). */
 const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
@@ -76,7 +77,7 @@ export const useTraining = create<Sess>((set, get) => ({
       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
     }
-    resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff, stock: m?.stock })); set({ sandbox: true, hint: freshHints(), view: null });
+    resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff, stock: m?.stock })); set({ sandbox: true, hint: freshHints(), view: null });
     const r = get().run; if (r) set({ run: seeIntro(r) });
     return null;
   },
@@ -85,8 +86,8 @@ export const useTraining = create<Sess>((set, get) => ({
     useApp.setState(applyInjections(takeSnapshot(s), inj)); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj));
   },
   leave: () => {
-    goalStart = null; goalOrders = null; setGate(null);
-    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); } // restore first, then drop the guard
+    goalStart = null; goalOrders = null; goalGifts = null; setGate(null);
+    if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts(); } // restore first, then drop the guard
     set({ sandbox: false, view: null });
   },
   completeStage: () => {
@@ -98,10 +99,10 @@ export const useTraining = create<Sess>((set, get) => ({
   },
   pressHint: (goalId, ladder) => set(s => ({ hint: nextHint(s.hint, goalId, ladder), hintPress: s.hintPress + 1, run: s.run ? { ...s.run, hints: s.run.hints + 1 } : s.run })),
   setView: v => set({ view: v }),
-  captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); goalOrders = capturePracticeOrders(); },
+  captureGoalStart: () => { goalStart = takeSnapshot(useApp.getState()); goalOrders = capturePracticeOrders(); goalGifts = capturePracticeGifts(); },
   restartGoal: inj => {
     if (!goalStart) return false;
-    resetTrainingTerminal(); resetCheckout(); if (goalOrders) restorePracticeOrders(goalOrders); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
+    resetTrainingTerminal(); resetCheckout(); if (goalOrders) restorePracticeOrders(goalOrders); if (goalGifts) restorePracticeGifts(goalGifts); cardMode(get().run?.moduleId); useApp.setState(goalStart); setDeclines(declinesOf(inj), declineCodeOf(inj)); setPassState(passStateOf(inj)); set({ hint: freshHints(), view: null }); return true;
   },
 }));
 export const isPractising = (): boolean => real !== null;

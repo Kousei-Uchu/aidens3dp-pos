@@ -420,3 +420,16 @@ On the iPad and on a phone. Use More ▸ Training ▸ Sell a gift card.
 7. Check 2, the declined card: tap Card, the practice terminal declines once, the Not approved window appears, and Try card again takes the card. Pass: the gift card stayed in the cart and the sale finishes.
 8. Check 2, the emailed card: in the details step choose Email it. Pass: an invalid address is refused with "Check the email address"; a valid one lets Add gift card to cart go through, and the goal finishes only when that emailed card is paid for.
 9. **Most important:** leave the course. No gift card was sold, no code was sent anywhere, and the real cart and sales are untouched.
+
+## T35. Training: Check and pay with a gift card (B6, 0130)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Check and pay with a gift card.
+
+1. The Guide adds the Bumble Bee and the Dragon Egg ($14.00), rings Charge, then Gift card on the Payment page, and the Check gift card window opens.
+2. The code box and Check are ringed in turn. Key GIFT25 and tap Check. Pass: the window shows Card ••••0025, a $25.00 balance and Active, and Use as payment appears.
+3. The Guide rings Use as payment. Pass: the sale is paid at once with no card reader, the Receipt window opens, and No receipt clears the cart.
+4. Check 1: the balance goal completes only when GIFT25 is checked ($25.00). The pay goal completes only when the sale finishes with a single gift card tender.
+5. Check 2, the short card: key GIFT05 ($5.00), Check, Use as payment. Pass: $5.00 comes off the card and the rest is still due, so Card finishes the sale (tenders gift card then card).
+6. Check 2, the disabled card: key GIFTOFF, Check. Pass: the window says Disabled and there is no Use as payment, so the goal finishes only after the whole $14.00 is taken by card.
+7. No practice card is a real Shopify card. Pass: leaving restores any real card balances, and no lookup or debit ever reaches Shopify.
+8. **Most important:** with the practice window open, check a balance and pay. Confirm no network call is made and the real cart, sales and gift cards are untouched when you leave.

@@ -1,7 +1,7 @@
 // Location: src/lib/trainingProbe.ts
 // A small read-only window onto Checkout's own screen state (B6): which tab and level it is on, and what has been typed.
 // Checkout publishes here; training reads it. Checkout also registers a reset so a practice run always starts from a clean Checkout.
-import type { GiftSale, InvSnap } from './trainingModule';
+import type { GiftCheck, GiftSale, InvSnap } from './trainingModule';
 export type Typed = { search?: string; keypad?: string };
 /** The Inventory screen publishes here so training can tell which filter is on, what is searched, and what is keyed in the item window. */
 let inv: InvSnap | undefined; export const setInvProbe = (x: InvSnap): void => { inv = x; }; export const clearInvProbe = (): void => { inv = undefined; }; export const getInvProbe = (): InvSnap | undefined => inv;
@@ -13,6 +13,9 @@ let runtimeScreen: string | undefined; export const setRuntimeScreen = (id: stri
 let payOpen: 'cash' | 'gift' | 'split' | undefined; export const setPayOpen = (m: typeof payOpen): void => { payOpen = m; }; export const getPayOpen = (): typeof payOpen => payOpen;
 /** The Sell gift card window publishes the last card it added here, so training can tell a handover card from an emailed one. */
 let lastGift: GiftSale | undefined; export const setLastGiftProbe = (g: GiftSale | undefined): void => { lastGift = g; }; export const getLastGiftProbe = (): GiftSale | undefined => lastGift;
+/** The Check gift card window publishes what is typed in its code box, and the last card it looked up, so training can watch a balance check. */
+let giftCode = ''; export const setGiftCodeProbe = (v: string): void => { giftCode = v; }; export const getGiftCodeProbe = (): string => giftCode;
+let giftCheck: GiftCheck | undefined; export const setGiftCheckProbe = (g: GiftCheck | undefined): void => { giftCheck = g; }; export const getGiftCheckProbe = (): GiftCheck | undefined => giftCheck;
 let customerQuery = ''; export const setCustomerQuery = (q: string): void => { customerQuery = q; }; export const getCustomerQuery = (): string => customerQuery;
 export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
 let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;
@@ -30,4 +33,4 @@ export const getWhere = (): CheckoutWhere | undefined => where;
 /** Several screens hold "how a run starts" state (Checkout itself, and the cart pane's "I have seen this review" note). Each registers its own reset. */
 export const registerCheckoutReset = (f: () => void): (() => void) => { resets.add(f); return () => { resets.delete(f); }; };
 /** Puts Checkout back to how a practice run starts: Quick Menu, first page, nothing typed, and no note that a price review has been seen. Does nothing when none of it is mounted. */
-export const resetCheckout = (): void => { for (const f of resets) { try { f(); } catch { /* a reset must never break training */ } } };
+export const resetCheckout = (): void => { giftCode = ''; giftCheck = undefined; for (const f of resets) { try { f(); } catch { /* a reset must never break training */ } } };

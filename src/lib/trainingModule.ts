@@ -47,6 +47,8 @@ export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; st
 export type InvSnap = { q: string; open?: string; mode?: 'receive' | 'adjust' | 'count'; digits?: string; neg?: boolean; reason?: string; expanded: string[]; stock: string; grouped: boolean; collectionId: string | null; status: string; sort: string };
 /** The last gift card added to the cart by the Sell gift card window: the amount and how the customer gets it. */
 export type GiftSale = { cents: number; how: 'hand' | 'email'; email: string };
+/** The last card the Check gift card window looked up: its code, and whether a usable card was found. */
+export type GiftCheck = { code: string; found: boolean; enabled: boolean; balanceCents: number };
 /** One cart line as training sees it. */
 export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** The line's own item price (cents) and whether it covers every one in the cart, and its whole-line price (cents). */ overrideCents?: number; overrideAll?: boolean; adjustCents?: number; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
@@ -74,6 +76,8 @@ export type TrainSnap = {
   refund?: { n: number; cents: number; restock: boolean; kinds: string[]; items: number; orderId: string };
   /** The last gift card added to the cart by the Sell gift card window: the amount and how the customer gets it. */
   lastGift?: GiftSale;
+  /** What is typed in the Check gift card window's code box, and the last card it looked up. */
+  giftCode?: string; giftCheck?: GiftCheck;
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
 export type Until =

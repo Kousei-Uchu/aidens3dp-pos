@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
-import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setLastGiftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
+import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setGiftCheckProbe, setGiftCodeProbe, setLastGiftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
 import { SPOT, discountPresetSpot, customerRowSpot, giftHowSpot, giftPresetSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot, lineVariantSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
 import { registerCheckoutReset } from '../lib/trainingProbe';
@@ -22,7 +22,7 @@ import { saveCartLocal } from '../lib/sync';
 import { uid } from '../lib/ids';
 import { searchRemote, createCustomer } from '../lib/shopify/customers';
 import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/giftcards';
-import { stripGiftPrefix } from '../lib/giftCode';
+import { stripGiftPrefix, normaliseCode } from '../lib/giftCode';
 import { CameraScanner } from './Scanner';
 import type { CartLine, Customer, ManualDiscount } from '../lib/types';
 
@@ -305,15 +305,23 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
 /** Check balance by scanning a QR/barcode or typing the code. */
 export function GiftCheckSheet({ visible, onClose, onUse }: { visible: boolean; onClose: () => void; onUse?: (g: GiftCardInfo, code: string) => void }) {
   const [code, setCode] = useState(''); const [info, setInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [busy, setBusy] = useState(false); const [cam, setCam] = useState(false);
-  const look = async (raw: string) => { setBusy(true); try { const clean = stripGiftPrefix(raw); setCode(clean); setInfo(await lookupGiftCard(clean)); } catch (e: any) { alertMsg('Lookup failed', e.message, 'pay/gift-card'); } setBusy(false); };
+  const look = async (raw: string) => {
+    setBusy(true);
+    try {
+      const clean = stripGiftPrefix(raw); setCode(clean); setGiftCodeProbe(clean);
+      const found = await lookupGiftCard(clean); setInfo(found);
+      const norm = normaliseCode(clean); setGiftCheckProbe(found ? { code: norm, found: true, enabled: found.enabled, balanceCents: found.balanceCents } : { code: norm, found: false, enabled: false, balanceCents: 0 });
+    } catch (e: any) { alertMsg('Lookup failed', e.message, 'pay/gift-card'); }
+    setBusy(false);
+  };
   return (
     <>
-      <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); onClose(); }} title="Check gift card">
-        <Field kind="code" label="Code" value={code} onChangeText={t => { setCode(stripGiftPrefix(t)); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" />
-        <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setCam(true)} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(code)} busy={busy} disabled={code.trim().length < 4} style={{ flex: 1 }} /></View>
+      <Sheet visible={visible && !cam} onClose={() => { setInfo(undefined); setCode(''); setGiftCodeProbe(''); onClose(); }} title="Check gift card" screen="sheet_gift_check">
+        <Spot id={SPOT.giftCheckCode}><Field kind="code" label="Code" value={code} onChangeText={t => { const v = stripGiftPrefix(t); setCode(v); setGiftCodeProbe(v); setInfo(undefined); }} autoCapitalize="characters" placeholder="Type or scan the code" /></Spot>
+        <View style={{ flexDirection: 'row', gap: 8 }}><Btn title="Scan" icon="qr-code-outline" kind="secondary" onPress={() => setCam(true)} spot={SPOT.giftCheckScan} style={{ flex: 1 }} /><Btn title="Check" onPress={() => void look(code)} busy={busy} disabled={code.trim().length < 4} spot={SPOT.giftCheckCheck} style={{ flex: 1 }} /></View>
         {info === null ? <Txt color="#DC2626" style={{ marginTop: 14 }}>No gift card found for that code.</Txt> : null}
         {info ? <View style={{ marginTop: 16, gap: 4 }}><Txt sub>Card ••••{info.last4}</Txt><Money cents={info.balanceCents} size={34} weight="700" /><Txt sub size={13}>{info.enabled ? 'Active' : 'Disabled'}{info.verified ? '' : ' · code could not be verified'}{info.expiresOn ? ` · expires ${info.expiresOn}` : ''}</Txt>
-          {onUse && info.enabled && info.balanceCents > 0 ? <Btn title="Use as payment" onPress={() => { onUse(info, code); setInfo(undefined); setCode(''); }} style={{ marginTop: 10 }} /> : null}</View> : null}
+          {onUse && info.enabled && info.balanceCents > 0 ? <Btn title="Use as payment" onPress={() => { onUse(info, code); setInfo(undefined); setCode(''); setGiftCodeProbe(''); }} spot={SPOT.giftCheckUse} style={{ marginTop: 10 }} /> : null}</View> : null}
       </Sheet>
       <CameraScanner visible={cam} onClose={() => setCam(false)} title="Scan gift card" onScan={c => { setCam(false); void look(c); return 'Scanned'; }} />
     </>
