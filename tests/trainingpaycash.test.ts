@@ -30,6 +30,10 @@ test('Guide steps follow what has been tapped into the Cash window', () => {
   assert.ok(won(payCash.guide, 'g-ten2', at(2000))); assert.ok(!won(payCash.guide, 'g-ten2', snap()), 'a closed window is not a total');
   assert.ok(!won(payCash.guide, 'g-give', snap())); assert.ok(won(payCash.guide, 'g-give', snap({ sales: 1 })));
   assert.ok(!won(payCash.guide, 'g-receipt', snap({ sales: 1, sheets: 1 }))); assert.ok(won(payCash.guide, 'g-receipt', snap({ sales: 1, sheets: 0 })));
+  const exact = (received: number) => snap({ cash: { received, due: 500, step: 'receive' } });
+  assert.ok(!won(payCash.guide, 'g-exact-five', exact(200))); assert.ok(won(payCash.guide, 'g-exact-five', exact(500)), 'the $5 exact payment');
+  assert.ok(!won(payCash.guide, 'g-exact-take', snap({ sales: 1 }))); assert.ok(won(payCash.guide, 'g-exact-take', snap({ sales: 2 })), 'Take cash finishes the second sale');
+  assert.ok(!won(payCash.guide, 'g-exact-receipt', snap({ sales: 2, sheets: 1 }))); assert.ok(won(payCash.guide, 'g-exact-receipt', snap({ sales: 2, sheets: 0 })));
 });
 test('Check goals are won only by the right cash sale, with the receipt closed', () => {
   const done = (tendered: number, change: number, sheets = 0) => snap({ sales: 1, sheets, last: { tendered, change } });

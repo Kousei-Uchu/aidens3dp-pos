@@ -42,7 +42,7 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 ## 4. Per module
 
 ### Take cash and give change
-- **[DESIGN]** Poorly made overall. Review and rework it: Guide, Check 1 and Check 2 against the current Cash window.
+- **[DESIGN] Reworked (0125):** the Guide now teaches all three readings against the current Cash window: Short (`$10` on a `$14.00` sale), Undo as a genuine wrong tap ("this customer is paying with a second $10, not the $5"), then Change, Next and Gave this. A second $5.00 sale teaches Exact and the Take cash button, which Check 1 relies on. Wording now matches the window (Short by, Change to give, Exact).
 
 ### Customers and notes
 - Guide step 8 (typing the note): **done in 0119.** The step now finishes only on a real note (`gift wrap`), with `typing: true` so the fields accept touch.
