@@ -95,6 +95,13 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.splitKeys]: 'sheet_split',
   [SPOT.splitContinue]: 'sheet_split',
   [SPOT.splitCancel]: 'page_pay',
+  [SPOT.cartMenuGift]: 'sheet_cart_menu',
+  [SPOT.giftKeys]: 'sheet_gift_sell',
+  [SPOT.giftNext]: 'sheet_gift_sell',
+  [SPOT.giftHow]: 'sheet_gift_sell_details',
+  [SPOT.giftEmail]: 'sheet_gift_sell_details',
+  [SPOT.giftAdd]: 'sheet_gift_sell_details',
+  [SPOT.giftChange]: 'sheet_gift_sell_details',
   [SPOT.terminalTap]: 'page_pay',
   [SPOT.terminalInsert]: 'page_pay',
   [SPOT.terminalRemove]: 'page_pay',
@@ -157,6 +164,8 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'inv.mode:', screen: 'sheet_inventory_product' },
   { prefix: 'inv.reason:', screen: 'sheet_inventory_product' },
   { prefix: 'split.equal:', screen: 'sheet_split' },
+  { prefix: 'gift.preset:', screen: 'sheet_gift_sell' },
+  { prefix: 'gift.how:', screen: 'sheet_gift_sell_details' },
 ];
 
 /**

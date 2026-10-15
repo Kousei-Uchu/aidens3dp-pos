@@ -406,3 +406,17 @@ On the iPad and on a phone. Use More ▸ Training ▸ Split a payment.
 6. Check 1, the first-amount goal: in the Split window, key 5 0 0 and Continue gives a $5.00 first part.
 7. Check 2, the declined part: tap Card for the first part, tap card on the terminal (declined), then Use another method, then take that part in cash. Pass: the rest of the plan is kept and the second part by card finishes the sale.
 8. Check 2, changed mind: split, then Cancel split, then take the whole amount by card. Pass: the split is gone and the whole total is one card payment.
+
+## T34. Training: Sell a gift card (B6, 0129)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Sell a gift card.
+
+1. The Guide rings the three dots in the cart, then Sell gift card in the cart menu, and the Sell gift card window opens on the amount step.
+2. Both parts of the window are on the graph: the preset chips and the number pad are ringed in turn, then the Hand over / print | Email it switch, then Add gift card to cart.
+3. The $25.00 preset switches the window to the details step, and Add gift card to cart closes it and leaves a Gift card line in the cart.
+4. Pay by card. Pass: the sale finishes and the receipt shows the gift card code and a QR.
+5. Check 1, the keyed amount: in the amount step, key 3 0 0 and Next gives a $30.00 card; Add leaves it in the cart.
+6. Check 1, the paid card: sell a $25.00 card, then Charge and Card and No receipt. Pass: the sale completes.
+7. Check 2, the declined card: tap Card, the practice terminal declines once, the Not approved window appears, and Try card again takes the card. Pass: the gift card stayed in the cart and the sale finishes.
+8. Check 2, the emailed card: in the details step choose Email it. Pass: an invalid address is refused with "Check the email address"; a valid one lets Add gift card to cart go through, and the goal finishes only when that emailed card is paid for.
+9. **Most important:** leave the course. No gift card was sold, no code was sent anywhere, and the real cart and sales are untouched.

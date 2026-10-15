@@ -1,7 +1,7 @@
 // Location: src/lib/trainingProbe.ts
 // A small read-only window onto Checkout's own screen state (B6): which tab and level it is on, and what has been typed.
 // Checkout publishes here; training reads it. Checkout also registers a reset so a practice run always starts from a clean Checkout.
-import type { InvSnap } from './trainingModule';
+import type { GiftSale, InvSnap } from './trainingModule';
 export type Typed = { search?: string; keypad?: string };
 /** The Inventory screen publishes here so training can tell which filter is on, what is searched, and what is keyed in the item window. */
 let inv: InvSnap | undefined; export const setInvProbe = (x: InvSnap): void => { inv = x; }; export const clearInvProbe = (): void => { inv = undefined; }; export const getInvProbe = (): InvSnap | undefined => inv;
@@ -11,6 +11,8 @@ let openLine: string | undefined; export const setOpenLine = (k: string | undefi
  * screen here so guidance knows where the person is; cleared when it unmounts. */
 let runtimeScreen: string | undefined; export const setRuntimeScreen = (id: string | undefined): void => { runtimeScreen = id; }; export const getRuntimeScreen = (): string | undefined => runtimeScreen;
 let payOpen: 'cash' | 'gift' | 'split' | undefined; export const setPayOpen = (m: typeof payOpen): void => { payOpen = m; }; export const getPayOpen = (): typeof payOpen => payOpen;
+/** The Sell gift card window publishes the last card it added here, so training can tell a handover card from an emailed one. */
+let lastGift: GiftSale | undefined; export const setLastGiftProbe = (g: GiftSale | undefined): void => { lastGift = g; }; export const getLastGiftProbe = (): GiftSale | undefined => lastGift;
 let customerQuery = ''; export const setCustomerQuery = (q: string): void => { customerQuery = q; }; export const getCustomerQuery = (): string => customerQuery;
 export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
 let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;

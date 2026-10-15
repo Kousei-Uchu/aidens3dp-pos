@@ -4,10 +4,11 @@ import { View } from 'react-native';
 import { Btn, Chip, Field, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { isTraining } from '../lib/trainingGuard';
-import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
-import { SPOT, discountPresetSpot, customerRowSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot, lineVariantSpot } from '../lib/trainingSpots';
+import { setCustomerDraftProbe, setCustomerQuery, setDiscountDraftProbe, setLastGiftProbe, setNoteDraftProbe, setPriceDraft } from '../lib/trainingProbe';
+import { SPOT, discountPresetSpot, customerRowSpot, giftHowSpot, giftPresetSpot, lineAdjustOffSpot, lineAdjustSpot, lineDiscountOffSpot, lineDiscountSpot, lineMinusSpot, lineNoteSpot, linePriceOffSpot, linePriceSpot, lineRemoveSpot, lineVariantSpot } from '../lib/trainingSpots';
 import { setOpenLine } from '../lib/trainingProbe';
-import { Spot } from '../ui/Spot';
+import { registerCheckoutReset } from '../lib/trainingProbe';
+import { Spot, registerSlice, spotPressed } from '../ui/Spot';
 import { useApp } from '../state/store';
 import { useCatalogue, usePriced, usePricer } from '../state/selectors';
 import { digitsToCents, fmt } from '../lib/money';
@@ -267,31 +268,36 @@ export function GiftSellSheet({ visible, onClose }: { visible: boolean; onClose:
   const reset = () => { setDigits(''); setCents(0); setHow('hand'); setEmail(''); setName(''); setMsg(''); };
   const close = () => { reset(); onClose(); };
   const validEmail = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
+  const stage = cents > 0 ? 'details' as const : 'amount' as const;
+  // Put the two parts of the Hand over / Email switch on the graph, and forget the last added card when a practice run starts.
+  useEffect(() => { if (!visible || stage !== 'details') return undefined; const off = (['hand', 'email'] as const).map((h, i) => registerSlice(giftHowSpot(h), SPOT.giftHow, i, 2)); return () => off.forEach(f => f()); }, [visible, stage]);
+  useEffect(() => registerCheckoutReset(() => setLastGiftProbe(undefined)), []);
   const confirmAdd = () => {
     if (how === 'email' && !validEmail) return alertMsg('Check the email address', 'Enter a valid email to send the gift card to.');
     const rec = how === 'email' ? { email: email.trim(), name: name.trim() || undefined, message: msg.trim() || undefined } : undefined;
+    setLastGiftProbe({ cents, how, email: email.trim() });
     setCart(cc => ops.addGiftCardLine(cc, cents, newGiftCode(), rec)); close();
   };
   if (cents > 0) return (
-    <Sheet visible={visible} onClose={close} title={`Gift card ${fmt(cents)}`}>
+    <Sheet visible={visible} onClose={close} title={`Gift card ${fmt(cents)}`} screen="sheet_gift_sell_details">
       <Txt sub style={{ marginBottom: 8 }}>How should the customer get it?</Txt>
-      <Segmented value={how} onChange={setHow} options={[{ v: 'hand', label: 'Hand over / print' }, { v: 'email', label: 'Email it' }]} />
+      <Spot id={SPOT.giftHow}><Segmented value={how} onChange={v => { spotPressed(giftHowSpot(v)); setHow(v); }} options={[{ v: 'hand', label: 'Hand over / print' }, { v: 'email', label: 'Email it' }]} /></Spot>
       {how === 'email' ? <View style={{ marginTop: 12 }}>
         {buyer?.email && email !== buyer.email ? <Chip label={`Use ${buyer.email}`} onPress={() => { setEmail(buyer.email!); if (!name) setName(buyer.name ?? ''); }} /> : null}
-        <Field kind="email" label="Recipient email" value={email} onChangeText={setEmail} placeholder="name@example.com" />
+        <Spot id={SPOT.giftEmail}><Field kind="email" label="Recipient email" value={email} onChangeText={setEmail} placeholder="name@example.com" /></Spot>
         <Field kind="name" label="Recipient name (optional)" value={name} onChangeText={setName} />
         <Field kind="text" label="Message (optional)" value={msg} onChangeText={setMsg} placeholder="Happy birthday!" />
         <Txt size={12} sub>Shopify emails the card after payment completes. Add to Apple Wallet appears in that email if enabled in Shopify settings.</Txt>
       </View> : <Txt size={13} sub style={{ marginTop: 10 }}>The code is shown on the receipt screen after payment.</Txt>}
-      <Btn title="Add gift card to cart" onPress={confirmAdd} style={{ marginTop: 14 }} />
-      <Btn title="Change amount" kind="ghost" onPress={() => setCents(0)} />
+      <Btn spot={SPOT.giftAdd} title="Add gift card to cart" onPress={confirmAdd} style={{ marginTop: 14 }} />
+      <Btn spot={SPOT.giftChange} title="Change amount" kind="ghost" onPress={() => setCents(0)} />
     </Sheet>
   );
   return (
-    <Sheet visible={visible} onClose={close} title="Sell gift card">
-      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>{GIFT_PRESETS.map(p => <Chip key={p} label={fmt(p)} onPress={() => setCents(p)} />)}</View>
+    <Sheet visible={visible} onClose={close} title="Sell gift card" screen="sheet_gift_sell">
+      <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>{GIFT_PRESETS.map(p => <Chip key={p} spot={giftPresetSpot(p)} label={fmt(p)} onPress={() => setCents(p)} />)}</View>
       <Txt size={36} weight="700" style={{ textAlign: 'center', marginBottom: 10 }}>{fmt(digitsToCents(digits))}</Txt>
-      <Keypad value={digits} onChange={setDigits} onSubmit={() => { const c = digitsToCents(digits); if (c > 0) setCents(c); }} submitLabel="Next" />
+      <Keypad value={digits} onChange={setDigits} keysSpot={SPOT.giftKeys} submitSpot={SPOT.giftNext} onSubmit={() => { const c = digitsToCents(digits); if (c > 0) setCents(c); }} submitLabel="Next" />
     </Sheet>
   );
 }

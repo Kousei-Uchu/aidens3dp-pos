@@ -45,6 +45,8 @@ export type Demo = { canvas: { w: number; h: number }; screens: DemoScreen[]; st
 
 /** What training can see of the Inventory screen (see `src/lib/trainingProbe.ts`). */
 export type InvSnap = { q: string; open?: string; mode?: 'receive' | 'adjust' | 'count'; digits?: string; neg?: boolean; reason?: string; expanded: string[]; stock: string; grouped: boolean; collectionId: string | null; status: string; sort: string };
+/** The last gift card added to the cart by the Sell gift card window: the amount and how the customer gets it. */
+export type GiftSale = { cents: number; how: 'hand' | 'email'; email: string };
 /** One cart line as training sees it. */
 export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** The line's own item price (cents) and whether it covers every one in the cart, and its whole-line price (cents). */ overrideCents?: number; overrideAll?: boolean; adjustCents?: number; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
@@ -70,6 +72,8 @@ export type TrainSnap = {
   /** The last cash payment of the last finished sale: what the customer handed over and the change given, in cents. */ lastSaleCash?: { tendered: number; change: number };
   /** The last refund made on a practice order (`n` is how many refunds so far): what it came to, whether the items went back into stock, which kinds of money it went back as, and how many items. Left out until a refund is made. */
   refund?: { n: number; cents: number; restock: boolean; kinds: string[]; items: number; orderId: string };
+  /** The last gift card added to the cart by the Sell gift card window: the amount and how the customer gets it. */
+  lastGift?: GiftSale;
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
 };
 export type Until =

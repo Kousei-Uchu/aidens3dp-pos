@@ -44,6 +44,13 @@ export const SPOT = {
   splitKeys: 'split.keys',             // the number keys in the Split window (any key)
   splitContinue: 'split.continue',     // Continue, in the Split window
   splitCancel: 'split.cancel',         // Cancel split, on the Payment page once a split is set
+  cartMenuGift: 'cart.menu.gift',      // Sell gift card, in the cart menu
+  giftKeys: 'gift.keys',               // the number keys in the Sell gift card window (any key)
+  giftNext: 'gift.next',               // Next, under the Sell gift card keys (it sets the amount)
+  giftHow: 'gift.how',                 // the Hand over / Email switch in the Gift card window (a part of it is `gift.how:<hand|email>`)
+  giftEmail: 'gift.email',             // the box for the recipient's email in the Gift card window
+  giftAdd: 'gift.add',                 // Add gift card to cart
+  giftChange: 'gift.change',           // Change amount, back to the amount step
   receiptNone: 'receipt.none',         // No receipt, in the Receipt window after a sale
   receiptQr: 'receipt.qr',             // Show QR code, in the Receipt window
   receiptEmail: 'receipt.email',       // Email link (Email receipt when receipts are not published), in the Receipt window
@@ -104,12 +111,12 @@ export const SPOT = {
   invApply: 'inv.apply',               // the Apply / Set stock button on the item window
 } as const;
 /** Spots that only exist inside a window (a sheet). A step that points at one must say windows are allowed (`at.sheets: true`). */
-export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.bundleContinue, SPOT.bundleEdit, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.priceItemKeys, SPOT.priceItemSet, SPOT.priceLineKeys, SPOT.priceLineSet, SPOT.priceOrderKeys, SPOT.priceOrderSet, SPOT.priceReason, SPOT.priceScopeQty, SPOT.priceScopeAll, SPOT.reviewContinue, SPOT.reviewKeep, SPOT.reviewAdjust, SPOT.reviewRemove, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone, SPOT.scanDone, SPOT.scanResult, SPOT.invModes, SPOT.invKeys, SPOT.invApply, SPOT.invSign, SPOT.splitKeys, SPOT.splitContinue];
+export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKeys, SPOT.discountApply, SPOT.bundleContinue, SPOT.bundleEdit, SPOT.cartMenuDiscount, SPOT.cartMenuOrder, SPOT.cartMenuGift, SPOT.cartDiscountOff, SPOT.cartOrderOff, SPOT.switchLock, SPOT.passScan, SPOT.customerSearch, SPOT.customerCreate, SPOT.customerForm, SPOT.customerSave, SPOT.lineDone, SPOT.priceItemKeys, SPOT.priceItemSet, SPOT.priceLineKeys, SPOT.priceLineSet, SPOT.priceOrderKeys, SPOT.priceOrderSet, SPOT.priceReason, SPOT.priceScopeQty, SPOT.priceScopeAll, SPOT.reviewContinue, SPOT.reviewKeep, SPOT.reviewAdjust, SPOT.reviewRemove, SPOT.cashPad, SPOT.cashUndo, SPOT.cashTake, SPOT.cashNext, SPOT.cashGave, SPOT.cashSmaller, SPOT.cashPartCash, SPOT.searchField, SPOT.payRetry, SPOT.payOther, SPOT.receiptNone, SPOT.receiptQr, SPOT.receiptEmail, SPOT.receiptText, SPOT.receiptShare, SPOT.receiptQrBack, SPOT.ordersRefund, SPOT.refundDone, SPOT.scanDone, SPOT.scanResult, SPOT.invModes, SPOT.invKeys, SPOT.invApply, SPOT.invSign, SPOT.splitKeys, SPOT.splitContinue, SPOT.giftKeys, SPOT.giftNext, SPOT.giftHow, SPOT.giftEmail, SPOT.giftAdd, SPOT.giftChange];
 /** Spots inside a window, including the ones whose id ends in a record (a row in the Search window). */
-export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('scan.card:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.variant:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj') || id.startsWith('inv.mode:') || id.startsWith('inv.reason:') || id.startsWith('split.equal:');
+export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('scan.card:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.variant:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj') || id.startsWith('inv.mode:') || id.startsWith('inv.reason:') || id.startsWith('split.equal:') || id.startsWith('gift.preset:') || id.startsWith('gift.how:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'line.variant:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:', 'split.equal:'] as const;
+export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'line.variant:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:', 'split.equal:', 'gift.preset:', 'gift.how:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -177,6 +184,10 @@ export const invReasonSpot = (reason: string): string => `inv.reason:${reason}`;
 /** The Receive | Adjust | Count mode chip in the item window. */
 export const invModeSpot = (mode: 'receive' | 'adjust' | 'count'): string => `inv.mode:${mode}`;
 export const splitEqualSpot = (n: number): string => `split.equal:${n}`;
+/** A preset amount chip (for example $25.00) in the Sell gift card window. */
+export const giftPresetSpot = (cents: number): string => `gift.preset:${cents}`;
+/** One part of the Hand over / Email switch in the Gift card window (the step after the amount). */
+export const giftHowSpot = (how: 'hand' | 'email'): string => `gift.how:${how}`;
 /** The spot id a grid tile carries, or undefined for tile types training does not point at. */
 export function tileSpotId(t: { type: string; variantId?: string; productId?: string; collectionId?: string; action?: string }): string | undefined {
   if (t.type === 'item') { const id = t.variantId ?? t.productId; return id ? gridItemSpot(id) : undefined; }
