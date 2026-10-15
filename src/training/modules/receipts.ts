@@ -109,7 +109,7 @@ export const receipts: TrainingModule = {
       ladder: ['The sale is paid. Only the window is left.', 'The button at the bottom closes it.', 'Tap No receipt.'], reveal: SPOT.receiptNone, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },
   ],
   check2: [
-    { id: 'qr-not-live', title: 'Take a card payment. The customer wants to scan a QR code, but it will say Not published yet. Send it by text instead', until: { kind: 'press', id: SPOT.receiptText }, inject: [{ kind: 'cart', items: [{ variantId: BEE, qty: 1 }, { variantId: KEY, qty: 1 }] }], taughtBy: 'unpublished',
+    { id: 'qr-not-live', title: 'Take a card payment. The customer asks to scan a QR code for the receipt', until: { kind: 'press', id: SPOT.receiptText }, inject: [{ kind: 'cart', items: [{ variantId: BEE, qty: 1 }, { variantId: KEY, qty: 1 }] }], taughtBy: 'unpublished',
       ladder: ['Try the QR code first and read what the page says.', 'Not published yet means the page is not live. You do not have to wait for it.', 'Go Back, then tap Text link.'], reveal: SPOT.receiptText, via: SPOT.payCard, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin, watch: wrongWays },
     { id: 'share-it', title: 'The customer asks for it through their messaging app. Use Share', until: { kind: 'press', id: SPOT.receiptShare },
       ladder: ['The Receipt window is still open.', 'One button lets the customer pick any app.', 'If you are on the QR page, tap Back, then tap Share.'], reveal: SPOT.receiptShare, via: SPOT.receiptQrBack, gesture: 'tap', allow: ['tender', 'sale'], at: placeWin },

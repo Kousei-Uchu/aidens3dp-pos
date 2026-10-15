@@ -63,6 +63,20 @@ Suggested approach: audit every Guide step and goal for "target is gone because 
 - The failure and its way out are shown in the Show (`card-fails`, `cash`) and mentioned in the Guide (`g-method-cash`) before Check 2 asks for it unprompted.
 - The general rule (a normal task, a realistic customer-side failure, a fix already taught) is reviewed across every Check 2 below.
 
+### Check 2 review across all modules (rule from Refunds)
+Every course already satisfies the structure the validator enforces: each Check 2 has at least one goal with an injection, and every injected goal names a real Info, Show or Guide step in `taughtBy`. On reading them against the rule:
+
+- **Pay card** (`declined-once`, `declined-twice`): a normal payment, the card declines (customer-side), and the fix (Try card again / Use another method) was taught in `retry`/`declined`. Fits. The scenario names the decline, which is unavoidable when the decline is scripted.
+- **Take cash** (`c2-short`, `c2-rounding`, `c2-no-change`): a short handover, 5c rounding, and a drawer that cannot make change. All customer-side, all taught. Fine.
+- **How deals show up** (`c2-short`, `c2-swap`, `c2-odd`): four Tadlings, a wrong size, and a not-recommended pair. Fixed in 0124.
+- **Customers and notes**, **Change a price**, **Scan items**, **Sign in**, **Split a payment**, **Deals**, **Cart/Welcome**, **Bundles**: each has a taught fix and a real situation.
+- **Fixed (0127):** three Check 2 titles gave away their own fix, so the task was not discovered. They now set up a normal situation and let the ladder reveal the way out:
+  - Discounts `c2-never`: was "cannot be discounted. Give the Bumble Bee 10% off instead"; now a plain request for 10% off both items.
+  - Receipts `qr-not-live`: was "it will say Not published yet. Send it by text instead"; now a plain request to scan a QR code.
+  - Split a payment `declined-part` and `changed-mind`: were "take that part in cash instead" and "Cancel the split first"; now plain situations.
+
+Every Check 2 now sets up a normal task, lets a realistic customer-side failure happen, and relies on a fix that the module already showed. `validateModule` already requires a `taughtBy` for every Check 2 goal that injects a problem, so this cannot regress.
+
 ### How deals show up
 - **Done (0124):** the swap is now done on the line itself. The Show opens the cow's line and taps the other size under Variation (a new `line.variant:<line>:<variant>` spot), and Check 2's hint points at that same control instead of add-Small-remove-Large.
 - Last Check 2 goal ends on a $0 Payment page (see 1.7): done in 0119 (the goal ends when Payment opens).
