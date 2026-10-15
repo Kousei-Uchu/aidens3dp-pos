@@ -393,3 +393,16 @@ On the iPad and on a phone. Use More ▸ Training ▸ Inventory.
 6. Open the Dragon Egg by mistake during a step that is about the Sticker Pack and apply: the card says another item's stock changed and points at its row.
 7. Check 2, the smashed Keyrings: choosing a reason other than damaged gives the card that says the reason is wrong.
 8. **Most important:** leave the course and look at the real Inventory tab. Nothing changed, and your real filters are back. Shopify stock is untouched.
+
+## T33. Training: Split a payment (B6, 0122)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Split a payment.
+
+1. The Guide builds a $14.00 sale (Bumble Bee and Dragon Egg), then Charge. On the Payment page, Split sits with Card, Cash and Gift card.
+2. The ring opens the Split window. The Split equally 2 and 3 chips, the keypad and Continue are all ringed in turn. Confirm the ring lands on each.
+3. Split equally 2 sets $7.00 and $7.00. The page shows Next payment: $7.00, and a Cancel split button appears.
+4. The first part by cash: tap $5 then $2, and Take cash. Pass: the sale does **not** finish, and the page now asks for the remaining $7.00.
+5. The second part by card on the terminal, then No receipt. Pass: the sale is complete, paid both ways, and the cart clears.
+6. Check 1, the first-amount goal: in the Split window, key 5 0 0 and Continue gives a $5.00 first part.
+7. Check 2, the declined part: tap Card for the first part, tap card on the terminal (declined), then Use another method, then take that part in cash. Pass: the rest of the plan is kept and the second part by card finishes the sale.
+8. Check 2, changed mind: split, then Cancel split, then take the whole amount by card. Pass: the split is gone and the whole total is one card payment.

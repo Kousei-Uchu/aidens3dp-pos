@@ -2,7 +2,7 @@
 
 A module is one TypeScript file in `src/training/modules/`, added to the list in `src/training/index.ts`. The checker (`validateModule`, run by `npm test`) refuses a module that breaks the rules below, so a mistake shows up before anyone sees it.
 
-## Inventory courses (0106)
+## Inventory courses (0121)
 
 A course that changes stock sets `stock` on the module (practice variant id to count, `null` = not tracked) and may set it again per goal with `{ kind: 'stock', counts }`. `TrainSnap.stock` holds every practice item's stock and `TrainSnap.inv` what the Inventory screen shows (search text, filter, item window, mode, digits keyed, Remove chosen, reason, groups opened). `stockAllow` on a Step or Goal lists the items whose stock may change; any other item changing is a `stock` stray whose fix is a Count back to the old number. A course may use any single tab (`tabs: ['inventory']`). In practice Apply only edits this device's counts.
 

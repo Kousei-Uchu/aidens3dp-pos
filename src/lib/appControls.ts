@@ -92,6 +92,9 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.cashGave]: 'sheet_cash_give',
   [SPOT.cashSmaller]: 'sheet_cash_receive',
   [SPOT.cashPartCash]: 'sheet_cash_receive',
+  [SPOT.splitKeys]: 'sheet_split',
+  [SPOT.splitContinue]: 'sheet_split',
+  [SPOT.splitCancel]: 'page_pay',
   [SPOT.terminalTap]: 'page_pay',
   [SPOT.terminalInsert]: 'page_pay',
   [SPOT.terminalRemove]: 'page_pay',
@@ -153,6 +156,7 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'inv.group:', screen: 'tab_inventory' },
   { prefix: 'inv.mode:', screen: 'sheet_inventory_product' },
   { prefix: 'inv.reason:', screen: 'sheet_inventory_product' },
+  { prefix: 'split.equal:', screen: 'sheet_split' },
 ];
 
 /**

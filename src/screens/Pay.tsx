@@ -25,7 +25,7 @@ import { lockPayButtons, showsOwnSheet, showsWaitingStrip } from '../lib/payUi';
 import { ReceiptPrompt } from './Receipt';
 import { useUi } from '../ui/uiProfile';
 import { Spot } from '../ui/Spot';
-import { SPOT } from '../lib/trainingSpots';
+import { SPOT, splitEqualSpot } from '../lib/trainingSpots';
 import { payHint, payQuestion, payTitle } from '../lib/simpleLabels';
 import type { SaleRecord, Tender } from '../lib/types';
 
@@ -214,7 +214,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
           <PayOption hint={payHint('cash', ui.explain)}><Btn spot={SPOT.payCash} title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
           <PayOption hint={payHint('gift', ui.explain)}><Btn spot={SPOT.payGift} title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
           <PayOption hint={payHint('split', ui.explain)}><Btn spot={SPOT.paySplit} title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>
-          {split ? <Btn title="Cancel split" kind="ghost" onPress={() => setPlan([])} /> : null}
+          {split ? <Btn spot={SPOT.splitCancel} title="Cancel split" kind="ghost" onPress={() => setPlan([])} /> : null}
         </View>
       ) : total === 0 && tenders.length === 0 ? <View style={{ padding: 16 }}><Btn title="Complete $0.00 sale" onPress={() => takeCash({ tendered: 0, received: {}, given: {} })} /></View> : null}
 
@@ -239,8 +239,8 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       <Sheet visible={splitOpen} onClose={() => setSplitOpen(false)} title="Split amount">
         <Txt sub style={{ textAlign: 'center' }}>First payment</Txt>
         <Txt size={34} weight="700" style={{ textAlign: 'center', marginVertical: 8 }}>{fmt(digitsToCents(splitDigits))}</Txt>
-        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>{[2, 3, 4].map(n => <Chip key={n} label={`Split equally ${n}`} onPress={() => { setPlan(equalPlan(remaining, n)); setSplitOpen(false); }} />)}</View>
-        <Keypad value={splitDigits} onChange={setSplitDigits} submitLabel="Continue" onSubmit={() => { const v = digitsToCents(splitDigits); if (v >= remaining) { alertMsg('Amount must be less than the remaining total'); return; } setPlan(firstPlan(remaining, v)); setSplitOpen(false); }} />
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>{[2, 3, 4].map(n => <Chip key={n} spot={splitEqualSpot(n)} label={`Split equally ${n}`} onPress={() => { setPlan(equalPlan(remaining, n)); setSplitOpen(false); }} />)}</View>
+        <Keypad value={splitDigits} onChange={setSplitDigits} keysSpot={SPOT.splitKeys} submitSpot={SPOT.splitContinue} submitLabel="Continue" onSubmit={() => { const v = digitsToCents(splitDigits); if (v >= remaining) { alertMsg('Amount must be less than the remaining total'); return; } setPlan(firstPlan(remaining, v)); setSplitOpen(false); }} />
       </Sheet>
 
       <HidScanner enabled={!gift && !splitOpen && !cashOpen && card.phase === 'idle'} onScan={code => { if (isGiftQr(code)) { setGift(true); setTimeout(() => { const sheet = document.querySelector('[screen="sheet_gift_check"]'); } , 300); } else { alertMsg('Not a gift card', 'Scan a gift card QR code to pay with a gift card.'); } }} />
