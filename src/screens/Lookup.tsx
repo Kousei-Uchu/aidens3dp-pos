@@ -11,6 +11,9 @@ import { bundleConfig } from '../lib/sync';
 import { priceCheck, resolveScan, scanProblem, searchVariants, stockCheck, stockText, stockToneOf } from '../lib/lookup';
 import { CameraScanner, HidScanner } from './Scanner';
 import type { Variant } from '../lib/types';
+import { Spot } from '../ui/Spot';
+import { SPOT } from '../lib/trainingSpots';
+import { setLookupModeProbe, setLookupResultProbe } from '../lib/trainingProbe';
 
 export type LookupMode = 'price' | 'stock';
 const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B45309', neg: '#B91C1C' } as const;
@@ -18,20 +21,22 @@ const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B453
 export function LookupSheet({ mode, visible, onClose }: { mode: LookupMode; visible: boolean; onClose: () => void }) {
   const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
   const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false);
-  useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); } }, [visible]);
-  useEffect(() => { setFound(null); setMsg(''); setQ(''); }, [mode]);
+  useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
+  useEffect(() => { setFound(null); setMsg(''); setQ(''); setLookupModeProbe(mode); setLookupResultProbe(undefined); }, [mode]);
 
   // scans and picks both go through here; the latest one replaces the result so a stack of items can be checked quickly
   const lookup = (code: string): string | null => {
     const r = resolveScan(code, cat.all); const problem = scanProblem(r, code);
     if (r.kind !== 'variant') { setMsg(problem ?? ''); return null; }
-    setFound(r.variant); setMsg(''); setQ(''); return r.variant.productTitle;
+    setFound(r.variant); setMsg(''); setQ('');
+    setLookupResultProbe({ variantId: r.variant.id, productTitle: r.variant.productTitle, stock: r.variant.stock, priceCents: r.variant.priceCents });
+    return r.variant.productTitle;
   };
   const results = useMemo(() => searchVariants(cat.list, q), [cat.list, q]);
   const title = mode === 'price' ? 'Price check' : 'Stock check';
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={title} full>
+    <Sheet visible={visible} onClose={() => { setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); onClose(); }} title={title} full screen="sheet_lookup">
       <HidScanner enabled={visible && !cam} onScan={code => void lookup(code)} />
       <CameraScanner visible={cam} onClose={() => setCam(false)} title={`${title}: scan an item`} onScan={code => { const t = lookup(code); if (t) setCam(false); return t ? `Showing ${t}` : null; }} />
 
@@ -46,10 +51,10 @@ export function LookupSheet({ mode, visible, onClose }: { mode: LookupMode; visi
       {msg ? <View style={{ backgroundColor: c.bad + '22', borderRadius: 12, padding: 12, marginBottom: 12 }}><Txt color={c.bad} weight="600" style={{ textAlign: 'center' }}>{msg}</Txt></View> : null}
 
       <View style={{ flexDirection: 'row', gap: 8, marginBottom: 4 }}>
-        <Btn title="Scan with camera" kind="secondary" small icon="barcode-outline" onPress={() => setCam(true)} style={{ flex: 1 }} />
-        {found ? <Btn title="Clear" kind="secondary" small onPress={() => { setFound(null); setMsg(''); }} style={{ flex: 1 }} /> : null}
+        <Btn title="Scan with camera" kind="secondary" small icon="barcode-outline" onPress={() => setCam(true)} spot={SPOT.lookupScan} style={{ flex: 1 }} />
+        {found ? <Btn title="Clear" kind="secondary" small onPress={() => { setFound(null); setMsg(''); setLookupResultProbe(undefined); }} spot={SPOT.lookupClear} style={{ flex: 1 }} /> : null}
       </View>
-      <Field kind="search" placeholder="Or search by name, SKU or barcode" value={q} onChangeText={t => { setQ(t); setMsg(''); }} style={{ marginTop: 8 }} />
+      <Spot id={SPOT.lookupSearch}><Field kind="search" placeholder="Or search by name, SKU or barcode" value={q} onChangeText={t => { setQ(t); setMsg(''); }} style={{ marginTop: 8 }} /></Spot>
       {q.trim() ? (results.length ? results.map((v, i) => <Row key={v.id} image={v.image ?? null} last={i === results.length - 1} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')}
         sub={mode === 'stock' && (cat.byProduct[v.productId]?.length ?? 1) > 1 ? `${cat.byProduct[v.productId].length} variations` : [v.sku, v.barcode].filter(Boolean).join(' · ') || undefined}
         right={mode === 'price' ? <Money cents={v.priceCents} weight="600" /> : <Txt size={13} color={TONE_COLOR[stockToneOf(v.stock)]} weight="600">{stockText(v.stock)}</Txt>}

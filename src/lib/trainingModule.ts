@@ -49,6 +49,10 @@ export type InvSnap = { q: string; open?: string; mode?: 'receive' | 'adjust' | 
 export type GiftSale = { cents: number; how: 'hand' | 'email'; email: string };
 /** The last card the Check gift card window looked up: its code, and whether a usable card was found. */
 export type GiftCheck = { code: string; found: boolean; enabled: boolean; balanceCents: number };
+/** The mode of the Lookup sheet (Price check or Stock check). */
+export type LookupMode = 'price' | 'stock';
+/** The variant that was found in the Lookup sheet. */
+export type LookupResult = { variantId: string; productTitle: string; stock: number | null; priceCents: number };
 /** One saved cart as training sees it: its name, what is in it, who it is assigned to, and whether it is still open. */
 export type SavedSnap = { id: string; name: string; variants: string[]; qty: number; assignedTo?: string; status: 'open' | 'void'; employee?: string };
 /** One cart line as training sees it. */
@@ -80,6 +84,8 @@ export type TrainSnap = {
   lastGift?: GiftSale;
   /** What is typed in the Check gift card window's code box, and the last card it looked up. */
   giftCode?: string; giftCheck?: GiftCheck;
+  /** The Lookup sheet: which mode (price/stock) and what variant was found. */
+  lookupMode?: LookupMode; lookupResult?: LookupResult;
   /** The saved carts still open, and what is typed in the Save cart window's Name box. */
   savedCarts?: SavedSnap[]; savedNameDraft?: string;
   /** The saved cart the cart in the till was opened from, when one was (so a Check can tell an open from a fresh cart). */

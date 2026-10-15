@@ -66,6 +66,9 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.scanCamera]: 'tab_checkout',
   [SPOT.scanDone]: 'tab_checkout',
   [SPOT.scanResult]: 'tab_checkout',
+  [SPOT.lookupSearch]: 'sheet_lookup',
+  [SPOT.lookupScan]: 'sheet_lookup',
+  [SPOT.lookupClear]: 'sheet_lookup',
   // More tab.
   [SPOT.tabMore]: 'tab_more',
   [SPOT.moreTraining]: 'tab_more',

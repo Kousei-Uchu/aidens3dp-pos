@@ -447,3 +447,15 @@ On the iPad and on a phone. Use More ▸ Training ▸ Park and resume a sale.
 7. Check 2, the handover: the run signs in as practice manager Morgan. Pass: assign the waiting cart to Casey and the goal finishes.
 8. Leaving the course: the two practice carts (Sam, holding for Friday; Priya, pickup Tuesday) are made up and are gone. Pass: your real saved carts are untouched, nothing was synced to Shopify, and the real staff list never appeared.
 9. **Most important:** with the cart menu and the Saved carts window open, save and open carts. Confirm no real saved cart is created or pushed to Shopify and the real cart, sales and staff are untouched when you leave.
+
+## T37. Training: Price check and Stock check (B6, 0132)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Price check and Stock check.
+
+1. The Guide rings the **Price check** tile, opens the Lookup sheet, scans the Dragon figurine. Pass: the price shows $25.00, "2500 in stock", and no deal badge (the 20% off deal is Keyrings only).
+2. The Guide rings the **Stock check** tile, scans the Keyring. Pass: "500 in stock" for this variation, lists the other variations, and the total at the bottom.
+3. The Guide rings Stock check on the Large cow plush. Pass: "1800 in stock" for this variation, lists the Small cow, and "3000 in stock across all 2 variations" at the bottom.
+4. The Guide rings Price check on the Tadpole toy. Pass: the four stock words are shown in Info: In stock (positive number), Out of stock (zero), Not tracked (null), and Oversold (negative like "-5 oversold").
+5. Check 1: Price check Egg timer shows $6.00 and "600 in stock". Stock check Sticker pack shows "300 in stock".
+6. Check 2: Price check Cow small shows no deal badge; Stock check Cow large shows two variations and 3000 total; stock words meaning verified.
+7. **Most important:** with the Lookup sheet open, scan or search items. Confirm the cart is never touched, no real data is read or written, and leaving the course restores the real till exactly as it was.
