@@ -18,8 +18,8 @@ const snap = (o: { stock?: Record<string, number | null>; inv?: Partial<InvSnap>
 const by = (list: any[], id: string) => list.find(x => x.id === id);
 const real: any = { settings: { staff: [], requirePin: false, receipt: { serverUrl: 'https://real.example' }, inventory: { ...defaultInvPrefs(), stock: 'neg', grouped: true } }, data: {}, grid: {}, gridVersion: 0, pos: {}, sync: {}, zeller: {}, staffId: undefined, unlocked: true };
 
-test('the course is registered last, is valid, and lives on the Inventory tab', () => {
-  assert.equal(getModule('inventory'), inventory); assert.equal(MODULES.findIndex(m => m.id === 'inventory'), MODULES.length - 1);
+test('the course is registered, is valid, and lives on the Inventory tab', () => {
+  assert.equal(getModule('inventory'), inventory); assert.ok(MODULES.findIndex(m => m.id === 'inventory') >= 0);
   assert.deepEqual(validateModule(inventory, isKnownSpot), []); assert.deepEqual(inventory.tabs, ['inventory']);
 });
 

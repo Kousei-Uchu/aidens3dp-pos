@@ -459,3 +459,17 @@ On the iPad and on a phone. Use More ▸ Training ▸ Price check and Stock chec
 5. Check 1: Price check Egg timer shows $6.00 and "600 in stock". Stock check Sticker pack shows "300 in stock".
 6. Check 2: Price check Cow small shows no deal badge; Stock check Cow large shows two variations and 3000 total; stock words meaning verified.
 7. **Most important:** with the Lookup sheet open, scan or search items. Confirm the cart is never touched, no real data is read or written, and leaving the course restores the real till exactly as it was.
+
+## T38. Training: Find a past sale (B6, 0133)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Find a past sale.
+
+1. The Guide rings **More**, then **Orders**. Pass: the Orders screen opens on the Open tab.
+2. The Guide rings the **Unfulfilled** tab. Pass: the list shows only orders needing fulfilment.
+3. The Guide rings the first order in the list. Pass: the order window opens showing lines, Mark fulfilled, Refund or return, and Receipt.
+4. The Guide rings **Mark fulfilled**. Pass: the order is fulfilled, the window closes, and the order moves to the Completed tab.
+5. The Guide rings the **Completed** tab. Pass: the order you just fulfilled appears in the list.
+6. The Guide rings an order and then **Receipt**. Pass: the Receipt window opens.
+7. Check 1: switch to Unfulfilled and open an order; mark an order fulfilled; print a receipt for a past sale.
+8. Check 2: fulfil the wrong order then fix it; print a receipt for a refunded order.
+9. **Most important:** with the Orders screen open, switch tabs, open orders, mark fulfilled, print receipts. Confirm no real data is touched and leaving the course restores the real till exactly as it was.

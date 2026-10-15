@@ -123,6 +123,11 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.terminalDone]: 'page_pay',
   // Orders and refunds.
   [SPOT.ordersRefund]: 'sheet_order',
+  [SPOT.ordersTabOpen]: 'page_orders',
+  [SPOT.ordersTabUnfulfilled]: 'page_orders',
+  [SPOT.ordersTabCompleted]: 'page_orders',
+  [SPOT.ordersMarkFulfilled]: 'sheet_order',
+  [SPOT.ordersReceipt]: 'sheet_order',
   [SPOT.refundMode]: 'sheet_refund',
   [SPOT.refundMethod]: 'sheet_refund',
   [SPOT.refundRestock]: 'sheet_refund',

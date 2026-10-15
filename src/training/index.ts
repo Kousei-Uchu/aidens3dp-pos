@@ -19,6 +19,8 @@ import { priceAdjust } from './modules/price-adjust';
 import { refund } from './modules/refund';
 import { scanning } from './modules/scanning';
 import { inventory } from './modules/inventory';
+import { stockLookupModule } from './modules/stock-lookup';
+import { ordersModule } from './modules/orders';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);

@@ -9,6 +9,7 @@ import { fmt } from '../lib/money';
 import { isTraining } from '../lib/trainingGuard';
 import { listPracticeOrders, markPracticeFulfilled } from '../lib/trainingOrders';
 import { SPOT, orderRowSpot } from '../lib/trainingSpots';
+import { Spot, spotPressed } from '../ui/Spot';
 import type { SaleRecord } from '../lib/types';
 
 const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_status:unfulfilled', completed: 'tag:pos fulfillment_status:fulfilled' } as const;
@@ -22,17 +23,17 @@ export default function Orders() {
   const mark = async (o: PosOrder) => { try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
   return (
     <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
-      <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></View>
+      <View style={{ padding: 16 }}><Spot id={SPOT.ordersTabOpen}><Segmented value={tab} onChange={t => { const spots = { open: SPOT.ordersTabOpen, unfulfilled: SPOT.ordersTabUnfulfilled, completed: SPOT.ordersTabCompleted }; spotPressed(spots[t]); setTab(t); }} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></Spot></View>
       <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => void load()} />}>
         {orders.length === 0 && !busy ? <Empty icon="file-tray-outline" title="No orders here" /> : <Card style={{ marginHorizontal: 16 }}>{orders.map((o, i) => <Row key={o.id} spot={orderRowSpot(o.id)} last={i === orders.length - 1} title={`${o.name}${o.customer ? ' · ' + o.customer.name : ''}`} sub={`${new Date(o.createdAt).toLocaleString()} · ${o.financial.toLowerCase()} · ${o.fulfillment.toLowerCase()}`} right={<Money cents={o.totalCents} weight="600" />} onPress={() => setSel(o)} />)}</Card>}
       </ScrollView>
       <Sheet visible={!!sel} onClose={() => setSel(null)} title={sel?.name} screen="sheet_order">
         {sel?.lines.map(l => <Txt key={l.id} sub>{l.qty} × {l.title} - {fmt(l.unitCents * l.qty)}</Txt>)}
         <View style={{ gap: 8, marginTop: 14 }}>
-          {sel && !/^fulfilled$/i.test(sel.fulfillment) ? <Btn title="Mark fulfilled" onPress={() => void mark(sel)} /> : null}
+          {sel && !/^fulfilled$/i.test(sel.fulfillment) ? <Btn title="Mark fulfilled" onPress={() => void mark(sel)} spot={SPOT.ordersMarkFulfilled} /> : null}
           <Btn spot={SPOT.ordersRefund} title="Refund or return" kind="secondary" onPress={() => { setRefund(sel); setSel(null); }} />
         {sel?.staff ? <Txt sub>Cashier: {sel.staff}</Txt> : null}
-          <Btn title="Receipt" kind="secondary" onPress={() => { if (!sel) return; setReceipt({ uuid: sel.id, type: 'sale', ts: sel.createdAt, registerId: '', registerName: '', staff: sel.staff, customer: sel.customer, orderName: sel.name, receiptLink: sel.receiptLink, lines: sel.lines.map(l => ({ title: l.title, variantTitle: l.variantTitle, qty: l.qty, baseUnitCents: l.originalUnitCents, grossCents: l.originalUnitCents * l.qty, discountCents: 0, netCents: l.unitCents * l.qty, costCents: 0, discountLabels: [], kind: 'item' as const })), itemsCents: sel.totalCents, discountCents: 0, netCents: sel.totalCents, tipCents: 0, totalCents: sel.totalCents, cogsCents: 0, feesCents: 0, roundingCents: 0, tenders: sel.tenders, deals: [] }); setSel(null); }} />
+          <Btn title="Receipt" kind="secondary" onPress={() => { if (!sel) return; setReceipt({ uuid: sel.id, type: 'sale', ts: sel.createdAt, registerId: '', registerName: '', staff: sel.staff, customer: sel.customer, orderName: sel.name, receiptLink: sel.receiptLink, lines: sel.lines.map(l => ({ title: l.title, variantTitle: l.variantTitle, qty: l.qty, baseUnitCents: l.originalUnitCents, grossCents: l.originalUnitCents * l.qty, discountCents: 0, netCents: l.unitCents * l.qty, costCents: 0, discountLabels: [], kind: 'item' as const })), itemsCents: sel.totalCents, discountCents: 0, netCents: sel.totalCents, tipCents: 0, totalCents: sel.totalCents, cogsCents: 0, feesCents: 0, roundingCents: 0, tenders: sel.tenders, deals: [] }); setSel(null); }} spot={SPOT.ordersReceipt} />
         </View>
       </Sheet>
       {receipt ? <ReceiptPrompt sale={receipt} onDone={() => setReceipt(null)} /> : null}
