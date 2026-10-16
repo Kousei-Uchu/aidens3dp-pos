@@ -487,3 +487,16 @@ On the iPad and on a phone. Use More ▸ Training ▸ Open, paid in/out, count a
 7. Check 1: open with float; paid in; paid out; correct contents; count & close.
 8. Check 2: count is short (ledger injection makes count not match expected); paid out more than ledger says (warning appears).
 9. **Most important:** with the Cash drawer screen open, open with float, paid in/out, correct contents, count & close. Confirm no real ledger data is touched and leaving the course restores the real drawer exactly as it was.
+
+## T40. Training: Check change before taking notes (B6, 0135)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Check change before taking notes.
+
+1. The Guide rings the **Check change** tile on the grid. Pass: the Check Change sheet opens on the amount step.
+2. The Guide rings **Use the cart total**, then **Continue to customer cash**. Pass: the sheet moves to the customer cash step showing the cart total.
+3. The Guide enters a $20 note and a $5 note on the denomination pad. Pass: the result shows "Worth it - Use one $10, one $5, one $2, one $1".
+4. The Guide clears the pad and enters a $50 note. Pass: the result shows "Ask for card - the change would leave you short of $20s".
+5. The Guide clears the pad and enters a $20 note. Pass: the result shows "Give as change - the drawer has plenty".
+6. Check 1: use cart total and Continue; Worth it with $20+$5; Ask for card with $50; Give as change with $20.
+7. Check 2: with empty drawer ledger (ledger injection), Check Change shows "The drawer ledger is empty" message; with Smart change off, the note says "using fewest pieces".
+8. **Most important:** with the Check Change sheet open, enter amounts and customer cash. Confirm no real ledger data is touched and leaving the course restores the real till exactly as it was.

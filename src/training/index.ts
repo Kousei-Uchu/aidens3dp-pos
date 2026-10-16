@@ -22,6 +22,7 @@ import { inventory } from './modules/inventory';
 import { stockLookupModule } from './modules/stock-lookup';
 import { ordersModule } from './modules/orders';
 import { drawerDayModule } from './modules/drawer-day';
+import { checkChangeModule } from './modules/check-change';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule, drawerDayModule];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule, drawerDayModule, checkChangeModule];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
