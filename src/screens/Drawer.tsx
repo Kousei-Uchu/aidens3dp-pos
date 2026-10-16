@@ -9,6 +9,8 @@ import { useApp, currentStaff } from '../state/store';
 import { csv } from '../lib/csvStore';
 import { fmt } from '../lib/money';
 import { DENOMS, LEDGER_LABEL, applyEntry, diffCounts, draftCounts, entryTotal, newEntry, shortfall, summariseCounts, totalOf, type Draft, type LedgerKind } from '../lib/cashLedger';
+import { Spot } from '../ui/Spot';
+import { SPOT } from '../lib/trainingSpots';
 
 /** Current cash drawer: float, paid in/out, count vs expected, Z-report (simplified, per register). */
 export const cashSince = (sinceISO: string, registerId: string, sales = useApp.getState().pos.sales) =>
@@ -59,15 +61,15 @@ export default function Drawer() {
   const recent = ledger.entries.slice(0, 15);
   return (
     <Page title="Cash drawer" onBack={nav.pop} helpId="cash">
-      {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open on this register.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} /></View> : <>
+      {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open on this register.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} spot={SPOT.drawerOpen} /></View> : <>
         <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
-        <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} /></View></>}
+        <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} spot={SPOT.drawerPaidIn} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} spot={SPOT.drawerPaidOut} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} spot={SPOT.drawerCountClose} /></View></>}
 
       <Section title="Notes and coins in the drawer" footer="This is the ledger: what the drawer should hold. Counting at close resets it to what you actually counted. Cash sales at the Cash screen add to it as you tap the notes and coins.">
         {DENOMS.map(d => <Row key={d.cents} title={d.label} sub={d.kind === 'note' ? 'Note' : 'Coin'} right={<View style={{ alignItems: 'flex-end' }}><Txt weight="700">× {ledger.counts[String(d.cents)] ?? 0}</Txt><Txt size={12} sub>{fmt(d.cents * (ledger.counts[String(d.cents)] ?? 0))}</Txt></View>} />)}
         <Row title="Total in the drawer" right={<Money cents={totalOf(ledger.counts)} weight="700" size={18} />} last />
       </Section>
-      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><Btn title="Correct contents" kind="secondary" icon="create-outline" onPress={() => setSheet('fix')} /><Btn title="Daily float report" kind="secondary" icon="stats-chart-outline" onPress={() => setFloatOpen(true)} style={{ marginTop: 8 }} /><Btn title="Swap my cash" kind="secondary" icon="swap-horizontal-outline" onPress={() => setSwapOpen(true)} style={{ marginTop: 8 }} /></View>
+      <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><Btn title="Correct contents" kind="secondary" icon="create-outline" onPress={() => setSheet('fix')} spot={SPOT.drawerCorrect} /><Btn title="Daily float report" kind="secondary" icon="stats-chart-outline" onPress={() => setFloatOpen(true)} style={{ marginTop: 8 }} spot={SPOT.drawerFloatReport} /><Btn title="Swap my cash" kind="secondary" icon="swap-horizontal-outline" onPress={() => setSwapOpen(true)} style={{ marginTop: 8 }} spot={SPOT.drawerSwapCash} /></View>
       <SwapCashSheet visible={swapOpen} onClose={() => setSwapOpen(false)} />
       <FloatReportSheet visible={floatOpen} onClose={() => setFloatOpen(false)} since={shift.open ? shift.openedAt : undefined} cashTakings={since => cashSince(since, reg, sales)} />
 
@@ -78,10 +80,10 @@ export default function Drawer() {
 
       <Sheet visible={sheet !== 'none'} onClose={done} title={title} full>
         <Txt size={13} sub style={{ textAlign: 'center', marginBottom: 8 }}>{hint}</Txt>
-        {sheet === 'in' || sheet === 'out' || sheet === 'fix' ? <Field kind="text" placeholder={sheet === 'fix' ? 'Reason (optional)' : 'Reason'} value={note} onChangeText={setNote} /> : null}
-        <DenomPad draft={draft} onChange={setDraft} base={base} />
+        {sheet === 'in' || sheet === 'out' || sheet === 'fix' ? <Spot id={SPOT.drawerNote}><Field kind="text" placeholder={sheet === 'fix' ? 'Reason (optional)' : 'Reason'} value={note} onChangeText={setNote} /></Spot> : null}
+        <DenomPad draft={draft} onChange={setDraft} base={base} spots={{ pad: SPOT.drawerDenom, undo: 'cash.undo' }} />
         {sheet === 'close' ? <Txt size={13} style={{ textAlign: 'center', marginTop: 10 }} color={amt === expected ? '#16A34A' : '#B45309'}>{amt === expected ? 'Matches the expected amount.' : `${amt > expected ? 'Over' : 'Short'} by ${fmt(Math.abs(amt - expected))}`}</Txt> : null}
-        <Btn title="Confirm" onPress={() => void submit()} style={{ marginTop: 14 }} />
+        <Btn title="Confirm" onPress={() => void submit()} style={{ marginTop: 14 }} spot={SPOT.drawerConfirm} />
       </Sheet>
     </Page>
   );

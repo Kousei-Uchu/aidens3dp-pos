@@ -473,3 +473,17 @@ On the iPad and on a phone. Use More ▸ Training ▸ Find a past sale.
 7. Check 1: switch to Unfulfilled and open an order; mark an order fulfilled; print a receipt for a past sale.
 8. Check 2: fulfil the wrong order then fix it; print a receipt for a refunded order.
 9. **Most important:** with the Orders screen open, switch tabs, open orders, mark fulfilled, print receipts. Confirm no real data is touched and leaving the course restores the real till exactly as it was.
+
+## T39. Training: Open, paid in/out, count and close (B6, 0134)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Open, paid in/out, count and close.
+
+1. The Guide rings **More**, then **Cash drawer**. Pass: the Cash drawer screen opens, no drawer open yet.
+2. The Guide rings **Open drawer with float**. Pass: the denomination pad opens. Enter a float amount (e.g. $200.00) and tap Confirm. The drawer opens with that float.
+3. The Guide rings **Paid in**. Enter an amount (e.g. $50.00) with a reason, tap Confirm. Pass: Paid in updates, Expected increases.
+4. The Guide rings **Paid out**. Enter an amount (e.g. $20.00) with a reason, tap Confirm. Pass: Paid out updates, Expected decreases.
+5. The Guide rings **Correct contents**. Adjust the counts to match reality, tap Confirm. Pass: ledger updates but Float and Expected do not change.
+6. The Guide rings **Count & close (Z-report)**. Count all notes and coins, tap Confirm. Pass: Z-report appears showing expected vs counted, difference, and full shift summary. Share/save it. The drawer closes.
+7. Check 1: open with float; paid in; paid out; correct contents; count & close.
+8. Check 2: count is short (ledger injection makes count not match expected); paid out more than ledger says (warning appears).
+9. **Most important:** with the Cash drawer screen open, open with float, paid in/out, correct contents, count & close. Confirm no real ledger data is touched and leaving the course restores the real drawer exactly as it was.

@@ -134,6 +134,18 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.refundReplace]: 'sheet_refund',
   [SPOT.refundGo]: 'sheet_refund',
   [SPOT.refundDone]: 'sheet_refund_done',
+  // Cash drawer
+  [SPOT.moreDrawer]: 'tab_more',
+  [SPOT.drawerOpen]: 'page_drawer',
+  [SPOT.drawerPaidIn]: 'page_drawer',
+  [SPOT.drawerPaidOut]: 'page_drawer',
+  [SPOT.drawerCountClose]: 'page_drawer',
+  [SPOT.drawerCorrect]: 'page_drawer',
+  [SPOT.drawerFloatReport]: 'page_drawer',
+  [SPOT.drawerSwapCash]: 'page_drawer',
+  [SPOT.drawerDenom]: 'page_drawer',
+  [SPOT.drawerNote]: 'page_drawer',
+  [SPOT.drawerConfirm]: 'page_drawer',
   // Sign in and passes.
   [SPOT.loginPinpad]: 'overlay_lock',
   [SPOT.loginUnlock]: 'overlay_lock',
@@ -185,6 +197,7 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'gift.how:', screen: 'sheet_gift_sell_details' },
   { prefix: 'saved.row:', screen: 'page_saved' },
   { prefix: 'saved.assign:', screen: 'page_saved' },
+  { prefix: 'drawer.denom:', screen: 'page_drawer' },
 ];
 
 /**
