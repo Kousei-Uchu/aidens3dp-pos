@@ -6,6 +6,7 @@ export const SPOT = {
   cartOpen: 'cart.open',     // the bar that opens the cart on a phone
   tabCheckout: 'tab.checkout',
   tabMore: 'tab.more',
+  tabNotifications: 'tab.notifications', // the Notifications tab at the bottom of the screen
   moreTraining: 'more.training',
   back: 'page.back',           // the Back arrow at the top of every pushed page
   sheetClose: 'sheet.close',   // the Close button of a sheet
@@ -102,6 +103,7 @@ export const SPOT = {
   moreDiagnostics: 'more.diagnostics', // the Support & diagnostics row on the More tab
   diagnosticsSetup: 'diagnostics.setup', // Setup (pair terminal), in Support & diagnostics
   diagnosticsCheck: 'diagnostics.check', // Check reader, in Support & diagnostics
+  diagnosticsSync: 'diagnostics.sync',   // Sync now, in the Sync section of Support & diagnostics
   ordersRefund: 'orders.refund',       // Refund or return, in an order's window
   ordersTabOpen: 'orders.tab.open',    // the Open tab in the Orders segmented control
   ordersTabUnfulfilled: 'orders.tab.unfulfilled', // the Unfulfilled tab in the Orders segmented control
@@ -159,7 +161,7 @@ export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKe
 export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('scan.card:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('saved.assign:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.variant:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj') || id.startsWith('inv.mode:') || id.startsWith('inv.reason:') || id.startsWith('split.equal:') || id.startsWith('gift.preset:') || id.startsWith('gift.how:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'line.variant:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:', 'split.equal:', 'gift.preset:', 'gift.how:', 'saved.row:', 'saved.assign:'] as const;
+export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'line.variant:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:', 'split.equal:', 'gift.preset:', 'gift.how:', 'saved.row:', 'saved.assign:', 'outbox.retry:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -233,6 +235,8 @@ export const giftPresetSpot = (cents: number): string => `gift.preset:${cents}`;
 export const giftHowSpot = (how: 'hand' | 'email'): string => `gift.how:${how}`;
 /** One row on the Saved carts list (the key is the saved cart's own id). */
 export const savedRowSpot = (id: string): string => `saved.row:${id}`;
+/** The Retry button on one stuck sale in the outbox, on the Notifications screen (the key is the outbox item's id). */
+export const outboxRetrySpot = (id: string): string => `outbox.retry:${id}`;
 /** The Assign to a staff member button inside one saved cart's window (the key is the staff member's id). */
 export const savedAssignSpot = (staffId: string): string => `saved.assign:${staffId}`;
 /** The spot id a grid tile carries, or undefined for tile types training does not point at. */

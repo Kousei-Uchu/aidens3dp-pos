@@ -522,3 +522,15 @@ On the iPad and on a phone. Use More ▸ Training ▸ When the reader is not rea
 4. Check 1: the reader starts not paired (reader injection). Open Support & diagnostics, tap Setup (pair terminal). Pass: the row turns to Reader ready, then a card payment goes through.
 5. Check 2: a declined card (decline injection) is taken by trying the card again; an offline reader (reader injection) means the sale is taken by cash.
 6. **Most important:** with the real Zeller reader switched off, run the course. Confirm pairing and checking never touch the real terminal and charging a card never reaches the real reader. Leaving the course restores the real reader state exactly as it was.
+
+## T43. Training: When the internet is down (B6, 0138)
+
+On the iPad and on a phone. Turn the device off wi-fi (airplane mode) first. Use More ▸ Training ▸ When the internet is down.
+
+1. The status bar at the top of the till says **Offline**. The course starts offline on its own, so this should hold even if the device has a connection.
+2. The Guide takes a cash sale: add the Bumble Bee and the Dragon Egg, Charge, Cash, a $20 note, Next, Gave this, No receipt. Pass: the sale completes as usual.
+3. The Guide opens **Notifications**. Pass: the finished sale is listed as queued, and it did not try to reach Shopify.
+4. The Guide opens More ▸ **Support & diagnostics** and taps **Sync now**. Pass: the button responds and nothing is uploaded.
+5. Check 1: take a cash sale offline and find it waiting in the outbox.
+6. Check 2: with the reader offline (No internet), the card is refused, so the sale is taken by cash; and a stuck sale is retried from Notifications.
+7. **Most important:** with the device offline, run the whole course. Confirm nothing is ever uploaded, the real outbox is untouched, and leaving the course restores the real till exactly as it was.

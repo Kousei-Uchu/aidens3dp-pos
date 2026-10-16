@@ -25,6 +25,7 @@ import { drawerDayModule } from './modules/drawer-day';
 import { checkChangeModule } from './modules/check-change';
 import { swapCashModule } from './modules/swap-cash';
 import { readerTroubleModule } from './modules/reader-trouble';
+import { offlineModule } from './modules/offline';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule, drawerDayModule, checkChangeModule, swapCashModule, readerTroubleModule];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule, drawerDayModule, checkChangeModule, swapCashModule, readerTroubleModule, offlineModule];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);

@@ -75,3 +75,11 @@ Everything in this file is a guess from me, not a decision from you.
   practice. New spots `more.diagnostics`, `diagnostics.setup` and `diagnostics.check`. Check 1 pairs a not-paired
   reader then takes a card payment; Check 2 contrasts a declined card (take the payment) with an offline reader (take
   the sale by cash), since an offline reader cannot be "fixed" in practice and cash is the honest fallback.
+- **Offline training (0138, `offline`).** Guess: the whole course starts offline via a new `startSync` module field
+  (`buildSandbox(real, { sync })`), so the status bar, the queue and the lessons are true for the whole run rather
+  than a per-goal injection. A practice outbox (a `train-` fixture sale that is blocked on a person) lets the course
+  show the outbox and how Retry works, seeded by a new `outbox` injection and read into the snapshot as `outbox`.
+  Because `processOutbox` already returns early when there are no credentials, a practice sale is never uploaded and
+  Retry only clears the blocked flag. The card-offline lesson reuses the `reader` injection ("No internet"). New
+  spots: `tab.notifications`, `diagnostics.sync`, and the per-sale `outbox.retry:<id>` (a dynamic spot so the guide
+  points at the right stuck sale if there is ever more than one).

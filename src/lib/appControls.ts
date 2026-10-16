@@ -25,6 +25,7 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.cartCharge]: 'tab_checkout',
   [SPOT.cartOpen]: 'tab_checkout',
   [SPOT.tabCheckout]: 'tab_checkout',
+  [SPOT.tabNotifications]: 'tab_notifications',
   [SPOT.findSearch]: 'tab_checkout',
   [SPOT.findTabs]: 'tab_checkout',
   [SPOT.findBack]: 'tab_checkout',
@@ -77,6 +78,7 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.moreDiagnostics]: 'tab_more',
   [SPOT.diagnosticsSetup]: 'page_diagnostics',
   [SPOT.diagnosticsCheck]: 'page_diagnostics',
+  [SPOT.diagnosticsSync]: 'page_diagnostics',
   [SPOT.savedOpen]: 'page_saved',
   [SPOT.switchLock]: 'tab_more',
   // Payment page.
@@ -209,6 +211,7 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'saved.row:', screen: 'page_saved' },
   { prefix: 'saved.assign:', screen: 'page_saved' },
   { prefix: 'drawer.denom:', screen: 'page_drawer' },
+  { prefix: 'outbox.retry:', screen: 'tab_notifications' },
 ];
 
 /**

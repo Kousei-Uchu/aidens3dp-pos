@@ -77,7 +77,7 @@ export const useTraining = create<Sess>((set, get) => ({
       await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer can fire inside the sandbox
       real = takeSnapshot(useApp.getState()); setTrainingGuard(true);
     }
-    resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff, stock: m?.stock })); set({ sandbox: true, hint: freshHints(), view: null });
+    resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts(); cardMode(get().run?.moduleId); const m = getModule(get().run?.moduleId ?? ''); useApp.setState(buildSandbox(real, { practiceStaff: m?.practiceStaff, stock: m?.stock, sync: m?.startSync })); set({ sandbox: true, hint: freshHints(), view: null });
     const r = get().run; if (r) set({ run: seeIntro(r) });
     return null;
   },

@@ -92,6 +92,8 @@ export type TrainSnap = {
   swap?: SwapSnap;
   /** The reader: whether it is ready, and the message when it is not (a practice reader state during training). */
   reader?: { ready: boolean; message?: string };
+  /** Sales waiting to upload: `stuck` are blocked on a person, `queued` is the whole outbox. */
+  outbox?: { stuck: number; queued: number };
   /** The saved carts still open, and what is typed in the Save cart window's Name box. */
   savedCarts?: SavedSnap[]; savedNameDraft?: string;
   /** The saved cart the cart in the till was opened from, when one was (so a Check can tell an open from a fresh cart). */
@@ -130,6 +132,7 @@ export type Injection =
   | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)
   | { kind: 'stock'; counts: Record<string, number | null> }             // set the stock of these practice variants (null = not tracked) before the goal starts
   | { kind: 'reader'; ready: boolean; message?: string }                 // the practice reader's state: not ready (pairing, offline, unreachable) or ready again
+  | { kind: 'outbox'; stuck?: number; queued?: number }                  // practice sales already waiting to upload: `stuck` are blocked on a person, the rest are just queued
   | { kind: 'pass'; state: 'cancelled' };                               // the practice cashier pass has been cancelled, so the till will not recognise it                 // replace the drawer contents (for example no small change)
 /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
@@ -164,6 +167,8 @@ export type TrainingModule = {
   practiceStaff?: boolean;
   /** Stock for the whole course, by practice variant id (null = not tracked), instead of the fixture's own. */
   stock?: Record<string, number | null>;
+  /** The connection state the whole course starts in (for the offline course): `offline` when it starts with no internet. */
+  startSync?: 'idle' | 'syncing' | 'offline' | 'error';
   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
   info: Demo; show: Demo; guide: Step[];
   check1: Goal[]; check2: Goal[];

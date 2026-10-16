@@ -5,6 +5,7 @@ import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { retryBlocked } from '../lib/sync';
+import { outboxRetrySpot } from '../lib/trainingSpots';
 
 const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline' };
 const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/offline-sync', stock: 'fix/stock-mismatch', reader: 'fix/reader', pass: 'fix/locked-out', refund: 'orders/refunds' };
@@ -19,7 +20,7 @@ export default function Notifications() {
         <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
       <FlatList data={list} keyExtractor={n => n.id} ListEmptyComponent={<Empty icon="notifications-outline" title="All clear" sub="Sync failures, queued sales, stock and reader issues show up here." />}
         ListHeaderComponent={<View>
-          {stuck.map(o => <Row key={o.id} icon="warning-outline" danger title={`Sale ${o.sale.orderName ?? o.id.slice(0, 8)} needs attention`} sub={o.error} right={<Btn small title="Retry" onPress={() => retryBlocked(o.id)} />} />)}
+          {stuck.map(o => <Row key={o.id} icon="warning-outline" danger title={`Sale ${o.sale.orderName ?? o.id.slice(0, 8)} needs attention`} sub={o.error} right={<Btn small title="Retry" spot={outboxRetrySpot(o.id)} onPress={() => retryBlocked(o.id)} />} />)}
           {outbox.length - stuck.length > 0 ? <Row icon="time-outline" title={`${outbox.length - stuck.length} sale(s) queued`} sub="Uploads when the connection is back." right={<Money cents={outbox.reduce((s, o) => s + o.sale.netCents, 0)} />} /> : null}
           {low > 0 ? <Row icon="alert-circle-outline" title={`${low} item(s) low on stock (2 or fewer)`} onPress={() => nav.setTab('inventory')} /> : null}
           {neg > 0 ? <Row icon="alert-circle-outline" title={`${neg} item(s) with negative stock`} onPress={() => nav.setTab('inventory')} /> : null}</View>}
