@@ -53,6 +53,8 @@ export type GiftCheck = { code: string; found: boolean; enabled: boolean; balanc
 export type LookupMode = 'price' | 'stock';
 /** The variant that was found in the Lookup sheet. */
 export type LookupResult = { variantId: string; productTitle: string; stock: number | null; priceCents: number };
+/** The Swap my cash window: what the person holds, whether a swap was found, and why the plan ended. */
+export type SwapSnap = { own: number; found: boolean; stopped?: 'done' | 'no-gain' | 'nothing-held' | 'time' };
 /** One saved cart as training sees it: its name, what is in it, who it is assigned to, and whether it is still open. */
 export type SavedSnap = { id: string; name: string; variants: string[]; qty: number; assignedTo?: string; status: 'open' | 'void'; employee?: string };
 /** One cart line as training sees it. */
@@ -86,6 +88,8 @@ export type TrainSnap = {
   giftCode?: string; giftCheck?: GiftCheck;
   /** The Lookup sheet: which mode (price/stock) and what variant was found. */
   lookupMode?: LookupMode; lookupResult?: LookupResult;
+  /** The Swap my cash window: what the person holds, whether a swap was found, and why the plan ended. */
+  swap?: SwapSnap;
   /** The saved carts still open, and what is typed in the Save cart window's Name box. */
   savedCarts?: SavedSnap[]; savedNameDraft?: string;
   /** The saved cart the cart in the till was opened from, when one was (so a Check can tell an open from a fresh cart). */

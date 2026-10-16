@@ -14,6 +14,9 @@ import { applyEntry, draftCounts, newEntry, summariseCounts, totalOf, type Draft
 import { planSwap, swapIsValid, type SwapPlan } from '../lib/cashSwap';
 import { dayScript } from '../lib/floatPlan';
 import { fmt } from '../lib/money';
+import { Spot } from '../ui/Spot';
+import { SPOT } from '../lib/trainingSpots';
+import { setSwapProbe } from '../lib/trainingProbe';
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
@@ -28,6 +31,10 @@ export function SwapCashSheet({ visible, onClose }: { visible: boolean; onClose:
     setBusy(true); const t = setTimeout(() => { setPlan(planSwap(ledger.counts, own, dayScript(profile), { budgetMs: 2000 })); setBusy(false); }, 350); return () => clearTimeout(t);
   }, [visible, own, ledger.counts, profile]);
   const found = !!plan && swapIsValid(ledger.counts, plan);
+  useEffect(() => {
+    if (!visible) { setSwapProbe(undefined); return; }
+    setSwapProbe({ own: totalOf(own), found, stopped: plan?.stopped });
+  }, [visible, own, found, plan]);
   const record = async () => {
     if (!plan || !found) return;
     if (!(await confirm('Write this swap into the ledger?', `The drawer takes in ${summariseCounts(plan.give)} and gives out ${summariseCounts(plan.take)} (${fmt(totalOf(plan.give))} each way). Only do this once the notes and coins have really changed hands.`, 'Record it'))) return;
@@ -35,10 +42,10 @@ export function SwapCashSheet({ visible, onClose }: { visible: boolean; onClose:
     patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, newEntry('adjust', delta, { staff: currentStaff()?.name, note: 'Swapped with own cash' })) }); onClose();
   };
   return (
-    <Sheet visible={visible} onClose={onClose} title="Swap my cash" full>
+    <Sheet visible={visible} onClose={onClose} title="Swap my cash" full screen="sheet_drawer_swap">
       <View style={{ gap: 14 }}>
         <Txt size={13} sub style={{ textAlign: 'center' }}>Tap the notes and coins you have on you. It suggests which to put in the drawer and which to take out, even value both ways, so the drawer copes better with the next sales.</Txt>
-        <DenomPad draft={draft} onChange={setDraft} totalLabel="I have" />
+        <DenomPad draft={draft} onChange={setDraft} totalLabel="I have" spots={{ pad: SPOT.swapPad, undo: SPOT.cashUndo }} />
         {!totalOf(own) ? <Txt size={13} sub style={{ textAlign: 'center' }}>Nothing entered yet.</Txt> : busy || !plan ? <Txt sub style={{ textAlign: 'center', paddingVertical: 12 }}>Working it out…</Txt> : found ? <>
           <View style={{ backgroundColor: c.accent + '18', borderRadius: 14, padding: 14, gap: 8, borderWidth: 1.5, borderColor: c.accent }}>
             <Txt weight="700" size={17}>Swap {fmt(totalOf(plan.give))}</Txt>
@@ -47,9 +54,9 @@ export function SwapCashSheet({ visible, onClose }: { visible: boolean; onClose:
           </View>
           <Txt size={13} sub style={{ textAlign: 'center' }}>Played against a typical day of cash sales, the drawer could give exact change for about {pct(plan.okAfter)} of them{Math.abs(plan.okAfter - plan.okBefore) >= 0.01 ? ` (now ${pct(plan.okBefore)})` : ', the same as now'}, and would hold {plan.piecesAfter} notes and coins instead of {plan.piecesBefore}.</Txt>
           {plan.stopped === 'time' ? <Txt size={12} sub style={{ textAlign: 'center' }}>It ran out of thinking time, so this is the best swap it found, not the only one.</Txt> : null}
-          <Btn title="I swapped it: record it" onPress={() => void record()} />
+          <Btn title="I swapped it: record it" onPress={() => void record()} spot={SPOT.swapRecord} />
         </> : <Txt size={14} style={{ textAlign: 'center' }}>{plan.stopped === 'no-gain' ? 'Nothing worth swapping: the drawer has nothing it can spare that would help, or it already copes well with these notes in it.' : 'Nothing to swap.'}</Txt>}
-        <Btn title="Close" kind="secondary" onPress={onClose} />
+        <Btn title="Close" kind="secondary" onPress={onClose} spot={SPOT.swapClose} />
       </View>
     </Sheet>
   );

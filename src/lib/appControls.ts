@@ -151,6 +151,9 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.checkChangeContinue]: 'sheet_check_change',
   [SPOT.checkChangeAmountBtn]: 'sheet_check_change',
   [SPOT.checkChangeClose]: 'sheet_check_change',
+  [SPOT.swapPad]: 'sheet_drawer_swap',
+  [SPOT.swapRecord]: 'sheet_drawer_swap',
+  [SPOT.swapClose]: 'sheet_drawer_swap',
   // Sign in and passes.
   [SPOT.loginPinpad]: 'overlay_lock',
   [SPOT.loginUnlock]: 'overlay_lock',

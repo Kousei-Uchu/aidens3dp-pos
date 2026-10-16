@@ -20,6 +20,9 @@ let customerQuery = ''; export const setCustomerQuery = (q: string): void => { c
 /** The Lookup sheet publishes its mode (price/stock) and the variant that was found. */
 let lookupMode: LookupMode | undefined; export const setLookupModeProbe = (m: LookupMode | undefined): void => { lookupMode = m; }; export const getLookupModeProbe = (): LookupMode | undefined => lookupMode;
 let lookupResult: { variantId: string; productTitle: string; stock: number | null; priceCents: number } | undefined; export const setLookupResultProbe = (r: typeof lookupResult): void => { lookupResult = r; }; export const getLookupResultProbe = (): typeof lookupResult => lookupResult;
+/** The Swap my cash window publishes what the person holds, whether a swap was found, and why the plan stopped. */
+export type SwapProbe = { own: number; found: boolean; stopped?: 'done' | 'no-gain' | 'nothing-held' | 'time' };
+let swapProbe: SwapProbe | undefined; export const setSwapProbe = (s: SwapProbe | undefined): void => { swapProbe = s; }; export const getSwapProbe = (): SwapProbe | undefined => swapProbe;
 export type CashProbe = { received: number; due: number; step: 'receive' | 'change' };
 let cashProbe: CashProbe | undefined; export const setCashProbe = (c: CashProbe | undefined): void => { cashProbe = c; }; export const getCashProbe = (): CashProbe | undefined => cashProbe;
 const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (source: string, v: string): void => { priceDrafts[source] = v; }; export const getPriceDraft = (): string => Object.values(priceDrafts).find(Boolean) ?? '';

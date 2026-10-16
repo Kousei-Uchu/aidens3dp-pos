@@ -61,3 +61,10 @@ Everything in this file is a guess from me, not a decision from you.
   does not return it, leave the field absent rather than inventing digits.
 - **Existing `em` and `en` dashes in the app's own strings** (for example the practice terminal's copy) are
   changed only where they are not a module's content, per "ignore ALL MODULES".
+- **Swap my cash training (0136, `swap-cash`).** Guess: the Swap my cash window gets its own spots
+  (`swap.pad`, `swap.record`, `swap.close`) and publishes what you hold and whether a swap was found
+  (`SwapSnap` in `src/lib/trainingProbe.ts`). The Guide and Checks watch that probe, because the swap is worked
+  out asynchronously and a plain "was the button tapped" test cannot tell whether the result helped. Recording
+  goes through the till's own native confirm, so the course ends at the record tap rather than trying to ring a
+  native prompt. Check 2 uses a practice drawer swamped in $5s (a ledger injection) so that entering a $50
+  genuinely finds nothing worth swapping.

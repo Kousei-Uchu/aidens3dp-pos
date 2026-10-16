@@ -500,3 +500,14 @@ On the iPad and on a phone. Use More ▸ Training ▸ Check change before taking
 6. Check 1: use cart total and Continue; Worth it with $20+$5; Ask for card with $50; Give as change with $20.
 7. Check 2: with empty drawer ledger (ledger injection), Check Change shows "The drawer ledger is empty" message; with Smart change off, the note says "using fewest pieces".
 8. **Most important:** with the Check Change sheet open, enter amounts and customer cash. Confirm no real ledger data is touched and leaving the course restores the real till exactly as it was.
+
+## T41. Training: Swap my cash (B6, 0136)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Swap my cash.
+
+1. The Guide rings the **Cash drawer** button on the More tab, then rings **Swap my cash**. Pass: the Swap my cash window opens with the denomination pad.
+2. The Guide taps a $50 note on the pad. Pass: the window works out an even swap showing what goes in (your $50) and what comes out (smaller notes and coins), the same value both ways.
+3. The Guide taps **I swapped it: record it** and confirms. Pass: it writes a Contents corrected entry; the float and the expected amount are exactly as they were.
+4. Check 1: open Swap my cash, enter what you hold, read the swap, and record it.
+5. Check 2: with a drawer swamped in $5s (ledger injection), entering a $50 says there is nothing worth swapping; and an even swap never changes the float or the Z-report.
+6. **Most important:** with the Swap my cash window open, enter and swap your own notes and coins. Confirm no real ledger data is touched and leaving the course restores the real till exactly as it was.
