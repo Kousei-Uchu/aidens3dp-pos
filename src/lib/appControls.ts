@@ -74,6 +74,9 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.moreTraining]: 'tab_more',
   [SPOT.moreOrders]: 'tab_more',
   [SPOT.moreSaved]: 'tab_more',
+  [SPOT.moreDiagnostics]: 'tab_more',
+  [SPOT.diagnosticsSetup]: 'page_diagnostics',
+  [SPOT.diagnosticsCheck]: 'page_diagnostics',
   [SPOT.savedOpen]: 'page_saved',
   [SPOT.switchLock]: 'tab_more',
   // Payment page.

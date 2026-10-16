@@ -7,6 +7,7 @@ import { checkReader, getTerminal, pairReader } from '../zellerBridge';
 import { attemptRef, describeEvent, startCharge, startRefund } from '../lib/zeller';
 import { processOutbox, pollShared } from '../lib/sync';
 import { fmt } from '../lib/money';
+import { SPOT } from '../lib/trainingSpots';
 
 /** Support / Diagnostics ▸ Zeller: Setup (pairing) and a $1 test purchase (+ refund). */
 export default function Diagnostics() {
@@ -21,8 +22,8 @@ export default function Diagnostics() {
   return (
     <Page title="Support & diagnostics" onBack={nav.pop} helpId="fix/reader">
       <Section title="Zeller reader"><Row title={z.ready ? 'Reader ready' : 'Reader issue'} sub={z.message} icon={z.ready ? 'checkmark-circle' : 'alert-circle'} />
-        <View style={{ padding: 16, gap: 8 }}><Btn title="Setup (pair terminal)" icon="link-outline" kind="secondary" busy={busy} onPress={async () => { const e = await pairReader(); add(e ? `Setup: ${e}` : 'Paired ✔'); }} />
-          <Btn title="Check reader" icon="refresh" kind="secondary" onPress={async () => add((await checkReader()) ? 'Reader ready ✔' : useApp.getState().zeller.message ?? 'Not ready')} />
+        <View style={{ padding: 16, gap: 8 }}><Btn title="Setup (pair terminal)" icon="link-outline" kind="secondary" busy={busy} spot={SPOT.diagnosticsSetup} onPress={async () => { const e = await pairReader(); add(e ? `Setup: ${e}` : 'Paired ✔'); }} />
+          <Btn title="Check reader" icon="refresh" kind="secondary" spot={SPOT.diagnosticsCheck} onPress={async () => add((await checkReader()) ? 'Reader ready ✔' : useApp.getState().zeller.message ?? 'Not ready')} />
           <Btn title="Test purchase $1.00" icon="card-outline" busy={busy} onPress={() => void test()} disabled={!z.ready} />{lastRef ? <Btn title="Refund the $1.00 test" kind="secondary" onPress={() => void refund()} /> : null}
           <Txt size={12} sub>After reinstalling the app you must re-pair the terminal and re-enter Shopify credentials.</Txt></View></Section>
       <Section title="Sync"><Row title={`Status: ${sync.state}`} sub={sync.error ?? (sync.at ? `Last ${new Date(sync.at).toLocaleTimeString()}` : undefined)} /><Row title={`${outbox.length} sale(s) queued`} last right={<Btn small title="Sync now" onPress={() => { void processOutbox(); void pollShared(); }} />} /></Section>

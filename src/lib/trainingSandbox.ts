@@ -106,9 +106,10 @@ export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?
 }
 /** What each injection does to the practice state: a cart injection replaces the cart, a ledger injection replaces the drawer. Card declines are not state: the session hands them to the fake terminal. Nothing else changes. */
 export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined): Swap {
-  let stock: Record<string, number | null> | undefined; let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined;
+  let stock: Record<string, number | null> | undefined; let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined; let reader: { ready: boolean; message?: string } | undefined;
   for (const i of inj ?? []) {
     if (i.kind === 'staff') who = i.who;
+    if (i.kind === 'reader') reader = { ready: i.ready, message: i.message };
     if (i.kind === 'stock') stock = { ...stock, ...i.counts };
     if (i.kind === 'cart') { cart = cart ?? emptyCart(); if (i.discountPct) cart = { ...cart, discount: { kind: 'pct', value: i.discountPct, label: `${i.discountPct}% off` } }; for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) { cart = addVariant(cart, v, it.qty, true); const ln = cart.lines.find(l => l.variantId === v.id); if (ln && it.priceCents !== undefined) cart = setItemPrice(cart, ln.id, it.priceCents, { scope: 'qty', qty: ln.qty }); if (ln && it.adjust) cart = setLineAdjust(cart, ln.id, { finalCents: it.adjust.finalCents, seenQty: it.adjust.seenQty, seenGrossCents: v.priceCents * it.adjust.seenQty, seenDiscountCents: 0 }); } } const cu = i.customer ? FIXTURE_CUSTOMERS.find(c => c.id === i.customer) : undefined; if (cu) cart = { ...cart, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }; }
     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
@@ -118,6 +119,7 @@ export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined)
   // A staff injection only applies to practice staff, so a course without them can never lock the real till by mistake.
   if (who === 'locked' && out.settings.staff.length) out = { ...out, staffId: undefined, unlocked: false };
   else if (who && who !== 'locked' && out.settings.staff.some(m => m.id === (who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN))) out = { ...out, staffId: who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN, unlocked: true };
+  if (reader) out = { ...out, zeller: { ready: reader.ready, ...(reader.message ? { message: reader.message } : {}) } };
   return out;
 }
 /** A card attempt counts as "still waiting on the reader" for this long after it starts (the same window the screensaver and staff lock use). */

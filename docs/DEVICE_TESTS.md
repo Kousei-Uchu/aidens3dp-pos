@@ -511,3 +511,14 @@ On the iPad and on a phone. Use More ▸ Training ▸ Swap my cash.
 4. Check 1: open Swap my cash, enter what you hold, read the swap, and record it.
 5. Check 2: with a drawer swamped in $5s (ledger injection), entering a $50 says there is nothing worth swapping; and an even swap never changes the float or the Z-report.
 6. **Most important:** with the Swap my cash window open, enter and swap your own notes and coins. Confirm no real ledger data is touched and leaving the course restores the real till exactly as it was.
+
+## T42. Training: When the reader is not ready (B6, 0137)
+
+On the iPad and on a phone. Use More ▸ Training ▸ When the reader is not ready.
+
+1. The Guide rings the **Support & diagnostics** row on the More tab. Pass: the Support & diagnostics page opens with the reader row and the two buttons.
+2. The Guide rings **Check reader**, then **Setup (pair terminal)**. Pass: the reader row says Reader ready, and the real Zeller terminal does not change.
+3. The Show plays the Reader issue banner on the Payment page, the fix, and then a declined card (Not approved).
+4. Check 1: the reader starts not paired (reader injection). Open Support & diagnostics, tap Setup (pair terminal). Pass: the row turns to Reader ready, then a card payment goes through.
+5. Check 2: a declined card (decline injection) is taken by trying the card again; an offline reader (reader injection) means the sale is taken by cash.
+6. **Most important:** with the real Zeller reader switched off, run the course. Confirm pairing and checking never touch the real terminal and charging a card never reaches the real reader. Leaving the course restores the real reader state exactly as it was.

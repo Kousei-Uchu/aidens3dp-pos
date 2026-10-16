@@ -17,7 +17,7 @@ export const ZellerRoot = ({ children }: { children: React.ReactNode }) => (
 );
 
 export async function checkReader(): Promise<boolean> {
-  if (isTraining()) return true; // the practice reader is always ready, and the real one must not overwrite the practice status
+  if (isTraining()) return useApp.getState().zeller.ready; // the practice reader, not the real one: a course can make it unready, and pairing fixes it
   const set = useApp.getState().set;
   if (!handle) { set({ zeller: { ready: false, message: 'Reader starting…' } }); return false; }
   const r: any = await handle.initialise();
@@ -31,6 +31,7 @@ export async function checkReader(): Promise<boolean> {
   return true;
 }
 export async function pairReader(): Promise<string | null> {
+  if (isTraining()) { useApp.getState().set({ zeller: { ready: true } }); return null; } // never pair the real reader during practice
   if (!handle) return 'Reader not started yet.';
   const r: any = await handle.setup();
   if (r instanceof Error) return r.message || 'Setup failed';

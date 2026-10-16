@@ -99,6 +99,9 @@ export const SPOT = {
   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
   moreOrders: 'more.orders',           // the Orders row on the More tab
+  moreDiagnostics: 'more.diagnostics', // the Support & diagnostics row on the More tab
+  diagnosticsSetup: 'diagnostics.setup', // Setup (pair terminal), in Support & diagnostics
+  diagnosticsCheck: 'diagnostics.check', // Check reader, in Support & diagnostics
   ordersRefund: 'orders.refund',       // Refund or return, in an order's window
   ordersTabOpen: 'orders.tab.open',    // the Open tab in the Orders segmented control
   ordersTabUnfulfilled: 'orders.tab.unfulfilled', // the Unfulfilled tab in the Orders segmented control

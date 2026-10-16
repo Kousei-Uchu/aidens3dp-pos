@@ -90,6 +90,8 @@ export type TrainSnap = {
   lookupMode?: LookupMode; lookupResult?: LookupResult;
   /** The Swap my cash window: what the person holds, whether a swap was found, and why the plan ended. */
   swap?: SwapSnap;
+  /** The reader: whether it is ready, and the message when it is not (a practice reader state during training). */
+  reader?: { ready: boolean; message?: string };
   /** The saved carts still open, and what is typed in the Save cart window's Name box. */
   savedCarts?: SavedSnap[]; savedNameDraft?: string;
   /** The saved cart the cart in the till was opened from, when one was (so a Check can tell an open from a fresh cart). */
@@ -127,6 +129,7 @@ export type Injection =
   | { kind: 'ledger'; counts: Record<string, number> }
   | { kind: 'staff'; who: 'casey' | 'morgan' | 'locked' }              // start signed in as a practice person, or on the Sign in screen (practiceStaff courses only)
   | { kind: 'stock'; counts: Record<string, number | null> }             // set the stock of these practice variants (null = not tracked) before the goal starts
+  | { kind: 'reader'; ready: boolean; message?: string }                 // the practice reader's state: not ready (pairing, offline, unreachable) or ready again
   | { kind: 'pass'; state: 'cancelled' };                               // the practice cashier pass has been cancelled, so the till will not recognise it                 // replace the drawer contents (for example no small change)
 /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';

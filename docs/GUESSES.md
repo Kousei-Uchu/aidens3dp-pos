@@ -68,3 +68,10 @@ Everything in this file is a guess from me, not a decision from you.
   goes through the till's own native confirm, so the course ends at the record tap rather than trying to ring a
   native prompt. Check 2 uses a practice drawer swamped in $5s (a ledger injection) so that entering a $50
   genuinely finds nothing worth swapping.
+- **Reader trouble training (0137, `reader-trouble`).** Guess: the practice reader is a state on the app (`zeller`),
+  set by a new `reader` injection and read into the snapshot as `reader`, so the course can show it not ready and
+  watch it become ready. `checkReader` and `pairReader` are made practice-aware (they read and set the practice
+  reader and never touch the real SDK handle), because `pairReader` previously called the real terminal even during
+  practice. New spots `more.diagnostics`, `diagnostics.setup` and `diagnostics.check`. Check 1 pairs a not-paired
+  reader then takes a card payment; Check 2 contrasts a declined card (take the payment) with an offline reader (take
+  the sale by cash), since an offline reader cannot be "fixed" in practice and cash is the honest fallback.
