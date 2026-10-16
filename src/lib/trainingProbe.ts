@@ -30,6 +30,8 @@ const priceDrafts: Record<string, string> = {}; export const setPriceDraft = (so
 let discountDraft = ''; export const setDiscountDraftProbe = (v: string): void => { discountDraft = v; }; export const getDiscountDraft = (): string => discountDraft;
 export type CustomerDraft = { first: string; last: string; email: string; phone: string };
 let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
+/** What is typed in the Customers page's New / Edit customer form (undefined when that form is not open). */
+let customersDraft: CustomerDraft | undefined; export const setCustomersDraftProbe = (d: CustomerDraft | undefined): void => { customersDraft = d; }; export const getCustomersDraft = (): CustomerDraft | undefined => customersDraft;
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
 /** What is typed in the Save cart window's Name box (empty when that window is closed). */
 let savedName = ''; export const setSavedNameProbe = (v: string): void => { savedName = v; }; export const getSavedNameProbe = (): string => savedName;

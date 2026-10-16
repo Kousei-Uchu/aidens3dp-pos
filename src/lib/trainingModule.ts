@@ -57,6 +57,8 @@ export type LookupResult = { variantId: string; productTitle: string; stock: num
 export type SwapSnap = { own: number; found: boolean; stopped?: 'done' | 'no-gain' | 'nothing-held' | 'time' };
 /** One saved cart as training sees it: its name, what is in it, who it is assigned to, and whether it is still open. */
 export type SavedSnap = { id: string; name: string; variants: string[]; qty: number; assignedTo?: string; status: 'open' | 'void'; employee?: string };
+/** One customer as training sees it on the Customers page: enough to tell an edit from a fresh customer. */
+export type CustomerSnap = { id: string; name: string; email?: string; phone?: string; note?: string };
 /** One cart line as training sees it. */
 export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** The line's own item price (cents) and whether it covers every one in the cart, and its whole-line price (cents). */ overrideCents?: number; overrideAll?: boolean; adjustCents?: number; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
@@ -96,6 +98,8 @@ export type TrainSnap = {
   outbox?: { stuck: number; queued: number };
   /** The saved carts still open, and what is typed in the Save cart window's Name box. */
   savedCarts?: SavedSnap[]; savedNameDraft?: string;
+  /** The Customers page: everyone the till knows (the practice list), and what is typed in its New / Edit customer form. */
+  customers?: CustomerSnap[]; customersDraft?: { first: string; last: string; email: string; phone: string };
   /** The saved cart the cart in the till was opened from, when one was (so a Check can tell an open from a fresh cart). */
   cartSavedFrom?: string;
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };

@@ -534,3 +534,14 @@ On the iPad and on a phone. Turn the device off wi-fi (airplane mode) first. Use
 5. Check 1: take a cash sale offline and find it waiting in the outbox.
 6. Check 2: with the reader offline (No internet), the card is refused, so the sale is taken by cash; and a stuck sale is retried from Notifications.
 7. **Most important:** with the device offline, run the whole course. Confirm nothing is ever uploaded, the real outbox is untouched, and leaving the course restores the real till exactly as it was.
+
+## T44. Training: Customers on file (B6, 0139)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Customers on file.
+
+1. The Guide rings the **Customers** row on the More tab, then the **New customer** button, then **Start sale** and **Edit** inside a customer's window. Pass: the Customers page opens and a customer's window shows both buttons.
+2. The Guide opens Sam Rivera's row, taps **Edit**, adds a mobile number, taps **Save**, then **Start sale**. Pass: Sam's mobile is kept and the till lands on Checkout with Sam attached to the sale.
+3. The Show plays the Customers page, the search box narrowing the list, a row opening, Start sale landing on Checkout, and the New customer form being filled in and saved.
+4. Check 1: create a customer, then start a sale from the customer you just made. Pass: the new row appears at the top of the list and Start sale puts them on the sale.
+5. Check 2: Sam Rivera's mobile is missing, so add it (Edit then Save); and with Priya's items already on the till (cart injection), open Priya's row and tap Start sale so she is put on the sale that is already there.
+6. **Most important:** while signed in to the real shop, make a practice customer and edit one. Confirm nothing is sent to Shopify, the real customer list is exactly as it was, and leaving the course restores the real till exactly as it was.

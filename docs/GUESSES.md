@@ -83,3 +83,15 @@ Everything in this file is a guess from me, not a decision from you.
   Retry only clears the blocked flag. The card-offline lesson reuses the `reader` injection ("No internet"). New
   spots: `tab.notifications`, `diagnostics.sync`, and the per-sale `outbox.retry:<id>` (a dynamic spot so the guide
   points at the right stuck sale if there is ever more than one).
+- **Customers list training (0139, `customers-list`).** Guess: the course covers the Customers page (More ▸ Customers),
+  not the cart's customer window (that is the older `customer` course), because "manage the customer list" is about the
+  page. The page's own row window and New / Edit form are inline sheets, so following the saved-carts precedent their
+  controls fold onto the page itself (`screenOfSpot` = `page_customers`) rather than becoming new graph sheets; the two
+  buttons are window spots (`customers.start`, `customers.edit`, `customers.form`, `customers.save`) so a step that
+  points at them must say windows are allowed, while the New customer button, the search box and the rows are page
+  spots. New dynamic spot prefix `customers.row:<id>`, deliberately distinct from the cart's `customer.row:<id>`. The
+  page is made practice-aware: it saves a customer locally with a `train-cu-new-<time>` id and never calls Shopify, and
+  it publishes the form's contents through a new `customersDraft` probe, with the practice list read into the snapshot
+  as `customers`. Check 1 creates a customer then starts a sale from them; Check 2 fixes Sam Rivera's missing mobile
+  and, with a cart injection, starts a sale from Priya without losing her items. The edit lesson is pinned to Sam (a
+  fixture with no mobile) so "has a mobile now" is unambiguous, where a freshly made customer could already have one.
