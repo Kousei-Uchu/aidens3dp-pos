@@ -127,17 +127,19 @@ export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?
 }
 /** What each injection does to the practice state: a cart injection replaces the cart, a ledger injection replaces the drawer. Card declines are not state: the session hands them to the fake terminal. Nothing else changes. */
 export function applyInjections(sw: Swap, inj: readonly Injection[] | undefined): Swap {
-  let stock: Record<string, number | null> | undefined; let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined; let reader: { ready: boolean; message?: string } | undefined; let outbox: { stuck?: number; queued?: number } | undefined;
+  let stock: Record<string, number | null> | undefined; let cart: Cart | undefined; let ledger: CashLedger | undefined; let who: 'casey' | 'morgan' | 'locked' | undefined; let reader: { ready: boolean; message?: string } | undefined; let outbox: { stuck?: number; queued?: number } | undefined; let itemSets: { id: string; priceCents?: number; sku?: string; barcode?: string; stock?: number | null }[] | undefined;
   for (const i of inj ?? []) {
     if (i.kind === 'staff') who = i.who;
     if (i.kind === 'reader') reader = { ready: i.ready, message: i.message };
     if (i.kind === 'outbox') outbox = { stuck: i.stuck, queued: i.queued };
     if (i.kind === 'stock') stock = { ...stock, ...i.counts };
+    if (i.kind === 'items') itemSets = [...(itemSets ?? []), ...i.set];
     if (i.kind === 'cart') { cart = cart ?? emptyCart(); if (i.discountPct) cart = { ...cart, discount: { kind: 'pct', value: i.discountPct, label: `${i.discountPct}% off` } }; for (const it of i.items) { const v = sw.data.variants[it.variantId]; if (v) { cart = addVariant(cart, v, it.qty, true); const ln = cart.lines.find(l => l.variantId === v.id); if (ln && it.priceCents !== undefined) cart = setItemPrice(cart, ln.id, it.priceCents, { scope: 'qty', qty: ln.qty }); if (ln && it.adjust) cart = setLineAdjust(cart, ln.id, { finalCents: it.adjust.finalCents, seenQty: it.adjust.seenQty, seenGrossCents: v.priceCents * it.adjust.seenQty, seenDiscountCents: 0 }); } } const cu = i.customer ? FIXTURE_CUSTOMERS.find(c => c.id === i.customer) : undefined; if (cu) cart = { ...cart, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }; }
     else if (i.kind === 'ledger') ledger = { ...emptyLedger(), counts: { ...i.counts } };
   }
   if (stock) { const st = stock; sw = { ...sw, data: { ...sw.data, variants: Object.fromEntries(Object.entries(sw.data.variants).map(([id, v]) => [id, id in st ? { ...v, stock: st[id] } : v])) } }; }
   let out: Swap = cart || ledger || outbox ? { ...sw, pos: { ...sw.pos, ...(cart ? { cart } : {}), ...(ledger ? { ledger } : {}), ...(outbox ? { outbox: fixtureOutbox(outbox) } : {}) } } : sw;
+  if (itemSets) for (const it of itemSets) { const cur = out.data.variants[it.id]; if (cur) out = { ...out, data: { ...out.data, variants: { ...out.data.variants, [it.id]: { ...cur, ...(it.priceCents !== undefined ? { priceCents: it.priceCents } : {}), ...(it.sku !== undefined ? { sku: it.sku } : {}), ...(it.barcode !== undefined ? { barcode: it.barcode } : {}), ...(it.stock !== undefined ? { stock: it.stock } : {}) } } } }; }
   // A staff injection only applies to practice staff, so a course without them can never lock the real till by mistake.
   if (who === 'locked' && out.settings.staff.length) out = { ...out, staffId: undefined, unlocked: false };
   else if (who && who !== 'locked' && out.settings.staff.some(m => m.id === (who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN))) out = { ...out, staffId: who === 'casey' ? PRACTICE_CASEY : PRACTICE_MORGAN, unlocked: true };

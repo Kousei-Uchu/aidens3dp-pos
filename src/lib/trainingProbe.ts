@@ -1,7 +1,7 @@
 // Location: src/lib/trainingProbe.ts
 // A small read-only window onto Checkout's own screen state (B6): which tab and level it is on, and what has been typed.
 // Checkout publishes here; training reads it. Checkout also registers a reset so a practice run always starts from a clean Checkout.
-import type { GiftCheck, GiftSale, InvSnap, LookupMode } from './trainingModule';
+import type { GiftCheck, GiftSale, InvSnap, ItemDraft, LookupMode } from './trainingModule';
 export type Typed = { search?: string; keypad?: string };
 /** The Inventory screen publishes here so training can tell which filter is on, what is searched, and what is keyed in the item window. */
 let inv: InvSnap | undefined; export const setInvProbe = (x: InvSnap): void => { inv = x; }; export const clearInvProbe = (): void => { inv = undefined; }; export const getInvProbe = (): InvSnap | undefined => inv;
@@ -32,6 +32,8 @@ export type CustomerDraft = { first: string; last: string; email: string; phone:
 let customerDraft: CustomerDraft | undefined; export const setCustomerDraftProbe = (d: CustomerDraft | undefined): void => { customerDraft = d; }; export const getCustomerDraft = (): CustomerDraft | undefined => customerDraft;
 /** What is typed in the Customers page's New / Edit customer form (undefined when that form is not open). */
 let customersDraft: CustomerDraft | undefined; export const setCustomersDraftProbe = (d: CustomerDraft | undefined): void => { customersDraft = d; }; export const getCustomersDraft = (): CustomerDraft | undefined => customersDraft;
+/** What is typed on the Create or Edit item page (undefined when neither is open). */
+let itemDraft: ItemDraft | undefined; export const setItemDraftProbe = (d: ItemDraft | undefined): void => { itemDraft = d; }; export const getItemDraft = (): ItemDraft | undefined => itemDraft;
 let noteDraft = ''; export const setNoteDraftProbe = (q: string): void => { noteDraft = q; }; export const getNoteDraft = (): string => noteDraft;
 /** What is typed in the Save cart window's Name box (empty when that window is closed). */
 let savedName = ''; export const setSavedNameProbe = (v: string): void => { savedName = v; }; export const getSavedNameProbe = (): string => savedName;

@@ -79,6 +79,14 @@ export const SPOT = {
   customersEdit: 'customers.edit',     // Edit, in a customer's window on the Customers page
   customersForm: 'customers.form',     // the boxes in the New / Edit customer window on the Customers page (ring the whole form)
   customersSave: 'customers.save',     // Save, in the New / Edit customer window on the Customers page
+  // Items (More, then Items): the catalogue the till sells from.
+  moreItems: 'more.items',             // the Items row on the More tab
+  itemsNew: 'items.new',               // the Create item button on the Items screen
+  itemsSearch: 'items.search',         // the search box on the Items screen
+  itemsForm: 'items.form',             // the form on the Create item page (ring the whole form)
+  itemsCreate: 'items.create',         // the Create item button on the Create item page
+  itemsEditForm: 'items.edit.form',    // the form on the Edit item page (ring the whole form)
+  itemsEditSave: 'items.edit.save',    // the Save to Shopify button on the Edit item page
   discountKeys: 'discount.keys',       // the number keys in the Discount window (any key)
   discountApply: 'discount.apply',     // Apply discount, in the Discount window
   cashPad: 'cash.pad',                 // the notes and coins pad in the Cash window (a tap on one is `cash.denom:<cents>`)
@@ -169,7 +177,7 @@ export const WINDOW_SPOTS: readonly string[] = [SPOT.sheetClose, SPOT.discountKe
 export const isWindowSpot = (id: string): boolean => WINDOW_SPOTS.includes(id) || id.startsWith('search.result:') || id.startsWith('refund.pick:') || id.startsWith('scan.card:') || id.startsWith('discount.preset:') || id.startsWith('cash.denom:') || id.startsWith('customer.row:') || id.startsWith('saved.assign:') || id.startsWith('line.minus:') || id.startsWith('line.remove:') || id.startsWith('line.note:') || id.startsWith('line.variant:') || id.startsWith('line.disc') || id.startsWith('line.price') || id.startsWith('line.adj') || id.startsWith('inv.mode:') || id.startsWith('inv.reason:') || id.startsWith('split.equal:') || id.startsWith('gift.preset:') || id.startsWith('gift.how:');
 export const STATIC_SPOTS: readonly string[] = Object.values(SPOT);
 /** Spots whose id ends in a record id: a grid tile, or a cart line. */
-export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'line.variant:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:', 'split.equal:', 'gift.preset:', 'gift.how:', 'saved.row:', 'saved.assign:', 'customers.row:', 'outbox.retry:'] as const;
+export const DYNAMIC_PREFIXES = ['cart.deal:', 'discount.preset:', 'grid.item:', 'grid.cat:', 'grid.action:', 'cart.line:', 'grid.page:', 'find.tab:', 'customer.row:', 'cash.denom:', 'all.product:', 'pick.variant:', 'search.result:', 'find.key:', 'line.minus:', 'line.remove:', 'line.discount:', 'line.discountoff:', 'line.price:', 'line.priceoff:', 'line.adjust:', 'line.adjustoff:', 'line.note:', 'line.variant:', 'order.row:', 'refund.mode:', 'refund.method:', 'refund.plus:', 'refund.minus:', 'refund.reason:', 'refund.pick:', 'refund.repl:', 'scan.card:', 'inv.chip:', 'inv.row:', 'inv.group:', 'inv.reason:', 'inv.mode:', 'split.equal:', 'gift.preset:', 'gift.how:', 'saved.row:', 'saved.assign:', 'customers.row:', 'items.row:', 'outbox.retry:'] as const;
 export const isKnownSpot = (id: string): boolean => STATIC_SPOTS.includes(id) || DYNAMIC_PREFIXES.some(p => id.startsWith(p) && id.length > p.length);
 export const gridItemSpot = (id: string): string => `grid.item:${id}`;
 export const gridCatSpot = (collectionId: string): string => `grid.cat:${collectionId}`;
@@ -178,6 +186,8 @@ export const gridActionSpot = (action: string): string => `grid.action:${action}
 export const customerRowSpot = (id: string): string => `customer.row:${id}`;
 /** One row on the Customers page (the key is the customer's own id). */
 export const customersRowSpot = (id: string): string => `customers.row:${id}`;
+/** One row on the Items screen (the key is the variant's own id). */
+export const itemsRowSpot = (id: string): string => `items.row:${id}`;
 export const cartLineSpot = (variantId: string): string => `cart.line:${variantId}`;
 /** A page chip above the grid. */
 export const gridPageSpot = (pageId: string): string => `grid.page:${pageId}`;

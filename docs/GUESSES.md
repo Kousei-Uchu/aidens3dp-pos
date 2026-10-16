@@ -95,3 +95,17 @@ Everything in this file is a guess from me, not a decision from you.
   as `customers`. Check 1 creates a customer then starts a sale from them; Check 2 fixes Sam Rivera's missing mobile
   and, with a cart injection, starts a sale from Priya without losing her items. The edit lesson is pinned to Sam (a
   fixture with no mobile) so "has a mobile now" is unambiguous, where a freshly made customer could already have one.
+- **Items training (0140, `items`).** Guess: the course covers the Items page (More ▸ Items) and the create and edit
+  pages it opens, not Inventory or Stock lookup (those are their own courses). The plan says "Edit price and
+  identifiers, and create a tracked product", so the Guide changes one price, and Check 1 changes one SKU and adds a
+  tracked product. The two pages the Items screen pushes (`createItem`, `editItem`) are their own graph routes, so the
+  course's `routes` are `items`, `createItem`, `editItem`, and the form and button spots fold onto `page_create_item`
+  and `page_edit_item` rather than the list page. The page is made practice-aware: it creates a variant locally with a
+  `train-v-new-<time>` id and edits the variant in place, never calling Shopify, and it publishes the form's contents
+  through a new `itemDraft` probe (carrying the item's id in edit mode so the Guide can confirm which row is open),
+  with the practice catalogue read into the snapshot as `items`. Check 2's fault is a seeded bad barcode, which needed a
+  new `items` injection: the existing comment on `Injection` says "customer side only, never admin problems", but
+  fixing the practice catalogue is the whole point of this course, so the `items` injection seeds a wrong price, SKU,
+  barcode or stock on a `train-v-` variant only and never touches the real catalogue. The fault is a barcode rather than
+  a price because a goal must not start already finished: the fixture's price is the correct one, so a "put it back"
+  price goal would be met before the fault was seeded.

@@ -545,3 +545,14 @@ On the iPad and on a phone. Use More ▸ Training ▸ Customers on file.
 4. Check 1: create a customer, then start a sale from the customer you just made. Pass: the new row appears at the top of the list and Start sale puts them on the sale.
 5. Check 2: Sam Rivera's mobile is missing, so add it (Edit then Save); and with Priya's items already on the till (cart injection), open Priya's row and tap Start sale so she is put on the sale that is already there.
 6. **Most important:** while signed in to the real shop, make a practice customer and edit one. Confirm nothing is sent to Shopify, the real customer list is exactly as it was, and leaving the course restores the real till exactly as it was.
+
+## T45. Training: Items and creating one (B6, 0140)
+
+On the iPad and on a phone. Use More ▸ Training ▸ Items and creating one.
+
+1. The Guide rings the **Items** row on the More tab, then the **Create item** button on the Items page, the price box and **Save to Shopify** on the Edit item page, and the **Create item** button on the Create item page. Pass: the Items page opens, a row opens the Edit item page, and the Create item page opens.
+2. The Guide opens Bumble Bee's row, types a new price, taps **Save to Shopify**, then creates a tracked product. Pass: the list shows Bumble Bee at the new price and the new product at the top with a starting stock.
+3. The Show plays the Items page, the search box narrowing the list, a row opening, the price changing and saving, and the Create item form being filled in.
+4. Check 1: change the Highland Cow Small's SKU, then add a new tracked product. Pass: the row keeps the new SKU and the new product joins the list.
+5. Check 2: the practice catalogue is seeded with a barcode that will not scan, so fix the Clearance Print's barcode and save it, then add a new tracked product.
+6. **Most important:** while signed in to the real shop, change a practice item and create one. Confirm nothing is sent to Shopify, the real catalogue is exactly as it was, and leaving the course restores the real till exactly as it was.

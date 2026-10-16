@@ -59,6 +59,10 @@ export type SwapSnap = { own: number; found: boolean; stopped?: 'done' | 'no-gai
 export type SavedSnap = { id: string; name: string; variants: string[]; qty: number; assignedTo?: string; status: 'open' | 'void'; employee?: string };
 /** One customer as training sees it on the Customers page: enough to tell an edit from a fresh customer. */
 export type CustomerSnap = { id: string; name: string; email?: string; phone?: string; note?: string };
+/** One catalogue item as training sees it on the Items screen: enough to tell an edit from a fresh item. */
+export type ItemSnap = { id: string; title: string; priceCents: number; sku?: string; barcode?: string; tracked: boolean; stock?: number | null };
+/** What is typed on the Create or Edit item page. `mode` says which page it is, and `id` is the item being edited. */
+export type ItemDraft = { mode: 'create' | 'edit'; id?: string; title: string; price: string; sku: string; barcode: string; cost: string; stock: string };
 /** One cart line as training sees it. */
 export type SnapLine = { variantId?: string; title: string; kind: 'item' | 'custom' | 'gift_card'; qty: number; discounted: boolean; adjusted: boolean; /** The line's own id, for telling two custom amounts apart. */ lineId?: string; /** The line has a note on it. */ noted?: boolean; /** The line has an item price of its own / a whole-line adjustment (`adjusted` is either). */ itemPriced?: boolean; lineAdjusted?: boolean; /** The line's own item price (cents) and whether it covers every one in the cart, and its whole-line price (cents). */ overrideCents?: number; overrideAll?: boolean; adjustCents?: number; /** What one costs, in cents, when the line has a price of its own (a custom amount). */ unitCents?: number };
 /** What the training driver can see of the app. Kept small on purpose. `sheets` is how many sheets are open on top of the page. */
@@ -100,6 +104,8 @@ export type TrainSnap = {
   savedCarts?: SavedSnap[]; savedNameDraft?: string;
   /** The Customers page: everyone the till knows (the practice list), and what is typed in its New / Edit customer form. */
   customers?: CustomerSnap[]; customersDraft?: { first: string; last: string; email: string; phone: string };
+  /** The Items screen: the practice catalogue as training sees it, and what is typed on the Create or Edit item page. */
+  items?: ItemSnap[]; itemDraft?: ItemDraft;
   /** The saved cart the cart in the till was opened from, when one was (so a Check can tell an open from a fresh cart). */
   cartSavedFrom?: string;
   typed?: { search?: string; keypad?: string }; where?: { tab: 'keypad' | 'quick' | 'all'; depth: number; sizes: boolean };
@@ -128,7 +134,7 @@ export type Step = { id: string; say: string; title?: string; target?: string; u
   /** The practice items whose stock may change during this step. Any other item's stock changing is off course. Left out: stock is not watched. */
   stockAllow?: string[] };
 
-/** Things that go wrong on purpose in Check 2. Customer side only, never admin problems. */
+/** Things that go wrong on purpose in Check 2. Customer side or the practice catalogue only, never a real admin problem: an `items` injection seeds a wrong price, SKU, barcode or stock on a `train-v-` variant and never touches the real catalogue. */
 export type Injection =
   | { kind: 'cart'; items: { variantId: string; qty: number; /** An item price of its own, in cents, for these units. */ priceCents?: number; /** A whole-line price set when only `seenQty` were on the line, so adding more flags it at the review. */ adjust?: { finalCents: number; seenQty: number } }[]; customer?: string; /** Start with this percentage off the whole cart (a discount to be taken off again). */ discountPct?: number }       // start the run with these lines in the cart
   | { kind: 'decline'; times: number; code?: string }                   // the practice terminal declines the card this many times (code 51, insufficient funds, unless a code from responseCodes.ts is given)
@@ -137,6 +143,7 @@ export type Injection =
   | { kind: 'stock'; counts: Record<string, number | null> }             // set the stock of these practice variants (null = not tracked) before the goal starts
   | { kind: 'reader'; ready: boolean; message?: string }                 // the practice reader's state: not ready (pairing, offline, unreachable) or ready again
   | { kind: 'outbox'; stuck?: number; queued?: number }                  // practice sales already waiting to upload: `stuck` are blocked on a person, the rest are just queued
+  | { kind: 'items'; set: { id: string; priceCents?: number; sku?: string; barcode?: string; stock?: number | null }[] }  // start with these practice catalogue items already changed (a wrong price, a bad barcode, switched-off tracking)
   | { kind: 'pass'; state: 'cancelled' };                               // the practice cashier pass has been cancelled, so the till will not recognise it                 // replace the drawer contents (for example no small change)
 /** What a person may change during a goal without it counting as going off course. Anything else they change is spotted and undone with them. */
 export type Allow = 'add' | 'remove' | 'qty' | 'discount' | 'adjust' | 'customer' | 'note' | 'tender' | 'sale';
@@ -242,6 +249,7 @@ export function validateModule(m: TrainingModule, spotOk: (id: string) => boolea
   if (!m.tabs.length) at('header', 'needs at least one tab');
   for (const [id, n] of Object.entries(m.stock ?? {})) if (!id.startsWith('train-v-') || (n !== null && !Number.isInteger(n))) at('header', `stock for ${id} must be a practice variant id and a whole number or null`);
   for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'stock') for (const [id, n] of Object.entries(i.counts)) if (!id.startsWith('train-v-') || (n !== null && !Number.isInteger(n))) at('check2', `goal ${g.id} sets the stock of ${id} to something that is not a practice variant and a whole number or null`);
+  for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'items') for (const it of i.set) if (!it.id.startsWith('train-v-')) at('check2', `goal ${g.id} changes the practice item ${it.id}, which is not a practice variant id`);
   if (m.card !== undefined && m.card !== 'auto' && m.card !== 'manual') at('header', `card must be "auto" or "manual", not "${String(m.card)}"`);
   for (const [name, goals] of [['check1', m.check1], ['check2', m.check2]] as const) for (const g of goals) for (const i of g.inject ?? []) if ((i.kind === 'staff' || i.kind === 'pass') && !m.practiceStaff) at(name, `goal ${g.id} uses a ${i.kind} injection, which needs practiceStaff on the course`);
   for (const g of [...m.check1, ...m.check2]) for (const i of g.inject ?? []) if (i.kind === 'decline') {

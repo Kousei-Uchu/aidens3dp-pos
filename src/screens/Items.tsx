@@ -1,12 +1,16 @@
 // Location: src/screens/Items.tsx
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { FlatList, View } from 'react-native';
 import { Btn, Chip, Empty, Field, IconBtn, Money, Page, Row, Thumb, Txt, alertMsg } from '../ui/kit';
+import { Spot } from '../ui/Spot';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useCatalogue } from '../state/selectors';
 import { createItem, updateVariant } from '../lib/shopify/products';
 import { importFromShopify } from '../lib/sync';
+import { isTraining } from '../lib/trainingGuard';
+import { SPOT, itemsRowSpot } from '../lib/trainingSpots';
+import { setItemDraftProbe } from '../lib/trainingProbe';
 import { digitsToCents, fmt, toCents } from '../lib/money';
 import { parseStartingStock } from '../lib/startingStock';
 import type { Variant } from '../lib/types';
@@ -15,9 +19,9 @@ export function ItemsList() {
   const nav = useNav(); const cat = useCatalogue(); const [q, setQ] = useState('');
   const list = useMemo(() => { const t = q.trim().toLowerCase(); return cat.list.filter(v => !t || `${v.productTitle} ${v.variantTitle} ${v.sku ?? ''} ${v.barcode ?? ''}`.toLowerCase().includes(t)); }, [q, cat.list]);
   return (
-    <Page title="Items" onBack={nav.pop} helpId="stock/items" scroll={false} right={<IconBtn icon="add" label="Create item" onPress={() => nav.push('createItem')} />}>
-      <View style={{ padding: 12 }}><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></View>
-      <FlatList data={list} keyExtractor={v => v.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify, or create one." />} renderItem={({ item: v }) => <Row image={v.image ?? null} title={v.productTitle} sub={[v.variantTitle, v.sku, v.barcode].filter(Boolean).join(' · ') || undefined} right={<Money cents={v.priceCents} weight="600" />} onPress={() => nav.push('editItem', { id: v.id })} />} />
+    <Page title="Items" onBack={nav.pop} helpId="stock/items" scroll={false} right={<IconBtn icon="add" label="Create item" spot={SPOT.itemsNew} onPress={() => nav.push('createItem')} />}>
+      <View style={{ padding: 12 }}><Spot id={SPOT.itemsSearch}><Field kind="search" placeholder="Search items" value={q} onChangeText={setQ} style={{ marginBottom: 0 }} /></Spot></View>
+      <FlatList data={list} keyExtractor={v => v.id} ListEmptyComponent={<Empty title="No items" sub="Import from Shopify, or create one." />} renderItem={({ item: v }) => <Row spot={itemsRowSpot(v.id)} image={v.image ?? null} title={v.productTitle} sub={[v.variantTitle, v.sku, v.barcode].filter(Boolean).join(' · ') || undefined} right={<Money cents={v.priceCents} weight="600" />} onPress={() => nav.push('editItem', { id: v.id })} />} />
     </Page>
   );
 }
@@ -27,9 +31,16 @@ const money = (s: string) => (s.trim() === '' ? undefined : toCents(s.replace(/[
 export function CreateItem() {
   const nav = useNav(); const cat = useCatalogue(); const loc = useApp(s => s.settings.locationId);
   const [f, setF] = useState({ title: '', price: '', sku: '', barcode: '', cost: '', stock: '' }); const [col, setCol] = useState<string | undefined>(); const [busy, setBusy] = useState(false);
+  useEffect(() => { setItemDraftProbe({ mode: 'create', ...f }); return () => setItemDraftProbe(undefined); }, [f]); // training reads what is typed
   const save = async () => {
     const price = money(f.price); if (!f.title.trim() || price === undefined) return alertMsg('Name and price are required');
     const stock = parseStartingStock(f.stock); if (!stock.ok) return alertMsg('Invalid starting stock', stock.message);
+    // In practice the item is only ever made on this iPad: nothing goes to Shopify.
+    if (isTraining()) {
+      const now = Date.now(); const id = `train-v-new-${now}`;
+      const next: Variant = { id, productId: `train-p-new-${now}`, productTitle: f.title.trim(), variantTitle: '', sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, priceCents: price, costCents: money(f.cost), tracked: stock.quantity !== undefined, stock: stock.quantity ?? null, tags: [], active: true, status: 'ACTIVE' };
+      useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [id]: next } }); nav.pop(); return;
+    }
     if (!loc) return alertMsg('Pick a location first', 'Settings ▸ Shopify', 'settings/shopify');
     setBusy(true);
     try { await createItem({ title: f.title.trim(), priceCents: price, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost), stock: stock.quantity, collectionId: col }, loc); await importFromShopify(() => {}); nav.pop(); }
@@ -39,11 +50,13 @@ export function CreateItem() {
   return (
     <Page title="Create item" onBack={nav.pop} helpId="stock/items">
       <View style={{ padding: 16 }}>
-        <Field kind="name" label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} placeholder="0.00" />
-        <Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} /><Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} />
-        <Field kind="money" label="Cost (for profit reports)" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} placeholder="0.00" /><Field kind="integer" label="Starting stock" value={f.stock} onChangeText={t => setF({ ...f, stock: t })} />
-        {cat.collections.length ? <><Txt size={13} sub weight="600" style={{ marginBottom: 6 }}>Category</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>{cat.collections.slice(0, 30).map(c => <Chip key={c.id} label={c.title} active={col === c.id} onPress={() => setCol(col === c.id ? undefined : c.id)} />)}</View></> : null}
-        <Btn title="Create item" busy={busy} onPress={() => void save()} />
+        <Spot id={SPOT.itemsForm}>
+          <Field kind="name" label="Name" value={f.title} onChangeText={t => setF({ ...f, title: t })} /><Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} placeholder="0.00" />
+          <Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} /><Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} />
+          <Field kind="money" label="Cost (for profit reports)" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} placeholder="0.00" /><Field kind="integer" label="Starting stock" value={f.stock} onChangeText={t => setF({ ...f, stock: t })} />
+        </Spot>
+        {cat.collections.length ? <><Txt size={13} sub weight="600" style={{ marginBottom: 6, marginTop: 4 }}>Category</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>{cat.collections.slice(0, 30).map(c => <Chip key={c.id} label={c.title} active={col === c.id} onPress={() => setCol(col === c.id ? undefined : c.id)} />)}</View></> : null}
+        <Btn spot={SPOT.itemsCreate} title="Create item" busy={busy} onPress={() => void save()} />
       </View>
     </Page>
   );
@@ -51,11 +64,18 @@ export function CreateItem() {
 
 export function EditItem({ id }: { id: string }) {
   const nav = useNav(); const v = useApp(s => s.data.variants[id]); const [f, setF] = useState({ price: v ? (v.priceCents / 100).toFixed(2) : '', sku: v?.sku ?? '', barcode: v?.barcode ?? '', cost: v?.costCents !== undefined ? (v.costCents / 100).toFixed(2) : '' }); const [busy, setBusy] = useState(false);
+  useEffect(() => { setItemDraftProbe({ mode: 'edit', id, title: '', price: f.price, sku: f.sku, barcode: f.barcode, cost: f.cost, stock: '' }); return () => setItemDraftProbe(undefined); }, [f, id]); // training reads what is typed
   if (!v) return <Page title="Item" onBack={nav.pop} helpId="stock/items"><Empty title="Item not found" /></Page>;
   const save = async () => {
+    const p = money(f.price); const sku = f.sku.trim() || undefined; const barcode = f.barcode.trim() || undefined; const costCents = money(f.cost);
+    // In practice the change is only ever made on this iPad: nothing goes to Shopify.
+    if (isTraining()) {
+      const next: Variant = { ...v, priceCents: p ?? v.priceCents, sku, barcode, costCents: costCents ?? v.costCents };
+      useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: next } }); nav.pop(); return;
+    }
     setBusy(true);
-    try { const p = money(f.price); await updateVariant(v.productId, v.id, { priceCents: p, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost) });
-      const next: Variant = { ...v, priceCents: p ?? v.priceCents, sku: f.sku.trim() || undefined, barcode: f.barcode.trim() || undefined, costCents: money(f.cost) ?? v.costCents }; useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: next } }); nav.pop(); }
+    try { await updateVariant(v.productId, v.id, { priceCents: p, sku, barcode, costCents });
+      const next: Variant = { ...v, priceCents: p ?? v.priceCents, sku, barcode, costCents: costCents ?? v.costCents }; useApp.getState().patchData({ variants: { ...useApp.getState().data.variants, [v.id]: next } }); nav.pop(); }
     catch (e: any) { alertMsg('Could not save', e.message, 'stock/items'); }
     setBusy(false);
   };
@@ -63,9 +83,11 @@ export function EditItem({ id }: { id: string }) {
     <Page title={v.productTitle} onBack={nav.pop} helpId="stock/items"><View style={{ padding: 16 }}>
       {v.image ? <View style={{ alignItems: 'center', marginBottom: 12 }}><Thumb uri={v.image} size={160} radius={16} /></View> : null}
       <Txt sub style={{ marginBottom: 10 }}>{v.variantTitle ? v.variantTitle + ' · ' : ''}Stock {v.stock ?? 'not tracked'} · current {fmt(v.priceCents)}</Txt>
-      <Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} /><Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} />
-      <Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} /><Field kind="money" label="Cost" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} />
-      <Btn title="Save to Shopify" busy={busy} onPress={() => void save()} /></View></Page>
+      <Spot id={SPOT.itemsEditForm}>
+        <Field kind="money" label="Price" value={f.price} onChangeText={t => setF({ ...f, price: t })} /><Field kind="code" label="SKU" value={f.sku} onChangeText={t => setF({ ...f, sku: t })} />
+        <Field kind="integer" label="Barcode" value={f.barcode} onChangeText={t => setF({ ...f, barcode: t })} /><Field kind="money" label="Cost" value={f.cost} onChangeText={t => setF({ ...f, cost: t })} />
+      </Spot>
+      <Btn spot={SPOT.itemsEditSave} title="Save to Shopify" busy={busy} onPress={() => void save()} /></View></Page>
   );
 }
 void digitsToCents;
