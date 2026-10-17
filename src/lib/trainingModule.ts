@@ -180,6 +180,8 @@ export type TrainingModule = {
   stock?: Record<string, number | null>;
   /** The connection state the whole course starts in (for the offline course): `offline` when it starts with no internet. */
   startSync?: 'idle' | 'syncing' | 'offline' | 'error';
+  /** Optional adjustment permissions applied to the practice sandbox for this course. */
+  perms?: import('./adjustPerms').AdjustPerms;
   tabs: string[]; routes: string[];           // where the person may go during Guide and Check
   info: Demo; show: Demo; guide: Step[];
   check1: Goal[]; check2: Goal[];

@@ -108,17 +108,17 @@ export function practiceStaff(): StaffMember[] {
 /** Settings for the sandbox: the real staff list and display mode stay (so roles and text size apply); everything that points outside the till is blanked. */
 /** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
 export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
-export function sandboxSettings(real: Settings): Settings {
-  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: {}, smartChange: false, cashRounding: true };
+export function sandboxSettings(real: Settings, perms: unknown = {}): Settings {
+  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, smartChange: false, cashRounding: true };
 }
 export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
 /** The real state to put back afterwards. */
 export const takeSnapshot = (s: App): Swap => ({ settings: s.settings, data: s.data, grid: s.grid, gridVersion: s.gridVersion, pos: s.pos, sync: s.sync, zeller: s.zeller, staffId: s.staffId, unlocked: s.unlocked });
 /** The practice state. The signed in person stays signed in. */
-export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?: Record<string, number | null>; sync?: 'idle' | 'offline' | 'error' | 'syncing'; outbox?: { stuck?: number; queued?: number } } = {}): Swap {
+export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?: Record<string, number | null>; sync?: 'idle' | 'offline' | 'error' | 'syncing'; outbox?: { stuck?: number; queued?: number }; perms?: unknown } = {}): Swap {
   const variants: Record<string, Variant> = Object.fromEntries(FIXTURE_VARIANTS.map(x => [x.id, opts.stock && x.id in opts.stock ? { ...x, stock: opts.stock[x.id] } : x]));
   return {
-    settings: opts.practiceStaff ? { ...sandboxSettings(real.settings), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings),
+    settings: opts.practiceStaff ? { ...sandboxSettings(real.settings, opts.perms), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings, opts.perms),
     data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: FIXTURE_AUTOS, presets: FIXTURE_PRESETS },
     grid: fixtureGrid(), gridVersion: 0,
     pos: { saved: fixtureSavedCarts(), outbox: opts.outbox ? fixtureOutbox(opts.outbox) : [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },

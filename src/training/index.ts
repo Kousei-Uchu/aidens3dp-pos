@@ -28,6 +28,7 @@ import { readerTroubleModule } from './modules/reader-trouble';
 import { offlineModule } from './modules/offline';
 import { customersList } from './modules/customers-list';
 import { items } from './modules/items';
+import { adjustReview } from './modules/adjust-review';
 
-export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule, drawerDayModule, checkChangeModule, swapCashModule, readerTroubleModule, offlineModule, customersList, items];
+export const MODULES: TrainingModule[] = [welcome, signIn, cart, findItems, payCard, payCash, splitPay, giftSell, giftPay, savedCarts, receipts, customer, discounts, priceAdjust, refund, bundlesDeals, scanning, inventory, stockLookupModule, ordersModule, drawerDayModule, checkChangeModule, swapCashModule, readerTroubleModule, offlineModule, customersList, items, adjustReview];
 export const getModule = (id: string): TrainingModule | undefined => MODULES.find(m => m.id === id);
