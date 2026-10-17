@@ -5,9 +5,9 @@ parent: sales
 summary: The Bluetooth scanner and the camera, what a scan does on each screen, and what to do when scanning misbehaves.
 tags: [scanner, scan, barcode, bluetooth, camera, keyboard, sku, pass, qr]
 related: [sales, sales/variants-and-stock, settings/hardware, settings/scanner-codes]
-updated: 2026-10-11
+updated: 2026-10-17
 ---
-A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.
+A scan is the quickest way to add an item. The POS understands four kinds of code: item barcodes and SKUs, cashier passes, gift card QR codes and saved discount codes. It always checks them in that order, so an item is never mistaken for anything else.
 
 ## Basic
 
@@ -20,13 +20,15 @@ The gift card pop-up (Charge ▸ Gift card) has its own camera button for scanni
 To check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart. See [[settings/hardware]] for the test steps.
 
 ### What a scan does, by screen
-| Where you are | Item barcode | Cashier pass | Gift card QR |
-|---|---|---|---|
-| **Checkout** | Adds 1 to the cart | Signs that person in; the cart stays as it is | Tells you to redeem it from Charge ▸ Gift card |
-| **Price check / Stock check** | Shows its price or stock; the cart is not touched | "That is a cashier pass, not an item." | Tells you to check it from Charge ▸ Gift card |
-| **Staff sign-in** | Not accepted | Signs in | Not accepted |
+| Where you are | Item barcode or SKU | Cashier pass | Gift card QR | Discount code |
+|---|---|---|---|---|
+| **Checkout** (grid and cart side by side, or the cart page) | Adds 1 to the cart | Signs that person in; the cart stays as it is | Opens the cart's gift card window with the balance | Applies the discount to the cart |
+| **Price check / Stock check** | Shows its price or stock; the cart is not touched | "That is a cashier pass, not an item." | Tells you to check it from Charge ▸ Gift card | "That is a discount code, not an item." |
+| **Staff sign-in** | Not accepted | Signs in | Not accepted | Not accepted |
 
-If nothing matches you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).
+With the grid and the cart side by side there is one scan box, not two, so a scan always goes through the same order. An item comes first: a product whose SKU is a web address (`https://…`) is found as an item.
+
+If nothing matches (not an item, pass, gift card or saved discount) you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).
 
 ### When scanning does nothing
 - A pop-up is open, or you are on another screen (such as Pay). Scanning only adds to the cart from the Checkout screen with nothing on top of it.
@@ -58,34 +60,37 @@ flowchart TD
   K[Scanner types code and Return] --> H[HidScanner hidden TextInput]
   H -->|onSubmitEditing| S[onScan code]
   C[CameraScanner onBarcodeScanned] -->|same code within 1.2 s ignored| S
-  S --> B{Checkout: isBadgeCode?}
-  B -->|yes| P[signInWithPass, cart unchanged]
-  B -->|no| F[findByBarcode: barcode then SKU]
+  S --> F[findByBarcode: barcode then SKU]
   F -->|found| A[add 1, toast Added]
-  F -->|not found| G{isGiftQr?}
-  G -->|yes| M[toast: redeem from Charge]
-  G -->|no| N[toast: No item for code]
+  F -->|not found| B{isBadgeCode?}
+  B -->|yes| P[signInWithPass, cart unchanged]
+  B -->|no| G{isGiftQr?}
+  G -->|yes| M[cart gift card window with balance]
+  G -->|no| D{saved discount label?}
+  D -->|yes| X[apply cart discount]
+  D -->|no| N[toast: No item for code]
 ```
 
 ### Where the code is
 | Job | Where |
 |---|---|
 | Hidden keyboard capture, camera screen | `src/screens/Scanner.tsx` (`HidScanner`, `CameraScanner`) |
-| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0}` |
+| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && !cartBlocked && nav.stack.length === 0}`; `cartBlocked` is true while a cart window is open beside the grid |
+| One box beside the grid | `CartPane hid={false}` gives up its own box; it registers with `registerCartScan` in `src/lib/scanBridge.ts` so Checkout can hand it gift card and discount scans and see when one of its windows is open. On the phone's cart page the pane keeps its own box (`scanAll` in `CartPane.tsx`) |
 | Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |
-| Pass, gift, none | `resolveScan`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
+| Order, pass, gift, discount, none | `resolveScan`, `findDiscountPreset`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
 | Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |
 | Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |
 | Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |
 | Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |
-| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts` |
+| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts`, `tests/scanorder.test.ts` |
 
 ### How HidScanner keeps focus
 It only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.
 
 ### Reading the code for a fault
 - **"No item for …" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.
-- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the five conditions in the `enabled` expression is false: a sheet is open, the camera is up, a screen is stacked on top, or the tab is not Checkout.
+- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the conditions in the `enabled` expression is false: a sheet is open (including a cart window beside the grid), the camera is up, a screen is stacked on top, or the tab is not Checkout.
 - **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.
 - **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).
 - **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.

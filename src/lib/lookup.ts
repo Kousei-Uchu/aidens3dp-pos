@@ -3,19 +3,30 @@
 // Nothing here touches the cart. No React, no Shopify: unit-tested in tests/lookup.test.ts.
 import { findByBarcode } from './cartOps';
 import { dealLive } from './bundles';
-import { isGiftQr } from './giftCode';
+import { isGiftQr, normaliseCode } from './giftCode';
 import { isBadgeCode } from './badge';
 import { NO_DISCOUNT_TAG } from './pricing';
-import type { AutoDiscount, BundleConfig, Target, Variant } from './types';
+import type { AutoDiscount, BundleConfig, ManualPreset, Target, Variant } from './types';
 
 // ── What a scan or a typed code is ───────────────────────────────────────────
-export type ScanResolution = { kind: 'variant'; variant: Variant } | { kind: 'gift' } | { kind: 'pass' } | { kind: 'none' };
-/** Order matters: a cashier pass or a gift card QR must never be mistaken for an item, and a real barcode wins over both. */
-export function resolveScan(code: string, variants: Iterable<Variant>): ScanResolution {
+export type ScanResolution = { kind: 'variant'; variant: Variant } | { kind: 'gift' } | { kind: 'pass' } | { kind: 'discount'; preset: ManualPreset } | { kind: 'none' };
+/** The saved discount whose label is this code (case and punctuation ignored, same as the gift card code form). Never matches a label that has no letters or digits. */
+export function findDiscountPreset(presets: readonly ManualPreset[] | undefined, code: string): ManualPreset | undefined {
+  const n = normaliseCode(code); if (!n) return undefined;
+  return (presets ?? []).find(p => normaliseCode(p.label) === n);
+}
+/**
+ * What a scanned or typed code is. One order everywhere: an item (barcode, then SKU), a cashier pass, a gift card QR, a saved discount, else nothing.
+ * An item always wins, so a SKU that happens to look like something else (a URL, say) is still found. `presets` is only passed by the screens that can
+ * apply a discount (Checkout and the cart); the Price/Stock check tiles leave it out, so a discount code there is just "no item".
+ */
+export function resolveScan(code: string, variants: Iterable<Variant>, presets?: readonly ManualPreset[]): ScanResolution {
   const v = findByBarcode(variants, code);
   if (v) return { kind: 'variant', variant: v };
   if (isBadgeCode(code)) return { kind: 'pass' };
   if (isGiftQr(code)) return { kind: 'gift' };
+  const preset = presets ? findDiscountPreset(presets, code) : undefined;
+  if (preset) return { kind: 'discount', preset };
   return { kind: 'none' };
 }
 export function scanProblem(r: ScanResolution, code: string): string | null {
@@ -23,6 +34,7 @@ export function scanProblem(r: ScanResolution, code: string): string | null {
     case 'variant': return null;
     case 'pass': return 'That is a cashier pass, not an item.';
     case 'gift': return 'That is a gift card. Check its balance from Charge ▸ Gift card.';
+    case 'discount': return 'That is a discount code, not an item.';
     case 'none': return `No item for ${code.trim()}`;
   }
 }

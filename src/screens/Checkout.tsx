@@ -17,13 +17,12 @@ import { CheckChangeSheet } from './CheckChange';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
 import { LookupSheet } from './Lookup';
-import { pickerCrumbs, pickerTitle } from '../lib/lookup';
+import { pickerCrumbs, pickerTitle, resolveScan } from '../lib/lookup';
 import { TileSettingsSheet } from './TileSettings';
 import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
 import { CameraScanner, HidScanner } from './Scanner';
-import { isGiftQr } from '../lib/giftCode';
+import { getCartScan, useCartScanBlocked } from '../lib/scanBridge';
 import { SwitchStaffSheet } from './StaffLogin';
-import { isBadgeCode } from '../lib/badge';
 import { lockNow, signInWithPass } from '../lib/staffAuth';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from './sheets';
 import CartPane from './CartPane';
@@ -32,7 +31,7 @@ import type { Variant } from '../lib/types';
 
 /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
 export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
+  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const cartBlocked = useCartScanBlocked(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
@@ -67,11 +66,21 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   };
   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
   const pick = (v: Variant) => { add(v); }; // a tap in the variation picker adds it and stays on the picker, so several variations can be added in a row; the back arrow or the path leaves it
+  // One scan box, one order: an item (barcode, then SKU), a cashier pass, a gift card, a saved discount, else nothing (see resolveScan).
   const onScan = (code: string): string | null => {
-    if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
-    const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);
-    if (!v) { toast.show(isGiftQr(code) ? 'That is a gift card. Redeem it from Charge ▸ Gift card.' : `No item for ${code}`); return null; }
-    add(v, 1); return `Added ${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}`;
+    const st = useApp.getState();
+    const r = resolveScan(code, Object.values(st.data.variants), st.data.presets);
+    switch (r.kind) {
+      case 'variant': add(r.variant, 1); return `Added ${r.variant.productTitle}${r.variant.variantTitle ? ' · ' + r.variant.variantTitle : ''}`;
+      case 'pass': void signInWithPass(code).then(x => toast.show(x.message)); return 'Pass scanned'; // a cashier pass takes over the register; the cart stays
+      case 'gift': { const cartScan = getCartScan(); if (cartScan) return cartScan.scan(code); toast.show('That is a gift card. Redeem it from Charge ▸ Gift card.'); return null; }
+      case 'discount': {
+        const cartScan = getCartScan(); if (cartScan) return cartScan.scan(code);
+        if (locked) { alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.'); return null; }
+        setCart(cc => ops.setCartDiscount(cc, { kind: r.preset.kind, value: r.preset.value, label: r.preset.label })); toast.show(`Discount applied: ${r.preset.label}`); return 'Discount applied';
+      }
+      default: toast.show(`No item for ${code.trim()}`); return null;
+    }
   };
 
   const handlers: TileHandlers = {
@@ -203,9 +212,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
           </Pressable>
         ) : null}
       </View>
-      {tablet && !guided ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane /></View> : null}
+      {tablet && !guided ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane hid={false} /></View> : null}
 
-      <HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0} onScan={code => void onScan(code)} />
+      <HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && !cartBlocked && nav.stack.length === 0} onScan={code => void onScan(code)} />
       <CameraScanner visible={cam} onClose={() => setCam(false)} onScan={onScan} />
       <SwitchStaffSheet visible={sheet === 'staff'} onClose={() => setSheet('none')} onSwitched={m => toast.show(m)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />

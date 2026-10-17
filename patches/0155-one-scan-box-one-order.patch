@@ -1,0 +1,403 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index cde91b0..26e0bd2 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -153,6 +153,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
+ | 0154 | 2026-10-17 | Scanner reads on Return unless timing is needed (your request). `HidScanner` now has two explicit paths: with no `onText` it is the original submit-only box (Checkout, Cart, Pay, sign-in, lookups and everything else, none of which ever passed `onText`), and only a caller that passes `onText` gets per-character timing. The Hardware page's scan box stays timed, as do the speed test barcode and Calibrate; Calibrate's speed list screen (before a speed is picked) is now submit-only. `Scanner.tsx`, `ScannerSpeed.tsx` | - |
++| 0155 | 2026-10-17 | One scan box, one order (your request). With the grid and cart side by side there were two Bluetooth scan boxes fighting for focus, so a scan of a URL-style SKU could land in the cart's box and come back "Not found". Now **Checkout owns the one box** (`CartPane hid={false}`), and every scan runs through `resolveScan` in this order: **item (barcode, then SKU) → cashier pass → gift card QR → saved discount → "No item for …"**. The cart pane registers in `src/lib/scanBridge.ts` so Checkout can hand it gift card scans (the window now opens with the balance, which a scan box scan never did before) and discount scans, and so Checkout's box goes quiet while a cart window is open. On the phone's cart page the pane keeps its own box and runs the same order. Items now win over cashier passes (before, a pass was checked first). Price check / Stock check say "That is a discount code, not an item." Help page `sales/scanners` updated. `lookup.ts`, `scanBridge.ts`, `Checkout.tsx`, `CartPane.tsx`; tests `tests/scanorder.test.ts`. Needs your iPad and scanner: scan a URL SKU with the cart open beside the grid | - |
+ 
+ 
+ ---
+diff --git a/help/help.json b/help/help.json
+index 5067863..5f72093 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "944da915",
++ "version": "646a5d2c",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1327,12 +1327,12 @@
+     "settings/hardware",
+     "settings/scanner-codes"
+    ],
+-   "updated": "2026-10-11",
+-   "lead": "A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.",
++   "updated": "2026-10-17",
++   "lead": "A scan is the quickest way to add an item. The POS understands four kinds of code: item barcodes and SKUs, cashier passes, gift card QR codes and saved discount codes. It always checks them in that order, so an item is never mistaken for anything else.",
+    "sections": {
+-    "basic": "### The two scanners\n- **Bluetooth scanner.** Pair it in the iPad's own Settings as a keyboard (HID mode). After that, on Checkout, just scan: the item goes in the cart.\n- **Camera.** Tap the camera icon next to the search bar. A full-screen camera opens and stays open, so you can scan several things in a row. Each scan shows a green message (\"Added Dragon plush\") or a red one (\"Not found: …\"). Tap **Done** when finished. The camera reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, ITF-14 and QR codes.\n\nThe gift card pop-up (Charge ▸ Gift card) has its own camera button for scanning a gift card's QR code.\n\nTo check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart. See [[settings/hardware]] for the test steps.\n\n### What a scan does, by screen\n| Where you are | Item barcode | Cashier pass | Gift card QR |\n|---|---|---|---|\n| **Checkout** | Adds 1 to the cart | Signs that person in; the cart stays as it is | Tells you to redeem it from Charge ▸ Gift card |\n| **Price check / Stock check** | Shows its price or stock; the cart is not touched | \"That is a cashier pass, not an item.\" | Tells you to check it from Charge ▸ Gift card |\n| **Staff sign-in** | Not accepted | Signs in | Not accepted |\n\nIf nothing matches you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).\n\n### When scanning does nothing\n- A pop-up is open, or you are on another screen (such as Pay). Scanning only adds to the cart from the Checkout screen with nothing on top of it.\n- You were typing in a box a moment ago. Scans are ignored for about 2½ seconds after you finish typing, so the scanner cannot take over what you were typing.\n- The scanner is not paired or not in keyboard mode. Test it in Settings ▸ Hardware.\n\n### Getting the on-screen keyboard back\nA Bluetooth scanner stops the iPad showing its on-screen keyboard. On the POS-mate scanner, **double-click the scanner button** to show the keyboard, and double-click again to hide it.",
++    "basic": "### The two scanners\n- **Bluetooth scanner.** Pair it in the iPad's own Settings as a keyboard (HID mode). After that, on Checkout, just scan: the item goes in the cart.\n- **Camera.** Tap the camera icon next to the search bar. A full-screen camera opens and stays open, so you can scan several things in a row. Each scan shows a green message (\"Added Dragon plush\") or a red one (\"Not found: …\"). Tap **Done** when finished. The camera reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, ITF-14 and QR codes.\n\nThe gift card pop-up (Charge ▸ Gift card) has its own camera button for scanning a gift card's QR code.\n\nTo check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart. See [[settings/hardware]] for the test steps.\n\n### What a scan does, by screen\n| Where you are | Item barcode or SKU | Cashier pass | Gift card QR | Discount code |\n|---|---|---|---|---|\n| **Checkout** (grid and cart side by side, or the cart page) | Adds 1 to the cart | Signs that person in; the cart stays as it is | Opens the cart's gift card window with the balance | Applies the discount to the cart |\n| **Price check / Stock check** | Shows its price or stock; the cart is not touched | \"That is a cashier pass, not an item.\" | Tells you to check it from Charge ▸ Gift card | \"That is a discount code, not an item.\" |\n| **Staff sign-in** | Not accepted | Signs in | Not accepted | Not accepted |\n\nWith the grid and the cart side by side there is one scan box, not two, so a scan always goes through the same order. An item comes first: a product whose SKU is a web address (`https://…`) is found as an item.\n\nIf nothing matches (not an item, pass, gift card or saved discount) you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).\n\n### When scanning does nothing\n- A pop-up is open, or you are on another screen (such as Pay). Scanning only adds to the cart from the Checkout screen with nothing on top of it.\n- You were typing in a box a moment ago. Scans are ignored for about 2½ seconds after you finish typing, so the scanner cannot take over what you were typing.\n- The scanner is not paired or not in keyboard mode. Test it in Settings ▸ Hardware.\n\n### Getting the on-screen keyboard back\nA Bluetooth scanner stops the iPad showing its on-screen keyboard. On the POS-mate scanner, **double-click the scanner button** to show the keyboard, and double-click again to hide it.",
+     "deep": "### How a code is matched\nThe code is compared with each variation's **barcode** after removing spaces and any zeros at the start. That is why a 12-digit UPC and the 13-digit EAN that begins with 0 find the same item. If no barcode matches, the code is tried against each **SKU** exactly, ignoring capital letters. If two items share a barcode, the first one found wins, so keep barcodes unique.\n\n### The order things are checked\nCheckout asks \"is it a cashier pass?\" first, then \"is it an item?\", then \"is it a gift card?\". The Price check and Stock check pop-ups ask \"is it an item?\" first, so a real barcode always wins there. A pass is the letter P followed by 12 letters and digits. A gift card QR starts with `shopify-giftcard-v1-`. Because no item should ever look like either, the order rarely matters.\n\n### Why a scanner acts like a keyboard\nA Bluetooth scanner connected this way pretends to be a keyboard: it types the digits and then presses Return. The POS keeps a hidden, always-ready text box that catches those keystrokes, and treats Return as \"scan finished\". This is also why a scanner can fight with a real keyboard, and why the POS backs off while you type.\n\n### Two scans of the same code\nThe camera ignores the same code if it is seen again within about a second, so holding the camera on one barcode does not add ten.",
+-    "advanced": "### The path of a scan\n```mermaid\nflowchart TD\n  K[Scanner types code and Return] --> H[HidScanner hidden TextInput]\n  H -->|onSubmitEditing| S[onScan code]\n  C[CameraScanner onBarcodeScanned] -->|same code within 1.2 s ignored| S\n  S --> B{Checkout: isBadgeCode?}\n  B -->|yes| P[signInWithPass, cart unchanged]\n  B -->|no| F[findByBarcode: barcode then SKU]\n  F -->|found| A[add 1, toast Added]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Hidden keyboard capture, camera screen | `src/screens/Scanner.tsx` (`HidScanner`, `CameraScanner`) |\n| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0}` |\n| Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |\n| Pass, gift, none | `resolveScan`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |\n| Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |\n| Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |\n| Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |\n| Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |\n| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts` |\n\n### How HidScanner keeps focus\nIt only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.\n\n### Reading the code for a fault\n- **\"No item for …\" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.\n- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the five conditions in the `enabled` expression is false: a sheet is open, the camera is up, a screen is stacked on top, or the tab is not Checkout.\n- **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.\n- **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).\n- **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.\n- **Characters come out wrong.** The scanner's keyboard layout does not match the iPad's. Change it with the scanner's setup barcodes, not in the app."
++    "advanced": "### The path of a scan\n```mermaid\nflowchart TD\n  K[Scanner types code and Return] --> H[HidScanner hidden TextInput]\n  H -->|onSubmitEditing| S[onScan code]\n  C[CameraScanner onBarcodeScanned] -->|same code within 1.2 s ignored| S\n  S --> F[findByBarcode: barcode then SKU]\n  F -->|found| A[add 1, toast Added]\n  F -->|not found| B{isBadgeCode?}\n  B -->|yes| P[signInWithPass, cart unchanged]\n  B -->|no| G{isGiftQr?}\n  G -->|yes| M[cart gift card window with balance]\n  G -->|no| D{saved discount label?}\n  D -->|yes| X[apply cart discount]\n  D -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Hidden keyboard capture, camera screen | `src/screens/Scanner.tsx` (`HidScanner`, `CameraScanner`) |\n| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && !cartBlocked && nav.stack.length === 0}`; `cartBlocked` is true while a cart window is open beside the grid |\n| One box beside the grid | `CartPane hid={false}` gives up its own box; it registers with `registerCartScan` in `src/lib/scanBridge.ts` so Checkout can hand it gift card and discount scans and see when one of its windows is open. On the phone's cart page the pane keeps its own box (`scanAll` in `CartPane.tsx`) |\n| Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |\n| Order, pass, gift, discount, none | `resolveScan`, `findDiscountPreset`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |\n| Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |\n| Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |\n| Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |\n| Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |\n| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts`, `tests/scanorder.test.ts` |\n\n### How HidScanner keeps focus\nIt only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.\n\n### Reading the code for a fault\n- **\"No item for …\" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.\n- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the conditions in the `enabled` expression is false: a sheet is open (including a cart window beside the grid), the camera is up, a screen is stacked on top, or the tab is not Checkout.\n- **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.\n- **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).\n- **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.\n- **Characters come out wrong.** The scanner's keyboard layout does not match the iPad's. Change it with the scanner's setup barcodes, not in the app."
+    }
+   },
+   {
+diff --git a/help/sales/scanners.md b/help/sales/scanners.md
+index 889dd7b..ae531ce 100644
+--- a/help/sales/scanners.md
++++ b/help/sales/scanners.md
+@@ -5,9 +5,9 @@ parent: sales
+ summary: The Bluetooth scanner and the camera, what a scan does on each screen, and what to do when scanning misbehaves.
+ tags: [scanner, scan, barcode, bluetooth, camera, keyboard, sku, pass, qr]
+ related: [sales, sales/variants-and-stock, settings/hardware, settings/scanner-codes]
+-updated: 2026-10-11
++updated: 2026-10-17
+ ---
+-A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.
++A scan is the quickest way to add an item. The POS understands four kinds of code: item barcodes and SKUs, cashier passes, gift card QR codes and saved discount codes. It always checks them in that order, so an item is never mistaken for anything else.
+ 
+ ## Basic
+ 
+@@ -20,13 +20,15 @@ The gift card pop-up (Charge ▸ Gift card) has its own camera button for scanni
+ To check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart. See [[settings/hardware]] for the test steps.
+ 
+ ### What a scan does, by screen
+-| Where you are | Item barcode | Cashier pass | Gift card QR |
+-|---|---|---|---|
+-| **Checkout** | Adds 1 to the cart | Signs that person in; the cart stays as it is | Tells you to redeem it from Charge ▸ Gift card |
+-| **Price check / Stock check** | Shows its price or stock; the cart is not touched | "That is a cashier pass, not an item." | Tells you to check it from Charge ▸ Gift card |
+-| **Staff sign-in** | Not accepted | Signs in | Not accepted |
++| Where you are | Item barcode or SKU | Cashier pass | Gift card QR | Discount code |
++|---|---|---|---|---|
++| **Checkout** (grid and cart side by side, or the cart page) | Adds 1 to the cart | Signs that person in; the cart stays as it is | Opens the cart's gift card window with the balance | Applies the discount to the cart |
++| **Price check / Stock check** | Shows its price or stock; the cart is not touched | "That is a cashier pass, not an item." | Tells you to check it from Charge ▸ Gift card | "That is a discount code, not an item." |
++| **Staff sign-in** | Not accepted | Signs in | Not accepted | Not accepted |
+ 
+-If nothing matches you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).
++With the grid and the cart side by side there is one scan box, not two, so a scan always goes through the same order. An item comes first: a product whose SKU is a web address (`https://…`) is found as an item.
++
++If nothing matches (not an item, pass, gift card or saved discount) you see **No item for** followed by the code. Fix that in Shopify (see Advanced for the usual causes).
+ 
+ ### When scanning does nothing
+ - A pop-up is open, or you are on another screen (such as Pay). Scanning only adds to the cart from the Checkout screen with nothing on top of it.
+@@ -58,34 +60,37 @@ flowchart TD
+   K[Scanner types code and Return] --> H[HidScanner hidden TextInput]
+   H -->|onSubmitEditing| S[onScan code]
+   C[CameraScanner onBarcodeScanned] -->|same code within 1.2 s ignored| S
+-  S --> B{Checkout: isBadgeCode?}
+-  B -->|yes| P[signInWithPass, cart unchanged]
+-  B -->|no| F[findByBarcode: barcode then SKU]
++  S --> F[findByBarcode: barcode then SKU]
+   F -->|found| A[add 1, toast Added]
+-  F -->|not found| G{isGiftQr?}
+-  G -->|yes| M[toast: redeem from Charge]
+-  G -->|no| N[toast: No item for code]
++  F -->|not found| B{isBadgeCode?}
++  B -->|yes| P[signInWithPass, cart unchanged]
++  B -->|no| G{isGiftQr?}
++  G -->|yes| M[cart gift card window with balance]
++  G -->|no| D{saved discount label?}
++  D -->|yes| X[apply cart discount]
++  D -->|no| N[toast: No item for code]
+ ```
+ 
+ ### Where the code is
+ | Job | Where |
+ |---|---|
+ | Hidden keyboard capture, camera screen | `src/screens/Scanner.tsx` (`HidScanner`, `CameraScanner`) |
+-| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0}` |
++| When Checkout listens | `Checkout.tsx`: `HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && !cartBlocked && nav.stack.length === 0}`; `cartBlocked` is true while a cart window is open beside the grid |
++| One box beside the grid | `CartPane hid={false}` gives up its own box; it registers with `registerCartScan` in `src/lib/scanBridge.ts` so Checkout can hand it gift card and discount scans and see when one of its windows is open. On the phone's cart page the pane keeps its own box (`scanAll` in `CartPane.tsx`) |
+ | Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |
+-| Pass, gift, none | `resolveScan`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
++| Order, pass, gift, discount, none | `resolveScan`, `findDiscountPreset`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
+ | Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |
+ | Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |
+ | Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |
+ | Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |
+-| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts` |
++| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts`, `tests/scanorder.test.ts` |
+ 
+ ### How HidScanner keeps focus
+ It only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.
+ 
+ ### Reading the code for a fault
+ - **"No item for …" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.
+-- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the five conditions in the `enabled` expression is false: a sheet is open, the camera is up, a screen is stacked on top, or the tab is not Checkout.
++- **Scan works in Settings ▸ Hardware but not on Checkout.** One of the conditions in the `enabled` expression is false: a sheet is open (including a cart window beside the grid), the camera is up, a screen is stacked on top, or the tab is not Checkout.
+ - **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.
+ - **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).
+ - **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.
+diff --git a/src/lib/lookup.ts b/src/lib/lookup.ts
+index cf876c5..e88d168 100644
+--- a/src/lib/lookup.ts
++++ b/src/lib/lookup.ts
+@@ -3,19 +3,30 @@
+ // Nothing here touches the cart. No React, no Shopify: unit-tested in tests/lookup.test.ts.
+ import { findByBarcode } from './cartOps';
+ import { dealLive } from './bundles';
+-import { isGiftQr } from './giftCode';
++import { isGiftQr, normaliseCode } from './giftCode';
+ import { isBadgeCode } from './badge';
+ import { NO_DISCOUNT_TAG } from './pricing';
+-import type { AutoDiscount, BundleConfig, Target, Variant } from './types';
++import type { AutoDiscount, BundleConfig, ManualPreset, Target, Variant } from './types';
+ 
+ // ── What a scan or a typed code is ───────────────────────────────────────────
+-export type ScanResolution = { kind: 'variant'; variant: Variant } | { kind: 'gift' } | { kind: 'pass' } | { kind: 'none' };
+-/** Order matters: a cashier pass or a gift card QR must never be mistaken for an item, and a real barcode wins over both. */
+-export function resolveScan(code: string, variants: Iterable<Variant>): ScanResolution {
++export type ScanResolution = { kind: 'variant'; variant: Variant } | { kind: 'gift' } | { kind: 'pass' } | { kind: 'discount'; preset: ManualPreset } | { kind: 'none' };
++/** The saved discount whose label is this code (case and punctuation ignored, same as the gift card code form). Never matches a label that has no letters or digits. */
++export function findDiscountPreset(presets: readonly ManualPreset[] | undefined, code: string): ManualPreset | undefined {
++  const n = normaliseCode(code); if (!n) return undefined;
++  return (presets ?? []).find(p => normaliseCode(p.label) === n);
++}
++/**
++ * What a scanned or typed code is. One order everywhere: an item (barcode, then SKU), a cashier pass, a gift card QR, a saved discount, else nothing.
++ * An item always wins, so a SKU that happens to look like something else (a URL, say) is still found. `presets` is only passed by the screens that can
++ * apply a discount (Checkout and the cart); the Price/Stock check tiles leave it out, so a discount code there is just "no item".
++ */
++export function resolveScan(code: string, variants: Iterable<Variant>, presets?: readonly ManualPreset[]): ScanResolution {
+   const v = findByBarcode(variants, code);
+   if (v) return { kind: 'variant', variant: v };
+   if (isBadgeCode(code)) return { kind: 'pass' };
+   if (isGiftQr(code)) return { kind: 'gift' };
++  const preset = presets ? findDiscountPreset(presets, code) : undefined;
++  if (preset) return { kind: 'discount', preset };
+   return { kind: 'none' };
+ }
+ export function scanProblem(r: ScanResolution, code: string): string | null {
+@@ -23,6 +34,7 @@ export function scanProblem(r: ScanResolution, code: string): string | null {
+     case 'variant': return null;
+     case 'pass': return 'That is a cashier pass, not an item.';
+     case 'gift': return 'That is a gift card. Check its balance from Charge ▸ Gift card.';
++    case 'discount': return 'That is a discount code, not an item.';
+     case 'none': return `No item for ${code.trim()}`;
+   }
+ }
+diff --git a/src/lib/scanBridge.ts b/src/lib/scanBridge.ts
+new file mode 100644
+index 0000000..1642a17
+--- /dev/null
++++ b/src/lib/scanBridge.ts
+@@ -0,0 +1,28 @@
++// Location: src/lib/scanBridge.ts
++// With the grid and the cart side by side there is ONE Bluetooth scan box (Checkout's). The cart pane cannot own a second one: two boxes fight
++// for focus and the scan lands in either. Instead the cart pane registers here, and Checkout hands it the scans that need the cart's windows
++// (gift cards, discounts) and asks whether a cart window is open (then Checkout's box stays quiet). Tiny store, no React import beyond the hook.
++import { useSyncExternalStore } from 'react';
++
++export type CartScan = {
++  /** A cart window is open (menu, a sheet, the camera, the line editor, a review): the scan box must not listen. */
++  blocked: boolean;
++  /** Handle a gift card or discount scan. Returns the short confirmation shown by the camera screen, or null. */
++  scan: (code: string) => string | null;
++};
++
++let current: CartScan | null = null;
++const subs = new Set<() => void>();
++const emit = () => subs.forEach(f => f());
++
++/** The cart pane calls this when it is shown beside the grid; the returned function removes it. */
++export function registerCartScan(c: CartScan): () => void {
++  current = c; emit();
++  return () => { if (current === c) { current = null; emit(); } };
++}
++export const getCartScan = (): CartScan | null => current;
++const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f); }; };
++/** True while a cart pane is beside the grid and one of its windows is open. */
++export const useCartScanBlocked = (): boolean => useSyncExternalStore(subscribe, () => !!current?.blocked);
++/** Test helper. */
++export const resetCartScan = (): void => { current = null; subs.clear(); };
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 57272ad..5c58865 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -2,7 +2,7 @@
+ import { Spot, spotRefFor } from '../ui/Spot';
+ import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
+ import { gateAllowsTap } from '../lib/trainingGate';
+-import React, { useEffect, useState } from 'react';
++import React, { useEffect, useRef, useState } from 'react';
+ import { isTraining } from '../lib/trainingGuard';
+ import { Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -30,10 +30,14 @@ import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels'
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
+ import { CameraScanner, HidScanner } from './Scanner';
+ import { isGiftQr, normaliseCode } from '../lib/giftCode';
++import { findDiscountPreset, resolveScan } from '../lib/lookup';
++import { registerCartScan } from '../lib/scanBridge';
++import { signInWithPass } from '../lib/staffAuth';
+ import { lookupGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
+ import type { CartLine } from '../lib/types';
+ 
+-export default function CartPane({ onClose }: { onClose?: () => void }) {
++/** `hid`: this pane owns the Bluetooth scan box. False beside the grid, where Checkout owns the one box and hands gift card and discount scans to this pane (lib/scanBridge.ts). */
++export default function CartPane({ onClose, hid = true }: { onClose?: () => void; hid?: boolean }) {
+   const { c } = useTheme(); const ui = useUi(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
+   const toast = useToast();
+   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
+@@ -60,6 +64,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+       const clean = normaliseCode(raw);
+       setScanCode(clean);
+       if (isGiftQr(raw)) {
++        setSheet('scan'); // a scan from the scan box opens the window so the balance is seen
+         setScanInfo(await lookupGiftCard(clean));
+       } else {
+         // treat as a discount code
+@@ -81,6 +86,28 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+     setScanBusy(false);
+   };
+ 
++  // Gift card and discount scans (the scan box has already decided that is what the code is). Never while a payment is part-paid.
++  const scanCartCode = (raw: string): string | null => {
++    if (locked) { alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.'); return null; }
++    if (!isGiftQr(raw) && !findDiscountPreset(useApp.getState().data.presets, raw)) return null;
++    void look(raw); return isGiftQr(raw) ? 'Gift card' : 'Discount applied';
++  };
++  // When this pane owns the scan box (the phone's cart page) it runs the whole order itself: an item, a cashier pass, a gift card, a discount, else nothing.
++  const scanAll = (raw: string): void => {
++    const st = useApp.getState(); const r = resolveScan(raw, Object.values(st.data.variants), st.data.presets);
++    switch (r.kind) {
++      case 'variant':
++        if (locked) { alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.'); return; }
++        setCart(cc => ops.addVariant(cc, r.variant, 1, consolidate)); toast.show(`Added ${r.variant.productTitle}`); return;
++      case 'pass': void signInWithPass(raw).then(x => toast.show(x.message)); return;
++      case 'gift': case 'discount': scanCartCode(raw); return;
++      default: toast.show(`No item for ${raw.trim()}`);
++    }
++  };
++  const scanRef = useRef(scanCartCode); scanRef.current = scanCartCode;
++  const blocked = sheet !== 'none' || menu || scanCam || !!edit || adjReview || bundleCheck || warn.open;
++  useEffect(() => (hid ? undefined : registerCartScan({ blocked, scan: raw => scanRef.current(raw) })), [hid, blocked]);
++
+   return (
+     <View style={{ flex: 1, backgroundColor: c.card }}>
+       <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: onClose ? 54 : 12, paddingHorizontal: 12, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: c.line }}>
+@@ -148,7 +175,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
+       </View>
+ 
+-      <HidScanner enabled={!locked && sheet === 'none' && !menu && !scanCam} onScan={code => void look(code)} />
++      {hid ? <HidScanner enabled={!locked && !blocked} onScan={scanAll} /> : null}
+       <CameraScanner visible={scanCam} onClose={() => { setScanCam(false); setScanInfo(undefined); setScanCode(''); }} onScan={c => { setScanCam(false); void look(c); return 'Scanned'; }} />
+ 
+       <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart" screen="sheet_cart_menu">
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index 47f53b3..f3c192c 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -17,13 +17,12 @@ import { CheckChangeSheet } from './CheckChange';
+ import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
+ import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+ import { LookupSheet } from './Lookup';
+-import { pickerCrumbs, pickerTitle } from '../lib/lookup';
++import { pickerCrumbs, pickerTitle, resolveScan } from '../lib/lookup';
+ import { TileSettingsSheet } from './TileSettings';
+ import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
+ import { CameraScanner, HidScanner } from './Scanner';
+-import { isGiftQr } from '../lib/giftCode';
++import { getCartScan, useCartScanBlocked } from '../lib/scanBridge';
+ import { SwitchStaffSheet } from './StaffLogin';
+-import { isBadgeCode } from '../lib/badge';
+ import { lockNow, signInWithPass } from '../lib/staffAuth';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from './sheets';
+ import CartPane from './CartPane';
+@@ -32,7 +31,7 @@ import type { Variant } from '../lib/types';
+ 
+ /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
+ export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
++  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const cartBlocked = useCartScanBlocked(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
+   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
+   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
+   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
+@@ -67,11 +66,21 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+   };
+   const addItems = (vs: Variant[]) => (vs.length === 1 ? add(vs[0]) : setVariants(vs));
+   const pick = (v: Variant) => { add(v); }; // a tap in the variation picker adds it and stays on the picker, so several variations can be added in a row; the back arrow or the path leaves it
++  // One scan box, one order: an item (barcode, then SKU), a cashier pass, a gift card, a saved discount, else nothing (see resolveScan).
+   const onScan = (code: string): string | null => {
+-    if (isBadgeCode(code)) { void signInWithPass(code).then(r => toast.show(r.message)); return 'Pass scanned'; } // a cashier pass takes over the register; the cart stays
+-    const v = ops.findByBarcode(Object.values(useApp.getState().data.variants), code);
+-    if (!v) { toast.show(isGiftQr(code) ? 'That is a gift card. Redeem it from Charge ▸ Gift card.' : `No item for ${code}`); return null; }
+-    add(v, 1); return `Added ${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}`;
++    const st = useApp.getState();
++    const r = resolveScan(code, Object.values(st.data.variants), st.data.presets);
++    switch (r.kind) {
++      case 'variant': add(r.variant, 1); return `Added ${r.variant.productTitle}${r.variant.variantTitle ? ' · ' + r.variant.variantTitle : ''}`;
++      case 'pass': void signInWithPass(code).then(x => toast.show(x.message)); return 'Pass scanned'; // a cashier pass takes over the register; the cart stays
++      case 'gift': { const cartScan = getCartScan(); if (cartScan) return cartScan.scan(code); toast.show('That is a gift card. Redeem it from Charge ▸ Gift card.'); return null; }
++      case 'discount': {
++        const cartScan = getCartScan(); if (cartScan) return cartScan.scan(code);
++        if (locked) { alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.'); return null; }
++        setCart(cc => ops.setCartDiscount(cc, { kind: r.preset.kind, value: r.preset.value, label: r.preset.label })); toast.show(`Discount applied: ${r.preset.label}`); return 'Discount applied';
++      }
++      default: toast.show(`No item for ${code.trim()}`); return null;
++    }
+   };
+ 
+   const handlers: TileHandlers = {
+@@ -203,9 +212,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+           </Pressable>
+         ) : null}
+       </View>
+-      {tablet && !guided ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane /></View> : null}
++      {tablet && !guided ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane hid={false} /></View> : null}
+ 
+-      <HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && nav.stack.length === 0} onScan={code => void onScan(code)} />
++      <HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && !cartBlocked && nav.stack.length === 0} onScan={code => void onScan(code)} />
+       <CameraScanner visible={cam} onClose={() => setCam(false)} onScan={onScan} />
+       <SwitchStaffSheet visible={sheet === 'staff'} onClose={() => setSheet('none')} onSwitched={m => toast.show(m)} />
+       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
+diff --git a/tests/scanorder.test.ts b/tests/scanorder.test.ts
+new file mode 100644
+index 0000000..585aa6d
+--- /dev/null
++++ b/tests/scanorder.test.ts
+@@ -0,0 +1,47 @@
++// Location: tests/scanorder.test.ts
++// One scan box, one order: item (barcode, then SKU), cashier pass, gift card, saved discount, else nothing.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { findDiscountPreset, resolveScan, scanProblem } from '../src/lib/lookup';
++import { newBadgeCode } from '../src/lib/badge';
++import { giftQrPayload } from '../src/lib/giftCode';
++import { getCartScan, registerCartScan, resetCartScan } from '../src/lib/scanBridge';
++import type { ManualPreset, Variant } from '../src/lib/types';
++
++const V = (o: Partial<Variant>): Variant => ({ id: 'gid://v1', productId: 'p1', productTitle: 'Dragon', variantTitle: '', priceCents: 1000, tracked: true, stock: 5, tags: [], active: true, ...o } as Variant);
++const P = (label: string): ManualPreset => ({ id: label, kind: 'pct', value: 10, label });
++const presets = [P('STAFF10'), P('Summer Sale')];
++
++test('a URL stored as a SKU is an item, not a discount or nothing', () => {
++  const v = V({ sku: 'https://aidens3dp.com/p/dragon' });
++  const r = resolveScan('https://aidens3dp.com/p/dragon', [v], presets); assert.equal(r.kind, 'variant');
++});
++test('an item beats everything else, even a code shaped like a pass, a gift card or a discount', () => {
++  assert.equal(resolveScan('STAFF10', [V({ sku: 'staff10' })], presets).kind, 'variant');
++  const pass = newBadgeCode(); assert.equal(resolveScan(pass, [V({ barcode: pass })], presets).kind, 'variant');
++  const gift = giftQrPayload('ABCD1234'); assert.equal(resolveScan(gift, [V({ sku: gift })], presets).kind, 'variant');
++});
++test('order after items: pass, then gift card, then discount, then nothing', () => {
++  assert.equal(resolveScan(newBadgeCode(), [], presets).kind, 'pass');
++  assert.equal(resolveScan(giftQrPayload('ABCD1234'), [], presets).kind, 'gift');
++  const d = resolveScan('staff-10', [], presets); assert.equal(d.kind, 'discount'); if (d.kind === 'discount') assert.equal(d.preset.label, 'STAFF10');
++  assert.equal(resolveScan('https://example.com/nope', [], presets).kind, 'none');
++});
++test('a gift card prefix wins over a discount whose label would match the bare code', () => {
++  assert.equal(resolveScan(giftQrPayload('STAFF10'), [], presets).kind, 'gift');
++});
++test('discounts are only recognised where presets are passed (the Price and Stock check tiles pass none)', () => {
++  assert.equal(resolveScan('STAFF10', []).kind, 'none');
++  assert.equal(scanProblem({ kind: 'discount', preset: P('X') }, 'x'), 'That is a discount code, not an item.');
++});
++test('a preset label with no letters or digits never matches', () => {
++  assert.equal(findDiscountPreset([P('!!!')], '???'), undefined);
++  assert.equal(findDiscountPreset([P('Summer Sale')], 'summer-sale')?.label, 'Summer Sale');
++});
++test('scan bridge: registered while the cart sits beside the grid, removed afterwards', () => {
++  resetCartScan(); assert.equal(getCartScan(), null);
++  const off = registerCartScan({ blocked: false, scan: c => `got ${c}` });
++  assert.equal(getCartScan()?.scan('x'), 'got x'); off(); assert.equal(getCartScan(), null);
++  const a = registerCartScan({ blocked: true, scan: () => null }); const b = registerCartScan({ blocked: false, scan: () => null });
++  a(); assert.ok(getCartScan()); b(); assert.equal(getCartScan(), null); // an older registration cannot remove a newer one
++});

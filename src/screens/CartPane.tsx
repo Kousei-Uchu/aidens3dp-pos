@@ -2,7 +2,7 @@
 import { Spot, spotRefFor } from '../ui/Spot';
 import { SPOT, cartLineSpot, dealRowSpot } from '../lib/trainingSpots';
 import { gateAllowsTap } from '../lib/trainingGate';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { isTraining } from '../lib/trainingGuard';
 import { Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -30,10 +30,14 @@ import { cartEmptyText, chargeHint, customerRowText } from '../lib/simpleLabels'
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftCheckSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
 import { CameraScanner, HidScanner } from './Scanner';
 import { isGiftQr, normaliseCode } from '../lib/giftCode';
+import { findDiscountPreset, resolveScan } from '../lib/lookup';
+import { registerCartScan } from '../lib/scanBridge';
+import { signInWithPass } from '../lib/staffAuth';
 import { lookupGiftCard, type GiftCardInfo } from '../lib/shopify/giftcards';
 import type { CartLine } from '../lib/types';
 
-export default function CartPane({ onClose }: { onClose?: () => void }) {
+/** `hid`: this pane owns the Bluetooth scan box. False beside the grid, where Checkout owns the one box and hands gift card and discount scans to this pane (lib/scanBridge.ts). */
+export default function CartPane({ onClose, hid = true }: { onClose?: () => void; hid?: boolean }) {
   const { c } = useTheme(); const ui = useUi(); const nav = useNav(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced(); const cat = useCatalogue(); const consolidate = useApp(s => s.settings.consolidate);
   const toast = useToast();
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
@@ -60,6 +64,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
       const clean = normaliseCode(raw);
       setScanCode(clean);
       if (isGiftQr(raw)) {
+        setSheet('scan'); // a scan from the scan box opens the window so the balance is seen
         setScanInfo(await lookupGiftCard(clean));
       } else {
         // treat as a discount code
@@ -80,6 +85,28 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
     }
     setScanBusy(false);
   };
+
+  // Gift card and discount scans (the scan box has already decided that is what the code is). Never while a payment is part-paid.
+  const scanCartCode = (raw: string): string | null => {
+    if (locked) { alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.'); return null; }
+    if (!isGiftQr(raw) && !findDiscountPreset(useApp.getState().data.presets, raw)) return null;
+    void look(raw); return isGiftQr(raw) ? 'Gift card' : 'Discount applied';
+  };
+  // When this pane owns the scan box (the phone's cart page) it runs the whole order itself: an item, a cashier pass, a gift card, a discount, else nothing.
+  const scanAll = (raw: string): void => {
+    const st = useApp.getState(); const r = resolveScan(raw, Object.values(st.data.variants), st.data.presets);
+    switch (r.kind) {
+      case 'variant':
+        if (locked) { alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.'); return; }
+        setCart(cc => ops.addVariant(cc, r.variant, 1, consolidate)); toast.show(`Added ${r.variant.productTitle}`); return;
+      case 'pass': void signInWithPass(raw).then(x => toast.show(x.message)); return;
+      case 'gift': case 'discount': scanCartCode(raw); return;
+      default: toast.show(`No item for ${raw.trim()}`);
+    }
+  };
+  const scanRef = useRef(scanCartCode); scanRef.current = scanCartCode;
+  const blocked = sheet !== 'none' || menu || scanCam || !!edit || adjReview || bundleCheck || warn.open;
+  useEffect(() => (hid ? undefined : registerCartScan({ blocked, scan: raw => scanRef.current(raw) })), [hid, blocked]);
 
   return (
     <View style={{ flex: 1, backgroundColor: c.card }}>
@@ -148,7 +175,7 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
         {!empty && chargeHint(ui.explain) ? <Txt size={12} sub style={{ textAlign: 'center' }}>{chargeHint(ui.explain)}</Txt> : null}
       </View>
 
-      <HidScanner enabled={!locked && sheet === 'none' && !menu && !scanCam} onScan={code => void look(code)} />
+      {hid ? <HidScanner enabled={!locked && !blocked} onScan={scanAll} /> : null}
       <CameraScanner visible={scanCam} onClose={() => { setScanCam(false); setScanInfo(undefined); setScanCode(''); }} onScan={c => { setScanCam(false); void look(c); return 'Scanned'; }} />
 
       <Sheet visible={menu} onClose={() => setMenu(false)} title="Cart" screen="sheet_cart_menu">
