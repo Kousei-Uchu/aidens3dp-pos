@@ -625,3 +625,20 @@ On the iPad, signed in as the owner (or a manager when the team has no owner). N
 4. Choose **Remote** with the PC's address, tap **Save**, leave Settings and come back. Pass: **Remote** is still selected.
 5. **Most important:** Backup & transfer. Export a backup with **Remote** chosen and restore it. Pass: **Remote** comes back. On a register that is sharing settings with another, change the choice on one and wait about 25 seconds. Pass: the other register's choice does not change.
 6. If this iPad had **Treat this address as local** switched on before this update, open the page. Pass: **Local** is selected. If it was off, **Auto** is selected.
+
+## T51. Share Square history between registers (0150)
+
+Needs two iPads on the same Wi-Fi, and the new native build on both (the TCP server is a new native module: `npm install`, then `npm run ios:reset`). The first iPad must already have Square history imported.
+
+1. On the iPad with no history, open Settings ▸ Square history. Pass: **Share with another register** is not shown (nothing to share yet).
+2. On the iPad that has history, open Settings ▸ Square history. Pass: **Share with another register** is there. Tap **Show QR for another register**. Pass: iPadOS may ask to allow local network access (tap Allow), then a QR code appears with the line *Waiting for another register to scan this code…* and the address written under it.
+3. On the other iPad, open Settings ▸ Square history ▸ **Scan QR from PC** and scan the code. Pass: the scanner accepts it, the import shows *Downloading 1 of N…* and ends with the same number of sales and refunds as the first iPad. On the first iPad the line changes to *Sending…* and then *Sent to 1 register.*
+4. On the second iPad open Reports and Transactions (Square history chip). Pass: the totals match the first iPad's, apart from item matching (each iPad matches to its own Shopify catalogue).
+5. Back on the first iPad, scan the same code with a third register if you have one. Pass: the line says *Sent to 2 registers.*
+6. Tap **Stop sharing**. Pass: the QR goes away. Scan the old code again on the second iPad. Pass: it fails with *Could not reach the PC* (the message still says PC).
+7. Start sharing again and leave it for 10 minutes without scanning. Pass: it stops by itself and says so. Start again and press the Home button, then return. Pass: it has stopped and says the app left the screen.
+8. Turn Wi-Fi off on the first iPad and tap **Show QR for another register**. Pass: a message says it is not connected to Wi-Fi.
+9. Start sharing, then on the second iPad type the address into **…or type the address the script printed**. Pass: it imports the same way.
+10. Start sharing, then change one digit of the key in the address on the second iPad and import. Pass: it fails and reports a 404.
+11. More ▸ Training, start any course, then try **Show QR for another register**. Pass: it says sharing is switched off in practice mode.
+12. Start sharing and leave the iPad alone for the length of your screensaver delay. Pass: the screen stays awake and the QR stays up (sharing keeps the screen awake).

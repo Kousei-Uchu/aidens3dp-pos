@@ -1,0 +1,689 @@
+diff --git a/app.json b/app.json
+index 873e670..c922a41 100644
+--- a/app.json
++++ b/app.json
+@@ -19,7 +19,7 @@
+         "UIStatusBarHidden": true,
+         "UIViewControllerBasedStatusBarAppearance": false,
+         "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
+-        "NSLocalNetworkUsageDescription": "Used to copy your old Square sales history from your PC, and to reach the AI assistant's model if you run it on a computer on the same Wi-Fi."
++        "NSLocalNetworkUsageDescription": "Used to copy your old Square sales history from your PC or from another register, and to reach the AI assistant's model if you run it on a computer on the same Wi-Fi."
+       },
+       "appleTeamId": "HD264P8365"
+     },
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index bd0aa9b..ddd0dad 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -625,3 +625,20 @@ On the iPad, signed in as the owner (or a manager when the team has no owner). N
+ 4. Choose **Remote** with the PC's address, tap **Save**, leave Settings and come back. Pass: **Remote** is still selected.
+ 5. **Most important:** Backup & transfer. Export a backup with **Remote** chosen and restore it. Pass: **Remote** comes back. On a register that is sharing settings with another, change the choice on one and wait about 25 seconds. Pass: the other register's choice does not change.
+ 6. If this iPad had **Treat this address as local** switched on before this update, open the page. Pass: **Local** is selected. If it was off, **Auto** is selected.
++
++## T51. Share Square history between registers (0150)
++
++Needs two iPads on the same Wi-Fi, and the new native build on both (the TCP server is a new native module: `npm install`, then `npm run ios:reset`). The first iPad must already have Square history imported.
++
++1. On the iPad with no history, open Settings ▸ Square history. Pass: **Share with another register** is not shown (nothing to share yet).
++2. On the iPad that has history, open Settings ▸ Square history. Pass: **Share with another register** is there. Tap **Show QR for another register**. Pass: iPadOS may ask to allow local network access (tap Allow), then a QR code appears with the line *Waiting for another register to scan this code…* and the address written under it.
++3. On the other iPad, open Settings ▸ Square history ▸ **Scan QR from PC** and scan the code. Pass: the scanner accepts it, the import shows *Downloading 1 of N…* and ends with the same number of sales and refunds as the first iPad. On the first iPad the line changes to *Sending…* and then *Sent to 1 register.*
++4. On the second iPad open Reports and Transactions (Square history chip). Pass: the totals match the first iPad's, apart from item matching (each iPad matches to its own Shopify catalogue).
++5. Back on the first iPad, scan the same code with a third register if you have one. Pass: the line says *Sent to 2 registers.*
++6. Tap **Stop sharing**. Pass: the QR goes away. Scan the old code again on the second iPad. Pass: it fails with *Could not reach the PC* (the message still says PC).
++7. Start sharing again and leave it for 10 minutes without scanning. Pass: it stops by itself and says so. Start again and press the Home button, then return. Pass: it has stopped and says the app left the screen.
++8. Turn Wi-Fi off on the first iPad and tap **Show QR for another register**. Pass: a message says it is not connected to Wi-Fi.
++9. Start sharing, then on the second iPad type the address into **…or type the address the script printed**. Pass: it imports the same way.
++10. Start sharing, then change one digit of the key in the address on the second iPad and import. Pass: it fails and reports a 404.
++11. More ▸ Training, start any course, then try **Show QR for another register**. Pass: it says sharing is switched off in practice mode.
++12. Start sharing and leave the iPad alone for the length of your screensaver delay. Pass: the screen stays awake and the QR stays up (sharing keeps the screen awake).
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 19e3f1a..03eeee5 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -149,6 +149,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0147 | 2026-10-17 | Scanner setup barcodes and speed test (your request, not on the checklist). **Help ▸ Scanner setup barcodes** (`settings/scanner-codes`, `ScannerCodes.tsx`): the POS-mate scanner's setup codes (pairing, vibration, volume, sleep, scan mode, data entry speed) drawn on screen as Code 128 from plain text in `src/lib/scannerCodes.ts`; tap one and the whole screen goes white with only that barcode and a line saying what it does, tap anywhere to close. A large shortcut button sits at the top of the Checkout help page and smaller ones on `sales/scanners` and `settings/hardware`. **Settings ▸ Hardware** (`HardwareTest` moved out of `Settings.tsx` into `ScannerSpeed.tsx`) now times each scan (milliseconds per character, `src/lib/scanSpeed.ts`), names the speed it matches and offers the next slower speed's barcode. Managers and owners also get **Admin ▸ Calibrate**: pick a speed, scan the speed test barcode 3 to 12 times, **Save** the measured range (widened 10%, refused if the speeds end up out of order), or **Reset to the manual's ranges**. Calibrations are shared with every register through the `pos_settings` metaobject (handle `scanner`, `saveScannerCalibration` and `pullScannerCalibration` in `sync.ts`), kept as device-only keys in backups, and fall back to the manual's ranges. `HidScanner` gains an optional `onText` callback for the timing. Help pages `settings/scanner-codes` (new), `settings/hardware`, `sales/scanners` and `settings/index` updated, `help.json` rebuilt. New `tests/scannercodes.test.ts` and `tests/scanspeed.test.ts`. Combines two earlier patches into one. Needs your iPad and scanner to confirm the timing numbers (device test T48) | your request |
+ | 0148 | 2026-10-17 | AI assistant, patch 1 of 10 (your request): **More ▸ Settings ▸ AI assistant**, the connection setup for the Help chatbot. Address, model name, optional API key, temperature, timeout (120 s), context size (8000) and tool call limit (15), a **Test connection** button (server answers, model replies, model can call a tool; each failure says its cause in plain words), and a Local or Remote label with a **Treat this address as local** switch. Any OpenAI-compatible server works, Ollama included. Only an owner, or a manager when the team has no owner, sees the row. Per iPad: it is not shared between registers (a test checks this), and it travels in Backup & transfer, **including the key**, which is otherwise kept only in the Keychain. Test connection sends fixed test text and nothing from the shop. There is **no chat screen yet**. Also: the model policy in `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` is rewritten (any provider, data rules decide what it may see), the plan is saved as `docs/AI_ASSISTANT_PLAN.md`, and the iOS local network permission text now mentions the assistant (needs a new native build, not only an update). Help: `settings/assistant`. Tests: `assistantconfig`, `assistantclient`, `assistantsettings`. Device test T49. Not added: streaming replies, the data gate, any tool (later patches in the plan). | your request |
+ | 0149 | 2026-10-17 | AI assistant, a small step before patch 2 (your request): the **Treat this address as local** switch in **More ▸ Settings ▸ AI assistant** is now a three way choice, **Auto / Local / Remote** (`endpointMode` in `src/lib/assistantConfig.ts`). Auto follows the address as before. **Remote** is new: it forces an address to count as remote, for a tunnel or proxy on a private looking address. Settings saved by 0148 move over by themselves (switch on becomes Local, off becomes Auto), including restored backups. Still per iPad, never shared between registers, and still carried in Backup & transfer. `docs/AI_ASSISTANT_PLAN.md` (revision 9, new section 3.12) and `docs/WRITING_ASSISTANT.md` now record the decisions for the chat patch: small scrubber pulled forward into it, the Help entry shown only to people who may edit assistant settings until the audit log lands, sending blocked in practice mode until the coach exists, and this patch ahead of it. Help: `settings/assistant`. Tests: `assistantconfig`, `assistantsettings`. Device test T50. | your request |
++| 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ 
+ 
+ ---
+diff --git a/help/help.json b/help/help.json
+index 43bfc99..8452bc8 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "cfb26044",
++ "version": "e0c35119",
+  "pages": [
+   {
+    "id": "cash",
+@@ -835,7 +835,7 @@
+    "id": "orders/square-history",
+    "title": "Square history",
+    "parent": "orders",
+-   "summary": "Export old Square sales on a PC, import them onto each register, and understand how they appear in Reports and Transactions.",
++   "summary": "Export old Square sales on a PC, import them onto each register (from the PC or from another register), and understand how they appear in Reports and Transactions.",
+    "tags": [
+     "Square",
+     "history",
+@@ -843,6 +843,10 @@
+     "export",
+     "QR",
+     "PC",
++    "share",
++    "copy",
++    "another register",
++    "Wi-Fi",
+     "SKU",
+     "barcode",
+     "reports",
+@@ -853,12 +857,12 @@
+     "orders",
+     "orders/reports"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-10-17",
+    "lead": "Square history is a one-time, read-only import of old Square sales and refunds. It never changes Shopify items, stock or customers.",
+    "sections": {
+-    "basic": "### Export from Square\nOn a PC, follow `tools/square-history/README.md`: create a Square developer app, put its production access token in the local `.env`, then run the export script. Choose a date range with `--from` and `--to`, or omit them to export the available history. Keep the script running while the iPad imports.\n\n### Import to each iPad\nOn the iPad, open **Settings ▸ Square history** and either:\n1. Tap **Scan QR from PC** while the PC and iPad are on the same Wi-Fi.\n2. Type the address printed by the script and tap **Import from address**.\n3. Copy the files from the PC's `out` folder to the iPad and tap **Pick files**.\n\nThe import shows how many sales and refunds were loaded and how many item lines matched a Shopify variant. After import, the PC script can be stopped. Repeat the import on each register that needs this history.\n\n### Find the imported records\nImported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.\n\nIf you refresh the Shopify catalogue, tap **Re-match to Shopify catalogue** in Settings ▸ Square history. Use **Delete imported Square history** to remove it from this iPad.",
+-    "deep": "### What is imported and matched\nCompleted sales and refunds are included. Square variations link to Shopify variants by SKU first, then UPC/barcode. A match gets Shopify's item name, cost and category for reports. An unmatched line stays a custom Square line, with Square's category. The import also carries over Square's tender details, discounts, tips, fees and customer names on their sales; it does not create Shopify customer records.\n\n### Where the files live\nHistory is stored compressed in monthly files under the app's `Documents/square-history/` folder. Reports use a small daily rollup file; Transactions reads the detailed monthly files. Re-match rebuilds the links and report rollups from those local files without contacting Square.\n\n### Connection and import problems\n- **Timed out / could not reach the PC:** use the same Wi-Fi, leave the export script running, check the local-network permission in iOS Settings, or transfer the output files and use **Pick files**.\n- **No matching SKU:** refresh Shopify catalogue, then re-match. A missing match does not lose the sale; it remains a custom line.\n- **Wrong or incomplete date range:** rerun the PC export with the desired dates and import the resulting files.\n- The PC script serves only the export folder while it runs. Stop it when import is done.",
+-    "advanced": "### Import path\n```mermaid\nflowchart TD\n  A[PC reads Square history] --> B[Write compressed monthly exports]\n  B --> C[Serve manifest by QR or copy files]\n  C --> D[Install files on this iPad]\n  D --> E[Link SKU then barcode to Shopify catalogue]\n  E --> F[Build report rollups and transaction records]\n  F --> G[Read only history]\n```\n\n| Job | Where |\n|---|---|\n| PC export | `tools/square-history/export.ts` |\n| PC setup and use | `tools/square-history/README.md` |\n| Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |\n| Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |\n| SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |\n| Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |\n\nThe manifest is checked before file names are used. Each month is compressed separately so detailed history can be loaded without expanding the entire export at once."
++    "basic": "### Export from Square\nOn a PC, follow `tools/square-history/README.md`: create a Square developer app, put its production access token in the local `.env`, then run the export script. Choose a date range with `--from` and `--to`, or omit them to export the available history. Keep the script running while the iPad imports.\n\n### Import to each iPad\nOn the iPad, open **Settings ▸ Square history** and either:\n1. Tap **Scan QR from PC** while the PC and iPad are on the same Wi-Fi.\n2. Type the address printed by the script and tap **Import from address**.\n3. Copy the files from the PC's `out` folder to the iPad and tap **Pick files**.\n\nThe import shows how many sales and refunds were loaded and how many item lines matched a Shopify variant. After import, the PC script can be stopped. Repeat the import on each register that needs this history.\n\n### Copy history from one register to another\nOnce one register has the history, the others do not need the PC. On the register that has it, open **Settings ▸ Square history** and tap **Show QR for another register**. On the other register, open **Settings ▸ Square history**, tap **Scan QR from PC** and scan that code. Both registers must be on the same Wi-Fi.\n\nThe code is a single small address, not the data itself, so it scans easily. The sharing register shows how many registers it has sent to. Keep its page open until the other register says it is done, then tap **Stop sharing**. Sharing also stops by itself after 10 minutes, or if the app leaves the screen. The other register links the history to its own Shopify catalogue, so each register's matches and report numbers are built on that register.\n\n### Find the imported records\nImported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.\n\nIf you refresh the Shopify catalogue, tap **Re-match to Shopify catalogue** in Settings ▸ Square history. Use **Delete imported Square history** to remove it from this iPad.",
++    "deep": "### What is imported and matched\nCompleted sales and refunds are included. Square variations link to Shopify variants by SKU first, then UPC/barcode. A match gets Shopify's item name, cost and category for reports. An unmatched line stays a custom Square line, with Square's category. The import also carries over Square's tender details, discounts, tips, fees and customer names on their sales; it does not create Shopify customer records.\n\n### Where the files live\nHistory is stored compressed in monthly files under the app's `Documents/square-history/` folder. Reports use a small daily rollup file; Transactions reads the detailed monthly files. Re-match rebuilds the links and report rollups from those local files without contacting Square.\n\n### Connection and import problems\n- **Timed out / could not reach the PC:** use the same Wi-Fi, leave the export script running, check the local-network permission in iOS Settings, or transfer the output files and use **Pick files**.\n- **No matching SKU:** refresh Shopify catalogue, then re-match. A missing match does not lose the sale; it remains a custom line.\n- **Wrong or incomplete date range:** rerun the PC export with the desired dates and import the resulting files.\n- **Share with another register does not start:** the register must already have imported history, and must be on Wi-Fi. If a file is reported missing, import again first.\n- **The other register cannot reach the sharing register:** both must be on the same Wi-Fi (not a guest network that separates devices), the sharing page must still be open, and Local Network must be allowed for the app in iOS Settings on both.\n- The PC script serves only the export folder while it runs. Stop it when import is done. A sharing register does the same job: it serves only the imported files behind a random key, and only while its Square history page is open.",
++    "advanced": "### Import path\n```mermaid\nflowchart TD\n  A[PC reads Square history] --> B[Write compressed monthly exports]\n  B --> C[Serve manifest by QR or copy files]\n  C --> D[Install files on this iPad]\n  D --> E[Link SKU then barcode to Shopify catalogue]\n  E --> F[Build report rollups and transaction records]\n  F --> G[Read only history]\n```\n\n| Job | Where |\n|---|---|\n| PC export | `tools/square-history/export.ts` |\n| PC setup and use | `tools/square-history/README.md` |\n| Share to another register (server, QR address, file serving) | `startShare` in `src/lib/squareShareIO.ts` |\n| Share rules (address, key, routing, progress) | `answerRequest`, `shareUrl`, `shareStatus` in `src/lib/squareShare.ts` |\n| Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |\n| Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |\n| SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |\n| Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |\n\nWhen a register shares, it takes the place of the PC script: `startShare` opens a small read-only web server on the Wi-Fi, picks a random key, and returns an address of the same shape the PC script prints, so the receiving register's scanner and `installFromUrl` need no changes. Only `manifest.json` and the files the manifest lists can be fetched, and a wrong key or file name is a plain 404.\n\nThe manifest is checked before file names are used. Each month is compressed separately so detailed history can be loaded without expanding the entire export at once."
+    }
+   },
+   {
+diff --git a/help/orders/square-history.md b/help/orders/square-history.md
+index 3910de3..8480983 100644
+--- a/help/orders/square-history.md
++++ b/help/orders/square-history.md
+@@ -2,10 +2,10 @@
+ id: orders/square-history
+ title: Square history
+ parent: orders
+-summary: Export old Square sales on a PC, import them onto each register, and understand how they appear in Reports and Transactions.
+-tags: [Square, history, import, export, QR, PC, SKU, barcode, reports, transactions, read only]
++summary: Export old Square sales on a PC, import them onto each register (from the PC or from another register), and understand how they appear in Reports and Transactions.
++tags: [Square, history, import, export, QR, PC, share, copy, another register, Wi-Fi, SKU, barcode, reports, transactions, read only]
+ related: [orders, orders/reports]
+-updated: 2026-10-11
++updated: 2026-10-17
+ ---
+ Square history is a one-time, read-only import of old Square sales and refunds. It never changes Shopify items, stock or customers.
+ 
+@@ -22,6 +22,11 @@ On the iPad, open **Settings ▸ Square history** and either:
+ 
+ The import shows how many sales and refunds were loaded and how many item lines matched a Shopify variant. After import, the PC script can be stopped. Repeat the import on each register that needs this history.
+ 
++### Copy history from one register to another
++Once one register has the history, the others do not need the PC. On the register that has it, open **Settings ▸ Square history** and tap **Show QR for another register**. On the other register, open **Settings ▸ Square history**, tap **Scan QR from PC** and scan that code. Both registers must be on the same Wi-Fi.
++
++The code is a single small address, not the data itself, so it scans easily. The sharing register shows how many registers it has sent to. Keep its page open until the other register says it is done, then tap **Stop sharing**. Sharing also stops by itself after 10 minutes, or if the app leaves the screen. The other register links the history to its own Shopify catalogue, so each register's matches and report numbers are built on that register.
++
+ ### Find the imported records
+ Imported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.
+ 
+@@ -39,7 +44,9 @@ History is stored compressed in monthly files under the app's `Documents/square-
+ - **Timed out / could not reach the PC:** use the same Wi-Fi, leave the export script running, check the local-network permission in iOS Settings, or transfer the output files and use **Pick files**.
+ - **No matching SKU:** refresh Shopify catalogue, then re-match. A missing match does not lose the sale; it remains a custom line.
+ - **Wrong or incomplete date range:** rerun the PC export with the desired dates and import the resulting files.
+-- The PC script serves only the export folder while it runs. Stop it when import is done.
++- **Share with another register does not start:** the register must already have imported history, and must be on Wi-Fi. If a file is reported missing, import again first.
++- **The other register cannot reach the sharing register:** both must be on the same Wi-Fi (not a guest network that separates devices), the sharing page must still be open, and Local Network must be allowed for the app in iOS Settings on both.
++- The PC script serves only the export folder while it runs. Stop it when import is done. A sharing register does the same job: it serves only the imported files behind a random key, and only while its Square history page is open.
+ 
+ ## Advanced
+ 
+@@ -58,9 +65,13 @@ flowchart TD
+ |---|---|
+ | PC export | `tools/square-history/export.ts` |
+ | PC setup and use | `tools/square-history/README.md` |
++| Share to another register (server, QR address, file serving) | `startShare` in `src/lib/squareShareIO.ts` |
++| Share rules (address, key, routing, progress) | `answerRequest`, `shareUrl`, `shareStatus` in `src/lib/squareShare.ts` |
+ | Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |
+ | Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |
+ | SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |
+ | Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |
+ 
++When a register shares, it takes the place of the PC script: `startShare` opens a small read-only web server on the Wi-Fi, picks a random key, and returns an address of the same shape the PC script prints, so the receiving register's scanner and `installFromUrl` need no changes. Only `manifest.json` and the files the manifest lists can be fetched, and a wrong key or file name is a plain 404.
++
+ The manifest is checked before file names are used. Each month is compressed separately so detailed history can be loaded without expanding the entire export at once.
+diff --git a/package-lock.json b/package-lock.json
+index 40f5bc9..9f81442 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -38,6 +38,7 @@
+         "react-native-encrypted-storage": "^4.0.3",
+         "react-native-safe-area-context": "~5.6.0",
+         "react-native-svg": "15.12.1",
++        "react-native-tcp-socket": "^6.4.3",
+         "react-native-webview": "13.15.0",
+         "routegraph": "^0.3.0",
+         "zustand": "^5.0.0"
+@@ -4413,6 +4414,12 @@
+         "node": ">=6"
+       }
+     },
++    "node_modules/eventemitter3": {
++      "version": "4.0.7",
++      "resolved": "https://registry.npmjs.org/eventemitter3/-/eventemitter3-4.0.7.tgz",
++      "integrity": "sha512-8guHBZCwKnFhYdHr2ysuRWErTwhoN2X8XELRlrRwpmfeY2jjuUN4taQMsULKUVo1K4DvZl+0pgfyoysHxvmvEw==",
++      "license": "MIT"
++    },
+     "node_modules/expo": {
+       "version": "54.0.37",
+       "resolved": "https://registry.npmjs.org/expo/-/expo-54.0.37.tgz",
+@@ -7428,6 +7435,23 @@
+         "react-native": "*"
+       }
+     },
++    "node_modules/react-native-tcp-socket": {
++      "version": "6.4.3",
++      "resolved": "https://registry.npmjs.org/react-native-tcp-socket/-/react-native-tcp-socket-6.4.3.tgz",
++      "integrity": "sha512-zxy/2i6LuCQPwLqJUVY6twNaFeTKpDrX46LsV540yFuGfUcf9+OP7j/W8KdoLCoVOE1ccv0wBG0QH0WQ6pgHfQ==",
++      "license": "MIT",
++      "dependencies": {
++        "buffer": "^5.4.3",
++        "eventemitter3": "^4.0.7"
++      },
++      "funding": {
++        "type": "individual",
++        "url": "https://github.com/sponsors/Rapsssito"
++      },
++      "peerDependencies": {
++        "react-native": ">=0.60.0"
++      }
++    },
+     "node_modules/react-native-url-polyfill": {
+       "version": "2.0.0",
+       "resolved": "https://registry.npmjs.org/react-native-url-polyfill/-/react-native-url-polyfill-2.0.0.tgz",
+diff --git a/package.json b/package.json
+index a3a4859..265e0c3 100644
+--- a/package.json
++++ b/package.json
+@@ -51,6 +51,7 @@
+     "react-native-encrypted-storage": "^4.0.3",
+     "react-native-safe-area-context": "~5.6.0",
+     "react-native-svg": "15.12.1",
++    "react-native-tcp-socket": "^6.4.3",
+     "react-native-webview": "13.15.0",
+     "routegraph": "^0.3.0",
+     "zustand": "^5.0.0"
+diff --git a/src/lib/squareHistoryIO.ts b/src/lib/squareHistoryIO.ts
+index a150354..87fd569 100644
+--- a/src/lib/squareHistoryIO.ts
++++ b/src/lib/squareHistoryIO.ts
+@@ -32,6 +32,14 @@ const exists = async (name: string) => (await FS.getInfoAsync(dir() + name)).exi
+ 
+ export const squareMeta = () => kvGet<SquareMeta | null>(META_KEY, null);
+ 
++/** Read-only access to the stored files, used when this register shares its history with another (squareShareIO.ts). */
++export const readStoredFile = readBytes;
++export const storedFileExists = exists;
++export async function storedManifest(): Promise<SquareManifest | null> {
++  if (!(await exists('manifest.json'))) return null;
++  try { return parseManifest(await FS.readAsStringAsync(dir() + 'manifest.json')); } catch { return null; }
++}
++
+ /** Fetches the manifest from the PC script's address, downloads every file next to it, then links and builds rollups. */
+ export async function installFromUrl(manifestUrl: string, progress: (m: string) => void): Promise<SquareMeta> {
+   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
+diff --git a/src/lib/squareShare.ts b/src/lib/squareShare.ts
+new file mode 100644
+index 0000000..7bdd055
+--- /dev/null
++++ b/src/lib/squareShare.ts
+@@ -0,0 +1,100 @@
++// Location: src/lib/squareShare.ts
++// Pure logic for sharing imported Square history from one register to another over the shop Wi-Fi.
++// The sharing register plays the part the PC script plays: it serves manifest.json and the monthly files behind a random key,
++// and shows one small QR code holding the address. The other register scans it with the same importer the PC route uses.
++// No file, socket or React access here (see squareShareIO.ts), so all of it is tested in Node.
++import { isManifestUrl, safeName, type SquareManifest } from './squareHistory';
++
++export const SHARE_PORT = 8787;
++/** Tries this many ports upward from SHARE_PORT when the first is busy. */
++export const SHARE_PORT_TRIES = 10;
++/** Sharing stops by itself after this long, so the address never stays open all day. */
++export const SHARE_TTL_MS = 10 * 60 * 1000;
++/** A request line and headers longer than this are not from the importer. */
++export const MAX_HEAD_BYTES = 8192;
++
++const hex = (b: Uint8Array) => Array.from(b, x => x.toString(16).padStart(2, '0')).join('');
++/** 16 hex characters from 8 random bytes. The caller supplies the bytes so tests do not depend on a random source. */
++export function newShareKey(random: Uint8Array): string {
++  if (random.length < 8) throw new Error('Need 8 random bytes for the share key.');
++  return hex(random.subarray(0, 8));
++}
++
++/** A Wi-Fi address another register could reach. Rejects "not connected" (0.0.0.0), loopback and link-local (169.254) addresses. */
++export function usableLanIp(ip: string | null | undefined): ip is string {
++  const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/.exec((ip ?? '').trim()); if (!m) return false;
++  const p = m.slice(1).map(Number); if (p.some(n => n > 255)) return false;
++  if (p[0] === 0 || p[0] === 127 || p[0] >= 224) return false;
++  return !(p[0] === 169 && p[1] === 254);
++}
++
++/** The address in the QR code. It has the same shape as the PC script's, so the existing scanner and importer accept it unchanged. */
++export function shareUrl(ip: string, port: number, key: string): string {
++  const u = `http://${ip.trim()}:${port}/${key}/manifest.json`;
++  if (!isManifestUrl(u)) throw new Error('Could not build a valid share address.');
++  return u;
++}
++
++/** The only names the server will ever hand out: the manifest, and the files the manifest lists. */
++export function shareableNames(m: SquareManifest): Set<string> {
++  const out = new Set<string>(['manifest.json']);
++  for (const f of m.files) if (safeName(f.name)) out.add(f.name);
++  return out;
++}
++
++// ── a tiny HTTP/1.1 reader and writer (just enough for GET) ────────────────────────────────────
++export type ParsedRequest = { kind: 'more' } | { kind: 'bad' } | { kind: 'ok'; method: string; target: string };
++/** `head` is everything received so far on one connection. Waits for the blank line that ends the headers. */
++export function parseRequest(head: string): ParsedRequest {
++  const end = head.indexOf('\r\n\r\n');
++  if (end < 0) return head.length > MAX_HEAD_BYTES ? { kind: 'bad' } : { kind: 'more' };
++  if (end > MAX_HEAD_BYTES) return { kind: 'bad' };
++  const m = /^([A-Z]{3,7}) (\S{1,300}) HTTP\/1\.[01]\r\n/.exec(head.slice(0, end + 2)); if (!m) return { kind: 'bad' };
++  return { kind: 'ok', method: m[1], target: m[2] };
++}
++
++export type Route = { status: 200; name: string } | { status: 400 | 404 | 405 };
++/** Checks the method, the random key and the file name. Anything else is a plain 404, so a wrong key reveals nothing. */
++export function route(method: string, target: string, key: string, allowed: Set<string>): Route {
++  if (method !== 'GET') return { status: 405 };
++  const path = target.split('?')[0].split('#')[0];
++  const m = /^\/([a-f0-9]{8,64})\/([A-Za-z0-9._-]{1,80})$/.exec(path); if (!m) return { status: 404 };
++  if (m[1] !== key || !allowed.has(m[2]) || !safeName(m[2])) return { status: 404 };
++  return { status: 200, name: m[2] };
++}
++
++export type Answer = { kind: 'more' } | { kind: 'error'; status: 400 | 404 | 405 } | { kind: 'file'; name: string };
++/** One call that turns what a connection has sent so far into "wait", "refuse" or "send this file". Both the app and the tests use it. */
++export function answerRequest(head: string, key: string, allowed: Set<string>): Answer {
++  const req = parseRequest(head); if (req.kind === 'more') return { kind: 'more' }; if (req.kind === 'bad') return { kind: 'error', status: 400 };
++  const r = route(req.method, req.target, key, allowed); return r.status === 200 ? { kind: 'file', name: r.name } : { kind: 'error', status: r.status };
++}
++
++export const contentTypeOf = (name: string) => (name.endsWith('.json') ? 'application/json' : 'application/gzip');
++const REASON: Record<number, string> = { 200: 'OK', 400: 'Bad Request', 404: 'Not Found', 405: 'Method Not Allowed' };
++/** Status line and headers. `Connection: close` means each request gets its own connection, which keeps the server simple. */
++export function responseHead(status: 200 | 400 | 404 | 405, length: number, contentType?: string): string {
++  return `HTTP/1.1 ${status} ${REASON[status]}\r\n${contentType ? `Content-Type: ${contentType}\r\n` : ''}Content-Length: ${length}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n`;
++}
++
++/** Splits bytes for writing to a socket, so a large month file does not sit in one huge write. */
++export function chunkBytes(b: Uint8Array, size = 32768): Uint8Array[] {
++  const out: Uint8Array[] = []; for (let i = 0; i < b.length; i += size) out.push(b.subarray(i, Math.min(b.length, i + size))); return out;
++}
++
++// ── who has received what ──────────────────────────────────────────────────────────────────────
++/** Which files each requesting device has been sent. Keyed by the other device's address. */
++export type ShareLog = Map<string, Set<string>>;
++export const noteServed = (log: ShareLog, who: string, name: string): ShareLog => { (log.get(who) ?? log.set(who, new Set()).get(who)!).add(name); return log; };
++export type ShareStatus = { devices: number; finished: number; files: number };
++/** A device is finished once it has been sent the manifest and every file the manifest lists. */
++export function shareStatus(m: SquareManifest, log: ShareLog): ShareStatus {
++  const need = [...shareableNames(m)]; let finished = 0, files = 0;
++  for (const got of log.values()) { files += got.size; if (need.every(n => got.has(n))) finished++; }
++  return { devices: log.size, finished, files };
++}
++export function statusLine(s: ShareStatus): string {
++  if (!s.devices) return 'Waiting for another register to scan this code…';
++  if (s.finished) return s.finished === 1 ? 'Sent to 1 register. You can stop sharing, or let another register scan it.' : `Sent to ${s.finished} registers. You can stop sharing now.`;
++  return `Sending… ${s.files} file${s.files === 1 ? '' : 's'} so far.`;
++}
+diff --git a/src/lib/squareShareIO.ts b/src/lib/squareShareIO.ts
+new file mode 100644
+index 0000000..cfe30f6
+--- /dev/null
++++ b/src/lib/squareShareIO.ts
+@@ -0,0 +1,84 @@
++// Location: src/lib/squareShareIO.ts
++// Register side of "share Square history with another register". It does what tools/square-history/export.ts does at the end of
++// its run: a tiny read-only web server on the shop Wi-Fi, behind a random key, serving manifest.json and the monthly files already
++// stored on this device. The other register scans the QR code (squareShare.ts builds the address) and downloads with the same
++// importer it uses for the PC. Nothing is written, nothing leaves the local network, and the server stops by itself.
++import TcpSocket from 'react-native-tcp-socket';
++import DeviceInfo from 'react-native-device-info';
++import * as Crypto from 'expo-crypto';
++import { AppState } from 'react-native';
++import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
++import { noteActivity } from './idle';
++import { readStoredFile, storedFileExists, storedManifest } from './squareHistoryIO';
++import type { SquareManifest } from './squareHistory';
++import {
++  SHARE_PORT, SHARE_PORT_TRIES, SHARE_TTL_MS, answerRequest, chunkBytes, contentTypeOf, newShareKey, noteServed, responseHead, shareStatus,
++  shareUrl, shareableNames, statusLine, usableLanIp, type ShareLog, type ShareStatus,
++} from './squareShare';
++
++const KEEP_TAG = 'pos-square-share';
++const WRITE_TIMEOUT_MS = 20000;
++export type ShareEnd = 'manual' | 'ttl' | 'background' | 'error';
++export type ShareHandle = { url: string; manifest: SquareManifest; stop: () => void };
++
++type Sock = InstanceType<typeof TcpSocket.Socket>;
++
++const latin1 = (d: unknown): string => {
++  if (typeof d === 'string') return d;
++  const u = d as Uint8Array; let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return s;
++};
++const write = (s: Sock, data: string | Uint8Array): Promise<void> => new Promise((ok, no) => {
++  const t = setTimeout(() => no(new Error('write timed out')), WRITE_TIMEOUT_MS);
++  try { s.write(data, typeof data === 'string' ? 'utf8' : undefined, (err?: Error) => { clearTimeout(t); err ? no(err) : ok(); }); } catch (e) { clearTimeout(t); no(e); }
++});
++
++/** Starts sharing. Throws a plain-words Error when this register cannot share (no history, not on Wi-Fi, no free port). */
++export async function startShare(onUpdate: (line: string, s: ShareStatus) => void, onEnd: (why: ShareEnd, message?: string) => void): Promise<ShareHandle> {
++  const manifest = await storedManifest();
++  if (!manifest) throw new Error('This register has no Square history yet. Import it first, then share it.');
++  for (const f of manifest.files) if (!(await storedFileExists(f.name))) throw new Error(`The file ${f.name} is missing on this register. Import the history again, then share it.`);
++  const ip = await DeviceInfo.getIpAddress().catch(() => '');
++  if (!usableLanIp(ip)) throw new Error('This iPad is not connected to Wi-Fi. Join the same Wi-Fi as the other register and try again.');
++
++  const key = newShareKey(Crypto.getRandomBytes(8)); const allowed = shareableNames(manifest); const log: ShareLog = new Map();
++  const sockets = new Set<Sock>(); let stopped = false;
++  const push = () => { const st = shareStatus(manifest, log); onUpdate(statusLine(st), st); };
++
++  const server = TcpSocket.createServer((socket: Sock) => {
++    sockets.add(socket); let head = ''; let handled = false;
++    socket.on('error', () => { sockets.delete(socket); });
++    socket.on('close', () => { sockets.delete(socket); });
++    socket.on('data', async (d: unknown) => {
++      if (handled || stopped) return; head += latin1(d); const a = answerRequest(head, key, allowed); if (a.kind === 'more') return; handled = true;
++      const who = String(socket.remoteAddress ?? 'unknown');
++      try {
++        if (a.kind === 'error') { await write(socket, responseHead(a.status, 0)); socket.end(); return; }
++        const bytes = await readStoredFile(a.name);
++        await write(socket, responseHead(200, bytes.length, contentTypeOf(a.name)));
++        for (const c of chunkBytes(bytes)) await write(socket, c);
++        noteServed(log, who, a.name); noteActivity(); push(); socket.end();
++      } catch { try { socket.destroy(); } catch { /* already closed */ } }
++    });
++  });
++
++  let port = SHARE_PORT;
++  for (let i = 0; ; i++) {
++    port = SHARE_PORT + i;
++    try { await new Promise<void>((ok, no) => { server.once('error', no); server.listen({ port, host: '0.0.0.0', reuseAddress: true }, () => { server.removeListener('error', no); ok(); }); }); break; }
++    catch (e: any) { if (i + 1 >= SHARE_PORT_TRIES) throw new Error(`Could not start sharing (${e?.message ?? 'no free port'}). Check Local Network is allowed for this app in iOS Settings.`); }
++  }
++
++  void activateKeepAwakeAsync(KEEP_TAG).catch(() => {});
++  const stop = (why: ShareEnd = 'manual', message?: string) => {
++    if (stopped) return; stopped = true; clearTimeout(timer); sub.remove();
++    for (const s of sockets) { try { s.destroy(); } catch { /* already closed */ } } sockets.clear();
++    try { server.close(); } catch { /* already closed */ }
++    void Promise.resolve(deactivateKeepAwake(KEEP_TAG)).catch(() => {});
++    onEnd(why, message);
++  };
++  const timer = setTimeout(() => stop('ttl'), SHARE_TTL_MS);
++  // iOS pauses sockets in the background, so a half-working server would only confuse the other register.
++  const sub = AppState.addEventListener('change', st => { if (st !== 'active') stop('background'); });
++  server.on('error', (e: Error) => stop('error', e.message));
++  return { url: shareUrl(ip, port, key), manifest, stop: () => stop('manual') };
++}
+diff --git a/src/screens/SquareHistory.tsx b/src/screens/SquareHistory.tsx
+index 5a3165d..01ba4fc 100644
+--- a/src/screens/SquareHistory.tsx
++++ b/src/screens/SquareHistory.tsx
+@@ -1,16 +1,58 @@
+ // Location: src/screens/SquareHistory.tsx
+-// Settings ▸ Square history. One-off import of old Square sales/refunds from the PC script (tools/square-history).
++// Settings ▸ Square history. One-off import of old Square sales/refunds from the PC script (tools/square-history), or from another
++// register that already has them (it shows a QR code holding a Wi-Fi address, see squareShareIO.ts).
+ // Read-only history: never touches stock, items, customers or Shopify.
+ import React, { useEffect, useState } from 'react';
+ import * as DocPicker from 'expo-document-picker';
+ import { View } from 'react-native';
+ import { Btn, Field, Row, Section, Txt, alertMsg, confirm } from '../ui/kit';
+ import { CameraScanner } from './Scanner';
++import { QR } from '../ui/QR';
+ import { isManifestUrl } from '../lib/squareHistory';
+ import { installFromPicked, installFromUrl, rebuild, removeSquareHistory, squareMeta, type SquareMeta } from '../lib/squareHistoryIO';
++import { startShare, type ShareEnd, type ShareHandle } from '../lib/squareShareIO';
++import { isTraining } from '../lib/trainingGuard';
+ 
+ const day = (s?: string) => (s ? new Date(s).toLocaleDateString() : '-');
+ 
++const ENDED: Record<ShareEnd, string> = {
++  manual: '', ttl: 'Sharing stopped after 10 minutes. Start it again if the other register still needs the history.',
++  background: 'Sharing stopped because the app left the screen. Start it again and keep this page open until the other register is done.',
++  error: 'Sharing stopped because of a network problem.',
++};
++
++/** Shows a QR code so another register can copy this register's imported history, the way it would from the PC script. */
++function ShareSection() {
++  const [live, setLive] = useState<ShareHandle | null>(null); const [line, setLine] = useState(''); const [busy, setBusy] = useState(false); const [note, setNote] = useState('');
++  const handle = React.useRef<ShareHandle | null>(null); const mounted = React.useRef(true);
++  useEffect(() => () => { mounted.current = false; handle.current?.stop(); }, []);
++  const start = async () => {
++    if (isTraining()) { alertMsg('Practice mode', 'Sharing is switched off in practice mode.'); return; }
++    setBusy(true); setNote('');
++    try {
++      const h = await startShare((l) => setLine(l), (why, msg) => { handle.current = null; setLive(null); setNote(why === 'error' && msg ? `${ENDED.error} ${msg}` : ENDED[why]); });
++      if (!mounted.current) { h.stop(); return; }
++      handle.current = h; setLine('Waiting for another register to scan this code…'); setLive(h);
++    } catch (e: any) { alertMsg('Could not share', e.message, 'orders/square-history'); }
++    if (mounted.current) setBusy(false);
++  };
++  return (
++    <>
++      <Section title="Share with another register" footer={live ? 'Keep this page open until the other register says it is done. Sharing stops by itself after 10 minutes, or when you leave this page.' : note || 'Copies this register’s imported history to another register on the same Wi-Fi, so only one register needs the PC script. The other register scans the code in Scan QR from PC.'}>
++        {live ? null : <Row icon="share-outline" title="Show QR for another register" sub={busy ? 'Starting…' : 'Same Wi-Fi, other register scans it'} onPress={() => !busy && void start()} last />}
++        {live ? <Row icon="stop-circle-outline" title="Stop sharing" danger onPress={() => handle.current?.stop()} last /> : null}
++      </Section>
++      {live ? (
++        <View style={{ paddingHorizontal: 16, gap: 10, alignItems: 'center' }}>
++          <QR value={live.url} size={260} label="QR code for another register to copy Square history" />
++          <Txt sub>{line}</Txt>
++          <Txt size={12} sub>Or type this on the other register: {live.url}</Txt>
++        </View>
++      ) : null}
++    </>
++  );
++}
++
+ export function SquareHistorySettings() {
+   const [meta, setMeta] = useState<SquareMeta | null>(null); const [busy, setBusy] = useState(''); const [scan, setScan] = useState(false); const [url, setUrl] = useState('');
+   useEffect(() => { void squareMeta().then(setMeta); }, []);
+@@ -28,7 +70,7 @@ export function SquareHistorySettings() {
+       <Section title="Imported history" footer="Old Square sales and refunds, kept compressed on this device. They add to Reports (as register “square”) and show in Transactions when you turn on Square history there. Nothing here changes stock, items, customers or Shopify.">
+         <Row icon="archive-outline" title={meta ? `${meta.sales} sales · ${meta.refunds} refunds` : 'Nothing imported yet'} sub={meta ? `${day(meta.from)} - ${day(meta.to)} · ${meta.linkedLines}/${meta.lines} lines matched to Shopify by SKU` : 'Run the script on your PC first (tools/square-history/README.md)'} last />
+       </Section>
+-      <Section title="Import" footer={busy || 'On the PC: run the script, then scan the QR code it shows (same Wi-Fi). No luck with Wi-Fi? Copy the files from the script’s out folder to this iPad and use Pick files.'}>
++      <Section title="Import" footer={busy || 'On the PC: run the script, then scan the QR code it shows (same Wi-Fi). Or scan the code another register shows under Share with another register. No luck with Wi-Fi? Copy the files from the script’s out folder to this iPad and use Pick files.'}>
+         <Row icon="qr-code-outline" title="Scan QR from PC" onPress={() => !busy && setScan(true)} />
+         <Row icon="folder-open-outline" title="Pick files (manifest.json + sales-*.json.gz)" onPress={() => !busy && void pick()} last />
+       </Section>
+@@ -37,11 +79,12 @@ export function SquareHistorySettings() {
+         <Btn title="Import from address" kind="secondary" disabled={!!busy || !isManifestUrl(url)} onPress={() => void fromUrl(url)} />
+         {busy ? <Txt sub>{busy}</Txt> : null}
+       </View>
++      {meta ? <ShareSection /> : null}
+       {meta ? <Section title="Maintenance" footer="Re-match after you refresh the catalogue from Shopify, so new SKUs link up. This only re-reads the files already on this device.">
+         <Row icon="refresh-outline" title="Re-match to Shopify catalogue" onPress={() => !busy && void run(() => rebuild(setBusy))} />
+         <Row icon="trash-outline" title="Delete imported Square history" danger last onPress={async () => { if (await confirm('Delete Square history?', 'Removes the imported files from this iPad. You can import again from the PC.', 'Delete', true)) { await removeSquareHistory(); setMeta(null); } }} />
+       </Section> : null}
+-      <CameraScanner visible={scan} title="Scan the QR code on your PC" onClose={() => setScan(false)} onScan={code => { if (!isManifestUrl(code)) return null; setScan(false); void fromUrl(code); return 'Found it'; }} />
++      <CameraScanner visible={scan} title="Scan the QR code on your PC or another register" onClose={() => setScan(false)} onScan={code => { if (!isManifestUrl(code)) return null; setScan(false); void fromUrl(code); return 'Found it'; }} />
+     </>
+   );
+ }
+diff --git a/src/ui/QR.tsx b/src/ui/QR.tsx
+index e419d85..67fa544 100644
+--- a/src/ui/QR.tsx
++++ b/src/ui/QR.tsx
+@@ -5,7 +5,7 @@ import Svg, { Path } from 'react-native-svg';
+ import qrcode from 'qrcode-generator';
+ 
+ /** QR code on a white tile (always dark-on-white so it scans in dark mode too). Pure JS + react-native-svg: no native module. */
+-export function QR({ value, size = 240 }: { value: string; size?: number }) {
++export function QR({ value, size = 240, label = 'QR code for the receipt' }: { value: string; size?: number; label?: string }) {
+   const { d, n } = useMemo(() => {
+     const q = qrcode(0, 'M'); q.addData(value); q.make(); const n = q.getModuleCount(); let d = '';
+     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
+@@ -13,7 +13,7 @@ export function QR({ value, size = 240 }: { value: string; size?: number }) {
+   }, [value]);
+   const quiet = 3; const box = n + quiet * 2;
+   return (
+-    <View style={{ backgroundColor: '#fff', padding: 8, borderRadius: 12, alignSelf: 'center' }} accessibilityLabel="QR code for the receipt">
++    <View style={{ backgroundColor: '#fff', padding: 8, borderRadius: 12, alignSelf: 'center' }} accessibilityLabel={label}>
+       <Svg width={size} height={size} viewBox={`${-quiet} ${-quiet} ${box} ${box}`}><Path d={d} fill="#000" /></Svg>
+     </View>
+   );
+diff --git a/tests/squareshare.test.ts b/tests/squareshare.test.ts
+new file mode 100644
+index 0000000..026a493
+--- /dev/null
++++ b/tests/squareshare.test.ts
+@@ -0,0 +1,133 @@
++// Location: tests/squareshare.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { createServer, type Server } from 'node:net';
++import type { AddressInfo } from 'node:net';
++import { buildManifest, isManifestUrl, packMonths, parseManifest, unpackJson, type SquareManifest } from '../src/lib/squareHistory';
++import type { HistSale } from '../src/lib/squareConvert';
++import {
++  MAX_HEAD_BYTES, SHARE_PORT, answerRequest, chunkBytes, contentTypeOf, newShareKey, noteServed, parseRequest, responseHead, route,
++  shareStatus, shareUrl, shareableNames, statusLine, usableLanIp, type ShareLog,
++} from '../src/lib/squareShare';
++
++const sale = (uuid: string, ts: string): HistSale => ({ uuid, ts, type: 'sale', registerId: 'square', source: 'square', squareOrderId: `SQ-${uuid}`, lines: [], cogsCents: 0 } as unknown as HistSale);
++const sales = [sale('a', '2025-03-01T01:00:00Z'), sale('b', '2025-03-02T01:00:00Z'), sale('c', '2025-04-02T01:00:00Z')];
++const { files } = packMonths(sales); const manifest = buildManifest(sales, files, ['Market']);
++const KEY = newShareKey(new Uint8Array([1, 2, 3, 4, 171, 205, 239, 255]));
++
++test('share key is 16 lowercase hex characters from 8 bytes, and refuses too few bytes', () => {
++  assert.equal(KEY, '01020304abcdefff');
++  assert.throws(() => newShareKey(new Uint8Array(4)));
++});
++
++test('the share address has the same shape as the PC script address, so the existing scanner accepts it', () => {
++  const u = shareUrl('192.168.1.20', SHARE_PORT, KEY);
++  assert.equal(u, 'http://192.168.1.20:8787/01020304abcdefff/manifest.json');
++  assert.ok(isManifestUrl(u));
++  assert.throws(() => shareUrl('not an ip!', 8787, KEY));
++});
++
++test('only a real Wi-Fi address can be shared', () => {
++  for (const ok of ['192.168.1.20', '10.0.0.5', '172.20.10.2']) assert.ok(usableLanIp(ok), ok);
++  for (const bad of ['0.0.0.0', '127.0.0.1', '169.254.3.4', '', null, undefined, 'abc', '300.1.1.1', '192.168.1', '::1', '224.0.0.1']) assert.ok(!usableLanIp(bad as any), String(bad));
++});
++
++test('the server only ever offers the manifest and the files the manifest lists', () => {
++  const names = shareableNames(manifest);
++  assert.deepEqual([...names].sort(), ['manifest.json', ...files.map(f => f.name)].sort());
++  const sneaky: SquareManifest = { ...manifest, files: [...manifest.files, { name: '../etc/passwd', bytes: 1, sales: 0, month: 'x' }] };
++  assert.ok(!shareableNames(sneaky).has('../etc/passwd'));
++  assert.ok(!names.has('rollups.json.gz'));
++});
++
++test('request parsing waits for the end of the headers and refuses nonsense', () => {
++  assert.deepEqual(parseRequest('GET /x HTTP/1.1\r\nHost: a'), { kind: 'more' });
++  assert.deepEqual(parseRequest('GET /abc/manifest.json HTTP/1.1\r\nHost: a\r\n\r\n'), { kind: 'ok', method: 'GET', target: '/abc/manifest.json' });
++  assert.deepEqual(parseRequest('hello\r\n\r\n'), { kind: 'bad' });
++  assert.deepEqual(parseRequest('GET /x HTTP/2\r\n\r\n'), { kind: 'bad' });
++  assert.deepEqual(parseRequest('x'.repeat(MAX_HEAD_BYTES + 10)), { kind: 'bad' });
++});
++
++test('routing: right key and a listed file is 200; everything else is 404 or 405 and says nothing about why', () => {
++  const allowed = shareableNames(manifest); const f = files[0].name;
++  assert.deepEqual(route('GET', `/${KEY}/manifest.json`, KEY, allowed), { status: 200, name: 'manifest.json' });
++  assert.deepEqual(route('GET', `/${KEY}/${f}`, KEY, allowed), { status: 200, name: f });
++  assert.deepEqual(route('GET', `/${KEY}/${f}?x=1`, KEY, allowed), { status: 200, name: f });
++  assert.deepEqual(route('GET', `/ffffffffffffffff/${f}`, KEY, allowed), { status: 404 });
++  assert.deepEqual(route('GET', `/${KEY}/rollups.json.gz`, KEY, allowed), { status: 404 });
++  assert.deepEqual(route('GET', `/${KEY}/../manifest.json`, KEY, allowed), { status: 404 });
++  assert.deepEqual(route('GET', `/${KEY}/%2e%2e/x`, KEY, allowed), { status: 404 });
++  assert.deepEqual(route('GET', '/', KEY, allowed), { status: 404 });
++  assert.deepEqual(route('POST', `/${KEY}/manifest.json`, KEY, allowed), { status: 405 });
++});
++
++test('answerRequest ties parsing and routing together', () => {
++  const allowed = shareableNames(manifest);
++  assert.deepEqual(answerRequest('GET /', KEY, allowed), { kind: 'more' });
++  assert.deepEqual(answerRequest('junk\r\n\r\n', KEY, allowed), { kind: 'error', status: 400 });
++  assert.deepEqual(answerRequest(`GET /${KEY}/manifest.json HTTP/1.1\r\n\r\n`, KEY, allowed), { kind: 'file', name: 'manifest.json' });
++  assert.deepEqual(answerRequest('GET /nope/manifest.json HTTP/1.1\r\n\r\n', KEY, allowed), { kind: 'error', status: 404 });
++});
++
++test('response head has the length, a type, no caching and closes the connection', () => {
++  const h = responseHead(200, 1234, contentTypeOf('sales-2025-03.json.gz'));
++  assert.match(h, /^HTTP\/1\.1 200 OK\r\n/); assert.match(h, /Content-Type: application\/gzip\r\n/); assert.match(h, /Content-Length: 1234\r\n/);
++  assert.match(h, /Connection: close\r\n\r\n$/); assert.match(h, /no-store/);
++  assert.match(responseHead(404, 0), /^HTTP\/1\.1 404 Not Found\r\n/); assert.doesNotMatch(responseHead(404, 0), /Content-Type/);
++  assert.equal(contentTypeOf('manifest.json'), 'application/json');
++});
++
++test('chunking keeps every byte, in order, and handles empty input', () => {
++  const b = new Uint8Array(100000).map((_, i) => i % 251); const parts = chunkBytes(b, 32768);
++  assert.equal(parts.length, 4); assert.ok(parts.every(p => p.length <= 32768));
++  const joined = new Uint8Array(b.length); let o = 0; for (const p of parts) { joined.set(p, o); o += p.length; }
++  assert.deepEqual(joined, b); assert.deepEqual(chunkBytes(new Uint8Array(0)), []);
++});
++
++test('progress: a register is finished only after the manifest and every file reached it', () => {
++  const log: ShareLog = new Map(); assert.deepEqual(shareStatus(manifest, log), { devices: 0, finished: 0, files: 0 });
++  assert.match(statusLine(shareStatus(manifest, log)), /Waiting/);
++  noteServed(log, '192.168.1.30', 'manifest.json'); noteServed(log, '192.168.1.30', files[0].name);
++  let st = shareStatus(manifest, log); assert.deepEqual(st, { devices: 1, finished: 0, files: 2 }); assert.match(statusLine(st), /Sending… 2 files/);
++  noteServed(log, '192.168.1.30', files[1].name); noteServed(log, '192.168.1.30', files[1].name);
++  st = shareStatus(manifest, log); assert.deepEqual(st, { devices: 1, finished: 1, files: 3 }); assert.match(statusLine(st), /Sent to 1 register\./);
++  for (const n of ['manifest.json', ...files.map(f => f.name)]) noteServed(log, '192.168.1.31', n);
++  st = shareStatus(manifest, log); assert.equal(st.finished, 2); assert.match(statusLine(st), /Sent to 2 registers/);
++});
++
++// A real round trip over a local socket. The server below is the app's logic (answerRequest, responseHead, chunkBytes) with Node
++// sockets in place of the phone's, and the client is Node's own fetch, standing in for the importer on the other register.
++function serve(map: Map<string, Uint8Array>, key: string): Promise<{ server: Server; base: string }> {
++  const allowed = new Set(map.keys());
++  return new Promise(ok => {
++    const server = createServer(sock => {
++      let head = ''; let done = false;
++      sock.on('error', () => {});
++      sock.on('data', d => {
++        if (done) return; head += d.toString('latin1'); const a = answerRequest(head, key, allowed); if (a.kind === 'more') return; done = true;
++        if (a.kind === 'error') { sock.end(responseHead(a.status, 0)); return; }
++        const bytes = map.get(a.name)!; sock.write(responseHead(200, bytes.length, contentTypeOf(a.name)));
++        for (const c of chunkBytes(bytes, 1000)) sock.write(c);
++        sock.end();
++      });
++    }).listen(0, '127.0.0.1', () => ok({ server, base: `http://127.0.0.1:${(server.address() as AddressInfo).port}/${key}/` }));
++  });
++}
++
++test('round trip: another register can fetch the manifest and every month over real HTTP and read them back unchanged', async () => {
++  const mtext = JSON.stringify(manifest); const map = new Map<string, Uint8Array>([['manifest.json', new TextEncoder().encode(mtext)], ...files.map(f => [f.name, f.data] as [string, Uint8Array])]);
++  const { server, base } = await serve(map, KEY);
++  try {
++    const m = parseManifest(await (await fetch(`${base}manifest.json`)).text());
++    assert.equal(m.sales, 3); assert.equal(m.files.length, 2);
++    const got: HistSale[] = [];
++    for (const f of m.files) {
++      const res = await fetch(base + encodeURIComponent(f.name)); assert.equal(res.status, 200);
++      const bytes = new Uint8Array(await res.arrayBuffer()); assert.deepEqual(bytes, map.get(f.name)); got.push(...unpackJson<HistSale[]>(bytes));
++    }
++    assert.deepEqual(got.map(s => s.uuid), ['a', 'b', 'c']);
++    assert.equal((await fetch(base.replace(KEY, 'ffffffffffffffff') + 'manifest.json')).status, 404);
++    assert.equal((await fetch(`${base}rollups.json.gz`)).status, 404);
++    assert.equal((await fetch(`${base}manifest.json`, { method: 'POST' })).status, 405);
++  } finally { server.close(); }
++});
+diff --git a/tools/square-history/README.md b/tools/square-history/README.md
+index de3296d..8ba5acc 100644
+--- a/tools/square-history/README.md
++++ b/tools/square-history/README.md
+@@ -17,6 +17,7 @@ It prints progress, writes compressed monthly files to `out/`, then shows a **QR
+ 
+ ## 3. Import on each device
+ POS app ▸ **Settings ▸ Square history ▸ Scan QR from PC**. (Or type the printed address, or copy `out/` to the iPad via AirDrop/Files and use **Pick files**.) Do this once per device, then press Ctrl+C on the PC.
++Once one device has the history, the others can copy it from it instead: **Settings ▸ Square history ▸ Show QR for another register** on the device that has it, then **Scan QR from PC** on the other. No PC needed for that step.
+ 
+ ## What gets imported
+ - Every completed sale and refund, as read-only history (Reports under "Square (old)"; Transactions via the *Square history* chip).

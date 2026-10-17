@@ -32,6 +32,14 @@ const exists = async (name: string) => (await FS.getInfoAsync(dir() + name)).exi
 
 export const squareMeta = () => kvGet<SquareMeta | null>(META_KEY, null);
 
+/** Read-only access to the stored files, used when this register shares its history with another (squareShareIO.ts). */
+export const readStoredFile = readBytes;
+export const storedFileExists = exists;
+export async function storedManifest(): Promise<SquareManifest | null> {
+  if (!(await exists('manifest.json'))) return null;
+  try { return parseManifest(await FS.readAsStringAsync(dir() + 'manifest.json')); } catch { return null; }
+}
+
 /** Fetches the manifest from the PC script's address, downloads every file next to it, then links and builds rollups. */
 export async function installFromUrl(manifestUrl: string, progress: (m: string) => void): Promise<SquareMeta> {
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);

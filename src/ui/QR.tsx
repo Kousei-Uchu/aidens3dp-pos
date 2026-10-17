@@ -5,7 +5,7 @@ import Svg, { Path } from 'react-native-svg';
 import qrcode from 'qrcode-generator';
 
 /** QR code on a white tile (always dark-on-white so it scans in dark mode too). Pure JS + react-native-svg: no native module. */
-export function QR({ value, size = 240 }: { value: string; size?: number }) {
+export function QR({ value, size = 240, label = 'QR code for the receipt' }: { value: string; size?: number; label?: string }) {
   const { d, n } = useMemo(() => {
     const q = qrcode(0, 'M'); q.addData(value); q.make(); const n = q.getModuleCount(); let d = '';
     for (let r = 0; r < n; r++) for (let c = 0; c < n; c++) if (q.isDark(r, c)) d += `M${c} ${r}h1v1h-1z`;
@@ -13,7 +13,7 @@ export function QR({ value, size = 240 }: { value: string; size?: number }) {
   }, [value]);
   const quiet = 3; const box = n + quiet * 2;
   return (
-    <View style={{ backgroundColor: '#fff', padding: 8, borderRadius: 12, alignSelf: 'center' }} accessibilityLabel="QR code for the receipt">
+    <View style={{ backgroundColor: '#fff', padding: 8, borderRadius: 12, alignSelf: 'center' }} accessibilityLabel={label}>
       <Svg width={size} height={size} viewBox={`${-quiet} ${-quiet} ${box} ${box}`}><Path d={d} fill="#000" /></Svg>
     </View>
   );

@@ -17,6 +17,7 @@ It prints progress, writes compressed monthly files to `out/`, then shows a **QR
 
 ## 3. Import on each device
 POS app ▸ **Settings ▸ Square history ▸ Scan QR from PC**. (Or type the printed address, or copy `out/` to the iPad via AirDrop/Files and use **Pick files**.) Do this once per device, then press Ctrl+C on the PC.
+Once one device has the history, the others can copy it from it instead: **Settings ▸ Square history ▸ Show QR for another register** on the device that has it, then **Scan QR from PC** on the other. No PC needed for that step.
 
 ## What gets imported
 - Every completed sale and refund, as read-only history (Reports under "Square (old)"; Transactions via the *Square history* chip).
