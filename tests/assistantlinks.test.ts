@@ -130,7 +130,7 @@ test('the loop: the audit log still sees the show_link call and what the model w
 // ---- the prompt ----
 test('the prompt names the link tool and tells the model not to write links or ids, and still names nothing restricted', () => {
   const p = buildSystemPrompt('short', true);
-  assert.match(p, /twelve tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
+  assert.match(p, /thirteen tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page/i);
   assert.doesNotMatch(buildSystemPrompt('short', false), /show_link/);
 });

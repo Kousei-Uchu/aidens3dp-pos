@@ -832,3 +832,13 @@ On the iPad, with the model set up as in T55. Do steps 1 to 8 on the Assistant s
 10. Turn the model off and ask something. Pass: the red bar and the offline list look as they did before, with the same buttons, and the list has the same layout as ever.
 11. **Most important:** turn on practice mode. Pass: sending is still blocked, the starter questions are hidden, and the box and arrow cannot be used.
 
+## T64. Assistant date and time tool (0166)
+
+On the iPad, with the model set up as in T55. Note the date and time shown on the iPad's own clock first.
+
+1. Ask *What is today's date and what time is it?* Pass: the date and weekday match the iPad, and the time is within a minute of it.
+2. Ask *How much did we sell yesterday?* Pass: it works out yesterday's date and the figure matches **Reports** for that day. It does not ask you what day it is.
+3. Ask *How much did we sell this week?* and *last month?* Pass: both match **Reports** (this till only), with weeks starting on Monday. On a Sunday, this week still starts on the Monday six days before.
+4. As a manager, open the conversation log and open the conversation from step 2, then **Tools used**. Pass: a `current_time` call is listed before the sales call, and its result holds only dates, the weekday and the time.
+5. Change the iPad to a different time zone (Settings ▸ General ▸ Date & Time) and ask step 1 again. Pass: it follows the iPad's clock.
+6. **Most important:** turn on practice mode. Pass: sending is still blocked. Nothing about the date changes anything.

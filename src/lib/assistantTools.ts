@@ -13,6 +13,7 @@ import type { ScreenEntry, ScreenTarget } from './assistantScreens';
 import type { Guide } from './assistantGuide';
 import type { AssistantData } from './assistantData';
 import { DATA_TOOLS } from './assistantDataTools';
+import { currentTimeTool } from './assistantTime';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -26,6 +27,8 @@ export type ToolContext = {
   policy?: GatePolicy;
   /** What the data tools read (patch 0163): a snapshot of what is saved on this iPad, taken when the question was asked. Left out, the data tools say there is no shop data. */
   data?: AssistantData;
+  /** The time the question was asked, in milliseconds (patch 0166). Left out, the clock is read when the tool runs. */
+  now?: number;
 };
 export type AssistantTool = {
   /** Which fields the tool can return and what category each is in (patch 0161). Every result goes through the data gate by this map. 'content' is for tools that only return help text and screen names. */
@@ -234,7 +237,7 @@ const showGuide: AssistantTool = {
 };
 
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, ...DATA_TOOLS];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, ...DATA_TOOLS];
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
 
 // ---------- running a call ----------
@@ -279,5 +282,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData }): ToolSet =>
-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number }): ToolSet =>
+  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
