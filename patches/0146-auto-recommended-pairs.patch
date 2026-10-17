@@ -1,0 +1,348 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 3d38357..4cce9d2 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -145,6 +145,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0143 | 2026-10-17 | Unlisted products (your request). A product marked **Unlisted** in Shopify was imported as not sellable and showed as Draft, so it vanished from the grid, search and the default Inventory view. **Active and Unlisted** products are now sold and shown; **Draft and Archived** are still kept only for Inventory's status filters. New `src/lib/productStatus.ts` (`parseProductStatus`, `isSellableStatus`) is used by `fetchVariants` in `src/lib/shopify/catalogue.ts` and by Inventory's Active filter; `Variant.status` gains `UNLISTED`, and an unlisted row says *unlisted* under its name. An unrecognised status is treated as not sellable. Needs a catalogue re-import (Settings ▸ Shopify) to fix products already imported. Help pages `stock` and `stock/inventory` updated, `help.json` rebuilt. New `tests/productstatus.test.ts` | your request |
+ | 0144 | 2026-10-17 | Scanner keyboard tip (your request, not on the checklist). In any text field except the hidden HID scanner input, when no on-screen keyboard is up (a hardware keyboard or HID scanner is connected) and the field has sat untouched for 4 seconds, a small tip appears under it: "Double-click the scanner trigger to show the keyboard". It goes after 7 seconds or a tap, typing restarts the wait, and tips are at least 90 seconds apart. Not shown in training. `src/lib/scannerKeyboardHint.ts` (timing rules, tested), `src/ui/ScannerKeyboardHint.tsx`, `Field` in `kit.tsx`. Needs your iPad and scanner to confirm the hardware-keyboard detection | - |
+ | 0145 | 2026-10-17 | Cart warnings, redesign (your request): **the Customer warning is now the popup itself, not a card inside a sheet.** `CartWarningsSheet.tsx` is a centred popup on phone and tablet (`Sheet` gets a `popup` mode in `kit.tsx` that keeps the open gap, activity and Training layer): the warning's header is the title with a warning icon, the message is the large main text, **For:** is small under it, no inner card, no instruction line, no X. Several warnings are one popup paged like Show: new shared `PageDots` (`kit.tsx`, now also used by Show and Info in `TrainingRun.tsx`, no visible change), **Back** and **Next**, and **Next** becomes **Continue to payment** on the last warning; **Back to cart** is a quiet button on every page. The message area slides a little between pages (off with Reduce Motion) and is as tall as the tallest page so the buttons never move. Tick rules, order, already-seen memory and the call sites are unchanged. New `warning.cancel` spot (Back to cart) and the navgraph edge now taps it (`graph:build` rerun). Help page `sales/cart-warnings`, device test T47 (steps 3, 4 and new 11) and `tests/cartwarnings.test.ts` updated | your request |
++| 0146 | 2026-10-17 | Auto recommended pairs (your request). **Settings ▸ Discounts & bundles**, in a deal's **Recommended pairs**: a new **Auto** button beside **Add a recommended pair**. It pairs variations by **style** (read from the product title, so *Mini Gemstone Dragon* and *Gemstone Egg Dragon (Outer Egg)* are both *gemstone*) and **colour** (the variation title), one variation per position of the deal. Colours are compared as whole sets of words, so *Green* never pairs with *Green Black Dual Colour*; *Black/Red*, *Black & Red* and *Red Black* match. Three passes, strictest first: same words in order, same words in any order, then ignoring *Dual Colour*, *Assorted* and bracketed tags such as *(EOP)*. Each variation is used once per position and unmatched ones are skipped; a note under the buttons gives the count added and names the variations with no match. Pairs already on the deal are kept and their variations are not reused, so Auto only adds. When the groups share no style at all (for example *Highland Cow* with *Tadling*), only colour is compared. New `src/lib/autoPairs.ts` (`autoRecommendedPairs`), `runAuto` in `BundleBuilder.tsx`, new `tests/autopairs.test.ts` (checked against the Python script it came from: same 43 pairs on the dragon deal). Help page `sales/bundles` updated, `help.json` rebuilt. Auto reads names only, so check the list after running it. Not added: an undo for the last Auto run (delete pairs one by one, or use the existing remove buttons) | your request |
+ 
+ 
+ ---
+diff --git a/help/help.json b/help/help.json
+index 523d9bf..89527d8 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "66524679",
++ "version": "93d30b1d",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1114,12 +1114,12 @@
+     "sales/lookup-tiles",
+     "pay"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-10-17",
+    "lead": "A bundle deal changes the price when a customer buys certain items together, for example *2 Highland Cows for $2 off*. You build them in Settings, and the cart applies them by itself.",
+    "sections": {
+-    "basic": "### Who can make them, and where\nOpen **More ▸ Settings ▸ Discounts & bundles**. Managers and owners can open Settings. When staff accounts and the PIN requirement are in use, a signed-in cashier cannot, so they only ever see the deals working in the cart. With no accounts set up, the till acts as the owner and anyone can. See [[staff]] for how staff roles work.\n\nThe list shows every deal with its name, whether it is **Live**, **Scheduled**, **Ended** or **Off**, and a one-line summary such as *2 × Highland Cow → $2.00 off*. The switch on the right turns a deal on or off without deleting it. Tap a row to change it.\n\n### Making a deal\nTap **New bundle deal**, then work down the screen:\n1. **Deal name**: this is what the customer sees on the cart and receipt. Use something short, like *Cow pair*.\n2. **What the customer buys**: each **Group** is \"this many items from this list\".\n   - Tap **Pick items** and search. Tapping a product includes **every variation** of it. To be stricter, tap the options icon beside a product that has several variations and tick only the ones you want.\n   - Use the **−** and **+** to set how many from the group are needed (it shows as *2 ×*).\n   - **Add another group of items** if the deal mixes different things, such as one dragon and one egg.\n3. **The deal**: choose **$ off**, **% off** or **Set price**, then type the amount.\n   - **$ off**: takes that many dollars off the items together.\n   - **% off**: takes that percentage off the items.\n   - **Set price**: the items together cost exactly that amount.\n4. **Take it off** appears when the deal has more than one item. **Spread over all items** shares the saving across everything in the deal. **Only group 1** (or 2, 3 …) takes the whole saving from that group's items only.\n5. **Limits** (all optional): **Most times per order**, and **Starts** and **Ends** dates written like `2026-12-24`. The end date counts the whole day.\n6. **Recommended pairs** (optional, see below).\n7. Tap **Create deal**. The **Summary** box at the bottom shows what you have built before you save.\n\nIf something is missing, red notes appear under the form when you tap **Create deal** and say what (for example *Give the deal a name.* or *Group 1 has no items. Pick at least one.*). **Delete deal** asks first, and the deal stops applying straight away.\n\n### Recommended pairs\nSome deals only make sense for certain combinations, like matching colours. Under **Recommended pairs** tap **Add a recommended pair** and choose one variation for each item in the deal.\n\nEvery variation still gets the deal. A recommended pair guides the matcher and cashier:\n- If the cashier rings up a different combination, they are asked to check it before payment (see below).\n- When more than one eligible combination is available, the POS prefers the recommended combination, even if another combination would produce a larger saving.\n\nFor many variations, **Export variation JSON** shares each deal position's allowed variant IDs and names. Ask an LLM to fill the `recommended` array with one variant ID per position, then paste its JSON response into **Import pairs JSON**. The app checks every ID against the variations allowed in that position before replacing the current pairs.\n\nIf you change the items or quantities after adding pairs, you are asked **Clear recommended pairs?**, because the old pairs no longer fit.\n\n### In the cart\nWhen items qualify, a **Bundle deals** block appears under the lines with one card per deal. Each card names the deal, the saving, and every item and variation in it. A green tick says **Recommended pair**. An amber warning says **Not a recommended pair**.\n\nThe deal also appears as its own row under each line it discounted, showing the deal's name and the amount.\n\n### The check before payment\nIf any deal in the cart is **Not a recommended pair**, tapping **Charge** first opens **Check these bundles**. The customer still gets the deal. Look at the items and ask whether it is what they want, then tap **Continue to payment**, or **Edit cart** to change something. You are only asked again if the combination changes. In the guided checkout the same warning appears on the **Check** step, headed *Check these deals with the customer*.\n\nIf the sale also has price adjustments, those are reviewed first, then the bundle check.\n\n### Good to know\n- A single item unit can only be in **one** deal. If two deals could use the same unit, the POS gives the customer the bigger saving.\n- A line that gets a bundle discount does not also get its own line discount.\n- Items tagged `no-discount`, gift cards and custom amounts never count towards a deal.\n- A deal needs enough units. A group of 3 needs 3 of those items in the cart.\n- **Price check** (see [[sales/lookup-tiles]]) lists the bundle deals an item can be part of. That is only a hint: it cannot know what else is in the cart.\n- Changes you save are shared with the other registers. They get them within about 25 seconds while the app is open.",
++    "basic": "### Who can make them, and where\nOpen **More ▸ Settings ▸ Discounts & bundles**. Managers and owners can open Settings. When staff accounts and the PIN requirement are in use, a signed-in cashier cannot, so they only ever see the deals working in the cart. With no accounts set up, the till acts as the owner and anyone can. See [[staff]] for how staff roles work.\n\nThe list shows every deal with its name, whether it is **Live**, **Scheduled**, **Ended** or **Off**, and a one-line summary such as *2 × Highland Cow → $2.00 off*. The switch on the right turns a deal on or off without deleting it. Tap a row to change it.\n\n### Making a deal\nTap **New bundle deal**, then work down the screen:\n1. **Deal name**: this is what the customer sees on the cart and receipt. Use something short, like *Cow pair*.\n2. **What the customer buys**: each **Group** is \"this many items from this list\".\n   - Tap **Pick items** and search. Tapping a product includes **every variation** of it. To be stricter, tap the options icon beside a product that has several variations and tick only the ones you want.\n   - Use the **−** and **+** to set how many from the group are needed (it shows as *2 ×*).\n   - **Add another group of items** if the deal mixes different things, such as one dragon and one egg.\n3. **The deal**: choose **$ off**, **% off** or **Set price**, then type the amount.\n   - **$ off**: takes that many dollars off the items together.\n   - **% off**: takes that percentage off the items.\n   - **Set price**: the items together cost exactly that amount.\n4. **Take it off** appears when the deal has more than one item. **Spread over all items** shares the saving across everything in the deal. **Only group 1** (or 2, 3 …) takes the whole saving from that group's items only.\n5. **Limits** (all optional): **Most times per order**, and **Starts** and **Ends** dates written like `2026-12-24`. The end date counts the whole day.\n6. **Recommended pairs** (optional, see below).\n7. Tap **Create deal**. The **Summary** box at the bottom shows what you have built before you save.\n\nIf something is missing, red notes appear under the form when you tap **Create deal** and say what (for example *Give the deal a name.* or *Group 1 has no items. Pick at least one.*). **Delete deal** asks first, and the deal stops applying straight away.\n\n### Recommended pairs\nSome deals only make sense for certain combinations, like matching colours. Under **Recommended pairs** tap **Add a recommended pair** and choose one variation for each item in the deal.\n\nEvery variation still gets the deal. A recommended pair guides the matcher and cashier:\n- If the cashier rings up a different combination, they are asked to check it before payment (see below).\n- When more than one eligible combination is available, the POS prefers the recommended combination, even if another combination would produce a larger saving.\n\nFor many variations, tap **Auto** next to **Add a recommended pair**. It pairs variations that have the same style and the same colour in each item of the deal, for example a Gemstone egg in *Crushed Blue* with the Mini Gemstone dragon in *Crushed Blue*. A Gemstone item never pairs with a Rose one. Colours are compared as a whole, so *Green* never pairs with *Green Black Dual Colour*, but *Black/Red*, *Black & Red* and *Red Black* count as the same colours. Words like *Dual Colour*, *Assorted* and a tag in brackets such as *(EOP)* are only ignored when nothing closer is left to match. Each variation is used once, and variations with no partner are skipped. A note under the buttons says how many pairs were added and lists the variations that found no match. Auto adds to the pairs you already have and never changes them. If the items in the deal have no style in common (like *Highland Cow* and *Tadling*), only the colours are compared. Check the list afterwards, since Auto reads names only.\n\nFor many variations, **Export variation JSON** shares each deal position's allowed variant IDs and names. Ask an LLM to fill the `recommended` array with one variant ID per position, then paste its JSON response into **Import pairs JSON**. The app checks every ID against the variations allowed in that position before replacing the current pairs.\n\nIf you change the items or quantities after adding pairs, you are asked **Clear recommended pairs?**, because the old pairs no longer fit.\n\n### In the cart\nWhen items qualify, a **Bundle deals** block appears under the lines with one card per deal. Each card names the deal, the saving, and every item and variation in it. A green tick says **Recommended pair**. An amber warning says **Not a recommended pair**.\n\nThe deal also appears as its own row under each line it discounted, showing the deal's name and the amount.\n\n### The check before payment\nIf any deal in the cart is **Not a recommended pair**, tapping **Charge** first opens **Check these bundles**. The customer still gets the deal. Look at the items and ask whether it is what they want, then tap **Continue to payment**, or **Edit cart** to change something. You are only asked again if the combination changes. In the guided checkout the same warning appears on the **Check** step, headed *Check these deals with the customer*.\n\nIf the sale also has price adjustments, those are reviewed first, then the bundle check.\n\n### Good to know\n- A single item unit can only be in **one** deal. If two deals could use the same unit, the POS gives the customer the bigger saving.\n- A line that gets a bundle discount does not also get its own line discount.\n- Items tagged `no-discount`, gift cards and custom amounts never count towards a deal.\n- A deal needs enough units. A group of 3 needs 3 of those items in the cart.\n- **Price check** (see [[sales/lookup-tiles]]) lists the bundle deals an item can be part of. That is only a hint: it cannot know what else is in the cart.\n- Changes you save are shared with the other registers. They get them within about 25 seconds while the app is open.",
+     "deep": "### How the POS chooses between deals\nSeveral deals can apply to one order, and a unit can only be used once. When the cart could be matched more than one way, the POS tries the possible ways and prefers, in order:\n1. more recommended pairs,\n2. the biggest total saving,\n3. fewer deal applications (so a bigger lot beats two smaller ones),\n4. the deal with the lower priority number,\n5. the deal that comes first in the list.\n\nThis means a recommended variation pairing can be chosen over a different pairing with a larger discount. Without any available recommended pairs, savings remain the primary choice.\n\n### Worked examples\n- *2 Highland Cows for $2 off*, customer buys 3 cows: one application ($2 off two cows). The third cow is at full price.\n- *Dragon + Egg, set price $12*, customer buys a dragon ($9) and an egg ($4): together $13, so the deal takes $1 off. If they already cost less than the set price, the deal does nothing. A deal never raises a price.\n- *% off pair, 10%*, with **Only group 2**: the 10% is worked out on, and taken off, group 2's items only.\n- A cashier changed a unit's price for the sale. Deals use the changed price, and never take a price below $0.\n\n### How the saving is shared between items\nFor **Spread over all items** the saving is divided between the units in proportion to their prices. For **Only group N** only that group's units take it, and never more than they cost.\n\n### Dates\nThe Starts date is the first moment of that day and the Ends date is the last moment of that day, both by the iPad's own clock and time zone. A deal is live when it is switched on and inside its dates. A wrong date or time on a register changes which deals it applies.\n\n### Sharing between registers\nDeals are kept with the other shared settings (staff, fees, cash rounding, the PIN requirement and price adjustment limits). Saving a deal sends the whole set. If the upload fails, this register keeps the change pending and retries while the app is open, about every 25 seconds. Other registers receive it on a later poll after the upload succeeds. Check **Support & diagnostics ▸ Sync** if the shared-settings upload reports an error.\n\n### Where deals sit in the price\nBundles are worked out first, before Shopify automatic discounts, a line's own discount, the cart discount and any price adjustments. Units used by a bundle are not used by an automatic discount. See [[sales/cart-and-prices]] for the full order.",
+-    "advanced": "### From the editor to a discounted cart\n```mermaid\nflowchart TD\n  A[DealEditor in BundleBuilder.tsx] --> B[upsertDeal in bundleForm.ts: groups become sets]\n  B --> C[stringifyBundleConfig then patchSettings bundlesJson]\n  C --> D[pushSharedSettings in sync.ts]\n  D -->|sent| E[other registers: pullSettings inside pollShared every 25 s]\n  D -->|offline or error| F[keep change pending and retry on foreground poll]\n  C --> G[usePriced in selectors.ts re-prices the cart]\n  G --> H[priceCart step 1 calls matchBundles]\n```\n\n### How a match is found\n```mermaid\nflowchart TD\n  A[priceCart in pricing.ts: item lines that are discountable] --> B[matchBundles in bundles.ts]\n  B --> C[drop deals that are off or outside their dates: dealLive]\n  C --> D[list every way each deal can be filled from the cart]\n  D --> E[greedy pass: biggest saving first]\n  E --> F[search for a better combination up to 20000 steps]\n  F --> G{better total saving?}\n  G -->|yes| H[keep it]\n  G -->|equal| I[prefer more recommended pairs then fewer applications]\n  H --> J[AppliedBundle cards and one discount row per line per deal]\n  I --> J\n```\nThe greedy pass always gives a valid answer first. If the search hits its step limit it keeps the best result found so far, so a very large cart can get a good answer that is not guaranteed to be the best.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The list, editor, item picker, pair picker, JSON view | `BundlesEditor`, `DealEditor`, `ItemPicker`, `PairPicker`, `JsonEditor` in `src/screens/BundleBuilder.tsx` (Settings ▸ Discounts & bundles is drawn by `Settings.tsx`) |\n| Form to deal and back, ids, dates, save checks | `formToDeal`, `dealToForm`, `upsertDeal`, `removeDeal`, `pruneSets`, `makeDealId`, `formProblems`, `dealWindow` in `src/lib/bundleForm.ts` |\n| Reading and checking the saved JSON | `parseBundleConfig`, `validateBundleConfig` in `src/lib/bundles.ts` |\n| Matching | `matchBundles`, `dealLive`, `bundleStatus` in `src/lib/bundles.ts` |\n| Pricing step | step 1 of `priceCart` in `src/lib/pricing.ts` |\n| Reading the setting | `bundleConfig` in `src/lib/sync.ts`; `usePriced` in `src/state/selectors.ts` |\n| Check before payment | `needsBundleCheck`, `bundleReviewKey`, `oddBundles` in `src/lib/bundles.ts`; the **Check these bundles** sheet in `CartPane.tsx`; the **Check** step in `GuidedCheckout.tsx` |\n| The card in the cart | `BundleRow` in `src/screens/CartPane.tsx` |\n| Exchanges | `Refund.tsx` prices the replacement items with `bundleConfig` too |\n\n### How a deal is stored\nThe setting is `settings.bundlesJson`, a JSON text of `{ version, items, discounts }`. `items` is a map of **set id to a list of product or variation ids**. Each deal's `sets` lists set ids, once per unit needed, so *2 cows* is `[\"x\", \"x\"]`.\n\nThe builder saves each group as a set named `<dealId>_1`, `<dealId>_2` and so on, and repeats a set for its quantity. A new deal's id comes from its name (`makeDealId` makes it unique, for example `cow_pair_2`). Editing keeps the id even if the name changes. `pruneSets` removes sets that no deal uses.\n\nThe three modes are stored as `mode` `delta` (`price_delta_cents` negative), `fixed_price` (`price_delta_cents` is the price) and `percent` (`percent`). `apply_to` names the set the saving comes from. `recommended` is a list of variation id lists, one id per unit.\n\nA product id in a set matches all of its variations. A variation id matches only that one. The JSON view (**Advanced: edit as JSON**) edits the same text, and saving it rewrites the deals in the list.\n\n### Reading the code for a fault\n- **No deal applies at all.** `bundleConfig` returns null when the saved text cannot be read, and pricing then skips bundles with no message. Open Settings ▸ Discounts & bundles: if the text is unreadable the editor opens on the JSON view and says why.\n- **One deal does not apply.** Work through it in this order: is it **Live** (switched on, inside its dates by this iPad's clock)? Is the item or its product in the group, and is it still in the catalogue (the editor warns about items that are no longer synced)? Does the cart hold enough units for every group? Is the item tagged `no-discount`, or a gift card or custom amount? Has **Most times per order** been reached? Does the deal save anything (a **Set price** at or above what the items cost saves $0, so it is skipped)? Did another deal win with a bigger saving?\n- **The saving is on the wrong item.** Check **Take it off** (`apply_to`).\n- **A change did not reach another register.** Look at the **Sync** strip and wait one 25 second tick. If the saving register was offline, there was no retry (see Sharing).\n- **A line discount you set disappeared.** The line also got a bundle discount, which blocks the manual one (see [[sales/cart-and-prices]]).\n- **Tests.** `tests/bundleform.test.ts` covers percent and dated deals, recommended pairs, the form round trip, the checkout check, and a deal built in the GUI running through `priceCart`. `tests/lib.test.ts` covers a price override feeding a bundle."
++    "advanced": "### From the editor to a discounted cart\n```mermaid\nflowchart TD\n  A[DealEditor in BundleBuilder.tsx] --> B[upsertDeal in bundleForm.ts: groups become sets]\n  B --> C[stringifyBundleConfig then patchSettings bundlesJson]\n  C --> D[pushSharedSettings in sync.ts]\n  D -->|sent| E[other registers: pullSettings inside pollShared every 25 s]\n  D -->|offline or error| F[keep change pending and retry on foreground poll]\n  C --> G[usePriced in selectors.ts re-prices the cart]\n  G --> H[priceCart step 1 calls matchBundles]\n```\n\n### How a match is found\n```mermaid\nflowchart TD\n  A[priceCart in pricing.ts: item lines that are discountable] --> B[matchBundles in bundles.ts]\n  B --> C[drop deals that are off or outside their dates: dealLive]\n  C --> D[list every way each deal can be filled from the cart]\n  D --> E[greedy pass: biggest saving first]\n  E --> F[search for a better combination up to 20000 steps]\n  F --> G{better total saving?}\n  G -->|yes| H[keep it]\n  G -->|equal| I[prefer more recommended pairs then fewer applications]\n  H --> J[AppliedBundle cards and one discount row per line per deal]\n  I --> J\n```\nThe greedy pass always gives a valid answer first. If the search hits its step limit it keeps the best result found so far, so a very large cart can get a good answer that is not guaranteed to be the best.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Auto pairing: styles, colours, tiers, leftovers | `autoRecommendedPairs` in `src/lib/autoPairs.ts`; the **Auto** button (`runAuto`) in `DealEditor` |\n| The list, editor, item picker, pair picker, JSON view | `BundlesEditor`, `DealEditor`, `ItemPicker`, `PairPicker`, `JsonEditor` in `src/screens/BundleBuilder.tsx` (Settings ▸ Discounts & bundles is drawn by `Settings.tsx`) |\n| Form to deal and back, ids, dates, save checks | `formToDeal`, `dealToForm`, `upsertDeal`, `removeDeal`, `pruneSets`, `makeDealId`, `formProblems`, `dealWindow` in `src/lib/bundleForm.ts` |\n| Reading and checking the saved JSON | `parseBundleConfig`, `validateBundleConfig` in `src/lib/bundles.ts` |\n| Matching | `matchBundles`, `dealLive`, `bundleStatus` in `src/lib/bundles.ts` |\n| Pricing step | step 1 of `priceCart` in `src/lib/pricing.ts` |\n| Reading the setting | `bundleConfig` in `src/lib/sync.ts`; `usePriced` in `src/state/selectors.ts` |\n| Check before payment | `needsBundleCheck`, `bundleReviewKey`, `oddBundles` in `src/lib/bundles.ts`; the **Check these bundles** sheet in `CartPane.tsx`; the **Check** step in `GuidedCheckout.tsx` |\n| The card in the cart | `BundleRow` in `src/screens/CartPane.tsx` |\n| Exchanges | `Refund.tsx` prices the replacement items with `bundleConfig` too |\n\n### How a deal is stored\nThe setting is `settings.bundlesJson`, a JSON text of `{ version, items, discounts }`. `items` is a map of **set id to a list of product or variation ids**. Each deal's `sets` lists set ids, once per unit needed, so *2 cows* is `[\"x\", \"x\"]`.\n\nThe builder saves each group as a set named `<dealId>_1`, `<dealId>_2` and so on, and repeats a set for its quantity. A new deal's id comes from its name (`makeDealId` makes it unique, for example `cow_pair_2`). Editing keeps the id even if the name changes. `pruneSets` removes sets that no deal uses.\n\nThe three modes are stored as `mode` `delta` (`price_delta_cents` negative), `fixed_price` (`price_delta_cents` is the price) and `percent` (`percent`). `apply_to` names the set the saving comes from. `recommended` is a list of variation id lists, one id per unit.\n\nA product id in a set matches all of its variations. A variation id matches only that one. The JSON view (**Advanced: edit as JSON**) edits the same text, and saving it rewrites the deals in the list.\n\n### Reading the code for a fault\n- **No deal applies at all.** `bundleConfig` returns null when the saved text cannot be read, and pricing then skips bundles with no message. Open Settings ▸ Discounts & bundles: if the text is unreadable the editor opens on the JSON view and says why.\n- **One deal does not apply.** Work through it in this order: is it **Live** (switched on, inside its dates by this iPad's clock)? Is the item or its product in the group, and is it still in the catalogue (the editor warns about items that are no longer synced)? Does the cart hold enough units for every group? Is the item tagged `no-discount`, or a gift card or custom amount? Has **Most times per order** been reached? Does the deal save anything (a **Set price** at or above what the items cost saves $0, so it is skipped)? Did another deal win with a bigger saving?\n- **The saving is on the wrong item.** Check **Take it off** (`apply_to`).\n- **A change did not reach another register.** Look at the **Sync** strip and wait one 25 second tick. If the saving register was offline, there was no retry (see Sharing).\n- **A line discount you set disappeared.** The line also got a bundle discount, which blocks the manual one (see [[sales/cart-and-prices]]).\n- **Tests.** `tests/autopairs.test.ts` covers Auto pairing. `tests/bundleform.test.ts` covers percent and dated deals, recommended pairs, the form round trip, the checkout check, and a deal built in the GUI running through `priceCart`. `tests/lib.test.ts` covers a price override feeding a bundle."
+    }
+   },
+   {
+diff --git a/help/sales/bundles.md b/help/sales/bundles.md
+index 333ebcf..5838e08 100644
+--- a/help/sales/bundles.md
++++ b/help/sales/bundles.md
+@@ -5,7 +5,7 @@ parent: sales
+ summary: Set up "buy these together, pay less" deals in Settings, and how they show up in the cart and at payment.
+ tags: [bundle, deal, combo, discount, builder, recommended pair, percent, set price, dates]
+ related: [sales, sales/cart-and-prices, sales/lookup-tiles, pay]
+-updated: 2026-10-11
++updated: 2026-10-17
+ ---
+ A bundle deal changes the price when a customer buys certain items together, for example *2 Highland Cows for $2 off*. You build them in Settings, and the cart applies them by itself.
+ 
+@@ -41,6 +41,8 @@ Every variation still gets the deal. A recommended pair guides the matcher and c
+ - If the cashier rings up a different combination, they are asked to check it before payment (see below).
+ - When more than one eligible combination is available, the POS prefers the recommended combination, even if another combination would produce a larger saving.
+ 
++For many variations, tap **Auto** next to **Add a recommended pair**. It pairs variations that have the same style and the same colour in each item of the deal, for example a Gemstone egg in *Crushed Blue* with the Mini Gemstone dragon in *Crushed Blue*. A Gemstone item never pairs with a Rose one. Colours are compared as a whole, so *Green* never pairs with *Green Black Dual Colour*, but *Black/Red*, *Black & Red* and *Red Black* count as the same colours. Words like *Dual Colour*, *Assorted* and a tag in brackets such as *(EOP)* are only ignored when nothing closer is left to match. Each variation is used once, and variations with no partner are skipped. A note under the buttons says how many pairs were added and lists the variations that found no match. Auto adds to the pairs you already have and never changes them. If the items in the deal have no style in common (like *Highland Cow* and *Tadling*), only the colours are compared. Check the list afterwards, since Auto reads names only.
++
+ For many variations, **Export variation JSON** shares each deal position's allowed variant IDs and names. Ask an LLM to fill the `recommended` array with one variant ID per position, then paste its JSON response into **Import pairs JSON**. The app checks every ID against the variations allowed in that position before replacing the current pairs.
+ 
+ If you change the items or quantities after adding pairs, you are asked **Clear recommended pairs?**, because the old pairs no longer fit.
+@@ -126,6 +128,7 @@ The greedy pass always gives a valid answer first. If the search hits its step l
+ ### Where the code is
+ | Job | Where |
+ |---|---|
++| Auto pairing: styles, colours, tiers, leftovers | `autoRecommendedPairs` in `src/lib/autoPairs.ts`; the **Auto** button (`runAuto`) in `DealEditor` |
+ | The list, editor, item picker, pair picker, JSON view | `BundlesEditor`, `DealEditor`, `ItemPicker`, `PairPicker`, `JsonEditor` in `src/screens/BundleBuilder.tsx` (Settings ▸ Discounts & bundles is drawn by `Settings.tsx`) |
+ | Form to deal and back, ids, dates, save checks | `formToDeal`, `dealToForm`, `upsertDeal`, `removeDeal`, `pruneSets`, `makeDealId`, `formProblems`, `dealWindow` in `src/lib/bundleForm.ts` |
+ | Reading and checking the saved JSON | `parseBundleConfig`, `validateBundleConfig` in `src/lib/bundles.ts` |
+@@ -151,4 +154,4 @@ A product id in a set matches all of its variations. A variation id matches only
+ - **The saving is on the wrong item.** Check **Take it off** (`apply_to`).
+ - **A change did not reach another register.** Look at the **Sync** strip and wait one 25 second tick. If the saving register was offline, there was no retry (see Sharing).
+ - **A line discount you set disappeared.** The line also got a bundle discount, which blocks the manual one (see [[sales/cart-and-prices]]).
+-- **Tests.** `tests/bundleform.test.ts` covers percent and dated deals, recommended pairs, the form round trip, the checkout check, and a deal built in the GUI running through `priceCart`. `tests/lib.test.ts` covers a price override feeding a bundle.
++- **Tests.** `tests/autopairs.test.ts` covers Auto pairing. `tests/bundleform.test.ts` covers percent and dated deals, recommended pairs, the form round trip, the checkout check, and a deal built in the GUI running through `priceCart`. `tests/lib.test.ts` covers a price override feeding a bundle.
+diff --git a/src/lib/autoPairs.ts b/src/lib/autoPairs.ts
+new file mode 100644
+index 0000000..3b28d53
+--- /dev/null
++++ b/src/lib/autoPairs.ts
+@@ -0,0 +1,105 @@
++// Location: src/lib/autoPairs.ts
++// The "Auto" button on a bundle deal's Recommended pairs (A8.3). Pairs up variations from the deal's item
++// positions by STYLE and COLOUR, so a Gemstone Egg in "Crushed Blue" is paired with the Mini Gemstone Dragon in
++// "Crushed Blue" and never with a Rose one.
++//
++// How a variation is read:
++//   style  = the product title without type words ("Mini Gemstone Dragon" and "Gemstone Egg Dragon (Outer Egg)"
++//            are both "gemstone")
++//   colour = the variation title ("Blue/Red Dual Colour")
++//
++// Colours are compared as WHOLE sets of words, so "Green" can never pair with "Green Black Dual Colour".
++// Matching runs in tiers, strictest first, so the best match for a variation always wins before a looser one:
++//   1. same colour words, same order
++//   2. same colour words, any order            (Blue/Red = Red Blue)
++//   3. same colour words once filler is ignored ("Dual Colour", "(EOP)", ...)
++// Every variation is used at most once per position, and whatever has no partner is simply left out.
++import type { Variant } from './types';
++import { slotVariants, unitSlots, type DealForm } from './bundleForm';
++
++/** Words ignored in every tier (they never change which colour something is). */
++const ALWAYS_DROP = new Set(['and', 'assorted']);
++/** Extra words ignored only in the loosest tier. */
++const LOOSE_DROP = new Set(['dual', 'colour', 'colours', 'color', 'colors']);
++/** Product title words that describe the kind of item, not its style. */
++const TITLE_STOPWORDS = new Set(['mini', 'egg', 'dragon', 'outer', 'the']);
++
++export type AutoPairTier = 'exact' | 'any order' | 'ignoring filler';
++
++export type AutoPairResult = {
++  /** New pairs, one variant ID per position, in the deal's position order. */
++  pairs: string[][];
++  /** Variations that found no partner, one list per position. */
++  leftovers: Variant[][];
++  /** How many pairs each tier made. */
++  byTier: Record<AutoPairTier, number>;
++};
++
++type Parsed = { id: string; variant: Variant; style: string; colour: string; order: number };
++
++// ── reading names ────────────────────────────────────────────────────────────
++/** Lowercase words only: punctuation, "/", "&" and "->" all just separate words. */
++const wordsOf = (text: string): string[] => text.toLowerCase().split(/[^a-z0-9\u00c0-\u024f]+/).filter(Boolean);
++const stripBrackets = (text: string): string => text.replace(/\([^)]*\)/g, ' ');
++
++function parse(v: Variant, order: number): Parsed {
++  const style = wordsOf(stripBrackets(v.productTitle)).filter(w => !TITLE_STOPWORDS.has(w)).join(' ');
++  const colour = v.variantTitle && v.variantTitle !== 'Default Title' ? v.variantTitle : '';
++  return { id: v.id, variant: v, style, colour, order };
++}
++
++// ── one key function per tier ────────────────────────────────────────────────
++const keyOf = (style: string, tokens: string[]): string | null => (tokens.length ? `${style}|${tokens.join(' ')}` : null);
++
++const TIERS: { label: AutoPairTier; key: (p: Parsed) => string | null }[] = [
++  { label: 'exact', key: p => keyOf(p.style, wordsOf(p.colour).filter(w => !ALWAYS_DROP.has(w))) },
++  { label: 'any order', key: p => keyOf(p.style, wordsOf(p.colour).filter(w => !ALWAYS_DROP.has(w)).sort()) },
++  { label: 'ignoring filler', key: p => keyOf(p.style, wordsOf(stripBrackets(p.colour)).filter(w => !ALWAYS_DROP.has(w) && !LOOSE_DROP.has(w)).sort()) },
++];
++
++/** Pair up whatever is still unmatched with one key function. Matched items are removed from the pools. */
++function runTier(pools: Parsed[][], key: (p: Parsed) => string | null): Parsed[][] {
++  const buckets = pools.map(pool => {
++    const m = new Map<string, Parsed[]>();
++    for (const p of pool) { const k = key(p); if (k == null) continue; const list = m.get(k); if (list) list.push(p); else m.set(k, [p]); }
++    return m;
++  });
++  const groups: Parsed[][] = []; const used: Set<string>[] = pools.map(() => new Set());
++  for (const [k, first] of buckets[0]) {
++    if (!buckets.every(b => b.has(k))) continue;
++    const count = Math.min(first.length, ...buckets.map(b => b.get(k)!.length));
++    for (let i = 0; i < count; i++) groups.push(buckets.map((b, pos) => { const item = b.get(k)![i]; used[pos].add(item.id); return item; }));
++  }
++  pools.forEach((pool, pos) => { pools[pos] = pool.filter(p => !used[pos].has(p.id)); });
++  return groups;
++}
++
++// ── the public entry point ───────────────────────────────────────────────────
++/**
++ * Work out recommended pairs for a deal. `existing` are pairs already on the deal: their variations are left alone,
++ * so Auto adds to what was picked by hand instead of fighting it.
++ */
++export function autoRecommendedPairs(f: Pick<DealForm, 'slots' | 'recommended'>, variants: Record<string, Variant>): AutoPairResult {
++  const positions = unitSlots(f);
++  const empty: AutoPairResult = { pairs: [], leftovers: positions.map(() => []), byTier: { exact: 0, 'any order': 0, 'ignoring filler': 0 } };
++  if (positions.length < 2) return empty;
++
++  // One pool per position (positions that share a group each get their own copy of it).
++  const pools = positions.map((slot, pos) => {
++    const taken = new Set(f.recommended.map(r => r[pos]));
++    return slotVariants(f.slots[slot], variants).filter(v => !taken.has(v.id)).map((v, i) => parse(v, i));
++  });
++  if (pools.some(p => !p.length)) return { ...empty, leftovers: pools.map(p => p.map(x => x.variant)) };
++
++  // When the groups share no style at all (say Highland Cow with Tadling), style cannot tell them apart,
++  // so only the colours are compared. Otherwise style must always match.
++  const styleSets = pools.map(p => new Set(p.map(x => x.style)));
++  if (![...styleSets[0]].some(s => styleSets.every(set => set.has(s)))) for (const pool of pools) for (const p of pool) p.style = '';
++
++  const byTier: Record<AutoPairTier, number> = { exact: 0, 'any order': 0, 'ignoring filler': 0 };
++  const groups: Parsed[][] = [];
++  for (const tier of TIERS) { const made = runTier(pools, tier.key); byTier[tier.label] = made.length; groups.push(...made); }
++
++  groups.sort((a, b) => a[0].order - b[0].order);
++  return { pairs: groups.map(g => g.map(p => p.id)), leftovers: pools.map(p => p.map(x => x.variant)), byTier };
++}
+diff --git a/src/screens/BundleBuilder.tsx b/src/screens/BundleBuilder.tsx
+index d7b2e86..c8f4718 100644
+--- a/src/screens/BundleBuilder.tsx
++++ b/src/screens/BundleBuilder.tsx
+@@ -9,6 +9,7 @@ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+ import { pushSharedSettings } from '../lib/sync';
+ import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
++import { autoRecommendedPairs } from '../lib/autoPairs';
+ import { fmt, toCents, toDecimal } from '../lib/money';
+ import {
+   dealSummary, dealToForm, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, idName, importRecommendedPairs, makeDealId, recommendedPairsExport, removeDeal, setDealEnabled,
+@@ -72,6 +73,7 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete
+   const [amountText, setAmountText] = useState(initial.mode === 'percent' ? String(initial.percent) : initial.amountCents ? toDecimal(initial.amountCents) : '');
+   const [picking, setPicking] = useState<number | null>(null); const [pairing, setPairing] = useState(false); const [tried, setTried] = useState(false);
+   const [showPairImport, setShowPairImport] = useState(false); const [pairImportText, setPairImportText] = useState(''); const [pairImportMessage, setPairImportMessage] = useState('');
++  const [autoMessage, setAutoMessage] = useState(''); const [autoLeft, setAutoLeft] = useState<string[]>([]);
+   const set = (p: Partial<DealForm>) => setF(cur => ({ ...cur, ...p }));
+   const units = totalUnits(f); const problems = formProblems(f);
+   const setMode = (mode: DealMode) => { set({ mode }); setAmountText(''); };
+@@ -79,11 +81,21 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete
+   // Changing the shape of the deal makes old recommended pairs meaningless, so they are cleared (after asking).
+   const reshape = async (next: Partial<DealForm>) => {
+     if (f.recommended.length && !(await confirm('Clear recommended pairs?', 'Changing the items or quantities makes the recommended pairs out of date, so they will be removed.', 'Clear pairs', true))) return;
+-    set({ ...next, recommended: [] });
++    set({ ...next, recommended: [] }); setAutoMessage(''); setAutoLeft([]);
+   };
+   const updateSlot = (i: number, p: Partial<SlotForm>) => reshape({ slots: f.slots.map((s, k) => (k === i ? { ...s, ...p } : s)) });
+   const addSlot = () => reshape({ slots: [...f.slots, { ids: [], qty: 1 }] });
+   const removeSlot = (i: number) => reshape({ slots: f.slots.filter((_, k) => k !== i), applyToSlot: f.applyToSlot == null || f.applyToSlot === i ? null : f.applyToSlot > i ? f.applyToSlot - 1 : f.applyToSlot });
++  // Auto: pair variations by style and colour. Pairs picked by hand stay; Auto only adds to them.
++  const runAuto = () => {
++    const r = autoRecommendedPairs(f, variants);
++    const left = r.leftovers.flat().map(v => variantName(v));
++    if (r.pairs.length) set({ recommended: [...f.recommended, ...r.pairs] });
++    setAutoLeft(left);
++    setAutoMessage(r.pairs.length
++      ? `Added ${r.pairs.length} recommended pair${r.pairs.length === 1 ? '' : 's'}.${left.length ? ` ${left.length} variation${left.length === 1 ? ' has' : 's have'} no match.` : ''}`
++      : 'No new pairs found. Matching needs the same style and the same colour in each item.');
++  };
+   const submit = () => {
+     setTried(true); if (problems.length) return;
+     const id = isNew ? makeDealId(f.label, cfg.discounts.map(d => d.id)) : f.id;
+@@ -147,7 +159,14 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete
+       {f.recommended.length ? <Section>{f.recommended.map((r, i) => (
+         <Row key={i} title={r.map(id => idName(id, variants)).join('  +  ')} last={i === f.recommended.length - 1}
+           right={<Pressable hitSlop={10} onPress={() => set({ recommended: f.recommended.filter((_, k) => k !== i) })} accessibilityRole="button" accessibilityLabel="Remove this pair"><Ionicons name="close-circle" size={22} color={c.sub} /></Pressable>} />))}</Section> : null}
+-      <Btn title="Add a recommended pair" kind="secondary" icon="heart-outline" style={{ marginTop: 8 }} disabled={f.slots.some(s => !s.ids.length)} onPress={() => setPairing(true)} />
++      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
++        <Btn title="Add a recommended pair" kind="secondary" icon="heart-outline" style={{ flex: 2 }} disabled={f.slots.some(s => !s.ids.length)} onPress={() => setPairing(true)} />
++        <Btn title="Auto" kind="secondary" icon="sparkles-outline" style={{ flex: 1 }} disabled={units < 2 || f.slots.some(s => !s.ids.length)} onPress={runAuto} />
++      </View>
++      {autoMessage ? <Card style={{ marginTop: 8, padding: 12, gap: 6 }}>
++        <Txt size={13} color={autoMessage.startsWith('Added') ? c.good : c.sub}>{autoMessage}</Txt>
++        {autoLeft.length ? <Txt size={12} sub>No match for: {autoLeft.slice(0, 12).join(', ')}{autoLeft.length > 12 ? ` and ${autoLeft.length - 12} more` : ''}</Txt> : null}
++      </Card> : null}
+       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+         <Btn title="Export variation JSON" kind="secondary" small style={{ flex: 1 }} onPress={() => void Share.share({ message: recommendedPairsExport(f, variants), title: `${f.label || f.id} variations` })} />
+         <Btn title={showPairImport ? 'Hide import' : 'Import pairs JSON'} kind="secondary" small style={{ flex: 1 }} onPress={() => { setShowPairImport(v => !v); setPairImportMessage(''); }} />
+diff --git a/tests/autopairs.test.ts b/tests/autopairs.test.ts
+new file mode 100644
+index 0000000..3d604a0
+--- /dev/null
++++ b/tests/autopairs.test.ts
+@@ -0,0 +1,97 @@
++// Location: tests/autopairs.test.ts
++// A8.3: the Auto button on recommended pairs. Style and colour matching, tier order, the Green rule,
++// one-to-one use, leftovers, hand-picked pairs kept, and a result the deal accepts.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { autoRecommendedPairs } from '../src/lib/autoPairs';
++import { importRecommendedPairs, recommendedPairsExport, type DealForm } from '../src/lib/bundleForm';
++import type { Variant } from '../src/lib/types';
++
++let n = 1000;
++const P = (id: number) => `gid://shopify/Product/${id}`;
++const v = (productId: number, productTitle: string, variantTitle: string): Variant => ({
++  id: `gid://shopify/ProductVariant/${n++}`, productId: P(productId), productTitle, variantTitle, priceCents: 1000, tracked: true, stock: 5, tags: [], active: true,
++});
++const EGG_G = 1, EGG_R = 2, MINI_G = 3, MINI_R = 4;
++const egg = (style: 'Gemstone' | 'Rose', colour: string) => v(style === 'Gemstone' ? EGG_G : EGG_R, `${style} Egg Dragon (Outer Egg)`, colour);
++const mini = (style: 'Gemstone' | 'Rose', colour: string) => v(style === 'Gemstone' ? MINI_G : MINI_R, `Mini ${style} Dragon`, colour);
++const byId = (vs: Variant[]) => Object.fromEntries(vs.map(x => [x.id, x]));
++// Position 1 = both outer egg products, position 2 = both mini products.
++const form = (recommended: string[][] = []): DealForm => ({
++  id: 'dragon_egg_combo', label: 'Dragon egg combo', enabled: true, mode: 'delta', amountCents: 500, percent: 10, applyToSlot: null, maxPerCart: null,
++  startsOn: '', endsOn: '', recommended, slots: [{ ids: [P(EGG_G), P(EGG_R)], qty: 1 }, { ids: [P(MINI_G), P(MINI_R)], qty: 1 }],
++});
++const names = (r: { pairs: string[][] }, all: Variant[]) => r.pairs.map(p => p.map(id => all.find(x => x.id === id)!).map(x => `${x.productTitle}:${x.variantTitle}`));
++
++test('pairs the same style and colour, and never crosses styles', () => {
++  const vs = [egg('Gemstone', 'Crushed Blue'), egg('Rose', 'Crushed Blue'), mini('Gemstone', 'Crushed Blue'), mini('Rose', 'Crushed Blue')];
++  const r = autoRecommendedPairs(form(), byId(vs));
++  assert.equal(r.pairs.length, 2);
++  for (const [a, b] of r.pairs) assert.equal(vs.find(x => x.id === a)!.productTitle.includes('Rose'), vs.find(x => x.id === b)!.productTitle.includes('Rose'));
++});
++
++test('Green never pairs with Green Black Dual Colour', () => {
++  const vs = [egg('Gemstone', 'Green'), mini('Gemstone', 'Green Black Dual Colour')];
++  const r = autoRecommendedPairs(form(), byId(vs));
++  assert.equal(r.pairs.length, 0);
++  assert.equal(r.leftovers[0].length, 1);
++  assert.equal(r.leftovers[1].length, 1);
++});
++
++test('different spellings of the same colours match: / & and order', () => {
++  const vs = [egg('Gemstone', 'Black/Red Dual Colour'), egg('Gemstone', 'Blue/Red Dual Colour'), mini('Gemstone', 'Black & Red Dual Colour'), mini('Gemstone', 'Red Blue Dual Colour')];
++  const r = autoRecommendedPairs(form(), byId(vs));
++  assert.equal(r.pairs.length, 2);
++  assert.equal(r.byTier.exact, 1);
++  assert.equal(r.byTier['any order'], 1);
++});
++
++test('brackets and "Dual Colour" are ignored only as a last resort, and "Assorted" is dropped', () => {
++  const vs = [egg('Rose', 'Purple Yellow Blue (EOP)'), egg('Rose', 'Rainbow Candy'), mini('Rose', 'Purple Yellow Blue'), mini('Rose', 'Rainbow Candy - Assorted')];
++  const r = autoRecommendedPairs(form(), byId(vs));
++  assert.equal(r.pairs.length, 2);
++  assert.equal(r.byTier['ignoring filler'], 1);
++});
++
++test('different colours with the same style stay apart', () => {
++  const vs = [egg('Rose', 'Purple Yellow Blue (EOP)'), mini('Rose', 'Purple Yellow Green (EOP)'), egg('Gemstone', 'Mint Matte'), mini('Gemstone', 'Mint Silk')];
++  assert.equal(autoRecommendedPairs(form(), byId(vs)).pairs.length, 0);
++});
++
++test('every variation is used once, extras are left over, output follows position 1 order', () => {
++  const e1 = egg('Gemstone', 'Titanium'), e2 = egg('Gemstone', 'Oceania'), m1 = mini('Gemstone', 'Oceania'), m2 = mini('Gemstone', 'Oceania'), m3 = mini('Gemstone', 'Pink');
++  const r = autoRecommendedPairs(form(), byId([e1, e2, m1, m2, m3]));
++  assert.deepEqual(r.pairs.map(p => p[0]), [e2.id]);
++  assert.equal(new Set(r.pairs.flat()).size, 2);
++  assert.equal(r.leftovers[0].length, 1);
++  assert.equal(r.leftovers[1].length, 2);
++});
++
++test('pairs already on the deal are kept and their variations are not reused', () => {
++  const e1 = egg('Rose', 'Red'), m1 = mini('Rose', 'Red'), e2 = egg('Rose', 'Pink'), m2 = mini('Rose', 'Pink');
++  const r = autoRecommendedPairs(form([[e1.id, m1.id]]), byId([e1, m1, e2, m2]));
++  assert.deepEqual(r.pairs, [[e2.id, m2.id]]);
++  assert.equal(autoRecommendedPairs(form([[e1.id, m1.id], [e2.id, m2.id]]), byId([e1, m1, e2, m2])).pairs.length, 0);
++});
++
++test('groups that share no style fall back to colour only', () => {
++  const cow = v(10, 'Highland Cow', 'Pink'), tad = v(11, 'Tadling', 'Pink'), tad2 = v(11, 'Tadling', 'Blue');
++  const f: DealForm = { ...form(), slots: [{ ids: [P(10)], qty: 1 }, { ids: [P(11)], qty: 1 }] };
++  const r = autoRecommendedPairs(f, byId([cow, tad, tad2]));
++  assert.deepEqual(r.pairs, [[cow.id, tad.id]]);
++});
++
++test('nothing to do for a one item deal or an empty group', () => {
++  const e = egg('Rose', 'Red');
++  assert.equal(autoRecommendedPairs({ ...form(), slots: [{ ids: [P(EGG_R)], qty: 1 }] }, byId([e])).pairs.length, 0);
++  assert.equal(autoRecommendedPairs(form(), byId([e])).pairs.length, 0);
++});
++
++test('the result passes the same checks as an imported list', () => {
++  const vs = [egg('Gemstone', 'Silver Silk'), mini('Gemstone', 'Silver Silk'), egg('Rose', 'Pink Silk'), mini('Rose', 'Pink Silk')];
++  const variants = byId(vs); const f = form();
++  const r = autoRecommendedPairs(f, variants);
++  const text = JSON.stringify({ ...JSON.parse(recommendedPairsExport(f, variants)), recommended: r.pairs });
++  assert.deepEqual(importRecommendedPairs(text, f, variants).pairs, r.pairs);
++  assert.deepEqual(names(r, vs).map(p => p.map(x => x.split(':')[1])), [['Silver Silk', 'Silver Silk'], ['Pink Silk', 'Pink Silk']]);
++});

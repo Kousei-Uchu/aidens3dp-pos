@@ -9,6 +9,7 @@ import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { pushSharedSettings } from '../lib/sync';
 import { parseBundleConfig, validateBundleConfig } from '../lib/bundles';
+import { autoRecommendedPairs } from '../lib/autoPairs';
 import { fmt, toCents, toDecimal } from '../lib/money';
 import {
   dealSummary, dealToForm, dealWindow, emptyBundleConfig, emptyDealForm, formProblems, idName, importRecommendedPairs, makeDealId, recommendedPairsExport, removeDeal, setDealEnabled,
@@ -72,6 +73,7 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete 
   const [amountText, setAmountText] = useState(initial.mode === 'percent' ? String(initial.percent) : initial.amountCents ? toDecimal(initial.amountCents) : '');
   const [picking, setPicking] = useState<number | null>(null); const [pairing, setPairing] = useState(false); const [tried, setTried] = useState(false);
   const [showPairImport, setShowPairImport] = useState(false); const [pairImportText, setPairImportText] = useState(''); const [pairImportMessage, setPairImportMessage] = useState('');
+  const [autoMessage, setAutoMessage] = useState(''); const [autoLeft, setAutoLeft] = useState<string[]>([]);
   const set = (p: Partial<DealForm>) => setF(cur => ({ ...cur, ...p }));
   const units = totalUnits(f); const problems = formProblems(f);
   const setMode = (mode: DealMode) => { set({ mode }); setAmountText(''); };
@@ -79,11 +81,21 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete 
   // Changing the shape of the deal makes old recommended pairs meaningless, so they are cleared (after asking).
   const reshape = async (next: Partial<DealForm>) => {
     if (f.recommended.length && !(await confirm('Clear recommended pairs?', 'Changing the items or quantities makes the recommended pairs out of date, so they will be removed.', 'Clear pairs', true))) return;
-    set({ ...next, recommended: [] });
+    set({ ...next, recommended: [] }); setAutoMessage(''); setAutoLeft([]);
   };
   const updateSlot = (i: number, p: Partial<SlotForm>) => reshape({ slots: f.slots.map((s, k) => (k === i ? { ...s, ...p } : s)) });
   const addSlot = () => reshape({ slots: [...f.slots, { ids: [], qty: 1 }] });
   const removeSlot = (i: number) => reshape({ slots: f.slots.filter((_, k) => k !== i), applyToSlot: f.applyToSlot == null || f.applyToSlot === i ? null : f.applyToSlot > i ? f.applyToSlot - 1 : f.applyToSlot });
+  // Auto: pair variations by style and colour. Pairs picked by hand stay; Auto only adds to them.
+  const runAuto = () => {
+    const r = autoRecommendedPairs(f, variants);
+    const left = r.leftovers.flat().map(v => variantName(v));
+    if (r.pairs.length) set({ recommended: [...f.recommended, ...r.pairs] });
+    setAutoLeft(left);
+    setAutoMessage(r.pairs.length
+      ? `Added ${r.pairs.length} recommended pair${r.pairs.length === 1 ? '' : 's'}.${left.length ? ` ${left.length} variation${left.length === 1 ? ' has' : 's have'} no match.` : ''}`
+      : 'No new pairs found. Matching needs the same style and the same colour in each item.');
+  };
   const submit = () => {
     setTried(true); if (problems.length) return;
     const id = isNew ? makeDealId(f.label, cfg.discounts.map(d => d.id)) : f.id;
@@ -147,7 +159,14 @@ function DealEditor({ initial, isNew, cfg, variants, onSave, onCancel, onDelete 
       {f.recommended.length ? <Section>{f.recommended.map((r, i) => (
         <Row key={i} title={r.map(id => idName(id, variants)).join('  +  ')} last={i === f.recommended.length - 1}
           right={<Pressable hitSlop={10} onPress={() => set({ recommended: f.recommended.filter((_, k) => k !== i) })} accessibilityRole="button" accessibilityLabel="Remove this pair"><Ionicons name="close-circle" size={22} color={c.sub} /></Pressable>} />))}</Section> : null}
-      <Btn title="Add a recommended pair" kind="secondary" icon="heart-outline" style={{ marginTop: 8 }} disabled={f.slots.some(s => !s.ids.length)} onPress={() => setPairing(true)} />
+      <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
+        <Btn title="Add a recommended pair" kind="secondary" icon="heart-outline" style={{ flex: 2 }} disabled={f.slots.some(s => !s.ids.length)} onPress={() => setPairing(true)} />
+        <Btn title="Auto" kind="secondary" icon="sparkles-outline" style={{ flex: 1 }} disabled={units < 2 || f.slots.some(s => !s.ids.length)} onPress={runAuto} />
+      </View>
+      {autoMessage ? <Card style={{ marginTop: 8, padding: 12, gap: 6 }}>
+        <Txt size={13} color={autoMessage.startsWith('Added') ? c.good : c.sub}>{autoMessage}</Txt>
+        {autoLeft.length ? <Txt size={12} sub>No match for: {autoLeft.slice(0, 12).join(', ')}{autoLeft.length > 12 ? ` and ${autoLeft.length - 12} more` : ''}</Txt> : null}
+      </Card> : null}
       <View style={{ flexDirection: 'row', gap: 8, marginTop: 8 }}>
         <Btn title="Export variation JSON" kind="secondary" small style={{ flex: 1 }} onPress={() => void Share.share({ message: recommendedPairsExport(f, variants), title: `${f.label || f.id} variations` })} />
         <Btn title={showPairImport ? 'Hide import' : 'Import pairs JSON'} kind="secondary" small style={{ flex: 1 }} onPress={() => { setShowPairImport(v => !v); setPairImportMessage(''); }} />

@@ -5,7 +5,7 @@ parent: sales
 summary: Set up "buy these together, pay less" deals in Settings, and how they show up in the cart and at payment.
 tags: [bundle, deal, combo, discount, builder, recommended pair, percent, set price, dates]
 related: [sales, sales/cart-and-prices, sales/lookup-tiles, pay]
-updated: 2026-10-11
+updated: 2026-10-17
 ---
 A bundle deal changes the price when a customer buys certain items together, for example *2 Highland Cows for $2 off*. You build them in Settings, and the cart applies them by itself.
 
@@ -40,6 +40,8 @@ Some deals only make sense for certain combinations, like matching colours. Unde
 Every variation still gets the deal. A recommended pair guides the matcher and cashier:
 - If the cashier rings up a different combination, they are asked to check it before payment (see below).
 - When more than one eligible combination is available, the POS prefers the recommended combination, even if another combination would produce a larger saving.
+
+For many variations, tap **Auto** next to **Add a recommended pair**. It pairs variations that have the same style and the same colour in each item of the deal, for example a Gemstone egg in *Crushed Blue* with the Mini Gemstone dragon in *Crushed Blue*. A Gemstone item never pairs with a Rose one. Colours are compared as a whole, so *Green* never pairs with *Green Black Dual Colour*, but *Black/Red*, *Black & Red* and *Red Black* count as the same colours. Words like *Dual Colour*, *Assorted* and a tag in brackets such as *(EOP)* are only ignored when nothing closer is left to match. Each variation is used once, and variations with no partner are skipped. A note under the buttons says how many pairs were added and lists the variations that found no match. Auto adds to the pairs you already have and never changes them. If the items in the deal have no style in common (like *Highland Cow* and *Tadling*), only the colours are compared. Check the list afterwards, since Auto reads names only.
 
 For many variations, **Export variation JSON** shares each deal position's allowed variant IDs and names. Ask an LLM to fill the `recommended` array with one variant ID per position, then paste its JSON response into **Import pairs JSON**. The app checks every ID against the variations allowed in that position before replacing the current pairs.
 
@@ -126,6 +128,7 @@ The greedy pass always gives a valid answer first. If the search hits its step l
 ### Where the code is
 | Job | Where |
 |---|---|
+| Auto pairing: styles, colours, tiers, leftovers | `autoRecommendedPairs` in `src/lib/autoPairs.ts`; the **Auto** button (`runAuto`) in `DealEditor` |
 | The list, editor, item picker, pair picker, JSON view | `BundlesEditor`, `DealEditor`, `ItemPicker`, `PairPicker`, `JsonEditor` in `src/screens/BundleBuilder.tsx` (Settings ▸ Discounts & bundles is drawn by `Settings.tsx`) |
 | Form to deal and back, ids, dates, save checks | `formToDeal`, `dealToForm`, `upsertDeal`, `removeDeal`, `pruneSets`, `makeDealId`, `formProblems`, `dealWindow` in `src/lib/bundleForm.ts` |
 | Reading and checking the saved JSON | `parseBundleConfig`, `validateBundleConfig` in `src/lib/bundles.ts` |
@@ -151,4 +154,4 @@ A product id in a set matches all of its variations. A variation id matches only
 - **The saving is on the wrong item.** Check **Take it off** (`apply_to`).
 - **A change did not reach another register.** Look at the **Sync** strip and wait one 25 second tick. If the saving register was offline, there was no retry (see Sharing).
 - **A line discount you set disappeared.** The line also got a bundle discount, which blocks the manual one (see [[sales/cart-and-prices]]).
-- **Tests.** `tests/bundleform.test.ts` covers percent and dated deals, recommended pairs, the form round trip, the checkout check, and a deal built in the GUI running through `priceCart`. `tests/lib.test.ts` covers a price override feeding a bundle.
+- **Tests.** `tests/autopairs.test.ts` covers Auto pairing. `tests/bundleform.test.ts` covers percent and dated deals, recommended pairs, the form round trip, the checkout check, and a deal built in the GUI running through `priceCart`. `tests/lib.test.ts` covers a price override feeding a bundle.
