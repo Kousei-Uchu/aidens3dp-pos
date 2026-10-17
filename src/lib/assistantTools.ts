@@ -1,5 +1,5 @@
 // Location: src/lib/assistantTools.ts
-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link). Plain functions that read what they are
+// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide). Plain functions that read what they are
 // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
 // runs in the node tests.
 //
@@ -10,6 +10,7 @@ import { applyGate, type Category, type GatePolicy, type GateSpec } from './assi
 import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
 // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
 import type { ScreenEntry, ScreenTarget } from './assistantScreens';
+import type { Guide } from './assistantGuide';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -31,9 +32,9 @@ export type AssistantTool = {
 };
 
 /** A button under a reply (patch 0159). It only says what to open; what tapping does is worked out again when it is drawn, for the role signed in then. */
-export type ChatLink = { kind: 'doc' | 'screen'; id: string; /** What the button says, for example "Open Reports". */ label: string };
+export type ChatLink = { kind: 'doc' | 'screen' | 'guide'; id: string; /** What the button says, for example "Open Reports". */ label: string };
 /** What tapping a button does. The screen turns this into navigation. */
-export type LinkAction = { to: 'help'; id: string } | { to: 'tab'; tab: string } | { to: 'route'; route: string };
+export type LinkAction = { to: 'help'; id: string } | { to: 'tab'; tab: string } | { to: 'route'; route: string } | { to: 'guide'; guide: Guide };
 export const MAX_LINKS = 3;
 
 /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
@@ -142,7 +143,7 @@ const readDoc: AssistantTool = {
 // ---------- search_screens ----------
 /** Words that tell nothing about which screen is meant ("open the Reports page"), so they are not searched for. */
 const SCREEN_NOISE = new Set(('screen page window button tab up out open go find see look tap press click take show').split(' '));
-export type ScreenHit = { id: string; name: string; kind: string; summary: string; how_to_open?: string[] };
+export type ScreenHit = { id: string; name: string; kind: string; summary: string; how_to_open?: string[]; /** Present when show_guide can point the way (patch 0162). */ can_guide?: true };
 /**
  * Finds screens for a question, by name or by what they are for. One matching word is enough, because a screen's name and
  * summary are short and a whole sentence rarely matches half of them; screens that match more of the words come first, and the
@@ -158,7 +159,7 @@ export function searchScreenList(ctx: Pick<ToolContext, 'screens' | 'role'>, que
     if (hit > 0) scored.push({ e, hit, score });
   }
   scored.sort((a, b) => b.hit - a.hit || b.score - a.score || a.e.name.localeCompare(b.e.name));
-  return scored.slice(0, max).map(({ e }) => { const how = e.steps[ctx.role]; return { id: e.id, name: e.name, kind: e.kind, summary: e.summary, ...(how && how.length ? { how_to_open: how } : {}) }; });
+  return scored.slice(0, max).map(({ e }) => { const how = e.steps[ctx.role]; return { id: e.id, name: e.name, kind: e.kind, summary: e.summary, ...(how && how.length ? { how_to_open: how } : {}), ...(e.walk?.[ctx.role]?.length ? { can_guide: true as const } : {}) }; });
 }
 
 const searchScreens: AssistantTool = {
@@ -186,6 +187,10 @@ const searchScreens: AssistantTool = {
 export function resolveLink(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, kind: unknown, id: unknown): { link: ChatLink; action: LinkAction } | null {
   const key = typeof id === 'string' ? id.trim() : ''; if (!key) return null;
   if (kind === 'doc') { const p = visiblePages(ctx).find(x => x.id === key); return p ? { link: { kind: 'doc', id: p.id, label: p.title }, action: { to: 'help', id: p.id } } : null; }
+  if (kind === 'guide') {
+    const e = visibleScreens(ctx).find(x => x.id === key); const walk = e?.walk?.[ctx.role]; if (!e || !walk || !walk.length) return null;
+    return { link: { kind: 'guide', id: e.id, label: `Guide me to ${e.name}` }, action: { to: 'guide', guide: { screen: e.id, name: e.name, steps: walk.map(s => ({ ...s })), ...(e.target ? { target: e.target } : {}), ...(e.arrive?.length ? { arrive: [...e.arrive] } : {}) } } };
+  }
   if (kind === 'screen') {
     const e = visibleScreens(ctx).find(x => x.id === key); const t: ScreenTarget | undefined = e?.target; if (!e || !t) return null;
     return { link: { kind: 'screen', id: e.id, label: `Open ${e.name}` }, action: 'tab' in t ? { to: 'tab', tab: t.tab } : { to: 'route', route: t.route } };
@@ -211,8 +216,21 @@ const showLink: AssistantTool = {
   link: (args, ctx) => resolveLink(ctx, args.kind, args.id)?.link ?? null,
 };
 
+// ---------- show_guide ----------
+const NO_GUIDE = { error: 'No guide can be made for that screen. Only screens that search_screens marks can_guide have one. Give the taps in words instead.' };
+const showGuide: AssistantTool = {
+  gate: 'content',
+  def: { type: 'function', function: {
+    name: 'show_guide',
+    description: 'Put a "Guide me" button under your reply. When the person taps it, the till points at each button to tap, one after the other, starting from the Checkout tab, until they reach the screen. Use it when someone asks to be shown, guided or walked to a screen, after search_screens gave you the id and marked it can_guide. Still give the taps in words. Never write the button or the id in your reply.',
+    parameters: { type: 'object', properties: { screen: { type: 'string', description: 'The id from search_screens, for example "page_reports".' } }, required: ['screen'], additionalProperties: false },
+  } },
+  run: (args, ctx) => { const r = resolveLink(ctx, 'guide', args.screen); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. It points at each tap from the Checkout tab. Do not write the button yourself.` } : NO_GUIDE; },
+  link: (args, ctx) => resolveLink(ctx, 'guide', args.screen)?.link ?? null,
+};
+
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide];
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
 
 // ---------- running a call ----------

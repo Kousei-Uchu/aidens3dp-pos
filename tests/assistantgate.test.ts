@@ -135,9 +135,9 @@ test("'content' tools keep help text as it is but mask card numbers and keys, an
   const t = JSON.stringify(g.value); assert.match(t, /help@shop\.example/); assert.doesNotMatch(t, /4111|sk-abc/); assert.match(t, /\[card number\]/); assert.match(t, /\[key\]/);
   assert.deepEqual(g.used, []); assert.equal(g.withheld.payment, 1); assert.equal(g.withheld.secret, 1); assert.ok(!('privacy_note' in (g.value as object)));
 });
-test('every tool in this build declares a gate, and only the four help tools are content tools', () => {
+test('every tool in this build declares a gate, and only the five help tools are content tools', () => {
   for (const t of ASSISTANT_TOOLS) assert.ok(t.gate === 'content' || (typeof t.gate === 'object' && t.gate !== null), t.def.function.name);
-  assert.deepEqual(ASSISTANT_TOOLS.filter(t => t.gate === 'content').map(t => t.def.function.name).sort(), ['read_doc', 'search_docs', 'search_screens', 'show_link'],
+  assert.deepEqual(ASSISTANT_TOOLS.filter(t => t.gate === 'content').map(t => t.def.function.name).sort(), ['read_doc', 'search_docs', 'search_screens', 'show_guide', 'show_link'],
     'a new tool that returns shop data needs a field map, not "content". If this tool really returns only help text, add it here.');
 });
 

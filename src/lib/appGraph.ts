@@ -131,6 +131,9 @@ function spotOfStep(step: InstructionStep, meta: JsonObject): string | undefined
   return undefined;
 }
 
+/** The control a planned step taps (patch 0162), or undefined when the step has none. The assistant's guide reads this to know what to point at. */
+export const spotOfPlanStep = (step: InstructionStep): string | undefined => spotOfStep(step, edgeMeta(step.edge));
+
 /** How many times a step's action is performed in a row, when the graph asks for more than one (shown as "xN"). */
 function repeatOfStep(step: InstructionStep): number | undefined {
   for (const a of step.actions) if (typeof a.repeat === 'number' && a.repeat > 1) return a.repeat;

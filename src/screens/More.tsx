@@ -17,6 +17,11 @@ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }>
   settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' }, training: { icon: 'school-outline', title: 'Training', route: 'training' },
   lock: { icon: 'lock-closed-outline', title: 'Lock register' },
 };
+/** The spot each row carries, so training and the assistant's guide can point at it. The lock row has none. */
+const MORE_SPOT: Partial<Record<MoreRowId, string>> = {
+  orders: SPOT.moreOrders, items: SPOT.moreItems, customers: SPOT.moreCustomers, saved: SPOT.moreSaved, giftcards: SPOT.moreGiftcards, reports: SPOT.moreReports,
+  drawer: SPOT.moreDrawer, staff: SPOT.moreStaff, settings: SPOT.moreSettings, diagnostics: SPOT.moreDiagnostics, help: SPOT.moreHelp, training: SPOT.moreTraining,
+};
 /** What the row says underneath when explanations are off. */
 const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller reader, sync' };
 
@@ -36,7 +41,7 @@ export default function More() {
           <Section key={gi}>
             {g.map((id, i) => {
               const r = ROWS[id];
-              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={id === 'training' ? SPOT.moreTraining : id === 'orders' ? SPOT.moreOrders : id === 'items' ? SPOT.moreItems : id === 'saved' ? SPOT.moreSaved : id === 'drawer' ? SPOT.moreDrawer : id === 'diagnostics' ? SPOT.moreDiagnostics : id === 'customers' ? SPOT.moreCustomers : undefined} last={i === g.length - 1}
+              return <Row key={id} icon={r.icon} title={r.title} sub={ui.explain ? MORE_EXPLAIN[id] : PLAIN_SUB[id]} badge={id === 'diagnostics' && unread ? String(unread) : undefined} spot={MORE_SPOT[id]} last={i === g.length - 1}
                 onPress={() => (r.route ? nav.push(r.route) : useApp.getState().set({ unlocked: false, staffId: undefined }))} />;
             })}
           </Section>

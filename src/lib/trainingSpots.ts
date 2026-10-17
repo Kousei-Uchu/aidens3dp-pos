@@ -147,6 +147,7 @@ export const SPOT = {
   lookupClear: 'lookup.clear',         // Clear, in the Lookup sheet (when a result is shown)
   // Inventory
   tabInventory: 'tab.inventory',       // the Inventory tab
+  tabTransactions: 'tab.transactions', // the Transactions tab (patch 0162: the button had no spot, so nothing could point at it)
   invSearch: 'inv.search',             // the search box on the Inventory screen
   invFilters: 'inv.filters',           // the Filters chip on the Inventory screen
   invLayout: 'inv.layout',             // the Nested / Flat chip on the Inventory screen
@@ -166,6 +167,11 @@ export const SPOT = {
   swapClose: 'swap.close',             // the Close button in the Swap my cash window
   // Cash drawer
   moreDrawer: 'more.drawer',           // the Cash drawer row on the More tab
+  moreReports: 'more.reports',         // the Reports row on the More tab (patch 0162: the assistant's guide points at it)
+  moreGiftcards: 'more.giftcards',     // the Gift cards row on the More tab (patch 0162)
+  moreStaff: 'more.staff',             // the Staff row on the More tab (patch 0162)
+  moreSettings: 'more.settings',       // the Settings row on the More tab (patch 0162)
+  moreHelp: 'more.help',               // the Help row on the More tab (patch 0162)
   drawerOpen: 'drawer.open',           // Open drawer with float (when no drawer open)
   drawerPaidIn: 'drawer.paid.in',      // Paid in button
   drawerPaidOut: 'drawer.paid.out',    // Paid out button

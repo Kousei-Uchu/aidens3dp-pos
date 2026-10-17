@@ -759,3 +759,22 @@ On the iPad, with the model set up as in T55. Sign in as the owner (or a manager
 10. Type `refund for jo@example.com, card 4111 1111 1111 1111` and send. Pass: your message shows [email address] and [card number], whatever the choices above are.
 11. Open the conversation log and open that conversation. Pass: it looks as before, and no *Withheld by the data rules* line appears, because nothing was withheld.
 12. **Most important:** sign in as a cashier. Pass: the cashier cannot open AI assistant settings and so cannot change any of these choices.
+
+## T60. Assistant guide tool (0162)
+
+On the iPad, with the model set up as in T55. This is the first time the pointer is drawn on a real screen, so look closely at where the ring lands.
+
+1. Sign in as a **cashier** and ask *Show me how to get to Reports.* Pass: the reply has a **Guide me to Reports** button. Tap it. Pass: the till goes to the Checkout tab and a ring appears on the **More** tab with a small card saying *Tap More.* and *Step 1 of 2*. The rest of the screen is not dimmed and every other button still works.
+2. Tap More. Pass: the ring moves to the **Reports** row and the card says *Tap Reports.* and *Step 2 of 2*. Tap Reports. Pass: the card says *You are there: Reports.* and goes away by itself after a few seconds (or tap **OK**).
+3. Start the guide again, tap More, then tap another row (Orders) instead. Pass: the ring does not stay on a button that is gone, and the card says it cannot see the next button and offers Stop. Tap the Checkout tab and then More. Pass: the ring points at Reports again.
+4. Start it again, tap More, then ask the chat for a different guide (*Guide me to Gift cards*) and tap that button. Pass: the first guide is replaced, not shown twice.
+5. Start a guide and tap **Stop**. Pass: the ring and card go. Start one and put the iPad down for ten minutes. Pass: it ends by itself.
+6. Ask *Where is the Transactions tab?* and tap the guide button. Pass: the ring is on the Transactions tab at the bottom (it had no ring before this patch), and the card says *You are there* once you tap it.
+7. Ask *Show me the Keypad.* and tap the guide button. Pass: the ring is on the Keypad tab in Checkout. Tap it. Pass: the card says you are there.
+8. Ask *Guide me to Help.* and *Guide me to Gift cards.* Pass: both rings land on their rows of the More page. Then, as a **manager**, ask for Settings and Staff. Pass: both rings land on their rows.
+9. Ask *Guide me to the refund window* (or any window, such as Close drawer). Pass: there is no guide button, only the taps in words. Ask for the **Checkout** tab. Pass: no guide button, since every guide starts there.
+10. As a **cashier**, ask *Guide me to Settings* and *Guide me to Staff.* Pass: both get *I couldn't find anything on that* and no button appears, the same as for *Guide me to the teleporter.*
+11. **Most important:** as the owner, start a guide, then sign in as someone else without stopping it. Pass: the guide is gone for the new person.
+12. As a manager, open the conversation log, open the conversation from step 8, then **Tools used**. Pass: the show_guide call is listed with the note the model was given.
+13. Open the chat after a guide button was shown, close the app and open the chat again. Pass: the guide button is still under the reply and still starts a guide.
+14. Turn the **More** page down to Essential or Minimal in the display settings, then ask to be guided to Items. Pass: if the Items row is hidden, the card says it cannot see the next button instead of ringing the wrong thing. (This is a known rough edge: the guide does not know which rows a display mode hides.)

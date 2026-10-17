@@ -29,8 +29,8 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
     'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
     ...(withTools ? [
-      'You have four tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
-      'Use show_link for the one or two best places only, and only after a search gave you the id. The button is shown for you, so never write a link, an id or a page id in your reply.',
+      'You have five tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. show_guide puts a "Guide me" button under your reply that points at each tap, one at a time, to reach a screen. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
+      'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
       'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
     ] : [
@@ -58,7 +58,7 @@ export const historyKey = (staffId: string | undefined): string => `assistant.hi
 export function readLinks(raw: unknown): ChatLink[] {
   if (!Array.isArray(raw)) return [];
   const out: ChatLink[] = [];
-  for (const l of raw) { const o = l as Record<string, unknown> | null; if (o && typeof o === 'object' && (o.kind === 'doc' || o.kind === 'screen') && typeof o.id === 'string' && o.id && typeof o.label === 'string' && o.label && out.length < MAX_LINKS) out.push({ kind: o.kind, id: o.id, label: o.label.slice(0, 120) }); }
+  for (const l of raw) { const o = l as Record<string, unknown> | null; if (o && typeof o === 'object' && (o.kind === 'doc' || o.kind === 'screen' || o.kind === 'guide') && typeof o.id === 'string' && o.id && typeof o.label === 'string' && o.label && out.length < MAX_LINKS) out.push({ kind: o.kind, id: o.id, label: o.label.slice(0, 120) }); }
   return out;
 }
 

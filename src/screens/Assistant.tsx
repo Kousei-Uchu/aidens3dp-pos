@@ -1,7 +1,7 @@
 // Location: src/screens/Assistant.tsx
 // Help ▸ Ask the assistant (patch 0151): a chat with the model set up in Settings ▸ AI assistant. Since 0157 it can search and read
 // the help pages, since 0158 it can search the app's screens (both limited to what the signed in role may see), and since 0159 it can put
-// a button under a reply that opens a help page or a screen. It still knows
+// a button under a reply that opens a help page or a screen. Since 0162 the button can be "Guide me to ...", which points at each tap on the way. It still knows
 // nothing about the shop's data. History is kept on
 // this iPad, one per staff member, and cleared only by hand.
 // Since 0160, when the model cannot answer (or is not set up) the chat shows the error and still searches the screens and the help
@@ -24,6 +24,7 @@ import { assistantLog, logSink } from '../lib/assistantLogIO';
 import { resolvePolicy } from '../lib/assistantGate';
 import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
 import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+import { startGuide } from '../lib/assistantGuide';
 import type { Page as HelpPage } from '../lib/helpDocs';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
@@ -136,7 +137,11 @@ export default function Assistant() {
   };
 
   const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant' && !hist[hist.length - 1].offline;
-  const open = (a: LinkAction) => { if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route); };
+  // A guide starts from the Checkout tab, which is where the walks it points along begin.
+  const open = (a: LinkAction) => {
+    if (a.to === 'guide') { if (startGuide({ ...a.guide, ...(staffId ? { staffId } : {}) })) nav.setTab('checkout'); return; }
+    if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route);
+  };
   // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
   const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: helpPages, screens: screenList, role }, e.links) : []);
   const bubble = (e: ChatEntry, i: number) => e.offline ? (
@@ -149,7 +154,7 @@ export default function Assistant() {
       {e.note ? <Txt size={12} sub style={{ alignSelf: 'flex-end' }}>{e.note}</Txt> : null}
       {buttons(e).length ? (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {buttons(e).map(b => <Btn key={`${b.link.kind}:${b.link.id}`} small kind="secondary" icon={b.link.kind === 'doc' ? 'book-outline' : 'open-outline'} title={b.link.label} onPress={() => open(b.action)} />)}
+          {buttons(e).map(b => <Btn key={`${b.link.kind}:${b.link.id}`} small kind="secondary" icon={b.link.kind === 'doc' ? 'book-outline' : b.link.kind === 'guide' ? 'navigate-outline' : 'open-outline'} title={b.link.label} onPress={() => open(b.action)} />)}
         </View>
       ) : null}
     </View>

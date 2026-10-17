@@ -6,6 +6,16 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 18 (18 October 2026), patch 0162:** tool 4 of 4 is built: the guide tool, as the model-facing tool `show_guide`. The plan never defined it, so it is taken to
+mean the \"Guide me there\" pointer of question 8, started from a button under a reply: a ring and a small card point at each control to tap, one at a time, from the
+Checkout tab, and the card says *You are there* at the end. It never dims the screen or blocks a touch. It is role filtered exactly like `show_link` and `search_screens`
+(a screen the role cannot reach gets the same answer as one that does not exist), and `search_screens` marks a hit `can_guide`. Each screen carries a `walk` per role and,
+for a view, `arrive` controls. The ring looks at what is on screen a few times a second and points at the last control of the walk that is mounted, so it keeps no state of
+its own and picks up someone part of the way. A screen has no walk if a tap has no control or no words, goes into a window or overlay (windows are drawn above the ring), or taps a
+control that is not a real spot. Controls fixed: `tab.transactions` and the More rows for Reports, Gift cards, Staff, Settings and Help now have spots. Left without a guide:
+Edit item, Training run and the Practice terminal (3.10 item 4 notes why). Not tried on a real iPad (device test T60). Still to come among the tools: screen and register context (so a guide
+can start from where the cashier is standing), and date and time.
+
 **Revision 17 (18 October 2026), patch 0161:** patch 5, the data gate (3.1), is built, with the category toggles. No tool returns shop data yet, so
 it has nothing to act on until patch 6, but every tool already passes through it. The code is in `src/lib/assistantGate.ts`. Every tool declares a field map
 (`gate`) saying which category each field it can return belongs to, or `content` for a tool that returns only help text. The gate runs on every result before
@@ -494,14 +504,15 @@ chat screen patch can add streaming.
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
    pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). **0160 done:** the offline search
-   (screens and help pages; products and stock come with patch 6). Next: guide.
+   (screens and help pages; products and stock come with patch 6). **0162 done:** guide (as `show_guide`; no guide for Edit item, Training run, the Practice terminal, windows or the
+   Checkout tab).
 5. **Done (0161).** The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
 7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.
 8. Cash drawer status, calculators and current cart.
 9. Practice mode coach (3.7).
-10. Settings reader and app and sync status, then the "Guide me there" highlight arrows.
+10. Settings reader and app and sync status. (The "Guide me there" highlight arrows were built in 0162, as the guide tool.)
 
 The gate comes before any tool that returns shop data, so no tool is ever added without it.
 

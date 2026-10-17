@@ -33,6 +33,7 @@ import Training from './src/screens/Training';
 import TrainingRun from './src/screens/TrainingRun';
 import TerminalPlay from './src/screens/TerminalPlay';
 import TrainingHost from './src/ui/TrainingHost';
+import AssistantGuideOverlay from './src/ui/AssistantGuide';
 import AppStatusBar from './src/ui/AppStatusBar';
 import { Spot } from './src/ui/Spot';
 import { SPOT } from './src/lib/trainingSpots';
@@ -112,7 +113,7 @@ function Shell() {
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
           <View style={{ flexDirection: 'row', paddingTop: 6, paddingBottom: 8 }}>
             {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
-              <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : t.id === 'inventory' ? SPOT.tabInventory : t.id === 'notifications' ? SPOT.tabNotifications : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ alignSelf: 'stretch', alignItems: 'center', gap: 2 }}>
+              <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : t.id === 'inventory' ? SPOT.tabInventory : t.id === 'transactions' ? SPOT.tabTransactions : t.id === 'notifications' ? SPOT.tabNotifications : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ alignSelf: 'stretch', alignItems: 'center', gap: 2 }}>
                 <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
                 <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}
           </View>
@@ -126,7 +127,7 @@ export default function App() {
   return (
     <ZellerRoot>
       <SafeAreaProvider><ThemeProvider><UiProvider><NavProvider>
-        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost></View>
+        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost><AssistantGuideOverlay /></View>
         <KeepAwake /><ScreensaverLayer />
       </NavProvider></UiProvider></ThemeProvider></SafeAreaProvider>
     </ZellerRoot>

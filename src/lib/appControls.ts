@@ -161,6 +161,11 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.refundDone]: 'sheet_refund_done',
   // Cash drawer
   [SPOT.moreDrawer]: 'tab_more',
+  [SPOT.moreReports]: 'tab_more',
+  [SPOT.moreGiftcards]: 'tab_more',
+  [SPOT.moreStaff]: 'tab_more',
+  [SPOT.moreSettings]: 'tab_more',
+  [SPOT.moreHelp]: 'tab_more',
   [SPOT.drawerOpen]: 'page_drawer',
   [SPOT.drawerPaidIn]: 'page_drawer',
   [SPOT.drawerPaidOut]: 'page_drawer',
@@ -186,6 +191,7 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.passScan]: 'overlay_practice_pass',
   // Inventory: the list, its chips and the item window opened from a row.
   [SPOT.tabInventory]: 'tab_inventory',
+  [SPOT.tabTransactions]: 'tab_transactions',
   [SPOT.invSearch]: 'tab_inventory',
   [SPOT.invFilters]: 'tab_inventory',
   [SPOT.invLayout]: 'tab_inventory',
