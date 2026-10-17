@@ -6,6 +6,8 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 20 (18 October 2026), patch 0164:** patch 6 is built: the product and inventory tools, and the model-free product and stock lookup in the offline mode (3.3). Two model-facing tools: `find_products` and `stock_levels`, in `src/lib/assistantProducts.ts`, listed in `assistantDataTools.ts` ahead of the sales tools. They read the catalogue saved on this iPad (`variants`, `collections`, deals), never Shopify live (question 12), and every result goes through the data gate. They reuse the till's own rules (`stockText` and `dealsFor` from `lookup.ts`, and the Inventory list's `filterVariants`, `matchesStock` and `sortVariants`), so the assistant cannot say *low* or *out* differently from the screen. Decided here, and the owner may want to change any of them: **(1) Two tools, not one.** The plan lists inventory levels (5) and product and variant data (6) separately, and *what is low on stock* and *what is this product's SKU and cost* are different questions for a small model; each definition is read on every question, so they stay short. **(2) Stock is as of the last sync**, and the notes say so. **(3) Active and unlisted products only by default**, the same as the Inventory list, with a `status` argument for draft, archived or all. **(4) Product, price, stock, SKU, barcode, deals and categories are shop data; the cost price is costs and profit,** and only appears when `detail` is set. Like Reports, it is shown to every role (0163 decision 8); the Items and Inventory tabs are open to cashiers in the app graph, and no role filter applies. **(5) When only some variations of a product match, only those are shown and there is no total for the product,** so a total never covers more than it says. **(6) *Low* means the Inventory list's low: 2 or fewer, which includes out of stock.** The level is the Inventory default (2) and is not a setting yet. **(7) Offline:** the list gets a PRODUCTS section and a low, out of stock or oversold list. Words that are not part of a name (*how many*, *do we have*, *price*, *stock*) are left out; one or two words must all match, three or more need half. It takes a catalogue snapshot that is null on practice data, so nothing is shown in practice mode, and the data gate does not apply because nothing leaves the device. The offline log line records the product names found. Next: patch 8 (cash drawer, calculators and current cart), or patch 9 (practice mode coach).
+
 **Revision 19 (18 October 2026), patch 0163:** patch 7 is built: the remaining data tools, as five model-facing tools: `sales_report`, `find_orders`, `list_deals`,
 `find_customers` and `gift_card_activity`. They read a snapshot of what is saved on this iPad (`src/lib/assistantData.ts`, `assistantDataTools.ts`, `assistantDataIO.ts`), never
 Shopify live (question 12), and every result goes through the data gate. Patch 6 (product and inventory) is not built yet and is not needed by patch 7, so 7 went first.
@@ -203,16 +205,15 @@ Built in 0159: the link tool (`show_link`), buttons under a reply that open a he
 Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
 Built in 0161: the data gate and the category toggles (3.1), in front of every tool result, the history sent to the model and the audit log.
 Built in 0163: the sales, order, deal, customer and gift card tools (patch 7), the first tools that return shop data, each with a field map for the gate.
+Built in 0164: the product and stock tools (patch 6, `find_products` and `stock_levels`), and the model-free product and stock lookup in the offline mode (3.3).
 
 Still to do:
 
-- The offline mode's product and inventory lookup (3.3), after the product tools and the data gate.
 - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
   before anything reaches the model or the screen.
-- The read-only tools still to build (3.2): product and inventory (patch 6), cash drawer, calculators and current cart (patch 8), screen and register context, date and time, settings reader and app and sync status (patch 10).
+- The read-only tools still to build (3.2): cash drawer, calculators and current cart (patch 8), screen and register context, date and time, settings reader and app and sync status (patch 10).
 - The practice mode coach (3.7).
-- Model-free product and inventory lookup for the offline mode (3.3).
-- Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 6 to 8). The gate exists (0161), so no tool may be added without a map.
+- Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 8 to 10). The gate exists (0161), so no tool may be added without a map.
 - The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
 - A way to keep it from changing anything, enforced in code and not only in the prompt.
 - Tests, a help page, a device test and a progress log entry for each later patch.
@@ -526,7 +527,7 @@ chat screen patch can add streaming.
    Checkout tab).
 5. **Done (0161).** The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
-6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
+6. **Done (0164).** Product and inventory tools through the gate (`find_products`, `stock_levels`), then the model-free product and inventory lookup in offline mode.
 7. **Done (0163).** The remaining data tools: sales history and report summaries (`sales_report`), orders (`find_orders`), deals (`list_deals`), customers (`find_customers`) and gift cards (`gift_card_activity`, with no balance, see Revision 19).
 8. Cash drawer status, calculators and current cart.
 9. Practice mode coach (3.7).

@@ -1,6 +1,6 @@
 // Location: src/lib/assistantDataTools.ts
-// The assistant's shop data tools (patch 0163, patch 7 in the plan): sales_report, find_orders, list_deals, find_customers and
-// gift_card_activity. Each one reads the snapshot in `ctx.data` and nothing else, so none of them can change anything. Each declares
+// The assistant's shop data tools (patch 0163, patch 7 in the plan: sales_report, find_orders, list_deals, find_customers and
+// gift_card_activity; patch 0164, patch 6: find_products and stock_levels). Each one reads the snapshot in `ctx.data` and nothing else, so none of them can change anything. Each declares
 // a field map that sorts every field it can return into a data category, and the data gate applies the endpoint rules to the result
 // before the model sees it (assistantGate.ts). A tool also leaves out, at the source, anything the gate would remove, so a search
 // never matches on a field the model may not read and an empty row never tells the model something exists.
@@ -8,6 +8,7 @@
 // This file only imports types from assistantTools.ts (which imports the list from here), so there is no circular import at run time.
 import { CATEGORY_INFO, FAIL_CLOSED_POLICY, type Category, type FieldMap } from './assistantGate';
 import { findCustomers, findOrders, giftCardActivity, listDeals, PERIODS, salesReport } from './assistantData';
+import { STATUS_WORDS, STOCK_FILTERS, findProducts, stockLevels } from './assistantProducts';
 import type { AssistantTool, ToolContext } from './assistantTools';
 
 const can = (ctx: Pick<ToolContext, 'policy'>, c: Category): boolean => (ctx.policy ?? FAIL_CLOSED_POLICY)[c] !== 'deny';
@@ -53,6 +54,19 @@ export const CUSTOMERS_MAP: FieldMap = {
 export const GIFT_MAP: FieldMap = {
   found: 'order', total_sold: 'order', total_redeemed: 'order', from: 'order', to: 'order',
   activity: { at: 'order', event: 'order', amount: 'order', order: 'order', code: 'gift_code', recipient: { name: 'personal', email: 'email' } },
+};
+// A plain item has its price and stock on the row; a product with variations has a total and a row for each, so both shapes are named here.
+const VARIANT_ROW: FieldMap = { name: 'shop', price: 'shop', stock: 'shop', sku: 'shop', barcode: 'shop', compare_at: 'shop', cost: 'cost' };
+export const PRODUCTS_MAP: FieldMap = {
+  found: 'shop',
+  products: {
+    name: 'shop', status: 'shop', price: 'shop', stock: 'shop', sku: 'shop', barcode: 'shop', compare_at: 'shop', cost: 'cost',
+    total_stock: 'shop', variants: VARIANT_ROW, more_variants: 'shop', tags: 'shop', categories: 'shop', deals: 'shop',
+  },
+};
+export const STOCK_MAP: FieldMap = {
+  filter: 'shop', matching: 'shop', variations: 'shop', tracked: 'shop', not_tracked: 'shop', out_of_stock: 'shop', low: 'shop', oversold: 'shop', units_in_stock: 'shop',
+  items: { name: 'shop', stock: 'shop' },
 };
 
 // ---------- tools ----------
@@ -133,5 +147,35 @@ const giftCardTool: AssistantTool = {
   run: (args, ctx) => (ctx.data ? giftCardActivity(ctx.data, args, { code: can(ctx, 'gift_code'), personal: can(ctx, 'personal'), email: can(ctx, 'email') }) : NO_DATA),
 };
 
+const findProductsTool: AssistantTool = {
+  gate: PRODUCTS_MAP,
+  def: { type: 'function', function: {
+    name: 'find_products',
+    description: 'Look up products and variations: price, stock and status. query is words from a product or variation name, a SKU or a barcode (every word must match). category limits it to a category. Set detail to true to also get SKU, barcode, usual price, cost, tags, categories and deals of up to 3 products. Active and unlisted products are searched unless status says otherwise.',
+    parameters: { type: 'object', properties: {
+      query: { type: 'string', description: 'Words from a name, or a SKU or barcode. Key words only, such as \"highland cow red\".' },
+      category: { type: 'string', description: 'A category name, or a word from it.' },
+      status: { type: 'string', enum: [...STATUS_WORDS], description: 'Which products to search. Defaults to active, which includes unlisted.' },
+      detail: { type: 'boolean', description: 'True to include SKU, barcode, cost, tags, categories and deals.' },
+    }, additionalProperties: false },
+  } },
+  run: (args, ctx) => (ctx.data ? findProducts(ctx.data, args) : NO_DATA),
+};
+
+const stockLevelsTool: AssistantTool = {
+  gate: STOCK_MAP,
+  def: { type: 'function', function: {
+    name: 'stock_levels',
+    description: 'Stock levels across the catalogue: how many variations are tracked, out of stock, low, oversold and not tracked, units in stock, and the lowest ones that match a filter. Use it for what is low or out of stock, or the stock of a whole category. For one named product use find_products.',
+    parameters: { type: 'object', properties: {
+      filter: { type: 'string', enum: [...STOCK_FILTERS], description: 'Which variations to list. low means 2 or fewer and includes out of stock. Defaults to low.' },
+      category: { type: 'string', description: 'A category name, or a word from it.' },
+      query: { type: 'string', description: 'Words from a product or variation name.' },
+      status: { type: 'string', enum: [...STATUS_WORDS], description: 'Which products to count. Defaults to active, which includes unlisted.' },
+    }, additionalProperties: false },
+  } },
+  run: (args, ctx) => (ctx.data ? stockLevels(ctx.data, args) : NO_DATA),
+};
+
 /** The data tools, in the order they are offered. */
-export const DATA_TOOLS: AssistantTool[] = [salesReportTool, findOrdersTool, listDealsTool, findCustomersTool, giftCardTool];
+export const DATA_TOOLS: AssistantTool[] = [findProductsTool, stockLevelsTool, salesReportTool, findOrdersTool, listDealsTool, findCustomersTool, giftCardTool];

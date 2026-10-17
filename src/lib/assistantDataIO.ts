@@ -7,6 +7,7 @@ import { isTraining } from './trainingGuard';
 import { loadSquareRollups } from './squareHistoryIO';
 import { parseBundleConfig } from './bundles';
 import { localRollupRows, type AssistantData } from './assistantData';
+import type { CatalogueView } from './assistantProducts';
 
 /**
  * What the data tools can read right now, or null while the till is on practice data (the assistant is switched off in practice
@@ -25,4 +26,16 @@ export async function takeAssistantData(now: number = Date.now()): Promise<Assis
     sales: s.pos.sales, rollups: localRollupRows(s.pos.rollups, s.pos.outbox, square),
     customers: s.data.customers, autos: s.data.autos, presets: s.data.presets, bundles, variants: s.data.variants, collections: s.data.collections,
   };
+}
+
+/**
+ * The catalogue the offline product and stock lookup reads (patch 0164), or null on practice data. Nothing but the products, categories and
+ * deals, taken at once with no files read, because the chat draws it while it renders. It only reads: nothing here can write.
+ */
+export function takeCatalogue(now: number = Date.now()): CatalogueView | null {
+  if (isTraining()) return null;
+  const s = useApp.getState();
+  let bundles: CatalogueView['bundles'] = null;
+  try { bundles = s.settings.bundlesJson ? parseBundleConfig(s.settings.bundlesJson).cfg ?? null : null; } catch { bundles = null; }
+  return { now, variants: s.data.variants, collections: s.data.collections, autos: s.data.autos, bundles };
 }

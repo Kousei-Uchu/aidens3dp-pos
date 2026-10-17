@@ -58,6 +58,8 @@ Patch 0163 added the shop data tools (sales report, find orders, deals, customer
 saved on the till (the spec's "local CSV export" is the same data as the till's own sales records), never ask Shopify live, and
 never return a gift card balance, because that lives at Shopify. Every result passes through the data gate first.
 
+Patch 0164 added the product and stock tools (find products, stock levels) and the model-free product and stock lookup in the offline mode. They read the catalogue saved on the till (the spec's "Shopify data search" for products and variants, local only as decided in question 12), and use the till's own stock words and Inventory filters.
+
 ## The model
 
 Updated 17 October 2026 (patch 0148). This replaces the earlier "local model only" decision.

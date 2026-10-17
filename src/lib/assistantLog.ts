@@ -33,7 +33,7 @@ export type LogEvent = {
   withheld?: Record<string, number>;
   ms?: number; error?: { kind: string; message: string };
   /** A search with no model (patch 0160): why the model was not used, and the screens and help pages it found, by id. */
-  offline?: { cause: string; screens: string[]; pages: string[] };
+  offline?: { cause: string; screens: string[]; pages: string[]; /** Names of the products found with no model (patch 0164). Older lines have none. */ products?: string[] };
   purge?: { from: string; to: string; events: number; bytes: number };
 };
 export const TEXT_CLIP = 20000;
@@ -88,12 +88,12 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
 }
 
 /** The log line for an offline search. Nothing goes to a model, so there is no request to record: the question, the cause and the ids found. */
-export function buildOfflineEvent(i: { id: string; now: number; staff: LogStaff; endpoint?: LogEndpoint; user: ChatEntry; cause: string; screens: string[]; pages: string[]; ms?: number; apiKey?: string }): LogEvent {
+export function buildOfflineEvent(i: { id: string; now: number; staff: LogStaff; endpoint?: LogEndpoint; user: ChatEntry; cause: string; screens: string[]; pages: string[]; products?: string[]; ms?: number; apiKey?: string }): LogEvent {
   return {
     v: 1, id: i.id, at: i.now, kind: 'offline', staff: i.staff, practice: false,
     ...(i.endpoint ? { endpoint: i.endpoint } : {}),
     user: { id: i.user.id, text: clip(redactSecrets(i.user.text, i.apiKey)) },
-    offline: { cause: i.cause, screens: i.screens.slice(0, 20), pages: i.pages.slice(0, 20) },
+    offline: { cause: i.cause, screens: i.screens.slice(0, 20), pages: i.pages.slice(0, 20), ...(i.products && i.products.length ? { products: i.products.slice(0, 20) } : {}) },
     ...(typeof i.ms === 'number' ? { ms: i.ms } : {}),
   };
 }

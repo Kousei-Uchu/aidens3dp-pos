@@ -23,7 +23,7 @@ import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineS
 import { assistantLog, logSink } from '../lib/assistantLogIO';
 import { resolvePolicy } from '../lib/assistantGate';
 import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
-import { takeAssistantData } from '../lib/assistantDataIO';
+import { takeAssistantData, takeCatalogue } from '../lib/assistantDataIO';
 import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
 import { startGuide } from '../lib/assistantGuide';
 import type { Page as HelpPage } from '../lib/helpDocs';
@@ -39,7 +39,7 @@ import { uid } from '../lib/ids';
  */
 function OfflineList({ query, role, pages, screens, onOpen }: { query: string; role: string; pages: HelpPage[]; screens: ScreenEntry[]; onOpen: (a: LinkAction) => void }) {
   const { c } = useTheme();
-  const hits = React.useMemo(() => offlineSearch({ pages, screens, role }, query), [pages, screens, role, query]);
+  const hits = React.useMemo(() => offlineSearch({ pages, screens, role, catalogue: takeCatalogue() }, query), [pages, screens, role, query]);
   return (
     <View style={{ alignSelf: 'flex-start', maxWidth: '92%', gap: 8, backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.line, paddingVertical: 10 }}>
       <Txt weight="700" style={{ paddingHorizontal: 14 }}>{OFFLINE_LABEL}</Txt>
@@ -58,6 +58,24 @@ function OfflineList({ query, role, pages, screens, onOpen }: { query: string; r
               </View>
             );
           })}
+        </View>
+      ) : null}
+      {hits.products && hits.products.length ? (
+        <View style={{ gap: 8, paddingHorizontal: 14 }}>
+          <Txt size={12} sub weight="700">PRODUCTS</Txt>
+          {hits.products.map(p => (
+            <View key={p.name} style={{ gap: 2 }}>
+              <Txt weight="600">{p.name} <Txt size={13} sub>{p.price} · {p.stock}</Txt></Txt>
+              {p.variants.map(v => <Txt key={v.name} size={13} sub>{v.name}: {v.stock}</Txt>)}
+            </View>
+          ))}
+        </View>
+      ) : null}
+      {hits.stock ? (
+        <View style={{ gap: 4, paddingHorizontal: 14 }}>
+          <Txt size={12} sub weight="700">{hits.stock.title.toUpperCase()}</Txt>
+          {hits.stock.rows.length ? hits.stock.rows.map(r => <Txt key={r.name} size={13}>{r.name}: {r.stock}</Txt>) : <Txt size={13} sub>Nothing to list.</Txt>}
+          {hits.stock.more ? <Txt size={13} sub>and {hits.stock.more} more. Open Inventory to see them all.</Txt> : null}
         </View>
       ) : null}
       {hits.pages.length ? (
@@ -109,10 +127,10 @@ export default function Assistant() {
       setBanner(bannerFor(err, apiKey));
       if (!search) { failed.current = { text: trimmed, detail, search }; return; }
       setText('');
-      const ex = offlineExchange({ text: trimmed, ctx: { pages: helpPages, screens: screenList, role }, id: uid, now: Date.now });
+      const ex = offlineExchange({ text: trimmed, ctx: { pages: helpPages, screens: screenList, role, catalogue: takeCatalogue() }, id: uid, now: Date.now });
       failed.current = { text: trimmed, detail, search, replace: ex.user.id };
       const next = capHistory([...withoutExchange(histRef.current, o.replace), ex.user, ex.reply]); setHist(next); await kvSet(forKey, next);
-      const line = await logOffline({ sink: logSink }, buildOfflineEvent({ id: uid(), now: Date.now(), staff: logStaff(staffId, staffList, role), endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), user: ex.user, cause: err.kind, screens: ex.hits.screens.map(x => x.id), pages: ex.hits.pages.map(x => x.id), ms: Date.now() - t0, apiKey }));
+      const line = await logOffline({ sink: logSink }, buildOfflineEvent({ id: uid(), now: Date.now(), staff: logStaff(staffId, staffList, role), endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), user: ex.user, cause: err.kind, screens: ex.hits.screens.map(x => x.id), pages: ex.hits.pages.map(x => x.id), products: (ex.hits.products ?? []).map(x => x.name), ms: Date.now() - t0, apiKey }));
       if (forKey === keyRef.current) setLogWarn(line ?? '');
     };
     try {

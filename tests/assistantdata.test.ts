@@ -231,11 +231,11 @@ const runTool = (name: string, args: unknown, policy: GatePolicy | undefined, d:
   runToolCall(call(name, args), { tools: ASSISTANT_TOOLS, ctx: { pages: [], role: 'cashier', maxChars: 6000, ...(policy ? { policy } : {}), ...(d ? { data: d } : {}) } });
 const text = (r: ReturnType<typeof runTool>) => r.message.content ?? '';
 const REALISTIC: Record<string, unknown> = {
-  sales_report: { period: 'last_7_days' }, find_orders: { query: '1042', detail: true }, list_deals: {}, find_customers: { query: 'jo' }, gift_card_activity: {},
+  find_products: { query: 'cow', detail: true }, stock_levels: {}, sales_report: { period: 'last_7_days' }, find_orders: { query: '1042', detail: true }, list_deals: {}, find_customers: { query: 'jo' }, gift_card_activity: {},
 };
 
 test('every data tool declares a field map, and a realistic result has no field the map does not name', () => {
-  assert.deepEqual(DATA_TOOLS.map(t => t.def.function.name), ['sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
+  assert.deepEqual(DATA_TOOLS.map(t => t.def.function.name), ['find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
   for (const t of DATA_TOOLS) {
     assert.ok(typeof t.gate === 'object', `${t.def.function.name} needs a field map`);
     const out = (t as AssistantTool).run(REALISTIC[t.def.function.name] as Record<string, unknown>, { pages: [], role: 'owner', maxChars: 6000, data: data() });
@@ -316,14 +316,14 @@ test('the data tool definitions are short, take only plain arguments, and carry 
   }
   assert.deepEqual((toolDefs(DATA_TOOLS).find(d => d.function.name === 'find_customers')!.function.parameters as any).required, ['query']);
 });
-test('the prompt with tools names the data tools, says what cannot be looked up yet, and still names no restricted thing', () => {
+test('the prompt with tools names the data tools, says what cannot be looked up, and still names no restricted thing', () => {
   const p = buildSystemPrompt('short', true);
-  assert.match(p, /ten tools/); for (const n of ['sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
-  assert.match(p, /cannot yet look up products, prices or stock levels/); assert.match(p, /never add up figures yourself/i); assert.match(p, /privacy rules/); assert.doesNotMatch(p, /have no access to the shop/);
+  assert.match(p, /twelve tools/); for (const n of ['find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
+  assert.match(p, /cannot see what is left on a gift card/); assert.doesNotMatch(p, /cannot yet look up products/); assert.match(p, /never count stock yourself/i); assert.match(p, /never add up figures yourself/i); assert.match(p, /privacy rules/); assert.doesNotMatch(p, /have no access to the shop/);
   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page|settings page/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
   const none = buildSystemPrompt('short', false); assert.match(none, /no access to the shop's data/); assert.doesNotMatch(none, /sales_report/);
 });
 test('makeToolSet hands the snapshot to the tools, and leaving it out leaves the other tools as they were', () => {
-  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 10);
+  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 12);
   assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.data, undefined);
 });

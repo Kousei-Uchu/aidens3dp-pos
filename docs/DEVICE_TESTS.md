@@ -797,3 +797,21 @@ On the iPad, with the model set up as in T55. Do steps 1 to 9 first with the add
 12. As a manager, open the conversation log and open the conversation from step 3, then **Tools used**. Pass: the find_orders call is listed, the result holds only dollar text, and on **Remote** the withheld counts show customer and payment details.
 13. **Most important:** turn on practice mode and try to send. Pass: sending is still blocked, and nothing about the shop is described as practice data.
 14. With a till that has a long history (a thousand or more sales), ask for a sales report and an order search. Pass: each answers without the screen freezing for longer than the model's own thinking time.
+
+## T62. Assistant product and stock tools, and the offline product list (0164)
+
+On the iPad, with the model set up as in T55. Pick a product with variations (for example one with a Red and a Blue), a plain item, and one that is not tracked, and note what **Inventory** shows for each. Do steps 1 to 8 first with the address set to **Local**, then repeat step 3 with it set to **Remote**.
+
+1. Ask *How much is the (product with variations)?* Pass: it gives the price, or the price range, and offers the variations. The prices match the **Items** page.
+2. Ask *How many (product) (colour) do we have?* Pass: the number matches what **Inventory** shows for that variation, in the same words: *In stock*, *Out of stock*, *oversold* or *Not tracked*. For a product with several variations it names the one you asked for and does not add up the others.
+3. Ask *What is the SKU and barcode of (product), and what did it cost us?* Pass: SKU and barcode match the item page. On **Local** and **Remote** the cost shows, because cost is allowed on both by default. Then set **Cost prices and profit** to **Never allow** in the AI assistant settings and ask again. Pass: it gives the SKU and barcode and says it cannot show costs.
+4. Ask *What is low on stock?* Pass: the list matches **Inventory ▸ Filters & sort ▸ Low** (2 or fewer, with out of stock included), lowest first, and the counts it quotes are right. Ask *What is oversold?* and *What is out of stock?* Pass: each matches the Inventory filter of that name.
+5. Ask *How much stock do we have in (a category)?* Pass: it matches the Inventory list filtered to that category. Ask about a category that does not exist. Pass: it says no category matched and names the real ones.
+6. Ask about a product you have set to **Draft** or **Archived**. Pass: it says it cannot find it. Then ask *Include draft products: do we have (that product)?* Pass: it is found and marked as draft.
+7. Scan nothing, but type a barcode from an item into the chat. Pass: it finds that item.
+8. Ask *Do we have a deal on (a product in a live deal)?* Pass: it says which deal could apply and that it may need more than one item (it can use **list_deals** for the rest).
+9. **Offline list:** switch the iPad to Airplane mode (or turn the model off) and ask *how many (product) do we have*. Pass: the red bar shows, and under *Model offline, showing search results* there is a **PRODUCTS** list with the price, the stock and a line for each variation. Ask *what is low on stock*. Pass: a low-stock list appears and matches step 4.
+10. In Airplane mode ask a question that has nothing to do with products (*how do I refund a card*). Pass: the list shows screens and help pages only, with no products.
+11. As a manager, open the conversation log and open the offline search from step 9. Pass: it lists the products found. Open a conversation from step 2, then **Tools used**. Pass: the find_products call is listed and holds only text such as $12.00 and *5 in stock*.
+12. **Most important:** turn on practice mode. Pass: sending is still blocked, and no product list appears for anything typed. Leave practice mode and ask step 2 again. Pass: it describes your real stock, not the practice catalogue.
+13. With a large catalogue (a thousand or more variations), ask *what is low on stock* and a product search. Pass: each answers without the screen freezing for longer than the model's own thinking time.
