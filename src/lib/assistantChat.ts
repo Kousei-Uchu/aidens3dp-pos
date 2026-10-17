@@ -3,6 +3,7 @@
 // so it runs in the node tests. There are no tools yet, so the model knows nothing about the shop: it only sees what the
 // cashier types and the earlier messages of the same chat.
 import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
+import { runToolCall, toolDefs, visiblePages, type ToolSet } from './assistantTools';
 
 // ---------- the small scrubber ----------
 // The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
@@ -59,12 +60,18 @@ export function stripDashes(text: string): string {
 // ---------- the prompt ----------
 export type Detail = 'short' | 'more';
 /** Built in code. It never names a screen, feature or role, so there is nothing in it to leak. Tools will add to it in later patches. */
-export function buildSystemPrompt(detail: Detail = 'short'): string {
+export function buildSystemPrompt(detail: Detail = 'short', withTools = false): string {
   const lines = [
     'You are the help assistant inside a shop till app, used by shop staff.',
     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
     'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
-    'Answer only from what the person has told you in this chat. If you do not know, say so plainly. Do not fill the gap with general knowledge about how other shops or tills work.',
+    ...(withTools ? [
+      'You have two tools for the till\'s help pages. search_docs finds pages. read_doc reads one. For any question about how the app works or where something is, search first, then read the best page before you answer.',
+      'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
+      'Say which help page you used, by its title. Do not make up page names, screens, buttons or steps.',
+    ] : [
+      'Answer only from what the person has told you in this chat. If you do not know, say so plainly. Do not fill the gap with general knowledge about how other shops or tills work.',
+    ]),
     'Write in Australian English. Never use em dashes or en dashes. Write dollar amounts like $12.50.',
     'Match the length of your answer to the size of the question: a sentence or two for a simple question, a fuller answer with steps for a complex one. Do not give an essay for a simple question, and do not oversimplify a complex one.',
     'Reply in the language the person writes in.',
@@ -108,9 +115,11 @@ export type BuiltMessages = { messages: ChatMessage[]; /** The history entries b
  * with data the current rules would mask. The newest message is always kept, cut down if it alone is too long.
  * Also says which entries went and what was hidden, for the audit log (patch 0152).
  */
-export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number): BuiltMessages {
-  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail) };
-  const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? ''));
+export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number, tools?: ToolSet): BuiltMessages {
+  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools) };
+  // The tool definitions are sent with every request and share the context, so they come off what is left for the chat.
+  const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
+  const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     let text = scrubText(history[i].text).text;
@@ -126,7 +135,7 @@ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, cont
 export const buildMessages = (history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] => buildMessagesDetailed(history, detail, contextSize).messages;
 
 // ---------- asking the model ----------
-export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number };
+export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number; /** The tools the model may use for this question. Without it the model has none. */ tools?: ToolSet };
 export type AskResult = { user: ChatEntry; reply: ChatEntry };
 /** Everything decided before the network call, so the audit log can record a request even when it fails. */
 export type Prepared = { user: ChatEntry; messages: ChatMessage[]; included: ChatEntry[]; system: string; /** Hidden in what was typed plus hidden in old history at send time. */ masked: Masked };
@@ -135,13 +144,49 @@ export type Prepared = { user: ChatEntry; messages: ChatMessage[]; included: Cha
 export function prepare(a: AskInput): Prepared {
   const s = scrubText(a.text.trim());
   const user: ChatEntry = { id: a.id(), role: 'user', text: s.text, at: a.now(), ...(maskedNote(s.masked) ? { note: maskedNote(s.masked) } : {}) };
-  const b = buildMessagesDetailed([...a.history, user], a.detail, a.settings.contextSize);
+  const b = buildMessagesDetailed([...a.history, user], a.detail, a.settings.contextSize, a.tools);
   return { user, messages: b.messages, included: b.included, system: b.system, masked: addMasks({ ...s.masked }, b.masked) };
 }
-/** Sends a prepared request and cleans the reply. Throws AssistantError. */
+/** The result that replaces an old tool result when the context is getting full. */
+export const DROPPED_RESULT = '{"note":"An earlier result was removed to save space."}';
+/**
+ * Keeps a long run of tool calls inside the context. If the messages are over the budget, the oldest tool results are
+ * replaced by a short note until they fit. The system prompt, the chat and the newest results are never touched.
+ */
+export function fitToContext(messages: ChatMessage[], budgetTokens: number, toolTokens = 0): ChatMessage[] {
+  const out = messages.map(m => ({ ...m }));
+  const total = () => out.reduce((n, m) => n + estimateTokens(m.content ?? '') + (m.tool_calls ? estimateTokens(JSON.stringify(m.tool_calls)) : 0), toolTokens);
+  const lastTool = out.map(m => m.role).lastIndexOf('tool');
+  for (let i = 0; i < out.length && total() > budgetTokens; i++) if (out[i].role === 'tool' && i !== lastTool && out[i].content !== DROPPED_RESULT) out[i].content = DROPPED_RESULT;
+  return out;
+}
+export const limitReply = (limit: number, titles: string[]): string =>
+  `I stopped looking after ${limit} lookups without a full answer.${titles.length ? ` The pages I read were: ${titles.join(', ')}.` : ''} Try asking in a smaller piece, or open Help and search there.`;
+
+/** Sends a prepared request and cleans the reply. With tools it keeps going while the model asks for them, up to the limit. Throws AssistantError. */
 export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promise<AskResult> {
-  const res = await chat(f, a.endpoint, { messages: p.messages, temperature: a.settings.temperature });
-  const raw = (res.message.content ?? '').trim();
+  const set = a.tools;
+  if (!set) {
+    const res = await chat(f, a.endpoint, { messages: p.messages, temperature: a.settings.temperature });
+    const raw = (res.message.content ?? '').trim();
+    if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
+    return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
+  }
+  const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
+  const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
+  let messages = [...p.messages]; let calls = 0; let raw = '';
+  for (;;) {
+    const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
+    const wanted = res.message.tool_calls ?? [];
+    if (!wanted.length) { raw = (res.message.content ?? '').trim(); break; }
+    if (calls + wanted.length > set.limit) {
+      const titles = new Map(visiblePages(set.ctx).map(x => [x.id, x.title] as const)); const read: string[] = [];
+      for (const r of set.records) if (r.name === 'read_doc' && r.ok) { try { const t = titles.get(JSON.parse(r.args).id); if (t && !read.includes(t)) read.push(t); } catch { /* skip */ } }
+      raw = limitReply(set.limit, read); break;
+    }
+    messages = [...messages, { role: 'assistant', content: res.message.content ?? null, tool_calls: wanted }];
+    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; }
+  }
   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
   return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
 }

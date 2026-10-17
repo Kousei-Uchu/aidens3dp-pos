@@ -685,3 +685,15 @@ On the iPad, with the model set up as in T49 and some conversations in the log (
 6. Change the **Conversation log cap** to a small value (for example 1 MB), save, then ask more questions. Pass: the oldest entries are removed when the cap is passed, and a note in the viewer says entries were purged.
 7. **Most important:** sign in as a cashier (not a manager or owner). Pass: the **View conversation log** button is not shown in Settings ▸ AI assistant, and the viewer cannot be opened.
 
+## T55. Assistant docs tools (0157)
+
+On the iPad, with the model set up in Settings ▸ AI assistant (the model must support tool calling: Test connection shows "Tool calling: ok").
+
+1. Help ▸ sparkles ▸ ask *How do I take a cash payment?* Pass: it answers with steps from the Taking cash help page and names the page. It takes a little longer than before.
+2. Ask *How do I refund a card payment?* Pass: the answer matches Help ▸ Refunds, not general knowledge.
+3. Ask something the help does not cover, for example *What is the weather tomorrow?* Pass: it says it could not find anything on that, and does not make something up.
+4. Sign in as a **cashier** and ask *How do I set up the AI assistant?* and *How do I add a staff member?* Pass: both get "I couldn't find anything on that" and neither names Settings or Staff pages. Sign in as a manager and ask the same: both are answered.
+5. As the owner, open More ▸ Settings ▸ AI assistant ▸ Conversation log and open the conversation from step 2. Pass: **Tools used** lists each search and read, with what the model was given.
+6. **Most important:** the cashier's questions in step 4 show in the log with the tool results, and those results never contain a Settings or Staff page.
+7. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
+

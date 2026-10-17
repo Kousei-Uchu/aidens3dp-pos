@@ -6,6 +6,7 @@ summary: Set cash rounding, Smart change and estimated card fee rates, and open 
 tags: [payments, cash rounding, Smart change, card fee, Zeller, terminal, pairing, tender machine]
 related: [settings, cash/smart-change, pay/card, cash/tender-machine]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Payments** to choose cash rounding, Smart change and the fee rates used in POS estimates. Reader setup is in **Support & diagnostics**.
 

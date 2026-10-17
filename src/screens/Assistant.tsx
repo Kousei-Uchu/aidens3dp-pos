@@ -1,6 +1,7 @@
 // Location: src/screens/Assistant.tsx
-// Help ▸ Ask the assistant (patch 0151): a plain chat with the model set up in Settings ▸ AI assistant. There are no tools yet,
-// so it knows nothing about the shop. History is kept on this iPad, one per staff member, and cleared only by hand.
+// Help ▸ Ask the assistant (patch 0151): a chat with the model set up in Settings ▸ AI assistant. Since 0157 it can search and read
+// the help pages (limited to what the signed in role may see). It still knows nothing about the shop's data. History is kept on
+// this iPad, one per staff member, and cleared only by hand.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
@@ -15,6 +16,8 @@ import { AssistantError } from '../lib/assistantClient';
 import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
 import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
 import { assistantLog, logSink } from '../lib/assistantLogIO';
+import { makeToolSet } from '../lib/assistantTools';
+import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
 import { uid } from '../lib/ids';
@@ -50,7 +53,8 @@ export default function Assistant() {
     let apiKey = '';
     try {
       apiKey = await getAssistantKey();
-      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now },
+      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+          tools: makeToolSet({ pages: builtinHelp().pages, role, contextSize: cfg.contextSize }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;

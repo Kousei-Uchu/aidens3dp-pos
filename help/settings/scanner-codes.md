@@ -6,6 +6,7 @@ summary: The setup barcodes for the POS-mate Bluetooth scanner (pairing, sound, 
 tags: [scanner, setup, barcodes, pairing, volume, vibration, sleep, speed, HID, Bluetooth, POS-mate]
 related: [settings/hardware, sales/scanners, fix/keyboard]
 updated: 2026-10-17
+roles: [manager, owner]
 ---
 The scanner is changed by scanning special setup barcodes. This page shows them on the screen, so you do not need the paper manual. Scan the barcode **from the iPad's screen** with the scanner you want to change.
 

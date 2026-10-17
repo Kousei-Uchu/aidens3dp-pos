@@ -6,6 +6,7 @@ summary: Find Shopify, payment, hardware, data, receipt, backup, display and oth
 tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
 related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
 

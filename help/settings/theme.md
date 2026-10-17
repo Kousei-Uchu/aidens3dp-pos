@@ -6,6 +6,7 @@ summary: Choose the Aiden’s 3D Printing brand, Light, Dark or System appearanc
 tags: [theme, brand, light, dark, system, tile size, accent colour, appearance, item spotlight, glass]
 related: [settings, sales/grid, staff/modes, staff/screensaver]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Theme** to change this register's appearance, Checkout tile size, accent colour and optional item spotlight.
 

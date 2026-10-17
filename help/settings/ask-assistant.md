@@ -12,10 +12,10 @@ Open **Help** and tap the sparkles button at the top. For now only an owner can 
 ## Basic
 
 ### What it can do
-Type a question and tap **Send**. It answers in plain words, in the language you write in. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
+Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. If it finds nothing, it says so. It only looks at help pages for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
 
 ### What it cannot do yet
-It cannot see the shop. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
+It cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
 
 ### If it does not answer
 A red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.

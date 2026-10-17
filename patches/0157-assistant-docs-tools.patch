@@ -1,0 +1,1050 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index ac8e86d..a48f613 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,10 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 13 (18 October 2026), patch 0157:** patch 4 is split by tool, one patch each, as the owner asked. 0157 is tool 1: the docs
++tools (`search_docs`, `read_doc`), the tool runtime and loop, the role header on help pages (`roles:`), and tool calls in the audit log.
++Next: the navgraph search tool, then the link tool, then the guide tool. The tool call limit is still a constant (15), not yet a Settings field.
++
+ **Revision 12 (17 October 2026), patch 0156:** patch 3 (the audit log) is done. 0152 was the recording half. 0156 is the
+ viewer half: the manager-only viewer (`src/screens/AssistantLog.tsx`), Export log, Clear log (typed `CLEAR`), the cap
+ setting (default 200 MB) and `ASSISTANT_OPEN_TO_ALL` is now `true`, so the Help entry shows to everyone (never on the lock
+@@ -453,7 +457,8 @@ chat screen patch can add streaming.
+    Split in two: **3a. Done (0152):** recording, the store and the notice. **3b. Done (0156):** the viewer, Export log,
+    Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
+ 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
+-   offline search (3.3).
++   offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
++   pages). Next: navgraph search, link, guide.
+ 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+    tools yet.
+ 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 0f4d8e3..59745f2 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -685,3 +685,15 @@ On the iPad, with the model set up as in T49 and some conversations in the log (
+ 6. Change the **Conversation log cap** to a small value (for example 1 MB), save, then ask more questions. Pass: the oldest entries are removed when the cap is passed, and a note in the viewer says entries were purged.
+ 7. **Most important:** sign in as a cashier (not a manager or owner). Pass: the **View conversation log** button is not shown in Settings ▸ AI assistant, and the viewer cannot be opened.
+ 
++## T55. Assistant docs tools (0157)
++
++On the iPad, with the model set up in Settings ▸ AI assistant (the model must support tool calling: Test connection shows "Tool calling: ok").
++
++1. Help ▸ sparkles ▸ ask *How do I take a cash payment?* Pass: it answers with steps from the Taking cash help page and names the page. It takes a little longer than before.
++2. Ask *How do I refund a card payment?* Pass: the answer matches Help ▸ Refunds, not general knowledge.
++3. Ask something the help does not cover, for example *What is the weather tomorrow?* Pass: it says it could not find anything on that, and does not make something up.
++4. Sign in as a **cashier** and ask *How do I set up the AI assistant?* and *How do I add a staff member?* Pass: both get "I couldn't find anything on that" and neither names Settings or Staff pages. Sign in as a manager and ask the same: both are answered.
++5. As the owner, open More ▸ Settings ▸ AI assistant ▸ Conversation log and open the conversation from step 2. Pass: **Tools used** lists each search and read, with what the model was given.
++6. **Most important:** the cashier's questions in step 4 show in the log with the tool results, and those results never contain a Settings or Staff page.
++7. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
++
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 8e20f9d..25f3c82 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -152,6 +152,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
++| 0157 | 2026-10-18 | AI assistant, patch 4, tool 1 of 4 (your request: one tool at a time): **the docs tools**. The assistant can now **search the help pages** (`search_docs`) and **read one** (`read_doc`, at Basic, Deep or Advanced), then answer from what it read. New tool runtime in `src/lib/assistantTools.ts` (replaces the unfinished stub that read `window.__docsPages` and returned placeholders): every tool is a plain function given only what it may read, results are cut to a limit that follows the context size, and a bad tool name, bad arguments or a failing tool come back to the model as an error it can recover from. `src/lib/assistantChat.ts` now runs the tool loop (up to 15 calls a question, then it stops and names the pages it read), counts the tool definitions against the context, and drops the oldest tool results first when a long run fills it. Help pages can carry a **`roles:`** header; the tools only ever see pages the signed in role may see, and a page a role cannot see gets exactly the same reply as one that does not exist, with links and see-also lists to it removed. Tagged `manager, owner`: every `settings/*` page except `settings/ask-assistant`, `staff`, and `orders/reports`. The audit log records each tool call with its arguments and the exact result the model was given, and the log viewer shows them. Search takes whole sentences (little words dropped, half the key words needed). The system prompt changes when tools are on. New `tests/assistanttools.test.ts`. Device test T55. Not in this patch: the tool call limit as a Settings field (it is the constant `DEFAULT_TOOL_LIMIT`, 15), the navgraph, link and guide tools (next three patches), the offline search, and role filtering for tools that do not exist yet | your request |
+ | 0156 | 2026-10-17 | AI assistant, patch 3 of 10, second half: the **conversation log viewer**, export, clear, the cap setting and opening the chat to everyone. The viewer (`src/screens/AssistantLog.tsx`) is manager-only (same check as the assistant settings) and shows every exchange with filters (staff member, date range, errors, practice mode, remote endpoint). Each conversation can be opened to show what was sent to the model. **Export log** writes every event to one JSONL file and shares it through the iPad's Files. **Clear log** asks for a typed `CLEAR` confirmation and removes every file. The **cap setting** (default 200 MB, 1 to 10000) is on the assistant settings page and the log store reads it at runtime. `ASSISTANT_OPEN_TO_ALL` is now `true`, so the Help entry shows to everyone (still never on the lock screen). Tests: `tests/assistantlog.test.ts`, `tests/assistantchat.test.ts`. Device check: `docs/DEVICE_TESTS.md` T54. |
+ | 0154 | 2026-10-17 | Scanner reads on Return unless timing is needed (your request). `HidScanner` now has two explicit paths: with no `onText` it is the original submit-only box (Checkout, Cart, Pay, sign-in, lookups and everything else, none of which ever passed `onText`), and only a caller that passes `onText` gets per-character timing. The Hardware page's scan box stays timed, as do the speed test barcode and Calibrate; Calibrate's speed list screen (before a speed is picked) is now submit-only. `Scanner.tsx`, `ScannerSpeed.tsx` | - |
+ | 0155 | 2026-10-17 | One scan box, one order (your request). With the grid and cart side by side there were two Bluetooth scan boxes fighting for focus, so a scan of a URL-style SKU could land in the cart's box and come back "Not found". Now **Checkout owns the one box** (`CartPane hid={false}`), and every scan runs through `resolveScan` in this order: **item (barcode, then SKU) → cashier pass → gift card QR → saved discount → "No item for …"**. The cart pane registers in `src/lib/scanBridge.ts` so Checkout can hand it gift card scans (the window now opens with the balance, which a scan box scan never did before) and discount scans, and so Checkout's box goes quiet while a cart window is open. On the phone's cart page the pane keeps its own box and runs the same order. Items now win over cashier passes (before, a pass was checked first). Price check / Stock check say "That is a discount code, not an item." Help page `sales/scanners` updated. `lookup.ts`, `scanBridge.ts`, `Checkout.tsx`, `CartPane.tsx`; tests `tests/scanorder.test.ts`. Needs your iPad and scanner: scan a URL SKU with the cart open beside the grid | - |
+diff --git a/help/help.json b/help/help.json
+index 5f72093..c9d866f 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "646a5d2c",
++ "version": "84e82314",
+  "pages": [
+   {
+    "id": "cash",
+@@ -824,6 +824,10 @@
+     "cash/float-report"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "**Reports** summarises sales records from this and other registers, plus imported Square history when it is available.",
+    "sections": {
+     "basic": "### Choose what to view\nOpen **More ▸ Reports**. The Sales tab starts on **1W**. Choose **1D**, **1W**, **1M**, **3M**, **1Y**, or **Custom**. Custom lets you enter start and end dates as `YYYY-MM-DD`.\n\nChoose **Prev period** or **Last year** to compare, or **No compare** to hide the comparison. Tap **Customise** to choose **All devices** or one register. Imported Square data is labelled **Square (old)**.\n\n### Read the Sales report\nThe report shows Gross sales, Discounts, Refunds, Net sales, Total collected, estimated Card fees, Net after fees, COGS, Gross profit, payment types and top categories. Price adjustments, when present, are listed by reason; their savings are already included in Discounts.\n\nTap **Refresh** to fetch shared reports again. Tap the share button in the top bar to export the current sales range and category totals as text.\n\n### Gift card report\nSwitch to **Gift cards** for value of cards sold in the selected period, gift-card payments redeemed in that period, and the total balance across all active cards. Tap **Gift cards** to open the card hub and check an individual card.\n\nFor cash notes and drawer banking, use [[cash/float-report]] instead. Older imported Square sales are explained in [[orders/square-history]].",
+@@ -1394,6 +1398,10 @@
+     "settings/assistant"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.",
+    "sections": {
+     "basic": "### Find a setting\n- **Shopify** connects the register to your shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports CSV files or deletes local history.\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
+@@ -1425,7 +1433,7 @@
+    "updated": "2026-10-17",
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+-    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
++    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. If it finds nothing, it says so. It only looks at help pages for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
+     "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode. Practice mode never sends anything out, and nothing is logged.",
+     "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### Limits of this version\nThere are no tools, so no shop data is sent at all. The full data rules, role filtering, the log viewer and the search tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+@@ -1455,6 +1463,10 @@
+     "settings/ask-assistant"
+    ],
+    "updated": "2026-10-17",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.\n\nThis page sets up and tests the connection. To use the assistant, see [[settings/ask-assistant]].",
+    "sections": {
+     "basic": "### Set it up with Ollama on the shop PC\n1. On the PC, install Ollama and download a model that supports tools.\n2. Make sure the iPad and the PC are on the same Wi-Fi, and that Ollama accepts connections from the network.\n3. In **Address**, type the PC's address and port with `/v1` on the end, for example `http://192.168.1.20:11434/v1`.\n4. In **Model name**, type the model, for example `llama3.1:8b`. Leave **API key** empty, because Ollama does not need one.\n5. Tap **Test connection**. Three checks run: the server answers, the model replies, and the model can call a tool.\n6. Tap **Save**.\n\nThe first time the iPad talks to a computer on your Wi-Fi, iPadOS asks for permission to find devices on the local network. Tap **Allow**.\n\n### Use a hosted provider instead\nType the provider's address (it ends in `/v1`), the model name it gives you, and the API key. The key is kept in the iPad's Keychain and is never shown back in full.\n\n### What the test sends\nTest connection sends a short fixed message and a fake test tool. It sends nothing from the shop: no products, customers or sales.\n\n### If a check fails\nThe message says what went wrong: the server could not be reached, the request took too long, the key was not accepted, the model name was not found (it lists the names the server has), or the model does not support tools. Fix that one thing and test again.",
+@@ -1487,6 +1499,10 @@
+     "staff/screensaver"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.",
+    "sections": {
+     "basic": "### Create a backup\n1. In **Backup & transfer**, enter a passphrase of at least **8 characters** in **Passphrase** and **Repeat passphrase**.\n2. Tap **Export encrypted backup**, then save or share the file somewhere safe.\n3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.\n\nThe encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.\n\n**Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.\n\n### Restore on another iPad\nTap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.\n\nAfter restoring, open **Settings ▸ Shopify** and tap **Import from Shopify** to reload the catalogue. Pair the Zeller reader again on the receiving device.\n\n### Export or delete CSV history\nOpen **Settings ▸ Data**. **Export CSV** shares the local history files. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.\n\n**Delete local history** asks twice before erasing the CSV files from this iPad. Export first if you need them. Deleting these local files does not delete the orders in Shopify.",
+@@ -1515,6 +1531,10 @@
+     "concepts/roles"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Use **More ▸ Settings ▸ Hardware** to test a Bluetooth scanner without changing the cart. Pair the scanner in the iPad's Bluetooth settings in **HID keyboard** mode first.",
+    "sections": {
+     "basic": "### Test a scanner\n1. Pair the Bluetooth scanner with the iPad as a keyboard in HID mode.\n2. Open **More ▸ Settings ▸ Hardware**.\n3. Scan a barcode. The scanner test lists the last few codes it received, with how fast each one was typed in (milliseconds per character).\n\nThe test shows the raw scanned text. It does not look up an item and does not add anything to a cart. For the camera scanner, item lookup and common scan problems, see [[sales/scanners]].\n\n### If the scan does not appear\nCheck that the scanner is connected to this iPad and configured as a keyboard (HID). Return to **Hardware** and scan again. If it appears in the test but not on Checkout, use the scanner guide to check the screen and input rules: [[sales/scanners]].\n\n### The speed test\nIf scanned codes come in with missing or wrong characters, use **Speed test** on the same screen. Tap **Show the speed test barcode**, scan it, and the app times the scan, says which scanner speed it matches, and offers the next slower speed's barcode. The setup barcodes are on [[settings/scanner-codes]].\n\n### Calibrate (managers and owners)\nManagers and owners also see **Admin ▸ Calibrate**. Pick a speed, set the scanner to it by scanning its setup barcode, then scan the speed test barcode 3 to 12 times and tap **Save**. Do this for all four speeds. Every register then uses the same ranges. **Reset to the manual's ranges** removes the calibration.",
+@@ -1544,6 +1564,10 @@
+     "cash/tender-machine"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Open **More ▸ Settings ▸ Payments** to choose cash rounding, Smart change and the fee rates used in POS estimates. Reader setup is in **Support & diagnostics**.",
+    "sections": {
+     "basic": "### Cash rounding\n**Cash rounding (5c)** rounds the amount due in cash to the nearest five cents. It applies to the cash amount only; card payments are not rounded by this setting. The setting is on by default.\n\n### Smart change\nTurn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only. For how the choice is calculated, see [[cash/smart-change]].\n\n### Card fee rates and the terminal\nSet **Card-present fee %** and **Keyed / card-not-present fee %** to match the rates you use. They are estimates for reports; the Zeller SDK does not return the actual fee. A card refund does not return the original fee.\n\nTo pair or check the reader, tap **Reader & pairing**. In **Support & diagnostics**, use **Setup (pair terminal)**. Card payments need a network connection and a paired terminal. The **Automatic cash tender machine** option is still under construction and disabled; cash notes and coins are handled by hand.",
+@@ -1571,6 +1595,10 @@
+     "pay/receipts"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Open **More ▸ Settings ▸ Receipts** to add your business details to receipts and connect the receipt page that customers open from a QR code or link.",
+    "sections": {
+     "basic": "### Enter business details\nFill in **Business / trading name**, **ABN**, **Address**, **Phone**, **Email** and **Website** as needed. Add a **Return policy (optional)** if you want it printed. When the business name is blank, the receipt uses your Shopify shop name.\n\nThese details are copied into each receipt when it is made. Changing them later does not rewrite receipts that have already been issued.\n\n### Connect and test the receipt page\nEnter the **Receipt server URL** and **Receipt server secret (RECEIPT_SECRET)** supplied for your receipt server. Tap **Send test receipt** to upload a sample and open its page. The server must be deployed and configured before the link can work.\n\nWhen a receipt page is configured, the customer can scan a QR or open a link to see the receipt and download it. For the customer-facing Receipt sheet and receipt page, see [[pay/receipts]].\n\n### GST tax invoices\nTurn on **Registered for GST** only if your business is registered. Receipts are then titled **Tax invoice** and show the GST included in the total. Prices are treated as GST-inclusive; gift-card lines are excluded from the GST calculation.",
+@@ -1602,6 +1630,10 @@
+     "fix/keyboard"
+    ],
+    "updated": "2026-10-17",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "The scanner is changed by scanning special setup barcodes. This page shows them on the screen, so you do not need the paper manual. Scan the barcode **from the iPad's screen** with the scanner you want to change.",
+    "sections": {
+     "basic": "### How to use it\n1. Scroll to the setting you want to change below.\n2. Tap its barcode. The whole screen goes white and shows only that barcode and a line saying what it does.\n3. Point the scanner at the barcode and scan it. The scanner beeps or buzzes to say it took the setting.\n4. Tap anywhere to go back.\n\nTurn the screen brightness up if the scanner struggles to read it.\n\n### What each group does\n- **Pairing.** Scan **Pairing mode**, then pair the scanner in the iPad's Settings ▸ Bluetooth so it works as a keyboard (HID).\n- **Vibration** and **Volume.** How the scanner tells you a scan worked.\n- **Sleep.** How long it waits, unused, before sleeping. **Never sleep** drains the battery faster.\n- **Scanning mode.** **Manual** scans only while you press the trigger. **Auto** scans by itself when a barcode is held in front of it.\n- **Data entry speed.** How fast the scanner types the code into the iPad.\n\nSettings marked **(default)** are how the scanner leaves the factory.\n\n### If barcodes come in wrong\nCharacters missing or jumbled when you scan an item usually mean the scanner is typing faster than the iPad can take it. Scan **Medium speed**, then try again. Still wrong? Try **Slow speed**, then **Super slow speed**. To find the right one without guessing, see the speed test below.",
+@@ -1632,6 +1664,10 @@
+     "fix/offline-sync"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Open **More ▸ Settings ▸ Shopify** to connect the register to a Shopify store, choose the stock location and import its catalogue.",
+    "sections": {
+     "basic": "### Connect a shop\n1. Enter the **Store domain**, **Client ID (Dev Dashboard app)** and **Client secret**.\n2. Tap **Save & test connection**. The register checks the credentials with Shopify and shows the shop name and reported scopes if successful.\n3. Choose a **Location (stock & orders)** if more than one active location is available.\n4. Tap **Import from Shopify** to load variants, collections, customers and discounts.\n\nThe domain can be entered as `yourshop.myshopify.com`; the screen normalises it. The Client ID and Client secret are from your Shopify Dev Dashboard app. They are stored in the iOS Keychain on this iPad, not shared with the other registers.\n\n### Shared storage and disconnecting\nIf you use multiple registers, tap **Set up shared storage (metaobjects)** to prepare the Shopify metaobjects used for shared POS data. **Disconnect** removes the Shopify credentials from this iPad; the existing local catalogue remains until you import again.",
+@@ -1663,6 +1699,10 @@
+     "staff/screensaver"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Open **More ▸ Settings ▸ Theme** to change this register's appearance, Checkout tile size, accent colour and optional item spotlight.",
+    "sections": {
+     "basic": "### Choose an appearance\nSelect **Aiden’s brand**, **Light**, **Dark** or **System**. The brand theme uses the shop's plum background, peach text and peach primary buttons. **System** follows the iPad's appearance setting.\n\nTurn on **Glass surfaces** for translucent blurred cards and buttons. This is a cross-platform React Native glass-style treatment, not Apple's exact iOS 26 Liquid Glass material.\n\n### Change tile size and accent\nChoose **Small**, **Medium** or **Large** under **Tile size**. Tap an accent swatch to change the app's highlight colour; **Default** uses the selected theme's accent.\n\n### Spotlight added items\nIn **Item spotlight**, independently turn on **Show item name** and **Show item image**. A short, large confirmation appears after an item is added by scan or tap; tap it to dismiss early. Both switches are off by default.\n\nThe register's theme, tile size and accent update immediately. A staff member's personal display preferences, set in **More ▸ Staff**, override these defaults only while that person is signed in.",
+@@ -1695,6 +1735,10 @@
+     "sales/bundles"
+    ],
+    "updated": "2026-10-11",
++   "roles": [
++    "manager",
++    "owner"
++   ],
+    "lead": "Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass, display mode, appearance, accent colour and tile size.",
+    "sections": {
+     "basic": "### Add a staff member\n1. Tap **Add staff member**.\n2. Enter their name and a unique PIN of **4-6 digits**.\n3. Choose **Cashier**, **Manager** or **Owner**, then tap **Add**.\n\nPINs must not be shared between staff members. The app stores each PIN as a salted hash and shares the staff list with your other registers.\n\n### Require sign-in\nTurn on **Require PIN to use the register** to show the sign-in screen when the register is locked. Add at least one staff member first. To sign in, enter the PIN or scan that person's cashier pass.\n\nYou can switch staff from the **Switch staff** sheet without locking the register first. The cart stays as it is. The register will not switch people while a card payment is in progress.\n\n### Change or remove someone\nTap a person's row to open their settings. Choose their display mode, manage their cashier pass, or remove them. Removing someone makes their PIN and pass stop working.\n\nFor issuing, printing or cancelling a pass, see [[staff/passes]]. For per-person screen layout and appearance, see [[staff/modes]].\nFor interactive practice modules, see [[staff/training]].",
+diff --git a/help/orders/reports.md b/help/orders/reports.md
+index 0ba4f44..7ed7b71 100644
+--- a/help/orders/reports.md
++++ b/help/orders/reports.md
+@@ -6,6 +6,7 @@ summary: Choose a reporting period and register, compare sales, read payment and
+ tags: [reports, sales, period, compare, register, devices, gift cards, sales tax, export, Square]
+ related: [orders, orders/square-history, cash/float-report]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ **Reports** summarises sales records from this and other registers, plus imported Square history when it is available.
+ 
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index 9f014bd..d01148d 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -12,10 +12,10 @@ Open **Help** and tap the sparkles button at the top. For now only an owner can
+ ## Basic
+ 
+ ### What it can do
+-Type a question and tap **Send**. It answers in plain words, in the language you write in. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
++Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. If it finds nothing, it says so. It only looks at help pages for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
+ 
+ ### What it cannot do yet
+-It cannot see the shop. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
++It cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
+ 
+ ### If it does not answer
+ A red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.
+diff --git a/help/settings/assistant.md b/help/settings/assistant.md
+index ade1da7..070406d 100644
+--- a/help/settings/assistant.md
++++ b/help/settings/assistant.md
+@@ -6,6 +6,7 @@ summary: Point the Help assistant at a model server (Ollama or any OpenAI-compat
+ tags: [AI, assistant, chatbot, model, Ollama, OpenAI, API key, local, remote, test connection, privacy]
+ related: [settings, settings/backup, staff, settings/ask-assistant]
+ updated: 2026-10-17
++roles: [manager, owner]
+ ---
+ Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.
+ 
+diff --git a/help/settings/backup.md b/help/settings/backup.md
+index 43bd429..028fa29 100644
+--- a/help/settings/backup.md
++++ b/help/settings/backup.md
+@@ -6,6 +6,7 @@ summary: Export and restore settings securely, move them to another iPad, or exp
+ tags: [backup, transfer, restore, export, import, CSV, history, passphrase, secrets, data]
+ related: [settings, settings/shopify, settings/receipts, settings/assistant, staff/screensaver]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.
+ 
+diff --git a/help/settings/hardware.md b/help/settings/hardware.md
+index e172e95..e431cae 100644
+--- a/help/settings/hardware.md
++++ b/help/settings/hardware.md
+@@ -6,6 +6,7 @@ summary: Pair a Bluetooth scanner as an HID keyboard, test it in Settings and ch
+ tags: [hardware, scanner, Bluetooth, HID, keyboard, barcode, test]
+ related: [settings, sales/scanners, settings/scanner-codes, concepts/roles]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Use **More ▸ Settings ▸ Hardware** to test a Bluetooth scanner without changing the cart. Pair the scanner in the iPad's Bluetooth settings in **HID keyboard** mode first.
+ 
+diff --git a/help/settings/index.md b/help/settings/index.md
+index 841f1ab..605216f 100644
+--- a/help/settings/index.md
++++ b/help/settings/index.md
+@@ -6,6 +6,7 @@ summary: Find Shopify, payment, hardware, data, receipt, backup, display and oth
+ tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
+ related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
+ 
+diff --git a/help/settings/payments.md b/help/settings/payments.md
+index 4e2b4d1..00cfb0f 100644
+--- a/help/settings/payments.md
++++ b/help/settings/payments.md
+@@ -6,6 +6,7 @@ summary: Set cash rounding, Smart change and estimated card fee rates, and open
+ tags: [payments, cash rounding, Smart change, card fee, Zeller, terminal, pairing, tender machine]
+ related: [settings, cash/smart-change, pay/card, cash/tender-machine]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Payments** to choose cash rounding, Smart change and the fee rates used in POS estimates. Reader setup is in **Support & diagnostics**.
+ 
+diff --git a/help/settings/receipts.md b/help/settings/receipts.md
+index a384a1f..ed7bcfe 100644
+--- a/help/settings/receipts.md
++++ b/help/settings/receipts.md
+@@ -6,6 +6,7 @@ summary: Configure the receipt page, business details, ABN, return policy and GS
+ tags: [receipt, receipts, tax invoice, ABN, GST, business name, receipt server, QR]
+ related: [settings, pay/receipts]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Receipts** to add your business details to receipts and connect the receipt page that customers open from a QR code or link.
+ 
+diff --git a/help/settings/scanner-codes.md b/help/settings/scanner-codes.md
+index 1f82577..1362d39 100644
+--- a/help/settings/scanner-codes.md
++++ b/help/settings/scanner-codes.md
+@@ -6,6 +6,7 @@ summary: The setup barcodes for the POS-mate Bluetooth scanner (pairing, sound,
+ tags: [scanner, setup, barcodes, pairing, volume, vibration, sleep, speed, HID, Bluetooth, POS-mate]
+ related: [settings/hardware, sales/scanners, fix/keyboard]
+ updated: 2026-10-17
++roles: [manager, owner]
+ ---
+ The scanner is changed by scanning special setup barcodes. This page shows them on the screen, so you do not need the paper manual. Scan the barcode **from the iPad's screen** with the scanner you want to change.
+ 
+diff --git a/help/settings/shopify.md b/help/settings/shopify.md
+index ccccd7b..41d22bf 100644
+--- a/help/settings/shopify.md
++++ b/help/settings/shopify.md
+@@ -6,6 +6,7 @@ summary: Enter the shop domain and app credentials, test the connection, choose
+ tags: [Shopify, connect, domain, client ID, client secret, location, import, catalogue, metaobjects]
+ related: [settings, stock, stock/inventory, fix/offline-sync]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Shopify** to connect the register to a Shopify store, choose the stock location and import its catalogue.
+ 
+diff --git a/help/settings/theme.md b/help/settings/theme.md
+index 7e68952..ae71dbf 100644
+--- a/help/settings/theme.md
++++ b/help/settings/theme.md
+@@ -6,6 +6,7 @@ summary: Choose the Aiden’s 3D Printing brand, Light, Dark or System appearanc
+ tags: [theme, brand, light, dark, system, tile size, accent colour, appearance, item spotlight, glass]
+ related: [settings, sales/grid, staff/modes, staff/screensaver]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Theme** to change this register's appearance, Checkout tile size, accent colour and optional item spotlight.
+ 
+diff --git a/help/staff/index.md b/help/staff/index.md
+index eea462e..a69f1b7 100644
+--- a/help/staff/index.md
++++ b/help/staff/index.md
+@@ -6,6 +6,7 @@ summary: Add team members, set unique PINs and roles, require sign-in, and manag
+ tags: [staff, cashier, manager, owner, role, PIN, sign in, team, access]
+ related: [staff/passes, staff/modes, staff/guided-checkout, staff/training, staff/screensaver, sales/bundles]
+ updated: 2026-10-11
++roles: [manager, owner]
+ ---
+ Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass, display mode, appearance, accent colour and tile size.
+ 
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index 7abd576..74c6a4e 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -3,6 +3,7 @@
+ // so it runs in the node tests. There are no tools yet, so the model knows nothing about the shop: it only sees what the
+ // cashier types and the earlier messages of the same chat.
+ import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
++import { runToolCall, toolDefs, visiblePages, type ToolSet } from './assistantTools';
+ 
+ // ---------- the small scrubber ----------
+ // The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
+@@ -59,12 +60,18 @@ export function stripDashes(text: string): string {
+ // ---------- the prompt ----------
+ export type Detail = 'short' | 'more';
+ /** Built in code. It never names a screen, feature or role, so there is nothing in it to leak. Tools will add to it in later patches. */
+-export function buildSystemPrompt(detail: Detail = 'short'): string {
++export function buildSystemPrompt(detail: Detail = 'short', withTools = false): string {
+   const lines = [
+     'You are the help assistant inside a shop till app, used by shop staff.',
+     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
+     'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
+-    'Answer only from what the person has told you in this chat. If you do not know, say so plainly. Do not fill the gap with general knowledge about how other shops or tills work.',
++    ...(withTools ? [
++      'You have two tools for the till\'s help pages. search_docs finds pages. read_doc reads one. For any question about how the app works or where something is, search first, then read the best page before you answer.',
++      'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
++      'Say which help page you used, by its title. Do not make up page names, screens, buttons or steps.',
++    ] : [
++      'Answer only from what the person has told you in this chat. If you do not know, say so plainly. Do not fill the gap with general knowledge about how other shops or tills work.',
++    ]),
+     'Write in Australian English. Never use em dashes or en dashes. Write dollar amounts like $12.50.',
+     'Match the length of your answer to the size of the question: a sentence or two for a simple question, a fuller answer with steps for a complex one. Do not give an essay for a simple question, and do not oversimplify a complex one.',
+     'Reply in the language the person writes in.',
+@@ -108,9 +115,11 @@ export type BuiltMessages = { messages: ChatMessage[]; /** The history entries b
+  * with data the current rules would mask. The newest message is always kept, cut down if it alone is too long.
+  * Also says which entries went and what was hidden, for the audit log (patch 0152).
+  */
+-export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number): BuiltMessages {
+-  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail) };
+-  const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? ''));
++export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number, tools?: ToolSet): BuiltMessages {
++  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools) };
++  // The tool definitions are sent with every request and share the context, so they come off what is left for the chat.
++  const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
++  const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
+   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
+   for (let i = history.length - 1; i >= 0; i--) {
+     let text = scrubText(history[i].text).text;
+@@ -126,7 +135,7 @@ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, cont
+ export const buildMessages = (history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] => buildMessagesDetailed(history, detail, contextSize).messages;
+ 
+ // ---------- asking the model ----------
+-export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number };
++export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number; /** The tools the model may use for this question. Without it the model has none. */ tools?: ToolSet };
+ export type AskResult = { user: ChatEntry; reply: ChatEntry };
+ /** Everything decided before the network call, so the audit log can record a request even when it fails. */
+ export type Prepared = { user: ChatEntry; messages: ChatMessage[]; included: ChatEntry[]; system: string; /** Hidden in what was typed plus hidden in old history at send time. */ masked: Masked };
+@@ -135,13 +144,49 @@ export type Prepared = { user: ChatEntry; messages: ChatMessage[]; included: Cha
+ export function prepare(a: AskInput): Prepared {
+   const s = scrubText(a.text.trim());
+   const user: ChatEntry = { id: a.id(), role: 'user', text: s.text, at: a.now(), ...(maskedNote(s.masked) ? { note: maskedNote(s.masked) } : {}) };
+-  const b = buildMessagesDetailed([...a.history, user], a.detail, a.settings.contextSize);
++  const b = buildMessagesDetailed([...a.history, user], a.detail, a.settings.contextSize, a.tools);
+   return { user, messages: b.messages, included: b.included, system: b.system, masked: addMasks({ ...s.masked }, b.masked) };
+ }
+-/** Sends a prepared request and cleans the reply. Throws AssistantError. */
++/** The result that replaces an old tool result when the context is getting full. */
++export const DROPPED_RESULT = '{"note":"An earlier result was removed to save space."}';
++/**
++ * Keeps a long run of tool calls inside the context. If the messages are over the budget, the oldest tool results are
++ * replaced by a short note until they fit. The system prompt, the chat and the newest results are never touched.
++ */
++export function fitToContext(messages: ChatMessage[], budgetTokens: number, toolTokens = 0): ChatMessage[] {
++  const out = messages.map(m => ({ ...m }));
++  const total = () => out.reduce((n, m) => n + estimateTokens(m.content ?? '') + (m.tool_calls ? estimateTokens(JSON.stringify(m.tool_calls)) : 0), toolTokens);
++  const lastTool = out.map(m => m.role).lastIndexOf('tool');
++  for (let i = 0; i < out.length && total() > budgetTokens; i++) if (out[i].role === 'tool' && i !== lastTool && out[i].content !== DROPPED_RESULT) out[i].content = DROPPED_RESULT;
++  return out;
++}
++export const limitReply = (limit: number, titles: string[]): string =>
++  `I stopped looking after ${limit} lookups without a full answer.${titles.length ? ` The pages I read were: ${titles.join(', ')}.` : ''} Try asking in a smaller piece, or open Help and search there.`;
++
++/** Sends a prepared request and cleans the reply. With tools it keeps going while the model asks for them, up to the limit. Throws AssistantError. */
+ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promise<AskResult> {
+-  const res = await chat(f, a.endpoint, { messages: p.messages, temperature: a.settings.temperature });
+-  const raw = (res.message.content ?? '').trim();
++  const set = a.tools;
++  if (!set) {
++    const res = await chat(f, a.endpoint, { messages: p.messages, temperature: a.settings.temperature });
++    const raw = (res.message.content ?? '').trim();
++    if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
++    return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
++  }
++  const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
++  const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
++  let messages = [...p.messages]; let calls = 0; let raw = '';
++  for (;;) {
++    const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
++    const wanted = res.message.tool_calls ?? [];
++    if (!wanted.length) { raw = (res.message.content ?? '').trim(); break; }
++    if (calls + wanted.length > set.limit) {
++      const titles = new Map(visiblePages(set.ctx).map(x => [x.id, x.title] as const)); const read: string[] = [];
++      for (const r of set.records) if (r.name === 'read_doc' && r.ok) { try { const t = titles.get(JSON.parse(r.args).id); if (t && !read.includes(t)) read.push(t); } catch { /* skip */ } }
++      raw = limitReply(set.limit, read); break;
++    }
++    messages = [...messages, { role: 'assistant', content: res.message.content ?? null, tool_calls: wanted }];
++    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; }
++  }
+   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
+   return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
+ }
+diff --git a/src/lib/assistantLog.ts b/src/lib/assistantLog.ts
+index 3206df2..9cc3962 100644
+--- a/src/lib/assistantLog.ts
++++ b/src/lib/assistantLog.ts
+@@ -10,6 +10,7 @@ import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
+ import type { Role } from './types';
+ import { classifyEndpoint, parseBaseUrl, type EndpointClass, type EndpointMode } from './assistantConfig';
+ import { AssistantError, redactSecrets, type FetchLike } from './assistantClient';
++import type { ToolRecord } from './assistantTools';
+ import { prepare, runPrepared, type AskInput, type AskResult, type ChatEntry, type Detail, type Masked, type Prepared } from './assistantChat';
+ 
+ // ---------- events ----------
+@@ -26,6 +27,8 @@ export type LogEvent = {
+   sent?: SentRecord;
+   /** What the scrubber hid, by category. */
+   masked?: Masked;
++  /** Each tool the model called for this question, with the arguments it gave and the exact result it was handed (patch 0157). */
++  tools?: ToolRecord[];
+   /** What the data gate withheld, by category (patch 5). The items themselves are never kept. */
+   withheld?: Record<string, number>;
+   ms?: number; error?: { kind: string; message: string };
+@@ -54,7 +57,7 @@ export function logEndpoint(baseUrl: string, model: string, mode: EndpointMode):
+ export type BuildInput = {
+   id: string; now: number; staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; detail: Detail; p: Prepared;
+   /** True when the log already holds this message's text. */
+-  known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string;
++  known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string; tools?: ToolRecord[];
+ };
+ /** Builds one event. Every text is clipped and run through the key remover, so the key can never reach a line. */
+ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: string; text: string } } {
+@@ -68,6 +71,7 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
+     ...(i.reply ? { reply: { id: i.reply.id, text: key(i.reply.text) } } : {}),
+     sent: { sys: sysHash, parts, hash: fnv1a(JSON.stringify(i.p.messages)) },
+     ...(Object.keys(i.p.masked).length ? { masked: i.p.masked } : {}),
++    ...(i.tools && i.tools.length ? { tools: i.tools.map(t => ({ name: t.name, args: key(t.args), ok: t.ok, result: key(t.result), ms: t.ms })) } : {}),
+     ms: i.ms,
+     ...(i.error ? { error: { kind: i.error.kind, message: key(i.error.message) } } : {}),
+   };
+@@ -89,12 +93,13 @@ export type LoggedAsk =
+ export async function askLogged(f: FetchLike, a: AskInput, c: LogContext): Promise<LoggedAsk> {
+   const p = prepare(a); const t0 = a.now();
+   const base = { id: c.newId(), staff: c.staff, practice: c.practice, endpoint: c.endpoint, detail: a.detail, p, known: c.known, apiKey: c.apiKey };
++  const toolsUsed = () => a.tools?.records.slice();
+   let result: AskResult | undefined; let failure: unknown;
+   try { result = await runPrepared(f, a, p); } catch (e) { failure = e; }
+   const now = a.now();
+   const b = result
+-    ? buildEvent({ ...base, now, reply: result.reply, ms: now - t0 })
+-    : buildEvent({ ...base, now, ms: now - t0, error: failure instanceof AssistantError ? { kind: failure.kind, message: failure.message } : { kind: 'server_error', message: String((failure as Error)?.message ?? 'Something went wrong.') } });
++    ? buildEvent({ ...base, now, reply: result.reply, ms: now - t0, tools: toolsUsed() })
++    : buildEvent({ ...base, now, ms: now - t0, tools: toolsUsed(), error: failure instanceof AssistantError ? { kind: failure.kind, message: failure.message } : { kind: 'server_error', message: String((failure as Error)?.message ?? 'Something went wrong.') } });
+   let logError: string | undefined;
+   try { await c.sink(b.event, b.prompt); } catch { logError = LOG_FAIL_LINE; }
+   return result ? { ok: true, result, ...(logError ? { logError } : {}) } : { ok: false, error: failure, ...(logError ? { logError } : {}) };
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index 8e3a350..71fde7a 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -1,62 +1,152 @@
+ // Location: src/lib/assistantTools.ts
+-// Implements the assistant's built‑in tools used for searching the help documentation, the navigation graph and providing link / guidance paths.
++// The assistant's tools (patch 0157 adds the first two: search_docs and read_doc). Plain functions that read what they are
++// given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
++// runs in the node tests.
++//
++// Every tool gets a ToolContext: the pages it may read (already limited to what the signed in role may see), the role, and a
++// size limit. Every result is cut to that limit, so a long page cannot flood a small model's context.
++import { redactSecrets, type ChatMessage, type ToolCall, type ToolDef } from './assistantClient';
++import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
+ 
+-import { searchPages, Page, Depth } from './helpDocs';
+-import { APP_NAVGRAPH, SCREEN } from './appNavgraph.generated';
++export type ToolContext = {
++  /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
++  pages: Page[];
++  role: string;
++  /** Longest result, in characters. Set from the context size so a small model is not flooded. */
++  maxChars: number;
++};
++export type AssistantTool = { def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown };
+ 
+-/** Extracts a list of screen identifiers from the navigation graph.
+- *  The graph is represented as a string with lines like `SCREEN tab_checkout "Checkout" { ... }`.
+- *  We parse only the `SCREEN` keyword and the id.
+- */
+-export function extractScreensFromNavgraph(graphText: string): string[] {
+-  const res: string[] = [];
+-  const re = /^SCREEN\s+(\S+)\s+/gm;
+-  let m: RegExpExecArray | null;
+-  while ((m = re.exec(graphText)) !== null) {
+-    res.push(m[1]);
+-  }
+-  return res;
++/** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
++export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number };
++export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[] };
++
++export const DEFAULT_TOOL_LIMIT = 15;
++export const MAX_RESULT_CHARS = 6000;
++export const MIN_RESULT_CHARS = 1500;
++/** Longest result for a context size. A shorter context gets shorter results. */
++export const resultCharsFor = (contextSize: number): number => Math.max(MIN_RESULT_CHARS, Math.min(MAX_RESULT_CHARS, Math.round(contextSize * 0.6)));
++
++/** The pages this role may see. The one place pages are filtered, so a tool cannot forget to. */
++export const visiblePages = (ctx: Pick<ToolContext, 'pages' | 'role'>): Page[] => ctx.pages.filter(p => pageVisibleTo(p, ctx.role));
++
++// ---------- search_docs ----------
++const STOP = new Set(('a an and are as at be but by can do does for from how i if in is it its me my of on or so that the then there this to was what when where which who why will with you your ' +
++  'please tell show about need want help get use using way able make').split(' '));
++const stem = (w: string): string => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
++/** The words of a question that are worth searching for. Small models write whole sentences, so the little words are dropped. */
++export function searchTerms(query: string): string[] {
++  const out: string[] = [];
++  for (const w of (query ?? '').toLowerCase().split(/[^a-z0-9$]+/).filter(Boolean)) { const t = stem(w); if (t.length > 1 && !STOP.has(w) && !STOP.has(t) && !out.includes(t)) out.push(t); }
++  return out.slice(0, 8);
+ }
+ 
+-/** Tool: searchDocs
+- *  Searches the help documentation for a user query and returns the best matching page titles and a short excerpt.
+- *  This is a thin wrapper around helpDocs.searchPages.
+- */
+-export function searchDocs(query: string, depth: Depth = 'advanced'): Page[] {
+-  const all = searchPages(window.__docsPages ?? [], query, depth); // window.__docsPages will be set by the app entry point
+-  return all.map(r => r.page);
++/** Plain text for a snippet: no headings, fences, link marks or bold. */
++const plain = (md: string): string => md.replace(/^## (Basic|Deep|Advanced)\s*$/gm, ' ').replace(/```[\s\S]*?```/g, ' ').replace(/\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/g, (_m, id: string, t?: string) => t ?? id).replace(/[#*_`>|]/g, ' ').replace(/\s+/g, ' ').trim();
++function snippet(p: Page, terms: string[]): string {
++  const text = plain(selectDepth(p, 'advanced'));
++  const low = text.toLowerCase(); let at = -1;
++  for (const t of terms) { const i = low.indexOf(t); if (i >= 0 && (at < 0 || i < at)) at = i; }
++  if (at < 0) return '';
++  const from = Math.max(0, at - 60); const s = text.slice(from, from + 220).trim();
++  return `${from > 0 ? '...' : ''}${s}${from + 220 < text.length ? '...' : ''}`;
+ }
+ 
+-/** Tool: searchNavgraph
+- *  Returns a list of screen ids whose title or id contains the query (case‑insensitive).
++export type DocHit = { id: string; title: string; summary: string; match: string; depths: Depth[] };
++/**
++ * Finds help pages for a question. A page needs at least half the search words, so a sentence still finds something, and
++ * pages with more of the words (and the words in the title or tags) come first. Only pages this role may see are searched.
+  */
+-export function searchNavgraph(query: string): string[] {
+-  const screens = extractScreensFromNavgraph(APP_NAVGRAPH);
+-  const q = query.toLowerCase();
+-  return screens.filter(id => id.toLowerCase().includes(q));
++export function searchDocPages(ctx: Pick<ToolContext, 'pages' | 'role'>, query: string, max = 5): DocHit[] {
++  const terms = searchTerms(query); if (!terms.length) return [];
++  const need = Math.max(1, Math.ceil(terms.length / 2));
++  const scored: { p: Page; hit: number; score: number }[] = [];
++  for (const p of visiblePages(ctx)) {
++    const title = p.title.toLowerCase(), sum = p.summary.toLowerCase(), tags = p.tags.join(' ').toLowerCase(), body = selectDepth(p, 'advanced').toLowerCase();
++    let hit = 0, score = 0;
++    for (const t of terms) { const s = (title.includes(t) ? 10 : 0) + (tags.includes(t) ? 6 : 0) + (sum.includes(t) ? 4 : 0) + (body.includes(t) ? 1 : 0); if (s) { hit++; score += s; } }
++    if (hit >= need) scored.push({ p, hit, score });
++  }
++  scored.sort((a, b) => b.hit - a.hit || b.score - a.score || a.p.title.localeCompare(b.p.title));
++  return scored.slice(0, max).map(({ p }) => ({ id: p.id, title: p.title, summary: p.summary, match: snippet(p, terms), depths: depthsPresent(p) }));
+ }
+ 
+-/** Tool: linkHelp
+- *  Given a screen id, returns the navigation path from the current screen to that one.
+- *  For now this just returns the target id; a full path resolver would need the runtime graph.
+- */
+-export function linkHelp(target: string): string {
+-  // placeholder: in the full app the routing logic would be here.
+-  return target;
++const searchDocs: AssistantTool = {
++  def: { type: 'function', function: {
++    name: 'search_docs',
++    description: 'Search the till\'s help pages. Use it first for any question about how the app works or where something is. Give a few key words, not a whole sentence. Returns up to 5 pages with a short summary and a matching line. Then use read_doc on the best one.',
++    parameters: { type: 'object', properties: { query: { type: 'string', description: 'A few key words, for example "refund card payment".' } }, required: ['query'], additionalProperties: false },
++  } },
++  run: (args, ctx) => {
++    const query = typeof args.query === 'string' ? args.query : '';
++    if (!query.trim()) return { error: 'Give a query: a few key words to search for.' };
++    const results = searchDocPages(ctx, query);
++    return results.length ? { results } : { results: [], note: 'No help page matched. Try different key words.' };
++  },
++};
++
++// ---------- read_doc ----------
++/** A page as text for the model: no diagrams, and links turned into "Title (page id)", or just the words when the page is not one this role may see. */
++export function docText(p: Page, depth: Depth, ctx: Pick<ToolContext, 'pages' | 'role'>): string {
++  const byId = new Map(visiblePages(ctx).map(x => [x.id, x] as const));
++  return selectDepth(p, depth)
++    .replace(/```mermaid[\s\S]*?```/g, '')
++    .replace(/\[\[([^\]|\n]+?)(?:\|([^\]\n]+?))?\]\]/g, (_m, id: string, t?: string) => { const target = byId.get(id.trim()); return target ? `${t ?? target.title} (page ${target.id})` : (t ?? ''); })
++    .replace(/\n{3,}/g, '\n\n').trim();
+ }
+ 
+-/** Tool: guide
+- *  Provides a short description for a given screen or object.
++const NO_PAGE = { error: 'There is no help page with that id. Use search_docs to find the right id.' };
++const readDoc: AssistantTool = {
++  def: { type: 'function', function: {
++    name: 'read_doc',
++    description: 'Read one help page, by the id search_docs gave. "basic" is the plain steps and is usually enough. Use "deep" for the detail behind it and "advanced" for how it works inside and where the code is. Answer only from what this returns.',
++    parameters: { type: 'object', properties: { id: { type: 'string', description: 'The page id, for example "pay/cash".' }, depth: { type: 'string', enum: [...DEPTHS], description: 'How much to read. Default basic.' } }, required: ['id'], additionalProperties: false },
++  } },
++  run: (args, ctx) => {
++    const id = typeof args.id === 'string' ? args.id.trim() : '';
++    const p = visiblePages(ctx).find(x => x.id === id);
++    if (!p) return NO_PAGE; // a page this role may not see gets exactly the same answer as one that does not exist
++    const depth: Depth = (DEPTHS as readonly string[]).includes(args.depth as string) ? (args.depth as Depth) : 'basic';
++    const full = docText(p, depth, ctx);
++    const room = Math.max(500, ctx.maxChars - 400); // the rest of the result (title, summary, links) takes some of the limit
++    const text = full.length > room ? `${full.slice(0, room).trimEnd()}\n[cut here, the page is longer than this]` : full;
++    const seeAlso = visiblePages(ctx).filter(x => p.related.includes(x.id)).map(x => ({ id: x.id, title: x.title }));
++    return { id: p.id, title: p.title, summary: p.summary, depth, depths_available: depthsPresent(p), text, ...(full.length > room ? { cut: true } : {}), ...(seeAlso.length ? { see_also: seeAlso } : {}) };
++  },
++};
++
++/** The tools in this build. Later patches add to the end. */
++export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc];
++export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
++
++// ---------- running a call ----------
++const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}[cut]` : s);
++/** The result as the text the model reads. Cut to the limit, and always valid JSON. */
++export function resultText(result: unknown, maxChars: number): string {
++  let json = ''; try { json = JSON.stringify(result) ?? 'null'; } catch { json = JSON.stringify({ error: 'The tool could not return a result.' }); }
++  return json.length > maxChars ? JSON.stringify({ cut: true, text: json.slice(0, Math.max(0, maxChars - 40)) }) : json;
++}
++/**
++ * Runs one tool call the model asked for. It never throws: an unknown tool, arguments that are not JSON, or a tool that
++ * fails all come back as an error result the model can read and recover from. The result is what goes back to the model.
+  */
+-export function guide(node: string): string {
+-  return `Help for ${node}`;
++export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord } {
++  const t0 = now(); let ok = true; let result: unknown;
++  const tool = set.tools.find(t => t.def.function.name === call.function.name);
++  if (!tool) { ok = false; result = { error: `There is no tool called "${call.function.name}".` }; }
++  else {
++    let args: Record<string, unknown> = {};
++    try { const raw = call.function.arguments?.trim(); const parsed = raw ? JSON.parse(raw) : {}; if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed as Record<string, unknown>; else throw new Error('not an object'); }
++    catch { ok = false; result = { error: 'The arguments were not a JSON object.' }; }
++    if (ok) { try { result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false; } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; } }
++  }
++  const content = resultText(result, set.ctx.maxChars);
++  return {
++    message: { role: 'tool', tool_call_id: call.id, name: call.function.name, content },
++    record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0) },
++  };
+ }
+ 
+-export type ToolName = 'searchDocs' | 'searchNavgraph' | 'linkHelp' | 'guide';
+-export type ToolFunction = (...args: any[]) => any;
+-export const TOOLS: Record<ToolName, ToolFunction> = {
+-  searchDocs,
+-  searchNavgraph,
+-  linkHelp,
+-  guide,
+-};
++/** A new tool set for one question. */
++export const makeToolSet = (o: { pages: Page[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[] }): ToolSet =>
++  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, role: o.role, maxChars: resultCharsFor(o.contextSize) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+diff --git a/src/lib/helpDocs.ts b/src/lib/helpDocs.ts
+index 7a03769..91f5684 100644
+--- a/src/lib/helpDocs.ts
++++ b/src/lib/helpDocs.ts
+@@ -30,6 +30,8 @@ export const ROOT_ID = 'start';
+ 
+ export type Page = {
+   id: string; title: string; parent?: string; summary: string; tags: string[]; related: string[]; updated?: string;
++  /** Only these roles may see the page (the assistant leaves it out for everyone else). Absent means every role. */
++  roles?: string[];
+   /** Text before the first depth heading. Shown at every depth. */
+   lead: string;
+   sections: Record<Depth, string>;
+@@ -105,7 +107,7 @@ export function parsePage(file: string, raw: string): { page: Page } | { issue:
+   const s = (k: string) => (typeof fm.meta[k] === 'string' ? (fm.meta[k] as string).trim() : '');
+   const l = (k: string) => (Array.isArray(fm.meta[k]) ? (fm.meta[k] as string[]) : typeof fm.meta[k] === 'string' && s(k) ? [s(k)] : []);
+   const sp = splitSections(fm.body);
+-  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), lead: sp.lead, sections: sp.sections, file } };
++  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), ...(l('roles').length ? { roles: l('roles') } : {}), lead: sp.lead, sections: sp.sections, file } };
+ }
+ 
+ // ── links ────────────────────────────────────────────────────────────────────
+@@ -194,6 +196,10 @@ export function trail(idx: HelpIndex, id: string): Page[] {
+   return out;
+ }
+ 
++/** The roles a page may be limited to in its `roles:` header. */
++export const PAGE_ROLES: readonly string[] = ['cashier', 'manager', 'owner'];
++/** Whether this role may see the page: pages without a `roles:` header are for everyone. */
++export const pageVisibleTo = (p: Pick<Page, 'roles'>, role: string): boolean => !p.roles || p.roles.length === 0 || p.roles.includes(role);
+ const ID_OK = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
+ /** Everything that would make the help wrong or broken. An empty list means the set is sound. */
+ export function validatePages(pages: Page[]): PageIssue[] {
+@@ -222,6 +228,7 @@ export function validatePages(pages: Page[]): PageIssue[] {
+     for (const r of p.related) if (!ids.has(r)) bad(p, `\`related\` points at "${r}", which does not exist.`);
+     for (const l of extractLinks(all)) if (!ids.has(l.id)) bad(p, `The link [[${l.id}]] goes to a page that does not exist.`);
+     if (p.updated && !/^\d{4}-\d{2}-\d{2}$/.test(p.updated)) bad(p, '`updated` must look like 2026-10-11.');
++    if (p.roles && p.roles.some(r => !PAGE_ROLES.includes(r))) bad(p, '`roles` may only list cashier, manager or owner.');
+   }
+   // parent loops (a → b → a): walk each chain
+   for (const p of pages) {
+@@ -270,7 +277,7 @@ export function readBundle(raw: unknown): HelpBundle | null {
+     if (!x || typeof x !== 'object') continue; const p = x as Record<string, unknown>; const sec = (p.sections ?? {}) as Record<string, unknown>;
+     if (typeof p.id !== 'string' || !p.id || typeof p.title !== 'string') continue;
+     const str = (v: unknown) => (typeof v === 'string' ? v : ''); const arr = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []);
+-    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) } });
++    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), ...(arr(p.roles).length ? { roles: arr(p.roles) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) } });
+   }
+   return pages.length ? { version: r.version, pages } : null;
+ }
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index 2d5e7cf..dfea875 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -1,6 +1,7 @@
+ // Location: src/screens/Assistant.tsx
+-// Help ▸ Ask the assistant (patch 0151): a plain chat with the model set up in Settings ▸ AI assistant. There are no tools yet,
+-// so it knows nothing about the shop. History is kept on this iPad, one per staff member, and cleared only by hand.
++// Help ▸ Ask the assistant (patch 0151): a chat with the model set up in Settings ▸ AI assistant. Since 0157 it can search and read
++// the help pages (limited to what the signed in role may see). It still knows nothing about the shop's data. History is kept on
++// this iPad, one per staff member, and cleared only by hand.
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { ScrollView, View } from 'react-native';
+ import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
+@@ -15,6 +16,8 @@ import { AssistantError } from '../lib/assistantClient';
+ import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+ import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
+ import { assistantLog, logSink } from '../lib/assistantLogIO';
++import { makeToolSet } from '../lib/assistantTools';
++import { builtinHelp } from '../lib/helpBuiltin';
+ import { kvGet, kvSet, kvDel } from '../lib/kv';
+ import { isTraining } from '../lib/trainingGuard';
+ import { uid } from '../lib/ids';
+@@ -50,7 +53,8 @@ export default function Assistant() {
+     let apiKey = '';
+     try {
+       apiKey = await getAssistantKey();
+-      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now },
++      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
++          tools: makeToolSet({ pages: builtinHelp().pages, role, contextSize: cfg.contextSize }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+       if (!out.ok) throw out.error;
+diff --git a/src/screens/AssistantLog.tsx b/src/screens/AssistantLog.tsx
+index 0ceba24..e96a46a 100644
+--- a/src/screens/AssistantLog.tsx
++++ b/src/screens/AssistantLog.tsx
+@@ -154,6 +154,7 @@ export function AssistantLogViewer() {
+                           {e.user ? <View><Txt weight="600" size={13}>Question</Txt><Txt size={13}>{e.user.text}</Txt></View> : null}
+                           {e.reply ? <View><Txt weight="600" size={13}>Reply</Txt><Txt size={13}>{e.reply.text}</Txt></View> : null}
+                           {e.sent ? <View><Txt weight="600" size={13}>Sent to model</Txt><Txt size={12} sub>{e.sent.parts.length} messages · hash {e.sent.hash}</Txt></View> : null}
++                          {e.tools && e.tools.length ? <View style={{ gap: 4 }}><Txt weight="600" size={13}>Tools used ({e.tools.length})</Txt>{e.tools.map((t, i) => <View key={i}><Txt size={12} color={t.ok ? undefined : c.bad}>{t.name} {t.args}</Txt><Txt size={12} sub numberOfLines={6}>{t.result}</Txt></View>)}</View> : null}
+                           {e.masked && Object.keys(e.masked).length ? <Txt size={12} sub>Masked: {Object.entries(e.masked).map(([k, v]) => `${v} ${k}`).join(', ')}</Txt> : null}
+                           {e.error ? <View><Txt weight="600" size={13} color={c.bad}>Error</Txt><Txt size={13} color={c.bad}>{e.error.message}</Txt></View> : null}
+                         </View>
+diff --git a/tests/assistanttools.test.ts b/tests/assistanttools.test.ts
+new file mode 100644
+index 0000000..d9ba7a3
+--- /dev/null
++++ b/tests/assistanttools.test.ts
+@@ -0,0 +1,233 @@
++// Location: tests/assistanttools.test.ts
++// The assistant's docs tools (patch 0157): search_docs and read_doc, the role filter, the tool runner, and the tool loop.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import type { ChatMessage, Endpoint, FetchLike } from '../src/lib/assistantClient';
++import { DROPPED_RESULT, buildMessagesDetailed, buildSystemPrompt, fitToContext, runPrepared, prepare, type AskInput } from '../src/lib/assistantChat';
++import { askLogged, type LogContext, type LogEvent } from '../src/lib/assistantLog';
++import { ASSISTANT_TOOLS, DEFAULT_TOOL_LIMIT, MAX_RESULT_CHARS, docText, makeToolSet, resultCharsFor, runToolCall, searchDocPages, searchTerms, toolDefs, type AssistantTool } from '../src/lib/assistantTools';
++import { PAGE_ROLES, pageVisibleTo, parsePage, readBundle, validatePages, makeBundle, type Page } from '../src/lib/helpDocs';
++import { builtinHelp } from '../src/lib/helpBuiltin';
++
++// ---- a tiny help set ----
++const mk = (id: string, title: string, extra: Partial<Page> = {}): Page => ({ id, title, parent: id === 'start' ? undefined : 'start', summary: `About ${title.toLowerCase()}.`, tags: [], related: [], lead: '', sections: { basic: `Basic text for ${title}.`, deep: '', advanced: '' }, file: `${id}.md`, ...extra });
++const pages: Page[] = [
++  mk('start', 'Start'),
++  mk('pay/cash', 'Taking cash', { tags: ['cash', 'change'], related: ['settings/hardware', 'pay/card'], sections: { basic: 'Tap **Cash**, enter the amount. See [[pay/card|paying by card]] or [[settings/hardware]] or [[settings/hardware|the hardware page]].', deep: 'Rounding is to 5 cents.', advanced: '```mermaid\nflowchart TD\n A-->B\n```\nCode is in `cash.ts`.' } }),
++  mk('pay/card', 'Taking a card payment', { tags: ['card', 'refund'] }),
++  mk('orders/refunds', 'Refunds', { summary: 'How to refund a card payment or cash sale.', tags: ['refund', 'return'] }),
++  mk('settings/hardware', 'Hardware settings', { roles: ['manager', 'owner'], summary: 'Printer and card reader setup.', tags: ['printer', 'reader'] }),
++];
++const ctxFor = (role: string, over: Partial<{ maxChars: number }> = {}) => ({ pages, role, maxChars: 4000, ...over });
++const call = (name: string, args: unknown, id = 'c1') => ({ id, type: 'function' as const, function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) } });
++const run = (name: string, args: unknown, role = 'cashier') => JSON.parse(runToolCall(call(name, args), { tools: ASSISTANT_TOOLS, ctx: ctxFor(role) }).message.content ?? '{}');
++
++// ---- search terms ----
++test('search terms drop the little words, keep the useful ones once, and ignore plurals', () => {
++  assert.deepEqual(searchTerms('How do I refund a card payment?'), ['refund', 'card', 'payment']);
++  assert.deepEqual(searchTerms('refunds REFUND refund'), ['refund']);
++  assert.deepEqual(searchTerms('   '), []);
++  assert.equal(searchTerms('a '.repeat(20) + 'x1 x2 x3 x4 x5 x6 x7 x8 x9 y1').length, 8, 'at most 8 words');
++});
++
++// ---- search_docs ----
++test('search_docs finds pages for a whole sentence, best first, with a matching line', () => {
++  const r = run('search_docs', { query: 'how do I refund a card payment' });
++  const top = r.results.map((x: any) => x.id).slice(0, 2).sort(); assert.deepEqual(top, ['orders/refunds', 'pay/card']);
++  assert.ok(!r.results.some((x: any) => x.id === 'pay/cash'), 'a page with none of the key words is left out');
++  const refunds = r.results.find((x: any) => x.id === 'orders/refunds'); assert.match(refunds.match, /refund/i);
++  assert.doesNotMatch(r.results[0].match, /^Basic Basic/, 'depth headings are not shown in the matching line');
++  assert.ok(r.results[0].depths.includes('basic'));
++});
++test('search_docs: a page needs at least half the words, and nothing found says so', () => {
++  assert.equal(run('search_docs', { query: 'quantum teleporter flux' }).results.length, 0);
++  assert.match(run('search_docs', { query: 'quantum teleporter flux' }).note, /No help page matched/);
++  assert.match(run('search_docs', { query: '' }).error, /Give a query/);
++  assert.match(run('search_docs', {}).error, /Give a query/);
++});
++test('search_docs never returns a page the role may not see, and says nothing about it', () => {
++  const asCashier = run('search_docs', { query: 'printer reader', }, 'cashier');
++  assert.deepEqual(asCashier.results, []);
++  assert.doesNotMatch(JSON.stringify(asCashier), /hardware|printer|manager/i);
++  assert.equal(run('search_docs', { query: 'printer reader' }, 'manager').results[0].id, 'settings/hardware');
++  assert.equal(run('search_docs', { query: 'printer reader' }, 'owner').results[0].id, 'settings/hardware');
++});
++test('search_docs returns at most 5 pages', () => {
++  const many = Array.from({ length: 12 }, (_, i) => mk(`x/p${i}`, `Widget ${i}`));
++  assert.equal(searchDocPages({ pages: many, role: 'owner' }, 'widget').length, 5);
++});
++
++// ---- read_doc ----
++test('read_doc reads the basic text by default and more with a deeper depth', () => {
++  const basic = run('read_doc', { id: 'pay/cash' });
++  assert.equal(basic.depth, 'basic'); assert.doesNotMatch(basic.text, /Rounding/);
++  assert.match(run('read_doc', { id: 'pay/cash', depth: 'deep' }).text, /Rounding is to 5 cents/);
++  assert.equal(run('read_doc', { id: 'pay/cash', depth: 'nonsense' }).depth, 'basic');
++  assert.deepEqual(basic.depths_available, ['basic', 'deep', 'advanced']);
++});
++test('read_doc drops diagrams and turns links into "Title (page id)"', () => {
++  const adv = run('read_doc', { id: 'pay/cash', depth: 'advanced' }).text as string;
++  assert.doesNotMatch(adv, /mermaid|flowchart/); assert.match(adv, /`cash\.ts`/);
++  assert.match(docText(pages[1], 'basic', ctxFor('cashier')), /paying by card \(page pay\/card\)/);
++});
++test('read_doc: a page the role may not see is answered exactly like a page that does not exist', () => {
++  const hidden = run('read_doc', { id: 'settings/hardware' }, 'cashier'); const missing = run('read_doc', { id: 'nope/none' }, 'cashier');
++  assert.deepEqual(hidden, missing); assert.match(hidden.error, /no help page with that id/);
++  assert.equal(run('read_doc', { id: 'settings/hardware' }, 'manager').title, 'Hardware settings');
++  assert.match(run('read_doc', {}, 'owner').error, /no help page/);
++});
++test('read_doc: links and see_also never name a page the role may not see', () => {
++  const asCashier = run('read_doc', { id: 'pay/cash' }, 'cashier');
++  assert.doesNotMatch(JSON.stringify(asCashier), /Hardware|settings\/hardware/);
++  assert.match(asCashier.text, /the hardware page/, 'the words the author wrote stay, with no page behind them');
++  assert.deepEqual(asCashier.see_also, [{ id: 'pay/card', title: 'Taking a card payment' }]);
++  assert.match(JSON.stringify(run('read_doc', { id: 'pay/cash' }, 'manager').see_also), /settings\/hardware/);
++});
++test('read_doc cuts a long page to the limit and says so', () => {
++  const long = [mk('start', 'Start'), mk('big', 'Big page', { sections: { basic: 'word '.repeat(2000), deep: '', advanced: '' } })];
++  const r = JSON.parse(runToolCall(call('read_doc', { id: 'big' }), { tools: ASSISTANT_TOOLS, ctx: { pages: long, role: 'owner', maxChars: 1500 } }).message.content ?? '{}');
++  assert.equal(r.cut, true); assert.match(r.text, /\[cut here/); assert.ok(r.text.length < 1600);
++});
++test('result limit follows the context size, within bounds', () => {
++  assert.equal(resultCharsFor(2000), 1500); assert.equal(resultCharsFor(8000), 4800); assert.equal(resultCharsFor(128000), MAX_RESULT_CHARS);
++});
++
++// ---- the runner ----
++test('runToolCall never throws: unknown tool, bad arguments, or a tool that fails all come back as errors', () => {
++  const set = { tools: ASSISTANT_TOOLS, ctx: ctxFor('owner') };
++  const unknown = runToolCall(call('open_the_till', {}), set);
++  assert.equal(unknown.record.ok, false); assert.match(unknown.message.content ?? '', /no tool called/);
++  for (const bad of ['{not json', '[1,2]', '"text"']) { const r = runToolCall(call('search_docs', bad), set); assert.equal(r.record.ok, false); assert.match(r.message.content ?? '', /not a JSON object/); }
++  assert.equal(runToolCall(call('search_docs', ''), set).record.ok, false, 'empty arguments mean no query');
++  const boom: AssistantTool = { def: { type: 'function', function: { name: 'boom', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => { throw new Error('secret internal detail'); } };
++  const r = runToolCall(call('boom', {}), { tools: [boom], ctx: ctxFor('owner') });
++  assert.equal(r.record.ok, false); assert.doesNotMatch(r.message.content ?? '', /secret internal/);
++});
++test('runToolCall answers with a tool message tied to the call, and always valid JSON within the limit', () => {
++  const big: AssistantTool = { def: { type: 'function', function: { name: 'big', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => ({ text: 'x'.repeat(50000) }) };
++  const r = runToolCall(call('big', {}, 'abc'), { tools: [big], ctx: ctxFor('owner', { maxChars: 1000 }) });
++  assert.equal(r.message.role, 'tool'); assert.equal(r.message.tool_call_id, 'abc'); assert.equal(r.message.name, 'big');
++  assert.ok((r.message.content ?? '').length <= 1000); assert.doesNotThrow(() => JSON.parse(r.message.content ?? ''));
++});
++test('the record keeps the arguments and result, with any key removed', () => {
++  const r = runToolCall(call('search_docs', { query: 'sk-live-ABCDEFGHIJKL1234 refund' }), { tools: ASSISTANT_TOOLS, ctx: ctxFor('owner') }, () => 5, 'sk-live-ABCDEFGHIJKL1234');
++  assert.doesNotMatch(r.record.args, /ABCDEFGHIJKL1234/); assert.equal(r.record.name, 'search_docs');
++});
++test('every tool has a name, a description and object parameters, and none can write', () => {
++  const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
++  assert.deepEqual(names, ['search_docs', 'read_doc']);
++  for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
++});
++
++// ---- the loop ----
++const ep: Endpoint = { baseUrl: 'http://localhost:11434/v1', model: 'm', timeoutSec: 5 };
++function scripted(steps: Array<{ content?: string | null; calls?: { name: string; args: unknown }[] }>) {
++  const sent: any[] = []; let i = 0;
++  const f: FetchLike = async (_u, init) => {
++    sent.push(JSON.parse(init.body ?? '{}')); const s = steps[Math.min(i++, steps.length - 1)];
++    const message: any = { role: 'assistant', content: s.content ?? null };
++    if (s.calls) message.tool_calls = s.calls.map((c, k) => ({ id: `call_${i}_${k}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
++    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message, finish_reason: s.calls ? 'tool_calls' : 'stop' }] }) };
++  };
++  return { f, sent };
++}
++const ask = (over: Partial<AskInput> = {}, role = 'cashier', limit?: number): AskInput => ({ history: [], text: 'How do I refund a card payment?', detail: 'short', settings: { contextSize: 8000, temperature: 0.2 }, endpoint: ep, id: (() => { let n = 0; return () => `id${++n}`; })(), now: () => 1000, tools: makeToolSet({ pages, role, contextSize: 8000, limit }), ...over });
++
++test('the loop: the model searches, reads, then answers; results go back to it and the reply has no dashes', async () => {
++  const { f, sent } = scripted([
++    { calls: [{ name: 'search_docs', args: { query: 'refund card' } }] },
++    { calls: [{ name: 'read_doc', args: { id: 'orders/refunds' } }] },
++    { content: 'Open Refunds \u2014 pick the sale.' },
++  ]);
++  const a = ask(); const out = await runPrepared(f, a, prepare(a));
++  assert.equal(out.reply.text, 'Open Refunds, pick the sale.');
++  assert.equal(sent.length, 3); assert.ok(sent[0].tools.length === 2);
++  const last: ChatMessage[] = sent[2].messages; const tools = last.filter(m => m.role === 'tool');
++  assert.equal(tools.length, 2); assert.match(tools[0].content ?? '', /orders\/refunds/); assert.match(tools[1].content ?? '', /Basic text for Refunds/);
++  assert.equal(last.filter(m => m.role === 'assistant' && m.tool_calls).length, 2);
++  assert.deepEqual(a.tools!.records.map(r => [r.name, r.ok]), [['search_docs', true], ['read_doc', true]]);
++});
++test('the loop: a question that needs no tool is just answered', async () => {
++  const { f, sent } = scripted([{ content: 'Hello there.' }]); const a = ask({ text: 'hi' });
++  assert.equal((await runPrepared(f, a, prepare(a))).reply.text, 'Hello there.'); assert.equal(sent.length, 1); assert.equal(a.tools!.records.length, 0);
++});
++test('the loop: without tools nothing is offered to the model', async () => {
++  const { f, sent } = scripted([{ content: 'Plain.' }]); const a = ask({ tools: undefined });
++  await runPrepared(f, a, prepare(a)); assert.equal(sent[0].tools, undefined);
++  assert.doesNotMatch(sent[0].messages[0].content, /search_docs/);
++});
++test('the loop: a role never gets a hidden page back, even when the model asks for it by id', async () => {
++  const { f, sent } = scripted([{ calls: [{ name: 'read_doc', args: { id: 'settings/hardware' } }] }, { content: "I couldn't find anything on that." }]);
++  const a = ask({}, 'cashier'); await runPrepared(f, a, prepare(a));
++  const toolMsg = (sent[1].messages as ChatMessage[]).find(m => m.role === 'tool')!;
++  assert.doesNotMatch(toolMsg.content ?? '', /Hardware|printer/i); assert.match(toolMsg.content ?? '', /no help page/);
++});
++test('the loop stops at the limit, says so, and names the pages it had read', async () => {
++  const { f } = scripted([{ calls: [{ name: 'read_doc', args: { id: 'pay/cash' } }] }]); // asks for a tool every time
++  const a = ask({}, 'cashier', 3); const out = await runPrepared(f, a, prepare(a));
++  assert.match(out.reply.text, /I stopped looking after 3 lookups/); assert.match(out.reply.text, /Taking cash/);
++  assert.equal(a.tools!.records.length, 3);
++});
++test('the loop: an empty final answer is an error, not a blank reply', async () => {
++  const { f } = scripted([{ content: '  ' }]); const a = ask(); await assert.rejects(() => runPrepared(f, a, prepare(a)), /empty reply/);
++});
++test('the default limit is 15', () => assert.equal(DEFAULT_TOOL_LIMIT, 15));
++
++// ---- the prompt and the context ----
++test('the prompt with tools tells the model to search, answer from results, and say when nothing is found', () => {
++  const p = buildSystemPrompt('short', true);
++  assert.match(p, /search_docs/); assert.match(p, /read_doc/); assert.match(p, /couldn't find anything on that/); assert.match(p, /never change anything/i);
++  assert.doesNotMatch(buildSystemPrompt('short', false), /search_docs/);
++  assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page/i, 'the prompt never names a restricted thing');
++});
++test('the tool definitions are counted against the context', () => {
++  const hist = Array.from({ length: 30 }, (_, i) => ({ id: `h${i}`, role: (i % 2 ? 'assistant' : 'user') as 'user' | 'assistant', text: 'word '.repeat(60), at: i }));
++  const plain = buildMessagesDetailed(hist, 'short', 4000).included.length;
++  const withTools = buildMessagesDetailed(hist, 'short', 4000, makeToolSet({ pages, role: 'owner', contextSize: 4000 })).included.length;
++  assert.ok(withTools < plain, `${withTools} < ${plain}`);
++});
++test('fitToContext drops the oldest tool results first and keeps the newest', () => {
++  const big = 'y'.repeat(3000);
++  const msgs: ChatMessage[] = [{ role: 'system', content: 'sys' }, { role: 'user', content: 'q' },
++    { role: 'assistant', content: null, tool_calls: [call('a', {}, '1')] }, { role: 'tool', tool_call_id: '1', content: big },
++    { role: 'assistant', content: null, tool_calls: [call('a', {}, '2')] }, { role: 'tool', tool_call_id: '2', content: big }];
++  const fitted = fitToContext(msgs, 1500);
++  assert.equal(fitted[3].content, DROPPED_RESULT); assert.equal(fitted[5].content, big, 'the newest result is kept');
++  assert.equal(msgs[3].content, big, 'the original is not changed');
++  assert.deepEqual(fitToContext(msgs, 100000), msgs);
++});
++
++// ---- the audit log ----
++test('the log records each tool call with its arguments and exact result, and keeps them when the question fails', async () => {
++  const events: LogEvent[] = [];
++  const c: LogContext = { staff: { id: 's1', name: 'Casey', role: 'cashier' }, practice: false, apiKey: 'sk-test-SECRETSECRET1234', known: () => false, sink: async e => { events.push(e); }, newId: () => 'e1' };
++  const ok = scripted([{ calls: [{ name: 'search_docs', args: { query: 'refund' } }] }, { content: 'Done.' }]);
++  const r = await askLogged(ok.f, ask(), c); assert.ok(r.ok);
++  assert.equal(events[0].tools?.length, 1); assert.equal(events[0].tools![0].name, 'search_docs'); assert.match(events[0].tools![0].result, /orders\/refunds/);
++  const bad = scripted([{ calls: [{ name: 'read_doc', args: { id: 'pay/cash' } }] }, { content: '' }]);
++  const r2 = await askLogged(bad.f, ask(), c); assert.equal(r2.ok, false);
++  assert.equal(events[1].kind, 'error'); assert.equal(events[1].tools?.length, 1);
++  const none = await askLogged(scripted([{ content: 'Hi.' }]).f, ask({ tools: undefined }), c); assert.ok(none.ok);
++  assert.equal(events[2].tools, undefined);
++});
++
++// ---- roles on help pages ----
++test('a roles header is read, checked and kept through the bundle', () => {
++  const raw = '---\nid: settings/x\ntitle: X\nparent: start\nsummary: s\ntags: [a]\nroles: [manager, owner]\n---\n## Basic\n\ntext\n';
++  const parsed = parsePage('settings/x.md', raw) as { page: Page }; assert.deepEqual(parsed.page.roles, ['manager', 'owner']);
++  assert.deepEqual(readBundle(makeBundle([parsed.page]))!.pages[0].roles, ['manager', 'owner']);
++  const bad = { ...parsed.page, roles: ['boss'] };
++  assert.ok(validatePages([mk('start', 'Start'), { ...bad, parent: 'start' } as Page]).some(i => /roles/.test(i.problem)));
++  assert.deepEqual([...PAGE_ROLES], ['cashier', 'manager', 'owner']);
++  assert.equal(pageVisibleTo({}, 'cashier'), true); assert.equal(pageVisibleTo({ roles: [] }, 'cashier'), true); assert.equal(pageVisibleTo({ roles: ['manager'] }, 'cashier'), false);
++});
++test('the real help: a cashier cannot see Settings, Staff or Reports pages, and can see the everyday ones', () => {
++  const all = builtinHelp().pages; const seen = (role: string) => new Set(all.filter(p => pageVisibleTo(p, role)).map(p => p.id));
++  const cashier = seen('cashier'), manager = seen('manager');
++  for (const id of ['settings', 'settings/assistant', 'settings/shopify', 'staff', 'orders/reports']) { assert.ok(!cashier.has(id), `${id} hidden from cashier`); assert.ok(manager.has(id), `${id} shown to manager`); }
++  for (const id of ['start', 'pay/cash', 'orders/refunds', 'sales/cart-warnings']) assert.ok(cashier.has(id), `${id} shown to cashier`);
++  const hits = searchDocPages({ pages: all, role: 'cashier' }, 'settings assistant model address', 10).map(h => h.id);
++  assert.ok(!hits.some(id => id.startsWith('settings/') && id !== 'settings/ask-assistant'), hits.join(','));
++  assert.ok(cashier.has('settings/ask-assistant'), 'the page about using the chat is for everyone');
++  assert.ok(searchDocPages({ pages: all, role: 'owner' }, 'refund card payment')[0], 'the real help is searchable');
++});

@@ -154,6 +154,7 @@ export function AssistantLogViewer() {
                           {e.user ? <View><Txt weight="600" size={13}>Question</Txt><Txt size={13}>{e.user.text}</Txt></View> : null}
                           {e.reply ? <View><Txt weight="600" size={13}>Reply</Txt><Txt size={13}>{e.reply.text}</Txt></View> : null}
                           {e.sent ? <View><Txt weight="600" size={13}>Sent to model</Txt><Txt size={12} sub>{e.sent.parts.length} messages · hash {e.sent.hash}</Txt></View> : null}
+                          {e.tools && e.tools.length ? <View style={{ gap: 4 }}><Txt weight="600" size={13}>Tools used ({e.tools.length})</Txt>{e.tools.map((t, i) => <View key={i}><Txt size={12} color={t.ok ? undefined : c.bad}>{t.name} {t.args}</Txt><Txt size={12} sub numberOfLines={6}>{t.result}</Txt></View>)}</View> : null}
                           {e.masked && Object.keys(e.masked).length ? <Txt size={12} sub>Masked: {Object.entries(e.masked).map(([k, v]) => `${v} ${k}`).join(', ')}</Txt> : null}
                           {e.error ? <View><Txt weight="600" size={13} color={c.bad}>Error</Txt><Txt size={13} color={c.bad}>{e.error.message}</Txt></View> : null}
                         </View>

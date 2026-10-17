@@ -6,6 +6,7 @@ summary: Point the Help assistant at a model server (Ollama or any OpenAI-compat
 tags: [AI, assistant, chatbot, model, Ollama, OpenAI, API key, local, remote, test connection, privacy]
 related: [settings, settings/backup, staff, settings/ask-assistant]
 updated: 2026-10-17
+roles: [manager, owner]
 ---
 Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.
 

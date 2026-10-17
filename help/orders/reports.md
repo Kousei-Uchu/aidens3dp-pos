@@ -6,6 +6,7 @@ summary: Choose a reporting period and register, compare sales, read payment and
 tags: [reports, sales, period, compare, register, devices, gift cards, sales tax, export, Square]
 related: [orders, orders/square-history, cash/float-report]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 **Reports** summarises sales records from this and other registers, plus imported Square history when it is available.
 

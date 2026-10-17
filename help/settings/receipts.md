@@ -6,6 +6,7 @@ summary: Configure the receipt page, business details, ABN, return policy and GS
 tags: [receipt, receipts, tax invoice, ABN, GST, business name, receipt server, QR]
 related: [settings, pay/receipts]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Receipts** to add your business details to receipts and connect the receipt page that customers open from a QR code or link.
 

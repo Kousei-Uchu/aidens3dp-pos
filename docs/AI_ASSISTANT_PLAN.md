@@ -6,6 +6,10 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 13 (18 October 2026), patch 0157:** patch 4 is split by tool, one patch each, as the owner asked. 0157 is tool 1: the docs
+tools (`search_docs`, `read_doc`), the tool runtime and loop, the role header on help pages (`roles:`), and tool calls in the audit log.
+Next: the navgraph search tool, then the link tool, then the guide tool. The tool call limit is still a constant (15), not yet a Settings field.
+
 **Revision 12 (17 October 2026), patch 0156:** patch 3 (the audit log) is done. 0152 was the recording half. 0156 is the
 viewer half: the manager-only viewer (`src/screens/AssistantLog.tsx`), Export log, Clear log (typed `CLEAR`), the cap
 setting (default 200 MB) and `ASSISTANT_OPEN_TO_ALL` is now `true`, so the Help entry shows to everyone (never on the lock
@@ -453,7 +457,8 @@ chat screen patch can add streaming.
    Split in two: **3a. Done (0152):** recording, the store and the notice. **3b. Done (0156):** the viewer, Export log,
    Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
-   offline search (3.3).
+   offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
+   pages). Next: navgraph search, link, guide.
 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.

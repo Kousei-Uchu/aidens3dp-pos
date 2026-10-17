@@ -6,6 +6,7 @@ summary: Enter the shop domain and app credentials, test the connection, choose 
 tags: [Shopify, connect, domain, client ID, client secret, location, import, catalogue, metaobjects]
 related: [settings, stock, stock/inventory, fix/offline-sync]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Shopify** to connect the register to a Shopify store, choose the stock location and import its catalogue.
 

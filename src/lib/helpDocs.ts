@@ -30,6 +30,8 @@ export const ROOT_ID = 'start';
 
 export type Page = {
   id: string; title: string; parent?: string; summary: string; tags: string[]; related: string[]; updated?: string;
+  /** Only these roles may see the page (the assistant leaves it out for everyone else). Absent means every role. */
+  roles?: string[];
   /** Text before the first depth heading. Shown at every depth. */
   lead: string;
   sections: Record<Depth, string>;
@@ -105,7 +107,7 @@ export function parsePage(file: string, raw: string): { page: Page } | { issue: 
   const s = (k: string) => (typeof fm.meta[k] === 'string' ? (fm.meta[k] as string).trim() : '');
   const l = (k: string) => (Array.isArray(fm.meta[k]) ? (fm.meta[k] as string[]) : typeof fm.meta[k] === 'string' && s(k) ? [s(k)] : []);
   const sp = splitSections(fm.body);
-  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), lead: sp.lead, sections: sp.sections, file } };
+  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), ...(l('roles').length ? { roles: l('roles') } : {}), lead: sp.lead, sections: sp.sections, file } };
 }
 
 // ── links ────────────────────────────────────────────────────────────────────
@@ -194,6 +196,10 @@ export function trail(idx: HelpIndex, id: string): Page[] {
   return out;
 }
 
+/** The roles a page may be limited to in its `roles:` header. */
+export const PAGE_ROLES: readonly string[] = ['cashier', 'manager', 'owner'];
+/** Whether this role may see the page: pages without a `roles:` header are for everyone. */
+export const pageVisibleTo = (p: Pick<Page, 'roles'>, role: string): boolean => !p.roles || p.roles.length === 0 || p.roles.includes(role);
 const ID_OK = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 /** Everything that would make the help wrong or broken. An empty list means the set is sound. */
 export function validatePages(pages: Page[]): PageIssue[] {
@@ -222,6 +228,7 @@ export function validatePages(pages: Page[]): PageIssue[] {
     for (const r of p.related) if (!ids.has(r)) bad(p, `\`related\` points at "${r}", which does not exist.`);
     for (const l of extractLinks(all)) if (!ids.has(l.id)) bad(p, `The link [[${l.id}]] goes to a page that does not exist.`);
     if (p.updated && !/^\d{4}-\d{2}-\d{2}$/.test(p.updated)) bad(p, '`updated` must look like 2026-10-11.');
+    if (p.roles && p.roles.some(r => !PAGE_ROLES.includes(r))) bad(p, '`roles` may only list cashier, manager or owner.');
   }
   // parent loops (a → b → a): walk each chain
   for (const p of pages) {
@@ -270,7 +277,7 @@ export function readBundle(raw: unknown): HelpBundle | null {
     if (!x || typeof x !== 'object') continue; const p = x as Record<string, unknown>; const sec = (p.sections ?? {}) as Record<string, unknown>;
     if (typeof p.id !== 'string' || !p.id || typeof p.title !== 'string') continue;
     const str = (v: unknown) => (typeof v === 'string' ? v : ''); const arr = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []);
-    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) } });
+    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), ...(arr(p.roles).length ? { roles: arr(p.roles) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) } });
   }
   return pages.length ? { version: r.version, pages } : null;
 }

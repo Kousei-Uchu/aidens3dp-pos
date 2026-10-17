@@ -10,6 +10,7 @@ import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
 import type { Role } from './types';
 import { classifyEndpoint, parseBaseUrl, type EndpointClass, type EndpointMode } from './assistantConfig';
 import { AssistantError, redactSecrets, type FetchLike } from './assistantClient';
+import type { ToolRecord } from './assistantTools';
 import { prepare, runPrepared, type AskInput, type AskResult, type ChatEntry, type Detail, type Masked, type Prepared } from './assistantChat';
 
 // ---------- events ----------
@@ -26,6 +27,8 @@ export type LogEvent = {
   sent?: SentRecord;
   /** What the scrubber hid, by category. */
   masked?: Masked;
+  /** Each tool the model called for this question, with the arguments it gave and the exact result it was handed (patch 0157). */
+  tools?: ToolRecord[];
   /** What the data gate withheld, by category (patch 5). The items themselves are never kept. */
   withheld?: Record<string, number>;
   ms?: number; error?: { kind: string; message: string };
@@ -54,7 +57,7 @@ export function logEndpoint(baseUrl: string, model: string, mode: EndpointMode):
 export type BuildInput = {
   id: string; now: number; staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; detail: Detail; p: Prepared;
   /** True when the log already holds this message's text. */
-  known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string;
+  known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string; tools?: ToolRecord[];
 };
 /** Builds one event. Every text is clipped and run through the key remover, so the key can never reach a line. */
 export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: string; text: string } } {
@@ -68,6 +71,7 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
     ...(i.reply ? { reply: { id: i.reply.id, text: key(i.reply.text) } } : {}),
     sent: { sys: sysHash, parts, hash: fnv1a(JSON.stringify(i.p.messages)) },
     ...(Object.keys(i.p.masked).length ? { masked: i.p.masked } : {}),
+    ...(i.tools && i.tools.length ? { tools: i.tools.map(t => ({ name: t.name, args: key(t.args), ok: t.ok, result: key(t.result), ms: t.ms })) } : {}),
     ms: i.ms,
     ...(i.error ? { error: { kind: i.error.kind, message: key(i.error.message) } } : {}),
   };
@@ -89,12 +93,13 @@ export type LoggedAsk =
 export async function askLogged(f: FetchLike, a: AskInput, c: LogContext): Promise<LoggedAsk> {
   const p = prepare(a); const t0 = a.now();
   const base = { id: c.newId(), staff: c.staff, practice: c.practice, endpoint: c.endpoint, detail: a.detail, p, known: c.known, apiKey: c.apiKey };
+  const toolsUsed = () => a.tools?.records.slice();
   let result: AskResult | undefined; let failure: unknown;
   try { result = await runPrepared(f, a, p); } catch (e) { failure = e; }
   const now = a.now();
   const b = result
-    ? buildEvent({ ...base, now, reply: result.reply, ms: now - t0 })
-    : buildEvent({ ...base, now, ms: now - t0, error: failure instanceof AssistantError ? { kind: failure.kind, message: failure.message } : { kind: 'server_error', message: String((failure as Error)?.message ?? 'Something went wrong.') } });
+    ? buildEvent({ ...base, now, reply: result.reply, ms: now - t0, tools: toolsUsed() })
+    : buildEvent({ ...base, now, ms: now - t0, tools: toolsUsed(), error: failure instanceof AssistantError ? { kind: failure.kind, message: failure.message } : { kind: 'server_error', message: String((failure as Error)?.message ?? 'Something went wrong.') } });
   let logError: string | undefined;
   try { await c.sink(b.event, b.prompt); } catch { logError = LOG_FAIL_LINE; }
   return result ? { ok: true, result, ...(logError ? { logError } : {}) } : { ok: false, error: failure, ...(logError ? { logError } : {}) };

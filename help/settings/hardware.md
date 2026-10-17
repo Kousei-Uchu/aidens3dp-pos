@@ -6,6 +6,7 @@ summary: Pair a Bluetooth scanner as an HID keyboard, test it in Settings and ch
 tags: [hardware, scanner, Bluetooth, HID, keyboard, barcode, test]
 related: [settings, sales/scanners, settings/scanner-codes, concepts/roles]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Use **More ▸ Settings ▸ Hardware** to test a Bluetooth scanner without changing the cart. Pair the scanner in the iPad's Bluetooth settings in **HID keyboard** mode first.
 

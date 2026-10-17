@@ -6,6 +6,7 @@ summary: Export and restore settings securely, move them to another iPad, or exp
 tags: [backup, transfer, restore, export, import, CSV, history, passphrase, secrets, data]
 related: [settings, settings/shopify, settings/receipts, settings/assistant, staff/screensaver]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.
 

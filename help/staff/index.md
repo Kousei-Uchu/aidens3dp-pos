@@ -6,6 +6,7 @@ summary: Add team members, set unique PINs and roles, require sign-in, and manag
 tags: [staff, cashier, manager, owner, role, PIN, sign in, team, access]
 related: [staff/passes, staff/modes, staff/guided-checkout, staff/training, staff/screensaver, sales/bundles]
 updated: 2026-10-11
+roles: [manager, owner]
 ---
 Use **More ▸ Staff** to add the people who use the register, choose their role and set whether the till asks them to sign in. Each person can also have a cashier pass, display mode, appearance, accent colour and tile size.
 
