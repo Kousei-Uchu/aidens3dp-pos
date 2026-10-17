@@ -6,6 +6,13 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 9 (17 October 2026), patch 0149:** the owner approved the plan for patch 2 (the chat screen), and the decisions
+are recorded here. The "Treat this address as local" switch becomes a three-way Auto / Local / Remote setting (3.1), so an
+address can also be forced remote. Four decisions change the order of work: a small scrubber moves forward into the chat
+patch, the Help entry shows only to people who may edit assistant settings until the audit log lands, sending is blocked
+in practice mode until the coach exists, and the three-way setting gets its own tiny patch (0149) ahead of the chat patch
+(0150). See 3.10 and 3.12.
+
 **Revision 8 (17 October 2026), patch 0148:** the plan was checked against the repo and patch 1 was built.
 Changes from the check: the latest patch was 0146, not 0143, and a scanner patch took 0147 before patch 1 was finished, so patch 1 is 0148; there are three roles
 (cashier, manager, owner), so "manager only" now means the same rule as price adjustment permissions (an owner, or a
@@ -191,13 +198,15 @@ that came out of the answers were confirmed in 3.11.
 - Only an owner, or a manager when there is no owner, can see or change any of these (see question 16).
 - "Test connection": checks the endpoint answers, the model replies, and a trivial tool call works. It sends fixed
   test text and nothing from the shop.
-- "Treat this endpoint as local" switch, as a manual override (see below).
+- Endpoint setting with three states: Auto (follow the address), Local, Remote (see below). Built in 0149. Before
+  0149 this was a yes or no "treat as local" switch that could only make an address local.
 
 **Local or remote:** the app classifies the endpoint from its host. Local means `localhost`, `127.x.x.x`, `::1`, the
 private ranges (`10.x.x.x`, `172.16.x.x` to `172.31.x.x`, `192.168.x.x`) and `.local` names. Everything else is
-remote. The manual switch exists because some local-looking addresses forward traffic out (a tunnel or a proxy),
-and because some owners will want a private network that the rules do not recognise. The default for an unknown
-or unreadable host is remote. The switch can only make an address local.
+remote. The setting has three states. **Auto** follows the address. **Local** forces local, for a private network the
+rules do not recognise. **Remote** forces remote, for a tunnel or a proxy on an address that looks private but forwards
+traffic out of the network. The default is Auto, and the default for an unknown or unreadable host is remote. Settings
+saved with the old switch on become Local, and with it off become Auto.
 
 **Data rules (owner's answers):**
 
@@ -415,11 +424,15 @@ chat screen patch can add streaming.
 
 1. **Done (0148).** Settings section, the OpenAI-compatible client and "Test connection". No chat screen yet.
    `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` updated for the changed model policy (1.3).
-2. Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5).
+   **0149 (tiny, before the chat patch):** the Auto / Local / Remote setting, and this document brought up to date with
+   the decisions in 3.12.
+2. Chat screen and Help menu entry (patch 0150). Plain chat with no tools, the error banner, per-staff history (3.5),
+   a small scrubber (3.12) and the practice mode block (3.12).
 3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
    offline search (3.3).
-5. The data gate and scrubber (3.1) with their tests, and the category toggles. No data tools yet.
+5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+   tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
 7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.
 8. Cash drawer status, calculators and current cart.
@@ -427,6 +440,20 @@ chat screen patch can add streaming.
 10. Settings reader and app and sync status, then the "Guide me there" highlight arrows.
 
 The gate comes before any tool that returns shop data, so no tool is ever added without it.
+
+### 3.12 Decisions for the chat patch (owner approved, 17 October 2026)
+
+1. **Three-way endpoint setting first.** Auto / Local / Remote goes in as its own tiny patch (0149) before the chat patch.
+2. **Scrubber pulled forward.** The chat sends whatever the cashier types, so a pasted email or card number could reach a
+   remote server from the first day. A small scrubber is built into the chat patch: emails, phone numbers, card
+   numbers (digit runs that pass the Luhn check) and key-shaped strings. It runs on the typed text and on stored history
+   at send time. The full gate, category rules and toggles stay in patch 5 (3.1).
+3. **Who sees the Help entry.** Until the audit log (patch 3) lands, the assistant entry shows only to people who may
+   edit assistant settings (an owner, or a manager when there is no owner). Once the audit log lands it opens to
+   everyone, as decided in question 4. The entry never shows on the PIN lock screen, because per-staff history needs a
+   signed-in person.
+4. **Practice mode.** Until the practice mode coach exists (patch 9), sending is blocked while practice mode is on, and
+   the chat says so. Practice mode must never send anything out (section 4).
 
 ### 3.11 Confirmed by the owner
 

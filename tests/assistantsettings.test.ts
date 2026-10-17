@@ -9,7 +9,7 @@ import { defaultAssistant, normaliseAssistant } from '../src/lib/assistantConfig
 import { actingRole, canEditAdjustPerms } from '../src/lib/adjustPerms';
 
 const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id', shopifyClientSecret: 'secret', passSecret: 'p', receiptSecret: 'r', claimSecret: 'c' };
-const assistant = { ...defaultAssistant(), baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama3.1:8b', contextSize: 32000, treatAsLocal: true };
+const assistant = { ...defaultAssistant(), baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama3.1:8b', contextSize: 32000, endpointMode: 'local' as const };
 const KEY = 'sk-test-BACKUPKEY-1234';
 
 test('the assistant settings are never part of the shared settings that go to other registers', () => {
@@ -48,9 +48,9 @@ test('backup: the encrypted file carries the key, and the key is not readable in
 });
 
 test('backup: odd values in a file are cleaned before they reach the settings', () => {
-  const v = validateBackup({ app: 'shopify-zeller-pos', v: 1, settings: { assistant: { baseUrl: 5, model: ' m ', temperature: 99, timeoutSec: -3, contextSize: 'huge', toolCallLimit: 0, treatAsLocal: 'true', apiKey: KEY } }, credentials: { ...creds, assistantKey: 42 } });
+  const v = validateBackup({ app: 'shopify-zeller-pos', v: 1, settings: { assistant: { baseUrl: 5, model: ' m ', temperature: 99, timeoutSec: -3, contextSize: 'huge', toolCallLimit: 0, treatAsLocal: 'true', endpointMode: 7, apiKey: KEY } }, credentials: { ...creds, assistantKey: 42 } });
   const a: any = v.settings.assistant;
-  assert.equal(a.baseUrl, ''); assert.equal(a.model, 'm'); assert.equal(a.temperature, 2); assert.equal(a.timeoutSec, 5); assert.equal(a.contextSize, 8000); assert.equal(a.toolCallLimit, 1); assert.equal(a.treatAsLocal, false); assert.ok(!('apiKey' in a));
+  assert.equal(a.baseUrl, ''); assert.equal(a.model, 'm'); assert.equal(a.temperature, 2); assert.equal(a.timeoutSec, 5); assert.equal(a.contextSize, 8000); assert.equal(a.toolCallLimit, 1); assert.equal(a.endpointMode, 'auto'); assert.ok(!('apiKey' in a));
   assert.ok(!('assistantKey' in v.credentials));
 });
 

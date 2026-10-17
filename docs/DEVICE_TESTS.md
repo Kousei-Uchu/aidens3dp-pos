@@ -614,3 +614,14 @@ On the iPad. This needs the new native build, because the local network permissi
 10. Type absurd numbers in the options (temperature 99, timeout 1, tool call limit 0), Save, and reopen. Pass: they have been brought into range (2, 5, 1).
 11. **Most important:** Settings ▸ Backup & transfer. Export an encrypted backup with a passphrase, then Restore it on a second iPad (or after removing the key and the address here). Pass: the address, model, options and the API key come back. On a register that is sharing settings with another, change the address on one and wait about 25 seconds. Pass: the other register's address does not change.
 12. More ▸ Training, start any course, then open Settings ▸ AI assistant. Pass: Save and Test connection say they are switched off in practice mode.
+
+## T50. Auto, Local or Remote for the AI assistant address (0149)
+
+On the iPad, signed in as the owner (or a manager when the team has no owner). No new native build needed.
+
+1. More ▸ Settings ▸ AI assistant. Pass: under the address there is a three way choice, **Auto**, **Local**, **Remote**, and **Auto** is selected on a fresh setup.
+2. Type `192.168.1.20:11434/v1`. Pass: the page says **This address counts as: Local**. Choose **Remote**. Pass: it says **Remote (set by you)**. Choose **Auto** again. Pass: it goes back to **Local** with no *(set by you)*.
+3. Type `https://api.example.com/v1`. Pass: **Remote**. Choose **Local**. Pass: it says **Local (set by you)**. Choose **Auto**. Pass: back to **Remote**.
+4. Choose **Remote** with the PC's address, tap **Save**, leave Settings and come back. Pass: **Remote** is still selected.
+5. **Most important:** Backup & transfer. Export a backup with **Remote** chosen and restore it. Pass: **Remote** comes back. On a register that is sharing settings with another, change the choice on one and wait about 25 seconds. Pass: the other register's choice does not change.
+6. If this iPad had **Treat this address as local** switched on before this update, open the page. Pass: **Local** is selected. If it was off, **Auto** is selected.

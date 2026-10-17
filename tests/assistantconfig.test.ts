@@ -29,15 +29,18 @@ test('parseBaseUrl: refuses what could hide the real host or leak the key', () =
     assert.equal(parseBaseUrl(bad).ok, false, bad);
 });
 
-test('classifyEndpoint: an address with userinfo or garbage is never local, and the switch only flips remote to local', () => {
-  assert.equal(classifyEndpoint('http://localhost@evil.com/v1', false), 'remote');
-  assert.equal(classifyEndpoint('http://192.168.1.1.example.com/v1', false), 'remote');
-  assert.equal(classifyEndpoint('', false), 'remote');
-  assert.equal(classifyEndpoint('nonsense', false), 'remote');
-  assert.equal(classifyEndpoint('http://192.168.1.20:11434/v1', false), 'local');
-  assert.equal(classifyEndpoint('https://api.example.com/v1', false), 'remote');
-  assert.equal(classifyEndpoint('https://api.example.com/v1', true), 'local');
-  assert.equal(classifyEndpoint('', true), 'local');
+test('classifyEndpoint: an address with userinfo or garbage is never local, and the mode can force either way', () => {
+  assert.equal(classifyEndpoint('http://localhost@evil.com/v1', 'auto'), 'remote');
+  assert.equal(classifyEndpoint('http://192.168.1.1.example.com/v1', 'auto'), 'remote');
+  assert.equal(classifyEndpoint('', 'auto'), 'remote');
+  assert.equal(classifyEndpoint('nonsense', 'auto'), 'remote');
+  assert.equal(classifyEndpoint('http://192.168.1.20:11434/v1', 'auto'), 'local');
+  assert.equal(classifyEndpoint('https://api.example.com/v1', 'auto'), 'remote');
+  assert.equal(classifyEndpoint('https://api.example.com/v1', 'local'), 'local');
+  assert.equal(classifyEndpoint('', 'local'), 'local');
+  assert.equal(classifyEndpoint('http://192.168.1.20:11434/v1', 'remote'), 'remote');
+  assert.equal(classifyEndpoint('http://localhost:11434/v1', 'remote'), 'remote');
+  assert.equal(classifyEndpoint('', 'remote'), 'remote');
 });
 
 test('normaliseAssistant: defaults, clamps and ignores junk', () => {
@@ -45,12 +48,15 @@ test('normaliseAssistant: defaults, clamps and ignores junk', () => {
   assert.deepEqual(normaliseAssistant('x'), defaultAssistant());
   assert.deepEqual(normaliseAssistant([1]), defaultAssistant());
   const d = defaultAssistant();
-  assert.equal(d.timeoutSec, 120); assert.equal(d.contextSize, 8000); assert.equal(d.toolCallLimit, 15); assert.equal(d.treatAsLocal, false);
-  const n = normaliseAssistant({ baseUrl: '  http://h/v1 ', model: ' m ', temperature: 9, timeoutSec: 1, contextSize: '32000', toolCallLimit: 1000, treatAsLocal: 'yes' });
-  assert.equal(n.baseUrl, 'http://h/v1'); assert.equal(n.model, 'm'); assert.equal(n.temperature, 2); assert.equal(n.timeoutSec, 5); assert.equal(n.contextSize, 32000); assert.equal(n.toolCallLimit, 100); assert.equal(n.treatAsLocal, false);
+  assert.equal(d.timeoutSec, 120); assert.equal(d.contextSize, 8000); assert.equal(d.toolCallLimit, 15); assert.equal(d.endpointMode, 'auto');
+  const n = normaliseAssistant({ baseUrl: '  http://h/v1 ', model: ' m ', temperature: 9, timeoutSec: 1, contextSize: '32000', toolCallLimit: 1000, endpointMode: 'sideways', treatAsLocal: 'yes' });
+  assert.equal(n.baseUrl, 'http://h/v1'); assert.equal(n.model, 'm'); assert.equal(n.temperature, 2); assert.equal(n.timeoutSec, 5); assert.equal(n.contextSize, 32000); assert.equal(n.toolCallLimit, 100); assert.equal(n.endpointMode, 'auto'); assert.ok(!('treatAsLocal' in n));
   const bad = normaliseAssistant({ temperature: 'hot', timeoutSec: NaN, contextSize: '', toolCallLimit: null, baseUrl: 5, model: {} });
   assert.deepEqual(bad, d);
-  assert.equal(normaliseAssistant({ treatAsLocal: true }).treatAsLocal, true);
+  assert.equal(normaliseAssistant({ treatAsLocal: true }).endpointMode, 'local'); // settings saved by 0148
+  assert.equal(normaliseAssistant({ treatAsLocal: false }).endpointMode, 'auto');
+  assert.equal(normaliseAssistant({ treatAsLocal: true, endpointMode: 'remote' }).endpointMode, 'remote'); // the new field wins
+  for (const m of ['auto', 'local', 'remote']) assert.equal(normaliseAssistant({ endpointMode: m }).endpointMode, m);
 });
 
 test('isConfigured needs a readable address and a model', () => {

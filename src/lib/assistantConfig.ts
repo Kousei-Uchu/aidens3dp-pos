@@ -3,6 +3,10 @@
 // Pure logic only (no React Native imports) so it runs in the node tests.
 // The API key is NOT part of these settings. It lives in the Keychain (assistantKey.ts) and travels in backups as a login.
 
+/** How the data rules read the address. Auto follows the address. Local and Remote force it either way. */
+export type EndpointMode = 'auto' | 'local' | 'remote';
+export const ENDPOINT_MODES: readonly EndpointMode[] = ['auto', 'local', 'remote'];
+
 export type AssistantSettings = {
   baseUrl: string;        // OpenAI-compatible base, for example http://192.168.1.20:11434/v1 (Ollama) or https://api.example.com/v1
   model: string;
@@ -10,7 +14,7 @@ export type AssistantSettings = {
   timeoutSec: number;     // how long one request may take
   contextSize: number;    // how much text the model can read at once, in tokens (the app cannot see this by itself)
   toolCallLimit: number;  // safety stop for a model stuck calling tools in a loop
-  treatAsLocal: boolean;  // manual override: count this address as local even if it does not look local
+  endpointMode: EndpointMode; // auto follows the address rules, local or remote forces the class (a tunnel on a 192.168 address can be forced remote)
 };
 
 export const DEFAULT_TIMEOUT_SEC = 120;
@@ -18,7 +22,7 @@ export const DEFAULT_CONTEXT_SIZE = 8000;
 export const DEFAULT_TOOL_CALL_LIMIT = 15;
 
 export const defaultAssistant = (): AssistantSettings => ({
-  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, treatAsLocal: false,
+  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto',
 });
 
 const clampInt = (x: unknown, lo: number, hi: number, fallback: number): number => {
@@ -30,6 +34,12 @@ const clampNum = (x: unknown, lo: number, hi: number, fallback: number): number 
   return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
 };
 
+/** Reads the mode. Settings saved by patch 0148 had a yes or no switch, and yes becomes Local. Anything else is Auto. */
+function readMode(o: Record<string, unknown>): EndpointMode {
+  if (typeof o.endpointMode === 'string' && (ENDPOINT_MODES as readonly string[]).includes(o.endpointMode)) return o.endpointMode as EndpointMode;
+  return o.treatAsLocal === true ? 'local' : 'auto';
+}
+
 /** Anything stored, typed or restored from a file becomes a valid settings object. Missing or bad values get the defaults. */
 export function normaliseAssistant(x: unknown): AssistantSettings {
   const d = defaultAssistant(); const o = (x && typeof x === 'object' && !Array.isArray(x) ? x : {}) as Record<string, unknown>;
@@ -40,7 +50,7 @@ export function normaliseAssistant(x: unknown): AssistantSettings {
     timeoutSec: clampInt(o.timeoutSec, 5, 600, d.timeoutSec),
     contextSize: clampInt(o.contextSize, 1000, 2_000_000, d.contextSize),
     toolCallLimit: clampInt(o.toolCallLimit, 1, 100, d.toolCallLimit),
-    treatAsLocal: o.treatAsLocal === true,
+    endpointMode: readMode(o),
   };
 }
 
@@ -105,9 +115,10 @@ export function classifyHost(hostRaw: string): EndpointClass {
   return 'remote';
 }
 
-/** The class the data rules use. An unreadable or empty address counts as remote, the safe side. The manual switch can only make an address local. */
-export function classifyEndpoint(baseUrl: string, treatAsLocal: boolean): EndpointClass {
-  if (treatAsLocal) return 'local';
+/** The class the data rules use. Auto follows the address, and an unreadable or empty address counts as remote, the safe side. Local and Remote override the address. */
+export function classifyEndpoint(baseUrl: string, mode: EndpointMode): EndpointClass {
+  if (mode === 'local') return 'local';
+  if (mode === 'remote') return 'remote';
   const p = parseBaseUrl(baseUrl);
   return p.ok ? classifyHost(p.host) : 'remote';
 }

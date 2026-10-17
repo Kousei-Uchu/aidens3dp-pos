@@ -4,10 +4,10 @@
 // sees this. There is no chat screen yet: this page only sets up and tests the connection.
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
-import { Btn, Field, Section, Toggle, Txt, alertMsg } from '../ui/kit';
+import { Btn, Field, Section, Segmented, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
 import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
-import { classifyEndpoint, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg } from '../lib/assistantConfig';
+import { classifyEndpoint, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg, type EndpointMode } from '../lib/assistantConfig';
 import { testConnection, type TestReport } from '../lib/assistantClient';
 import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
 import { isTraining } from '../lib/trainingGuard';
@@ -17,8 +17,8 @@ export function useCanEditAssistant(): boolean {
   return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
 }
 
-type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; treatAsLocal: boolean };
-const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), treatAsLocal: a.treatAsLocal });
+type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode };
+const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode });
 const fromDraft = (d: Draft): Cfg => normaliseAssistant({ ...d });
 
 export function AssistantSettings() {
@@ -33,7 +33,7 @@ export function AssistantSettings() {
   const set = (p: Partial<Draft>) => { setD(x => ({ ...x, ...p })); setReport(null); setNote(''); };
   const cfg = fromDraft(d);
   const parsed = parseBaseUrl(d.baseUrl);
-  const cls = classifyEndpoint(d.baseUrl, d.treatAsLocal);
+  const cls = classifyEndpoint(d.baseUrl, d.endpointMode);
   const keyShown = removeKey ? '' : newKey.trim() ? 'A new key will be saved.' : maskKey(savedKey);
   const effectiveKey = removeKey ? '' : newKey.trim() || savedKey;
   const dirty = JSON.stringify(cfg) !== JSON.stringify(saved) || removeKey || !!newKey.trim();
@@ -71,8 +71,11 @@ export function AssistantSettings() {
         </View>
       </Section>
       <Section footer={cls === 'local' ? 'Local: stays on this iPad or your own network. Customer details may be allowed, once the data rules are built.' : 'Remote: the data rules will keep customer details, emails and gift card details off this server.'}>
-        <View style={{ padding: 12 }}><Txt weight="600">This address counts as: {cls === 'local' ? 'Local' : 'Remote'}{!d.baseUrl.trim() ? ' (no address yet)' : ''}</Txt></View>
-        <Toggle label="Treat this address as local" sub="Only for a private network the app does not recognise. A tunnel or proxy that forwards out of your network is not local." value={d.treatAsLocal} onChange={v => set({ treatAsLocal: v })} />
+        <View style={{ padding: 12 }}><Txt weight="600">This address counts as: {cls === 'local' ? 'Local' : 'Remote'}{!d.baseUrl.trim() ? ' (no address yet)' : d.endpointMode !== 'auto' ? ' (set by you)' : ''}</Txt></View>
+        <View style={{ padding: 12, paddingTop: 0, gap: 6 }}>
+          <Segmented value={d.endpointMode} onChange={v => set({ endpointMode: v })} options={[{ v: 'auto', label: 'Auto' }, { v: 'local', label: 'Local' }, { v: 'remote', label: 'Remote' }]} />
+          <Txt size={12} sub>Auto follows the address. Choose Local for a private network the app does not recognise. Choose Remote for a tunnel or proxy that forwards out of your network, even when its address looks private. Remote is always the safe choice.</Txt>
+        </View>
       </Section>
       <Section title="Options" footer="Context size is how much text the model can read at once. Setting it to the model's maximum lets it use the most history, but local models get slower. With Ollama, the context size must also be set on the Ollama side, because this connection cannot set it.">
         <View style={{ padding: 12, gap: 10 }}>

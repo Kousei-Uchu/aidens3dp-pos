@@ -65,7 +65,8 @@ what the model is allowed to see depends on whether the address counts as local.
 
 - **Local or remote.** Local means this device, the private ranges (`10.x.x.x`, `172.16.x.x` to `172.31.x.x`,
   `192.168.x.x`), `127.x.x.x`, `::1`, `localhost` and `.local` names. Everything else, and anything the app cannot
-  read, is remote. A manual "Treat this address as local" switch can only make an address local. The code is
+  read, is remote. An Auto / Local / Remote setting (patch 0149) lets the owner force the class either way, so a
+  tunnel on a private looking address can be forced remote. The code is
   `classifyEndpoint` in `src/lib/assistantConfig.ts`.
 - **Data rules.** Personal data (customer details, emails) and gift card balances go only to a local address. Payment
   information and anything that looks like a key or password never go anywhere. The full table is in

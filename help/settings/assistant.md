@@ -37,7 +37,7 @@ The message says what went wrong: the server could not be reached, the request t
 ### Local or remote
 Under the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.
 
-The assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. The switch **Treat this address as local** is for a private network the app does not recognise, and can only make an address local. Do not turn it on for a tunnel or proxy that forwards out of your network.
+The assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. Below that is a three way choice. **Auto** follows the address, and is right for nearly everyone. **Local** is for a private network the app does not recognise. **Remote** is for a tunnel or proxy that forwards out of your network, even when its address looks private. If you are not sure, choose Remote: it only means less is shared with the model. When you choose Local or Remote, the page adds *(set by you)* to the line above.
 
 ### Options
 - **Temperature** is how adventurous the model's wording is. Low is steadier.
