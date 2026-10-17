@@ -10,6 +10,7 @@ import { digitsToCents, fmt } from '../lib/money';
 import { NativeSegmented, NativeSlider, NativeSwitch, hasSwiftUI } from './native';
 import { noteActivity } from '../lib/idle';
 import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
+import ScannerKeyboardHint from './ScannerKeyboardHint';
 import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
 import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
 import { sheetMaxHeight } from '../lib/keyboardMath';
@@ -102,16 +103,18 @@ export function Segmented<T extends string | number>({ value, options, onChange 
       <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: Math.round(14 * k * 2) / 2, textAlign: 'center' }}>{o.label}</Text></Pressable>))}</View>;
 }
 /** `kind` picks the keyboard + capitalisation + autocorrect for the data (see lib/fieldKinds.ts); explicit props override it. */
-export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
-  const { c } = useTheme(); const has = useRef(false); const input = useRef<TextInput>(null); const reveal = useReveal(); const accId = useId();
+export function Field({ label, style, onFocus, onBlur, onChangeText, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
+  const { c } = useTheme(); const has = useRef(false); const [hintFrom, setHintFrom] = useState<number | null>(null); // set while focused: when the field was focused or last typed in
+  const input = useRef<TextInput>(null); const reveal = useReveal(); const accId = useId();
   const preset = kind ? KIND_PROPS[kind] : {};
   const doneBar = Platform.OS === 'ios' && needsDoneBar(kind, p.keyboardType);
   // Tell the focus guard when this field is being typed in so the Bluetooth-scanner capture input leaves it alone.
-  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } reveal?.reveal(input.current); onFocus?.(e); };
-  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } reveal?.reveal(null); onBlur?.(e); };
+  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } setHintFrom(Date.now()); reveal?.reveal(input.current); onFocus?.(e); };
+  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } setHintFrom(null); reveal?.reveal(null); onBlur?.(e); };
   useEffect(() => () => { if (has.current) { has.current = false; fieldBlurred(); } }, []); // unmounted while focused: onBlur never fires
   return <View style={{ marginBottom: 12 }}>{label ? <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>{label}</Txt> : null}
-    <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
+    <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} onChangeText={t => { if (has.current) setHintFrom(Date.now()); onChangeText?.(t); }} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
+    {hintFrom !== null ? <ScannerKeyboardHint idleSince={hintFrom} /> : null}
     {doneBar ? <InputAccessoryView nativeID={accId}><View style={{ flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 8 }}><Btn title="Done" kind="ghost" small onPress={() => Keyboard.dismiss()} /></View></InputAccessoryView> : null}</View>;
 }
 /** `disabled` greys the switch out and ignores taps (used for features that are not available yet). */

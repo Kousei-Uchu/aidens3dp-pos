@@ -1,0 +1,167 @@
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 2ba7831..a044fbe 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -143,6 +143,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0141 | 2026-10-17 | Grid and status bar (your request, not on the checklist). **Grid:** the Qty ×1/×2/×3/×5/×10 chips, their Simple-mode hint (`qtyHint`), the Reader/Sync pills under the tabs (`StatusStrip`) and the logo and shop name above the search bar are gone from Checkout; more than one is now a repeat tap or **−/+** on the cart line. **Top bar** (`src/ui/AppStatusBar.tsx`): now shows time, **shop logo and name**, register name, a **Reader chip** and a **Sync chip** (same wording and colours the strip used; an amber or red one still opens the page that explains it) and battery. **Screensaver:** the same bar is drawn across the top of the saver (`interactive={false}`, saver colours), so it stays up while the saver is. **Double bar:** the screensaver is a full-screen window, and opening or closing one can bring the iOS bar back, which pushed our bar down (its top padding is the safe-area inset). Three guards: `UIStatusBarHidden` and `UIViewControllerBasedStatusBarAppearance=false` in `app.json` (needs `npm run ios:reset` or a prebuild to reach the native project); the saver re-hides the iOS bar as it appears, goes, and 450 ms later; and the bar keeps the smallest top inset it has seen per orientation (`src/lib/statusInset.ts`, `tests/statusinset.test.ts`) so a returning iOS bar cannot push it down. Help pages `sales` and `staff/screensaver` updated, `help.json` rebuilt. Cause of the double bar is my best reading, not confirmed on a device (see T46) | your request |
+ | 0142 | 2026-10-17 | Cart warnings (your request, finishing the half-built feature from 0141). **Settings ▸ Cart warnings** (`CartWarningsSettings.tsx`, moved out of `Settings.tsx`): add, edit, delete and switch on or off warnings, each with a header (blank = *Customer Warning*), a message, **Show on every sale**, **Cashier must tick it**, and what it is for: a **Variation**, **Product** or **Category** (a Shopify collection), chosen from a searchable list (the first version listed only the first 50 variations and repeated products). **Charge** (`CartPane.tsx`, and `GuidedCheckout.tsx` for Minimal mode) now opens **Customer warning** first, before the price adjustment review and the bundle check: one page per warning with **Next** and **Back**, the items that set it off, and a tick on warnings that need one. **Continue to payment** is on the last page and stays off until every warning that needs ticking has been ticked (the first version only checked the page on screen). A warning already carried on from is not asked again on the same sale unless its text or its lines change; always-show warnings come up on every Charge; a part-paid sale skips them. Warnings are shared to every register with the other shared settings (`pushSharedSettings`), and Training's sandbox sets none (`sandboxSettings`). New `warning.back`, `warning.next`, `warning.ack` and `warning.continue` spots, `sheet_cart_warnings` on the navgraph (`graph:build` rerun). `category` is kept as another name for `collection`. New help page `sales/cart-warnings` (Pay and Settings pages link to it; `help.json` rebuilt). New `tests/cartwarnings.test.ts`. Device test T47. Not added: a Training module for it, and a way to reorder warnings (they show in the order added) | your request |
+ | 0143 | 2026-10-17 | Unlisted products (your request). A product marked **Unlisted** in Shopify was imported as not sellable and showed as Draft, so it vanished from the grid, search and the default Inventory view. **Active and Unlisted** products are now sold and shown; **Draft and Archived** are still kept only for Inventory's status filters. New `src/lib/productStatus.ts` (`parseProductStatus`, `isSellableStatus`) is used by `fetchVariants` in `src/lib/shopify/catalogue.ts` and by Inventory's Active filter; `Variant.status` gains `UNLISTED`, and an unlisted row says *unlisted* under its name. An unrecognised status is treated as not sellable. Needs a catalogue re-import (Settings ▸ Shopify) to fix products already imported. Help pages `stock` and `stock/inventory` updated, `help.json` rebuilt. New `tests/productstatus.test.ts` | your request |
++| 0144 | 2026-10-17 | Scanner keyboard tip (your request, not on the checklist). In any text field except the hidden HID scanner input, when no on-screen keyboard is up (a hardware keyboard or HID scanner is connected) and the field has sat untouched for 4 seconds, a small tip appears under it: "Double-click the scanner trigger to show the keyboard". It goes after 7 seconds or a tap, typing restarts the wait, and tips are at least 90 seconds apart. Not shown in training. `src/lib/scannerKeyboardHint.ts` (timing rules, tested), `src/ui/ScannerKeyboardHint.tsx`, `Field` in `kit.tsx`. Needs your iPad and scanner to confirm the hardware-keyboard detection | - |
+ 
+ 
+ ---
+diff --git a/src/lib/scannerKeyboardHint.ts b/src/lib/scannerKeyboardHint.ts
+new file mode 100644
+index 0000000..4e8d40b
+--- /dev/null
++++ b/src/lib/scannerKeyboardHint.ts
+@@ -0,0 +1,35 @@
++// Location: src/lib/scannerKeyboardHint.ts
++// When a hardware keyboard (a Bluetooth HID scanner pairs as one) is connected, iOS and Android keep the on-screen keyboard hidden,
++// so a person focused in a text field sees no keyboard. After a short quiet spell we remind them that double-clicking the
++// scanner's trigger brings the keyboard up. Pure timing rules: no React / RN imports, unit-tested.
++
++/** Quiet time (no typing) after focusing a field, or after the last keystroke, before the tip appears. */
++export const HINT_IDLE_MS = 4000;
++/** How long the tip stays up before it goes away by itself. */
++export const HINT_SHOW_MS = 7000;
++/** Minimum gap between two tips, so moving between fields never nags. */
++export const HINT_COOLDOWN_MS = 90_000;
++/** Points of screen the keyboard may cover and still count as "hidden". A hardware keyboard leaves at most a shortcut/Done bar (about 50-70pt). */
++export const SOFT_KEYBOARD_MIN_OVERLAP = 120;
++
++export const TIP_TEXT = 'Double-click the scanner trigger to show the keyboard';
++
++let lastShownAt: number | null = null;
++export const markHintShown = (now = Date.now()): void => { lastShownAt = now; };
++/** Test helper. */
++export const resetHintCooldown = (): void => { lastShownAt = null; };
++
++/** True when a field is focused but the on-screen keyboard is not up (the sign of a connected hardware keyboard). */
++export const softKeyboardHidden = (overlap: number): boolean => !(overlap >= SOFT_KEYBOARD_MIN_OVERLAP);
++
++/**
++ * Milliseconds until the tip is due, or null when it should not show at all (the on-screen keyboard is up, so the person can type).
++ * `idleSince`: when the field was focused or last typed in. 0 means due now.
++ */
++export function hintDueIn(o: { now: number; idleSince: number; overlap: number; lastShown?: number | null }): number | null {
++  if (!softKeyboardHidden(o.overlap)) return null;
++  const last = o.lastShown === undefined ? lastShownAt : o.lastShown;
++  const idleLeft = o.idleSince + HINT_IDLE_MS - o.now;
++  const coolLeft = last == null ? 0 : last + HINT_COOLDOWN_MS - o.now;
++  return Math.max(0, idleLeft, coolLeft);
++}
+diff --git a/src/ui/ScannerKeyboardHint.tsx b/src/ui/ScannerKeyboardHint.tsx
+new file mode 100644
+index 0000000..b2aa04b
+--- /dev/null
++++ b/src/ui/ScannerKeyboardHint.tsx
+@@ -0,0 +1,36 @@
++// Location: src/ui/ScannerKeyboardHint.tsx
++// The tip under a focused text field: "Double-click the scanner trigger to show the keyboard". Rendered by <Field> only while it has focus
++// (so it also appears inside windows, which are separate native layers), and never by the hidden scanner input. See lib/scannerKeyboardHint.ts.
++// Plain React Native views: kit.tsx imports this file.
++import React, { useEffect, useState } from 'react';
++import { AccessibilityInfo, Pressable, Text, View } from 'react-native';
++import { useKeyboardOverlap } from './keyboard';
++import { isTraining } from '../lib/trainingGuard';
++import { HINT_SHOW_MS, TIP_TEXT, hintDueIn, markHintShown } from '../lib/scannerKeyboardHint';
++
++/** `idleSince` changes on focus and on every keystroke, which restarts the quiet spell and hides a tip that is showing. */
++export default function ScannerKeyboardHint({ idleSince }: { idleSince: number }) {
++  const overlap = useKeyboardOverlap(); const [shown, setShown] = useState(false);
++  useEffect(() => {
++    setShown(false);
++    if (isTraining()) return undefined; // practice has its own guidance and no real scanner
++    const due = hintDueIn({ now: Date.now(), idleSince, overlap });
++    if (due === null) return undefined;
++    let hide: ReturnType<typeof setTimeout> | undefined;
++    const show = setTimeout(() => {
++      markHintShown(); setShown(true);
++      try { AccessibilityInfo.announceForAccessibility(TIP_TEXT); } catch { /* not announced */ }
++      hide = setTimeout(() => setShown(false), HINT_SHOW_MS);
++    }, due);
++    return () => { clearTimeout(show); if (hide) clearTimeout(hide); };
++  }, [idleSince, overlap]);
++  if (!shown) return null;
++  return (
++    <View pointerEvents="box-none" style={{ position: 'absolute', top: '100%', left: 0, right: 0, marginTop: -6, alignItems: 'center', zIndex: 50, elevation: 6 }}>
++      <Pressable onPress={() => setShown(false)} accessibilityRole="button" accessibilityLabel={`${TIP_TEXT}. Tap to dismiss.`} hitSlop={8}
++        style={{ backgroundColor: '#111', paddingHorizontal: 16, paddingVertical: 9, borderRadius: 999, maxWidth: '100%' }}>
++        <Text style={{ color: '#fff', fontWeight: '600', fontSize: 13, textAlign: 'center' }}>{TIP_TEXT}</Text>
++      </Pressable>
++    </View>
++  );
++}
+diff --git a/src/ui/kit.tsx b/src/ui/kit.tsx
+index 0e74846..1473b4e 100644
+--- a/src/ui/kit.tsx
++++ b/src/ui/kit.tsx
+@@ -10,6 +10,7 @@ import { digitsToCents, fmt } from '../lib/money';
+ import { NativeSegmented, NativeSlider, NativeSwitch, hasSwiftUI } from './native';
+ import { noteActivity } from '../lib/idle';
+ import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
++import ScannerKeyboardHint from './ScannerKeyboardHint';
+ import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
+ import { RevealScroll, useKeyboardOverlap, useReveal } from './keyboard';
+ import { sheetMaxHeight } from '../lib/keyboardMath';
+@@ -102,16 +103,18 @@ export function Segmented<T extends string | number>({ value, options, onChange
+       <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: Math.round(14 * k * 2) / 2, textAlign: 'center' }}>{o.label}</Text></Pressable>))}</View>;
+ }
+ /** `kind` picks the keyboard + capitalisation + autocorrect for the data (see lib/fieldKinds.ts); explicit props override it. */
+-export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
+-  const { c } = useTheme(); const has = useRef(false); const input = useRef<TextInput>(null); const reveal = useReveal(); const accId = useId();
++export function Field({ label, style, onFocus, onBlur, onChangeText, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
++  const { c } = useTheme(); const has = useRef(false); const [hintFrom, setHintFrom] = useState<number | null>(null); // set while focused: when the field was focused or last typed in
++  const input = useRef<TextInput>(null); const reveal = useReveal(); const accId = useId();
+   const preset = kind ? KIND_PROPS[kind] : {};
+   const doneBar = Platform.OS === 'ios' && needsDoneBar(kind, p.keyboardType);
+   // Tell the focus guard when this field is being typed in so the Bluetooth-scanner capture input leaves it alone.
+-  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } reveal?.reveal(input.current); onFocus?.(e); };
+-  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } reveal?.reveal(null); onBlur?.(e); };
++  const gotFocus: TextInputProps['onFocus'] = e => { if (!has.current) { has.current = true; fieldFocused(); } setHintFrom(Date.now()); reveal?.reveal(input.current); onFocus?.(e); };
++  const lostFocus: TextInputProps['onBlur'] = e => { if (has.current) { has.current = false; fieldBlurred(); } setHintFrom(null); reveal?.reveal(null); onBlur?.(e); };
+   useEffect(() => () => { if (has.current) { has.current = false; fieldBlurred(); } }, []); // unmounted while focused: onBlur never fires
+   return <View style={{ marginBottom: 12 }}>{label ? <Txt size={13} sub weight="600" style={{ marginBottom: 4 }}>{label}</Txt> : null}
+-    <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
++    <TextInput ref={input} placeholderTextColor={c.sub} {...(preset as TextInputProps)} {...p} inputAccessoryViewID={doneBar ? accId : undefined} onFocus={gotFocus} onBlur={lostFocus} onChangeText={t => { if (has.current) setHintFrom(Date.now()); onChangeText?.(t); }} style={[{ backgroundColor: c.fill, color: c.text, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 16 }, style]} />
++    {hintFrom !== null ? <ScannerKeyboardHint idleSince={hintFrom} /> : null}
+     {doneBar ? <InputAccessoryView nativeID={accId}><View style={{ flexDirection: 'row', justifyContent: 'flex-end', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, paddingHorizontal: 8 }}><Btn title="Done" kind="ghost" small onPress={() => Keyboard.dismiss()} /></View></InputAccessoryView> : null}</View>;
+ }
+ /** `disabled` greys the switch out and ignores taps (used for features that are not available yet). */
+diff --git a/tests/scannerkeyboardhint.test.ts b/tests/scannerkeyboardhint.test.ts
+new file mode 100644
+index 0000000..a174fa5
+--- /dev/null
++++ b/tests/scannerkeyboardhint.test.ts
+@@ -0,0 +1,30 @@
++// Location: tests/scannerkeyboardhint.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { HINT_COOLDOWN_MS, HINT_IDLE_MS, SOFT_KEYBOARD_MIN_OVERLAP, hintDueIn, markHintShown, resetHintCooldown, softKeyboardHidden } from '../src/lib/scannerKeyboardHint';
++
++test('no on-screen keyboard (or just a Done bar) counts as a hardware keyboard', () => {
++  assert.equal(softKeyboardHidden(0), true);
++  assert.equal(softKeyboardHidden(60), true);
++  assert.equal(softKeyboardHidden(SOFT_KEYBOARD_MIN_OVERLAP), false);
++  assert.equal(softKeyboardHidden(340), false);
++  assert.equal(softKeyboardHidden(NaN), true);
++});
++test('due after the quiet spell, counted from focus or the last keystroke', () => {
++  resetHintCooldown();
++  assert.equal(hintDueIn({ now: 1000, idleSince: 1000, overlap: 0 }), HINT_IDLE_MS);
++  assert.equal(hintDueIn({ now: 3000, idleSince: 1000, overlap: 0 }), HINT_IDLE_MS - 2000);
++  assert.equal(hintDueIn({ now: 1000 + HINT_IDLE_MS + 500, idleSince: 1000, overlap: 0 }), 0);
++});
++test('never due while the on-screen keyboard is up', () => {
++  resetHintCooldown(); assert.equal(hintDueIn({ now: 5000, idleSince: 0, overlap: 300 }), null);
++});
++test('cooldown holds back a second tip', () => {
++  resetHintCooldown(); markHintShown(10_000);
++  assert.equal(hintDueIn({ now: 20_000, idleSince: 0, overlap: 0 }), 10_000 + HINT_COOLDOWN_MS - 20_000);
++  assert.equal(hintDueIn({ now: 10_000 + HINT_COOLDOWN_MS, idleSince: 0, overlap: 0 }), 0);
++});
++test('an explicit lastShown overrides the stored one', () => {
++  resetHintCooldown(); markHintShown(10_000);
++  assert.equal(hintDueIn({ now: 20_000, idleSince: 20_000, overlap: 0, lastShown: null }), HINT_IDLE_MS);
++});
