@@ -5,7 +5,7 @@ parent: settings
 summary: Keep the iPad awake or show a branded idle screen, with a shorter wait when the register is logged out.
 tags: [screensaver, idle, keep awake, logo, display, iPad, auto-lock, background]
 related: [settings, staff, staff/modes]
-updated: 2026-10-11
+updated: 2026-10-17
 ---
 Open **More ▸ Settings ▸ Screensaver & display** to stop the iPad sleeping or show a logo screen when the register is idle. Aiden’s 3D Printing logo and plum background are supplied as defaults; you can replace the logo or colour. These choices are for this iPad, not a staff member's display mode.
 
@@ -30,6 +30,8 @@ Use **Logo link (https)** for a secure image URL, or tap **Upload an image from 
 - When the register is logged out and the shorter wait is enabled, the screensaver uses the shorter of the logged-out wait and normal idle time.
 - It never covers the screen while a card payment is waiting on the reader.
 
+The bar along the top of the screen (time, shop, reader and sync chips, battery) stays on screen while the screensaver shows, in the screensaver's colours. Touching it wakes the screen like touching anywhere else.
+
 The idle timer resets when someone touches the app, types or scans. The screensaver and Keep iPad awake settings belong to this device; they do not follow the staff member to another register.
 
 ## Advanced
@@ -49,6 +51,7 @@ flowchart TD
 | Job | Where |
 |---|---|
 | Screensaver timing and UI | `src/ui/Screensaver.tsx` |
+| The bar along the top, shown in the app and over the screensaver | `AppStatusBar` in `src/ui/AppStatusBar.tsx` |
 | Idle timer | `idleMs`, `noteActivity` in `src/lib/idle.ts` |
 | Show timing, colours and logo source | `shouldShowScreensaver`, `normaliseHex`, `logoSource` in `src/lib/screensaver.ts` |
 | Screensaver settings panel | `DisplaySettings` in `src/screens/Settings.tsx` |

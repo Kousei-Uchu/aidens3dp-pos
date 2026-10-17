@@ -5,7 +5,7 @@ parent: start
 summary: Adding items to a sale: the Quick Menu grid, All products, the keypad, search, scanning, and the cart.
 tags: [checkout, sell, grid, scan, search, keypad]
 related: [sales/cart-and-prices]
-updated: 2026-10-11
+updated: 2026-10-17
 ---
 Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.
 
@@ -23,7 +23,7 @@ On the Quick Menu, a tile that opens a **category** takes you into it. The bar a
 If a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with "stock will go negative".
 
 ### Adding more than one
-Pick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count applies to that one item and then goes back to ×1.
+Tap the item again for each one (the same item joins the same cart line), or change the number on its line in the cart with **−** and **+**. There is no quantity picker on the grid.
 
 ### Other ways to find things
 - **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.
@@ -33,8 +33,8 @@ Pick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count a
 ### The cart
 On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
 
-### The strip under the search bar
-On an iPad it always shows **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red button instead ("Reader issue", "Offline · 2 queued", "Sync issue"). Tap it to go to the page that explains it. On a phone the strip only appears when there is a problem.
+### The bar along the top
+The bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.
 
 ### When you cannot change the cart
 Once part of a sale has been paid, the cart is locked and you see "Payment in progress". Finish the payment or cancel it first.
@@ -92,8 +92,7 @@ flowchart TD
 | Job | Where |
 |---|---|
 | The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |
-| The status strip | `StatusStrip` in the same file |
-| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |
+| The bar along the top (clock, shop, reader and sync chips, battery) | `src/ui/AppStatusBar.tsx` |
 | Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |
 | The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |
 | Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |

@@ -1,10 +1,10 @@
 // Location: src/screens/Settings.tsx
-import React, { useEffect, useState } from 'react';
-import { Image, Linking, Pressable, Share, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Image, Linking, Pressable, ScrollView, Share, View } from 'react-native';
 import * as DocPicker from 'expo-document-picker';
 import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Slider, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, Chip, Empty, Field, Page, Row, Section, Segmented, Sheet, Slider, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
@@ -21,22 +21,23 @@ import { BundlesEditor } from './BundleBuilder';
 import { HidScanner } from './Scanner';
 import { SquareHistorySettings } from './SquareHistory';
 import { useCashProfile } from '../state/cashProfile';
+import { useCatalogue } from '../state/selectors';
 import { profileNote } from '../lib/changeScore';
 import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
 import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
 
-type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about';
+type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings';
 const HELP_PAGE: Record<Sub, string> = {
   menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
   data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
-  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start',
+  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'settings'
 };
 
 export default function Settings() {
   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
-  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About' };
+  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings' };
   return (
     <Page title={titles[sub]} onBack={back} helpId={HELP_PAGE[sub]}>
       {sub === 'menu' ? <>
@@ -48,6 +49,7 @@ export default function Settings() {
           <Row icon="document-text-outline" title="Data" sub="Export CSV · delete local history" onPress={() => setSub('data')} />
           <Row icon="archive-outline" title="Square history" sub="Import old Square sales for reports" onPress={() => setSub('square')} />
           <Row icon="grid-outline" title="Grid import / export" onPress={() => setSub('grid')} />
+          <Row icon="warning-outline" title="Cart warnings" sub="Prompts when certain items or categories are in cart" onPress={() => setSub('warnings')} />
           <Row icon="gift-outline" title="Gift cards" onPress={() => setSub('gift')} />
           <Row icon="receipt-outline" title="Receipts" sub={s.receipt.serverUrl ? (s.receipt.gstRegistered ? 'Tax invoices · QR link' : 'Receipts · QR link') : 'Not set up'} onPress={() => setSub('receipts')} />
           <Row icon="swap-horizontal-outline" title="Backup & transfer" sub="Move settings and logins to another device" onPress={() => setSub('backup')} />
@@ -100,9 +102,107 @@ export default function Settings() {
           <Toggle label="Show item name" value={s.itemSpotlight.name} onChange={name => patch({ itemSpotlight: { ...s.itemSpotlight, name } })} />
           <Toggle label="Show item image" value={s.itemSpotlight.image} onChange={image => patch({ itemSpotlight: { ...s.itemSpotlight, image } })} />
         </Section></View> : null}
+      {sub === 'warnings' ? <CartWarningsSettings /> : null}
       {sub === 'about' ? <Section><Row title="Register" sub={`${s.registerName} · ${s.registerId}`} /><Row title="Shopify API" sub="2026-07" /><Row title="Currency" sub="AUD" last /></Section> : null}
       {sub === 'about' ? <View style={{ padding: 16 }}><Field kind="name" label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
     </Page>
+  );
+}
+
+
+function CartWarningsSettings() {
+  const s = useApp(st => st.settings);
+  const patch = useApp(st => st.patchSettings);
+  const cat = useCatalogue();
+  const [sheet, setSheet] = useState<'none' | 'add'>('none');
+  const [edit, setEdit] = useState<any>(null);
+  const warnings = s.cartWarnings ?? [];
+
+  const addWarning = (w: any) => {
+    const nw = { ...w, id: w.id ?? Date.now().toString() };
+    patch({ cartWarnings: [...warnings, nw] });
+    setSheet('none');
+  };
+  const updateWarning = (w: any) => {
+    patch({ cartWarnings: warnings.map(x => x.id === w.id ? w : x) });
+    setEdit(null);
+  };
+  const removeWarning = (id: string) => {
+    patch({ cartWarnings: warnings.filter(x => x.id !== id) });
+  };
+
+  return (
+    <View style={{ padding: 16 }}>
+      <Txt size={13} sub>Configure prompts that appear when certain items/categories are in the cart when charging.</Txt>
+      {warnings.length === 0 ? (
+        <Empty title="No warnings" sub="Add a warning to trigger prompts for specific items or categories." />
+      ) : (
+        warnings.map(w => (
+          <Card key={w.id} style={{ padding: 12, marginTop: 10, gap: 6 }}>
+            <Row title={w.title || 'Warning'} sub={`${w.scope}: ${w.targetId}`} right={<View style={{ flexDirection: 'row', gap: 4 }}>
+              <Btn title="Edit" small kind="secondary" onPress={() => setEdit(w)} />
+              <Btn title="Delete" small kind="danger" onPress={() => removeWarning(w.id)} />
+            </View>} last />
+            <Txt size={12} sub numberOfLines={2}>{w.body}</Txt>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {w.alwaysShow ? <Chip label="Always show" active /> : null}
+              {w.requireAcknowledgement ? <Chip label="Require ack" active /> : null}
+            </View>
+          </Card>
+        ))
+      )}
+      <Btn title="Add warning" icon="add" onPress={() => setSheet('add')} style={{ marginTop: 12 }} />
+      <Sheet visible={sheet === 'add'} onClose={() => setSheet('none')} title="Add cart warning">
+        <WarningEditor onSave={addWarning} onCancel={() => setSheet('none')} />
+      </Sheet>
+      <Sheet visible={!!edit} onClose={() => setEdit(null)} title="Edit cart warning">
+        {edit ? <WarningEditor initial={edit} onSave={updateWarning} onCancel={() => setEdit(null)} /> : null}
+      </Sheet>
+    </View>
+  );
+}
+
+function WarningEditor({ initial, onSave, onCancel }: { initial?: any; onSave: (w: any) => void; onCancel: () => void }) {
+  const cat = useCatalogue();
+  const [w, setW] = useState<any>({
+    id: initial?.id,
+    enabled: initial?.enabled ?? true,
+    title: initial?.title ?? 'Customer Warning',
+    body: initial?.body ?? '',
+    scope: initial?.scope ?? 'product',
+    targetId: initial?.targetId ?? '',
+    alwaysShow: initial?.alwaysShow ?? false,
+    requireAcknowledgement: initial?.requireAcknowledgement ?? false,
+    order: initial?.order ?? 0,
+  });
+  const items = useMemo(() => cat.list.slice(0, 50), [cat.list]);
+  const collections = cat.collections;
+  return (
+    <View style={{ gap: 10 }}>
+      <Field kind="name" label="Header/Title" value={w.title} onChangeText={t => setW({ ...w, title: t })} />
+      <Field kind="text" label="Body text" value={w.body} onChangeText={t => setW({ ...w, body: t })} multiline numberOfLines={4} style={{ minHeight: 80 }} />
+      <Txt size={13} sub weight="600">Scope</Txt>
+      <Segmented value={w.scope} onChange={v => setW({ ...w, scope: v })} options={[{ v: 'variant', label: 'Variant' }, { v: 'product', label: 'Product' }, { v: 'collection', label: 'Collection' }, { v: 'category', label: 'Category' }]} />
+      <Txt size={13} sub weight="600">Target</Txt>
+      <ScrollView style={{ maxHeight: 200 }}>
+        {w.scope === 'variant' && items.map((v: any) => (
+          <Row key={v.id} title={`${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}`} sub={v.id} onPress={() => setW({ ...w, targetId: v.id })} last={false} />
+        ))}
+        {w.scope === 'product' && items.map((v: any) => (
+          <Row key={v.productId} title={v.productTitle} sub={v.productId} onPress={() => setW({ ...w, targetId: v.productId })} last={false} />
+        ))}
+        {(w.scope === 'collection' || w.scope === 'category') && collections.map((c: any) => (
+          <Row key={c.id} title={c.title} sub={c.id} onPress={() => setW({ ...w, targetId: c.id })} last={false} />
+        ))}
+      </ScrollView>
+      <Field kind="code" label="Target ID" value={w.targetId} onChangeText={t => setW({ ...w, targetId: t })} />
+      <Toggle label="Always show" value={w.alwaysShow} onChange={v => setW({ ...w, alwaysShow: v })} />
+      <Toggle label="Require acknowledgement before continuing" value={w.requireAcknowledgement} onChange={v => setW({ ...w, requireAcknowledgement: v })} />
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        <Btn title="Cancel" kind="secondary" onPress={onCancel} style={{ flex: 1 }} />
+        <Btn title="Save" onPress={() => onSave(w)} style={{ flex: 1 }} disabled={!w.targetId || !w.body} />
+      </View>
+    </View>
   );
 }
 void TILE_COLORS;

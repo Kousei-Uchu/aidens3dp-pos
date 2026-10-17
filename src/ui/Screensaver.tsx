@@ -1,8 +1,10 @@
 // Location: src/ui/Screensaver.tsx
 // Idle screensaver (logo on a colour) and the keep-awake switch. Mounted once in App.tsx.
+// The app's own status bar is drawn across the top of the saver, so it stays on screen while the saver is up.
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Easing, Image, Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
-import { StatusBar } from 'expo-status-bar';
+import { setStatusBarHidden } from 'expo-status-bar';
+import AppStatusBar from './AppStatusBar';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useApp } from '../state/store';
 import { idleMs, noteActivity } from '../lib/idle';
@@ -53,18 +55,26 @@ export function ScreensaverLayer() {
   }, []);
   useEffect(() => setFailed(false), [ss.logoUrl, ss.logoFile]);
   const show = preview || idle;
+  // The iOS status bar is meant to stay hidden (App.tsx), but a full-screen window opening or closing can bring it back for a moment,
+  // which shoved the app's own bar down and left two bars. Hide it again as the saver appears and goes, and once more after the fade.
+  useEffect(() => {
+    setStatusBarHidden(true, 'none'); const t = setTimeout(() => setStatusBarHidden(true, 'none'), 450);
+    return () => clearTimeout(t);
+  }, [show]);
   const wake = () => { noteActivity(); setIdle(false); if (useApp.getState().saverPreview) useApp.getState().set({ saverPreview: false }); };
   const bg = normaliseHex(ss.bgColor) ?? '#111111'; const fg = contrastOn(bg); const src = failed ? null : logoSource(ss); const side = Math.min(width, height);
   return (
     <Modal visible={show} animationType="fade" supportedOrientations={['portrait', 'landscape']} onRequestClose={wake}>
-      <Pressable onPress={wake} accessibilityRole="button" accessibilityLabel="Wake screen" style={{ flex: 1, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-        <StatusBar hidden />
+      <Pressable onPress={wake} accessibilityRole="button" accessibilityLabel="Wake screen" style={{ flex: 1, backgroundColor: bg }}>
+        <AppStatusBar interactive={false} tone={{ bg, fg }} />
+        <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
         <Drifter enabled={ss.drift}>
           {src ? <Image source={src} resizeMode="contain" onError={() => setFailed(true)} style={{ width: side * 0.55, height: side * 0.4 }} accessibilityIgnoresInvertColors />
             : <Text style={{ color: fg, fontSize: 44, fontWeight: '700', textAlign: 'center', maxWidth: side * 0.8 }}>{shopName || 'Point of sale'}</Text>}
           {ss.showClock ? <Clock color={fg} /> : null}
         </Drifter>
         <Text style={{ position: 'absolute', bottom: 28, color: fg, opacity: 0.4, fontSize: 14 }}>Tap to wake</Text>
+        </View>
       </Pressable>
     </Modal>
   );

@@ -4,7 +4,7 @@ Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified
 ## Layout & status
 - ✅ iPad grid left / cart right; iPhone grid + bottom cart bar ("N items · $X" + Charge) → full-screen cart; size class (width ≥ 700) decides, not model: `Checkout.tsx`, `CartPane.tsx`, `theme.useLayout`
 - ✅ Tab bar Checkout / Inventory / Transactions / Notifications / More: `App.tsx`
-- ✅ Status strip: reader + sync (iPad always, iPhone only on issue): `StatusStrip`
+- ✅ Reader + sync chips (iPad always, iPhone only on issue) live in the top bar with the shop logo and name, and stay up over the screensaver: `AppStatusBar`
 
 ## Setup
 - ✅ Settings ▸ Shopify (domain + Client ID/secret in Keychain), Import from Shopify: `Settings.tsx`, `sync.importFromShopify`

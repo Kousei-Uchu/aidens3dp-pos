@@ -1,0 +1,509 @@
+diff --git a/SPEC_CHECKLIST.md b/SPEC_CHECKLIST.md
+index 636c2e0..135f017 100644
+--- a/SPEC_CHECKLIST.md
++++ b/SPEC_CHECKLIST.md
+@@ -4,7 +4,7 @@ Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified
+ ## Layout & status
+ - ✅ iPad grid left / cart right; iPhone grid + bottom cart bar ("N items · $X" + Charge) → full-screen cart; size class (width ≥ 700) decides, not model: `Checkout.tsx`, `CartPane.tsx`, `theme.useLayout`
+ - ✅ Tab bar Checkout / Inventory / Transactions / Notifications / More: `App.tsx`
+-- ✅ Status strip: reader + sync (iPad always, iPhone only on issue): `StatusStrip`
++- ✅ Reader + sync chips (iPad always, iPhone only on issue) live in the top bar with the shop logo and name, and stay up over the screensaver: `AppStatusBar`
+ 
+ ## Setup
+ - ✅ Settings ▸ Shopify (domain + Client ID/secret in Keychain), Import from Shopify: `Settings.tsx`, `sync.importFromShopify`
+diff --git a/app.json b/app.json
+index 6dbf49c..5707cbe 100644
+--- a/app.json
++++ b/app.json
+@@ -16,6 +16,8 @@
+         "LSSupportsOpeningDocumentsInPlace": true,
+         "ITSAppUsesNonExemptEncryption": false,
+         "UIRequiresFullScreen": false,
++        "UIStatusBarHidden": true,
++        "UIViewControllerBasedStatusBarAppearance": false,
+         "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
+         "NSLocalNetworkUsageDescription": "Used once to copy your old Square sales history from your PC on the same Wi-Fi."
+       },
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 54bddac..5b4d831 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -556,3 +556,13 @@ On the iPad and on a phone. Use More ▸ Training ▸ Items and creating one.
+ 4. Check 1: change the Highland Cow Small's SKU, then add a new tracked product. Pass: the row keeps the new SKU and the new product joins the list.
+ 5. Check 2: the practice catalogue is seeded with a barcode that will not scan, so fix the Clearance Print's barcode and save it, then add a new tracked product.
+ 6. **Most important:** while signed in to the real shop, change a practice item and create one. Confirm nothing is sent to Shopify, the real catalogue is exactly as it was, and leaving the course restores the real till exactly as it was.
++
++## T46. Top bar, grid clean-up and screensaver (0141)
++
++On the iPad (rebuild the native project first so the new `app.json` keys apply: `npm run ios:reset`, then `npm run ios`) and on a phone.
++
++1. Checkout ▸ Quick Menu: there is no Qty row, no Reader/Sync pills under the tabs and no logo or shop name above the search bar. Tapping the same item twice gives a cart line of 2; **+** on the line also works.
++2. The top bar shows the time, the logo and shop name, the register name, **Reader ready**, **Synced** and the battery. On a phone **Reader ready** is hidden until the reader has a problem.
++3. Turn Wi-Fi off. The sync chip turns amber (Offline). Tap it: Notifications opens. Turn Wi-Fi on and it goes back to Synced.
++4. Settings ▸ Screensaver & display ▸ **Preview full screen** (or wait for the idle time). The top bar stays across the top of the saver, in the saver's colours, and the logo is not covered. Tapping anywhere, the bar included, wakes it.
++5. **Most important:** let the screensaver come on and go off five or six times (also once while signed out, once with a window such as a sheet open). Pass: the iOS bar never appears and the top bar never moves down or doubles. Tell me if it still happens, and whether it was when the saver opened, when it closed, or at some other time.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 6d07276..efb3cab 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -140,6 +140,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0138 | 2026-10-16 | Training (B6), tier 3, task course 6 of the plan: **When the internet is down** (`offline`, plan #24). The course starts offline (`startSync: 'offline'`) on Checkout, Notifications and More. Info covers what still works offline (cash, saving a cart, selling from local data) against what needs the internet (card, importing, receipt uploads), and the outbox. Show walks the Offline status bar, a cash sale, the outbox on Notifications, a stuck sale with Retry, then back online. Guide: take a cash sale offline, find it queued in Notifications, then push the queue from Support & diagnostics with Sync now. Check 1: take a cash sale offline and find it waiting. Check 2: an offline card says No internet, so take the sale by cash; a stuck sale is retried from Notifications without a second sale. New spots `tab.notifications`, `diagnostics.sync`, and the per-sale `outbox.retry:<id>`; new `startSync` module field, `outbox` injection and snapshot field, and a `train-` practice outbox fixture. `processOutbox` still short-circuits with no credentials, so a practice sale is never uploaded. Nothing real is touched. New `tests/trainingoffline.test.ts`. Device test T43 | B6 |
+ | 0139 | 2026-10-16 | Training (B6), tier 3, task course 7 of the plan: **Customers on file** (`customers-list`, plan #25). The course lives on Checkout and More (`tabs: ['checkout', 'more']`, route `customers`). Info explains the Customers page (what is on file, New customer and Edit, Start sale, the search box). Show walks More ▸ Customers, the search box, opening a row, Start sale landing on Checkout, then the New customer form and Save. Guide: open More ▸ Customers, open Sam Rivera's row, Edit, add a mobile, Save, then Start sale with Sam on it. Check 1: create a customer, then start a sale from the customer you made. Check 2: Sam's mobile is missing (fix it), and the till already has Priya's items (cart injection), so Start sale puts her on the sale that is there. New spots `more.customers` on More; `customers.new`, `customers.search` and the per-customer `customers.row:<id>` on the Customers page; `customers.start`, `customers.edit` in a customer's window; `customers.form`, `customers.save` in the New / Edit window. New `customers` and `customersDraft` snapshot fields and a `customersDraft` probe. The Customers page saves locally in practice (`train-cu-new-<time>` ids) and never calls Shopify. New `tests/trainingcustomerslist.test.ts`. Device test T44 | B6 |
+ | 0140 | 2026-10-16 | Training (B6), tier 4, task course 8 of the plan: **Items and creating one** (`items`, plan #27). The course lives on Checkout and More (`tabs: ['checkout', 'more']`, routes `items`, `createItem`, `editItem`). Info explains the catalogue, search, editing price/SKU/barcode/cost, and Create item. Show walks More ▸ Items, the search box, opening a row, changing the price and saving (Save to Shopify), then the Create item form. Guide: open More ▸ Items, open Bumble Bee, type a new price, Save to Shopify, then Create item with a name, a price and a starting stock. Check 1: change the Highland Cow Small's SKU, then add a new tracked product. Check 2: the practice catalogue is seeded with a barcode that will not scan (a new `items` injection), so it is fixed and saved, then a new tracked product is added. New spots: `more.items` on the More tab; `items.new`, `items.search` and the per-variant `items.row:<id>` on the Items page; `items.form`, `items.create` on the Create item page; `items.edit.form`, `items.edit.save` on the Edit item page. New `items` and `itemDraft` snapshot fields, an `itemDraft` probe, and an `items` injection. The Items page creates and edits locally in practice (`train-v-new-<time>` ids) and never calls Shopify. New `tests/trainingitems.test.ts`. Device test T45 | B6 |
++| 0141 | 2026-10-17 | Grid and status bar (your request, not on the checklist). **Grid:** the Qty ×1/×2/×3/×5/×10 chips, their Simple-mode hint (`qtyHint`), the Reader/Sync pills under the tabs (`StatusStrip`) and the logo and shop name above the search bar are gone from Checkout; more than one is now a repeat tap or **−/+** on the cart line. **Top bar** (`src/ui/AppStatusBar.tsx`): now shows time, **shop logo and name**, register name, a **Reader chip** and a **Sync chip** (same wording and colours the strip used; an amber or red one still opens the page that explains it) and battery. **Screensaver:** the same bar is drawn across the top of the saver (`interactive={false}`, saver colours), so it stays up while the saver is. **Double bar:** the screensaver is a full-screen window, and opening or closing one can bring the iOS bar back, which pushed our bar down (its top padding is the safe-area inset). Three guards: `UIStatusBarHidden` and `UIViewControllerBasedStatusBarAppearance=false` in `app.json` (needs `npm run ios:reset` or a prebuild to reach the native project); the saver re-hides the iOS bar as it appears, goes, and 450 ms later; and the bar keeps the smallest top inset it has seen per orientation (`src/lib/statusInset.ts`, `tests/statusinset.test.ts`) so a returning iOS bar cannot push it down. Help pages `sales` and `staff/screensaver` updated, `help.json` rebuilt. Cause of the double bar is my best reading, not confirmed on a device (see T46) | your request |
+ 
+ 
+ ---
+diff --git a/help/help.json b/help/help.json
+index bca0369..6023cac 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "ee30da2f",
++ "version": "edcc3471",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1083,12 +1083,12 @@
+    "related": [
+     "sales/cart-and-prices"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-10-17",
+    "lead": "Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.",
+    "sections": {
+-    "basic": "### The three ways to add items\nAt the top of the left side, pick one:\n- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.\n- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.\n- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a \"Custom amount\".\n\nOn the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.\n\n### Items with several variations\nIf a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with \"stock will go negative\".\n\n### Adding more than one\nPick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count applies to that one item and then goes back to ×1.\n\n### Other ways to find things\n- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.\n- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.\n- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.\n\n### The cart\nOn an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].\n\n### The strip under the search bar\nOn an iPad it always shows **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red button instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the strip only appears when there is a problem.\n\n### When you cannot change the cart\nOnce part of a sale has been paid, the cart is locked and you see \"Payment in progress\". Finish the payment or cancel it first.",
++    "basic": "### The three ways to add items\nAt the top of the left side, pick one:\n- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.\n- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.\n- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a \"Custom amount\".\n\nOn the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.\n\n### Items with several variations\nIf a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with \"stock will go negative\".\n\n### Adding more than one\nTap the item again for each one (the same item joins the same cart line), or change the number on its line in the cart with **−** and **+**. There is no quantity picker on the grid.\n\n### Other ways to find things\n- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.\n- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.\n- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.\n\n### The cart\nOn an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].\n\n### The bar along the top\nThe bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\\\"Reader issue\\\", \\\"Offline · 2 queued\\\", \\\"Sync issue\\\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.\n\n### When you cannot change the cart\nOnce part of a sale has been paid, the cart is locked and you see \"Payment in progress\". Finish the payment or cancel it first.",
+     "deep": "### Why a tap does different things\nA tile is one of several kinds: an item, a category, a display group, a discount, or an action (such as Custom amount, Lock POS, Price check, Stock check or Check change). Items and variations go into the cart; categories and groups open a level of the grid; discounts apply to the whole cart; actions open a sheet or do a job. Categories can contain categories to any depth.\n\n### What \"consolidate\" means\nBy default, adding the same item again raises the quantity on its existing line instead of making a second line. A line is **not** merged into if it has been changed in some way (its price adjusted, a discount put on it, or a note added), because merging would mix a special line with a normal one. This can be turned off in Settings (Checkout ▸ Consolidate identical items).\n\n### How scanning finds an item\nA barcode is compared after removing spaces and leading zeros, so a 12-digit UPC and a 13-digit EAN with a leading 0 match the same item. If no barcode matches, the scan is tried as an exact SKU. If nothing matches you see \"No item for …\".\n\n### Why the grid sometimes does not show an item you expect\nAn item that sits in both a sub-category and its parent category shows only in the sub-category. Items you pin yourself as tiles are never hidden by that rule.\n\n### Your cart is saved as you go\nEvery change to the cart is written to the device (after a very short delay), so closing the app does not lose it.",
+-    "advanced": "### What happens on a tap\n```mermaid\nflowchart TD\n  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]\n  A -->|one variant| B[add]\n  A -->|several variants| P[VariantPicker sub-page]\n  P -->|tap one| B\n  B --> L{cart locked? tenders present}\n  L -->|yes| X[alert: Payment in progress]\n  L -->|no| C[ops.addVariant: cartOps.ts]\n  C --> S[useApp setCart: store.ts]\n  S --> W[persist 'pos' to storage, 400 ms debounce]\n  S --> R[usePriced: selectors.ts]\n  R --> Q[priceCart: pricing.ts]\n  Q --> V[CartPane re-renders with the new totals]\n```\n\n### What happens on a scan\n```mermaid\nflowchart TD\n  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]\n  O --> B{isBadgeCode?}\n  B -->|yes| I[signInWithPass, cart unchanged]\n  B -->|no| F[ops.findByBarcode: barcode, then SKU]\n  F -->|found| A[add 1 of the variant]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge, Gift card]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |\n| The status strip | `StatusStrip` in the same file |\n| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |\n| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |\n| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |\n| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |\n| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |\n| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |\n\n### Reading the code for a fault\n- **A scan adds nothing and says \"No item\"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.\n- **A tap does nothing and shows \"Payment in progress\"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.\n- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.\n- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins)."
++    "advanced": "### What happens on a tap\n```mermaid\nflowchart TD\n  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]\n  A -->|one variant| B[add]\n  A -->|several variants| P[VariantPicker sub-page]\n  P -->|tap one| B\n  B --> L{cart locked? tenders present}\n  L -->|yes| X[alert: Payment in progress]\n  L -->|no| C[ops.addVariant: cartOps.ts]\n  C --> S[useApp setCart: store.ts]\n  S --> W[persist 'pos' to storage, 400 ms debounce]\n  S --> R[usePriced: selectors.ts]\n  R --> Q[priceCart: pricing.ts]\n  Q --> V[CartPane re-renders with the new totals]\n```\n\n### What happens on a scan\n```mermaid\nflowchart TD\n  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]\n  O --> B{isBadgeCode?}\n  B -->|yes| I[signInWithPass, cart unchanged]\n  B -->|no| F[ops.findByBarcode: barcode, then SKU]\n  F -->|found| A[add 1 of the variant]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge, Gift card]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |\n| The bar along the top (clock, shop, reader and sync chips, battery) | `src/ui/AppStatusBar.tsx` |\n| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |\n| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |\n| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |\n| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |\n| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |\n\n### Reading the code for a fault\n- **A scan adds nothing and says \"No item\"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.\n- **A tap does nothing and shows \"Payment in progress\"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.\n- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.\n- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins)."
+    }
+   },
+   {
+@@ -1673,12 +1673,12 @@
+     "staff",
+     "staff/modes"
+    ],
+-   "updated": "2026-10-11",
++   "updated": "2026-10-17",
+    "lead": "Open **More ▸ Settings ▸ Screensaver & display** to stop the iPad sleeping or show a logo screen when the register is idle. Aiden’s 3D Printing logo and plum background are supplied as defaults; you can replace the logo or colour. These choices are for this iPad, not a staff member's display mode.",
+    "sections": {
+     "basic": "### Keep the iPad awake\nTurn on **Keep iPad awake** to stop iOS from auto-locking or dimming while the POS is open. This is separate from the Screensaver switch. The app recommends leaving it on for a till and keeping the iPad plugged in.\n\n### Show an idle screen\nTurn on **Screensaver**, then choose **Show after** 1, 2, 5, 10 or 30 minutes. It shows a logo on a background colour; if there is no usable logo, it shows the shop name or **Point of sale**.\n\nTap the screen once to wake it. If the register was locked, waking the screen does not sign anyone in; use the PIN or cashier pass on the sign-in screen.\n\n### Set a logo\nUse **Logo link (https)** for a secure image URL, or tap **Upload an image from Files…**. PNG and JPG are supported; SVG files are not. An uploaded logo is stored on this iPad. You can choose a background swatch or enter a three- or six-digit hex colour, then tap **Preview full screen**.",
+-    "deep": "### Logged-out timing and other options\n- **Show when logged out** uses a shorter wait on the PIN screen. Choose **Logged-out wait** of 5, 15, 30 or 60 seconds.\n- **Slowly move the logo** drifts the image around the screen. **Show the time** adds a clock.\n- When the register is logged out and the shorter wait is enabled, the screensaver uses the shorter of the logged-out wait and normal idle time.\n- It never covers the screen while a card payment is waiting on the reader.\n\nThe idle timer resets when someone touches the app, types or scans. The screensaver and Keep iPad awake settings belong to this device; they do not follow the staff member to another register.",
+-    "advanced": "### Idle screen rules\n```mermaid\nflowchart TD\n  A[Check screensaver enabled and time idle] --> B{Card payment waiting}\n  B -->|yes| C[Keep the POS visible]\n  B -->|no| D{Logged out and short wait enabled}\n  D -->|yes| E[Use shorter of waits]\n  D -->|no| F[Use normal idle wait]\n  E --> G[Show screensaver when wait is reached]\n  F --> G\n```\n\n| Job | Where |\n|---|---|\n| Screensaver timing and UI | `src/ui/Screensaver.tsx` |\n| Idle timer | `idleMs`, `noteActivity` in `src/lib/idle.ts` |\n| Show timing, colours and logo source | `shouldShowScreensaver`, `normaliseHex`, `logoSource` in `src/lib/screensaver.ts` |\n| Screensaver settings panel | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Per-device settings default | `screensaver` in `src/state/store.ts` |\n| Tests | `tests/screensaver.test.ts` |\n\nThe Screensaver switch is off by default. **Keep iPad awake** is on by default. A card payment waiting on the reader suppresses the screensaver even when the idle time has elapsed."
++    "deep": "### Logged-out timing and other options\n- **Show when logged out** uses a shorter wait on the PIN screen. Choose **Logged-out wait** of 5, 15, 30 or 60 seconds.\n- **Slowly move the logo** drifts the image around the screen. **Show the time** adds a clock.\n- When the register is logged out and the shorter wait is enabled, the screensaver uses the shorter of the logged-out wait and normal idle time.\n- It never covers the screen while a card payment is waiting on the reader.\n\nThe bar along the top of the screen (time, shop, reader and sync chips, battery) stays on screen while the screensaver shows, in the screensaver's colours. Touching it wakes the screen like touching anywhere else.\n\nThe idle timer resets when someone touches the app, types or scans. The screensaver and Keep iPad awake settings belong to this device; they do not follow the staff member to another register.",
++    "advanced": "### Idle screen rules\n```mermaid\nflowchart TD\n  A[Check screensaver enabled and time idle] --> B{Card payment waiting}\n  B -->|yes| C[Keep the POS visible]\n  B -->|no| D{Logged out and short wait enabled}\n  D -->|yes| E[Use shorter of waits]\n  D -->|no| F[Use normal idle wait]\n  E --> G[Show screensaver when wait is reached]\n  F --> G\n```\n\n| Job | Where |\n|---|---|\n| Screensaver timing and UI | `src/ui/Screensaver.tsx` |\n| The bar along the top, shown in the app and over the screensaver | `AppStatusBar` in `src/ui/AppStatusBar.tsx` |\n| Idle timer | `idleMs`, `noteActivity` in `src/lib/idle.ts` |\n| Show timing, colours and logo source | `shouldShowScreensaver`, `normaliseHex`, `logoSource` in `src/lib/screensaver.ts` |\n| Screensaver settings panel | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Per-device settings default | `screensaver` in `src/state/store.ts` |\n| Tests | `tests/screensaver.test.ts` |\n\nThe Screensaver switch is off by default. **Keep iPad awake** is on by default. A card payment waiting on the reader suppresses the screensaver even when the idle time has elapsed."
+    }
+   },
+   {
+diff --git a/help/sales/index.md b/help/sales/index.md
+index d491678..074abf2 100644
+--- a/help/sales/index.md
++++ b/help/sales/index.md
+@@ -5,7 +5,7 @@ parent: start
+ summary: Adding items to a sale: the Quick Menu grid, All products, the keypad, search, scanning, and the cart.
+ tags: [checkout, sell, grid, scan, search, keypad]
+ related: [sales/cart-and-prices]
+-updated: 2026-10-11
++updated: 2026-10-17
+ ---
+ Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.
+ 
+@@ -23,7 +23,7 @@ On the Quick Menu, a tile that opens a **category** takes you into it. The bar a
+ If a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with "stock will go negative".
+ 
+ ### Adding more than one
+-Pick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count applies to that one item and then goes back to ×1.
++Tap the item again for each one (the same item joins the same cart line), or change the number on its line in the cart with **−** and **+**. There is no quantity picker on the grid.
+ 
+ ### Other ways to find things
+ - **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.
+@@ -33,8 +33,8 @@ Pick **×2**, **×3**, **×5** or **×10** first, then tap the item. The count a
+ ### The cart
+ On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
+ 
+-### The strip under the search bar
+-On an iPad it always shows **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red button instead ("Reader issue", "Offline · 2 queued", "Sync issue"). Tap it to go to the page that explains it. On a phone the strip only appears when there is a problem.
++### The bar along the top
++The bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.
+ 
+ ### When you cannot change the cart
+ Once part of a sale has been paid, the cart is locked and you see "Payment in progress". Finish the payment or cancel it first.
+@@ -92,8 +92,7 @@ flowchart TD
+ | Job | Where |
+ |---|---|
+ | The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |
+-| The status strip | `StatusStrip` in the same file |
+-| Quantity chips | `QTYS` in the same file; `setQty(1)` runs after each add |
++| The bar along the top (clock, shop, reader and sync chips, battery) | `src/ui/AppStatusBar.tsx` |
+ | Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |
+ | The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |
+ | Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |
+diff --git a/help/staff/screensaver.md b/help/staff/screensaver.md
+index 3287050..b88a306 100644
+--- a/help/staff/screensaver.md
++++ b/help/staff/screensaver.md
+@@ -5,7 +5,7 @@ parent: settings
+ summary: Keep the iPad awake or show a branded idle screen, with a shorter wait when the register is logged out.
+ tags: [screensaver, idle, keep awake, logo, display, iPad, auto-lock, background]
+ related: [settings, staff, staff/modes]
+-updated: 2026-10-11
++updated: 2026-10-17
+ ---
+ Open **More ▸ Settings ▸ Screensaver & display** to stop the iPad sleeping or show a logo screen when the register is idle. Aiden’s 3D Printing logo and plum background are supplied as defaults; you can replace the logo or colour. These choices are for this iPad, not a staff member's display mode.
+ 
+@@ -30,6 +30,8 @@ Use **Logo link (https)** for a secure image URL, or tap **Upload an image from
+ - When the register is logged out and the shorter wait is enabled, the screensaver uses the shorter of the logged-out wait and normal idle time.
+ - It never covers the screen while a card payment is waiting on the reader.
+ 
++The bar along the top of the screen (time, shop, reader and sync chips, battery) stays on screen while the screensaver shows, in the screensaver's colours. Touching it wakes the screen like touching anywhere else.
++
+ The idle timer resets when someone touches the app, types or scans. The screensaver and Keep iPad awake settings belong to this device; they do not follow the staff member to another register.
+ 
+ ## Advanced
+@@ -49,6 +51,7 @@ flowchart TD
+ | Job | Where |
+ |---|---|
+ | Screensaver timing and UI | `src/ui/Screensaver.tsx` |
++| The bar along the top, shown in the app and over the screensaver | `AppStatusBar` in `src/ui/AppStatusBar.tsx` |
+ | Idle timer | `idleMs`, `noteActivity` in `src/lib/idle.ts` |
+ | Show timing, colours and logo source | `shouldShowScreensaver`, `normaliseHex`, `logoSource` in `src/lib/screensaver.ts` |
+ | Screensaver settings panel | `DisplaySettings` in `src/screens/Settings.tsx` |
+diff --git a/src/lib/simpleLabels.ts b/src/lib/simpleLabels.ts
+index 772cc2b..e09e804 100644
+--- a/src/lib/simpleLabels.ts
++++ b/src/lib/simpleLabels.ts
+@@ -19,7 +19,6 @@ export const payHint = (m: PayMethod, explain: boolean): string | undefined => (
+ export const PAY_QUESTION = 'How is the customer paying?';
+ export const payQuestion = (explain: boolean, remainingOwed: boolean): string | undefined => (explain && remainingOwed ? PAY_QUESTION : undefined);
+ 
+-export const qtyHint = (explain: boolean): string | undefined => (explain ? 'Pick how many first (×2, ×3 …), then tap an item. It goes straight into the cart.' : undefined);
+ export const cartEmptyText = (explain: boolean): string => (explain ? 'Nothing in the cart yet. Tap an item, or scan one, to start the sale.' : 'Cart is empty');
+ export const customerRowText = (explain: boolean, name?: string, has?: boolean): string => name || (has ? 'Customer' : explain ? 'Add a customer (optional)' : 'Add customer');
+ export const chargeHint = (explain: boolean): string | undefined => (explain ? 'Charge takes you to the payment screen. Nothing is taken until the customer pays.' : undefined);
+diff --git a/src/lib/statusInset.ts b/src/lib/statusInset.ts
+new file mode 100644
+index 0000000..4e7cb51
+--- /dev/null
++++ b/src/lib/statusInset.ts
+@@ -0,0 +1,16 @@
++// Location: src/lib/statusInset.ts
++// Pure rule for the app's own status bar (src/ui/AppStatusBar.tsx). No React Native imports, so it runs in the node tests.
++//
++// The iOS status bar is hidden, so the safe-area top inset is only whatever the device really needs (a notch, or nothing on an iPad).
++// If iOS shows its own bar again for a moment (a full-screen window such as the screensaver opening or closing is the usual trigger),
++// the inset jumps up by the height of that bar and our bar would be pushed down, leaving a gap and two bars. So the bar keeps the
++// smallest inset it has seen for the current orientation and ignores a rise. A rotation starts again, because the notch side really
++// does change then.
++export type InsetLatch = { key: string; top: number };
++
++/** `key` says which orientation we are in (for example 'portrait'); `inset` is the safe-area top right now. */
++export function latchTopInset(prev: InsetLatch | null, key: string, inset: number): InsetLatch {
++  const top = Number.isFinite(inset) && inset > 0 ? inset : 0;
++  if (!prev || prev.key !== key) return { key, top };
++  return top < prev.top ? { key, top } : prev;
++}
+diff --git a/src/screens/Checkout.tsx b/src/screens/Checkout.tsx
+index 597820f..47f53b3 100644
+--- a/src/screens/Checkout.tsx
++++ b/src/screens/Checkout.tsx
+@@ -14,8 +14,6 @@ import { useCatalogue, usePriced, stockTone } from '../state/selectors';
+ import * as ops from '../lib/cartOps';
+ import { digitsToCents, fmt } from '../lib/money';
+ import { CheckChangeSheet } from './CheckChange';
+-import { useUi } from '../ui/uiProfile';
+-import { qtyHint } from '../lib/simpleLabels';
+ import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
+ import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
+ import { LookupSheet } from './Lookup';
+@@ -32,37 +30,16 @@ import CartPane from './CartPane';
+ import { openSavedCart } from '../lib/savedOps';
+ import type { Variant } from '../lib/types';
+ 
+-const QTYS = [1, 2, 3, 5, 10];
+-
+-export function StatusStrip() {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const z = useApp(s => s.zeller); const sync = useApp(s => s.sync); const nav = useNav(); const queued = useApp(s => s.pos.outbox.length);
+-  const issues: { text: string; color: string; route: string }[] = [];
+-  if (!z.ready) issues.push({ text: 'Reader issue', color: c.bad, route: 'diagnostics' });
+-  if (sync.state === 'offline') issues.push({ text: queued ? `Offline · ${queued} queued` : 'Offline', color: c.warn, route: 'notifications' });
+-  else if (sync.state === 'error') issues.push({ text: `Sync issue${queued ? ` · ${queued} queued` : ''}`, color: c.warn, route: 'notifications' });
+-  // iPad: always show reader + sync state; iPhone: only when there is an issue
+-  if (!tablet && !issues.length) return null;
+-  return (
+-    <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
+-      {tablet && !issues.length ? <><Pill icon="card" text="Reader ready" color={c.good} /><Pill icon={sync.state === 'syncing' ? 'sync' : 'cloud-done'} text={sync.state === 'syncing' ? 'Syncing…' : 'Synced'} color={c.good} /></> : null}
+-      {issues.map(i => <Pressable key={i.text} onPress={() => nav.go(i.route)} accessibilityRole="button"><Pill icon="alert-circle" text={i.text} color={i.color} /></Pressable>)}
+-    </View>
+-  );
+-}
+-const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicons>['name']; text: string; color: string }) =>
+-  <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: color + '22' }}><Ionicons name={icon} size={13} color={color} /><Txt size={12} weight="600" color={color}>{text}</Txt></View>;
+-
+ /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
+ export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
+-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
++  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
+   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
+   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
+   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
+-  const shopName = useApp(s => s.settings.shopName);
+   const spotlightOptions = useApp(s => s.settings.itemSpotlight);
+   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
+   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
+-  const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
++  const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
+   const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
+   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
+   const [spotlightItem, setSpotlightItem] = useState<Variant | null>(null);
+@@ -70,7 +47,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+   useEffect(() => { setProbe({ search: sheet === 'search' ? q : '', keypad: digits }, { tab, depth: path.length, sizes: !!variants }); }, [sheet, q, digits, tab, path, variants]);
+   useEffect(() => () => clearProbe(), []);
+   useEffect(() => { const off = (['keypad', 'quick', 'all'] as const).map((t, i) => registerSlice(findTabSpot(t), SPOT.findTabs, i, 3)); return () => off.forEach(f => f()); }, []);
+-  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setQty(1); setDigits(''); setVariants(null); setSheet('none'); setCam(false); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
++  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setDigits(''); setVariants(null); setSheet('none'); setCam(false); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
+   const spotlightTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
+   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
+@@ -82,9 +59,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+     spotlightTimer.current = setTimeout(() => setSpotlightItem(null), 2200);
+   };
+ 
+-  const add = (v: Variant, count = qty) => {
++  const add = (v: Variant, count = 1) => {
+     if (locked) return alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.');
+-    setCart(cc => ops.addVariant(cc, v, count, consolidate)); setQty(1);
++    setCart(cc => ops.addVariant(cc, v, count, consolidate));
+     showSpotlight(v);
+     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
+   };
+@@ -157,10 +134,6 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+   const left = (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
+-        {!guided ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 8 }}>
+-          <Image source={require('../../assets/icon.png')} resizeMode="contain" style={{ width: 24, height: 24 }} accessibilityLabel="Aiden’s 3D Printing logo" />
+-          {shopName ? <Txt size={13} weight="600" sub numberOfLines={1}>{shopName}</Txt> : null}
+-        </View> : null}
+         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
+           <Pressable ref={searchRef} onPress={() => { spotPressed(SPOT.findSearch); setSheet('search'); }} accessibilityRole="search" accessibilityLabel="Search" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 12, height: 40 }}>
+             <Ionicons name="search" size={18} color={c.sub} /><Txt sub>Search items, customers, discounts</Txt></Pressable>
+@@ -171,12 +144,8 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
+           {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
+         </View>
+         <Spot id={SPOT.findTabs} style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}><Segmented value={tab} onChange={t => { spotPressed(findTabSpot(t)); setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></Spot>
+-        <StatusStrip />
+       </View>
+ 
+-      {tab !== 'keypad' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 4 }}>
+-        <Txt size={13} sub weight="600">Qty</Txt>{QTYS.map(x => <Chip key={x} label={`×${x}`} active={qty === x} onPress={() => setQty(x)} />)}</View> : null}
+-      {tab !== 'keypad' && !guided && qtyHint(ui.explain) ? <Txt size={13} sub style={{ paddingHorizontal: 16, paddingBottom: 6 }}>{qtyHint(ui.explain)}</Txt> : null}
+ 
+       {tab === 'keypad' ? (
+         <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+diff --git a/src/ui/AppStatusBar.tsx b/src/ui/AppStatusBar.tsx
+index 43601e5..d9c255d 100644
+--- a/src/ui/AppStatusBar.tsx
++++ b/src/ui/AppStatusBar.tsx
+@@ -1,15 +1,19 @@
+ // Location: src/ui/AppStatusBar.tsx
+-// The app's own status bar. The iOS one is hidden (see App.tsx), so this draws the clock, the register
+-// name, the sync state and the battery instead. It is a normal row at the top of the shell, not an overlay,
+-// so it can never cover a button, and it ignores touches for the same reason.
++// The app's own status bar. The iOS one is hidden (see App.tsx), so this draws the clock, the shop logo and name, the register
++// name, the reader and sync chips and the battery instead. It is a normal row at the top of the shell, not an overlay, so it can
++// never cover a button. Only a chip that reports a problem takes touches (it opens the page that explains it); everything else
++// lets touches fall through. The screensaver draws this same bar at the top of its own window (`interactive={false}`, `tone` set
++// to the saver's colours), so the bar is on screen while the saver is.
+ import React, { useEffect, useState } from 'react';
+-import { View } from 'react-native';
++import { Image, Pressable, View, useWindowDimensions } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+ import { useSafeAreaInsets } from 'react-native-safe-area-context';
+ import { usePowerState } from 'react-native-device-info';
+ import { Txt } from './kit';
+-import { useTheme, type Colors } from './theme';
++import { useLayout, useTheme, type Colors } from './theme';
++import { useNav } from './nav';
+ import { useApp } from '../state/store';
++import { latchTopInset, type InsetLatch } from '../lib/statusInset';
+ 
+ const clockText = () => new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+ 
+@@ -27,30 +31,53 @@ function batteryView(level: number | undefined, state: string | undefined, c: Co
+   return { pct, icon, color };
+ }
+ 
+-export default function AppStatusBar() {
+-  const { c } = useTheme(); const insets = useSafeAreaInsets();
+-  const registerName = useApp(s => s.settings.registerName);
+-  const sync = useApp(s => s.sync.state);
++type IconName = React.ComponentProps<typeof Ionicons>['name'];
++const Chip = ({ icon, text, color }: { icon: IconName; text: string; color: string }) =>
++  <View style={{ flexDirection: 'row', gap: 4, alignItems: 'center', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 999, backgroundColor: color + '22' }}>
++    <Ionicons name={icon} size={13} color={color} /><Txt size={12} weight="600" color={color}>{text}</Txt></View>;
++
++// One latch for every bar on screen (the shell's and the screensaver's), so a window that opens while iOS is flashing its own bar
++// does not start from the inflated inset.
++let topLatch: InsetLatch | null = null;
++
++/** `tone`: colours to draw in instead of the theme's (the screensaver passes its background and its readable text colour). */
++export default function AppStatusBar({ interactive = true, tone }: { interactive?: boolean; tone?: { bg: string; fg: string } } = {}) {
++  const { c } = useTheme(); const insets = useSafeAreaInsets(); const { width, height } = useWindowDimensions(); const { tablet } = useLayout(); const nav = useNav();
++  const registerName = useApp(s => s.settings.registerName); const shopName = useApp(s => s.settings.shopName);
++  const sync = useApp(s => s.sync.state); const queued = useApp(s => s.pos.outbox.length); const readerReady = useApp(s => s.zeller.ready);
+   const power = usePowerState();
+-  const battery = batteryView(power.batteryLevel, power.batteryState, c);
++  const bg = tone?.bg ?? c.bg; const fg = tone?.fg ?? c.text; const dim = tone ? fg : c.sub;
++  const battery = batteryView(power.batteryLevel, power.batteryState, tone ? { ...c, text: fg } : c);
+   const [time, setTime] = useState(clockText());
+   useEffect(() => { const t = setInterval(() => setTime(clockText()), 20000); return () => clearInterval(t); }, []);
+-  const net = sync === 'offline' ? { icon: 'cloud-offline-outline', color: c.warn, label: 'Offline' }
+-    : sync === 'syncing' ? { icon: 'sync-outline', color: c.sub, label: 'Syncing' }
+-    : sync === 'error' ? { icon: 'alert-circle-outline', color: c.bad, label: 'Sync error' }
+-    : { icon: 'cloud-done-outline', color: c.sub, label: 'Online' };
++  topLatch = latchTopInset(topLatch, width > height ? 'landscape' : 'portrait', insets.top);
++
++  // Same wording and colours the Checkout strip used. On a phone the reader chip only shows when something is wrong.
++  const reader = readerReady ? { icon: 'card' as IconName, text: 'Reader ready', color: c.good, route: null } : { icon: 'alert-circle' as IconName, text: 'Reader issue', color: c.bad, route: 'diagnostics' };
++  const net = sync === 'offline' ? { icon: 'cloud-offline-outline' as IconName, text: queued ? `Offline · ${queued} queued` : 'Offline', color: c.warn, route: 'notifications' }
++    : sync === 'error' ? { icon: 'alert-circle' as IconName, text: `Sync issue${queued ? ` · ${queued} queued` : ''}`, color: c.warn, route: 'notifications' }
++    : sync === 'syncing' ? { icon: 'sync' as IconName, text: 'Syncing…', color: c.good, route: null }
++    : { icon: 'cloud-done' as IconName, text: 'Synced', color: c.good, route: null };
++  const chip = (x: { icon: IconName; text: string; color: string; route: string | null }) => {
++    const body = <Chip icon={x.icon} text={x.text} color={x.color} />;
++    return x.route && interactive
++      ? <Pressable key={x.text} onPress={() => nav.go(x.route!)} accessibilityRole="button" accessibilityLabel={x.text} hitSlop={6}>{body}</Pressable>
++      : <View key={x.text}>{body}</View>;
++  };
+   return (
+-    <View pointerEvents="none" style={{ paddingTop: insets.top, backgroundColor: c.bg }}>
+-      <View style={{ height: 26, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 8 }}>
+-        <Txt size={12} weight="600" style={{ minWidth: 54 }}>{time}</Txt>
+-        <Txt size={12} sub numberOfLines={1} style={{ flex: 1, textAlign: 'center' }}>{registerName}</Txt>
+-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+-          <Ionicons name={net.icon as React.ComponentProps<typeof Ionicons>['name']} size={13} color={net.color} />
+-          <Txt size={12} color={net.color}>{net.label}</Txt>
++    <View pointerEvents={interactive ? 'box-none' : 'none'} style={{ paddingTop: topLatch.top, backgroundColor: bg }}>
++      <View style={{ height: 28, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10 }}>
++        <Txt size={12} weight="600" color={fg} style={{ minWidth: 54 }}>{time}</Txt>
++        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexShrink: 1 }}>
++          <Image source={require('../../assets/icon.png')} resizeMode="contain" style={{ width: 18, height: 18 }} accessibilityLabel="Aiden’s 3D Printing logo" accessibilityIgnoresInvertColors />
++          {shopName ? <Txt size={12} weight="600" color={fg} numberOfLines={1} style={{ flexShrink: 1 }}>{shopName}</Txt> : null}
+         </View>
++        <Txt size={12} color={dim} numberOfLines={1} style={{ flex: 1, textAlign: 'center', opacity: tone ? 0.7 : 1 }}>{registerName}</Txt>
++        {tablet || !readerReady ? chip(reader) : null}
++        {chip(net)}
+         {battery ? (
+           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+-            <Ionicons name={battery.icon as React.ComponentProps<typeof Ionicons>['name']} size={13} color={battery.color} />
++            <Ionicons name={battery.icon as IconName} size={13} color={battery.color} />
+             <Txt size={12} color={battery.color}>{battery.pct}%</Txt>
+           </View>
+         ) : null}
+diff --git a/src/ui/Screensaver.tsx b/src/ui/Screensaver.tsx
+index 2d15716..0d4044a 100644
+--- a/src/ui/Screensaver.tsx
++++ b/src/ui/Screensaver.tsx
+@@ -1,8 +1,10 @@
+ // Location: src/ui/Screensaver.tsx
+ // Idle screensaver (logo on a colour) and the keep-awake switch. Mounted once in App.tsx.
++// The app's own status bar is drawn across the top of the saver, so it stays on screen while the saver is up.
+ import React, { useEffect, useRef, useState } from 'react';
+ import { Animated, Easing, Image, Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
+-import { StatusBar } from 'expo-status-bar';
++import { setStatusBarHidden } from 'expo-status-bar';
++import AppStatusBar from './AppStatusBar';
+ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+ import { useApp } from '../state/store';
+ import { idleMs, noteActivity } from '../lib/idle';
+@@ -53,18 +55,26 @@ export function ScreensaverLayer() {
+   }, []);
+   useEffect(() => setFailed(false), [ss.logoUrl, ss.logoFile]);
+   const show = preview || idle;
++  // The iOS status bar is meant to stay hidden (App.tsx), but a full-screen window opening or closing can bring it back for a moment,
++  // which shoved the app's own bar down and left two bars. Hide it again as the saver appears and goes, and once more after the fade.
++  useEffect(() => {
++    setStatusBarHidden(true, 'none'); const t = setTimeout(() => setStatusBarHidden(true, 'none'), 450);
++    return () => clearTimeout(t);
++  }, [show]);
+   const wake = () => { noteActivity(); setIdle(false); if (useApp.getState().saverPreview) useApp.getState().set({ saverPreview: false }); };
+   const bg = normaliseHex(ss.bgColor) ?? '#111111'; const fg = contrastOn(bg); const src = failed ? null : logoSource(ss); const side = Math.min(width, height);
+   return (
+     <Modal visible={show} animationType="fade" supportedOrientations={['portrait', 'landscape']} onRequestClose={wake}>
+-      <Pressable onPress={wake} accessibilityRole="button" accessibilityLabel="Wake screen" style={{ flex: 1, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
+-        <StatusBar hidden />
++      <Pressable onPress={wake} accessibilityRole="button" accessibilityLabel="Wake screen" style={{ flex: 1, backgroundColor: bg }}>
++        <AppStatusBar interactive={false} tone={{ bg, fg }} />
++        <View style={{ flex: 1, alignSelf: 'stretch', alignItems: 'center', justifyContent: 'center' }}>
+         <Drifter enabled={ss.drift}>
+           {src ? <Image source={src} resizeMode="contain" onError={() => setFailed(true)} style={{ width: side * 0.55, height: side * 0.4 }} accessibilityIgnoresInvertColors />
+             : <Text style={{ color: fg, fontSize: 44, fontWeight: '700', textAlign: 'center', maxWidth: side * 0.8 }}>{shopName || 'Point of sale'}</Text>}
+           {ss.showClock ? <Clock color={fg} /> : null}
+         </Drifter>
+         <Text style={{ position: 'absolute', bottom: 28, color: fg, opacity: 0.4, fontSize: 14 }}>Tap to wake</Text>
++        </View>
+       </Pressable>
+     </Modal>
+   );
+diff --git a/tests/simplelabels.test.ts b/tests/simplelabels.test.ts
+index c0131bc..bb40ffc 100644
+--- a/tests/simplelabels.test.ts
++++ b/tests/simplelabels.test.ts
+@@ -1,14 +1,14 @@
+ // Location: tests/simplelabels.test.ts
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+-import { cartEmptyText, cashHint, chargeHint, customerRowText, payHint, payQuestion, payTitle, qtyHint } from '../src/lib/simpleLabels';
++import { cartEmptyText, cashHint, chargeHint, customerRowText, payHint, payQuestion, payTitle } from '../src/lib/simpleLabels';
+ 
+ test('with explanations off the wording is exactly today\'s', () => {
+   assert.equal(payTitle('card', false, 1250), 'Card - $12.50'); assert.equal(payTitle('cash', false, 1250), 'Cash');
+   assert.equal(payTitle('gift', false, 1250), 'Gift card'); assert.equal(payTitle('split', false, 1250), 'Split amount');
+   assert.equal(cartEmptyText(false), 'Cart is empty'); assert.equal(customerRowText(false), 'Add customer');
+   for (const m of ['card', 'cash', 'gift', 'split'] as const) assert.equal(payHint(m, false), undefined);
+-  assert.equal(qtyHint(false), undefined); assert.equal(chargeHint(false), undefined); assert.equal(cashHint(false), undefined); assert.equal(payQuestion(false, true), undefined);
++  assert.equal(chargeHint(false), undefined); assert.equal(cashHint(false), undefined); assert.equal(payQuestion(false, true), undefined);
+ });
+ test('with explanations on every payment button says what it does', () => {
+   assert.equal(payTitle('card', true, 1250), 'Pay by card  $12.50');
+diff --git a/tests/statusinset.test.ts b/tests/statusinset.test.ts
+new file mode 100644
+index 0000000..0c708e1
+--- /dev/null
++++ b/tests/statusinset.test.ts
+@@ -0,0 +1,33 @@
++// Location: tests/statusinset.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { latchTopInset } from '../src/lib/statusInset';
++
++test('first reading is kept', () => {
++  assert.deepEqual(latchTopInset(null, 'portrait', 24), { key: 'portrait', top: 24 });
++  assert.deepEqual(latchTopInset(null, 'portrait', 0), { key: 'portrait', top: 0 });
++});
++
++test('the inset falls to 0 when the iOS bar is hidden, and a later rise (the iOS bar coming back) is ignored', () => {
++  let s = latchTopInset(null, 'landscape', 24);   // first render, iOS bar still showing
++  s = latchTopInset(s, 'landscape', 0);             // iOS bar hidden
++  assert.equal(s.top, 0);
++  s = latchTopInset(s, 'landscape', 24);            // screensaver opens, iOS bar flashes back
++  assert.equal(s.top, 0);
++});
++
++test('a notch inset that never changes stays as it is', () => {
++  let s = latchTopInset(null, 'portrait', 47);
++  s = latchTopInset(s, 'portrait', 47); assert.equal(s.top, 47);
++});
++
++test('rotating starts again, so a notch is respected in the new orientation', () => {
++  let s = latchTopInset(null, 'landscape', 0);
++  s = latchTopInset(s, 'portrait', 47);
++  assert.deepEqual(s, { key: 'portrait', top: 47 });
++});
++
++test('junk insets count as 0', () => {
++  assert.equal(latchTopInset(null, 'portrait', NaN).top, 0);
++  assert.equal(latchTopInset(null, 'portrait', -5).top, 0);
++});

@@ -19,7 +19,6 @@ export const payHint = (m: PayMethod, explain: boolean): string | undefined => (
 export const PAY_QUESTION = 'How is the customer paying?';
 export const payQuestion = (explain: boolean, remainingOwed: boolean): string | undefined => (explain && remainingOwed ? PAY_QUESTION : undefined);
 
-export const qtyHint = (explain: boolean): string | undefined => (explain ? 'Pick how many first (×2, ×3 …), then tap an item. It goes straight into the cart.' : undefined);
 export const cartEmptyText = (explain: boolean): string => (explain ? 'Nothing in the cart yet. Tap an item, or scan one, to start the sale.' : 'Cart is empty');
 export const customerRowText = (explain: boolean, name?: string, has?: boolean): string => name || (has ? 'Customer' : explain ? 'Add a customer (optional)' : 'Add customer');
 export const chargeHint = (explain: boolean): string | undefined => (explain ? 'Charge takes you to the payment screen. Nothing is taken until the customer pays.' : undefined);

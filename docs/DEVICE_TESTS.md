@@ -556,3 +556,13 @@ On the iPad and on a phone. Use More ▸ Training ▸ Items and creating one.
 4. Check 1: change the Highland Cow Small's SKU, then add a new tracked product. Pass: the row keeps the new SKU and the new product joins the list.
 5. Check 2: the practice catalogue is seeded with a barcode that will not scan, so fix the Clearance Print's barcode and save it, then add a new tracked product.
 6. **Most important:** while signed in to the real shop, change a practice item and create one. Confirm nothing is sent to Shopify, the real catalogue is exactly as it was, and leaving the course restores the real till exactly as it was.
+
+## T46. Top bar, grid clean-up and screensaver (0141)
+
+On the iPad (rebuild the native project first so the new `app.json` keys apply: `npm run ios:reset`, then `npm run ios`) and on a phone.
+
+1. Checkout ▸ Quick Menu: there is no Qty row, no Reader/Sync pills under the tabs and no logo or shop name above the search bar. Tapping the same item twice gives a cart line of 2; **+** on the line also works.
+2. The top bar shows the time, the logo and shop name, the register name, **Reader ready**, **Synced** and the battery. On a phone **Reader ready** is hidden until the reader has a problem.
+3. Turn Wi-Fi off. The sync chip turns amber (Offline). Tap it: Notifications opens. Turn Wi-Fi on and it goes back to Synced.
+4. Settings ▸ Screensaver & display ▸ **Preview full screen** (or wait for the idle time). The top bar stays across the top of the saver, in the saver's colours, and the logo is not covered. Tapping anywhere, the bar included, wakes it.
+5. **Most important:** let the screensaver come on and go off five or six times (also once while signed out, once with a window such as a sheet open). Pass: the iOS bar never appears and the top bar never moves down or doubles. Tell me if it still happens, and whether it was when the saver opened, when it closed, or at some other time.

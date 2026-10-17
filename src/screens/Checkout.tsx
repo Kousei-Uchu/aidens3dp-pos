@@ -14,8 +14,6 @@ import { useCatalogue, usePriced, stockTone } from '../state/selectors';
 import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { CheckChangeSheet } from './CheckChange';
-import { useUi } from '../ui/uiProfile';
-import { qtyHint } from '../lib/simpleLabels';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
 import { LookupSheet } from './Lookup';
@@ -32,37 +30,16 @@ import CartPane from './CartPane';
 import { openSavedCart } from '../lib/savedOps';
 import type { Variant } from '../lib/types';
 
-const QTYS = [1, 2, 3, 5, 10];
-
-export function StatusStrip() {
-  const { c } = useTheme(); const { tablet } = useLayout(); const z = useApp(s => s.zeller); const sync = useApp(s => s.sync); const nav = useNav(); const queued = useApp(s => s.pos.outbox.length);
-  const issues: { text: string; color: string; route: string }[] = [];
-  if (!z.ready) issues.push({ text: 'Reader issue', color: c.bad, route: 'diagnostics' });
-  if (sync.state === 'offline') issues.push({ text: queued ? `Offline · ${queued} queued` : 'Offline', color: c.warn, route: 'notifications' });
-  else if (sync.state === 'error') issues.push({ text: `Sync issue${queued ? ` · ${queued} queued` : ''}`, color: c.warn, route: 'notifications' });
-  // iPad: always show reader + sync state; iPhone: only when there is an issue
-  if (!tablet && !issues.length) return null;
-  return (
-    <View style={{ flexDirection: 'row', gap: 8, paddingHorizontal: 12, paddingVertical: 6 }}>
-      {tablet && !issues.length ? <><Pill icon="card" text="Reader ready" color={c.good} /><Pill icon={sync.state === 'syncing' ? 'sync' : 'cloud-done'} text={sync.state === 'syncing' ? 'Syncing…' : 'Synced'} color={c.good} /></> : null}
-      {issues.map(i => <Pressable key={i.text} onPress={() => nav.go(i.route)} accessibilityRole="button"><Pill icon="alert-circle" text={i.text} color={i.color} /></Pressable>)}
-    </View>
-  );
-}
-const Pill = ({ icon, text, color }: { icon: React.ComponentProps<typeof Ionicons>['name']; text: string; color: string }) =>
-  <View style={{ flexDirection: 'row', gap: 5, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 999, backgroundColor: color + '22' }}><Ionicons name={icon} size={13} color={color} /><Txt size={12} weight="600" color={color}>{text}</Txt></View>;
-
 /** `guided`: the guided checkout (Minimal mode) embeds this as its Items step, without the cart pane, staff chip, grid editing or keypad. `active`: false while another step is showing, so the Bluetooth scanner stays quiet. */
 export default function Checkout({ guided = false, active = true }: { guided?: boolean; active?: boolean } = {}) {
-  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const ui = useUi(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
+  const { c } = useTheme(); const { tablet } = useLayout(); const nav = useNav(); const toast = useToast(); const openRef = useSpotRef(SPOT.cartOpen); const searchRef = useSpotRef(SPOT.findSearch); const chargeRef = useSpotRef(SPOT.cartCharge);
   const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const grid = useApp(s => s.grid); const consolidate = useApp(s => s.settings.consolidate);
   const cat = useCatalogue(); const priced = usePriced(); const labelOf = useTileLabel();
   const staffList = useApp(s => s.settings.staff); const curStaff = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
-  const shopName = useApp(s => s.settings.shopName);
   const spotlightOptions = useApp(s => s.settings.itemSpotlight);
   const [tab, setTab] = useState<'keypad' | 'quick' | 'all'>('quick'); const [pageIdx, setPageIdx] = useState(0); const [editing, setEditing] = useState(false);
   const [path, setPath] = useState<Path>([]); const [editIdx, setEditIdx] = useState<number | null>(null); // path = where you are in nested categories/groups; editIdx = tile whose settings are open
-  const [qty, setQty] = useState(1); const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
+  const [digits, setDigits] = useState(''); const [variants, setVariants] = useState<Variant[] | null>(null);
   const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
   const [spotlightItem, setSpotlightItem] = useState<Variant | null>(null);
@@ -70,7 +47,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   useEffect(() => { setProbe({ search: sheet === 'search' ? q : '', keypad: digits }, { tab, depth: path.length, sizes: !!variants }); }, [sheet, q, digits, tab, path, variants]);
   useEffect(() => () => clearProbe(), []);
   useEffect(() => { const off = (['keypad', 'quick', 'all'] as const).map((t, i) => registerSlice(findTabSpot(t), SPOT.findTabs, i, 3)); return () => off.forEach(f => f()); }, []);
-  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setQty(1); setDigits(''); setVariants(null); setSheet('none'); setCam(false); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
+  useEffect(() => registerCheckoutReset(() => { setTab('quick'); setPageIdx(0); setEditing(false); setPath([]); setEditIdx(null); setDigits(''); setVariants(null); setSheet('none'); setCam(false); setQ(''); setAllQ(''); setSpotlightItem(null); }), []);
   const spotlightTimer = React.useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
@@ -82,9 +59,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
     spotlightTimer.current = setTimeout(() => setSpotlightItem(null), 2200);
   };
 
-  const add = (v: Variant, count = qty) => {
+  const add = (v: Variant, count = 1) => {
     if (locked) return alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.');
-    setCart(cc => ops.addVariant(cc, v, count, consolidate)); setQty(1);
+    setCart(cc => ops.addVariant(cc, v, count, consolidate));
     showSpotlight(v);
     if (v.stock !== null && v.stock - count < 0) toast.show(`${v.productTitle}: stock will go negative`); else toast.show(`Added ${v.productTitle}`);
   };
@@ -157,10 +134,6 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const left = (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: 8, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
-        {!guided ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingBottom: 8 }}>
-          <Image source={require('../../assets/icon.png')} resizeMode="contain" style={{ width: 24, height: 24 }} accessibilityLabel="Aiden’s 3D Printing logo" />
-          {shopName ? <Txt size={13} weight="600" sub numberOfLines={1}>{shopName}</Txt> : null}
-        </View> : null}
         <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 }}>
           <Pressable ref={searchRef} onPress={() => { spotPressed(SPOT.findSearch); setSheet('search'); }} accessibilityRole="search" accessibilityLabel="Search" style={{ flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.fill, borderRadius: 12, paddingHorizontal: 12, height: 40 }}>
             <Ionicons name="search" size={18} color={c.sub} /><Txt sub>Search items, customers, discounts</Txt></Pressable>
@@ -171,12 +144,8 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
           {tab === 'quick' && !guided ? <IconBtn icon={editing ? 'checkmark-circle' : 'pencil'} label={editing ? 'Done editing' : 'Edit grid'} onPress={() => { setEditing(e => !e); setEditIdx(null); }} color={editing ? c.good : undefined} /> : null}
         </View>
         <Spot id={SPOT.findTabs} style={{ paddingHorizontal: 12, paddingTop: 8, paddingBottom: 4 }}><Segmented value={tab} onChange={t => { spotPressed(findTabSpot(t)); setTab(t); setPath([]); setEditing(false); }} options={guided ? [{ v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }] : [{ v: 'keypad', label: 'Keypad' }, { v: 'quick', label: 'Quick Menu' }, { v: 'all', label: 'All products' }]} /></Spot>
-        <StatusStrip />
       </View>
 
-      {tab !== 'keypad' ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, paddingVertical: 4 }}>
-        <Txt size={13} sub weight="600">Qty</Txt>{QTYS.map(x => <Chip key={x} label={`×${x}`} active={qty === x} onPress={() => setQty(x)} />)}</View> : null}
-      {tab !== 'keypad' && !guided && qtyHint(ui.explain) ? <Txt size={13} sub style={{ paddingHorizontal: 16, paddingBottom: 6 }}>{qtyHint(ui.explain)}</Txt> : null}
 
       {tab === 'keypad' ? (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>

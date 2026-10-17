@@ -229,3 +229,17 @@ export type Notice = {
 export type Role = 'cashier' | 'manager' | 'owner';
 export type StaffPreferences = { theme?: 'brand' | 'light' | 'dark' | 'system'; accent?: string; tileSize?: 'S' | 'M' | 'L' | number };
 export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi; preferences?: StaffPreferences };
+
+export type CartWarningScope = 'variant' | 'product' | 'collection' | 'category';
+export type CartWarning = {
+  id: string;
+  enabled: boolean;
+  title: string;
+  body: string;
+  scope: CartWarningScope;
+  targetId: string;
+  alwaysShow: boolean;
+  requireAcknowledgement: boolean;
+  order?: number;
+};
+export type CartWarnings = CartWarning[];

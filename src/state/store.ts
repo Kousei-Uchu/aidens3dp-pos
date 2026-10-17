@@ -14,6 +14,7 @@ import type { Depth } from '../lib/helpDocs';
 import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 import type { AdjustPerms } from '../lib/adjustPerms';
+import type { CartWarnings } from '../lib/types';
 import { isTraining } from '../lib/trainingGuard';
 
 export type Settings = {
@@ -32,10 +33,11 @@ export type Settings = {
   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
+  cartWarnings?: CartWarnings;
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false,
+  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: []
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
