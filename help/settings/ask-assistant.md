@@ -12,7 +12,10 @@ Open **Help** and tap the sparkles button at the top. For now only an owner can 
 ## Basic
 
 ### What it can do
-Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.
+Type a question and tap the round **Send** arrow beside the box. While the chat is empty it also offers a few questions to start with: tap one to ask it. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.
+
+### How replies look
+The assistant's replies are laid out the way it writes them: headings, **bold** and *slanted* words, bullet and numbered lists, tables and boxes of code. A small round badge marks each of its messages, and the time is shown under each message. Press and hold on a reply to select and copy its words. Links are never tappable in a reply: if it names a page or a screen, use the button under the reply instead.
 
 ### Buttons under a reply
 When it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.

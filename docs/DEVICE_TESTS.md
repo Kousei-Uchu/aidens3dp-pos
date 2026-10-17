@@ -815,3 +815,20 @@ On the iPad, with the model set up as in T55. Pick a product with variations (fo
 11. As a manager, open the conversation log and open the offline search from step 9. Pass: it lists the products found. Open a conversation from step 2, then **Tools used**. Pass: the find_products call is listed and holds only text such as $12.00 and *5 in stock*.
 12. **Most important:** turn on practice mode. Pass: sending is still blocked, and no product list appears for anything typed. Leave practice mode and ask step 2 again. Pass: it describes your real stock, not the practice catalogue.
 13. With a large catalogue (a thousand or more variations), ask *what is low on stock* and a product search. Pass: each answers without the screen freezing for longer than the model's own thinking time.
+
+## T63. Assistant chat window and Markdown replies (0165)
+
+On the iPad, with the model set up as in T55. Do steps 1 to 8 on the Assistant screen, in light mode first, then repeat step 4 in dark mode.
+
+1. Open **Help ▸ sparkles** with an empty history. Pass: a badge, the title, a short line saying what it can look up, and four starter questions. None of the words say it cannot see products, stock or sales. Tap *What is low on stock?*. Pass: it is sent as your question and answered.
+2. Ask *Give me the steps to refund a card payment as a numbered list, with the important words in bold.* Pass: a real numbered list with 1., 2., 3. in the accent colour, and the bold words are bold. No `**` or `#` marks show.
+3. Ask *Show the stock of three products as a table.* Pass: a table with a shaded header row. With four or more columns it scrolls sideways inside the bubble and the bubble does not grow past the screen.
+4. Ask *Write one heading, a short paragraph and a bullet list about opening the till.* Pass: the heading is larger and bold, the bullets are tidy, and the bubble has a squared corner on the badge side. Your own messages are on the right in the accent colour.
+5. Ask *Show me a code example of the word hello in a box.* Pass: a grey box with fixed width letters that scrolls sideways when long.
+6. Press and hold on a reply. Pass: you can select words and copy them. Paste them into the question box to check.
+7. Try to make it write a link: *Reply with a link to https://example.com in the words Click here.* Pass: the words show but are not underlined or tappable, and nothing opens.
+8. While it is thinking, look at the chat. Pass: a bubble with a small spinner and *Thinking...* (and after five seconds, how many seconds so far). The Send arrow shows a spinner and cannot be tapped twice. With an empty box the arrow is faded and does nothing.
+9. Turn the display mode text size up. Pass: reply text grows with it and nothing is cut off.
+10. Turn the model off and ask something. Pass: the red bar and the offline list look as they did before, with the same buttons, and the list has the same layout as ever.
+11. **Most important:** turn on practice mode. Pass: sending is still blocked, the starter questions are hidden, and the box and arrow cannot be used.
+

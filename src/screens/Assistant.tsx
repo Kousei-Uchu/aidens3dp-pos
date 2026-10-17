@@ -7,8 +7,10 @@
 // Since 0160, when the model cannot answer (or is not set up) the chat shows the error and still searches the screens and the help
 // pages with no model, and lists the matches (plan 3.3). The next question tries the model first again.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ScrollView, View } from 'react-native';
-import { Btn, Field, IconBtn, Page, Row, Txt, confirm } from '../ui/kit';
+import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { Btn, Chip, Field, IconBtn, Page, Row, Txt, confirm } from '../ui/kit';
+import ChatMarkdown from '../ui/ChatMarkdown';
 import { useTheme } from '../ui/theme';
 import { useNav, type Tab } from '../ui/nav';
 import { useKeyboardOverlap } from '../ui/keyboard';
@@ -31,6 +33,16 @@ import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
 import { uid } from '../lib/ids';
+
+/** Questions to start with, shown while the chat is empty. Each one is sent as it stands. */
+const STARTERS = ['How do I refund a card payment?', 'What is low on stock?', 'How much did we sell today?', 'Show me how to get to Reports'];
+const clock = (at: number): string => { const d = new Date(at); return isNaN(d.getTime()) ? '' : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }); };
+
+/** The round badge beside the assistant's messages. */
+function Avatar({ size = 30 }: { size?: number }) {
+  const { c } = useTheme();
+  return <View accessibilityElementsHidden style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: c.accent, alignItems: 'center', justifyContent: 'center' }}><Ionicons name="sparkles" size={Math.round(size * 0.52)} color={c.onAccent} /></View>;
+}
 
 /**
  * The list shown in place of a reply when the model could not answer. It is searched here, with the role signed in now, from the question
@@ -164,21 +176,28 @@ export default function Assistant() {
   };
   // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
   const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: helpPages, screens: screenList, role }, e.links) : []);
-  const bubble = (e: ChatEntry, i: number) => e.offline ? (
-    <OfflineList key={e.id} query={hist[i - 1]?.text ?? ''} role={role} pages={helpPages} screens={screenList} onOpen={open} />
-  ) : (
-    <View key={e.id} style={{ alignSelf: e.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', gap: 3 }}>
-      <View style={{ backgroundColor: e.role === 'user' ? c.accent : c.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: e.role === 'user' ? 0 : 1, borderColor: c.line }}>
-        <Txt color={e.role === 'user' ? c.onAccent : undefined}>{e.text}</Txt>
-      </View>
-      {e.note ? <Txt size={12} sub style={{ alignSelf: 'flex-end' }}>{e.note}</Txt> : null}
-      {buttons(e).length ? (
-        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-          {buttons(e).map(b => <Btn key={`${b.link.kind}:${b.link.id}`} small kind="secondary" icon={b.link.kind === 'doc' ? 'book-outline' : b.link.kind === 'guide' ? 'navigate-outline' : 'open-outline'} title={b.link.label} onPress={() => open(b.action)} />)}
+  const bubble = (e: ChatEntry, i: number) => {
+    if (e.offline) return <OfflineList key={e.id} query={hist[i - 1]?.text ?? ''} role={role} pages={helpPages} screens={screenList} onOpen={open} />;
+    const mine = e.role === 'user'; const btns = buttons(e); const time = clock(e.at);
+    return (
+      <View key={e.id} style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8, alignSelf: mine ? 'flex-end' : 'flex-start', maxWidth: mine ? '82%' : '94%' }}>
+        {mine ? null : <Avatar />}
+        <View style={{ flexShrink: 1, gap: 4, alignItems: mine ? 'flex-end' : 'flex-start' }}>
+          <View style={{ backgroundColor: mine ? c.accent : c.card, borderRadius: 18, borderBottomRightRadius: mine ? 5 : 18, borderBottomLeftRadius: mine ? 18 : 5, paddingHorizontal: 14, paddingVertical: 10, borderWidth: mine ? 0 : 1, borderColor: c.line }}>
+            {mine ? <Txt color={c.onAccent}>{e.text}</Txt> : <ChatMarkdown text={e.text} />}
+          </View>
+          {e.note ? <Txt size={12} sub>{e.note}</Txt> : null}
+          {btns.length ? (
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+              {btns.map(b => <Btn key={`${b.link.kind}:${b.link.id}`} small kind="secondary" icon={b.link.kind === 'doc' ? 'book-outline' : b.link.kind === 'guide' ? 'navigate-outline' : 'open-outline'} title={b.link.label} onPress={() => open(b.action)} />)}
+            </View>
+          ) : null}
+          {time ? <Txt size={11} sub>{time}</Txt> : null}
         </View>
-      ) : null}
-    </View>
-  );
+      </View>
+    );
+  };
+  const canSend = !!text.trim() && !blocked && !busy;
 
   return (
     <Page title="Ask the assistant" onBack={nav.pop} helpId="settings/assistant"
@@ -192,9 +211,28 @@ export default function Assistant() {
               {canEdit ? <Btn small kind="secondary" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
             </View>
           ) : null}
-          {loaded && ready && !hist.length ? <Txt size={13} sub>Ask how something works. This assistant cannot see the shop's products, stock, customers or sales yet, and it never changes anything.</Txt> : null}
+          {loaded && !hist.length ? (
+            <View style={{ alignItems: 'center', gap: 10, paddingTop: 24, paddingBottom: 8 }}>
+              <Avatar size={52} />
+              <Txt size={19} weight="700">Ask the assistant</Txt>
+              <Txt size={14} sub style={{ textAlign: 'center', maxWidth: 420 }}>Ask how something works or where to find it. It can also look up this till's sales, orders, deals, customers, gift card activity, products and stock. It never changes anything.</Txt>
+              {!blocked ? (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', paddingTop: 6 }}>
+                  {STARTERS.map(q => <Chip key={q} label={q} icon="chatbubble-ellipses-outline" onPress={() => void send(q, 'short')} />)}
+                </View>
+              ) : null}
+            </View>
+          ) : null}
           {hist.map((e, i) => bubble(e, i))}
-          {busy ? <Txt size={13} sub>{secs >= 5 ? `Still working, ${secs} seconds so far.` : 'Thinking...'}</Txt> : null}
+          {busy ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, alignSelf: 'flex-start' }}>
+              <Avatar />
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.card, borderRadius: 18, borderBottomLeftRadius: 5, borderWidth: 1, borderColor: c.line, paddingHorizontal: 14, paddingVertical: 10 }}>
+                <ActivityIndicator size="small" color={c.sub} />
+                <Txt size={13} sub>{secs >= 5 ? `Still working, ${secs} seconds so far.` : 'Thinking...'}</Txt>
+              </View>
+            </View>
+          ) : null}
           {lastReply && !busy && !banner ? <Btn small kind="ghost" title="More detail" icon="add-circle-outline" onPress={() => void send('More detail please.', 'more', { search: false })} /> : null}
         </ScrollView>
         {banner ? (
@@ -211,8 +249,13 @@ export default function Assistant() {
         {logWarn ? <Txt size={13} style={{ marginHorizontal: 16, marginBottom: 8 }} color={c.bad}>{logWarn}</Txt> : null}
         {blocked ? <Txt size={13} sub style={{ marginHorizontal: 16, marginBottom: 8 }}>{blocked}</Txt> : null}
         <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
-          <Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} />
-          <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked} onPress={() => void send(text, 'short')} />
+          <View style={{ flexDirection: 'row', alignItems: 'flex-end', gap: 8 }}>
+            <View style={{ flex: 1 }}><Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} style={{ borderRadius: 22, paddingHorizontal: 16, maxHeight: 140 }} /></View>
+            <Pressable accessibilityRole="button" accessibilityLabel="Send" accessibilityState={{ disabled: !canSend, busy }} disabled={!canSend} onPress={() => void send(text, 'short')}
+              style={({ pressed }) => ({ width: 46, height: 46, borderRadius: 23, marginBottom: 12, backgroundColor: c.accent, opacity: !canSend ? 0.35 : pressed ? 0.8 : 1, alignItems: 'center', justifyContent: 'center' })}>
+              {busy ? <ActivityIndicator size="small" color={c.onAccent} /> : <Ionicons name="arrow-up" size={22} color={c.onAccent} />}
+            </Pressable>
+          </View>
           <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Conversations are also logged for the manager. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
         </View>
       </View>
