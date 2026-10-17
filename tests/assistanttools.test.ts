@@ -99,12 +99,12 @@ test('runToolCall never throws: unknown tool, bad arguments, or a tool that fail
   assert.equal(unknown.record.ok, false); assert.match(unknown.message.content ?? '', /no tool called/);
   for (const bad of ['{not json', '[1,2]', '"text"']) { const r = runToolCall(call('search_docs', bad), set); assert.equal(r.record.ok, false); assert.match(r.message.content ?? '', /not a JSON object/); }
   assert.equal(runToolCall(call('search_docs', ''), set).record.ok, false, 'empty arguments mean no query');
-  const boom: AssistantTool = { def: { type: 'function', function: { name: 'boom', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => { throw new Error('secret internal detail'); } };
+  const boom: AssistantTool = { gate: 'content', def: { type: 'function', function: { name: 'boom', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => { throw new Error('secret internal detail'); } };
   const r = runToolCall(call('boom', {}), { tools: [boom], ctx: ctxFor('owner') });
   assert.equal(r.record.ok, false); assert.doesNotMatch(r.message.content ?? '', /secret internal/);
 });
 test('runToolCall answers with a tool message tied to the call, and always valid JSON within the limit', () => {
-  const big: AssistantTool = { def: { type: 'function', function: { name: 'big', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => ({ text: 'x'.repeat(50000) }) };
+  const big: AssistantTool = { gate: 'content', def: { type: 'function', function: { name: 'big', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => ({ text: 'x'.repeat(50000) }) };
   const r = runToolCall(call('big', {}, 'abc'), { tools: [big], ctx: ctxFor('owner', { maxChars: 1000 }) });
   assert.equal(r.message.role, 'tool'); assert.equal(r.message.tool_call_id, 'abc'); assert.equal(r.message.name, 'big');
   assert.ok((r.message.content ?? '').length <= 1000); assert.doesNotThrow(() => JSON.parse(r.message.content ?? ''));

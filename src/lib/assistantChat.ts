@@ -3,50 +3,13 @@
 // so it runs in the node tests. The tools (assistantTools.ts) let it look at the help pages and the app's screens, and nothing
 // else: it knows nothing about the shop's data, and it only sees what the cashier types and the earlier messages of the same chat.
 import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
+import { maskedNote, scrubText, type MaskKind } from './assistantScrub';
+import { CATEGORIES, FAIL_CLOSED_POLICY, restricted, type Category, type GatePolicy } from './assistantGate';
 import { MAX_LINKS, runToolCall, toolDefs, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
 
 // ---------- the small scrubber ----------
-// The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
-// a pasted email address, phone number, card number or key never leaves the iPad, so it cannot reach a remote server.
-export type MaskKind = 'email' | 'phone' | 'card' | 'key';
-export type Scrubbed = { text: string; masked: Partial<Record<MaskKind, number>> };
-export const MASK_WORD: Record<MaskKind, [string, string]> = { email: ['email address', 'email addresses'], phone: ['phone number', 'phone numbers'], card: ['card number', 'card numbers'], key: ['key or token', 'keys or tokens'] };
-
-/** The Luhn check, used so a long number is only masked as a card when it can be one. */
-export function luhnOk(digits: string): boolean {
-  if (!/^\d{13,19}$/.test(digits)) return false;
-  let sum = 0; let dbl = false;
-  for (let i = digits.length - 1; i >= 0; i--) { let d = digits.charCodeAt(i) - 48; if (dbl) { d *= 2; if (d > 9) d -= 9; } sum += d; dbl = !dbl; }
-  return sum % 10 === 0;
-}
-
-const CARD_RUN = /(?<![\d])\d(?:[ -]?\d){12,18}(?![\d])/g;
-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
-const AU_PHONE = /(?<![\w])(?:\+61|0)[2-478](?:[ -]?\d){8}(?![\d])/g;
-const INTL_PHONE = /(?<![\w])\+\d{1,3}(?:[ -]?\d){7,12}(?![\d])/g;
-const LONG_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
-
-export function scrubText(input: string): Scrubbed {
-  const masked: Partial<Record<MaskKind, number>> = {};
-  const bump = (k: MaskKind) => { masked[k] = (masked[k] ?? 0) + 1; };
-  let t = input ?? '';
-  const before = t;
-  t = redactSecrets(t); if (t !== before) { const n = (before.match(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi) ?? []).length; for (let i = 0; i < Math.max(1, n); i++) bump('key'); }
-  t = t.replace(CARD_RUN, m => { if (luhnOk(m.replace(/[ -]/g, ''))) { bump('card'); return '[card number]'; } return m; });
-  t = t.replace(EMAIL, () => { bump('email'); return '[email address]'; });
-  t = t.replace(AU_PHONE, () => { bump('phone'); return '[phone number]'; });
-  t = t.replace(INTL_PHONE, () => { bump('phone'); return '[phone number]'; });
-  t = t.replace(LONG_TOKEN, m => { if (/[A-Za-z]/.test(m) && /\d/.test(m)) { bump('key'); return '[key]'; } return m; });
-  return { text: t, masked };
-}
-
-/** "Hidden before sending: 1 email address and 2 phone numbers." Empty when nothing was masked. */
-export function maskedNote(masked: Partial<Record<MaskKind, number>>): string {
-  const parts = (Object.keys(MASK_WORD) as MaskKind[]).filter(k => (masked[k] ?? 0) > 0).map(k => `${masked[k]} ${MASK_WORD[k][masked[k] === 1 ? 0 : 1]}`);
-  if (!parts.length) return '';
-  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
-  return `Hidden before sending: ${list}.`;
-}
+// The scrubber moved to assistantScrub.ts in patch 0161 (the data gate uses it too). It is still re-exported here, so the chat code and its tests are unchanged.
+export { luhnOk, maskedNote, MASK_WORD, scrubText, type MaskKind, type Scrubbed } from './assistantScrub';
 
 // ---------- the dash rule ----------
 /** Models use em and en dashes a lot and a prompt alone does not stop it, so replies are cleaned before they are shown. */
@@ -83,7 +46,11 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
 
 // ---------- history ----------
 /** `links` are buttons shown under a reply (patch 0159), never sent to the model: only the text is. `offline` marks the entry that stands in for a reply when the model could not answer (patch 0160): a list of matches from the screens and help pages, searched again each time it is shown. */
-export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; links?: ChatLink[]; offline?: true };
+/**
+ * `used` (patch 0161) says which categories of shop data the reply was built from. It is kept so that, if the endpoint or the
+ * toggles later stop one of them being sent, the reply and its question are left out of what the model is given.
+ */
+export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; links?: ChatLink[]; offline?: true; used?: Category[] };
 export const HISTORY_CAP = 200;
 export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
 
@@ -104,7 +71,8 @@ export function readHistory(raw: unknown): ChatEntry[] {
     const o = e as Record<string, unknown>;
     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
     const links = o.role === 'assistant' ? readLinks(o.links) : [];
-    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}), ...(o.role === 'assistant' && o.offline === true ? { offline: true as const } : {}) });
+    const used = o.role === 'assistant' && Array.isArray(o.used) ? CATEGORIES.filter(c => (o.used as unknown[]).includes(c)) : [];
+    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}), ...(o.role === 'assistant' && o.offline === true ? { offline: true as const } : {}), ...(used.length ? { used } : {}) });
   }
   return capHistory(out);
 }
@@ -121,9 +89,13 @@ export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => ti
  * What the model gets to see of the history. A question that only got an offline list was never answered, so it and its list stay
  * out: the model would otherwise read a question with no reply, and some chat templates refuse two user messages in a row.
  */
-export function forModel(h: ChatEntry[]): ChatEntry[] {
+export function forModel(h: ChatEntry[], policy: GatePolicy = FAIL_CLOSED_POLICY): ChatEntry[] {
   const out: ChatEntry[] = [];
-  for (const e of tidyOffline(h)) { if (e.offline) { if (out.length && out[out.length - 1].role === 'user') out.pop(); continue; } out.push(e); }
+  for (const e of tidyOffline(h)) {
+    // A reply built from data this endpoint may no longer be sent (the address changed to a remote one, or a toggle was switched) goes out with its question (patch 0161).
+    if (e.offline || (e.role === 'assistant' && restricted(e.used, policy))) { if (out.length && out[out.length - 1].role === 'user') out.pop(); continue; }
+    out.push(e);
+  }
   return out;
 }
 /** Takes one exchange out of the history: the question with this id, and the offline list straight after it if it has one. Used when a retry replaces it. */
@@ -154,7 +126,7 @@ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, cont
   const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
-  history = forModel(history);
+  history = forModel(history, tools?.ctx.policy);
   for (let i = history.length - 1; i >= 0; i--) {
     let text = scrubText(history[i].text).text;
     let cost = estimateTokens(text);
@@ -208,7 +180,7 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
   }
   const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
   const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
-  let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = [];
+  let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = []; const used = new Set<Category>();
   for (;;) {
     const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
     const wanted = res.message.tool_calls ?? [];
@@ -219,10 +191,10 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
       raw = limitReply(set.limit, read); break;
     }
     messages = [...messages, { role: 'assistant', content: res.message.content ?? null, tool_calls: wanted }];
-    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; if (r.link && links.length < MAX_LINKS && !links.some(l => l.kind === r.link!.kind && l.id === r.link!.id)) links.push(r.link); }
+    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); for (const k of r.record.used ?? []) used.add(k); messages.push(r.message); calls++; if (r.link && links.length < MAX_LINKS && !links.some(l => l.kind === r.link!.kind && l.id === r.link!.id)) links.push(r.link); }
   }
   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
-  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now(), ...(links.length ? { links } : {}) } };
+  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now(), ...(links.length ? { links } : {}), ...(used.size ? { used: CATEGORIES.filter(c => used.has(c)) } : {}) } };
 }
 /** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
 export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> { return runPrepared(f, a, prepare(a)); }

@@ -14,13 +14,14 @@ import { useNav, type Tab } from '../ui/nav';
 import { useKeyboardOverlap } from '../ui/keyboard';
 import { useApp } from '../state/store';
 import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
-import { isConfigured } from '../lib/assistantConfig';
+import { classifyEndpoint, isConfigured } from '../lib/assistantConfig';
 import { getAssistantKey } from '../lib/assistantKey';
 import { AssistantError } from '../lib/assistantClient';
 import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, withoutExchange, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
 import { LOG_FAIL_LINE, askLogged, buildOfflineEvent, logEndpoint, logOffline, logStaff } from '../lib/assistantLog';
 import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineSearch } from '../lib/assistantOffline';
 import { assistantLog, logSink } from '../lib/assistantLogIO';
+import { resolvePolicy } from '../lib/assistantGate';
 import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
 import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
 import type { Page as HelpPage } from '../lib/helpDocs';
@@ -116,7 +117,7 @@ export default function Assistant() {
       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
       apiKey = await getAssistantKey();
       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize }) },
+          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate) }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;

@@ -743,3 +743,19 @@ On the iPad, with the model set up as in T55. Sign in as the owner (or a manager
 12. Ask the same question again with the model on. Pass: the model's reply does not mention the earlier offline question or list.
 13. **Most important:** More ▸ Training, start any course, then open the chat and type a question. Pass: it says the assistant is switched off in practice mode, no list appears, and nothing is logged.
 
+## T59. Assistant data gate settings (0161)
+
+On the iPad, with the model set up as in T55. Sign in as the owner (or a manager when the team has no owner). The assistant cannot look up shop data yet, so this checks the settings and that nothing else changed.
+
+1. More ▸ Settings ▸ AI assistant. Pass: a section **What the assistant may see** lists seven rows (Customer details, Email addresses, Gift card balances, Gift card codes, Order totals and items, Cost prices and profit, Stock, sales, products and deals), each set to **Auto**, and two fixed rows (Payment details, Keys and passwords) that say *Never sent. This cannot be changed.*
+2. With an address like `http://192.168.1.20:11434/v1`, check **Right now** on each row. Pass: Customer details, Email addresses and Gift card balances say *Sent*, Gift card codes says *Last four characters only*, the other three say *Sent*.
+3. Under *This address counts as*, tap **Remote** (or use an address like `https://api.example.com/v1`). Pass: Customer details, Email addresses, Gift card balances and Gift card codes now say *Not sent*. The other three still say *Sent*.
+4. On Remote, set Customer details to **Always allow**. Pass: its line says *Sent* and a bold warning says it sends the details to a server outside your own network. Set Gift card codes to **Always allow**. Pass: it says *Last four characters only*, never *Sent*.
+5. Set Stock, sales, products and deals to **Never allow**. Pass: it says *Not sent*, on both Local and Remote.
+6. Tap **Save**, leave the page and come back. Pass: every choice is as you left it. Tap **Test connection**. Pass: it works as before.
+7. More ▸ Backup & transfer: make a backup and restore it on the same iPad, or on another one. Pass: the choices come back as you set them. Pass: they are not changed on another register that is syncing with this one.
+8. Edit the backup file by hand to put `"payment":"allow"` inside the `gate` part, then restore it. Pass: the Payment details row is still fixed as never sent.
+9. Open the chat and ask *How do I take a cash payment?* Pass: it answers from the help pages as before, with the same buttons.
+10. Type `refund for jo@example.com, card 4111 1111 1111 1111` and send. Pass: your message shows [email address] and [card number], whatever the choices above are.
+11. Open the conversation log and open that conversation. Pass: it looks as before, and no *Withheld by the data rules* line appears, because nothing was withheld.
+12. **Most important:** sign in as a cashier. Pass: the cashier cannot open AI assistant settings and so cannot change any of these choices.

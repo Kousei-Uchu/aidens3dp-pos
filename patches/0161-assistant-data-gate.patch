@@ -1,0 +1,1123 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index 1dd4601..2b62764 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,17 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 17 (18 October 2026), patch 0161:** patch 5, the data gate (3.1), is built, with the category toggles. No tool returns shop data yet, so
++it has nothing to act on until patch 6, but every tool already passes through it. The code is in `src/lib/assistantGate.ts`. Every tool declares a field map
++(`gate`) saying which category each field it can return belongs to, or `content` for a tool that returns only help text. The gate runs on every result before
++it is cut to size and before the model or the log sees it. A field the map does not name is dropped and reported, and a test helper fails when a tool returns
++one. With no policy given the remote rules apply. Three things the plan left open are decided here, and the owner may want to change them: **Always allow on gift
++card codes** sends the last four characters, never the whole code, because 3.1 says the code is masked even on a local endpoint; **history** is handled by marking each
++reply with the kinds of data it was built from, so a reply that used customer details is left out of the model's history (with its question) once the endpoint
++is remote or the toggle is Never allow, since a name in a reply cannot be found by a scrubber; and **typed text and old history keep the full scrubber**, so an email
++a cashier pastes is still hidden on a local endpoint, as the owner confirmed in 3.1. The model is told the kind of data that was hidden, never the content. The
++scrubber moved to `assistantScrub.ts`. Next: patch 6, the product and inventory tools through the gate.
++
+ **Revision 16 (18 October 2026), patch 0160:** the offline mode (3.3) is built, apart from the product and inventory lookup, which waits for the product tools
+ and the data gate. When the model cannot answer, or is not set up, the chat shows the error banner and a list of matches from the screens and the help pages,
+ labelled *Model offline, showing search results*, using the same two searches the model's tools use (so the role filter in 3.4 applies). Only the question is stored,
+@@ -163,6 +174,7 @@ the chat to everyone (3.6, 3.13). Built in 0157: the docs tools (`search_docs`,
+ Built in 0158: the screen search tool (`search_screens`) and the role filter for screens.
+ Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
+ Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
++Built in 0161: the data gate and the category toggles (3.1), in front of every tool result, the history sent to the model and the audit log.
+ 
+ Still to do:
+ 
+@@ -172,8 +184,7 @@ Still to do:
+ - The read-only tools (3.2).
+ - The practice mode coach (3.7).
+ - Model-free product and inventory lookup for the offline mode (3.3).
+-- The data gate: the category rules and override toggles (3.1). All enforced in code. The small scrubber exists
+-  already (0151) and the gate builds on it.
++- Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 6 to 8). The gate exists (0161), so no tool may be added without a map.
+ - The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
+ - A way to keep it from changing anything, enforced in code and not only in the prompt.
+ - Tests, a help page, a device test and a progress log entry for each later patch.
+@@ -277,7 +288,9 @@ Confirmed by the owner:
+ 
+ **Per-category override toggles:** each category in the table gets a Settings toggle with three states: Auto
+ (follow the table above), Always allow, and Never allow. The two "never sent" rows (payment information and
+-secrets) have no Always allow state. The owner asked for these toggles. They are built with the gate (patch 5).
++secrets) have no Always allow state. The owner asked for these toggles. Built in 0161 with the gate (patch 5). There are
++seven toggles; the two fixed rows are shown in Settings as never sent. Always allow on gift card codes means the last four
++characters, because the owner confirmed codes are never sent whole.
+ 
+ **Enforcement in code, not in the prompt:**
+ 
+@@ -482,7 +495,7 @@ chat screen patch can add streaming.
+    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
+    pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). **0160 done:** the offline search
+    (screens and help pages; products and stock come with patch 6). Next: guide.
+-5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
++5. **Done (0161).** The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+    tools yet.
+ 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
+ 7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 679009e..b78234b 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -743,3 +743,19 @@ On the iPad, with the model set up as in T55. Sign in as the owner (or a manager
+ 12. Ask the same question again with the model on. Pass: the model's reply does not mention the earlier offline question or list.
+ 13. **Most important:** More ▸ Training, start any course, then open the chat and type a question. Pass: it says the assistant is switched off in practice mode, no list appears, and nothing is logged.
+ 
++## T59. Assistant data gate settings (0161)
++
++On the iPad, with the model set up as in T55. Sign in as the owner (or a manager when the team has no owner). The assistant cannot look up shop data yet, so this checks the settings and that nothing else changed.
++
++1. More ▸ Settings ▸ AI assistant. Pass: a section **What the assistant may see** lists seven rows (Customer details, Email addresses, Gift card balances, Gift card codes, Order totals and items, Cost prices and profit, Stock, sales, products and deals), each set to **Auto**, and two fixed rows (Payment details, Keys and passwords) that say *Never sent. This cannot be changed.*
++2. With an address like `http://192.168.1.20:11434/v1`, check **Right now** on each row. Pass: Customer details, Email addresses and Gift card balances say *Sent*, Gift card codes says *Last four characters only*, the other three say *Sent*.
++3. Under *This address counts as*, tap **Remote** (or use an address like `https://api.example.com/v1`). Pass: Customer details, Email addresses, Gift card balances and Gift card codes now say *Not sent*. The other three still say *Sent*.
++4. On Remote, set Customer details to **Always allow**. Pass: its line says *Sent* and a bold warning says it sends the details to a server outside your own network. Set Gift card codes to **Always allow**. Pass: it says *Last four characters only*, never *Sent*.
++5. Set Stock, sales, products and deals to **Never allow**. Pass: it says *Not sent*, on both Local and Remote.
++6. Tap **Save**, leave the page and come back. Pass: every choice is as you left it. Tap **Test connection**. Pass: it works as before.
++7. More ▸ Backup & transfer: make a backup and restore it on the same iPad, or on another one. Pass: the choices come back as you set them. Pass: they are not changed on another register that is syncing with this one.
++8. Edit the backup file by hand to put `"payment":"allow"` inside the `gate` part, then restore it. Pass: the Payment details row is still fixed as never sent.
++9. Open the chat and ask *How do I take a cash payment?* Pass: it answers from the help pages as before, with the same buttons.
++10. Type `refund for jo@example.com, card 4111 1111 1111 1111` and send. Pass: your message shows [email address] and [card number], whatever the choices above are.
++11. Open the conversation log and open that conversation. Pass: it looks as before, and no *Withheld by the data rules* line appears, because nothing was withheld.
++12. **Most important:** sign in as a cashier. Pass: the cashier cannot open AI assistant settings and so cannot change any of these choices.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7286d18..ee26b7c 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -152,6 +152,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
++| 0161 | 2026-10-18 | AI assistant, patch 5, the data gate (plan 3.1), the next item in the plan that is not a tool: **one place that decides what the model may be shown**, in front of every tool result, with the per-category toggles. New `src/lib/assistantGate.ts` (pure). Nine categories: customer details, email addresses, gift card balances, gift card codes, order totals and items, cost prices and profit, stock and other shop data, payment details, keys and passwords. `resolvePolicy` turns the endpoint (Auto, Local or Remote, from 0149) and the toggles into a decision for each: sent, last four characters only, or not sent. The table in 3.1 is the Auto setting, so a local address gets customer details, emails and balances, a remote one gets none of them, codes are never more than the last four, and payment details and keys are never sent. **Settings ▸ AI assistant ▸ What the assistant may see:** a row for each category with **Auto / Always allow / Never allow** and a line saying what that comes to right now, a warning when Always allow sends customer details to a remote address, and the two never-sent rows shown as fixed. Saved with the other assistant settings (per iPad, in Backup & transfer, not synced), cleaned on load and restore. **Enforced in code:** every tool now declares a field map (`gate`) naming each field it can return and its category, or `content` for tools that return only help text (all four so far). `runToolCall` gates the result before it is cut to size, so the model and the log only hold the gated result. A field the map does not name is dropped, counted and reported by name, so a tool cannot leak a field nobody sorted, and a test helper (`assertNoUnknownFields`) fails when one does. With no policy given the remote rules apply. Free text such as order notes is scrubbed under the same rules (an email or phone number only where that category is sent; card numbers and keys always masked). When something is hidden the model is told the kind (*customer details*), never the content, so it says it cannot show it instead of guessing. **History:** each reply records the kinds of data it was built from; when the address becomes remote or a toggle is switched, a reply that used a kind no longer sent is left out of what the model is given, together with its question, though the cashier can still read it. **Log:** what the gate withheld is counted by category on each tool call and on the event (never the items), and the viewer shows it. The scrubber moved to `assistantScrub.ts` (still exported from `assistantChat.ts`). Help page `settings/assistant` updated, `help.json` rebuilt. Tests: `tests/assistantgate.test.ts`. Device test T59. Not in this patch: any tool that returns shop data (patches 6 to 8), so the toggles have nothing to act on yet; the product and inventory lookup in offline mode; the guide tool, the screen and register context tool and the date and time tool | your request |
+ | 0160 | 2026-10-18 | AI assistant, patch 4, the offline mode (plan 3.3), a non-tool item taken from the plan: **when the model cannot answer, the chat still searches**. A question that fails (cannot reach the model, took too long, key rejected, model not found, wrong address, server problem, odd reply) or is asked before the model is set up now shows the red bar as before **and** a box headed *Model offline, showing search results*, listing screens (what each is for, and the taps from the Checkout tab) and help pages (tap one to read it, and a screen that is a tab or a page gets the same **Open** button the link tool makes, checked for the role signed in). It is the same two searches the model's tools use, so the role filter applies: a role is never listed a screen or page it cannot use, and a question about one gets the same *could not find anything* as one about something that does not exist. No model is involved, so the list is labelled as matches and not as an answer. Only the question is stored (scrubbed, as always) with a marker where a reply would be; the list is searched again each time the chat is shown, for whoever is signed in then. **The model is never shown a question that only got a list** (it would read a question with no reply, and some chat templates refuse two user messages in a row). The next question tries the model first, and **Retry** replaces the list with the model's answer instead of repeating the question. No list after **More detail**, and none in practice mode. Send now works before the model is set up. New `src/lib/assistantOffline.ts` (pure), history helpers `tidyOffline`, `forModel`, `withoutExchange` in `assistantChat.ts`, a new `offline` kind of log line (`buildOfflineEvent`, `logOffline`) shown in the conversation log with the screens and pages found and why the model was not used. Help page `settings/ask-assistant` updated, `help.json` rebuilt. Tests: `tests/assistantoffline.test.ts`. Device test T58. Not in this patch: product and inventory lookup in offline mode (needs the product tools and the data gate first), the highlight arrows (guide me there), the guide tool, the screen and register context tool, and the current screen as a starting point | your request |
+ | 0159 | 2026-10-18 | AI assistant, patch 4, tool 3 of 4 (your request: one tool at a time): **the link tool** (`show_link`). The assistant can now put a **button under its reply** that opens a help page or a screen: *Open Reports*, or the Taking cash page in Help. The model gives a kind (`doc` or `screen`) and an id it got from a search; `resolveLink` in `src/lib/assistantTools.ts` checks it against what the signed in role may see (the same filters the searches use), and a page or screen the role cannot reach gets exactly the same reply as one that does not exist. The button is not part of the reply text: the loop collects it from the tool call (`AssistantTool.link`), saves it on the reply (`ChatEntry.links`, at most 3, no repeats), and `liveLinks` checks every saved button again each time the chat is drawn, so a button a role can no longer reach disappears. Buttons are never sent back to the model. Only tabs and ordinary pages get a button: each screen in `src/lib/assistantScreens.ts` now has a `target` (a tab to switch to or a page to push), and views, windows and the pages that need a cart, an item or a lesson (`NOT_LINKABLE_ROUTES`: Payment, Cart, New item, Edit item, the chat itself, Training run, Practice terminal) have none, so the reply gives their taps in words. A button can never open a web address. The prompt now names the fourth tool and tells the model never to write a link or an id itself. New `tests/assistantlinks.test.ts` (and the tool list test now expects four tools). Device test T57. **Decided without you:** the plan never says what the link tool is, so I took it to mean tappable buttons to help pages and screens, and kept the highlight arrows ("Guide me there") for the guide tool, as in the plan's answer to question 8. Tell me if you meant something else. Not in this patch: the guide tool (the last of the four), the current screen as a starting point, the offline search, and the tool call limit as a Settings field | your request |
+ | 0158 | 2026-10-18 | AI assistant, patch 4, tool 2 of 4 (your request: one tool at a time): **the screen tool**, the navgraph search from the plan. The assistant can now **search the app's screens** (`search_screens`) by name or by what they are for, and says how to open each one from the Checkout tab in the app's own words ("Tap More.", "Tap Orders."). `src/lib/assistantScreens.ts` builds the list once from `src/app.navgraph`: tabs, views, pages and windows of the real till, without overlays or practice-only screens. **Roles are worked out by walking the graph once per role**, dropping every transition and screen that role may not use, so a role is only listed where it can really get there. That matters because Settings has no `roles` on the screen itself, only on the way into it; checking the screen alone would have shown it to a cashier. A screen a role cannot reach gets exactly the same reply as one that does not exist, and no summary shown to a cashier names Settings, Staff or a role (a test checks every one). Every searchable screen in `src/app.navgraph` now has a `summary` and `keywords` (documented in `src/app.navschema`), which is what lets a question in different words find it. Search takes whole sentences and needs one matching word, with more matching words ranking higher. The prompt now mentions the third tool and tells the model to give only the taps the tool lists. Also: `resultText` could return more than the size limit when a cut result was full of quotes (each quote is escaped again inside the wrapper); it now trims until it fits. `npm run graph:build` was run, because `src/lib/appNavgraph.generated.ts` had been out of date since 0151 (the Ask the assistant screen was in the graph but not in the copy the app bundles). New `tests/assistantscreens.test.ts`. Device test T56. Not in this patch: the link tool and the guide tool (next two patches), the current screen as a starting point (needs the screen and register context tool), the offline search, and the tool call limit as a Settings field | your request |
+diff --git a/help/help.json b/help/help.json
+index 8bb9e3f..5149daa 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "3f8a6ab3",
++ "version": "05f4250c",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1434,7 +1434,7 @@
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+     "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.\n\nBelow your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.",
+-    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
++    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
+     "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### The offline list\nThe list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens and help pages it found and why the model was not used.\n\n### Limits of this version\nThe offline list does not look up products, stock or customers yet. The only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+   },
+@@ -1462,7 +1462,7 @@
+     "staff",
+     "settings/ask-assistant"
+    ],
+-   "updated": "2026-10-17",
++   "updated": "2026-10-18",
+    "roles": [
+     "manager",
+     "owner"
+@@ -1470,8 +1470,8 @@
+    "lead": "Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.\n\nThis page sets up and tests the connection. To use the assistant, see [[settings/ask-assistant]].",
+    "sections": {
+     "basic": "### Set it up with Ollama on the shop PC\n1. On the PC, install Ollama and download a model that supports tools.\n2. Make sure the iPad and the PC are on the same Wi-Fi, and that Ollama accepts connections from the network.\n3. In **Address**, type the PC's address and port with `/v1` on the end, for example `http://192.168.1.20:11434/v1`.\n4. In **Model name**, type the model, for example `llama3.1:8b`. Leave **API key** empty, because Ollama does not need one.\n5. Tap **Test connection**. Three checks run: the server answers, the model replies, and the model can call a tool.\n6. Tap **Save**.\n\nThe first time the iPad talks to a computer on your Wi-Fi, iPadOS asks for permission to find devices on the local network. Tap **Allow**.\n\n### Use a hosted provider instead\nType the provider's address (it ends in `/v1`), the model name it gives you, and the API key. The key is kept in the iPad's Keychain and is never shown back in full.\n\n### What the test sends\nTest connection sends a short fixed message and a fake test tool. It sends nothing from the shop: no products, customers or sales.\n\n### If a check fails\nThe message says what went wrong: the server could not be reached, the request took too long, the key was not accepted, the model name was not found (it lists the names the server has), or the model does not support tools. Fix that one thing and test again.",
+-    "deep": "### Local or remote\nUnder the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.\n\nThe assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. Below that is a three way choice. **Auto** follows the address, and is right for nearly everyone. **Local** is for a private network the app does not recognise. **Remote** is for a tunnel or proxy that forwards out of your network, even when its address looks private. If you are not sure, choose Remote: it only means less is shared with the model. When you choose Local or Remote, the page adds *(set by you)* to the line above.\n\n### Options\n- **Temperature** is how adventurous the model's wording is. Low is steadier.\n- **Timeout** is how long one request may take. The default is 120 seconds.\n- **Context size** is how much text the model can read at once. If the provider reports it, Test connection fills it in. With Ollama, set the context size on the Ollama side too, because this connection cannot set it.\n- **Tool call limit** stops a model that gets stuck calling tools in a loop. The default is 15.\n\n### Per iPad, and in backups\nThese settings are for this iPad and are not shared with other registers. They are included in **Backup & transfer**, together with the key, so a restored iPad can reach the same model. See [[settings/backup]].",
+-    "advanced": "### How it is built\n```mermaid\nflowchart TD\n  A[AssistantSettings.tsx] --> B[parseBaseUrl and classifyEndpoint in assistantConfig.ts]\n  A --> C[testConnection in assistantClient.ts]\n  C --> D[listModels then chat then chat with the test tool]\n  A --> E[assistantKey.ts in the Keychain]\n  A --> F[settings.assistant in store.ts]\n```\n\n- The settings are `settings.assistant` (type `AssistantSettings` in `src/lib/assistantConfig.ts`). `normaliseAssistant` fills defaults and clamps every value, on load and on restore.\n- `pushSharedSettings` in `src/lib/sync.ts` builds its list by hand and does not include `assistant`, so nothing here syncs between registers.\n- The key is stored as `pos.assistantKey` through `src/lib/assistantKey.ts`. It is not in `settings`. It is carried in the backup credentials as `assistantKey` (`src/lib/backupFile.ts`, `src/lib/backupIO.ts`).\n- `src/lib/assistantClient.ts` takes a `fetch` function, so the tests run without a network. It does not stream replies. Server error text is cut short and the key is removed from it before it is shown.\n- The row is shown when `canEditAdjustPerms(actingRole(...), staff)` is true. Practice mode blocks saving, Test connection and writing the key.\n- iOS reaches a local address over plain http because the local networking exception (NSAllowsLocalNetworking) is set in `app.json`.\n\nTests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`.\n\nKnown to change: the chat screen, the data rules (a gate in front of every tool result) and the per-category toggles are later patches. See `docs/AI_ASSISTANT_PLAN.md`."
++    "deep": "### Local or remote\nUnder the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.\n\nThe assistant's data rules use this (see **What the assistant may see**, below). Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Below that is a three way choice. **Auto** follows the address, and is right for nearly everyone. **Local** is for a private network the app does not recognise. **Remote** is for a tunnel or proxy that forwards out of your network, even when its address looks private. If you are not sure, choose Remote: it only means less is shared with the model. When you choose Local or Remote, the page adds *(set by you)* to the line above.\n\n### What the assistant may see\nThe section **What the assistant may see** lists the kinds of shop data the assistant could be given, one row each, with a three way choice:\n\n- **Auto** follows the rules for this address. On a local address customer details, email addresses and gift card balances are sent, and gift card codes only as the last four characters. On a remote address none of those are sent. Order totals and items, cost prices and profit, and stock, sales, products and deals are sent on either.\n- **Always allow** sends that kind of data even where Auto would not. On a remote address the page warns you, because it means the details leave your own network. Gift card codes are never sent whole, even here: the most that goes is the last four characters.\n- **Never allow** keeps that kind of data out even where Auto would send it.\n\nUnder each row, **Right now** says what the choice comes to for this address: *Sent*, *Not sent* or *Last four characters only*. **Payment details** (card details and terminal details) and **keys and passwords** are never sent, whatever you choose, and the page shows them as fixed.\n\nThese rules are applied by the app to every result before the model sees it, so the model cannot be talked into ignoring them. If something is hidden, the model is told that it was hidden and what kind it was (for example *customer details*), never what it said, so it will say it cannot show it. Order notes and other free text are checked too: an email address or phone number in a note is hidden unless that kind of data is allowed, and card numbers and keys are always hidden. If you later change the address to a remote one, or switch a row to Never allow, earlier answers in the chat that used that kind of data are no longer sent to the model. You can still read them.\n\nThe assistant cannot look up shop data yet. The choices are saved now, and they decide what the lookups added later are allowed to return.\n\n### Options\n- **Temperature** is how adventurous the model's wording is. Low is steadier.\n- **Timeout** is how long one request may take. The default is 120 seconds.\n- **Context size** is how much text the model can read at once. If the provider reports it, Test connection fills it in. With Ollama, set the context size on the Ollama side too, because this connection cannot set it.\n- **Tool call limit** stops a model that gets stuck calling tools in a loop. The default is 15.\n\n### Per iPad, and in backups\nThese settings are for this iPad and are not shared with other registers. They are included in **Backup & transfer**, together with the key, so a restored iPad can reach the same model. See [[settings/backup]].",
++    "advanced": "### How it is built\n```mermaid\nflowchart TD\n  A[AssistantSettings.tsx] --> B[parseBaseUrl and classifyEndpoint in assistantConfig.ts]\n  A --> C[testConnection in assistantClient.ts]\n  C --> D[listModels then chat then chat with the test tool]\n  A --> E[assistantKey.ts in the Keychain]\n  A --> F[settings.assistant in store.ts]\n```\n\n- The settings are `settings.assistant` (type `AssistantSettings` in `src/lib/assistantConfig.ts`). `normaliseAssistant` fills defaults and clamps every value, on load and on restore.\n- `pushSharedSettings` in `src/lib/sync.ts` builds its list by hand and does not include `assistant`, so nothing here syncs between registers.\n- The key is stored as `pos.assistantKey` through `src/lib/assistantKey.ts`. It is not in `settings`. It is carried in the backup credentials as `assistantKey` (`src/lib/backupFile.ts`, `src/lib/backupIO.ts`).\n- `src/lib/assistantClient.ts` takes a `fetch` function, so the tests run without a network. It does not stream replies. Server error text is cut short and the key is removed from it before it is shown.\n- The row is shown when `canEditAdjustPerms(actingRole(...), staff)` is true. Practice mode blocks saving, Test connection and writing the key.\n- iOS reaches a local address over plain http because the local networking exception (NSAllowsLocalNetworking) is set in `app.json`.\n\nTests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`, `tests/assistantgate.test.ts`.\n\n### The data gate\n`src/lib/assistantGate.ts` is the one place the data rules live. `resolvePolicy(scope, toggles)` turns the endpoint class (`classifyEndpoint`) and the per category toggles (`settings.assistant.gate`) into a decision for each of nine categories: `allow`, `last4` or `deny`. Payment and secret are always `deny`, and Always allow on `gift_code` is `last4`. `applyGate(result, spec, policy)` walks a tool result.\n\n- Every tool declares `gate` (`AssistantTool` in `assistantTools.ts`): a field map that names each field it can return and its category, or `'content'` for tools that return only help text. `runToolCall` calls `applyGate` straight after `tool.run`, before the result is cut to size, so the model and the log only ever hold the gated result.\n- A field the map does not name is dropped and counted under `unknown`. An object where the map expects a single value is dropped too. Nothing is thrown.\n- Every string that is kept goes through the scrubber (`assistantScrub.ts`). Emails are left alone only when `email` is `allow`, phone numbers only when `personal` is `allow`. Card numbers that pass the Luhn check and key shaped strings are always masked.\n- With no policy given, `FAIL_CLOSED_POLICY` (the remote rules) applies.\n- Each reply is marked with the categories its tool results held (`used` on the chat entry). `forModel` leaves out a reply, and its question, when the current policy no longer sends one of them.\n- The counts of what was withheld, by category and never the items, are on each tool record and on the log event (`withheld`).\n\nTests: `tests/assistantgate.test.ts`. `assertNoUnknownFields` in that file is the check every data tool added later should call with realistic data.\n\nKnown to change: the data tools themselves (products, inventory, sales, customers and the rest) are later patches. See `docs/AI_ASSISTANT_PLAN.md`."
+    }
+   },
+   {
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index b9e3aab..9304dd6 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -31,7 +31,7 @@ Below your question it still gives you a list, headed *Model offline, showing se
+ Your messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.
+ 
+ ### What is hidden before sending
+-Before anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.
++Before anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].
+ 
+ ### The conversation log
+ Every question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.
+diff --git a/help/settings/assistant.md b/help/settings/assistant.md
+index 070406d..8b1b613 100644
+--- a/help/settings/assistant.md
++++ b/help/settings/assistant.md
+@@ -5,7 +5,7 @@ parent: settings
+ summary: Point the Help assistant at a model server (Ollama or any OpenAI-compatible provider) and test the connection.
+ tags: [AI, assistant, chatbot, model, Ollama, OpenAI, API key, local, remote, test connection, privacy]
+ related: [settings, settings/backup, staff, settings/ask-assistant]
+-updated: 2026-10-17
++updated: 2026-10-18
+ roles: [manager, owner]
+ ---
+ Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.
+@@ -38,7 +38,20 @@ The message says what went wrong: the server could not be reached, the request t
+ ### Local or remote
+ Under the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.
+ 
+-The assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. Below that is a three way choice. **Auto** follows the address, and is right for nearly everyone. **Local** is for a private network the app does not recognise. **Remote** is for a tunnel or proxy that forwards out of your network, even when its address looks private. If you are not sure, choose Remote: it only means less is shared with the model. When you choose Local or Remote, the page adds *(set by you)* to the line above.
++The assistant's data rules use this (see **What the assistant may see**, below). Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Below that is a three way choice. **Auto** follows the address, and is right for nearly everyone. **Local** is for a private network the app does not recognise. **Remote** is for a tunnel or proxy that forwards out of your network, even when its address looks private. If you are not sure, choose Remote: it only means less is shared with the model. When you choose Local or Remote, the page adds *(set by you)* to the line above.
++
++### What the assistant may see
++The section **What the assistant may see** lists the kinds of shop data the assistant could be given, one row each, with a three way choice:
++
++- **Auto** follows the rules for this address. On a local address customer details, email addresses and gift card balances are sent, and gift card codes only as the last four characters. On a remote address none of those are sent. Order totals and items, cost prices and profit, and stock, sales, products and deals are sent on either.
++- **Always allow** sends that kind of data even where Auto would not. On a remote address the page warns you, because it means the details leave your own network. Gift card codes are never sent whole, even here: the most that goes is the last four characters.
++- **Never allow** keeps that kind of data out even where Auto would send it.
++
++Under each row, **Right now** says what the choice comes to for this address: *Sent*, *Not sent* or *Last four characters only*. **Payment details** (card details and terminal details) and **keys and passwords** are never sent, whatever you choose, and the page shows them as fixed.
++
++These rules are applied by the app to every result before the model sees it, so the model cannot be talked into ignoring them. If something is hidden, the model is told that it was hidden and what kind it was (for example *customer details*), never what it said, so it will say it cannot show it. Order notes and other free text are checked too: an email address or phone number in a note is hidden unless that kind of data is allowed, and card numbers and keys are always hidden. If you later change the address to a remote one, or switch a row to Never allow, earlier answers in the chat that used that kind of data are no longer sent to the model. You can still read them.
++
++The assistant cannot look up shop data yet. The choices are saved now, and they decide what the lookups added later are allowed to return.
+ 
+ ### Options
+ - **Temperature** is how adventurous the model's wording is. Low is steadier.
+@@ -68,6 +81,18 @@ flowchart TD
+ - The row is shown when `canEditAdjustPerms(actingRole(...), staff)` is true. Practice mode blocks saving, Test connection and writing the key.
+ - iOS reaches a local address over plain http because the local networking exception (NSAllowsLocalNetworking) is set in `app.json`.
+ 
+-Tests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`.
++Tests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`, `tests/assistantgate.test.ts`.
++
++### The data gate
++`src/lib/assistantGate.ts` is the one place the data rules live. `resolvePolicy(scope, toggles)` turns the endpoint class (`classifyEndpoint`) and the per category toggles (`settings.assistant.gate`) into a decision for each of nine categories: `allow`, `last4` or `deny`. Payment and secret are always `deny`, and Always allow on `gift_code` is `last4`. `applyGate(result, spec, policy)` walks a tool result.
++
++- Every tool declares `gate` (`AssistantTool` in `assistantTools.ts`): a field map that names each field it can return and its category, or `'content'` for tools that return only help text. `runToolCall` calls `applyGate` straight after `tool.run`, before the result is cut to size, so the model and the log only ever hold the gated result.
++- A field the map does not name is dropped and counted under `unknown`. An object where the map expects a single value is dropped too. Nothing is thrown.
++- Every string that is kept goes through the scrubber (`assistantScrub.ts`). Emails are left alone only when `email` is `allow`, phone numbers only when `personal` is `allow`. Card numbers that pass the Luhn check and key shaped strings are always masked.
++- With no policy given, `FAIL_CLOSED_POLICY` (the remote rules) applies.
++- Each reply is marked with the categories its tool results held (`used` on the chat entry). `forModel` leaves out a reply, and its question, when the current policy no longer sends one of them.
++- The counts of what was withheld, by category and never the items, are on each tool record and on the log event (`withheld`).
++
++Tests: `tests/assistantgate.test.ts`. `assertNoUnknownFields` in that file is the check every data tool added later should call with realistic data.
+ 
+-Known to change: the chat screen, the data rules (a gate in front of every tool result) and the per-category toggles are later patches. See `docs/AI_ASSISTANT_PLAN.md`.
++Known to change: the data tools themselves (products, inventory, sales, customers and the rest) are later patches. See `docs/AI_ASSISTANT_PLAN.md`.
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index f3614d1..0616f3c 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -3,50 +3,13 @@
+ // so it runs in the node tests. The tools (assistantTools.ts) let it look at the help pages and the app's screens, and nothing
+ // else: it knows nothing about the shop's data, and it only sees what the cashier types and the earlier messages of the same chat.
+ import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
++import { maskedNote, scrubText, type MaskKind } from './assistantScrub';
++import { CATEGORIES, FAIL_CLOSED_POLICY, restricted, type Category, type GatePolicy } from './assistantGate';
+ import { MAX_LINKS, runToolCall, toolDefs, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
+ 
+ // ---------- the small scrubber ----------
+-// The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
+-// a pasted email address, phone number, card number or key never leaves the iPad, so it cannot reach a remote server.
+-export type MaskKind = 'email' | 'phone' | 'card' | 'key';
+-export type Scrubbed = { text: string; masked: Partial<Record<MaskKind, number>> };
+-export const MASK_WORD: Record<MaskKind, [string, string]> = { email: ['email address', 'email addresses'], phone: ['phone number', 'phone numbers'], card: ['card number', 'card numbers'], key: ['key or token', 'keys or tokens'] };
+-
+-/** The Luhn check, used so a long number is only masked as a card when it can be one. */
+-export function luhnOk(digits: string): boolean {
+-  if (!/^\d{13,19}$/.test(digits)) return false;
+-  let sum = 0; let dbl = false;
+-  for (let i = digits.length - 1; i >= 0; i--) { let d = digits.charCodeAt(i) - 48; if (dbl) { d *= 2; if (d > 9) d -= 9; } sum += d; dbl = !dbl; }
+-  return sum % 10 === 0;
+-}
+-
+-const CARD_RUN = /(?<![\d])\d(?:[ -]?\d){12,18}(?![\d])/g;
+-const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
+-const AU_PHONE = /(?<![\w])(?:\+61|0)[2-478](?:[ -]?\d){8}(?![\d])/g;
+-const INTL_PHONE = /(?<![\w])\+\d{1,3}(?:[ -]?\d){7,12}(?![\d])/g;
+-const LONG_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
+-
+-export function scrubText(input: string): Scrubbed {
+-  const masked: Partial<Record<MaskKind, number>> = {};
+-  const bump = (k: MaskKind) => { masked[k] = (masked[k] ?? 0) + 1; };
+-  let t = input ?? '';
+-  const before = t;
+-  t = redactSecrets(t); if (t !== before) { const n = (before.match(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi) ?? []).length; for (let i = 0; i < Math.max(1, n); i++) bump('key'); }
+-  t = t.replace(CARD_RUN, m => { if (luhnOk(m.replace(/[ -]/g, ''))) { bump('card'); return '[card number]'; } return m; });
+-  t = t.replace(EMAIL, () => { bump('email'); return '[email address]'; });
+-  t = t.replace(AU_PHONE, () => { bump('phone'); return '[phone number]'; });
+-  t = t.replace(INTL_PHONE, () => { bump('phone'); return '[phone number]'; });
+-  t = t.replace(LONG_TOKEN, m => { if (/[A-Za-z]/.test(m) && /\d/.test(m)) { bump('key'); return '[key]'; } return m; });
+-  return { text: t, masked };
+-}
+-
+-/** "Hidden before sending: 1 email address and 2 phone numbers." Empty when nothing was masked. */
+-export function maskedNote(masked: Partial<Record<MaskKind, number>>): string {
+-  const parts = (Object.keys(MASK_WORD) as MaskKind[]).filter(k => (masked[k] ?? 0) > 0).map(k => `${masked[k]} ${MASK_WORD[k][masked[k] === 1 ? 0 : 1]}`);
+-  if (!parts.length) return '';
+-  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+-  return `Hidden before sending: ${list}.`;
+-}
++// The scrubber moved to assistantScrub.ts in patch 0161 (the data gate uses it too). It is still re-exported here, so the chat code and its tests are unchanged.
++export { luhnOk, maskedNote, MASK_WORD, scrubText, type MaskKind, type Scrubbed } from './assistantScrub';
+ 
+ // ---------- the dash rule ----------
+ /** Models use em and en dashes a lot and a prompt alone does not stop it, so replies are cleaned before they are shown. */
+@@ -83,7 +46,11 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false):
+ 
+ // ---------- history ----------
+ /** `links` are buttons shown under a reply (patch 0159), never sent to the model: only the text is. `offline` marks the entry that stands in for a reply when the model could not answer (patch 0160): a list of matches from the screens and help pages, searched again each time it is shown. */
+-export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; links?: ChatLink[]; offline?: true };
++/**
++ * `used` (patch 0161) says which categories of shop data the reply was built from. It is kept so that, if the endpoint or the
++ * toggles later stop one of them being sent, the reply and its question are left out of what the model is given.
++ */
++export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; links?: ChatLink[]; offline?: true; used?: Category[] };
+ export const HISTORY_CAP = 200;
+ export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
+ 
+@@ -104,7 +71,8 @@ export function readHistory(raw: unknown): ChatEntry[] {
+     const o = e as Record<string, unknown>;
+     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
+     const links = o.role === 'assistant' ? readLinks(o.links) : [];
+-    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}), ...(o.role === 'assistant' && o.offline === true ? { offline: true as const } : {}) });
++    const used = o.role === 'assistant' && Array.isArray(o.used) ? CATEGORIES.filter(c => (o.used as unknown[]).includes(c)) : [];
++    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}), ...(o.role === 'assistant' && o.offline === true ? { offline: true as const } : {}), ...(used.length ? { used } : {}) });
+   }
+   return capHistory(out);
+ }
+@@ -121,9 +89,13 @@ export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => ti
+  * What the model gets to see of the history. A question that only got an offline list was never answered, so it and its list stay
+  * out: the model would otherwise read a question with no reply, and some chat templates refuse two user messages in a row.
+  */
+-export function forModel(h: ChatEntry[]): ChatEntry[] {
++export function forModel(h: ChatEntry[], policy: GatePolicy = FAIL_CLOSED_POLICY): ChatEntry[] {
+   const out: ChatEntry[] = [];
+-  for (const e of tidyOffline(h)) { if (e.offline) { if (out.length && out[out.length - 1].role === 'user') out.pop(); continue; } out.push(e); }
++  for (const e of tidyOffline(h)) {
++    // A reply built from data this endpoint may no longer be sent (the address changed to a remote one, or a toggle was switched) goes out with its question (patch 0161).
++    if (e.offline || (e.role === 'assistant' && restricted(e.used, policy))) { if (out.length && out[out.length - 1].role === 'user') out.pop(); continue; }
++    out.push(e);
++  }
+   return out;
+ }
+ /** Takes one exchange out of the history: the question with this id, and the offline list straight after it if it has one. Used when a retry replaces it. */
+@@ -154,7 +126,7 @@ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, cont
+   const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
+   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
+   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
+-  history = forModel(history);
++  history = forModel(history, tools?.ctx.policy);
+   for (let i = history.length - 1; i >= 0; i--) {
+     let text = scrubText(history[i].text).text;
+     let cost = estimateTokens(text);
+@@ -208,7 +180,7 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
+   }
+   const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
+   const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
+-  let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = [];
++  let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = []; const used = new Set<Category>();
+   for (;;) {
+     const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
+     const wanted = res.message.tool_calls ?? [];
+@@ -219,10 +191,10 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
+       raw = limitReply(set.limit, read); break;
+     }
+     messages = [...messages, { role: 'assistant', content: res.message.content ?? null, tool_calls: wanted }];
+-    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; if (r.link && links.length < MAX_LINKS && !links.some(l => l.kind === r.link!.kind && l.id === r.link!.id)) links.push(r.link); }
++    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); for (const k of r.record.used ?? []) used.add(k); messages.push(r.message); calls++; if (r.link && links.length < MAX_LINKS && !links.some(l => l.kind === r.link!.kind && l.id === r.link!.id)) links.push(r.link); }
+   }
+   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
+-  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now(), ...(links.length ? { links } : {}) } };
++  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now(), ...(links.length ? { links } : {}), ...(used.size ? { used: CATEGORIES.filter(c => used.has(c)) } : {}) } };
+ }
+ /** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
+ export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> { return runPrepared(f, a, prepare(a)); }
+diff --git a/src/lib/assistantConfig.ts b/src/lib/assistantConfig.ts
+index 358d7d7..f3e4f2f 100644
+--- a/src/lib/assistantConfig.ts
++++ b/src/lib/assistantConfig.ts
+@@ -7,6 +7,21 @@
+ export type EndpointMode = 'auto' | 'local' | 'remote';
+ export const ENDPOINT_MODES: readonly EndpointMode[] = ['auto', 'local', 'remote'];
+ 
++/** The kinds of shop data the data gate (assistantGate.ts) sorts everything into. Payment and secret have no toggle: they are never sent. */
++export const GATE_TOGGLE_CATEGORIES = ['personal', 'email', 'gift_balance', 'gift_code', 'order', 'cost', 'shop'] as const;
++export type GateToggleCategory = typeof GATE_TOGGLE_CATEGORIES[number];
++/** Auto follows the table in the plan (3.1). Allow sends the category even where the table would not. Never keeps it out even where the table would send it. */
++export type GateToggle = 'auto' | 'allow' | 'never';
++export const GATE_TOGGLES: readonly GateToggle[] = ['auto', 'allow', 'never'];
++export type GateToggles = Record<GateToggleCategory, GateToggle>;
++export const defaultGateToggles = (): GateToggles => ({ personal: 'auto', email: 'auto', gift_balance: 'auto', gift_code: 'auto', order: 'auto', cost: 'auto', shop: 'auto' });
++/** Anything stored or restored becomes a full set of toggles. Missing, unknown or odd values are Auto, the table in the plan. */
++export function normaliseToggles(x: unknown): GateToggles {
++  const d = defaultGateToggles(); const o = (x && typeof x === 'object' && !Array.isArray(x) ? x : {}) as Record<string, unknown>;
++  for (const k of GATE_TOGGLE_CATEGORIES) { const v = o[k]; if (typeof v === 'string' && (GATE_TOGGLES as readonly string[]).includes(v)) d[k] = v as GateToggle; }
++  return d;
++}
++
+ export type AssistantSettings = {
+   baseUrl: string;        // OpenAI-compatible base, for example http://192.168.1.20:11434/v1 (Ollama) or https://api.example.com/v1
+   model: string;
+@@ -16,6 +31,7 @@ export type AssistantSettings = {
+   toolCallLimit: number;  // safety stop for a model stuck calling tools in a loop
+   endpointMode: EndpointMode; // auto follows the address rules, local or remote forces the class (a tunnel on a 192.168 address can be forced remote)
+   logCapMB: number;       // audit log cap in MB (default 200)
++  gate: GateToggles;      // per category override of the data rules (patch 0161), Auto by default
+ };
+ 
+ export const DEFAULT_TIMEOUT_SEC = 120;
+@@ -24,7 +40,7 @@ export const DEFAULT_TOOL_CALL_LIMIT = 15;
+ export const DEFAULT_LOG_CAP_MB = 200;
+ 
+ export const defaultAssistant = (): AssistantSettings => ({
+-  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto', logCapMB: DEFAULT_LOG_CAP_MB,
++  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto', logCapMB: DEFAULT_LOG_CAP_MB, gate: defaultGateToggles(),
+ });
+ 
+ const clampInt = (x: unknown, lo: number, hi: number, fallback: number): number => {
+@@ -54,6 +70,7 @@ export function normaliseAssistant(x: unknown): AssistantSettings {
+     toolCallLimit: clampInt(o.toolCallLimit, 1, 100, d.toolCallLimit),
+     endpointMode: readMode(o),
+     logCapMB: clampInt(o.logCapMB, 1, 10_000, d.logCapMB),
++    gate: normaliseToggles(o.gate),
+   };
+ }
+ 
+diff --git a/src/lib/assistantGate.ts b/src/lib/assistantGate.ts
+new file mode 100644
+index 0000000..a4e8bbc
+--- /dev/null
++++ b/src/lib/assistantGate.ts
+@@ -0,0 +1,167 @@
++// Location: src/lib/assistantGate.ts
++// The data gate (patch 0161, plan 3.1). Every tool result passes through here before it goes into a request to the model.
++// It sorts each field into a category, decides from the endpoint (local or remote) and the Settings toggles whether that
++// category may be sent, and removes or masks what may not. This is enforced in code, never in the prompt.
++//
++// How a tool takes part: it declares a field map (`gate` on the tool) that names every field it can return and says which
++// category the field belongs to. A field the map does not name is dropped and counted as unknown, so a tool cannot leak a
++// field nobody has sorted. The tests fail when a tool returns one. Tools that return only help text declare 'content', which
++// still has keys, card numbers and anything key shaped masked.
++//
++// Pure logic, no React Native imports, so it runs in the node tests.
++import { GATE_TOGGLE_CATEGORIES, type EndpointClass, type GateToggleCategory, type GateToggles } from './assistantConfig';
++import { scrubText, type ScrubKeep } from './assistantScrub';
++
++// ---------- categories and the rules table ----------
++export type Category = GateToggleCategory | 'payment' | 'secret';
++export const CATEGORIES: readonly Category[] = [...GATE_TOGGLE_CATEGORIES, 'payment', 'secret'];
++/** Never sent to any endpoint, and with no toggle. */
++export const FIXED_NEVER: readonly Category[] = ['payment', 'secret'];
++/** What the gate does with a category. `last4` is for gift card codes: only the last four characters. */
++export type Decision = 'allow' | 'last4' | 'deny';
++export type GatePolicy = Record<Category, Decision>;
++
++export const CATEGORY_INFO: Record<Category, { label: string; help: string; /** Used in "Hidden by the shop's privacy rules: ...". */ phrase: string }> = {
++  personal: { label: 'Customer details', help: 'Customer names, phone numbers, addresses and any other personal details.', phrase: 'customer details' },
++  email: { label: 'Email addresses', help: 'Email addresses of customers and staff.', phrase: 'email addresses' },
++  gift_balance: { label: 'Gift card balances', help: 'What is left on a gift card.', phrase: 'gift card balances' },
++  gift_code: { label: 'Gift card codes', help: 'Only the last four characters are ever sent, even when allowed.', phrase: 'gift card codes' },
++  order: { label: 'Order totals and items', help: 'What was sold and for how much. Customer details on an order follow the customer rule above.', phrase: 'order details' },
++  cost: { label: 'Cost prices and profit', help: 'What products cost the shop and what it made on them.', phrase: 'costs and profit' },
++  shop: { label: 'Stock, sales, products and deals', help: 'Stock levels, sales history, product and variant data, deals, cash drawer status, date and time.', phrase: 'shop data' },
++  payment: { label: 'Payment details', help: 'Card details, tender and terminal details.', phrase: 'payment details' },
++  secret: { label: 'Keys and passwords', help: 'Anything that looks like a secret key, token or password.', phrase: 'keys and passwords' },
++};
++
++/** The table in the plan (3.1), as Auto means it. */
++const AUTO: Record<EndpointClass, GatePolicy> = {
++  local: { personal: 'allow', email: 'allow', gift_balance: 'allow', gift_code: 'last4', order: 'allow', cost: 'allow', shop: 'allow', payment: 'deny', secret: 'deny' },
++  remote: { personal: 'deny', email: 'deny', gift_balance: 'deny', gift_code: 'deny', order: 'allow', cost: 'allow', shop: 'allow', payment: 'deny', secret: 'deny' },
++};
++
++/**
++ * What may be sent for this endpoint, with the toggles applied. Payment and secrets are never sent, whatever the toggles say.
++ * Allow means the most the category can ever be: for gift card codes that is the last four characters, not the whole code.
++ */
++export function resolvePolicy(scope: EndpointClass, toggles?: Partial<GateToggles>): GatePolicy {
++  const out = { ...AUTO[scope === 'local' ? 'local' : 'remote'] };
++  for (const c of GATE_TOGGLE_CATEGORIES) {
++    const t = toggles?.[c];
++    if (t === 'never') out[c] = 'deny';
++    else if (t === 'allow') out[c] = c === 'gift_code' ? 'last4' : 'allow';
++  }
++  for (const c of FIXED_NEVER) out[c] = 'deny';
++  return out;
++}
++/** Used when a tool is run with no policy given: the remote rules, which are the strictest. */
++export const FAIL_CLOSED_POLICY: GatePolicy = resolvePolicy('remote');
++
++// ---------- field maps ----------
++/** A field is a category, or a map of the fields inside it (for an object, or for each object in a list). */
++export type FieldRule = Category | FieldMap;
++export interface FieldMap { [field: string]: FieldRule }
++/** 'content' is for tools that return help text and screen names and no shop data. */
++export type GateSpec = FieldMap | 'content';
++/** Fields every result may carry, because the app's own code writes them. They are still scrubbed. */
++const UNIVERSAL = new Set(['error', 'note', 'ok', 'cut', 'privacy_note']);
++const MAX_DEPTH = 8;
++
++export type GateOutcome = {
++  value: unknown;
++  /** Fields removed or masked, by category. `unknown` counts fields no map named. */
++  withheld: Record<string, number>;
++  /** Categories that have at least one value left in the result. */
++  used: Category[];
++  /** Paths of fields no map named (names only, never values). Empty is the only healthy answer. */
++  unknown: string[];
++};
++
++const isPrimitive = (v: unknown): v is string | number | boolean | null => v === null || ['string', 'number', 'boolean'].includes(typeof v);
++const isObject = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
++
++/** The last four characters of a code, with the rest hidden. A code of four or fewer characters would be shown whole, so it is hidden whole. */
++export function lastFour(code: string): string {
++  const c = (code ?? '').trim();
++  return c.length > 4 ? `****${c.slice(-4)}` : '[hidden]';
++}
++
++/** What the free text scrubber may leave alone under this policy: an email or a phone number only where its category may be sent. */
++export const keepFor = (p: GatePolicy): ScrubKeep => ({ email: p.email === 'allow', phone: p.personal === 'allow' });
++
++/** Applies a policy to one value: scrubs strings, passes numbers and booleans. */
++function cleanValue(v: string | number | boolean | null, keep: ScrubKeep): string | number | boolean | null { return typeof v === 'string' ? scrubText(v, keep).text : v; }
++
++/** Content tools: no shop data, so no categories. Keys, card numbers and anything key shaped are still masked in every string. */
++function scrubContent(v: unknown, depth: number, withheld: Record<string, number>): unknown {
++  if (typeof v === 'string') {
++    const s = scrubText(v, { email: true, phone: true });
++    if (s.masked.card) withheld.payment = (withheld.payment ?? 0) + s.masked.card;
++    if (s.masked.key) withheld.secret = (withheld.secret ?? 0) + s.masked.key;
++    return s.text;
++  }
++  if (isPrimitive(v)) return v;
++  if (depth >= MAX_DEPTH) { withheld.unknown = (withheld.unknown ?? 0) + 1; return null; }
++  if (Array.isArray(v)) return v.map(x => scrubContent(x, depth + 1, withheld));
++  if (isObject(v)) { const o: Record<string, unknown> = {}; for (const [k, x] of Object.entries(v)) o[k] = scrubContent(x, depth + 1, withheld); return o; }
++  withheld.unknown = (withheld.unknown ?? 0) + 1; return null;
++}
++
++/**
++ * Runs a tool result through the gate. Nothing is thrown: whatever cannot be sorted is dropped and reported in `unknown`.
++ * When something was hidden from an object result, a `privacy_note` names the categories (never the contents) so the model
++ * says it cannot show them instead of guessing.
++ */
++export function applyGate(result: unknown, spec: GateSpec, policy: GatePolicy = FAIL_CLOSED_POLICY): GateOutcome {
++  const withheld: Record<string, number> = {}; const used = new Set<Category>(); const unknown: string[] = [];
++  const bump = (k: string) => { withheld[k] = (withheld[k] ?? 0) + 1; };
++  const keep = keepFor(policy);
++
++  if (spec === 'content') return { value: scrubContent(result, 0, withheld), withheld, used: [], unknown };
++
++  const walkValue = (v: unknown, rule: FieldRule, path: string, depth: number): { keep: boolean; value?: unknown } => {
++    if (typeof rule === 'string') {
++      const d = policy[rule] ?? 'deny';
++      if (d === 'deny') { bump(rule); return { keep: false }; }
++      if (Array.isArray(v)) {
++        if (!v.every(isPrimitive)) { unknown.push(path); bump('unknown'); return { keep: false }; }
++        const items = v.map(x => (d === 'last4' ? (typeof x === 'string' ? lastFour(x) : '[hidden]') : cleanValue(x, keep)));
++        if (items.length) used.add(rule); return { keep: true, value: items };
++      }
++      if (!isPrimitive(v)) { unknown.push(path); bump('unknown'); return { keep: false }; }
++      if (v === null) return { keep: true, value: null };
++      used.add(rule);
++      if (d === 'last4') { bump(rule); return { keep: true, value: typeof v === 'string' ? lastFour(v) : '[hidden]' }; }
++      return { keep: true, value: cleanValue(v, keep) };
++    }
++    // a nested map: an object, or a list of objects
++    if (depth >= MAX_DEPTH) { unknown.push(path); bump('unknown'); return { keep: false }; }
++    if (v === null) return { keep: true, value: null };
++    if (Array.isArray(v)) return { keep: true, value: v.map((x, i) => walkObject(x, rule, `${path}[${i}]`, depth + 1)) };
++    // An object whose fields were all hidden is left out whole, so the model is not shown an empty "customer" and left to wonder.
++    const obj = walkObject(v, rule, path, depth + 1);
++    if (isObject(v) && Object.keys(v).length && isObject(obj) && !Object.keys(obj).length) return { keep: false };
++    return { keep: true, value: obj };
++  };
++  const walkObject = (v: unknown, map: FieldMap, path: string, depth: number): unknown => {
++    if (!isObject(v)) { unknown.push(path); bump('unknown'); return null; }
++    const out: Record<string, unknown> = {};
++    for (const [k, x] of Object.entries(v)) {
++      const at = path ? `${path}.${k}` : k;
++      if (Object.prototype.hasOwnProperty.call(map, k)) { const r = walkValue(x, map[k], at, depth); if (r.keep) out[k] = r.value; continue; }
++      if (depth === 0 && UNIVERSAL.has(k) && isPrimitive(x)) { out[k] = cleanValue(x, keep); continue; }
++      unknown.push(at); bump('unknown');
++    }
++    return out;
++  };
++
++  const value = Array.isArray(result) ? result.map((x, i) => walkObject(x, spec, `[${i}]`, 0)) : walkObject(result, spec, '', 0);
++  const hidden = (Object.keys(withheld) as string[]).filter(k => k !== 'unknown' && k in CATEGORY_INFO);
++  if (hidden.length && isObject(value)) value.privacy_note = `Hidden by the shop's privacy rules: ${hidden.map(k => CATEGORY_INFO[k as Category].phrase).join(', ')}. Say you cannot show that. Do not guess it.`;
++  return { value, withheld, used: [...used], unknown };
++}
++
++/** True when a past reply drew on a category the current policy no longer sends, so it must not be sent on as history. */
++export const restricted = (used: readonly string[] | undefined, p: GatePolicy): boolean => (used ?? []).some(c => (p[c as Category] ?? 'deny') === 'deny');
++
++/** Describes what the policy does, for the settings screen: "Sent", "Not sent" or "Last four characters only". */
++export const decisionWord = (d: Decision): string => (d === 'allow' ? 'Sent' : d === 'last4' ? 'Last four characters only' : 'Not sent');
+diff --git a/src/lib/assistantLog.ts b/src/lib/assistantLog.ts
+index d9e7226..ca9b71f 100644
+--- a/src/lib/assistantLog.ts
++++ b/src/lib/assistantLog.ts
+@@ -61,6 +61,12 @@ export type BuildInput = {
+   /** True when the log already holds this message's text. */
+   known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string; tools?: ToolRecord[];
+ };
++/** What the data gate hid across every tool call of one question, by category (patch 0161). Counts only, never the items. */
++export function sumWithheld(tools: ToolRecord[] | undefined): Record<string, number> | undefined {
++  const out: Record<string, number> = {};
++  for (const t of tools ?? []) for (const [k, n] of Object.entries(t.withheld ?? {})) out[k] = (out[k] ?? 0) + n;
++  return Object.keys(out).length ? out : undefined;
++}
+ /** Builds one event. Every text is clipped and run through the key remover, so the key can never reach a line. */
+ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: string; text: string } } {
+   const key = (t: string) => clip(redactSecrets(t, i.apiKey));
+@@ -73,7 +79,8 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
+     ...(i.reply ? { reply: { id: i.reply.id, text: key(i.reply.text) } } : {}),
+     sent: { sys: sysHash, parts, hash: fnv1a(JSON.stringify(i.p.messages)) },
+     ...(Object.keys(i.p.masked).length ? { masked: i.p.masked } : {}),
+-    ...(i.tools && i.tools.length ? { tools: i.tools.map(t => ({ name: t.name, args: key(t.args), ok: t.ok, result: key(t.result), ms: t.ms })) } : {}),
++    ...(i.tools && i.tools.length ? { tools: i.tools.map(t => ({ name: t.name, args: key(t.args), ok: t.ok, result: key(t.result), ms: t.ms, ...(t.withheld && Object.keys(t.withheld).length ? { withheld: t.withheld } : {}) })) } : {}),
++    ...(sumWithheld(i.tools) ? { withheld: sumWithheld(i.tools) } : {}),
+     ms: i.ms,
+     ...(i.error ? { error: { kind: i.error.kind, message: key(i.error.message) } } : {}),
+   };
+diff --git a/src/lib/assistantScrub.ts b/src/lib/assistantScrub.ts
+new file mode 100644
+index 0000000..828ff56
+--- /dev/null
++++ b/src/lib/assistantScrub.ts
+@@ -0,0 +1,47 @@
++// Location: src/lib/assistantScrub.ts
++// The scrubber (patch 0151, moved here in patch 0161 so the data gate can use it without a circular import).
++// It masks what looks like an email address, phone number, card number or key in any text going to the model.
++// Pure logic, no React Native imports, so it runs in the node tests.
++import { redactSecrets } from './assistantClient';
++
++export type MaskKind = 'email' | 'phone' | 'card' | 'key';
++export type Scrubbed = { text: string; masked: Partial<Record<MaskKind, number>> };
++export const MASK_WORD: Record<MaskKind, [string, string]> = { email: ['email address', 'email addresses'], phone: ['phone number', 'phone numbers'], card: ['card number', 'card numbers'], key: ['key or token', 'keys or tokens'] };
++
++/** The Luhn check, used so a long number is only masked as a card when it can be one. */
++export function luhnOk(digits: string): boolean {
++  if (!/^\d{13,19}$/.test(digits)) return false;
++  let sum = 0; let dbl = false;
++  for (let i = digits.length - 1; i >= 0; i--) { let d = digits.charCodeAt(i) - 48; if (dbl) { d *= 2; if (d > 9) d -= 9; } sum += d; dbl = !dbl; }
++  return sum % 10 === 0;
++}
++
++const CARD_RUN = /(?<![\d])\d(?:[ -]?\d){12,18}(?![\d])/g;
++const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
++const AU_PHONE = /(?<![\w])(?:\+61|0)[2-478](?:[ -]?\d){8}(?![\d])/g;
++const INTL_PHONE = /(?<![\w])\+\d{1,3}(?:[ -]?\d){7,12}(?![\d])/g;
++const LONG_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
++
++/** What the scrubber may leave alone. Card numbers and keys are never left alone. Emails and phone numbers are, only when the data gate says that category may be sent. */
++export type ScrubKeep = { email?: boolean; phone?: boolean };
++
++export function scrubText(input: string, keep: ScrubKeep = {}): Scrubbed {
++  const masked: Partial<Record<MaskKind, number>> = {};
++  const bump = (k: MaskKind) => { masked[k] = (masked[k] ?? 0) + 1; };
++  let t = input ?? '';
++  const before = t;
++  t = redactSecrets(t); if (t !== before) { const n = (before.match(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi) ?? []).length; for (let i = 0; i < Math.max(1, n); i++) bump('key'); }
++  t = t.replace(CARD_RUN, m => { if (luhnOk(m.replace(/[ -]/g, ''))) { bump('card'); return '[card number]'; } return m; });
++  if (!keep.email) t = t.replace(EMAIL, () => { bump('email'); return '[email address]'; });
++  if (!keep.phone) { t = t.replace(AU_PHONE, () => { bump('phone'); return '[phone number]'; }); t = t.replace(INTL_PHONE, () => { bump('phone'); return '[phone number]'; }); }
++  t = t.replace(LONG_TOKEN, m => { if (/[A-Za-z]/.test(m) && /\d/.test(m)) { bump('key'); return '[key]'; } return m; });
++  return { text: t, masked };
++}
++
++/** "Hidden before sending: 1 email address and 2 phone numbers." Empty when nothing was masked. */
++export function maskedNote(masked: Partial<Record<MaskKind, number>>): string {
++  const parts = (Object.keys(MASK_WORD) as MaskKind[]).filter(k => (masked[k] ?? 0) > 0).map(k => `${masked[k]} ${MASK_WORD[k][masked[k] === 1 ? 0 : 1]}`);
++  if (!parts.length) return '';
++  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
++  return `Hidden before sending: ${list}.`;
++}
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index e12ad9b..8a390a7 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -6,6 +6,7 @@
+ // Every tool gets a ToolContext: the pages it may read (already limited to what the signed in role may see), the role, and a
+ // size limit. Every result is cut to that limit, so a long page cannot flood a small model's context.
+ import { redactSecrets, type ChatMessage, type ToolCall, type ToolDef } from './assistantClient';
++import { applyGate, type Category, type GatePolicy, type GateSpec } from './assistantGate';
+ import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
+ // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
+ import type { ScreenEntry, ScreenTarget } from './assistantScreens';
+@@ -18,8 +19,12 @@ export type ToolContext = {
+   role: string;
+   /** Longest result, in characters. Set from the context size so a small model is not flooded. */
+   maxChars: number;
++  /** What the data gate lets through for this endpoint and these toggles (patch 0161). Left out, the strictest rules apply. */
++  policy?: GatePolicy;
+ };
+ export type AssistantTool = {
++  /** Which fields the tool can return and what category each is in (patch 0161). Every result goes through the data gate by this map. 'content' is for tools that only return help text and screen names. */
++  gate: GateSpec;
+   def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown;
+   /** Tools that put a button under the reply say which one for a call that worked. The runtime collects them; the model never sees this. */
+   link?: (args: Record<string, unknown>, ctx: ToolContext) => ChatLink | null;
+@@ -32,7 +37,7 @@ export type LinkAction = { to: 'help'; id: string } | { to: 'tab'; tab: string }
+ export const MAX_LINKS = 3;
+ 
+ /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
+-export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number };
++export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number; /** What the data gate hid from this result, by category (patch 0161). Counts only. */ withheld?: Record<string, number>; /** The categories of shop data the result still held. */ used?: Category[] };
+ export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[] };
+ 
+ export const DEFAULT_TOOL_LIMIT = 15;
+@@ -89,6 +94,7 @@ export function searchDocPages(ctx: Pick<ToolContext, 'pages' | 'role'>, query:
+ }
+ 
+ const searchDocs: AssistantTool = {
++  gate: 'content',
+   def: { type: 'function', function: {
+     name: 'search_docs',
+     description: 'Search the till\'s help pages. Use it first for any question about how the app works or where something is. Give a few key words, not a whole sentence. Returns up to 5 pages with a short summary and a matching line. Then use read_doc on the best one.',
+@@ -114,6 +120,7 @@ export function docText(p: Page, depth: Depth, ctx: Pick<ToolContext, 'pages' |
+ 
+ const NO_PAGE = { error: 'There is no help page with that id. Use search_docs to find the right id.' };
+ const readDoc: AssistantTool = {
++  gate: 'content',
+   def: { type: 'function', function: {
+     name: 'read_doc',
+     description: 'Read one help page, by the id search_docs gave. "basic" is the plain steps and is usually enough. Use "deep" for the detail behind it and "advanced" for how it works inside and where the code is. Answer only from what this returns.',
+@@ -155,6 +162,7 @@ export function searchScreenList(ctx: Pick<ToolContext, 'screens' | 'role'>, que
+ }
+ 
+ const searchScreens: AssistantTool = {
++  gate: 'content',
+   def: { type: 'function', function: {
+     name: 'search_screens',
+     description: 'Search the till\'s screens (tabs, pages and windows) by name or by what they are for. Use it when someone asks where something is or how to get to it. Give a few key words, not a whole sentence. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use a screen, follow up with search_docs and read_doc.',
+@@ -193,6 +201,7 @@ export function liveLinks(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>,
+ 
+ const NO_LINK = { error: 'No button can be made for that. Use search_docs or search_screens to find the id, and give the taps in words instead.' };
+ const showLink: AssistantTool = {
++  gate: 'content',
+   def: { type: 'function', function: {
+     name: 'show_link',
+     description: 'Put a button under your reply that opens a help page or a screen. Use it for the one or two best places, after search_docs or search_screens gave you the id. Give kind "doc" with a page id, or kind "screen" with a screen id. Some screens, such as windows, cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
+@@ -222,7 +231,7 @@ export function resultText(result: unknown, maxChars: number): string {
+  * fails all come back as an error result the model can read and recover from. The result is what goes back to the model.
+  */
+ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord; /** The button this call asked for, when it worked (patch 0159). */ link?: ChatLink } {
+-  const t0 = now(); let ok = true; let result: unknown; let link: ChatLink | undefined; let usedArgs: Record<string, unknown> = {};
++  const t0 = now(); let ok = true; let result: unknown; let link: ChatLink | undefined; let usedArgs: Record<string, unknown> = {}; let withheld: Record<string, number> | undefined; let used: Category[] | undefined;
+   const tool = set.tools.find(t => t.def.function.name === call.function.name);
+   if (!tool) { ok = false; result = { error: `There is no tool called "${call.function.name}".` }; }
+   else {
+@@ -230,17 +239,23 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
+     try { const raw = call.function.arguments?.trim(); const parsed = raw ? JSON.parse(raw) : {}; if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed as Record<string, unknown>; else throw new Error('not an object'); }
+     catch { ok = false; result = { error: 'The arguments were not a JSON object.' }; }
+     usedArgs = args;
+-    if (ok) { try { result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false; } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; } }
++    if (ok) {
++      try {
++        result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false;
++        // Everything a tool returns goes through the data gate before it can reach the model (patch 0161). The gate never throws, so a fault in it ends the call with nothing returned.
++        const g = applyGate(result, tool.gate, set.ctx.policy); result = g.value; if (Object.keys(g.withheld).length) withheld = g.withheld; if (g.used.length) used = g.used;
++      } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; }
++    }
+     if (ok && tool.link) { try { link = tool.link(usedArgs, set.ctx) ?? undefined; } catch { link = undefined; } }
+   }
+   const content = resultText(result, set.ctx.maxChars);
+   return {
+     ...(link ? { link } : {}),
+     message: { role: 'tool', tool_call_id: call.id, name: call.function.name, content },
+-    record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0) },
++    record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0), ...(withheld ? { withheld } : {}), ...(used ? { used } : {}) },
+   };
+ }
+ 
+ /** A new tool set for one question. */
+-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[] }): ToolSet =>
+-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
++export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy }): ToolSet =>
++  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index d255478..2c874dd 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -14,13 +14,14 @@ import { useNav, type Tab } from '../ui/nav';
+ import { useKeyboardOverlap } from '../ui/keyboard';
+ import { useApp } from '../state/store';
+ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
+-import { isConfigured } from '../lib/assistantConfig';
++import { classifyEndpoint, isConfigured } from '../lib/assistantConfig';
+ import { getAssistantKey } from '../lib/assistantKey';
+ import { AssistantError } from '../lib/assistantClient';
+ import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, withoutExchange, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+ import { LOG_FAIL_LINE, askLogged, buildOfflineEvent, logEndpoint, logOffline, logStaff } from '../lib/assistantLog';
+ import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineSearch } from '../lib/assistantOffline';
+ import { assistantLog, logSink } from '../lib/assistantLogIO';
++import { resolvePolicy } from '../lib/assistantGate';
+ import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
+ import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+ import type { Page as HelpPage } from '../lib/helpDocs';
+@@ -116,7 +117,7 @@ export default function Assistant() {
+       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
+       apiKey = await getAssistantKey();
+       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize }) },
++          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate) }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+       if (!out.ok) throw out.error;
+diff --git a/src/screens/AssistantLog.tsx b/src/screens/AssistantLog.tsx
+index bcdc02e..6775d57 100644
+--- a/src/screens/AssistantLog.tsx
++++ b/src/screens/AssistantLog.tsx
+@@ -156,6 +156,7 @@ export function AssistantLogViewer() {
+                           {e.sent ? <View><Txt weight="600" size={13}>Sent to model</Txt><Txt size={12} sub>{e.sent.parts.length} messages · hash {e.sent.hash}</Txt></View> : null}
+                           {e.tools && e.tools.length ? <View style={{ gap: 4 }}><Txt weight="600" size={13}>Tools used ({e.tools.length})</Txt>{e.tools.map((t, i) => <View key={i}><Txt size={12} color={t.ok ? undefined : c.bad}>{t.name} {t.args}</Txt><Txt size={12} sub numberOfLines={6}>{t.result}</Txt></View>)}</View> : null}
+                           {e.masked && Object.keys(e.masked).length ? <Txt size={12} sub>Masked: {Object.entries(e.masked).map(([k, v]) => `${v} ${k}`).join(', ')}</Txt> : null}
++                          {e.withheld && Object.keys(e.withheld).length ? <Txt size={12} sub>Withheld by the data rules: {Object.entries(e.withheld).map(([k, v]) => `${v} ${k}`).join(', ')}</Txt> : null}
+                           {e.offline ? <View><Txt weight="600" size={13}>Searched without a model ({e.offline.cause.replace(/_/g, ' ')})</Txt><Txt size={12} sub>Screens: {e.offline.screens.length ? e.offline.screens.join(', ') : 'none'}</Txt><Txt size={12} sub>Help pages: {e.offline.pages.length ? e.offline.pages.join(', ') : 'none'}</Txt></View> : null}
+                           {e.error ? <View><Txt weight="600" size={13} color={c.bad}>Error</Txt><Txt size={13} color={c.bad}>{e.error.message}</Txt></View> : null}
+                         </View>
+diff --git a/src/screens/AssistantSettings.tsx b/src/screens/AssistantSettings.tsx
+index 51aa342..98b472b 100644
+--- a/src/screens/AssistantSettings.tsx
++++ b/src/screens/AssistantSettings.tsx
+@@ -8,7 +8,8 @@ import { Btn, Field, Section, Segmented, Txt, alertMsg } from '../ui/kit';
+ import { useApp } from '../state/store';
+ import { useNav } from '../ui/nav';
+ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
+-import { classifyEndpoint, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg, type EndpointMode } from '../lib/assistantConfig';
++import { classifyEndpoint, GATE_TOGGLE_CATEGORIES, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg, type EndpointMode, type GateToggle, type GateToggleCategory, type GateToggles } from '../lib/assistantConfig';
++import { CATEGORY_INFO, decisionWord, FIXED_NEVER, resolvePolicy } from '../lib/assistantGate';
+ import { testConnection, type TestReport } from '../lib/assistantClient';
+ import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
+ import { isTraining } from '../lib/trainingGuard';
+@@ -19,8 +20,8 @@ export function useCanEditAssistant(): boolean {
+   return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
+ }
+ 
+-type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string };
+-const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode, logCapMB: String(a.logCapMB) });
++type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string; gate: GateToggles };
++const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode, logCapMB: String(a.logCapMB), gate: { ...a.gate } });
+ const fromDraft = (d: Draft): Cfg => normaliseAssistant({ ...d });
+ 
+ export function AssistantSettings() {
+@@ -39,6 +40,7 @@ export function AssistantSettings() {
+   const cfg = fromDraft(d);
+   const parsed = parseBaseUrl(d.baseUrl);
+   const cls = classifyEndpoint(d.baseUrl, d.endpointMode);
++  const policy = resolvePolicy(cls, d.gate);
+   const keyShown = removeKey ? '' : newKey.trim() ? 'A new key will be saved.' : maskKey(savedKey);
+   const effectiveKey = removeKey ? '' : newKey.trim() || savedKey;
+   const dirty = JSON.stringify(cfg) !== JSON.stringify(saved) || removeKey || !!newKey.trim();
+@@ -75,13 +77,33 @@ export function AssistantSettings() {
+           {removeKey ? <Txt size={12} sub>The key will be removed when you save.</Txt> : null}
+         </View>
+       </Section>
+-      <Section footer={cls === 'local' ? 'Local: stays on this iPad or your own network. Customer details may be allowed, once the data rules are built.' : 'Remote: the data rules will keep customer details, emails and gift card details off this server.'}>
++      <Section footer={cls === 'local' ? 'Local: stays on this iPad or your own network, so customer details may be sent. See What the assistant may see, below.' : 'Remote: customer details, emails and gift card details are kept off this server unless you allow them below.'}>
+         <View style={{ padding: 12 }}><Txt weight="600">This address counts as: {cls === 'local' ? 'Local' : 'Remote'}{!d.baseUrl.trim() ? ' (no address yet)' : d.endpointMode !== 'auto' ? ' (set by you)' : ''}</Txt></View>
+         <View style={{ padding: 12, paddingTop: 0, gap: 6 }}>
+           <Segmented value={d.endpointMode} onChange={v => set({ endpointMode: v })} options={[{ v: 'auto', label: 'Auto' }, { v: 'local', label: 'Local' }, { v: 'remote', label: 'Remote' }]} />
+           <Txt size={12} sub>Auto follows the address. Choose Local for a private network the app does not recognise. Choose Remote for a tunnel or proxy that forwards out of your network, even when its address looks private. Remote is always the safe choice.</Txt>
+         </View>
+       </Section>
++      <Section title="What the assistant may see" footer="The data rules are enforced in the app, not by asking the model. Auto follows the rules for this address. Always allow sends a category even where Auto would not. Never allow keeps it out even where Auto would send it. Payment details and keys are never sent, whatever you choose. These settings apply to shop data once the assistant can look it up.">
++        <View style={{ padding: 12, gap: 14 }}>
++          {GATE_TOGGLE_CATEGORIES.map((c: GateToggleCategory) => (
++            <View key={c} style={{ gap: 6 }}>
++              <Txt weight="600">{CATEGORY_INFO[c].label}</Txt>
++              <Txt size={12} sub>{CATEGORY_INFO[c].help}</Txt>
++              <Segmented value={d.gate[c]} onChange={(v: GateToggle) => set({ gate: { ...d.gate, [c]: v } })} options={[{ v: 'auto', label: 'Auto' }, { v: 'allow', label: 'Always allow' }, { v: 'never', label: 'Never allow' }]} />
++              <Txt size={12} sub>Right now: {decisionWord(policy[c])}</Txt>
++              {d.gate[c] === 'allow' && cls === 'remote' && (c === 'personal' || c === 'email' || c === 'gift_balance' || c === 'gift_code') ? <Txt size={12} weight="600">This sends the details to a server outside your own network.</Txt> : null}
++            </View>
++          ))}
++          {FIXED_NEVER.map(c => (
++            <View key={c} style={{ gap: 2 }}>
++              <Txt weight="600">{CATEGORY_INFO[c].label}</Txt>
++              <Txt size={12} sub>{CATEGORY_INFO[c].help}</Txt>
++              <Txt size={12} sub>Never sent. This cannot be changed.</Txt>
++            </View>
++          ))}
++        </View>
++      </Section>
+       <Section title="Options" footer="Context size is how much text the model can read at once. Setting it to the model's maximum lets it use the most history, but local models get slower. With Ollama, the context size must also be set on the Ollama side, because this connection cannot set it.">
+         <View style={{ padding: 12, gap: 10 }}>
+           <Field kind="decimal" label="Temperature (0 to 2)" value={d.temperature} onChangeText={t => set({ temperature: t })} />
+diff --git a/tests/assistantgate.test.ts b/tests/assistantgate.test.ts
+new file mode 100644
+index 0000000..35881e9
+--- /dev/null
++++ b/tests/assistantgate.test.ts
+@@ -0,0 +1,248 @@
++// Location: tests/assistantgate.test.ts
++// The data gate (patch 0161, plan 3.1): the rules table, the toggles, field maps, unknown fields, free text, tool results, history and the log.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import type { ChatMessage, Endpoint, FetchLike } from '../src/lib/assistantClient';
++import { GATE_TOGGLE_CATEGORIES, defaultAssistant, defaultGateToggles, normaliseAssistant, normaliseToggles, type GateToggles } from '../src/lib/assistantConfig';
++import { CATEGORIES, CATEGORY_INFO, FAIL_CLOSED_POLICY, FIXED_NEVER, applyGate, decisionWord, lastFour, resolvePolicy, restricted, type FieldMap, type GatePolicy } from '../src/lib/assistantGate';
++import { buildMessagesDetailed, forModel, prepare, readHistory, runPrepared, scrubText, type AskInput, type ChatEntry } from '../src/lib/assistantChat';
++import { buildEvent, sumWithheld } from '../src/lib/assistantLog';
++import { ASSISTANT_TOOLS, makeToolSet, runToolCall, type AssistantTool } from '../src/lib/assistantTools';
++import type { Page } from '../src/lib/helpDocs';
++
++// ---- a pretend data tool, the shape the product and order tools of later patches will have ----
++const MAP: FieldMap = {
++  orders: {
++    id: 'shop', total: 'order', note: 'order',
++    items: { name: 'shop', qty: 'shop', cost: 'cost' },
++    customer: { name: 'personal', email: 'email', phone: 'personal' },
++    tender: { card_number: 'payment', terminal: 'payment' },
++    gift_code: 'gift_code', gift_balance: 'gift_balance',
++  },
++};
++const ORDER = {
++  id: 'o1', total: 59.5, note: 'Call Jo on 0412 345 678 or jo@example.com, card 4111 1111 1111 1111',
++  items: [{ name: 'Tadling', qty: 2, cost: 11.2 }],
++  customer: { name: 'Jo Smith', email: 'jo@example.com', phone: '0412 345 678' },
++  tender: { card_number: '4111111111111111', terminal: 'T-77' },
++  gift_code: 'GC-ABCD-1234-WXYZ', gift_balance: 20,
++};
++const fixture = () => ({ orders: [JSON.parse(JSON.stringify(ORDER))] });
++const LOCAL = resolvePolicy('local'); const REMOTE = resolvePolicy('remote');
++const first = (v: any) => v.orders[0];
++
++// ---- the rules table ----
++test('Auto on a local endpoint: customer data, emails and balances allowed, codes last four only, payment and secrets never', () => {
++  assert.deepEqual(LOCAL, { personal: 'allow', email: 'allow', gift_balance: 'allow', gift_code: 'last4', order: 'allow', cost: 'allow', shop: 'allow', payment: 'deny', secret: 'deny' });
++});
++test('Auto on a remote endpoint: customer data, emails, balances and codes never sent', () => {
++  assert.deepEqual(REMOTE, { personal: 'deny', email: 'deny', gift_balance: 'deny', gift_code: 'deny', order: 'allow', cost: 'allow', shop: 'allow', payment: 'deny', secret: 'deny' });
++  assert.deepEqual(FAIL_CLOSED_POLICY, REMOTE, 'with no policy given the remote rules apply');
++});
++test('every category has a rule, a label and a plain phrase', () => {
++  for (const c of CATEGORIES) { assert.ok(CATEGORY_INFO[c].label && CATEGORY_INFO[c].help && CATEGORY_INFO[c].phrase, c); assert.ok(LOCAL[c] && REMOTE[c], c); }
++  assert.deepEqual([...GATE_TOGGLE_CATEGORIES, ...FIXED_NEVER].sort(), [...CATEGORIES].sort());
++});
++test('toggles: Never keeps a category out, Always allow sends it, and the two fixed categories ignore everything', () => {
++  const never = resolvePolicy('local', { ...defaultGateToggles(), personal: 'never', shop: 'never' }); assert.equal(never.personal, 'deny'); assert.equal(never.shop, 'deny'); assert.equal(never.email, 'allow');
++  const allow = resolvePolicy('remote', { ...defaultGateToggles(), personal: 'allow', email: 'allow', gift_balance: 'allow' }); assert.equal(allow.personal, 'allow'); assert.equal(allow.email, 'allow'); assert.equal(allow.gift_balance, 'allow');
++  assert.equal(allow.gift_code, 'deny', 'untouched categories keep their Auto rule');
++  for (const scope of ['local', 'remote'] as const) {
++    const forced = resolvePolicy(scope, { payment: 'allow', secret: 'allow' } as any); assert.equal(forced.payment, 'deny'); assert.equal(forced.secret, 'deny');
++    const all = resolvePolicy(scope, Object.fromEntries(GATE_TOGGLE_CATEGORIES.map(c => [c, 'allow'])) as GateToggles); assert.equal(all.payment, 'deny'); assert.equal(all.secret, 'deny');
++  }
++});
++test('Always allow on gift card codes is the last four characters, never the whole code, on any endpoint', () => {
++  assert.equal(resolvePolicy('remote', { gift_code: 'allow' }).gift_code, 'last4'); assert.equal(resolvePolicy('local', { gift_code: 'allow' }).gift_code, 'last4');
++  assert.equal(resolvePolicy('local', { gift_code: 'never' }).gift_code, 'deny');
++});
++test('decisionWord says what the policy does in plain words', () => { assert.equal(decisionWord('allow'), 'Sent'); assert.equal(decisionWord('deny'), 'Not sent'); assert.match(decisionWord('last4'), /last four/i); });
++test('lastFour shows four characters at most, and hides a code that short', () => { assert.equal(lastFour('GC-ABCD-1234-WXYZ'), '****WXYZ'); assert.equal(lastFour('1234'), '[hidden]'); assert.equal(lastFour(''), '[hidden]'); });
++
++// ---- applying the gate ----
++test('local: customer fields and emails stay, the gift code is cut to four, payment details go, the unknown field is reported', () => {
++  const o = fixture(); (o.orders[0] as any).secret_thing = 'x';
++  const g = applyGate(o, MAP, LOCAL); const r = first(g.value);
++  assert.equal(r.customer.name, 'Jo Smith'); assert.equal(r.customer.email, 'jo@example.com'); assert.equal(r.customer.phone, '0412 345 678');
++  assert.equal(r.gift_code, '****WXYZ'); assert.equal(r.gift_balance, 20); assert.equal(r.total, 59.5); assert.equal(r.items[0].cost, 11.2);
++  assert.ok(!('tender' in r), 'payment details are never sent'); assert.ok(!('secret_thing' in r));
++  assert.deepEqual(g.unknown, ['orders[0].secret_thing']); assert.equal(g.withheld.unknown, 1); assert.equal(g.withheld.payment, 2);
++  assert.ok(g.used.includes('personal') && g.used.includes('email') && g.used.includes('gift_code') && !g.used.includes('payment'));
++});
++test('remote: customer, email, balance and code fields are removed and the model is told something was hidden, not what', () => {
++  const g = applyGate(fixture(), MAP, REMOTE); const r = first(g.value);
++  assert.ok(!('customer' in r), 'an object with every field hidden is left out whole'); assert.ok(!('gift_code' in r)); assert.ok(!('gift_balance' in r)); assert.ok(!('tender' in r));
++  assert.equal(r.total, 59.5); assert.equal(r.items[0].name, 'Tadling'); assert.equal(r.items[0].cost, 11.2);
++  const note = (g.value as any).privacy_note as string;
++  assert.match(note, /customer details/); assert.match(note, /email addresses/); assert.match(note, /gift card balances/); assert.match(note, /gift card codes/); assert.match(note, /payment details/);
++  assert.doesNotMatch(note, /Jo|Smith|0412|WXYZ|4111/);
++  assert.ok(!g.used.includes('personal') && !g.used.includes('email'));
++  assert.deepEqual(g.unknown, []);
++});
++test('free text: a remote endpoint gets emails and phone numbers masked out of notes, a local one keeps them, and a card number is masked on both', () => {
++  const rem = first(applyGate(fixture(), MAP, REMOTE).value).note as string;
++  assert.doesNotMatch(rem, /jo@example\.com|0412|4111/); assert.match(rem, /\[email address\]/); assert.match(rem, /\[phone number\]/); assert.match(rem, /\[card number\]/);
++  const loc = first(applyGate(fixture(), MAP, LOCAL).value).note as string;
++  assert.match(loc, /jo@example\.com/); assert.match(loc, /0412 345 678/); assert.doesNotMatch(loc, /4111/); assert.match(loc, /\[card number\]/);
++});
++test('free text follows the toggles: allowing customer details on a remote endpoint keeps phone numbers but not emails, and the other way round', () => {
++  const ph = first(applyGate(fixture(), MAP, resolvePolicy('remote', { personal: 'allow' })).value).note as string; assert.match(ph, /0412 345 678/); assert.doesNotMatch(ph, /jo@example/);
++  const em = first(applyGate(fixture(), MAP, resolvePolicy('remote', { email: 'allow' })).value).note as string; assert.match(em, /jo@example/); assert.doesNotMatch(em, /0412/);
++});
++test('keys and tokens in an allowed field are masked on every endpoint, whatever the toggles say', () => {
++  const o = fixture(); o.orders[0].note = 'token sk-abcdefgh12345678 and Bearer abcdefghijklmnop';
++  for (const p of [LOCAL, REMOTE, resolvePolicy('local', Object.fromEntries(GATE_TOGGLE_CATEGORIES.map(c => [c, 'allow'])) as GateToggles)]) {
++    const n = first(applyGate(o, MAP, p).value).note as string; assert.doesNotMatch(n, /sk-abc|abcdefghijklmnop/); assert.match(n, /\[key\]/);
++  }
++});
++test('toggles change the result: Never on orders removes totals, Always allow on customer details brings them to a remote endpoint', () => {
++  const noOrders = first(applyGate(fixture(), MAP, resolvePolicy('local', { order: 'never' })).value); assert.ok(!('total' in noOrders)); assert.ok(!('note' in noOrders)); assert.equal(noOrders.id, 'o1');
++  const cust = first(applyGate(fixture(), MAP, resolvePolicy('remote', { personal: 'allow', email: 'allow' })).value).customer; assert.equal(cust.name, 'Jo Smith'); assert.equal(cust.email, 'jo@example.com');
++});
++test('a null value is kept as null, an empty list stays empty, and a hidden category with a null value is still hidden', () => {
++  const g = applyGate({ orders: [{ id: 'o2', total: null, items: [], gift_code: null, customer: null }] }, MAP, REMOTE); const r = first(g.value);
++  assert.equal(r.total, null); assert.deepEqual(r.items, []); assert.ok(!('gift_code' in r)); assert.ok(r.customer === null || !('customer' in r));
++});
++
++// ---- unknown fields ----
++test('a field no map names is dropped and reported by name, never by value', () => {
++  const g = applyGate({ orders: [{ id: 'o1', loyalty_pin: '9999', customer: { name: 'A', dob: '1990-01-01' } }], extra: { deep: 1 } }, MAP, LOCAL);
++  assert.deepEqual([...g.unknown].sort(), ['extra', 'orders[0].customer.dob', 'orders[0].loyalty_pin']);
++  assert.doesNotMatch(JSON.stringify(g.value), /9999|1990|deep/); assert.doesNotMatch(JSON.stringify(g.unknown), /9999|1990/);
++});
++test('an object or list put where the map expects a single value is dropped, so nothing can be tucked inside a lenient field', () => {
++  const g = applyGate({ orders: [{ id: { hidden: 'Jo Smith 0412 345 678' }, total: [1, { a: 'b' }] }] }, MAP, LOCAL);
++  assert.deepEqual([...g.unknown].sort(), ['orders[0].id', 'orders[0].total']); assert.doesNotMatch(JSON.stringify(g.value), /Jo Smith/);
++});
++test('a list of plain values is allowed where the map names a category, each value cleaned', () => {
++  const g = applyGate({ tags: ['a@b.co', 'x'] }, { tags: 'shop' }, REMOTE); assert.deepEqual((g.value as any).tags, ['[email address]', 'x']);
++  const hidden = applyGate({ codes: ['GC-ABCD-1234-WXYZ'] }, { codes: 'gift_code' }, resolvePolicy('local')); assert.deepEqual((hidden.value as any).codes, ['****WXYZ']);
++});
++test('nesting beyond the limit is dropped and reported, so a deep structure cannot smuggle data past the map', () => {
++  const map: FieldMap = {}; let m: FieldMap = map; for (let i = 0; i < 12; i++) { const n: FieldMap = { name: 'shop' }; m.a = n; m = n; }
++  let v: any = { name: 'deep' }; for (let i = 0; i < 12; i++) v = { name: 'n', a: v };
++  const g = applyGate(v, map, LOCAL); assert.ok(g.unknown.length > 0); assert.doesNotMatch(JSON.stringify(g.value), /deep/);
++});
++test('the keys the app writes itself (error, note, ok, cut) pass at the top level only, and are still scrubbed', () => {
++  const g = applyGate({ error: 'Failed for jo@example.com', note: 'hi', ok: true, orders: [], nested: { note: 'x' } }, MAP, REMOTE);
++  assert.equal((g.value as any).error, 'Failed for [email address]'); assert.equal((g.value as any).ok, true); assert.deepEqual(g.unknown, ['nested']);
++});
++test('a result that is not an object where the map expects one is dropped and reported', () => { assert.deepEqual(applyGate('free text', MAP, LOCAL).unknown, ['']); assert.deepEqual(applyGate({ orders: ['text'] }, MAP, LOCAL).unknown, ['orders[0]']); });
++
++// ---- content tools ----
++test("'content' tools keep help text as it is but mask card numbers and keys, and never name a category", () => {
++  const g = applyGate({ results: [{ id: 'pay/cash', summary: 'Email help@shop.example, card 4111 1111 1111 1111, key sk-abcdefgh12345678' }], count: 1 }, 'content', REMOTE);
++  const t = JSON.stringify(g.value); assert.match(t, /help@shop\.example/); assert.doesNotMatch(t, /4111|sk-abc/); assert.match(t, /\[card number\]/); assert.match(t, /\[key\]/);
++  assert.deepEqual(g.used, []); assert.equal(g.withheld.payment, 1); assert.equal(g.withheld.secret, 1); assert.ok(!('privacy_note' in (g.value as object)));
++});
++test('every tool in this build declares a gate, and only the four help tools are content tools', () => {
++  for (const t of ASSISTANT_TOOLS) assert.ok(t.gate === 'content' || (typeof t.gate === 'object' && t.gate !== null), t.def.function.name);
++  assert.deepEqual(ASSISTANT_TOOLS.filter(t => t.gate === 'content').map(t => t.def.function.name).sort(), ['read_doc', 'search_docs', 'search_screens', 'show_link'],
++    'a new tool that returns shop data needs a field map, not "content". If this tool really returns only help text, add it here.');
++});
++
++// ---- the tool runtime ----
++const dataTool = (result: unknown, gate: FieldMap = MAP): AssistantTool => ({ gate, def: { type: 'function', function: { name: 'find_orders', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => result });
++const pages: Page[] = [];
++const call = (name: string, id = 'c1') => ({ id, type: 'function' as const, function: { name, arguments: '{}' } });
++const runData = (policy: GatePolicy | undefined, result: unknown = fixture()) => runToolCall(call('find_orders'), { tools: [dataTool(result)], ctx: { pages, role: 'owner', maxChars: 6000, ...(policy ? { policy } : {}) } });
++
++test('runToolCall: what the model reads has been through the gate, and the record keeps the counts', () => {
++  const rem = runData(REMOTE); assert.doesNotMatch(rem.message.content ?? '', /Jo Smith|jo@example|0412|4111|WXYZ|T-77/);
++  assert.ok(rem.record.withheld && rem.record.withheld.personal === 2 && rem.record.withheld.email === 1 && rem.record.withheld.payment === 2);
++  assert.ok(rem.record.used?.includes('order') && !rem.record.used?.includes('personal'));
++  const loc = runData(LOCAL); assert.match(loc.message.content ?? '', /Jo Smith/); assert.match(loc.message.content ?? '', /\*\*\*\*WXYZ/); assert.doesNotMatch(loc.message.content ?? '', /ABCD-1234|4111|T-77/);
++});
++test('runToolCall: with no policy the strictest rules apply, so a forgotten policy cannot open anything up', () => {
++  const r = runData(undefined); assert.doesNotMatch(r.message.content ?? '', /Jo Smith|jo@example|WXYZ/);
++});
++test('runToolCall: the cut to the size limit happens after the gate, so a long result cannot carry a hidden field in the cut text', () => {
++  const big = { orders: Array.from({ length: 200 }, (_, i) => ({ ...JSON.parse(JSON.stringify(ORDER)), id: `o${i}` })) };
++  const r = runToolCall(call('find_orders'), { tools: [dataTool(big)], ctx: { pages, role: 'owner', maxChars: 1500, policy: REMOTE } });
++  assert.ok((r.message.content ?? '').length <= 1500); assert.doesNotMatch(r.message.content ?? '', /Jo Smith|jo@example|WXYZ/);
++});
++test('runToolCall: a tool that returns a field its map does not name has it dropped, and the record shows the count', () => {
++  const o = fixture(); (o.orders[0] as any).staff_pin = '4321';
++  const r = runData(LOCAL, o); assert.doesNotMatch(r.message.content ?? '', /4321|staff_pin/); assert.equal(r.record.withheld?.unknown, 1);
++});
++
++// ---- the contract every data tool must meet ----
++/** What a later patch's tests call for each data tool: run it on realistic data and fail when it returns a field nobody sorted. */
++export function assertNoUnknownFields(tool: AssistantTool, result: unknown) {
++  if (tool.gate === 'content') return;
++  const g = applyGate(result, tool.gate, LOCAL);
++  assert.deepEqual(g.unknown, [], `${tool.def.function.name} returned fields the gate does not know: ${g.unknown.join(', ')}`);
++}
++test('the contract check passes for a tool whose map covers its result, and fails when the tool returns an extra field', () => {
++  assert.doesNotThrow(() => assertNoUnknownFields(dataTool(fixture()), fixture()));
++  const leaky = fixture(); (leaky.orders[0] as any).dob = '1990-01-01';
++  assert.throws(() => assertNoUnknownFields(dataTool(leaky), leaky), /do(es)? not know: orders\[0\]\.dob/);
++});
++
++// ---- history ----
++const entry = (i: number, role: 'user' | 'assistant', text: string, used?: ChatEntry['used']): ChatEntry => ({ id: `e${i}`, role, text, at: i, ...(used ? { used } : {}) });
++test('restricted: true when a reply used a category the policy no longer sends', () => {
++  assert.equal(restricted(['personal'], REMOTE), true); assert.equal(restricted(['personal'], LOCAL), false); assert.equal(restricted(['order', 'shop'], REMOTE), false); assert.equal(restricted(undefined, REMOTE), false); assert.equal(restricted(['mystery'], LOCAL), true);
++});
++test('history built from customer data is left out when the endpoint is now remote, together with its question, and kept when it is local', () => {
++  const h = [entry(1, 'user', 'Who bought the Tadling?'), entry(2, 'assistant', 'Jo Smith bought it.', ['personal', 'order']), entry(3, 'user', 'And the price?'), entry(4, 'assistant', 'It is $59.50.', ['order']), entry(5, 'user', 'Thanks')];
++  assert.deepEqual(forModel(h, REMOTE).map(e => e.id), ['e3', 'e4', 'e5']); assert.deepEqual(forModel(h, LOCAL).map(e => e.id), ['e1', 'e2', 'e3', 'e4', 'e5']);
++  assert.deepEqual(forModel(h).map(e => e.id), ['e3', 'e4', 'e5'], 'with no policy the strictest rules apply');
++  const toggled = resolvePolicy('local', { personal: 'never' }); assert.deepEqual(forModel(h, toggled).map(e => e.id), ['e3', 'e4', 'e5']);
++  const tools = makeToolSet({ pages, role: 'owner', contextSize: 8000, policy: REMOTE }); const b = buildMessagesDetailed(h, 'short', 8000, tools);
++  assert.doesNotMatch(JSON.stringify(b.messages), /Jo Smith|Tadling/); assert.deepEqual(b.included.map(e => e.id), ['e3', 'e4', 'e5']);
++});
++test('the entry stays in the stored history for the cashier to read, only the model is not given it', () => {
++  const h = [entry(1, 'user', 'q'), entry(2, 'assistant', 'Jo Smith bought it.', ['personal'])]; forModel(h, REMOTE); assert.equal(h.length, 2);
++});
++test('readHistory keeps the categories a reply used, ignores ones it does not know, and never adds them to a question', () => {
++  const r = readHistory([{ id: 'a', role: 'assistant', text: 't', at: 1, used: ['personal', 'nonsense', 'order'] }, { id: 'b', role: 'user', text: 't', at: 2, used: ['personal'] }, { id: 'c', role: 'assistant', text: 't', at: 3, used: 'personal' }]);
++  assert.deepEqual(r[0].used, ['personal', 'order']); assert.equal(r[1].used, undefined); assert.equal(r[2].used, undefined);
++});
++
++// ---- the loop and the log ----
++const ep: Endpoint = { baseUrl: 'http://localhost:11434/v1', model: 'm', timeoutSec: 5 };
++function scripted(steps: Array<{ content?: string; calls?: string[] }>) {
++  const sent: any[] = []; let i = 0;
++  const f: FetchLike = async (_u, init) => {
++    sent.push(JSON.parse(init.body ?? '{}')); const s = steps[Math.min(i++, steps.length - 1)];
++    const message: any = { role: 'assistant', content: s.content ?? null };
++    if (s.calls) message.tool_calls = s.calls.map((n, k) => ({ id: `call_${i}_${k}`, type: 'function', function: { name: n, arguments: '{}' } }));
++    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message, finish_reason: s.calls ? 'tool_calls' : 'stop' }] }) };
++  };
++  return { f, sent };
++}
++const askWith = (policy: GatePolicy): AskInput => ({ history: [], text: 'Who bought it?', detail: 'short', settings: { contextSize: 8000, temperature: 0.2 }, endpoint: ep, id: (() => { let n = 0; return () => `id${++n}`; })(), now: () => 1000,
++  tools: makeToolSet({ pages, role: 'owner', contextSize: 8000, policy, tools: [dataTool(fixture())] }) });
++test('the loop: the model never receives what the gate removed, and the reply is marked with the categories it drew on', async () => {
++  const { f, sent } = scripted([{ calls: ['find_orders'] }, { content: 'One order, $59.50.' }]);
++  const a = askWith(REMOTE); const out = await runPrepared(f, a, prepare(a));
++  assert.doesNotMatch(JSON.stringify(sent[1].messages), /Jo Smith|jo@example|0412|4111|WXYZ/);
++  assert.deepEqual(out.reply.used, ['order', 'cost', 'shop']);
++  const l = scripted([{ calls: ['find_orders'] }, { content: 'Jo Smith.' }]); const b = askWith(LOCAL); const out2 = await runPrepared(l.f, b, prepare(b));
++  assert.match(JSON.stringify(l.sent[1].messages), /Jo Smith/); assert.ok(out2.reply.used?.includes('personal') && out2.reply.used?.includes('gift_code'));
++});
++test('the log line holds what the model was sent and the counts of what the gate withheld, never the withheld values', () => {
++  const a = askWith(REMOTE); const r = runToolCall(call('find_orders'), { tools: a.tools!.tools, ctx: a.tools!.ctx });
++  const ev = buildEvent({ id: 'x', now: 1, staff: { id: 's', name: 'S', role: 'owner' }, practice: false, detail: 'short', p: prepare(a), known: () => false, ms: 1, tools: [r.record] }).event;
++  assert.ok(ev.withheld && ev.withheld.personal === 2 && ev.withheld.email === 1 && ev.withheld.payment === 2); assert.deepEqual(ev.tools?.[0].withheld, ev.withheld);
++  assert.doesNotMatch(JSON.stringify(ev), /Jo Smith|jo@example|0412 345|4111|WXYZ|ABCD-1234|T-77/);
++  assert.deepEqual(sumWithheld([{ name: 'a', args: '', ok: true, result: '', ms: 0, withheld: { personal: 1 } }, { name: 'b', args: '', ok: true, result: '', ms: 0, withheld: { personal: 2, email: 1 } }]), { personal: 3, email: 1 });
++  assert.equal(sumWithheld([]), undefined); assert.equal(sumWithheld(undefined), undefined);
++  const plain = buildEvent({ id: 'y', now: 1, staff: { id: 's', name: 'S', role: 'owner' }, practice: false, detail: 'short', p: prepare(a), known: () => false, ms: 1 }).event; assert.ok(!('withheld' in plain));
++});
++
++// ---- the settings ----
++test('the settings carry one toggle per category, all Auto by default, and old settings with none become Auto', () => {
++  const d = defaultAssistant(); assert.deepEqual(d.gate, { personal: 'auto', email: 'auto', gift_balance: 'auto', gift_code: 'auto', order: 'auto', cost: 'auto', shop: 'auto' });
++  assert.deepEqual(normaliseAssistant({ baseUrl: 'http://h/v1', model: 'm' }).gate, d.gate);
++  assert.deepEqual(normaliseAssistant(undefined), d);
++});
++test('toggles read back from storage or a backup file are cleaned: unknown categories and values are ignored, payment and secrets cannot be added', () => {
++  const t = normaliseToggles({ personal: 'allow', email: 'never', shop: 'sometimes', cost: 5, payment: 'allow', secret: 'allow', mystery: 'allow' });
++  assert.deepEqual(t, { personal: 'allow', email: 'never', gift_balance: 'auto', gift_code: 'auto', order: 'auto', cost: 'auto', shop: 'auto' }); assert.ok(!('payment' in t) && !('secret' in t) && !('mystery' in t));
++  for (const junk of [null, 'x', 7, [1, 2], undefined]) assert.deepEqual(normaliseToggles(junk), defaultGateToggles());
++  assert.deepEqual(normaliseAssistant({ gate: { personal: 'allow' } }).gate.personal, 'allow');
++  const copy = normaliseAssistant(defaultAssistant()); copy.gate.personal = 'never'; assert.equal(defaultAssistant().gate.personal, 'auto', 'defaults are never shared');
++});
++test('the scrubber still lives where the chat code expects it', () => { assert.deepEqual(scrubText('a@b.co').masked, { email: 1 }); assert.equal(scrubText('a@b.co', { email: true }).text, 'a@b.co'); assert.equal(scrubText('0412 345 678', { phone: true }).text, '0412 345 678'); assert.match(scrubText('4111 1111 1111 1111', { email: true, phone: true }).text, /\[card number\]/); });
+diff --git a/tests/assistanttools.test.ts b/tests/assistanttools.test.ts
+index af0e011..dd324cb 100644
+--- a/tests/assistanttools.test.ts
++++ b/tests/assistanttools.test.ts
+@@ -99,12 +99,12 @@ test('runToolCall never throws: unknown tool, bad arguments, or a tool that fail
+   assert.equal(unknown.record.ok, false); assert.match(unknown.message.content ?? '', /no tool called/);
+   for (const bad of ['{not json', '[1,2]', '"text"']) { const r = runToolCall(call('search_docs', bad), set); assert.equal(r.record.ok, false); assert.match(r.message.content ?? '', /not a JSON object/); }
+   assert.equal(runToolCall(call('search_docs', ''), set).record.ok, false, 'empty arguments mean no query');
+-  const boom: AssistantTool = { def: { type: 'function', function: { name: 'boom', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => { throw new Error('secret internal detail'); } };
++  const boom: AssistantTool = { gate: 'content', def: { type: 'function', function: { name: 'boom', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => { throw new Error('secret internal detail'); } };
+   const r = runToolCall(call('boom', {}), { tools: [boom], ctx: ctxFor('owner') });
+   assert.equal(r.record.ok, false); assert.doesNotMatch(r.message.content ?? '', /secret internal/);
+ });
+ test('runToolCall answers with a tool message tied to the call, and always valid JSON within the limit', () => {
+-  const big: AssistantTool = { def: { type: 'function', function: { name: 'big', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => ({ text: 'x'.repeat(50000) }) };
++  const big: AssistantTool = { gate: 'content', def: { type: 'function', function: { name: 'big', description: 'x', parameters: { type: 'object', properties: {} } } }, run: () => ({ text: 'x'.repeat(50000) }) };
+   const r = runToolCall(call('big', {}, 'abc'), { tools: [big], ctx: ctxFor('owner', { maxChars: 1000 }) });
+   assert.equal(r.message.role, 'tool'); assert.equal(r.message.tool_call_id, 'abc'); assert.equal(r.message.name, 'big');
+   assert.ok((r.message.content ?? '').length <= 1000); assert.doesNotThrow(() => JSON.parse(r.message.content ?? ''));

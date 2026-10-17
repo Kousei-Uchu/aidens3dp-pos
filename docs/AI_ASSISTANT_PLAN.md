@@ -6,6 +6,17 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 17 (18 October 2026), patch 0161:** patch 5, the data gate (3.1), is built, with the category toggles. No tool returns shop data yet, so
+it has nothing to act on until patch 6, but every tool already passes through it. The code is in `src/lib/assistantGate.ts`. Every tool declares a field map
+(`gate`) saying which category each field it can return belongs to, or `content` for a tool that returns only help text. The gate runs on every result before
+it is cut to size and before the model or the log sees it. A field the map does not name is dropped and reported, and a test helper fails when a tool returns
+one. With no policy given the remote rules apply. Three things the plan left open are decided here, and the owner may want to change them: **Always allow on gift
+card codes** sends the last four characters, never the whole code, because 3.1 says the code is masked even on a local endpoint; **history** is handled by marking each
+reply with the kinds of data it was built from, so a reply that used customer details is left out of the model's history (with its question) once the endpoint
+is remote or the toggle is Never allow, since a name in a reply cannot be found by a scrubber; and **typed text and old history keep the full scrubber**, so an email
+a cashier pastes is still hidden on a local endpoint, as the owner confirmed in 3.1. The model is told the kind of data that was hidden, never the content. The
+scrubber moved to `assistantScrub.ts`. Next: patch 6, the product and inventory tools through the gate.
+
 **Revision 16 (18 October 2026), patch 0160:** the offline mode (3.3) is built, apart from the product and inventory lookup, which waits for the product tools
 and the data gate. When the model cannot answer, or is not set up, the chat shows the error banner and a list of matches from the screens and the help pages,
 labelled *Model offline, showing search results*, using the same two searches the model's tools use (so the role filter in 3.4 applies). Only the question is stored,
@@ -163,6 +174,7 @@ the chat to everyone (3.6, 3.13). Built in 0157: the docs tools (`search_docs`, 
 Built in 0158: the screen search tool (`search_screens`) and the role filter for screens.
 Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
 Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
+Built in 0161: the data gate and the category toggles (3.1), in front of every tool result, the history sent to the model and the audit log.
 
 Still to do:
 
@@ -172,8 +184,7 @@ Still to do:
 - The read-only tools (3.2).
 - The practice mode coach (3.7).
 - Model-free product and inventory lookup for the offline mode (3.3).
-- The data gate: the category rules and override toggles (3.1). All enforced in code. The small scrubber exists
-  already (0151) and the gate builds on it.
+- Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 6 to 8). The gate exists (0161), so no tool may be added without a map.
 - The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
 - A way to keep it from changing anything, enforced in code and not only in the prompt.
 - Tests, a help page, a device test and a progress log entry for each later patch.
@@ -277,7 +288,9 @@ Confirmed by the owner:
 
 **Per-category override toggles:** each category in the table gets a Settings toggle with three states: Auto
 (follow the table above), Always allow, and Never allow. The two "never sent" rows (payment information and
-secrets) have no Always allow state. The owner asked for these toggles. They are built with the gate (patch 5).
+secrets) have no Always allow state. The owner asked for these toggles. Built in 0161 with the gate (patch 5). There are
+seven toggles; the two fixed rows are shown in Settings as never sent. Always allow on gift card codes means the last four
+characters, because the owner confirmed codes are never sent whole.
 
 **Enforcement in code, not in the prompt:**
 
@@ -482,7 +495,7 @@ chat screen patch can add streaming.
    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
    pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). **0160 done:** the offline search
    (screens and help pages; products and stock come with patch 6). Next: guide.
-5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+5. **Done (0161).** The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
 7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.

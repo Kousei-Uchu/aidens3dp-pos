@@ -6,6 +6,7 @@
 // Every tool gets a ToolContext: the pages it may read (already limited to what the signed in role may see), the role, and a
 // size limit. Every result is cut to that limit, so a long page cannot flood a small model's context.
 import { redactSecrets, type ChatMessage, type ToolCall, type ToolDef } from './assistantClient';
+import { applyGate, type Category, type GatePolicy, type GateSpec } from './assistantGate';
 import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
 // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
 import type { ScreenEntry, ScreenTarget } from './assistantScreens';
@@ -18,8 +19,12 @@ export type ToolContext = {
   role: string;
   /** Longest result, in characters. Set from the context size so a small model is not flooded. */
   maxChars: number;
+  /** What the data gate lets through for this endpoint and these toggles (patch 0161). Left out, the strictest rules apply. */
+  policy?: GatePolicy;
 };
 export type AssistantTool = {
+  /** Which fields the tool can return and what category each is in (patch 0161). Every result goes through the data gate by this map. 'content' is for tools that only return help text and screen names. */
+  gate: GateSpec;
   def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown;
   /** Tools that put a button under the reply say which one for a call that worked. The runtime collects them; the model never sees this. */
   link?: (args: Record<string, unknown>, ctx: ToolContext) => ChatLink | null;
@@ -32,7 +37,7 @@ export type LinkAction = { to: 'help'; id: string } | { to: 'tab'; tab: string }
 export const MAX_LINKS = 3;
 
 /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
-export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number };
+export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number; /** What the data gate hid from this result, by category (patch 0161). Counts only. */ withheld?: Record<string, number>; /** The categories of shop data the result still held. */ used?: Category[] };
 export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[] };
 
 export const DEFAULT_TOOL_LIMIT = 15;
@@ -89,6 +94,7 @@ export function searchDocPages(ctx: Pick<ToolContext, 'pages' | 'role'>, query: 
 }
 
 const searchDocs: AssistantTool = {
+  gate: 'content',
   def: { type: 'function', function: {
     name: 'search_docs',
     description: 'Search the till\'s help pages. Use it first for any question about how the app works or where something is. Give a few key words, not a whole sentence. Returns up to 5 pages with a short summary and a matching line. Then use read_doc on the best one.',
@@ -114,6 +120,7 @@ export function docText(p: Page, depth: Depth, ctx: Pick<ToolContext, 'pages' | 
 
 const NO_PAGE = { error: 'There is no help page with that id. Use search_docs to find the right id.' };
 const readDoc: AssistantTool = {
+  gate: 'content',
   def: { type: 'function', function: {
     name: 'read_doc',
     description: 'Read one help page, by the id search_docs gave. "basic" is the plain steps and is usually enough. Use "deep" for the detail behind it and "advanced" for how it works inside and where the code is. Answer only from what this returns.',
@@ -155,6 +162,7 @@ export function searchScreenList(ctx: Pick<ToolContext, 'screens' | 'role'>, que
 }
 
 const searchScreens: AssistantTool = {
+  gate: 'content',
   def: { type: 'function', function: {
     name: 'search_screens',
     description: 'Search the till\'s screens (tabs, pages and windows) by name or by what they are for. Use it when someone asks where something is or how to get to it. Give a few key words, not a whole sentence. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use a screen, follow up with search_docs and read_doc.',
@@ -193,6 +201,7 @@ export function liveLinks(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, 
 
 const NO_LINK = { error: 'No button can be made for that. Use search_docs or search_screens to find the id, and give the taps in words instead.' };
 const showLink: AssistantTool = {
+  gate: 'content',
   def: { type: 'function', function: {
     name: 'show_link',
     description: 'Put a button under your reply that opens a help page or a screen. Use it for the one or two best places, after search_docs or search_screens gave you the id. Give kind "doc" with a page id, or kind "screen" with a screen id. Some screens, such as windows, cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
@@ -222,7 +231,7 @@ export function resultText(result: unknown, maxChars: number): string {
  * fails all come back as an error result the model can read and recover from. The result is what goes back to the model.
  */
 export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord; /** The button this call asked for, when it worked (patch 0159). */ link?: ChatLink } {
-  const t0 = now(); let ok = true; let result: unknown; let link: ChatLink | undefined; let usedArgs: Record<string, unknown> = {};
+  const t0 = now(); let ok = true; let result: unknown; let link: ChatLink | undefined; let usedArgs: Record<string, unknown> = {}; let withheld: Record<string, number> | undefined; let used: Category[] | undefined;
   const tool = set.tools.find(t => t.def.function.name === call.function.name);
   if (!tool) { ok = false; result = { error: `There is no tool called "${call.function.name}".` }; }
   else {
@@ -230,17 +239,23 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
     try { const raw = call.function.arguments?.trim(); const parsed = raw ? JSON.parse(raw) : {}; if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed as Record<string, unknown>; else throw new Error('not an object'); }
     catch { ok = false; result = { error: 'The arguments were not a JSON object.' }; }
     usedArgs = args;
-    if (ok) { try { result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false; } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; } }
+    if (ok) {
+      try {
+        result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false;
+        // Everything a tool returns goes through the data gate before it can reach the model (patch 0161). The gate never throws, so a fault in it ends the call with nothing returned.
+        const g = applyGate(result, tool.gate, set.ctx.policy); result = g.value; if (Object.keys(g.withheld).length) withheld = g.withheld; if (g.used.length) used = g.used;
+      } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; }
+    }
     if (ok && tool.link) { try { link = tool.link(usedArgs, set.ctx) ?? undefined; } catch { link = undefined; } }
   }
   const content = resultText(result, set.ctx.maxChars);
   return {
     ...(link ? { link } : {}),
     message: { role: 'tool', tool_call_id: call.id, name: call.function.name, content },
-    record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0) },
+    record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0), ...(withheld ? { withheld } : {}), ...(used ? { used } : {}) },
   };
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[] }): ToolSet =>
-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy }): ToolSet =>
+  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });

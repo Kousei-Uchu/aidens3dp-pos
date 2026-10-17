@@ -61,6 +61,12 @@ export type BuildInput = {
   /** True when the log already holds this message's text. */
   known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string; tools?: ToolRecord[];
 };
+/** What the data gate hid across every tool call of one question, by category (patch 0161). Counts only, never the items. */
+export function sumWithheld(tools: ToolRecord[] | undefined): Record<string, number> | undefined {
+  const out: Record<string, number> = {};
+  for (const t of tools ?? []) for (const [k, n] of Object.entries(t.withheld ?? {})) out[k] = (out[k] ?? 0) + n;
+  return Object.keys(out).length ? out : undefined;
+}
 /** Builds one event. Every text is clipped and run through the key remover, so the key can never reach a line. */
 export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: string; text: string } } {
   const key = (t: string) => clip(redactSecrets(t, i.apiKey));
@@ -73,7 +79,8 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
     ...(i.reply ? { reply: { id: i.reply.id, text: key(i.reply.text) } } : {}),
     sent: { sys: sysHash, parts, hash: fnv1a(JSON.stringify(i.p.messages)) },
     ...(Object.keys(i.p.masked).length ? { masked: i.p.masked } : {}),
-    ...(i.tools && i.tools.length ? { tools: i.tools.map(t => ({ name: t.name, args: key(t.args), ok: t.ok, result: key(t.result), ms: t.ms })) } : {}),
+    ...(i.tools && i.tools.length ? { tools: i.tools.map(t => ({ name: t.name, args: key(t.args), ok: t.ok, result: key(t.result), ms: t.ms, ...(t.withheld && Object.keys(t.withheld).length ? { withheld: t.withheld } : {}) })) } : {}),
+    ...(sumWithheld(i.tools) ? { withheld: sumWithheld(i.tools) } : {}),
     ms: i.ms,
     ...(i.error ? { error: { kind: i.error.kind, message: key(i.error.message) } } : {}),
   };

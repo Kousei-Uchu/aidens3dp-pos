@@ -7,6 +7,21 @@
 export type EndpointMode = 'auto' | 'local' | 'remote';
 export const ENDPOINT_MODES: readonly EndpointMode[] = ['auto', 'local', 'remote'];
 
+/** The kinds of shop data the data gate (assistantGate.ts) sorts everything into. Payment and secret have no toggle: they are never sent. */
+export const GATE_TOGGLE_CATEGORIES = ['personal', 'email', 'gift_balance', 'gift_code', 'order', 'cost', 'shop'] as const;
+export type GateToggleCategory = typeof GATE_TOGGLE_CATEGORIES[number];
+/** Auto follows the table in the plan (3.1). Allow sends the category even where the table would not. Never keeps it out even where the table would send it. */
+export type GateToggle = 'auto' | 'allow' | 'never';
+export const GATE_TOGGLES: readonly GateToggle[] = ['auto', 'allow', 'never'];
+export type GateToggles = Record<GateToggleCategory, GateToggle>;
+export const defaultGateToggles = (): GateToggles => ({ personal: 'auto', email: 'auto', gift_balance: 'auto', gift_code: 'auto', order: 'auto', cost: 'auto', shop: 'auto' });
+/** Anything stored or restored becomes a full set of toggles. Missing, unknown or odd values are Auto, the table in the plan. */
+export function normaliseToggles(x: unknown): GateToggles {
+  const d = defaultGateToggles(); const o = (x && typeof x === 'object' && !Array.isArray(x) ? x : {}) as Record<string, unknown>;
+  for (const k of GATE_TOGGLE_CATEGORIES) { const v = o[k]; if (typeof v === 'string' && (GATE_TOGGLES as readonly string[]).includes(v)) d[k] = v as GateToggle; }
+  return d;
+}
+
 export type AssistantSettings = {
   baseUrl: string;        // OpenAI-compatible base, for example http://192.168.1.20:11434/v1 (Ollama) or https://api.example.com/v1
   model: string;
@@ -16,6 +31,7 @@ export type AssistantSettings = {
   toolCallLimit: number;  // safety stop for a model stuck calling tools in a loop
   endpointMode: EndpointMode; // auto follows the address rules, local or remote forces the class (a tunnel on a 192.168 address can be forced remote)
   logCapMB: number;       // audit log cap in MB (default 200)
+  gate: GateToggles;      // per category override of the data rules (patch 0161), Auto by default
 };
 
 export const DEFAULT_TIMEOUT_SEC = 120;
@@ -24,7 +40,7 @@ export const DEFAULT_TOOL_CALL_LIMIT = 15;
 export const DEFAULT_LOG_CAP_MB = 200;
 
 export const defaultAssistant = (): AssistantSettings => ({
-  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto', logCapMB: DEFAULT_LOG_CAP_MB,
+  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto', logCapMB: DEFAULT_LOG_CAP_MB, gate: defaultGateToggles(),
 });
 
 const clampInt = (x: unknown, lo: number, hi: number, fallback: number): number => {
@@ -54,6 +70,7 @@ export function normaliseAssistant(x: unknown): AssistantSettings {
     toolCallLimit: clampInt(o.toolCallLimit, 1, 100, d.toolCallLimit),
     endpointMode: readMode(o),
     logCapMB: clampInt(o.logCapMB, 1, 10_000, d.logCapMB),
+    gate: normaliseToggles(o.gate),
   };
 }
 

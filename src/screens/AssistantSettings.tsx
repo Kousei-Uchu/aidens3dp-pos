@@ -8,7 +8,8 @@ import { Btn, Field, Section, Segmented, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
 import { useNav } from '../ui/nav';
 import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
-import { classifyEndpoint, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg, type EndpointMode } from '../lib/assistantConfig';
+import { classifyEndpoint, GATE_TOGGLE_CATEGORIES, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg, type EndpointMode, type GateToggle, type GateToggleCategory, type GateToggles } from '../lib/assistantConfig';
+import { CATEGORY_INFO, decisionWord, FIXED_NEVER, resolvePolicy } from '../lib/assistantGate';
 import { testConnection, type TestReport } from '../lib/assistantClient';
 import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
 import { isTraining } from '../lib/trainingGuard';
@@ -19,8 +20,8 @@ export function useCanEditAssistant(): boolean {
   return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
 }
 
-type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string };
-const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode, logCapMB: String(a.logCapMB) });
+type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string; gate: GateToggles };
+const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode, logCapMB: String(a.logCapMB), gate: { ...a.gate } });
 const fromDraft = (d: Draft): Cfg => normaliseAssistant({ ...d });
 
 export function AssistantSettings() {
@@ -39,6 +40,7 @@ export function AssistantSettings() {
   const cfg = fromDraft(d);
   const parsed = parseBaseUrl(d.baseUrl);
   const cls = classifyEndpoint(d.baseUrl, d.endpointMode);
+  const policy = resolvePolicy(cls, d.gate);
   const keyShown = removeKey ? '' : newKey.trim() ? 'A new key will be saved.' : maskKey(savedKey);
   const effectiveKey = removeKey ? '' : newKey.trim() || savedKey;
   const dirty = JSON.stringify(cfg) !== JSON.stringify(saved) || removeKey || !!newKey.trim();
@@ -75,11 +77,31 @@ export function AssistantSettings() {
           {removeKey ? <Txt size={12} sub>The key will be removed when you save.</Txt> : null}
         </View>
       </Section>
-      <Section footer={cls === 'local' ? 'Local: stays on this iPad or your own network. Customer details may be allowed, once the data rules are built.' : 'Remote: the data rules will keep customer details, emails and gift card details off this server.'}>
+      <Section footer={cls === 'local' ? 'Local: stays on this iPad or your own network, so customer details may be sent. See What the assistant may see, below.' : 'Remote: customer details, emails and gift card details are kept off this server unless you allow them below.'}>
         <View style={{ padding: 12 }}><Txt weight="600">This address counts as: {cls === 'local' ? 'Local' : 'Remote'}{!d.baseUrl.trim() ? ' (no address yet)' : d.endpointMode !== 'auto' ? ' (set by you)' : ''}</Txt></View>
         <View style={{ padding: 12, paddingTop: 0, gap: 6 }}>
           <Segmented value={d.endpointMode} onChange={v => set({ endpointMode: v })} options={[{ v: 'auto', label: 'Auto' }, { v: 'local', label: 'Local' }, { v: 'remote', label: 'Remote' }]} />
           <Txt size={12} sub>Auto follows the address. Choose Local for a private network the app does not recognise. Choose Remote for a tunnel or proxy that forwards out of your network, even when its address looks private. Remote is always the safe choice.</Txt>
+        </View>
+      </Section>
+      <Section title="What the assistant may see" footer="The data rules are enforced in the app, not by asking the model. Auto follows the rules for this address. Always allow sends a category even where Auto would not. Never allow keeps it out even where Auto would send it. Payment details and keys are never sent, whatever you choose. These settings apply to shop data once the assistant can look it up.">
+        <View style={{ padding: 12, gap: 14 }}>
+          {GATE_TOGGLE_CATEGORIES.map((c: GateToggleCategory) => (
+            <View key={c} style={{ gap: 6 }}>
+              <Txt weight="600">{CATEGORY_INFO[c].label}</Txt>
+              <Txt size={12} sub>{CATEGORY_INFO[c].help}</Txt>
+              <Segmented value={d.gate[c]} onChange={(v: GateToggle) => set({ gate: { ...d.gate, [c]: v } })} options={[{ v: 'auto', label: 'Auto' }, { v: 'allow', label: 'Always allow' }, { v: 'never', label: 'Never allow' }]} />
+              <Txt size={12} sub>Right now: {decisionWord(policy[c])}</Txt>
+              {d.gate[c] === 'allow' && cls === 'remote' && (c === 'personal' || c === 'email' || c === 'gift_balance' || c === 'gift_code') ? <Txt size={12} weight="600">This sends the details to a server outside your own network.</Txt> : null}
+            </View>
+          ))}
+          {FIXED_NEVER.map(c => (
+            <View key={c} style={{ gap: 2 }}>
+              <Txt weight="600">{CATEGORY_INFO[c].label}</Txt>
+              <Txt size={12} sub>{CATEGORY_INFO[c].help}</Txt>
+              <Txt size={12} sub>Never sent. This cannot be changed.</Txt>
+            </View>
+          ))}
         </View>
       </Section>
       <Section title="Options" footer="Context size is how much text the model can read at once. Setting it to the model's maximum lets it use the most history, but local models get slower. With Ollama, the context size must also be set on the Ollama side, because this connection cannot set it.">
