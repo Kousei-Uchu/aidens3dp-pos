@@ -90,7 +90,8 @@ function CalibrateSheet({ visible, onClose, scanner, onSample }: { visible: bool
   const speed = pick ? codeById(pick) : null;
   return (
     <Sheet visible={visible} onClose={() => { choose(null); onClose(); }} title={pick ? `Calibrate ${SPEED_NAME[pick]}` : 'Calibrate scanner speed'} full>
-      {visible && !full ? <HidScanner enabled onScan={scanner.onScan} onText={scanner.onText} /> : null}
+      {/* Timed only once a speed is picked (samples are being taken); the speed list screen reads on Return only. */}
+      {visible && !full ? <HidScanner enabled onScan={scanner.onScan} onText={pick ? scanner.onText : undefined} /> : null}
       {!pick ? (
         <View style={{ gap: 12 }}>
           <Txt size={14}>The app measures the scanner for you. Pick a speed, set the scanner to it, then scan the test barcode a few times. Do this for all four speeds. The result is shared with every register.</Txt>

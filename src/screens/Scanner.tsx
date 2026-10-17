@@ -42,7 +42,7 @@ function RealCameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }:
  * Bluetooth HID scanners type the code then press Return. A hidden, always-focused TextInput captures that.
  * Mounted only on screens where scanning should add to the cart.
  */
-export function HidScanner({ onScan, enabled = true, onText }: { onScan: (code: string) => void; enabled?: boolean; /** Called on every change of the scan box with the text so far and a millisecond clock. Used by the scanner speed test. */ onText?: (text: string, now: number) => void }) {
+export function HidScanner({ onScan, enabled = true, onText }: { onScan: (code: string) => void; enabled?: boolean; /** Opt in to timing: called on every change of the scan box with the text so far and a millisecond clock. Leave it off and the box is read on Return only. */ onText?: (text: string, now: number) => void }) {
   const ref = useRef<TextInput>(null); const value = useRef(''); const [inputKey, setInputKey] = useState(0);
   // Never grab focus while someone is typing in a real field (that is what made the keyboard vanish): the guard
   // knows about every <Field>, and Keyboard.isVisible() covers any raw TextInput we don't own.
@@ -57,7 +57,10 @@ export function HidScanner({ onScan, enabled = true, onText }: { onScan: (code: 
     if (enabled && canGrab()) ref.current?.focus();
   }, [enabled, inputKey]);
   if (!enabled) return null;
-  return <TextInput key={inputKey} ref={ref} onChangeText={t => { noteActivity(); value.current = t; onText?.(t, nowMs()); }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
+  // Everyday scanning (Checkout, Pay, sign-in, lookups) reads the code on Return only: no `onText`, no clock, nothing run per character.
+  // Only a caller that passes `onText` (the Hardware page, the speed test and calibration) gets the per-character timing.
+  const onChange = onText ? (t: string) => { noteActivity(); value.current = t; onText(t, nowMs()); } : (t: string) => { noteActivity(); value.current = t; };
+  return <TextInput key={inputKey} ref={ref} onChangeText={onChange} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
     onSubmitEditing={({ nativeEvent }) => {
       const code = (nativeEvent.text || value.current).trim();
       value.current = '';
