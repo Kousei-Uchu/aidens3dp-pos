@@ -1,5 +1,5 @@
 // Location: src/lib/assistantTools.ts
-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide). Plain functions that read what they are
+// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts). Plain functions that read what they are
 // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
 // runs in the node tests.
 //
@@ -11,6 +11,8 @@ import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Pag
 // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
 import type { ScreenEntry, ScreenTarget } from './assistantScreens';
 import type { Guide } from './assistantGuide';
+import type { AssistantData } from './assistantData';
+import { DATA_TOOLS } from './assistantDataTools';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -22,6 +24,8 @@ export type ToolContext = {
   maxChars: number;
   /** What the data gate lets through for this endpoint and these toggles (patch 0161). Left out, the strictest rules apply. */
   policy?: GatePolicy;
+  /** What the data tools read (patch 0163): a snapshot of what is saved on this iPad, taken when the question was asked. Left out, the data tools say there is no shop data. */
+  data?: AssistantData;
 };
 export type AssistantTool = {
   /** Which fields the tool can return and what category each is in (patch 0161). Every result goes through the data gate by this map. 'content' is for tools that only return help text and screen names. */
@@ -230,7 +234,7 @@ const showGuide: AssistantTool = {
 };
 
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, ...DATA_TOOLS];
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
 
 // ---------- running a call ----------
@@ -275,5 +279,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy }): ToolSet =>
-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData }): ToolSet =>
+  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });

@@ -6,6 +6,23 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 19 (18 October 2026), patch 0163:** patch 7 is built: the remaining data tools, as five model-facing tools: `sales_report`, `find_orders`, `list_deals`,
+`find_customers` and `gift_card_activity`. They read a snapshot of what is saved on this iPad (`src/lib/assistantData.ts`, `assistantDataTools.ts`, `assistantDataIO.ts`), never
+Shopify live (question 12), and every result goes through the data gate. Patch 6 (product and inventory) is not built yet and is not needed by patch 7, so 7 went first.
+Decided here, and the owner may want to change any of them: **(1) Five tools, not six.** The plan's six areas are sales history, deals, customers, orders, gift cards and report summaries.
+Sales history and report summaries are one tool (`sales_report`, which also counts how many of one item sold), and the order tool gives the full order when asked for detail, because every
+tool definition is read by the model on every question and the default context is only 8000. **(2) Gift card balances are not available.** A balance lives at Shopify and there is no local copy,
+so `gift_card_activity` reports cards sold and payments made with a card from this till's sales, and says to use the Gift cards screen for a balance. The balance category stays in the gate
+for when a cached balance exists. **(3) How an order was paid is a payment detail** (never sent), because 3.1 puts tender details there. Takings by payment method in a report are a total, so
+they count as shop data, as tool 14 in 3.2 lists them. Card details are never put in a result at all. **(4) Staff names, and what each staff member sold, count as customer details** (personal data).
+Customer order counts, spending and notes do too. **(5) No tool matches on a field the model may not read.** A customer is not found by name when names are hidden, an order is not found by
+customer name when names are hidden, and a gift card is not found by code when codes are hidden, because a match would tell the model who bought what. When names and emails are both hidden, a
+customer search returns an empty list and the privacy note, exactly as for a customer that does not exist. **(6) The gate drops a row whose fields were all hidden** from a list, so the model is
+not shown a list of empty rows and told how many there were (a small change to `assistantGate.ts`, with a test). **(7) Scope.** This till's latest 2000 sales and refunds, and the daily totals saved on
+this iPad (this till's, sales still in the outbox, and imported Square history). The Reports page also fetches other tills' totals live from Shopify; the assistant does not, and says so in every
+report. **(8) Cost and profit are available to every role,** because Reports shows them to every role and Reports, Orders, Customers and Gift cards are open to cashiers in the app graph. On practice
+data the snapshot is empty, a second lock behind the practice mode block. Next: patch 6 (product and inventory), or patch 8 (cash drawer, calculators and current cart).
+
 **Revision 18 (18 October 2026), patch 0162:** tool 4 of 4 is built: the guide tool, as the model-facing tool `show_guide`. The plan never defined it, so it is taken to
 mean the \"Guide me there\" pointer of question 8, started from a button under a reply: a ring and a small card point at each control to tap, one at a time, from the
 Checkout tab, and the card says *You are there* at the end. It never dims the screen or blocks a touch. It is role filtered exactly like `show_link` and `search_screens`
@@ -185,13 +202,14 @@ Built in 0158: the screen search tool (`search_screens`) and the role filter for
 Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
 Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
 Built in 0161: the data gate and the category toggles (3.1), in front of every tool result, the history sent to the model and the audit log.
+Built in 0163: the sales, order, deal, customer and gift card tools (patch 7), the first tools that return shop data, each with a field map for the gate.
 
 Still to do:
 
 - The offline mode's product and inventory lookup (3.3), after the product tools and the data gate.
 - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
   before anything reaches the model or the screen.
-- The read-only tools (3.2).
+- The read-only tools still to build (3.2): product and inventory (patch 6), cash drawer, calculators and current cart (patch 8), screen and register context, date and time, settings reader and app and sync status (patch 10).
 - The practice mode coach (3.7).
 - Model-free product and inventory lookup for the offline mode (3.3).
 - Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 6 to 8). The gate exists (0161), so no tool may be added without a map.
@@ -509,7 +527,7 @@ chat screen patch can add streaming.
 5. **Done (0161).** The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
-7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.
+7. **Done (0163).** The remaining data tools: sales history and report summaries (`sales_report`), orders (`find_orders`), deals (`list_deals`), customers (`find_customers`) and gift cards (`gift_card_activity`, with no balance, see Revision 19).
 8. Cash drawer status, calculators and current cart.
 9. Practice mode coach (3.7).
 10. Settings reader and app and sync status. (The "Guide me there" highlight arrows were built in 0162, as the guide tool.)

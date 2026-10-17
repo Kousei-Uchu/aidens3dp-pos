@@ -136,7 +136,12 @@ export function applyGate(result: unknown, spec: GateSpec, policy: GatePolicy = 
     // a nested map: an object, or a list of objects
     if (depth >= MAX_DEPTH) { unknown.push(path); bump('unknown'); return { keep: false }; }
     if (v === null) return { keep: true, value: null };
-    if (Array.isArray(v)) return { keep: true, value: v.map((x, i) => walkObject(x, rule, `${path}[${i}]`, depth + 1)) };
+    if (Array.isArray(v)) {
+      // A row whose fields were all hidden is left out whole, so the model is not shown a list of empty rows and told how many there were.
+      const rows: unknown[] = [];
+      v.forEach((x, i) => { const o = walkObject(x, rule, `${path}[${i}]`, depth + 1); if (isObject(x) && Object.keys(x).length && isObject(o) && !Object.keys(o).length) return; rows.push(o); });
+      return { keep: true, value: rows };
+    }
     // An object whose fields were all hidden is left out whole, so the model is not shown an empty "customer" and left to wonder.
     const obj = walkObject(v, rule, path, depth + 1);
     if (isObject(v) && Object.keys(v).length && isObject(obj) && !Object.keys(obj).length) return { keep: false };

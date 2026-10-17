@@ -778,3 +778,22 @@ On the iPad, with the model set up as in T55. This is the first time the pointer
 12. As a manager, open the conversation log, open the conversation from step 8, then **Tools used**. Pass: the show_guide call is listed with the note the model was given.
 13. Open the chat after a guide button was shown, close the app and open the chat again. Pass: the guide button is still under the reply and still starts a guide.
 14. Turn the **More** page down to Essential or Minimal in the display settings, then ask to be guided to Items. Pass: if the Items row is hidden, the card says it cannot see the next button instead of ringing the wrong thing. (This is a known rough edge: the guide does not know which rows a display mode hides.)
+
+## T61. Assistant shop data tools (0163)
+
+On the iPad, with the model set up as in T55. Do steps 1 to 9 first with the address set to **Local**, then repeat steps 3, 5 and 6 with it set to **Remote**. Make a few sales on this till first (one with a customer, one with a gift card sold and one paid with a gift card, one refund) so there is something to find.
+
+1. Ask *How much did we sell today?* Pass: the net sales, discounts, refunds, orders and takings match **More ▸ Reports ▸ 1D** for this till (the Reports page can be higher when other tills are selling), and the amounts are in dollars.
+2. Ask *How many Tadlings did we sell this week?* (use an item you sold). Pass: the count matches what you sold, minus refunds, and it says the figure is before discounts.
+3. Ask *Find order 1042* (use a real order number from this till). Pass: it lists the order with its items and total. On **Local** it names the customer. On **Remote** it says it cannot show customer details and never gives a name.
+4. Ask *Show me the details of that order.* Pass: items, prices, deals and any price adjustment appear. It never shows card numbers, and it does not say how the order was paid (it says payment details are hidden).
+5. Ask *Find the customer* and a name you saved. Pass: on **Local** it finds them with their email and phone and order count. On **Remote** it says it cannot show customer details. Ask for a name that does not exist. Pass: the reply looks the same as for a name that does.
+6. Ask *Which gift cards did we sell this week?* Pass: it lists them. On **Local** a code shows as the last four characters only. On **Remote** no code and no recipient name or email appears. Ask *What is left on gift card ending 1234?* Pass: it says it cannot look up a balance and points at the Gift cards screen.
+7. Ask *What deals are on right now?* Pass: it matches **Settings ▸ Discounts & bundles**, and a deal whose end date has passed, or that is switched off, is listed as not running.
+8. Ask *What did we make in profit this month?* Then in **AI assistant settings** set **Cost prices and profit** to **Never allow** and ask again. Pass: the second time it says it cannot show costs and profit, and still gives net sales.
+9. As a **cashier**, ask the question from step 1. Pass: it answers, as the Reports page is open to cashiers.
+10. If you imported Square history, ask *How much did we sell in March 2025?* (use a month you imported). Pass: it gives the imported totals.
+11. Put a phone number such as 0412 345 678 in a price adjustment reason on a sale, then on **Remote** ask for that order's detail. Pass: the reason shows [phone number].
+12. As a manager, open the conversation log and open the conversation from step 3, then **Tools used**. Pass: the find_orders call is listed, the result holds only dollar text, and on **Remote** the withheld counts show customer and payment details.
+13. **Most important:** turn on practice mode and try to send. Pass: sending is still blocked, and nothing about the shop is described as practice data.
+14. With a till that has a long history (a thousand or more sales), ask for a sales report and an order search. Pass: each answers without the screen freezing for longer than the model's own thinking time.

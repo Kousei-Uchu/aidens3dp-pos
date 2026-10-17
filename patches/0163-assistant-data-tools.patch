@@ -1,0 +1,1248 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index c5716b8..a6c6ece 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,23 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 19 (18 October 2026), patch 0163:** patch 7 is built: the remaining data tools, as five model-facing tools: `sales_report`, `find_orders`, `list_deals`,
++`find_customers` and `gift_card_activity`. They read a snapshot of what is saved on this iPad (`src/lib/assistantData.ts`, `assistantDataTools.ts`, `assistantDataIO.ts`), never
++Shopify live (question 12), and every result goes through the data gate. Patch 6 (product and inventory) is not built yet and is not needed by patch 7, so 7 went first.
++Decided here, and the owner may want to change any of them: **(1) Five tools, not six.** The plan's six areas are sales history, deals, customers, orders, gift cards and report summaries.
++Sales history and report summaries are one tool (`sales_report`, which also counts how many of one item sold), and the order tool gives the full order when asked for detail, because every
++tool definition is read by the model on every question and the default context is only 8000. **(2) Gift card balances are not available.** A balance lives at Shopify and there is no local copy,
++so `gift_card_activity` reports cards sold and payments made with a card from this till's sales, and says to use the Gift cards screen for a balance. The balance category stays in the gate
++for when a cached balance exists. **(3) How an order was paid is a payment detail** (never sent), because 3.1 puts tender details there. Takings by payment method in a report are a total, so
++they count as shop data, as tool 14 in 3.2 lists them. Card details are never put in a result at all. **(4) Staff names, and what each staff member sold, count as customer details** (personal data).
++Customer order counts, spending and notes do too. **(5) No tool matches on a field the model may not read.** A customer is not found by name when names are hidden, an order is not found by
++customer name when names are hidden, and a gift card is not found by code when codes are hidden, because a match would tell the model who bought what. When names and emails are both hidden, a
++customer search returns an empty list and the privacy note, exactly as for a customer that does not exist. **(6) The gate drops a row whose fields were all hidden** from a list, so the model is
++not shown a list of empty rows and told how many there were (a small change to `assistantGate.ts`, with a test). **(7) Scope.** This till's latest 2000 sales and refunds, and the daily totals saved on
++this iPad (this till's, sales still in the outbox, and imported Square history). The Reports page also fetches other tills' totals live from Shopify; the assistant does not, and says so in every
++report. **(8) Cost and profit are available to every role,** because Reports shows them to every role and Reports, Orders, Customers and Gift cards are open to cashiers in the app graph. On practice
++data the snapshot is empty, a second lock behind the practice mode block. Next: patch 6 (product and inventory), or patch 8 (cash drawer, calculators and current cart).
++
+ **Revision 18 (18 October 2026), patch 0162:** tool 4 of 4 is built: the guide tool, as the model-facing tool `show_guide`. The plan never defined it, so it is taken to
+ mean the \"Guide me there\" pointer of question 8, started from a button under a reply: a ring and a small card point at each control to tap, one at a time, from the
+ Checkout tab, and the card says *You are there* at the end. It never dims the screen or blocks a touch. It is role filtered exactly like `show_link` and `search_screens`
+@@ -185,13 +202,14 @@ Built in 0158: the screen search tool (`search_screens`) and the role filter for
+ Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
+ Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
+ Built in 0161: the data gate and the category toggles (3.1), in front of every tool result, the history sent to the model and the audit log.
++Built in 0163: the sales, order, deal, customer and gift card tools (patch 7), the first tools that return shop data, each with a field map for the gate.
+ 
+ Still to do:
+ 
+ - The offline mode's product and inventory lookup (3.3), after the product tools and the data gate.
+ - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
+   before anything reaches the model or the screen.
+-- The read-only tools (3.2).
++- The read-only tools still to build (3.2): product and inventory (patch 6), cash drawer, calculators and current cart (patch 8), screen and register context, date and time, settings reader and app and sync status (patch 10).
+ - The practice mode coach (3.7).
+ - Model-free product and inventory lookup for the offline mode (3.3).
+ - Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 6 to 8). The gate exists (0161), so no tool may be added without a map.
+@@ -509,7 +527,7 @@ chat screen patch can add streaming.
+ 5. **Done (0161).** The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+    tools yet.
+ 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
+-7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.
++7. **Done (0163).** The remaining data tools: sales history and report summaries (`sales_report`), orders (`find_orders`), deals (`list_deals`), customers (`find_customers`) and gift cards (`gift_card_activity`, with no balance, see Revision 19).
+ 8. Cash drawer status, calculators and current cart.
+ 9. Practice mode coach (3.7).
+ 10. Settings reader and app and sync status. (The "Guide me there" highlight arrows were built in 0162, as the guide tool.)
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 1a41fb0..25b3e3d 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -778,3 +778,22 @@ On the iPad, with the model set up as in T55. This is the first time the pointer
+ 12. As a manager, open the conversation log, open the conversation from step 8, then **Tools used**. Pass: the show_guide call is listed with the note the model was given.
+ 13. Open the chat after a guide button was shown, close the app and open the chat again. Pass: the guide button is still under the reply and still starts a guide.
+ 14. Turn the **More** page down to Essential or Minimal in the display settings, then ask to be guided to Items. Pass: if the Items row is hidden, the card says it cannot see the next button instead of ringing the wrong thing. (This is a known rough edge: the guide does not know which rows a display mode hides.)
++
++## T61. Assistant shop data tools (0163)
++
++On the iPad, with the model set up as in T55. Do steps 1 to 9 first with the address set to **Local**, then repeat steps 3, 5 and 6 with it set to **Remote**. Make a few sales on this till first (one with a customer, one with a gift card sold and one paid with a gift card, one refund) so there is something to find.
++
++1. Ask *How much did we sell today?* Pass: the net sales, discounts, refunds, orders and takings match **More ▸ Reports ▸ 1D** for this till (the Reports page can be higher when other tills are selling), and the amounts are in dollars.
++2. Ask *How many Tadlings did we sell this week?* (use an item you sold). Pass: the count matches what you sold, minus refunds, and it says the figure is before discounts.
++3. Ask *Find order 1042* (use a real order number from this till). Pass: it lists the order with its items and total. On **Local** it names the customer. On **Remote** it says it cannot show customer details and never gives a name.
++4. Ask *Show me the details of that order.* Pass: items, prices, deals and any price adjustment appear. It never shows card numbers, and it does not say how the order was paid (it says payment details are hidden).
++5. Ask *Find the customer* and a name you saved. Pass: on **Local** it finds them with their email and phone and order count. On **Remote** it says it cannot show customer details. Ask for a name that does not exist. Pass: the reply looks the same as for a name that does.
++6. Ask *Which gift cards did we sell this week?* Pass: it lists them. On **Local** a code shows as the last four characters only. On **Remote** no code and no recipient name or email appears. Ask *What is left on gift card ending 1234?* Pass: it says it cannot look up a balance and points at the Gift cards screen.
++7. Ask *What deals are on right now?* Pass: it matches **Settings ▸ Discounts & bundles**, and a deal whose end date has passed, or that is switched off, is listed as not running.
++8. Ask *What did we make in profit this month?* Then in **AI assistant settings** set **Cost prices and profit** to **Never allow** and ask again. Pass: the second time it says it cannot show costs and profit, and still gives net sales.
++9. As a **cashier**, ask the question from step 1. Pass: it answers, as the Reports page is open to cashiers.
++10. If you imported Square history, ask *How much did we sell in March 2025?* (use a month you imported). Pass: it gives the imported totals.
++11. Put a phone number such as 0412 345 678 in a price adjustment reason on a sale, then on **Remote** ask for that order's detail. Pass: the reason shows [phone number].
++12. As a manager, open the conversation log and open the conversation from step 3, then **Tools used**. Pass: the find_orders call is listed, the result holds only dollar text, and on **Remote** the withheld counts show customer and payment details.
++13. **Most important:** turn on practice mode and try to send. Pass: sending is still blocked, and nothing about the shop is described as practice data.
++14. With a till that has a long history (a thousand or more sales), ask for a sales report and an order search. Pass: each answers without the screen freezing for longer than the model's own thinking time.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 85028e8..f077d97 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -152,6 +152,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
++| 0163 | 2026-10-18 | AI assistant, patch 7 (your request): **the shop data tools**, the first tools that return shop data, all through the data gate from 0161. Five new tools the model can call: `sales_report` (totals for today, yesterday, this or last week or month, this year, or two dates, already added up the way Reports adds them: orders, discounts, refunds, net sales, takings by payment method, top items and categories, cost and profit, and sales by staff member; with `item` it counts how many of one item sold), `find_orders` (this till's latest 2000 sales and refunds, by order number, item words, customer, dates or type, ten rows or three with detail: items, prices, deals, price adjustments, notes), `list_deals` (bundle deals, automatic discounts and manual discounts, what each does and whether it is running now), `find_customers` (name, email or phone) and `gift_card_activity` (cards sold and paid with, by the last four or more characters of a code). New `src/lib/assistantData.ts` (the queries, pure), `src/lib/assistantDataTools.ts` (definitions and field maps), `src/lib/assistantDataIO.ts` (takes the snapshot from the store and the Square history on disk; empty on practice data). Money is returned as text like $12.50. Every field is mapped to a category; staff names, customer order counts and spending count as customer details; how an order was paid is a payment detail and is never sent. No tool matches on a field the model may not read, and a customer search with names and emails hidden looks the same as one with no match. **Gate change:** a row whose fields were all hidden is dropped from a list. The prompt now says ten tools and what still cannot be looked up. Help page `settings/ask-assistant` updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 19. Tests: `tests/assistantdata.test.ts` (31), and the pinned tool list and prompt tests now expect ten. Device test T61. **Decided without you, change any you disagree with:** five tools not six (each definition costs context); no gift card balance (it is only at Shopify, and the plan says local data only); other tills' totals are not included (Reports fetches them live); cost and profit go to every role (Reports shows them to every role). Not tried on a real iPad. Not in this patch: product and inventory tools (patch 6), cash drawer, calculators and current cart (patch 8) | your request |
+ | 0162 | 2026-10-18 | AI assistant, patch 4, tool 4 of 4 (your request: one tool at a time): **the guide tool** (`show_guide`). The assistant can put a **Guide me to Reports** button under its reply. Tapping it goes to the Checkout tab and the till points, one at a time, at each control to tap (a ring and a small card with the words and *Step 2 of 3*), then says *You are there*. It never dims the screen or blocks a touch, **Stop** ends it, and it picks people up part of the way (it points at the last control of the walk that is on screen). It is checked for the role exactly like `show_link` and `search_screens`: a screen the role cannot reach gets the same answer as one that does not exist. `search_screens` marks a hit `can_guide`. New `src/lib/assistantGuide.ts` (pure rules and the one active guide), `src/ui/AssistantGuide.tsx` (the overlay, mounted in `App.tsx`), a `walk` (per role) and `arrive` on each screen in `src/lib/assistantScreens.ts`, `spotOfPlanStep` in `appGraph.ts`. A screen gets no walk when a tap has no control or no words, goes into a window or overlay, or taps a control that is not a real spot (`isKnownSpot`); `buildScreenIndex` can report those as gaps. **Controls fixed on the way:** the Transactions tab had no spot (`tab.transactions`), and the More rows for Reports, Gift cards, Staff, Settings and Help had none either (`more.reports`, `more.giftcards`, `more.staff`, `more.settings`, `more.help`, all registered in `SPOT` and `SPOT_SCREEN`; `More.tsx` now reads them from one table). **Still without a guide, on purpose:** Edit item (the graph taps an item row with no id), Training run (Start is repeated on every lesson card) and the Practice terminal (the Training page is not scanned by the spot test). The prompt now says five tools. Help page `settings/ask-assistant` updated, `help.json` rebuilt. Tests: `tests/assistantguide.test.ts`, and the tool list and prompt tests now expect five, and the tool declares `gate: 'content'` like the other help tools (it returns only a note), which the gate test now lists. Device test T60. **Decided without you:** the plan never says what the guide tool is, so I took it to mean this pointer from the Checkout tab, kept to the main screen (windows are drawn above it). Not tried: the overlay on a real iPad. Not in this patch: the screen and register context tool (so no starting from the current screen), the date and time tool | your request |
+ | 0161 | 2026-10-18 | AI assistant, patch 5, the data gate (plan 3.1), the next item in the plan that is not a tool: **one place that decides what the model may be shown**, in front of every tool result, with the per-category toggles. New `src/lib/assistantGate.ts` (pure). Nine categories: customer details, email addresses, gift card balances, gift card codes, order totals and items, cost prices and profit, stock and other shop data, payment details, keys and passwords. `resolvePolicy` turns the endpoint (Auto, Local or Remote, from 0149) and the toggles into a decision for each: sent, last four characters only, or not sent. The table in 3.1 is the Auto setting, so a local address gets customer details, emails and balances, a remote one gets none of them, codes are never more than the last four, and payment details and keys are never sent. **Settings ▸ AI assistant ▸ What the assistant may see:** a row for each category with **Auto / Always allow / Never allow** and a line saying what that comes to right now, a warning when Always allow sends customer details to a remote address, and the two never-sent rows shown as fixed. Saved with the other assistant settings (per iPad, in Backup & transfer, not synced), cleaned on load and restore. **Enforced in code:** every tool now declares a field map (`gate`) naming each field it can return and its category, or `content` for tools that return only help text (all four so far). `runToolCall` gates the result before it is cut to size, so the model and the log only hold the gated result. A field the map does not name is dropped, counted and reported by name, so a tool cannot leak a field nobody sorted, and a test helper (`assertNoUnknownFields`) fails when one does. With no policy given the remote rules apply. Free text such as order notes is scrubbed under the same rules (an email or phone number only where that category is sent; card numbers and keys always masked). When something is hidden the model is told the kind (*customer details*), never the content, so it says it cannot show it instead of guessing. **History:** each reply records the kinds of data it was built from; when the address becomes remote or a toggle is switched, a reply that used a kind no longer sent is left out of what the model is given, together with its question, though the cashier can still read it. **Log:** what the gate withheld is counted by category on each tool call and on the event (never the items), and the viewer shows it. The scrubber moved to `assistantScrub.ts` (still exported from `assistantChat.ts`). Help page `settings/assistant` updated, `help.json` rebuilt. Tests: `tests/assistantgate.test.ts`. Device test T59. Not in this patch: any tool that returns shop data (patches 6 to 8), so the toggles have nothing to act on yet; the product and inventory lookup in offline mode; the guide tool, the screen and register context tool and the date and time tool | your request |
+ | 0160 | 2026-10-18 | AI assistant, patch 4, the offline mode (plan 3.3), a non-tool item taken from the plan: **when the model cannot answer, the chat still searches**. A question that fails (cannot reach the model, took too long, key rejected, model not found, wrong address, server problem, odd reply) or is asked before the model is set up now shows the red bar as before **and** a box headed *Model offline, showing search results*, listing screens (what each is for, and the taps from the Checkout tab) and help pages (tap one to read it, and a screen that is a tab or a page gets the same **Open** button the link tool makes, checked for the role signed in). It is the same two searches the model's tools use, so the role filter applies: a role is never listed a screen or page it cannot use, and a question about one gets the same *could not find anything* as one about something that does not exist. No model is involved, so the list is labelled as matches and not as an answer. Only the question is stored (scrubbed, as always) with a marker where a reply would be; the list is searched again each time the chat is shown, for whoever is signed in then. **The model is never shown a question that only got a list** (it would read a question with no reply, and some chat templates refuse two user messages in a row). The next question tries the model first, and **Retry** replaces the list with the model's answer instead of repeating the question. No list after **More detail**, and none in practice mode. Send now works before the model is set up. New `src/lib/assistantOffline.ts` (pure), history helpers `tidyOffline`, `forModel`, `withoutExchange` in `assistantChat.ts`, a new `offline` kind of log line (`buildOfflineEvent`, `logOffline`) shown in the conversation log with the screens and pages found and why the model was not used. Help page `settings/ask-assistant` updated, `help.json` rebuilt. Tests: `tests/assistantoffline.test.ts`. Device test T58. Not in this patch: product and inventory lookup in offline mode (needs the product tools and the data gate first), the highlight arrows (guide me there), the guide tool, the screen and register context tool, and the current screen as a starting point | your request |
+diff --git a/docs/WRITING_ASSISTANT.md b/docs/WRITING_ASSISTANT.md
+index 78c8d38..29dee21 100644
+--- a/docs/WRITING_ASSISTANT.md
++++ b/docs/WRITING_ASSISTANT.md
+@@ -54,6 +54,10 @@ The assistant must follow the same style rules as the rest of the app (Australia
+ The tool list has since grown, and the plan, decisions and patch order are in `docs/AI_ASSISTANT_PLAN.md`. The read-only
+ rule and the style rules above are unchanged.
+ 
++Patch 0163 added the shop data tools (sales report, find orders, deals, customers, gift card activity). They read only what is
++saved on the till (the spec's "local CSV export" is the same data as the till's own sales records), never ask Shopify live, and
++never return a gift card balance, because that lives at Shopify. Every result passes through the data gate first.
++
+ ## The model
+ 
+ Updated 17 October 2026 (patch 0148). This replaces the earlier "local model only" decision.
+diff --git a/help/help.json b/help/help.json
+index 5a5f616..59db6fc 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "582bbb1e",
++ "version": "91875d07",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1413,7 +1413,7 @@
+    "id": "settings/ask-assistant",
+    "title": "Ask the assistant",
+    "parent": "settings/assistant",
+-   "summary": "Chat with the Help assistant: what it can and cannot do yet, what is kept, and what is hidden before anything is sent.",
++   "summary": "Chat with the Help assistant: what it can and cannot do, asking about sales, orders, deals, customers and gift cards, what is kept, and what is hidden before anything is sent.",
+    "tags": [
+     "AI",
+     "assistant",
+@@ -1424,7 +1424,13 @@
+     "log",
+     "audit",
+     "privacy",
+-    "practice mode"
++    "practice mode",
++    "sales",
++    "orders",
++    "deals",
++    "customers",
++    "gift cards",
++    "report"
+    ],
+    "related": [
+     "settings/assistant",
+@@ -1433,9 +1439,9 @@
+    "updated": "2026-10-18",
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+-    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### Guide me to a screen\nAsk to be shown or walked to a screen (*Show me how to get to Reports*) and the reply can have a **Guide me to Reports** button. Tap it and the till goes to the Checkout tab and points at each button to tap, one at a time: a glowing ring on the button, and a small card that says what to do and which step you are on. Tap the button it points at, and it moves on to the next. When you arrive the card says *You are there*. It never dims the screen and never stops you tapping anything else. If you are already part of the way there, it picks up from where you are. Tap **Stop** on the card at any time. If it cannot see the next button (you went somewhere else), the card says so and you can go back to the Checkout tab or tap **Stop**. Only one guide runs at a time, it ends by itself after ten minutes, and it ends if someone else signs in. It only offers a guide to screens your role can reach, and to the others it says it could not find anything, just as it does for a screen that does not exist. A window that opens on top of something else, such as the refund window, has no guide, because the ring cannot be drawn above a window. The reply gives you the taps in words instead. A few pages have no guide either, because the button on the way to them cannot be pointed at (an item in the Items list, or Start on a training lesson). The Checkout tab has none, because that is where every guide starts.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.\n\nBelow your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.",
+-    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
+-    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the guide works\nThe model asks for the button with the `show_guide` tool, giving a screen id from `search_screens` (which marks the screens that can be guided with `can_guide`). The app checks it for your role exactly as it does for `show_link`, so a screen you cannot reach gets the same answer as one that does not exist. Each screen carries its walk: the controls to tap from the Checkout tab, read from the same graph that gives the plain words, with the words said at each tap. A screen gets no walk if any tap has no control or no words, if the control is not a real spot in the till, or if the walk goes into a window. The ring does not remember where you are: several times a second it looks at which controls of the walk are on screen and points at the last one, so tapping something else or starting part of the way along both work. A guide to a tab or a page ends when you arrive there. A guide to a view of Checkout (such as Keypad) ends when one of that view's own controls is on screen, or when you tap the last control. The ring and card are drawn on the main screen only, never inside a window. The guide changes nothing: it only points. Code: `src/lib/assistantGuide.ts` (the rules and the one active guide, tested), `src/ui/AssistantGuide.tsx` (the ring and card), `walk` of each screen in `src/lib/assistantScreens.ts`, `resolveLink` and `show_guide` in `src/lib/assistantTools.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### The offline list\nThe list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens and help pages it found and why the model was not used.\n\n### Limits of this version\nThe offline list does not look up products, stock or customers yet. The only tools are for the help pages and the screens, the button tool for opening them and the guide tool, so no shop data is sent at all. The full data rules and the shop data tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
++    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### Guide me to a screen\nAsk to be shown or walked to a screen (*Show me how to get to Reports*) and the reply can have a **Guide me to Reports** button. Tap it and the till goes to the Checkout tab and points at each button to tap, one at a time: a glowing ring on the button, and a small card that says what to do and which step you are on. Tap the button it points at, and it moves on to the next. When you arrive the card says *You are there*. It never dims the screen and never stops you tapping anything else. If you are already part of the way there, it picks up from where you are. Tap **Stop** on the card at any time. If it cannot see the next button (you went somewhere else), the card says so and you can go back to the Checkout tab or tap **Stop**. Only one guide runs at a time, it ends by itself after ten minutes, and it ends if someone else signs in. It only offers a guide to screens your role can reach, and to the others it says it could not find anything, just as it does for a screen that does not exist. A window that opens on top of something else, such as the refund window, has no guide, because the ring cannot be drawn above a window. The reply gives you the taps in words instead. A few pages have no guide either, because the button on the way to them cannot be pointed at (an item in the Items list, or Start on a training lesson). The Checkout tab has none, because that is where every guide starts.\n\n### Ask about the shop's figures\nAsk things like *How much did we sell today?*, *How many Tadlings did we sell this month?*, *Find order 1042*, *What deals are on right now?*, *Find the customer Priya* or *Which gift cards did we sell this week?* The assistant looks at what is saved on **this till** and answers from that. It does not add anything up itself: sales totals come already added up, the same way the **Reports** page adds them. It tells you plainly when nothing matched.\n\nGood to know:\n- It only knows this till. The sales and refunds it can find are the latest 2000 saved here, and the totals it reports are this till's plus any imported Square history. Other tills are not included, so a total here can be lower than Reports when other tills are selling.\n- A gift card's **remaining balance** is not something it can look up. Use the **Gift cards** screen for that. It can tell you which cards were sold and paid with on this till.\n- It cannot look up products, prices or stock levels yet.\n- What it is allowed to read depends on the shop's privacy rules (see **What the assistant may see** in [[settings/assistant]]). When something is hidden, it says it cannot show it. With a model that is not on the shop's own network, that means customer names, emails and phone numbers, staff names, gift card codes and how an order was paid. What was sold, the prices and the totals are still available.\n\n### What it cannot do\nIt never changes anything: no prices, refunds, carts, stock, customers or settings. It only answers.\n\n### If it does not answer\nA red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.\n\nBelow your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.",
++    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### What shop data it can see\nFive tools read the shop's data, all from what is saved on this iPad:\n- **Sales report** for a period (today, yesterday, this week, last month, or two dates): orders, discounts, refunds, net sales, takings by payment method, top items and categories, cost and profit, and the sales by each staff member where names may be sent. It can also count how many of one item were sold.\n- **Find orders**: the newest ten sales and refunds that match an order number, an item, a customer or some dates. Ask for detail and it gives the items, prices, deals, price adjustments and notes of up to three.\n- **Deals**: the bundle deals, automatic discounts and manual discounts, what each does and whether it is running now.\n- **Find customers**: by name, email or phone, with their order count and spending as last synced.\n- **Gift card activity**: cards sold and payments made with a card, filtered by the last four or more characters of a code.\n\nEvery answer from these goes through the privacy check before the model sees it, and the conversation log shows what the model was given and how many items were hidden.\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
++    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the guide works\nThe model asks for the button with the `show_guide` tool, giving a screen id from `search_screens` (which marks the screens that can be guided with `can_guide`). The app checks it for your role exactly as it does for `show_link`, so a screen you cannot reach gets the same answer as one that does not exist. Each screen carries its walk: the controls to tap from the Checkout tab, read from the same graph that gives the plain words, with the words said at each tap. A screen gets no walk if any tap has no control or no words, if the control is not a real spot in the till, or if the walk goes into a window. The ring does not remember where you are: several times a second it looks at which controls of the walk are on screen and points at the last one, so tapping something else or starting part of the way along both work. A guide to a tab or a page ends when you arrive there. A guide to a view of Checkout (such as Keypad) ends when one of that view's own controls is on screen, or when you tap the last control. The ring and card are drawn on the main screen only, never inside a window. The guide changes nothing: it only points. Code: `src/lib/assistantGuide.ts` (the rules and the one active guide, tested), `src/ui/AssistantGuide.tsx` (the ring and card), `walk` of each screen in `src/lib/assistantScreens.ts`, `resolveLink` and `show_guide` in `src/lib/assistantTools.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### The offline list\nThe list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens and help pages it found and why the model was not used.\n\n### How the shop data tools work\nEach tool is a plain function over a snapshot taken when you ask the question (`takeAssistantData` in `src/lib/assistantDataIO.ts`): this till's sales (the latest 2000), the daily totals saved here (this till's, any sales in the outbox not yet counted, and imported Square history), the customers, the deals and the catalogue names. They are handed nothing that can write, and a test freezes the snapshot to prove they do not change it. Money is returned as text such as $12.50 so a small model never reads cents. Each tool declares a field map that puts every field it can return into a privacy category, and the data gate removes or masks what the endpoint may not receive. A tool also never matches on something the model may not read: a customer is not found by name when names are hidden, and a gift card is not found by code when codes are hidden, because a match would tell the model who bought what. When names and emails are both hidden, a customer search returns an empty list and the privacy note, exactly as it does for a customer who does not exist. How an order was paid is treated as a payment detail and is never sent. Card details are never put in a result at all. On practice data the snapshot is empty, which is a second lock behind the practice mode block. Code: `src/lib/assistantData.ts` (the queries, tested), `src/lib/assistantDataTools.ts` (the tool definitions and field maps), `src/lib/assistantDataIO.ts` (the snapshot).\n\n### Limits of this version\nThe offline list does not look up products, stock or customers yet. The tools are for the help pages, the screens, the button and guide tools, and the five shop data tools above. There are no product, price or stock tools yet, and no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+   },
+   {
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index 9774291..931d67c 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -2,8 +2,8 @@
+ id: settings/ask-assistant
+ title: Ask the assistant
+ parent: settings/assistant
+-summary: Chat with the Help assistant: what it can and cannot do yet, what is kept, and what is hidden before anything is sent.
+-tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode]
++summary: Chat with the Help assistant: what it can and cannot do, asking about sales, orders, deals, customers and gift cards, what is kept, and what is hidden before anything is sent.
++tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode, sales, orders, deals, customers, gift cards, report]
+ related: [settings/assistant, settings/backup]
+ updated: 2026-10-18
+ ---
+@@ -20,8 +20,17 @@ When it points you at a help page or a screen, it can put a button under its rep
+ ### Guide me to a screen
+ Ask to be shown or walked to a screen (*Show me how to get to Reports*) and the reply can have a **Guide me to Reports** button. Tap it and the till goes to the Checkout tab and points at each button to tap, one at a time: a glowing ring on the button, and a small card that says what to do and which step you are on. Tap the button it points at, and it moves on to the next. When you arrive the card says *You are there*. It never dims the screen and never stops you tapping anything else. If you are already part of the way there, it picks up from where you are. Tap **Stop** on the card at any time. If it cannot see the next button (you went somewhere else), the card says so and you can go back to the Checkout tab or tap **Stop**. Only one guide runs at a time, it ends by itself after ten minutes, and it ends if someone else signs in. It only offers a guide to screens your role can reach, and to the others it says it could not find anything, just as it does for a screen that does not exist. A window that opens on top of something else, such as the refund window, has no guide, because the ring cannot be drawn above a window. The reply gives you the taps in words instead. A few pages have no guide either, because the button on the way to them cannot be pointed at (an item in the Items list, or Start on a training lesson). The Checkout tab has none, because that is where every guide starts.
+ 
+-### What it cannot do yet
+-It cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
++### Ask about the shop's figures
++Ask things like *How much did we sell today?*, *How many Tadlings did we sell this month?*, *Find order 1042*, *What deals are on right now?*, *Find the customer Priya* or *Which gift cards did we sell this week?* The assistant looks at what is saved on **this till** and answers from that. It does not add anything up itself: sales totals come already added up, the same way the **Reports** page adds them. It tells you plainly when nothing matched.
++
++Good to know:
++- It only knows this till. The sales and refunds it can find are the latest 2000 saved here, and the totals it reports are this till's plus any imported Square history. Other tills are not included, so a total here can be lower than Reports when other tills are selling.
++- A gift card's **remaining balance** is not something it can look up. Use the **Gift cards** screen for that. It can tell you which cards were sold and paid with on this till.
++- It cannot look up products, prices or stock levels yet.
++- What it is allowed to read depends on the shop's privacy rules (see **What the assistant may see** in [[settings/assistant]]). When something is hidden, it says it cannot show it. With a model that is not on the shop's own network, that means customer names, emails and phone numbers, staff names, gift card codes and how an order was paid. What was sold, the prices and the totals are still available.
++
++### What it cannot do
++It never changes anything: no prices, refunds, carts, stock, customers or settings. It only answers.
+ 
+ ### If it does not answer
+ A red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.
+@@ -41,6 +50,16 @@ Every question you send and every answer or error is also written to a log on th
+ 
+ If a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*
+ 
++### What shop data it can see
++Five tools read the shop's data, all from what is saved on this iPad:
++- **Sales report** for a period (today, yesterday, this week, last month, or two dates): orders, discounts, refunds, net sales, takings by payment method, top items and categories, cost and profit, and the sales by each staff member where names may be sent. It can also count how many of one item were sold.
++- **Find orders**: the newest ten sales and refunds that match an order number, an item, a customer or some dates. Ask for detail and it gives the items, prices, deals, price adjustments and notes of up to three.
++- **Deals**: the bundle deals, automatic discounts and manual discounts, what each does and whether it is running now.
++- **Find customers**: by name, email or phone, with their order count and spending as last synced.
++- **Gift card activity**: cards sold and payments made with a card, filtered by the last four or more characters of a code.
++
++Every answer from these goes through the privacy check before the model sees it, and the conversation log shows what the model was given and how many items were hidden.
++
+ ### Practice mode
+ The assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.
+ 
+@@ -61,5 +80,8 @@ One file for each day, in a folder inside the app that Files.app cannot see (`Li
+ ### The offline list
+ The list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens and help pages it found and why the model was not used.
+ 
++### How the shop data tools work
++Each tool is a plain function over a snapshot taken when you ask the question (`takeAssistantData` in `src/lib/assistantDataIO.ts`): this till's sales (the latest 2000), the daily totals saved here (this till's, any sales in the outbox not yet counted, and imported Square history), the customers, the deals and the catalogue names. They are handed nothing that can write, and a test freezes the snapshot to prove they do not change it. Money is returned as text such as $12.50 so a small model never reads cents. Each tool declares a field map that puts every field it can return into a privacy category, and the data gate removes or masks what the endpoint may not receive. A tool also never matches on something the model may not read: a customer is not found by name when names are hidden, and a gift card is not found by code when codes are hidden, because a match would tell the model who bought what. When names and emails are both hidden, a customer search returns an empty list and the privacy note, exactly as it does for a customer who does not exist. How an order was paid is treated as a payment detail and is never sent. Card details are never put in a result at all. On practice data the snapshot is empty, which is a second lock behind the practice mode block. Code: `src/lib/assistantData.ts` (the queries, tested), `src/lib/assistantDataTools.ts` (the tool definitions and field maps), `src/lib/assistantDataIO.ts` (the snapshot).
++
+ ### Limits of this version
+-The offline list does not look up products, stock or customers yet. The only tools are for the help pages and the screens, the button tool for opening them and the guide tool, so no shop data is sent at all. The full data rules and the shop data tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
++The offline list does not look up products, stock or customers yet. The tools are for the help pages, the screens, the button and guide tools, and the five shop data tools above. There are no product, price or stock tools yet, and no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index a8a245a..75cadc3 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -27,9 +27,15 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false):
+   const lines = [
+     'You are the help assistant inside a shop till app, used by shop staff.',
+     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
+-    'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
+     ...(withTools ? [
+-      'You have five tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. show_guide puts a "Guide me" button under your reply that points at each tap, one at a time, to reach a screen. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
++      'You can look at sales totals, orders, deals, customers and gift card activity with your tools. You cannot yet look up products, prices or stock levels, or what is left on a gift card. Do not guess them. If asked, say you cannot look that up yet.',
++    ] : [
++      'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
++    ]),
++    ...(withTools ? [
++      'You have ten tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. show_guide puts a "Guide me" button under your reply that points at each tap, one at a time, to reach a screen. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
++      'For the shop\'s own figures, use the data tools. sales_report gives totals for a period, already added up, and how many of an item sold. find_orders finds sales and refunds. list_deals lists the deals and discounts. find_customers finds a customer. gift_card_activity shows gift cards sold and paid with. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
++      'The data tools only know what is saved on this till. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.',
+       'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
+       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
+       'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
+diff --git a/src/lib/assistantData.ts b/src/lib/assistantData.ts
+new file mode 100644
+index 0000000..63d0dc0
+--- /dev/null
++++ b/src/lib/assistantData.ts
+@@ -0,0 +1,378 @@
++// Location: src/lib/assistantData.ts
++// The shop data the assistant's data tools read (patch 0163, plan 3.2 tools 3, 4, 7 and 14, patch 7 in 3.10).
++// Pure functions over a plain snapshot of what is saved on this iPad: no network, no store, no React Native imports, so they run in
++// the node tests. The snapshot is built in assistantDataIO.ts. Local data only (plan question 12): this till's recent sales and
++// refunds, the daily totals saved here (including imported Square history), the customers, the deals and the gift cards seen in sales.
++//
++// Nothing here decides what may be sent to the model. Every field these functions return is sorted into a category by the field
++// maps in assistantDataTools.ts, and the data gate (assistantGate.ts) applies the endpoint rules to it. Money is returned as text
++// like "$12.50" so a small model never has to read cents.
++import { fmt } from './money';
++import { reasonLabel } from './adjustReason';
++import { applyRecord, derived, dayKey, emptyTotals, merge, parseDay, adjustmentSummary, rollupKey, staffSummary, type Range, type RollupRow, type Totals } from './rollup';
++import type { AutoDiscount, BundleConfig, BundleDeal, Collection, Customer, ManualPreset, SaleRecord, Variant } from './types';
++
++/** What the data tools can read. Built fresh for each question, so it is never older than the question. */
++export type AssistantData = {
++  /** The time the question was asked, in milliseconds. */
++  now: number;
++  /** This till's recent sales and refunds, newest first. The till keeps the latest 2000. */
++  sales: SaleRecord[];
++  /** Daily totals saved on this iPad: this till, plus imported Square history. */
++  rollups: RollupRow[];
++  customers: Customer[];
++  autos: AutoDiscount[];
++  presets: ManualPreset[];
++  bundles: BundleConfig | null;
++  /** Only used to turn a deal's product and variant ids into names. */
++  variants: Record<string, Variant>;
++  collections: Collection[];
++};
++
++/**
++ * The daily totals saved on this iPad, the way the Reports screen merges them but without the live fetch from Shopify: imported
++ * Square history, this till's saved totals, and sales still waiting in the outbox that are not in a total yet.
++ */
++export function localRollupRows(local: Record<string, Totals>, outbox: { done: { rollup?: boolean }; sale: SaleRecord }[], square: RollupRow[]): RollupRow[] {
++  const m = new Map<string, RollupRow>(square.map(r => [`${r.registerId}|${r.date}`, r] as const));
++  for (const [k, t] of Object.entries(local)) if (!m.has(k)) { const [registerId, date] = k.split('|'); m.set(k, { registerId, date, totals: t }); }
++  for (const o of outbox.filter(x => !x.done.rollup)) {
++    const k = rollupKey(o.sale.registerId, o.sale.ts); const cur = m.get(k); const [registerId, date] = k.split('|');
++    m.set(k, { registerId, date, totals: applyRecord(cur?.totals ?? emptyTotals(), o.sale) });
++  }
++  return [...m.values()];
++}
++
++export const SALES_SCOPE_NOTE = 'These figures come from this till and any imported Square history. Other tills are not included.';
++export const MAX_ROWS = 10;
++export const MAX_DETAIL = 3;
++export const MAX_DAYS = 31;
++
++// ---------- words and dates ----------
++const stem = (w: string): string => (w.length > 3 && w.endsWith('s') && !w.endsWith('ss') ? w.slice(0, -1) : w);
++/** The words of a search, lower case, without a trailing s, so \"tadlings\" finds \"Tadling\". */
++export function words(text: unknown): string[] {
++  const out: string[] = [];
++  for (const w of String(text ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean)) { const t = stem(w); if (!out.includes(t)) out.push(t); }
++  return out.slice(0, 8);
++}
++/** Every search word has to be in the text. */
++export const hasAll = (haystack: string, terms: string[]): boolean => { const h = haystack.toLowerCase(); return terms.every(t => h.includes(t)); };
++
++/** A real calendar day written YYYY-MM-DD, or null. */
++export function cleanDay(v: unknown): string | null {
++  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) return null;
++  const s = v.trim(); const d = parseDay(s);
++  return !isNaN(d.getTime()) && dayKey(d) === s ? s : null;
++}
++const addDays = (d: Date, n: number): Date => { const x = new Date(d); x.setDate(x.getDate() + n); return x; };
++
++export const PERIODS = ['today', 'yesterday', 'last_7_days', 'last_30_days', 'this_week', 'last_week', 'this_month', 'last_month', 'this_year'] as const;
++export type PeriodName = typeof PERIODS[number];
++/** The dates a named period covers, counted from `now`. Weeks start on Monday. */
++export function rangeFor(period: PeriodName, now: number): Range {
++  const t = new Date(now); const today = new Date(t.getFullYear(), t.getMonth(), t.getDate());
++  const sinceMonday = (today.getDay() + 6) % 7;
++  switch (period) {
++    case 'today': return { from: dayKey(today), to: dayKey(today) };
++    case 'yesterday': { const y = addDays(today, -1); return { from: dayKey(y), to: dayKey(y) }; }
++    case 'last_7_days': return { from: dayKey(addDays(today, -6)), to: dayKey(today) };
++    case 'last_30_days': return { from: dayKey(addDays(today, -29)), to: dayKey(today) };
++    case 'this_week': return { from: dayKey(addDays(today, -sinceMonday)), to: dayKey(today) };
++    case 'last_week': { const mon = addDays(today, -sinceMonday - 7); return { from: dayKey(mon), to: dayKey(addDays(mon, 6)) }; }
++    case 'this_month': return { from: dayKey(new Date(today.getFullYear(), today.getMonth(), 1)), to: dayKey(today) };
++    case 'last_month': return { from: dayKey(new Date(today.getFullYear(), today.getMonth() - 1, 1)), to: dayKey(new Date(today.getFullYear(), today.getMonth(), 0)) };
++    case 'this_year': return { from: dayKey(new Date(today.getFullYear(), 0, 1)), to: dayKey(today) };
++  }
++}
++/**
++ * The dates a question asks about. A from and to pair wins over a named period; one of the pair alone means that single day.
++ * With nothing given, `fallback` is used (or nothing, for a search that may span all time).
++ */
++export function resolveRange(args: Record<string, unknown>, now: number, fallback?: PeriodName): { range: Range | null } | { error: string } {
++  const hasFrom = args.from !== undefined && args.from !== null && args.from !== ''; const hasTo = args.to !== undefined && args.to !== null && args.to !== '';
++  if (hasFrom || hasTo) {
++    const from = cleanDay(hasFrom ? args.from : args.to), to = cleanDay(hasTo ? args.to : args.from);
++    if (!from || !to) return { error: 'Dates must be real days written like 2026-10-18.' };
++    if (from > to) return { error: 'The from date is after the to date.' };
++    return { range: { from, to } };
++  }
++  if (args.period !== undefined && args.period !== null && args.period !== '') {
++    if (!(PERIODS as readonly unknown[]).includes(args.period)) return { error: `Unknown period. Use one of: ${PERIODS.join(', ')}.` };
++    return { range: rangeFor(args.period as PeriodName, now) };
++  }
++  return { range: fallback ? rangeFor(fallback, now) : null };
++}
++const inRange = (day: string, r: Range | null): boolean => !r || (day >= r.from && day <= r.to);
++const when = (ts: string): string => { const d = new Date(ts); return isNaN(d.getTime()) ? ts.slice(0, 16) : `${dayKey(d)} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
++const dayOf = (ts: string): string => { const d = new Date(ts); return isNaN(d.getTime()) ? ts.slice(0, 10) : dayKey(d); };
++const TENDER: Record<string, string> = { card: 'Card', cash: 'Cash', gift_card: 'Gift card', exchange_credit: 'Exchange credit' };
++
++// ---------- sales report ----------
++export type ReportArgs = { period?: unknown; from?: unknown; to?: unknown; item?: unknown };
++/**
++ * Totals for a period, already added up, from the daily totals saved on this iPad. With `item`, the units and sales of the
++ * items whose name has those words in it. `includeStaff` is whether staff names and their sales may be listed at all.
++ */
++export function salesReport(data: AssistantData, args: ReportArgs, includeStaff: boolean): Record<string, unknown> {
++  const r = resolveRange(args as Record<string, unknown>, data.now, 'today'); if ('error' in r) return r;
++  const range = r.range as Range;
++  const rows = data.rollups.filter(x => x.date >= range.from && x.date <= range.to);
++  const tot = rows.reduce((a, x) => merge(a, x.totals), emptyTotals());
++  const notes: string[] = [SALES_SCOPE_NOTE]; if (!rows.length) notes.push('No sales were saved for these dates.');
++
++  const item = typeof args.item === 'string' ? args.item.trim() : '';
++  if (item) {
++    const terms = words(item); if (!terms.length) return { error: 'Give the item name, or a word from it.' };
++    const hits = Object.entries(tot.byItem).filter(([name]) => hasAll(name, terms)).sort((a, b) => b[1].count - a[1].count || b[1].grossCents - a[1].grossCents);
++    notes.push('Sales are before discounts. Refunds are taken off.');
++    if (!hits.length) notes.push('No item with that name sold in these dates.');
++    if (hits.length > MAX_ROWS) notes.push(`Showing the top ${MAX_ROWS} of ${hits.length} matching items.`);
++    return {
++      from: range.from, to: range.to,
++      matches: hits.slice(0, MAX_ROWS).map(([name, b]) => ({ name, sold: b.count, sales: fmt(b.grossCents) })),
++      total_sold: hits.reduce((s, [, b]) => s + b.count, 0), total_sales: fmt(hits.reduce((s, [, b]) => s + b.grossCents, 0)),
++      note: notes.join(' '),
++    };
++  }
++
++  const d = derived(tot);
++  const out: Record<string, unknown> = {
++    from: range.from, to: range.to, orders: tot.orders, refunds: tot.refunds,
++    gross_sales: fmt(d.grossSales), discounts: fmt(d.discounts), refunded: fmt(d.refunds), net_sales: fmt(d.netSales), average_sale: fmt(d.avgSale),
++    gift_cards_sold: fmt(tot.giftCardSalesCents), tips: fmt(tot.tipsCents), total_collected: fmt(d.totalCollected), card_fees: fmt(d.fees),
++    cost_of_goods: fmt(d.cogs), gross_profit: fmt(d.grossProfit),
++    takings: Object.entries(tot.tenders).map(([k, v]) => ({ method: TENDER[k] ?? k, amount: fmt(v) })),
++    top_items: Object.entries(tot.byItem).sort((a, b) => b[1].count - a[1].count || b[1].grossCents - a[1].grossCents).slice(0, 5).map(([name, b]) => ({ name, sold: b.count, sales: fmt(b.grossCents) })),
++    top_categories: Object.entries(tot.byCategory).sort((a, b) => b[1].grossCents - a[1].grossCents).slice(0, 5).map(([name, b]) => ({ name, sold: b.count, sales: fmt(b.grossCents) })),
++  };
++  const adj = adjustmentSummary(tot);
++  if (adj.count) out.adjustments = adj.rows.slice(0, 5).map(a => ({ reason: reasonLabel(a.key), count: a.count, amount: fmt(a.cents) }));
++  if (includeStaff) { const s = staffSummary(tot); if (s.length) out.staff = s.slice(0, 8).map(x => ({ name: x.name, sales: x.count, net: fmt(x.cents) })); }
++  const span = Math.round((parseDay(range.to).getTime() - parseDay(range.from).getTime()) / 86400000) + 1;
++  if (span <= MAX_DAYS) {
++    const by = new Map<string, ReturnType<typeof emptyTotals>>();
++    for (const x of rows) by.set(x.date, merge(by.get(x.date) ?? emptyTotals(), x.totals));
++    out.days = [...by.entries()].sort(([a], [b]) => a.localeCompare(b)).filter(([, t]) => t.orders || t.refunds).map(([date, t]) => ({ date, orders: t.orders, net: fmt(derived(t).netSales) }));
++  } else notes.push(`Daily figures are left out for ranges over ${MAX_DAYS} days.`);
++  notes.push('Gross sales and top items are before discounts. Net sales are after discounts and refunds. Cost of goods is shown separately and is not taken off net sales.');
++  out.note = notes.join(' ');
++  return out;
++}
++
++// ---------- orders ----------
++/** How an order is named to the model and by the cashier: its Shopify name when it has one, such as #1042, otherwise the start of its id. */
++export const orderRef = (s: SaleRecord): string => (s.orderName && s.orderName.trim()) || s.uuid.slice(0, 8);
++const refKey = (ref: string): string => ref.toLowerCase().replace(/^#/, '');
++
++export type OrderArgs = { query?: unknown; period?: unknown; from?: unknown; to?: unknown; type?: unknown; detail?: unknown };
++export type OrderAccess = {
++  /** Customer names, phone numbers and staff names may be sent, so they may be searched and listed. */
++  personal: boolean;
++  /** Customer emails may be sent. */
++  email: boolean;
++};
++/** One line of an order. */
++function lineOut(l: SaleRecord['lines'][number], detail: boolean): Record<string, unknown> {
++  const name = l.variantTitle ? `${l.title} - ${l.variantTitle}` : l.title;
++  if (!detail) return { name, qty: l.qty };
++  return {
++    name, qty: l.qty, paid: fmt(l.netCents), ...(l.discountCents ? { discount: fmt(l.discountCents) } : {}), cost: fmt(l.costCents),
++    ...(l.kind === 'gift_card' && l.giftCardCode ? { gift_card_code: l.giftCardCode } : {}),
++  };
++}
++/**
++ * Finds sales and refunds saved on this till, newest first. The words in `query` have to be in the order name, an item name or,
++ * where customer details may be sent, the customer. A customer is never searched when their details are hidden, because a match
++ * would tell the model who bought something.
++ */
++export function findOrders(data: AssistantData, args: OrderArgs, access: OrderAccess): Record<string, unknown> {
++  const r = resolveRange(args as Record<string, unknown>, data.now); if ('error' in r) return r;
++  const type = args.type === 'sale' || args.type === 'refund' ? args.type : null;
++  const terms = words(args.query);
++  const detail = args.detail === true;
++  const hits = data.sales.filter(s => {
++    if (type && s.type !== type) return false;
++    if (!inRange(dayOf(s.ts), r.range)) return false;
++    if (!terms.length) return true;
++    const hay = [refKey(orderRef(s)), ...s.lines.map(l => `${l.title} ${l.variantTitle ?? ''}`), ...(access.personal ? [s.customer?.name ?? ''] : []), ...(access.email ? [s.customer?.email ?? ''] : [])].join(' ');
++    return hasAll(hay, terms);
++  }).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
++  const limit = detail ? MAX_DETAIL : MAX_ROWS;
++  const notes: string[] = ['These are the sales and refunds saved on this till, the latest 2000. Older ones and other tills are not here.'];
++  if (hits.length > limit) notes.push(`Showing the newest ${limit} of ${hits.length}. Narrow it with dates or more words.`);
++  if (!hits.length) notes.push('No order matched.');
++  const byUuid = new Map(data.sales.map(s => [s.uuid, s] as const));
++  return {
++    found: hits.length,
++    orders: hits.slice(0, limit).map(s => {
++      const o: Record<string, unknown> = {
++        order: orderRef(s), date: when(s.ts), type: s.type, total: fmt(s.totalCents),
++        ...(s.discountCents ? { discount: fmt(s.discountCents) } : {}),
++        items: s.lines.slice(0, detail ? 30 : 4).map(l => lineOut(l, detail)),
++        ...(s.lines.length > (detail ? 30 : 4) ? { more_items: s.lines.length - (detail ? 30 : 4) } : {}),
++      };
++      if (s.customer?.name) o.customer = { name: s.customer.name, ...(detail && s.customer.email ? { email: s.customer.email } : {}), ...(detail && s.customer.phone ? { phone: s.customer.phone } : {}) };
++      if (s.staff) o.staff = s.staff;
++      if (s.type === 'refund' && s.refundOf) { const orig = byUuid.get(s.refundOf); if (orig) o.refund_of = orderRef(orig); }
++      if (detail) {
++        o.paid_with = [...new Set(s.tenders.map(t => TENDER[t.kind] ?? t.kind))];
++        if (s.tipCents) o.tip = fmt(s.tipCents);
++        if (s.deals.length) o.deals = s.deals.slice(0, 8).map(x => ({ label: x.label, amount: fmt(x.cents) }));
++        if (s.adjustments?.length) o.adjustments = s.adjustments.slice(0, 8).map(a => ({ kind: a.kind, title: a.title, amount: fmt(a.cents), ...(a.reason ? { reason: a.reason } : {}) }));
++        if (s.note) o.note = s.note;
++        if (s.reason) o.reason = s.reason;
++      }
++      return o;
++    }),
++    note: notes.join(' '),
++  };
++}
++
++// ---------- deals ----------
++export type DealArgs = { query?: unknown; only_live?: unknown };
++const money = (c: number): string => fmt(c);
++const pct = (n: number): string => `${Math.round(n * 100) / 100}%`;
++const liveWindow = (from: string | null | undefined, to: string | null | undefined, now: number): boolean => !(from && Date.parse(from) > now) && !(to && Date.parse(to) < now);
++const dayText = (iso: string | null | undefined): string | undefined => { if (!iso) return undefined; const d = new Date(iso); return isNaN(d.getTime()) ? undefined : dayKey(d); };
++
++/** A product or variant id turned into a name people use. An id the catalogue does not know is left out. */
++function nameFor(id: string, data: AssistantData): string | null {
++  const v = data.variants[id]; if (v) return v.variantTitle ? `${v.productTitle} - ${v.variantTitle}` : v.productTitle;
++  const p = Object.values(data.variants).find(x => x.productId === id); return p ? p.productTitle : null;
++}
++function namesFor(ids: string[], data: AssistantData): string {
++  const names = [...new Set(ids.map(i => nameFor(i, data)).filter((x): x is string => !!x))];
++  if (!names.length) return ids.length ? `${ids.length} item${ids.length === 1 ? '' : 's'}` : 'nothing yet';
++  return names.length > 3 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
++}
++function targetText(t: AutoDiscount['target'], data: AssistantData): string {
++  if (!t || t.all) return 'everything';
++  const parts: string[] = [];
++  if (t.collectionIds?.length) parts.push(t.collectionIds.map(id => data.collections.find(c => c.id === id)?.title).filter(Boolean).join(', ') || 'some collections');
++  const ids = [...(t.productIds ?? []), ...(t.variantIds ?? [])]; if (ids.length) parts.push(namesFor(ids, data));
++  return parts.join(' and ') || 'everything';
++}
++function bundleHow(d: BundleDeal): string {
++  const mode = d.mode ?? 'delta';
++  if (mode === 'fixed_price') return `the matched items together cost ${money(d.price_delta_cents)}`;
++  if (mode === 'percent') return `${pct(d.percent ?? 0)} off the matched items`;
++  return d.price_delta_cents < 0 ? `${money(-d.price_delta_cents)} off` : 'no change in price';
++}
++function autoHow(d: AutoDiscount, data: AssistantData): string {
++  const amount = d.pct ? `${pct(d.pct)} off` : d.amtCents ? `${money(d.amtCents)} off${d.eachItem ? ' each item' : ''}` : 'a discount';
++  if (d.kind === 'bxgy') {
++    const buy = `buy ${d.buys?.qty ? `${d.buys.qty} of ${targetText(d.buys.target, data)}` : d.buys?.amountCents ? `${money(d.buys.amountCents)} of ${targetText(d.buys?.target, data)}` : targetText(d.buys?.target, data)}`;
++    const get = d.gets ? `get ${d.gets.qty} of ${targetText(d.gets.target, data)} ${d.gets.pct ? (d.gets.pct >= 100 ? 'free' : `${pct(d.gets.pct)} off`) : d.gets.amtCents ? `${money(d.gets.amtCents)} off` : ''}`.trim() : 'get a reward';
++    return `${buy}, ${get}`;
++  }
++  const rules = [d.minQty ? `at least ${d.minQty} items` : '', d.minSubtotalCents ? `a subtotal of at least ${money(d.minSubtotalCents)}` : ''].filter(Boolean);
++  return `${amount}${rules.length ? `, needs ${rules.join(' and ')}` : ''}`;
++}
++/** Deals the till applies, and the manual discounts staff can choose, with whether each is running now. */
++export function listDeals(data: AssistantData, args: DealArgs): Record<string, unknown> {
++  const terms = words(args.query); const onlyLive = args.only_live === true;
++  type Row = { name: string; kind: string; live: boolean; how: string; applies_to?: string; starts?: string; ends?: string; limit?: string };
++  const rows: Row[] = [];
++  for (const d of data.bundles?.discounts ?? []) {
++    const items = data.bundles?.items ?? {};
++    rows.push({
++      name: d.label || d.id, kind: 'bundle deal', live: !!liveWindow(d.starts_at, d.ends_at, data.now) && d.enabled !== false, how: bundleHow(d),
++      applies_to: `one item from each of: ${d.sets.map(s => `${s} (${namesFor(items[s] ?? [], data)})`).join('; ')}`,
++      ...(dayText(d.starts_at) ? { starts: dayText(d.starts_at) } : {}), ...(dayText(d.ends_at) ? { ends: dayText(d.ends_at) } : {}),
++      ...(d.max_per_cart ? { limit: `${d.max_per_cart} per sale` } : {}),
++    });
++  }
++  for (const a of data.autos) {
++    rows.push({
++      name: a.title, kind: 'automatic discount', live: liveWindow(a.startsAt, a.endsAt, data.now), how: autoHow(a, data),
++      ...(a.kind === 'basic' ? { applies_to: targetText(a.target, data) } : {}),
++      ...(dayText(a.startsAt) ? { starts: dayText(a.startsAt) } : {}), ...(dayText(a.endsAt) ? { ends: dayText(a.endsAt) } : {}),
++      ...(a.usesPerOrderLimit ? { limit: `${a.usesPerOrderLimit} per sale` } : {}),
++    });
++  }
++  for (const p of data.presets) rows.push({ name: p.label, kind: 'manual discount', live: true, how: p.kind === 'pct' ? `${pct(p.value)} off, chosen by staff` : `${money(p.value)} off, chosen by staff` });
++  const hits = rows.filter(r => (!onlyLive || r.live) && (!terms.length || hasAll(`${r.name} ${r.kind} ${r.applies_to ?? ''}`, terms)));
++  hits.sort((a, b) => Number(b.live) - Number(a.live) || a.name.localeCompare(b.name));
++  const notes: string[] = [];
++  if (hits.length > 12) notes.push(`Showing 12 of ${hits.length}. Add words to narrow it.`);
++  if (!hits.length) notes.push(rows.length ? 'No deal matched.' : 'No deals are set up on this till.');
++  notes.push('Only one discount applies to each item. When deals compete, the till picks the combination that takes the most off.');
++  return { found: hits.length, deals: hits.slice(0, 12), note: notes.join(' ') };
++}
++
++// ---------- customers ----------
++export type CustomerArgs = { query?: unknown };
++export type CustomerAccess = { personal: boolean; email: boolean };
++const digits = (s: string): string => s.replace(/\D/g, '');
++/**
++ * Finds saved customers by name, email or phone. Only what may be sent is searched, so a match never tells the model that someone
++ * is a customer by a detail it may not read. The rows come back whole and the data gate takes out whatever may not be sent.
++ */
++export function findCustomers(data: AssistantData, args: CustomerArgs, access: CustomerAccess): Record<string, unknown> {
++  const raw = typeof args.query === 'string' ? args.query.trim() : '';
++  if (!raw) return { error: 'Give a name, an email address or a phone number to look for.' };
++  const terms = words(raw); const num = digits(raw);
++  const hits = data.customers.filter(c => {
++    const byName = access.personal && terms.length > 0 && hasAll(c.name ?? '', terms);
++    const byPhone = access.personal && num.length >= 4 && digits(c.phone ?? '').includes(num);
++    const byEmail = access.email && raw.includes('@') ? (c.email ?? '').toLowerCase().includes(raw.toLowerCase()) : access.email && terms.length > 0 && hasAll(c.email ?? '', terms);
++    return byName || byPhone || byEmail;
++  }).sort((a, b) => (a.name ?? '').localeCompare(b.name ?? ''));
++  const notes: string[] = ['Customers saved on this till. Their order counts and spending are as of the last sync.'];
++  if (hits.length > MAX_ROWS) notes.push(`Showing ${MAX_ROWS} of ${hits.length}. Add more of the name to narrow it.`);
++  if (!hits.length) notes.push('No customer matched.');
++  return {
++    found: hits.length,
++    customers: hits.slice(0, MAX_ROWS).map(c => ({
++      name: c.name, ...(c.email ? { email: c.email } : {}), ...(c.phone ? { phone: c.phone } : {}),
++      ...(typeof c.orders === 'number' ? { orders: c.orders } : {}), ...(typeof c.spentCents === 'number' ? { spent: fmt(c.spentCents) } : {}), ...(c.note ? { note: c.note } : {}),
++    })),
++    note: notes.join(' '),
++  };
++}
++
++// ---------- gift cards ----------
++export type GiftArgs = { code?: unknown; kind?: unknown; period?: unknown; from?: unknown; to?: unknown };
++const normCode = (raw: string): string => raw.replace(/^shopify-giftcard-v\d+-/i, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
++export type GiftAccess = { code: boolean; personal: boolean; email: boolean };
++/**
++ * Gift cards sold and gift card payments in the sales saved on this till. A card's balance is not here: it is kept by Shopify and
++ * the assistant does not look at Shopify live, so the balance is read on the Gift cards screen.
++ */
++export function giftCardActivity(data: AssistantData, args: GiftArgs, access: GiftAccess): Record<string, unknown> {
++  const r = resolveRange(args as Record<string, unknown>, data.now); if ('error' in r) return r;
++  const kind = args.kind === 'sold' || args.kind === 'redeemed' ? args.kind : null;
++  const wanted = typeof args.code === 'string' && args.code.trim() ? normCode(args.code) : '';
++  if (wanted && !access.code) return { error: 'Searching by gift card code is switched off by the shop\'s privacy rules.' };
++  if (wanted && wanted.length < 4) return { error: 'Give at least the last 4 characters of the code.' };
++  type Ev = { at: string; ts: number; event: 'sold' | 'redeemed'; amount: string; order: string; code?: string; recipient?: { name?: string; email?: string } };
++  const events: Ev[] = [];
++  let sold = 0, redeemed = 0;
++  for (const s of data.sales) {
++    if (s.type !== 'sale' || !inRange(dayOf(s.ts), r.range)) continue;
++    if (kind !== 'redeemed') for (const l of s.lines) {
++      if (l.kind !== 'gift_card') continue;
++      if (wanted && !normCode(l.giftCardCode ?? '').endsWith(wanted)) continue;
++      sold += l.netCents;
++      events.push({ at: when(s.ts), ts: Date.parse(s.ts), event: 'sold', amount: fmt(l.netCents), order: orderRef(s), ...(l.giftCardCode ? { code: l.giftCardCode } : {}),
++        ...(l.giftRecipient && (access.personal || access.email) ? { recipient: { ...(l.giftRecipient.name ? { name: l.giftRecipient.name } : {}), ...(l.giftRecipient.email ? { email: l.giftRecipient.email } : {}) } } : {}) });
++    }
++    if (kind !== 'sold') for (const t of s.tenders) {
++      if (t.kind !== 'gift_card') continue;
++      if (wanted && !normCode(t.giftCardCode ?? '').endsWith(wanted)) continue;
++      redeemed += t.amountCents;
++      events.push({ at: when(s.ts), ts: Date.parse(s.ts), event: 'redeemed', amount: fmt(t.amountCents), order: orderRef(s), ...(t.giftCardCode ? { code: t.giftCardCode } : {}) });
++    }
++  }
++  events.sort((a, b) => b.ts - a.ts);
++  const notes: string[] = ['From the sales saved on this till, the latest 2000. A card\'s remaining balance is not shown here: it is held by Shopify. Use the Gift cards screen to check a balance.'];
++  if (events.length > MAX_ROWS) notes.push(`Showing the newest ${MAX_ROWS} of ${events.length}.`);
++  if (!events.length) notes.push('No gift card activity matched.');
++  return {
++    found: events.length, total_sold: fmt(sold), total_redeemed: fmt(redeemed),
++    activity: events.slice(0, MAX_ROWS).map(({ ts: _ts, ...e }) => e),
++    ...(r.range ? { from: r.range.from, to: r.range.to } : {}),
++    note: notes.join(' '),
++  };
++}
+diff --git a/src/lib/assistantDataIO.ts b/src/lib/assistantDataIO.ts
+new file mode 100644
+index 0000000..67a3259
+--- /dev/null
++++ b/src/lib/assistantDataIO.ts
+@@ -0,0 +1,28 @@
++// Location: src/lib/assistantDataIO.ts
++// Takes the snapshot the assistant's data tools read (patch 0163). The only file that connects them to the store and to the imported
++// Square history on disk; everything the tools do with it is in assistantData.ts. It only reads, so the tools are handed a copy of the
++// references they need and nothing that can write. Local data only: nothing here goes to Shopify.
++import { useApp } from '../state/store';
++import { isTraining } from './trainingGuard';
++import { loadSquareRollups } from './squareHistoryIO';
++import { parseBundleConfig } from './bundles';
++import { localRollupRows, type AssistantData } from './assistantData';
++
++/**
++ * What the data tools can read right now, or null while the till is on practice data (the assistant is switched off in practice
++ * mode, and this is a second lock: practice data must never be described as the shop's). Called when a question is asked.
++ */
++export async function takeAssistantData(now: number = Date.now()): Promise<AssistantData | null> {
++  if (isTraining()) return null;
++  const s = useApp.getState();
++  let square: Awaited<ReturnType<typeof loadSquareRollups>> = [];
++  try { square = await loadSquareRollups(); } catch { square = []; }
++  if (isTraining()) return null; // the till can move into practice while the files are read
++  let bundles: AssistantData['bundles'] = null;
++  try { bundles = s.settings.bundlesJson ? parseBundleConfig(s.settings.bundlesJson).cfg ?? null : null; } catch { bundles = null; }
++  return {
++    now,
++    sales: s.pos.sales, rollups: localRollupRows(s.pos.rollups, s.pos.outbox, square),
++    customers: s.data.customers, autos: s.data.autos, presets: s.data.presets, bundles, variants: s.data.variants, collections: s.data.collections,
++  };
++}
+diff --git a/src/lib/assistantDataTools.ts b/src/lib/assistantDataTools.ts
+new file mode 100644
+index 0000000..92a2255
+--- /dev/null
++++ b/src/lib/assistantDataTools.ts
+@@ -0,0 +1,137 @@
++// Location: src/lib/assistantDataTools.ts
++// The assistant's shop data tools (patch 0163, patch 7 in the plan): sales_report, find_orders, list_deals, find_customers and
++// gift_card_activity. Each one reads the snapshot in `ctx.data` and nothing else, so none of them can change anything. Each declares
++// a field map that sorts every field it can return into a data category, and the data gate applies the endpoint rules to the result
++// before the model sees it (assistantGate.ts). A tool also leaves out, at the source, anything the gate would remove, so a search
++// never matches on a field the model may not read and an empty row never tells the model something exists.
++//
++// This file only imports types from assistantTools.ts (which imports the list from here), so there is no circular import at run time.
++import { CATEGORY_INFO, FAIL_CLOSED_POLICY, type Category, type FieldMap } from './assistantGate';
++import { findCustomers, findOrders, giftCardActivity, listDeals, PERIODS, salesReport } from './assistantData';
++import type { AssistantTool, ToolContext } from './assistantTools';
++
++const can = (ctx: Pick<ToolContext, 'policy'>, c: Category): boolean => (ctx.policy ?? FAIL_CLOSED_POLICY)[c] !== 'deny';
++/** The same wording the gate uses, for when a tool leaves something out itself. */
++const hiddenNote = (...cats: Category[]): string => `Hidden by the shop's privacy rules: ${cats.map(c => CATEGORY_INFO[c].phrase).join(', ')}. Say you cannot show that. Do not guess it.`;
++const NO_DATA = { error: 'No shop data is available here.' };
++
++// ---------- field maps ----------
++const NAME_SOLD_SALES: FieldMap = { name: 'shop', sold: 'shop', sales: 'shop' };
++export const SALES_REPORT_MAP: FieldMap = {
++  from: 'shop', to: 'shop', orders: 'shop', refunds: 'shop', gross_sales: 'shop', discounts: 'shop', refunded: 'shop', net_sales: 'shop', average_sale: 'shop',
++  gift_cards_sold: 'shop', tips: 'shop', total_collected: 'shop', card_fees: 'shop',
++  cost_of_goods: 'cost', gross_profit: 'cost',
++  takings: { method: 'shop', amount: 'shop' },
++  top_items: NAME_SOLD_SALES, top_categories: NAME_SOLD_SALES,
++  adjustments: { reason: 'shop', count: 'shop', amount: 'shop' },
++  days: { date: 'shop', orders: 'shop', net: 'shop' },
++  // staff names, and what each sold, are personal details
++  staff: { name: 'personal', sales: 'personal', net: 'personal' },
++  matches: NAME_SOLD_SALES, total_sold: 'shop', total_sales: 'shop',
++};
++export const ORDERS_MAP: FieldMap = {
++  found: 'order',
++  orders: {
++    order: 'order', date: 'order', type: 'order', total: 'order', discount: 'order', more_items: 'order', refund_of: 'order', tip: 'order', note: 'order', reason: 'order',
++    items: { name: 'order', qty: 'order', paid: 'order', discount: 'order', cost: 'cost', gift_card_code: 'gift_code' },
++    customer: { name: 'personal', email: 'email', phone: 'personal' },
++    staff: 'personal',
++    // how an order was paid is a tender detail, which is never sent
++    paid_with: 'payment',
++    deals: { label: 'order', amount: 'order' },
++    adjustments: { kind: 'order', title: 'order', amount: 'order', reason: 'order' },
++  },
++};
++export const DEALS_MAP: FieldMap = {
++  found: 'shop',
++  deals: { name: 'shop', kind: 'shop', live: 'shop', how: 'shop', applies_to: 'shop', starts: 'shop', ends: 'shop', limit: 'shop' },
++};
++export const CUSTOMERS_MAP: FieldMap = {
++  found: 'personal',
++  customers: { name: 'personal', email: 'email', phone: 'personal', orders: 'personal', spent: 'personal', note: 'personal' },
++};
++export const GIFT_MAP: FieldMap = {
++  found: 'order', total_sold: 'order', total_redeemed: 'order', from: 'order', to: 'order',
++  activity: { at: 'order', event: 'order', amount: 'order', order: 'order', code: 'gift_code', recipient: { name: 'personal', email: 'email' } },
++};
++
++// ---------- tools ----------
++const DATE_HELP = 'Dates are written like 2026-10-18.';
++const salesReportTool: AssistantTool = {
++  gate: SALES_REPORT_MAP,
++  def: { type: 'function', function: {
++    name: 'sales_report',
++    description: 'Sales totals already added up for a period: orders, net sales, discounts, refunds, takings by payment method, top items and categories, cost and profit. Also answers how many of an item were sold, with item. Always use this instead of adding up orders yourself. Give a period, or from and to dates. Today if neither is given.',
++    parameters: { type: 'object', properties: {
++      period: { type: 'string', enum: [...PERIODS], description: 'A named period. Weeks start on Monday.' },
++      from: { type: 'string', description: `First day. ${DATE_HELP}` },
++      to: { type: 'string', description: 'Last day. Leave out for a single day.' },
++      item: { type: 'string', description: 'An item name, or a word from it, to count sold instead of the full report.' },
++    }, additionalProperties: false },
++  } },
++  run: (args, ctx) => (ctx.data ? salesReport(ctx.data, args, can(ctx, 'personal')) : NO_DATA),
++};
++
++const findOrdersTool: AssistantTool = {
++  gate: ORDERS_MAP,
++  def: { type: 'function', function: {
++    name: 'find_orders',
++    description: 'Find sales and refunds saved on this till, newest first. query is an order number such as 1042, or words from an item name or a customer name. Can limit by dates and by type. Set detail to true to also get the items, prices, deals, price adjustments and notes of up to 3 orders.',
++    parameters: { type: 'object', properties: {
++      query: { type: 'string', description: 'An order number, or words from an item or customer name.' },
++      from: { type: 'string', description: `First day. ${DATE_HELP}` },
++      to: { type: 'string', description: 'Last day. Leave out for a single day.' },
++      period: { type: 'string', enum: [...PERIODS], description: 'A named period, used when from and to are not given.' },
++      type: { type: 'string', enum: ['sale', 'refund'], description: 'Only sales, or only refunds.' },
++      detail: { type: 'boolean', description: 'True to include items, deals, adjustments and notes.' },
++    }, additionalProperties: false },
++  } },
++  run: (args, ctx) => (ctx.data ? findOrders(ctx.data, args, { personal: can(ctx, 'personal'), email: can(ctx, 'email') }) : NO_DATA),
++};
++
++const listDealsTool: AssistantTool = {
++  gate: DEALS_MAP,
++  def: { type: 'function', function: {
++    name: 'list_deals',
++    description: 'List the deals the till applies: bundle deals, automatic discounts and the manual discounts staff can choose. Says what each does, what it applies to, and whether it is running now. Use it for questions about what deals or discounts exist.',
++    parameters: { type: 'object', properties: {
++      query: { type: 'string', description: 'Words from a deal name or an item it applies to.' },
++      only_live: { type: 'boolean', description: 'True to list only deals running now.' },
++    }, additionalProperties: false },
++  } },
++  run: (args, ctx) => (ctx.data ? listDeals(ctx.data, args) : NO_DATA),
++};
++
++const findCustomersTool: AssistantTool = {
++  gate: CUSTOMERS_MAP,
++  def: { type: 'function', function: {
++    name: 'find_customers',
++    description: 'Find saved customers by name, email address or phone number. Returns their contact details, order count and what they have spent where the shop\'s privacy rules allow it.',
++    parameters: { type: 'object', properties: { query: { type: 'string', description: 'A name, an email address or a phone number.' } }, required: ['query'], additionalProperties: false },
++  } },
++  run: (args, ctx) => {
++    if (!ctx.data) return NO_DATA;
++    // Customers are never searched when neither their details nor their email may be sent: a match would say who is a customer.
++    if (!can(ctx, 'personal') && !can(ctx, 'email')) return { customers: [], privacy_note: hiddenNote('personal') };
++    return findCustomers(ctx.data, args, { personal: can(ctx, 'personal'), email: can(ctx, 'email') });
++  },
++};
++
++const giftCardTool: AssistantTool = {
++  gate: GIFT_MAP,
++  def: { type: 'function', function: {
++    name: 'gift_card_activity',
++    description: 'Gift cards sold and gift card payments in the sales saved on this till. Can filter by the card code (at least the last 4 characters), by sold or redeemed, and by dates. It does not know a card\'s remaining balance: that is only on the Gift cards screen.',
++    parameters: { type: 'object', properties: {
++      code: { type: 'string', description: 'The gift card code, or at least its last 4 characters.' },
++      kind: { type: 'string', enum: ['sold', 'redeemed'], description: 'Only cards sold, or only payments with a card.' },
++      from: { type: 'string', description: `First day. ${DATE_HELP}` },
++      to: { type: 'string', description: 'Last day. Leave out for a single day.' },
++      period: { type: 'string', enum: [...PERIODS], description: 'A named period, used when from and to are not given.' },
++    }, additionalProperties: false },
++  } },
++  run: (args, ctx) => (ctx.data ? giftCardActivity(ctx.data, args, { code: can(ctx, 'gift_code'), personal: can(ctx, 'personal'), email: can(ctx, 'email') }) : NO_DATA),
++};
++
++/** The data tools, in the order they are offered. */
++export const DATA_TOOLS: AssistantTool[] = [salesReportTool, findOrdersTool, listDealsTool, findCustomersTool, giftCardTool];
+diff --git a/src/lib/assistantGate.ts b/src/lib/assistantGate.ts
+index a4e8bbc..a733e89 100644
+--- a/src/lib/assistantGate.ts
++++ b/src/lib/assistantGate.ts
+@@ -136,7 +136,12 @@ export function applyGate(result: unknown, spec: GateSpec, policy: GatePolicy =
+     // a nested map: an object, or a list of objects
+     if (depth >= MAX_DEPTH) { unknown.push(path); bump('unknown'); return { keep: false }; }
+     if (v === null) return { keep: true, value: null };
+-    if (Array.isArray(v)) return { keep: true, value: v.map((x, i) => walkObject(x, rule, `${path}[${i}]`, depth + 1)) };
++    if (Array.isArray(v)) {
++      // A row whose fields were all hidden is left out whole, so the model is not shown a list of empty rows and told how many there were.
++      const rows: unknown[] = [];
++      v.forEach((x, i) => { const o = walkObject(x, rule, `${path}[${i}]`, depth + 1); if (isObject(x) && Object.keys(x).length && isObject(o) && !Object.keys(o).length) return; rows.push(o); });
++      return { keep: true, value: rows };
++    }
+     // An object whose fields were all hidden is left out whole, so the model is not shown an empty "customer" and left to wonder.
+     const obj = walkObject(v, rule, path, depth + 1);
+     if (isObject(v) && Object.keys(v).length && isObject(obj) && !Object.keys(obj).length) return { keep: false };
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index 7026177..e37d238 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -1,5 +1,5 @@
+ // Location: src/lib/assistantTools.ts
+-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide). Plain functions that read what they are
++// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts). Plain functions that read what they are
+ // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
+ // runs in the node tests.
+ //
+@@ -11,6 +11,8 @@ import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Pag
+ // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
+ import type { ScreenEntry, ScreenTarget } from './assistantScreens';
+ import type { Guide } from './assistantGuide';
++import type { AssistantData } from './assistantData';
++import { DATA_TOOLS } from './assistantDataTools';
+ 
+ export type ToolContext = {
+   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
+@@ -22,6 +24,8 @@ export type ToolContext = {
+   maxChars: number;
+   /** What the data gate lets through for this endpoint and these toggles (patch 0161). Left out, the strictest rules apply. */
+   policy?: GatePolicy;
++  /** What the data tools read (patch 0163): a snapshot of what is saved on this iPad, taken when the question was asked. Left out, the data tools say there is no shop data. */
++  data?: AssistantData;
+ };
+ export type AssistantTool = {
+   /** Which fields the tool can return and what category each is in (patch 0161). Every result goes through the data gate by this map. 'content' is for tools that only return help text and screen names. */
+@@ -230,7 +234,7 @@ const showGuide: AssistantTool = {
+ };
+ 
+ /** The tools in this build. Later patches add to the end. */
+-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide];
++export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, ...DATA_TOOLS];
+ export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
+ 
+ // ---------- running a call ----------
+@@ -275,5 +279,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
+ }
+ 
+ /** A new tool set for one question. */
+-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy }): ToolSet =>
+-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
++export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData }): ToolSet =>
++  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index 0bfbc92..0be58f2 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -23,6 +23,7 @@ import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineS
+ import { assistantLog, logSink } from '../lib/assistantLogIO';
+ import { resolvePolicy } from '../lib/assistantGate';
+ import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
++import { takeAssistantData } from '../lib/assistantDataIO';
+ import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+ import { startGuide } from '../lib/assistantGuide';
+ import type { Page as HelpPage } from '../lib/helpDocs';
+@@ -117,8 +118,9 @@ export default function Assistant() {
+     try {
+       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
+       apiKey = await getAssistantKey();
++      const shopData = await takeAssistantData();
+       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate) }) },
++          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}) }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+       if (!out.ok) throw out.error;
+diff --git a/tests/assistantdata.test.ts b/tests/assistantdata.test.ts
+new file mode 100644
+index 0000000..8275d34
+--- /dev/null
++++ b/tests/assistantdata.test.ts
+@@ -0,0 +1,329 @@
++// Location: tests/assistantdata.test.ts
++// The assistant's shop data tools (patch 0163, patch 7 in the plan): the queries, the field maps through the data gate, and the rules
++// that make them read-only. Dates are built from local time, the way the till reads them, so the tests do not depend on the time zone.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { applyGate, resolvePolicy, type GatePolicy } from '../src/lib/assistantGate';
++import { ASSISTANT_TOOLS, makeToolSet, runToolCall, toolDefs, type AssistantTool } from '../src/lib/assistantTools';
++import { DATA_TOOLS } from '../src/lib/assistantDataTools';
++import { buildSystemPrompt } from '../src/lib/assistantChat';
++import { cleanDay, findCustomers, findOrders, giftCardActivity, listDeals, localRollupRows, orderRef, rangeFor, resolveRange, salesReport, words, type AssistantData } from '../src/lib/assistantData';
++import { applyRecord, emptyTotals, rollupKey, type RollupRow } from '../src/lib/rollup';
++import type { AutoDiscount, BundleConfig, SaleLine, SaleRecord, Variant } from '../src/lib/types';
++
++const at = (d: number, h = 12, m = 0, mon = 9) => new Date(2026, mon, d, h, m).toISOString(); // October 2026 unless a month is given
++const NOW = new Date(2026, 9, 18, 15, 0).getTime(); // Sunday 18 October 2026
++
++const line = (title: string, qty: number, gross: number, disc: number, cost: number, over: Partial<SaleLine> = {}): SaleLine =>
++  ({ title, qty, baseUnitCents: Math.round(gross / qty), grossCents: gross, discountCents: disc, netCents: gross - disc, costCents: cost, discountLabels: [], kind: 'item', ...over });
++const sale = (over: Partial<SaleRecord>): SaleRecord => ({
++  uuid: 'u-0000', type: 'sale', ts: at(18), registerId: 'reg1', registerName: 'Front', lines: [], itemsCents: 0, discountCents: 0, netCents: 0, tipCents: 0, totalCents: 0, cogsCents: 0, feesCents: 0, roundingCents: 0, tenders: [], deals: [], ...over,
++});
++const JO = { id: 'c1', name: 'Jo Smith', email: 'jo@example.com', phone: '0412 345 678' };
++
++const S1 = sale({
++  uuid: 'aaaa1111-1', orderName: '#1042', ts: at(18, 10, 15), staff: 'Maya Chen', customer: JO,
++  lines: [line('Highland Cow', 2, 2400, 200, 800, { variantTitle: 'Red' }), line('Tadling', 3, 900, 0, 300)],
++  itemsCents: 3300, discountCents: 200, netCents: 3100, totalCents: 3100, cogsCents: 1100,
++  tenders: [{ id: 't1', kind: 'card', amountCents: 3100, card: { last4: '4242', scheme: 'visa', approvalCode: 'A1B2C3' }, at: at(18, 10, 15) }],
++  deals: [{ type: 'bundle', label: '2 cows', cents: 200 }],
++  adjustments: [{ kind: 'item', title: 'Tadling', detail: '', cents: 50, reason: 'Called 0412 345 678 to confirm' }],
++  note: 'Customer jo@example.com collects Friday',
++});
++const S2 = sale({
++  uuid: 'bbbb2222-2', orderName: '#1043', ts: at(18, 11, 30), staff: 'Maya Chen',
++  lines: [line('Gift card', 1, 5000, 0, 0, { kind: 'gift_card', giftCardCode: 'GC-ABCD-1234-WXYZ', giftRecipient: { email: 'amy@example.com', name: 'Amy Lee' } })],
++  netCents: 5000, totalCents: 5000, tenders: [{ id: 't2', kind: 'cash', amountCents: 5000, tenderedCents: 5000, at: at(18, 11, 30) }],
++});
++const R1 = sale({
++  uuid: 'cccc3333-3', orderName: '#1045', type: 'refund', refundOf: S1.uuid, ts: at(18, 13), staff: 'Maya Chen', customer: JO, reason: 'Wrong colour',
++  lines: [line('Highland Cow', 1, 1200, 100, 400, { variantTitle: 'Red' })], netCents: 1100, totalCents: 1100, tenders: [{ id: 't3', kind: 'card', amountCents: 1100, at: at(18, 13) }],
++});
++const S3 = sale({
++  uuid: 'dddd4444-4', orderName: '#1044', ts: at(17, 14), staff: 'Sam Ito',
++  lines: [line('Tadling', 5, 1500, 0, 500)], itemsCents: 1500, netCents: 1500, totalCents: 1500, cogsCents: 500,
++  tenders: [{ id: 't4', kind: 'gift_card', amountCents: 1500, giftCardCode: 'GC-ABCD-1234-WXYZ', at: at(17, 14) }],
++});
++const S4 = sale({ uuid: 'eeee5555-5', orderName: '#1001', ts: at(20, 9, 0, 8), staff: 'Sam Ito', lines: [line('Plain Mug', 1, 2000, 0, 900)], itemsCents: 2000, netCents: 2000, totalCents: 2000, cogsCents: 900, tenders: [{ id: 't5', kind: 'cash', amountCents: 2000, at: at(20, 9, 0, 8) }] });
++const SALES = [R1, S2, S1, S3, S4];
++
++const rollupsOf = (sales: SaleRecord[]): RollupRow[] => {
++  const m: Record<string, ReturnType<typeof emptyTotals>> = {};
++  for (const s of sales) { const k = rollupKey(s.registerId, s.ts); m[k] = applyRecord(m[k] ?? emptyTotals(), s); }
++  return localRollupRows(m, [], []);
++};
++
++const variant = (id: string, productId: string, productTitle: string, variantTitle = ''): Variant => ({ id, productId, productTitle, variantTitle, priceCents: 1200, tracked: true, stock: 5, tags: [], active: true });
++const VARIANTS: Record<string, Variant> = { v1: variant('v1', 'p1', 'Highland Cow', 'Red'), v2: variant('v2', 'p1', 'Highland Cow', 'Blue'), v3: variant('v3', 'p2', 'Tadling') };
++const BUNDLES: BundleConfig = { version: 1, items: { cows: ['p1'], tads: ['v3'] }, discounts: [
++  { id: 'd1', label: 'Cow and Tadling', sets: ['cows', 'tads'], price_delta_cents: -300, mode: 'delta', max_per_cart: 2 },
++  { id: 'd2', label: 'Tadling trio', sets: ['tads', 'tads', 'tads'], price_delta_cents: 0, mode: 'percent', percent: 10 },
++  { id: 'd3', label: 'Winter special', sets: ['cows'], price_delta_cents: 900, mode: 'fixed_price', ends_at: at(1, 12, 0, 8) },
++  { id: 'd4', label: 'Switched off', sets: ['cows'], price_delta_cents: -100, enabled: false },
++] };
++const AUTOS: AutoDiscount[] = [
++  { id: 'a1', title: 'Spring sale', kind: 'basic', pct: 15, target: { productIds: ['p2'] }, startsAt: at(1, 0, 0, 8) },
++  { id: 'a2', title: 'Buy 2 cows get 1 half price', kind: 'bxgy', buys: { target: { productIds: ['p1'] }, qty: 2 }, gets: { target: { productIds: ['p1'] }, qty: 1, pct: 50 } },
++];
++const CUSTOMERS = [JO, { id: 'c2', name: 'Priya Raman', email: 'priya@example.com', phone: '0299 887 766', orders: 4, spentCents: 12050, note: 'Likes the blue cows' }, { id: 'c3', name: 'Joanne Li', orders: 1, spentCents: 900 }];
++
++const data = (over: Partial<AssistantData> = {}): AssistantData => ({
++  now: NOW, sales: SALES, rollups: rollupsOf(SALES), customers: CUSTOMERS, autos: AUTOS, presets: [{ id: 'm1', kind: 'pct', value: 10, label: 'Staff 10%' }, { id: 'm2', kind: 'amt', value: 500, label: '$5 off damaged' }],
++  bundles: BUNDLES, variants: VARIANTS, collections: [], ...over,
++});
++const ALL = { personal: true, email: true };
++const NONE = { personal: false, email: false };
++const LOCAL = resolvePolicy('local'); const REMOTE = resolvePolicy('remote');
++
++// ---------- dates ----------
++test('named periods are counted from now, and weeks start on Monday', () => {
++  assert.deepEqual(rangeFor('today', NOW), { from: '2026-10-18', to: '2026-10-18' });
++  assert.deepEqual(rangeFor('yesterday', NOW), { from: '2026-10-17', to: '2026-10-17' });
++  assert.deepEqual(rangeFor('last_7_days', NOW), { from: '2026-10-12', to: '2026-10-18' });
++  assert.deepEqual(rangeFor('last_30_days', NOW), { from: '2026-09-19', to: '2026-10-18' });
++  assert.deepEqual(rangeFor('this_week', NOW), { from: '2026-10-12', to: '2026-10-18' }, 'Sunday is the last day of the week');
++  assert.deepEqual(rangeFor('last_week', NOW), { from: '2026-10-05', to: '2026-10-11' });
++  assert.deepEqual(rangeFor('this_month', NOW), { from: '2026-10-01', to: '2026-10-18' });
++  assert.deepEqual(rangeFor('last_month', NOW), { from: '2026-09-01', to: '2026-09-30' });
++  assert.deepEqual(rangeFor('this_year', NOW), { from: '2026-01-01', to: '2026-10-18' });
++});
++test('dates are checked: real days only, from before to, one day alone is that day, and a bad period is refused', () => {
++  assert.equal(cleanDay('2026-02-30'), null); assert.equal(cleanDay('18/10/2026'), null); assert.equal(cleanDay('2026-10-18'), '2026-10-18'); assert.equal(cleanDay(5), null);
++  assert.deepEqual(resolveRange({ from: '2026-10-01', to: '2026-10-05' }, NOW), { range: { from: '2026-10-01', to: '2026-10-05' } });
++  assert.deepEqual(resolveRange({ from: '2026-10-05' }, NOW), { range: { from: '2026-10-05', to: '2026-10-05' } });
++  assert.deepEqual(resolveRange({ to: '2026-10-05' }, NOW), { range: { from: '2026-10-05', to: '2026-10-05' } });
++  assert.match((resolveRange({ from: '2026-10-09', to: '2026-10-01' }, NOW) as any).error, /after/);
++  assert.match((resolveRange({ from: 'last tuesday' }, NOW) as any).error, /real days/);
++  assert.match((resolveRange({ period: 'fortnight' }, NOW) as any).error, /Unknown period/);
++  assert.deepEqual(resolveRange({}, NOW), { range: null }); assert.deepEqual(resolveRange({}, NOW, 'today'), { range: { from: '2026-10-18', to: '2026-10-18' } });
++  assert.deepEqual(resolveRange({ from: '2026-10-01', period: 'today' }, NOW), { range: { from: '2026-10-01', to: '2026-10-01' } }, 'dates win over a period');
++});
++test('search words are lower case without a trailing s', () => { assert.deepEqual(words('Tadlings, RED cows!'), ['tadling', 'red', 'cow']); assert.deepEqual(words(undefined), []); });
++
++// ---------- sales report ----------
++test('sales_report: today is added up the way Reports adds it up, and money is text', () => {
++  const r: any = salesReport(data(), { period: 'today' }, true);
++  assert.equal(r.from, '2026-10-18'); assert.equal(r.to, '2026-10-18'); assert.equal(r.orders, 2); assert.equal(r.refunds, 1);
++  assert.equal(r.gross_sales, '$33.00'); assert.equal(r.discounts, '$2.00'); assert.equal(r.refunded, '$11.00'); assert.equal(r.net_sales, '$20.00'); assert.equal(r.average_sale, '$10.00');
++  assert.equal(r.gift_cards_sold, '$50.00'); assert.equal(r.total_collected, '$70.00'); assert.equal(r.cost_of_goods, '$7.00'); assert.equal(r.gross_profit, '$13.00');
++  assert.deepEqual([...r.takings].sort((a: any, b: any) => a.method.localeCompare(b.method)), [{ method: 'Card', amount: '$31.00' }, { method: 'Cash', amount: '$50.00' }]);
++  assert.deepEqual(r.top_items[0], { name: 'Tadling', sold: 3, sales: '$9.00' }); assert.equal(r.top_items[1].name, 'Highland Cow - Red'); assert.equal(r.top_items[1].sold, 1);
++  assert.deepEqual(r.days, [{ date: '2026-10-18', orders: 2, net: '$20.00' }]);
++  assert.match(r.note, /this till and any imported Square history/); assert.match(r.note, /not taken off net sales/);
++  for (const k of ['gross_sales', 'discounts', 'refunded', 'net_sales', 'average_sale', 'total_collected', 'cost_of_goods', 'gross_profit']) assert.match(r[k], /^-?\$\d+\.\d{2}$/, `${k} is dollars as text`);
++});
++test('sales_report: a week adds the days, with a line for each day that had sales, and staff when they may be listed', () => {
++  const r: any = salesReport(data(), { period: 'last_7_days' }, true);
++  assert.equal(r.orders, 3); assert.deepEqual(r.days.map((d: any) => d.date), ['2026-10-17', '2026-10-18']);
++  assert.deepEqual(r.staff.map((s: any) => s.name).sort(), ['Maya Chen', 'Sam Ito']);
++  assert.equal(r.top_items[0].sold, 8);
++  assert.equal((salesReport(data(), { period: 'last_7_days' }, false) as any).staff, undefined, 'staff are left out at the source when names may not be sent');
++});
++test('sales_report: how many of an item sold, by a word from its name, refunds taken off', () => {
++  const r: any = salesReport(data(), { item: 'tadlings', period: 'last_7_days' }, true);
++  assert.deepEqual(r.matches, [{ name: 'Tadling', sold: 8, sales: '$24.00' }]); assert.equal(r.total_sold, 8); assert.equal(r.total_sales, '$24.00');
++  const cow: any = salesReport(data(), { item: 'cow', period: 'today' }, true); assert.equal(cow.total_sold, 1, 'two sold, one refunded');
++  const none: any = salesReport(data(), { item: 'unicorn', period: 'today' }, true); assert.deepEqual(none.matches, []); assert.match(none.note, /No item with that name/);
++  assert.match((salesReport(data(), { item: '!!', period: 'today' }, true) as any).error, /item name/);
++});
++test('sales_report: no sales says so, a long range leaves the daily lines out, and a bad date is an error', () => {
++  const empty: any = salesReport(data(), { from: '2026-01-01', to: '2026-01-03' }, true); assert.equal(empty.orders, 0); assert.equal(empty.net_sales, '$0.00'); assert.match(empty.note, /No sales were saved/);
++  const year: any = salesReport(data(), { period: 'this_year' }, true); assert.equal(year.days, undefined); assert.match(year.note, /Daily figures are left out/); assert.equal(year.orders, 4);
++  assert.ok((salesReport(data(), { from: 'nope' }, true) as any).error);
++  assert.equal((salesReport(data(), {}, true) as any).from, '2026-10-18', 'today when nothing is given');
++});
++test('localRollupRows merges Square history, saved totals and sales still in the outbox, once each', () => {
++  const sq: RollupRow = { registerId: 'square', date: '2024-05-01', totals: { ...emptyTotals(), orders: 9, itemsCents: 90000 } };
++  const saved = { [rollupKey('reg1', S4.ts)]: applyRecord(emptyTotals(), S4) };
++  const rows = localRollupRows(saved, [{ done: { rollup: false }, sale: S1 }, { done: { rollup: true }, sale: S2 }], [sq]);
++  assert.equal(rows.length, 3); assert.ok(rows.some(r => r.registerId === 'square')); assert.equal(rows.find(r => r.date === '2026-10-18')!.totals.orders, 1, 'only the outbox sale not yet counted');
++});
++
++// ---------- orders ----------
++test('find_orders: newest first, by order number with or without the hash, by item words, by date and by type', () => {
++  const all: any = findOrders(data(), {}, ALL); assert.equal(all.found, 5); assert.deepEqual(all.orders.map((o: any) => o.order), ['#1045', '#1043', '#1042', '#1044', '#1001']);
++  assert.deepEqual((findOrders(data(), { query: '#1042' }, ALL) as any).orders.map((o: any) => o.order), ['#1042']);
++  assert.deepEqual((findOrders(data(), { query: '1042' }, ALL) as any).orders.map((o: any) => o.order), ['#1042']);
++  assert.deepEqual((findOrders(data(), { query: 'tadlings' }, ALL) as any).orders.map((o: any) => o.order), ['#1042', '#1044']);
++  assert.deepEqual((findOrders(data(), { query: 'cow red' }, ALL) as any).orders.map((o: any) => o.order), ['#1045', '#1042']);
++  assert.deepEqual((findOrders(data(), { from: '2026-10-17' }, ALL) as any).orders.map((o: any) => o.order), ['#1044']);
++  assert.deepEqual((findOrders(data(), { period: 'today', type: 'refund' }, ALL) as any).orders.map((o: any) => o.order), ['#1045']);
++  assert.equal((findOrders(data(), { query: 'zzz' }, ALL) as any).found, 0);
++  assert.ok((findOrders(data(), { from: 'x' }, ALL) as any).error);
++});
++test('find_orders: the summary is short, and detail adds items, prices, deals, adjustments, how it was paid and the notes', () => {
++  const o: any = (findOrders(data(), { query: '1042' }, ALL) as any).orders[0];
++  assert.deepEqual(o.items, [{ name: 'Highland Cow - Red', qty: 2 }, { name: 'Tadling', qty: 3 }]); assert.equal(o.total, '$31.00'); assert.equal(o.discount, '$2.00'); assert.equal(o.paid_with, undefined); assert.equal(o.note, undefined);
++  assert.deepEqual(o.customer, { name: 'Jo Smith' }, 'the summary names the customer and nothing more');
++  const d: any = (findOrders(data(), { query: '1042', detail: true }, ALL) as any).orders[0];
++  assert.deepEqual(d.items[0], { name: 'Highland Cow - Red', qty: 2, paid: '$22.00', discount: '$2.00', cost: '$8.00' });
++  assert.deepEqual(d.paid_with, ['Card']); assert.deepEqual(d.deals, [{ label: '2 cows', amount: '$2.00' }]); assert.equal(d.adjustments[0].title, 'Tadling'); assert.equal(d.customer.email, 'jo@example.com'); assert.match(d.note, /collects Friday/);
++  assert.equal(JSON.stringify(d).includes('4242'), false, 'card details are never in the result at all'); assert.equal(JSON.stringify(d).includes('A1B2C3'), false);
++  const rf: any = (findOrders(data(), { query: '1045', detail: true }, ALL) as any).orders[0]; assert.equal(rf.type, 'refund'); assert.equal(rf.refund_of, '#1042'); assert.equal(rf.reason, 'Wrong colour');
++});
++test('find_orders: ten rows, or three with detail, and it says how many more there are', () => {
++  const many = Array.from({ length: 25 }, (_, i) => sale({ uuid: `m${i}-xxxxxxxx`, orderName: `#2${String(i).padStart(3, '0')}`, ts: at(1 + (i % 17), 9 + (i % 5)), lines: [line('Tadling', 1, 300, 0, 100)], netCents: 300, totalCents: 300 }));
++  const r: any = findOrders(data({ sales: many }), {}, ALL); assert.equal(r.orders.length, 10); assert.equal(r.found, 25); assert.match(r.note, /newest 10 of 25/);
++  assert.equal((findOrders(data({ sales: many }), { detail: true }, ALL) as any).orders.length, 3);
++  assert.equal(orderRef(sale({ uuid: 'abcdef12-3456' })), 'abcdef12', 'an order with no name is called by the start of its id');
++});
++test('find_orders: a customer is only searched, and a match only possible, where customer details may be sent', () => {
++  assert.deepEqual((findOrders(data(), { query: 'jo smith' }, ALL) as any).orders.map((o: any) => o.order), ['#1045', '#1042']);
++  assert.equal((findOrders(data(), { query: 'jo smith' }, NONE) as any).found, 0, 'no match, so the model cannot learn who bought what');
++  assert.equal((findOrders(data(), { query: 'jo@example.com' }, { personal: false, email: true }) as any).found, 2);
++  assert.equal((findOrders(data(), { query: 'jo@example.com' }, { personal: true, email: false }) as any).found, 0);
++});
++
++// ---------- deals ----------
++test('list_deals: bundles, automatic discounts and manual discounts, each saying what it does and whether it is running', () => {
++  const r: any = listDeals(data(), {}); const by = (n: string) => r.deals.find((d: any) => d.name === n);
++  assert.equal(r.found, 8);
++  assert.equal(by('Cow and Tadling').how, '$3.00 off'); assert.equal(by('Cow and Tadling').limit, '2 per sale'); assert.match(by('Cow and Tadling').applies_to, /cows \(Highland Cow\).*tads \(Tadling\)/);
++  assert.equal(by('Tadling trio').how, '10% off the matched items'); assert.equal(by('Winter special').how, 'the matched items together cost $9.00');
++  assert.equal(by('Winter special').live, false, 'it ended on 1 September'); assert.equal(by('Winter special').ends, '2026-09-01'); assert.equal(by('Switched off').live, false);
++  assert.equal(by('Spring sale').how, '15% off'); assert.equal(by('Spring sale').applies_to, 'Tadling'); assert.equal(by('Spring sale').starts, '2026-09-01'); assert.equal(by('Spring sale').live, true);
++  assert.match(by('Buy 2 cows get 1 half price').how, /buy 2 of Highland Cow, get 1 of Highland Cow 50% off/);
++  assert.equal(by('Staff 10%').kind, 'manual discount'); assert.equal(by('Staff 10%').how, '10% off, chosen by staff'); assert.equal(by('$5 off damaged').how, '$5.00 off, chosen by staff');
++  assert.ok(r.deals.slice(0, 4).every((d: any) => d.live), 'running deals come first'); assert.match(r.note, /Only one discount applies to each item/);
++});
++test('list_deals: only running deals, a word from the name or what it applies to, and a shop with none', () => {
++  assert.equal((listDeals(data(), { only_live: true }) as any).deals.every((d: any) => d.live), true);
++  assert.deepEqual((listDeals(data(), { query: 'spring' }) as any).deals.map((d: any) => d.name), ['Spring sale']);
++  assert.ok((listDeals(data(), { query: 'tadling' }) as any).deals.length >= 3);
++  const none: any = listDeals(data({ bundles: null, autos: [], presets: [] }), {}); assert.equal(none.found, 0); assert.match(none.note, /No deals are set up/);
++  assert.equal((listDeals(data(), { query: 'nothing here' }) as any).found, 0);
++});
++
++// ---------- customers ----------
++test('find_customers: by name, phone digits or email, only what may be sent, with spend as text', () => {
++  assert.deepEqual((findCustomers(data(), { query: 'jo' }, ALL) as any).customers.map((c: any) => c.name), ['Jo Smith', 'Joanne Li']);
++  const p: any = (findCustomers(data(), { query: '0299 887' }, ALL) as any).customers[0]; assert.equal(p.name, 'Priya Raman'); assert.equal(p.orders, 4); assert.equal(p.spent, '$120.50'); assert.equal(p.note, 'Likes the blue cows');
++  assert.equal((findCustomers(data(), { query: 'priya@example.com' }, ALL) as any).customers[0].name, 'Priya Raman');
++  assert.equal((findCustomers(data(), { query: '12' }, ALL) as any).found, 0, 'a short number is not a phone search');
++  assert.equal((findCustomers(data(), { query: 'joanne' }, { personal: false, email: true }) as any).found, 0, 'names are not searched when they may not be sent');
++  assert.equal((findCustomers(data(), { query: 'jo' }, { personal: false, email: true }) as any).found, 1, 'an email may still be searched, and the gate then leaves only the email in the row (tested through the tool below)');
++  assert.equal((findCustomers(data(), { query: 'priya@example.com' }, { personal: true, email: false }) as any).found, 0);
++  assert.ok((findCustomers(data(), { query: '  ' }, ALL) as any).error);
++});
++
++// ---------- gift cards ----------
++test('gift_card_activity: cards sold and payments made with a card, newest first, totals added up, and no balance', () => {
++  const r: any = giftCardActivity(data(), {}, { code: true, personal: true, email: true });
++  assert.equal(r.found, 2); assert.equal(r.total_sold, '$50.00'); assert.equal(r.total_redeemed, '$15.00');
++  assert.deepEqual(r.activity.map((e: any) => e.event), ['sold', 'redeemed']); assert.equal(r.activity[0].order, '#1043'); assert.deepEqual(r.activity[0].recipient, { name: 'Amy Lee', email: 'amy@example.com' });
++  assert.match(r.note, /remaining balance is not shown/); assert.match(r.note, /Gift cards screen/); assert.equal(JSON.stringify(r).includes('balance":'), false);
++  assert.equal((giftCardActivity(data(), { kind: 'sold' }, { code: true, personal: true, email: true }) as any).found, 1);
++  assert.equal((giftCardActivity(data(), { kind: 'redeemed', period: 'yesterday' }, { code: true, personal: true, email: true }) as any).found, 1);
++  assert.equal((giftCardActivity(data(), { period: 'last_month' }, { code: true, personal: true, email: true }) as any).found, 0);
++});
++test('gift_card_activity: a code is matched by its last characters, short or switched off is refused, and a recipient is only listed where it may be sent', () => {
++  const ok = { code: true, personal: true, email: true };
++  assert.equal((giftCardActivity(data(), { code: 'wxyz' }, ok) as any).found, 2); assert.equal((giftCardActivity(data(), { code: 'GC-ABCD-1234-WXYZ' }, ok) as any).found, 2);
++  assert.equal((giftCardActivity(data(), { code: 'shopify-giftcard-v1-GCABCD1234WXYZ' }, ok) as any).found, 2); assert.equal((giftCardActivity(data(), { code: 'ZZZZ' }, ok) as any).found, 0);
++  assert.match((giftCardActivity(data(), { code: 'XYZ' }, ok) as any).error, /last 4/);
++  assert.match((giftCardActivity(data(), { code: 'WXYZ' }, { ...ok, code: false }) as any).error, /privacy rules/);
++  assert.equal((giftCardActivity(data(), { kind: 'sold' }, { code: true, personal: false, email: false }) as any).activity[0].recipient, undefined);
++});
++
++// ---------- through the tools and the gate ----------
++const call = (name: string, args: unknown) => ({ id: 'c1', type: 'function' as const, function: { name, arguments: JSON.stringify(args) } });
++const runTool = (name: string, args: unknown, policy: GatePolicy | undefined, d: AssistantData | null = data()) =>
++  runToolCall(call(name, args), { tools: ASSISTANT_TOOLS, ctx: { pages: [], role: 'cashier', maxChars: 6000, ...(policy ? { policy } : {}), ...(d ? { data: d } : {}) } });
++const text = (r: ReturnType<typeof runTool>) => r.message.content ?? '';
++const REALISTIC: Record<string, unknown> = {
++  sales_report: { period: 'last_7_days' }, find_orders: { query: '1042', detail: true }, list_deals: {}, find_customers: { query: 'jo' }, gift_card_activity: {},
++};
++
++test('every data tool declares a field map, and a realistic result has no field the map does not name', () => {
++  assert.deepEqual(DATA_TOOLS.map(t => t.def.function.name), ['sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
++  for (const t of DATA_TOOLS) {
++    assert.ok(typeof t.gate === 'object', `${t.def.function.name} needs a field map`);
++    const out = (t as AssistantTool).run(REALISTIC[t.def.function.name] as Record<string, unknown>, { pages: [], role: 'owner', maxChars: 6000, data: data() });
++    const g = applyGate(out, t.gate, LOCAL); assert.deepEqual(g.unknown, [], `${t.def.function.name} returned fields the gate does not know: ${g.unknown.join(', ')}`);
++  }
++  for (const [name, args] of [['sales_report', { item: 'cow' }], ['find_orders', {}], ['gift_card_activity', { code: 'WXYZ' }]] as const) {
++    const t = DATA_TOOLS.find(x => x.def.function.name === name)!; const g = applyGate(t.run(args as any, { pages: [], role: 'owner', maxChars: 6000, data: data() }), t.gate, LOCAL); assert.deepEqual(g.unknown, [], name);
++  }
++});
++test('on a local endpoint the model reads names and the last four of a gift card code, and never card or tender details', () => {
++  const o = text(runTool('find_orders', { query: '1042', detail: true }, LOCAL));
++  assert.match(o, /Jo Smith/); assert.match(o, /jo@example\.com/); assert.doesNotMatch(o, /4242|A1B2C3|visa/i); assert.match(o, /privacy_note/); assert.match(o, /payment details/);
++  const g = text(runTool('gift_card_activity', {}, LOCAL)); assert.match(g, /\*\*\*\*WXYZ/); assert.doesNotMatch(g, /ABCD-1234|GC-ABCD/); assert.match(g, /amy@example\.com/);
++  assert.match(text(runTool('find_customers', { query: 'priya' }, LOCAL)), /Priya Raman/);
++});
++test('on a remote endpoint no customer, staff, email, phone, gift code or payment detail reaches the model, in any tool', () => {
++  const secret = /Jo Smith|Priya|Amy Lee|Maya Chen|Sam Ito|jo@example|amy@example|priya@|0412|0299|WXYZ|GC-ABCD|visa|4242/;
++  for (const [name, args] of Object.entries(REALISTIC)) assert.doesNotMatch(text(runTool(name, args, REMOTE)), secret, name);
++  const o: any = JSON.parse(text(runTool('find_orders', { query: '1042', detail: true }, REMOTE)));
++  assert.equal(o.orders.length, 1); assert.equal(o.orders[0].customer, undefined); assert.equal(o.orders[0].staff, undefined); assert.equal(o.orders[0].paid_with, undefined);
++  assert.match(o.privacy_note, /customer details/); assert.match(o.privacy_note, /payment details/); assert.equal(o.orders[0].total, '$31.00', 'what was sold is still sent');
++  assert.doesNotMatch(JSON.stringify(o), /0412|jo@example/, 'a phone number or email a cashier typed into a reason or note is masked');
++  assert.match(o.orders[0].adjustments[0].reason, /\[phone number\]/); assert.match(o.orders[0].note, /\[email address\]/);
++  const rep: any = JSON.parse(text(runTool('sales_report', { period: 'last_7_days' }, REMOTE))); assert.equal(rep.staff, undefined); assert.equal(rep.net_sales, '$35.00'); assert.ok(rep.top_items.length);
++});
++test('with no policy given the strictest rules apply to every data tool', () => {
++  for (const [name, args] of Object.entries(REALISTIC)) assert.doesNotMatch(text(runTool(name, args, undefined)), /Jo Smith|Maya Chen|Amy Lee|WXYZ|jo@example/, name);
++});
++test('customer lookup on a remote endpoint returns an empty list and the privacy note, never a row, a count or a name', () => {
++  const r: any = JSON.parse(text(runTool('find_customers', { query: 'Jo Smith' }, REMOTE)));
++  assert.deepEqual(r.customers, []); assert.equal(r.found, undefined); assert.match(r.privacy_note, /customer details/);
++  const same: any = JSON.parse(text(runTool('find_customers', { query: 'zzzz nobody' }, REMOTE))); assert.deepEqual(same, r, 'a customer who exists and one who does not look exactly alike');
++  const toggled = resolvePolicy('local', { personal: 'never', email: 'never' }); assert.deepEqual(JSON.parse(text(runTool('find_customers', { query: 'jo' }, toggled))).customers, []);
++  const emailOnly = resolvePolicy('remote', { email: 'allow' }); const e: any = JSON.parse(text(runTool('find_customers', { query: 'priya@example.com' }, emailOnly)));
++  assert.deepEqual(e.customers, [{ email: 'priya@example.com' }]);
++});
++test('a toggle can switch off one category and the rest still works', () => {
++  const noCost = resolvePolicy('local', { cost: 'never' }); const r: any = JSON.parse(text(runTool('sales_report', { period: 'today' }, noCost)));
++  assert.equal(r.cost_of_goods, undefined); assert.equal(r.gross_profit, undefined); assert.equal(r.net_sales, '$20.00'); assert.match(r.privacy_note, /costs and profit/);
++  const noShop = resolvePolicy('local', { shop: 'never' }); const d: any = JSON.parse(text(runTool('list_deals', {}, noShop))); assert.deepEqual(d.deals, []); assert.match(d.privacy_note, /shop data/);
++  const dtl: any = JSON.parse(text(runTool('find_orders', { query: '1042', detail: true }, noCost))); assert.equal(dtl.orders[0].items[0].cost, undefined); assert.equal(dtl.orders[0].items[0].paid, '$22.00');
++});
++test('the record shows which categories the result held and what was hidden, as counts', () => {
++  const r = runTool('find_orders', { query: '1042', detail: true }, REMOTE);
++  assert.ok(r.record.used?.includes('order')); assert.ok(!r.record.used?.includes('personal')); assert.ok((r.record.withheld?.personal ?? 0) >= 2); assert.ok((r.record.withheld?.payment ?? 0) >= 1);
++});
++test('without a snapshot every data tool says there is no shop data, and a bad argument is an error the model can read', () => {
++  for (const t of DATA_TOOLS) { const r = runTool(t.def.function.name, REALISTIC[t.def.function.name], LOCAL, null); assert.match(text(r), /No shop data is available/); assert.equal(r.record.ok, false); }
++  const bad = runTool('sales_report', { from: 'soon' }, LOCAL); assert.equal(bad.record.ok, false); assert.match(text(bad), /real days/);
++  assert.equal(runTool('find_customers', {}, LOCAL).record.ok, false);
++});
++test('the tools are read only: they do not change the snapshot, and none is given anything that writes', () => {
++  const d = data(); const before = JSON.stringify(d);
++  for (const [name, args] of Object.entries(REALISTIC)) for (const p of [LOCAL, REMOTE]) runTool(name, args, p, d);
++  assert.equal(JSON.stringify(d), before);
++  const frozen = JSON.parse(before) as AssistantData; const deep = (o: any): void => { if (o && typeof o === 'object') { Object.freeze(o); Object.values(o).forEach(deep); } }; deep(frozen);
++  for (const [name, args] of Object.entries(REALISTIC)) assert.doesNotThrow(() => runTool(name, args, LOCAL, frozen), name);
++  for (const t of DATA_TOOLS) assert.ok(t.run.length <= 2, 'a tool takes its arguments and the context, and nothing else');
++});
++test('results fit the size limit and stay valid JSON, even when cut', () => {
++  const r = runToolCall(call('find_orders', { detail: true }), { tools: ASSISTANT_TOOLS, ctx: { pages: [], role: 'owner', maxChars: 500, policy: LOCAL, data: data() } });
++  assert.ok((r.message.content ?? '').length <= 500); assert.doesNotThrow(() => JSON.parse(r.message.content ?? ''));
++});
++test('the gate drops a row whose fields were all hidden, so the model is not told how many rows there were', () => {
++  const map = { rows: { name: 'personal' as const, email: 'email' as const } };
++  const g = applyGate({ rows: [{ name: 'A', email: 'a@x.com' }, { name: 'B' }, { name: 'C', email: 'c@x.com' }] }, map, resolvePolicy('remote')) as any;
++  assert.deepEqual(g.value.rows, []); assert.match(g.value.privacy_note, /customer details/);
++  const half = applyGate({ rows: [{ name: 'A', email: 'a@x.com' }, { name: 'B' }] }, map, resolvePolicy('remote', { email: 'allow' })) as any; assert.deepEqual(half.value.rows, [{ email: 'a@x.com' }]);
++  const kept = applyGate({ rows: [{ name: 'A' }, {}] }, map, resolvePolicy('local')) as any; assert.deepEqual(kept.value.rows, [{ name: 'A' }, {}], 'a row that was already empty is not a hidden row');
++});
++
++// ---------- the definitions and the prompt ----------
++test('the data tool definitions are short, take only plain arguments, and carry no dashes', () => {
++  const defs = toolDefs(DATA_TOOLS);
++  for (const d of defs) {
++    assert.ok(d.function.description.length > 40 && d.function.description.length < 520, d.function.name); assert.equal((d.function.parameters as any).type, 'object');
++    assert.doesNotMatch(JSON.stringify(d), /[\u2013\u2014]/); assert.equal((d.function.parameters as any).additionalProperties, false);
++  }
++  assert.deepEqual((toolDefs(DATA_TOOLS).find(d => d.function.name === 'find_customers')!.function.parameters as any).required, ['query']);
++});
++test('the prompt with tools names the data tools, says what cannot be looked up yet, and still names no restricted thing', () => {
++  const p = buildSystemPrompt('short', true);
++  assert.match(p, /ten tools/); for (const n of ['sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
++  assert.match(p, /cannot yet look up products, prices or stock levels/); assert.match(p, /never add up figures yourself/i); assert.match(p, /privacy rules/); assert.doesNotMatch(p, /have no access to the shop/);
++  assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page|settings page/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
++  const none = buildSystemPrompt('short', false); assert.match(none, /no access to the shop's data/); assert.doesNotMatch(none, /sales_report/);
++});
++test('makeToolSet hands the snapshot to the tools, and leaving it out leaves the other tools as they were', () => {
++  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 10);
++  assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.data, undefined);
++});
+diff --git a/tests/assistantlinks.test.ts b/tests/assistantlinks.test.ts
+index 6ffa533..3ff3dc5 100644
+--- a/tests/assistantlinks.test.ts
++++ b/tests/assistantlinks.test.ts
+@@ -130,7 +130,7 @@ test('the loop: the audit log still sees the show_link call and what the model w
+ // ---- the prompt ----
+ test('the prompt names the link tool and tells the model not to write links or ids, and still names nothing restricted', () => {
+   const p = buildSystemPrompt('short', true);
+-  assert.match(p, /five tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
++  assert.match(p, /ten tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
+   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page/i);
+   assert.doesNotMatch(buildSystemPrompt('short', false), /show_link/);
+ });
+diff --git a/tests/assistanttools.test.ts b/tests/assistanttools.test.ts
+index dc3ded5..d2647d9 100644
+--- a/tests/assistanttools.test.ts
++++ b/tests/assistanttools.test.ts
+@@ -115,7 +115,7 @@ test('the record keeps the arguments and result, with any key removed', () => {
+ });
+ test('every tool has a name, a description and object parameters, and none can write', () => {
+   const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
+-  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide']);
++  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
+   for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
+ });
+ 

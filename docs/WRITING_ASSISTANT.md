@@ -54,6 +54,10 @@ The assistant must follow the same style rules as the rest of the app (Australia
 The tool list has since grown, and the plan, decisions and patch order are in `docs/AI_ASSISTANT_PLAN.md`. The read-only
 rule and the style rules above are unchanged.
 
+Patch 0163 added the shop data tools (sales report, find orders, deals, customers, gift card activity). They read only what is
+saved on the till (the spec's "local CSV export" is the same data as the till's own sales records), never ask Shopify live, and
+never return a gift card balance, because that lives at Shopify. Every result passes through the data gate first.
+
 ## The model
 
 Updated 17 October 2026 (patch 0148). This replaces the earlier "local model only" decision.
