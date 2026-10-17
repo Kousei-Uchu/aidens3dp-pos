@@ -4,6 +4,7 @@
 import { gql, throwUserErrors, ShopifyUserError } from './client';
 import { toCents } from '../money';
 import { sleep } from '../ids';
+import { isSellableStatus, parseProductStatus } from '../productStatus';
 import type { AutoDiscount, Collection, Customer, ManualPreset, Target, Variant } from '../types';
 
 export async function fetchShop() {
@@ -59,7 +60,7 @@ export async function fetchVariants(locationId: string, onProgress?: (s: string)
       costCents: n.inventoryItem?.unitCost ? toCents(n.inventoryItem.unitCost.amount) : undefined,
       inventoryItemId: n.inventoryItem?.id, tracked, stock: tracked ? (q?.quantity ?? 0) : null,
       image: img(n.image?.url ?? n.product.featuredMedia?.preview?.image?.url), tags: n.product.tags ?? [],
-      active: n.product.status === 'ACTIVE', status: (['ACTIVE', 'DRAFT', 'ARCHIVED'] as const).find(x => x === n.product.status), updatedAt: n.updatedAt,
+      active: isSellableStatus(parseProductStatus(n.product.status)), status: parseProductStatus(n.product.status), updatedAt: n.updatedAt, // Active and Unlisted are sold and shown; Draft and Archived are not
     };
   });
 }

@@ -566,3 +566,18 @@ On the iPad (rebuild the native project first so the new `app.json` keys apply: 
 3. Turn Wi-Fi off. The sync chip turns amber (Offline). Tap it: Notifications opens. Turn Wi-Fi on and it goes back to Synced.
 4. Settings ▸ Screensaver & display ▸ **Preview full screen** (or wait for the idle time). The top bar stays across the top of the saver, in the saver's colours, and the logo is not covered. Tapping anywhere, the bar included, wakes it.
 5. **Most important:** let the screensaver come on and go off five or six times (also once while signed out, once with a window such as a sheet open). Pass: the iOS bar never appears and the top bar never moves down or doubles. Tell me if it still happens, and whether it was when the saver opened, when it closed, or at some other time.
+
+## T47. Cart warnings (0142)
+
+On the iPad and on a phone. Use More ▸ Settings ▸ Cart warnings.
+
+1. Add a warning: header *Customer Warning*, message *Joints are fragile, do not bend or apply pressure as it will snap.*, **Shows when the cart has** a **Product**, and pick a mini dragon from the search list. Save. It appears in the list with the product's name.
+2. Add a second one for a **Category** (a collection), with its own header and message, and turn on **Cashier must tick it**. Add a third with **Show on every sale** on (the target list disappears).
+3. Put a mini dragon in the cart and tap **Charge**. Pass: **Customer warning** opens before anything else, says *Warning 1 of …*, lists the mini dragon under **For:**, and **Next** and **Back** move between pages. The always-on warning is in there too.
+4. Go to the last page. On the ticked-required warning, **Continue to payment** is off and a note says how many to tick. Tick it on its own page and Continue switches on. Pass: ticking only the page you are on is not enough if two need it.
+5. Tap **Continue to payment**. Pass: the Payment screen opens (or the price adjustment review, if the sale has one). Go back and tap Charge again: only the always-on warning comes up.
+6. Edit the mini dragon warning's message, go back to the cart and Charge. Pass: that warning comes back with the new text.
+7. Turn a warning **Off** and Charge: it does not appear. Delete one: it asks first.
+8. In Settings ▸ Staff, switch a cashier to **Minimal**, sign in as them, and Charge. Pass: the same window appears before payment.
+9. With a second register, wait about 25 seconds. Pass: the warnings are on it too.
+10. **Most important:** More ▸ Training, start any course with a warning set to always show. Pass: the practice till never shows the real warning, and Charge goes straight on.

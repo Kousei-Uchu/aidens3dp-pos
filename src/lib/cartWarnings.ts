@@ -1,75 +1,64 @@
 // Location: src/lib/cartWarnings.ts
-// Cart warning logic: detect which warnings match cart items
-import type { Cart, CartWarning, Variant } from './types';
+// Cart warnings: prompts the cashier sees on Charge, before payment, when the cart holds a configured item or
+// category (or on every sale, for a warning set to always show). Pure, so it is testable.
+import type { Cart, CartWarning, CartWarningScope, Variant } from './types';
 
-export type MatchedCartWarning = {
-  warning: CartWarning;
-  matches: Array<{ lineId: string; title: string; variantId?: string; productId?: string; collectionIds?: string[] }>;
-};
+export type CartWarningMatch = { lineId: string; title: string; variantId?: string; productId?: string };
+export type MatchedCartWarning = { warning: CartWarning; matches: CartWarningMatch[] };
+export type CartWarningCatalog = { variants: Record<string, Variant>; collectionsOfProduct: Record<string, string[]> };
 
-export function matchCartWarnings(cart: Cart, warnings: CartWarning[] | undefined, catalog: {
-  variants: Record<string, Variant>;
-  collectionsOfProduct: Record<string, string[]>;
-}): MatchedCartWarning[] {
-  const list = warnings ?? [];
-  const enabled = list.filter(w => w.enabled && w.targetId);
-  const result: MatchedCartWarning[] = [];
-  
-  for (const w of enabled) {
-    const matches: MatchedCartWarning['matches'] = [];
-    for (const line of cart.lines) {
-      if (line.kind !== 'item' || !line.variantId) continue;
-      const v = catalog.variants[line.variantId];
-      if (!v) continue;
-      let isMatch = false;
-      switch (w.scope) {
-        case 'variant':
-          isMatch = v.id === w.targetId;
-          break;
-        case 'product':
-          isMatch = v.productId === w.targetId;
-          break;
-        case 'collection':
-        case 'category':
-          {
-            const cols = catalog.collectionsOfProduct[v.productId] ?? [];
-            isMatch = cols.includes(w.targetId);
-          }
-          break;
-      }
-      if (isMatch) {
-        matches.push({
-          lineId: line.id,
-          title: line.title,
-          variantId: line.variantId,
-          productId: v.productId,
-          collectionIds: catalog.collectionsOfProduct[v.productId],
-        });
+/** `category` is another name for `collection`. */
+export const normaliseScope = (s: CartWarningScope): 'variant' | 'product' | 'collection' => (s === 'category' ? 'collection' : s);
+
+/** What a person sees as the warning's header when they left it blank. */
+export const DEFAULT_WARNING_TITLE = 'Customer Warning';
+export const warningTitle = (w: Pick<CartWarning, 'title'>): string => w.title.trim() || DEFAULT_WARNING_TITLE;
+
+/**
+ * The warnings that apply to this cart, in the order they should be shown. A warning applies when it is on and either
+ * set to always show, or one of its item lines is the variant, product or collection it is for. Gift cards and custom
+ * amounts never trigger one.
+ */
+export function matchCartWarnings(cart: Cart, warnings: CartWarning[] | undefined, catalog: CartWarningCatalog): MatchedCartWarning[] {
+  const result: Array<MatchedCartWarning & { at: number }> = [];
+  (warnings ?? []).forEach((w, at) => {
+    if (!w.enabled) return;
+    if (!w.alwaysShow && !w.targetId) return;
+    const matches: CartWarningMatch[] = [];
+    if (w.targetId) {
+      const scope = normaliseScope(w.scope);
+      for (const line of cart.lines) {
+        if (line.kind !== 'item' || !line.variantId) continue;
+        const v = catalog.variants[line.variantId];
+        if (!v) continue;
+        const hit = scope === 'variant' ? v.id === w.targetId
+          : scope === 'product' ? v.productId === w.targetId
+          : (catalog.collectionsOfProduct[v.productId] ?? []).includes(w.targetId);
+        if (hit) matches.push({ lineId: line.id, title: line.title, variantId: line.variantId, productId: v.productId });
       }
     }
-    if (matches.length > 0) {
-      result.push({ warning: w, matches });
-    }
-  }
-  // Sort by order if specified
-  return result.sort((a, b) => {
-    const ao = a.warning.order ?? 0;
-    const bo = b.warning.order ?? 0;
-    if (ao !== bo) return ao - bo;
-    return 0;
+    if (matches.length > 0 || w.alwaysShow) result.push({ warning: w, matches, at });
   });
+  return result.sort((a, b) => (a.warning.order ?? 0) - (b.warning.order ?? 0) || a.at - b.at).map(({ warning, matches }) => ({ warning, matches }));
 }
 
-/** Fingerprint of matched warnings for acknowledgment tracking. */
-export const warningsKey = (matched: MatchedCartWarning[]): string =>
-  matched.map(w => `${w.warning.id}|${w.matches.map(m => m.lineId).join(',')}|${w.warning.requireAcknowledgement ? '1' : '0'}`).sort().join('~');
+/** Names of the items that set a warning off, each once, for "Triggered by". */
+export const triggerNames = (m: MatchedCartWarning): string[] => Array.from(new Set(m.matches.map(x => x.title)));
 
-/** Check if cart warnings need to be shown (unacknowledged or alwaysShow). */
-export const needsCartWarnings = (matched: MatchedCartWarning[], acknowledgedKey: string): boolean => {
-  const key = warningsKey(matched);
-  if (key === '') return false;
-  if (key === acknowledgedKey) return false;
-  // If any warning has alwaysShow, it should always appear
-  if (matched.some(m => m.warning.alwaysShow)) return true;
-  return true;
-};
+/**
+ * Fingerprint of one warning as it applies to this sale. Editing the warning, or changing which lines set it off,
+ * changes it, so a warning already seen comes back when it is different.
+ */
+export const warningKey = (m: MatchedCartWarning): string =>
+  [m.warning.id, m.matches.map(x => x.lineId).sort().join(','), warningTitle(m.warning), m.warning.body, m.warning.requireAcknowledgement ? '1' : '0'].join('|');
+
+/**
+ * The warnings to show now: those not yet seen on this sale, plus every one set to always show (those come up on each
+ * press of Charge). `seen` holds the `warningKey` of each warning the cashier already carried on from.
+ */
+export const pendingCartWarnings = (matched: MatchedCartWarning[], seen: string[]): MatchedCartWarning[] =>
+  matched.filter(m => m.warning.alwaysShow || !seen.includes(warningKey(m)));
+
+/** The pages (by key) that still need ticking before payment can start, given what the cashier has ticked. */
+export const unacknowledged = (pages: MatchedCartWarning[], ticked: string[]): MatchedCartWarning[] =>
+  pages.filter(m => m.warning.requireAcknowledgement && !ticked.includes(warningKey(m)));

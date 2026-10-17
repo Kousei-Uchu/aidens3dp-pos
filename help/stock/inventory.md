@@ -16,7 +16,7 @@ Search by product name, variation, SKU or barcode. Use the quick chips for **All
 - **Category**: all categories or one Shopify collection.
 - **Stock level**: All, Low, Out (0), Negative, Tracked or Not tracked.
 - **Low** threshold: choose 1, 2, 3, 5 or 10 when Low is selected.
-- **Product status**: Active, Draft, Archived or All.
+- **Product status**: Active, Draft, Archived or All. **Active** includes products marked **Unlisted** in Shopify, which show *unlisted* under their name; Draft and Archived do not.
 - **Sort by**: name, stock low/high first, price low/high first, or recently updated.
 - **Show variations**: each variant on its own, or **Nested under item**.
 
@@ -40,7 +40,7 @@ Tap **Refresh stock from Shopify** at the bottom to import the catalogue again. 
 - **Out (0)** means exactly zero. **Negative** means less than zero.
 - **Tracked** includes any count, including negative. **Not tracked** has no count and is not the same as zero.
 - A category filter uses the selected Shopify collection. Products can appear in more than one collection.
-- By default the screen filters to **Active** products. Draft and archived variants remain in the local catalogue, but are hidden until the status is changed.
+- By default the screen filters to **Active** products (Active and Unlisted in Shopify). Draft and archived variants remain in the local catalogue, but are hidden until the status is changed.
 
 The app's default low threshold is 2 and default sort is Stock: low first. Changing to nested or flat view does not change the underlying stock.
 

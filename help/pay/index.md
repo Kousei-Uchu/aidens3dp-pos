@@ -12,9 +12,10 @@ The Payment screen is where a sale is paid for. You reach it with **Charge** on 
 ## Basic
 
 ### Getting there
-Tap **Charge** on the cart. Two checks can come first, only if they apply:
-1. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].
-2. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].
+Tap **Charge** on the cart. Three checks can come first, only if they apply:
+1. A **Customer warning**, if something in the cart has one set. See [[sales/cart-warnings]].
+2. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].
+3. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].
 
 Then the **Payment** screen opens.
 

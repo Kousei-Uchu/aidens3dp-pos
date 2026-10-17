@@ -19,7 +19,7 @@ Shopify is the shared product catalogue. **Items** is for finding and editing pr
 For stock words and what happens when sales or refunds change a count, see [[sales/variants-and-stock]]. For Inventory filters, grouping and stock updates, see [[stock/inventory]]. For catalogue editing and creating an item, see [[stock/items]].
 
 ### If an item is missing
-Import or refresh from Shopify in **More ▸ Settings ▸ Shopify**. Inventory can include active, draft and archived products, but its default status filter is **Active**. Use Filters to include other statuses. When counts still differ, use **Refresh stock from Shopify** in Inventory.
+Import or refresh from Shopify in **More ▸ Settings ▸ Shopify**. Inventory can include active, unlisted, draft and archived products, but its default status filter is **Active**, which also shows **Unlisted** products (they are still for sale). Draft and archived products are never sold from the till. Use Filters to include other statuses. When counts still differ, use **Refresh stock from Shopify** in Inventory.
 
 ## Deep
 

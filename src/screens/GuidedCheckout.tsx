@@ -19,6 +19,7 @@ import { BundleRow } from './CartPane';
 import { CheckChangeSheet } from './CheckChange';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
 import AdjustmentReviewSheet from './AdjustmentReview';
+import CartWarningsSheet, { useCartWarningGate } from './CartWarningsSheet';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import type { CartLine } from '../lib/types';
 import { useUi } from '../ui/uiProfile';
@@ -32,7 +33,8 @@ export default function GuidedCheckout() {
   const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change' | 'orderadj'>('none');
   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
   // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
-  useEffect(() => registerCheckoutReset(() => { setSheet('none'); setAdjReview(false); setAdjAck(''); setEdit(null); }), []);
+  const warn = useCartWarningGate();
+  useEffect(() => registerCheckoutReset(() => { setSheet('none'); setAdjReview(false); setAdjAck(''); setEdit(null); warn.reset(); }), []);
   const [edit, setEdit] = useState<CartLine | null>(null);
   const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
   const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };
@@ -49,7 +51,8 @@ export default function GuidedCheckout() {
   const odd = oddBundles(priced.bundles);
   // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
   const adjRows = adjustmentRows(cart, priced);
-  const takePayment = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else nav.push('pay'); };
+  const afterWarnings = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else nav.push('pay'); };
+  const takePayment = () => { if (!locked && warn.pages.length) warn.setOpen(true); else afterWarnings(); };
 
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
@@ -154,6 +157,8 @@ export default function GuidedCheckout() {
       {/* The same sheets the normal checkout uses */}
       <CustomerSheet visible={sheet === 'customer'} onClose={() => setSheet('none')} onPick={cu => { setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } })); setSheet('none'); }} />
       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
+      <CartWarningsSheet visible={warn.open} pages={warn.pages} onClose={() => warn.setOpen(false)}
+        onContinue={() => { warn.markSeen(); warn.setOpen(false); setTimeout(afterWarnings, 250); }} />
       <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
         onContinue={() => { setAdjAck(adjustReviewKey(adjRows)); setAdjReview(false); setTimeout(() => nav.push('pay'), 250); }}
         onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />

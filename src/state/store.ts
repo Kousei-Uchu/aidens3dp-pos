@@ -33,7 +33,7 @@ export type Settings = {
   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
-  cartWarnings?: CartWarnings;
+  cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,

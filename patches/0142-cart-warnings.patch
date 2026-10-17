@@ -1,0 +1,1152 @@
+diff --git a/SPEC_CHECKLIST.md b/SPEC_CHECKLIST.md
+index 135f017..6067ae1 100644
+--- a/SPEC_CHECKLIST.md
++++ b/SPEC_CHECKLIST.md
+@@ -19,6 +19,7 @@ Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified
+ - ✅ Cart ⋯ menu: Clear, Save, Create customer, Custom amount, Cart discount, Sell gift card, Check gift card
+ - 🧪 Automatic discounts + bundles, struck-through price and deal name; `no-discount` tag; manual discounts incl. Shopify code presets and custom %/$ keypad
+ - ✅ Customer attach
++- 🧪 Customer warnings: Settings ▸ Cart warnings (item, product or category, or every sale; optional must-tick); Charge shows them first, one page each with Next / Back: `CartWarningsSettings.tsx`, `CartWarningsSheet.tsx`, `lib/cartWarnings.ts`
+ - 🧪 Charge: Card / Cash / Gift card / Split Amount (enter first payment or split equally); partial approved tenders persist on the sale (no void timer)
+ - 🧪 Card: live `onEvent` status; declines & 51/1009 messages keep cart; unknown result → "Checking…" via `getTransactions({reference})`, never re-charge until resolved, manual resolve logs who
+ - 🧪 Cash: chips + custom, 5c rounding, change shown
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 5b4d831..938eaa8 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -566,3 +566,18 @@ On the iPad (rebuild the native project first so the new `app.json` keys apply:
+ 3. Turn Wi-Fi off. The sync chip turns amber (Offline). Tap it: Notifications opens. Turn Wi-Fi on and it goes back to Synced.
+ 4. Settings ▸ Screensaver & display ▸ **Preview full screen** (or wait for the idle time). The top bar stays across the top of the saver, in the saver's colours, and the logo is not covered. Tapping anywhere, the bar included, wakes it.
+ 5. **Most important:** let the screensaver come on and go off five or six times (also once while signed out, once with a window such as a sheet open). Pass: the iOS bar never appears and the top bar never moves down or doubles. Tell me if it still happens, and whether it was when the saver opened, when it closed, or at some other time.
++
++## T47. Cart warnings (0142)
++
++On the iPad and on a phone. Use More ▸ Settings ▸ Cart warnings.
++
++1. Add a warning: header *Customer Warning*, message *Joints are fragile, do not bend or apply pressure as it will snap.*, **Shows when the cart has** a **Product**, and pick a mini dragon from the search list. Save. It appears in the list with the product's name.
++2. Add a second one for a **Category** (a collection), with its own header and message, and turn on **Cashier must tick it**. Add a third with **Show on every sale** on (the target list disappears).
++3. Put a mini dragon in the cart and tap **Charge**. Pass: **Customer warning** opens before anything else, says *Warning 1 of …*, lists the mini dragon under **For:**, and **Next** and **Back** move between pages. The always-on warning is in there too.
++4. Go to the last page. On the ticked-required warning, **Continue to payment** is off and a note says how many to tick. Tick it on its own page and Continue switches on. Pass: ticking only the page you are on is not enough if two need it.
++5. Tap **Continue to payment**. Pass: the Payment screen opens (or the price adjustment review, if the sale has one). Go back and tap Charge again: only the always-on warning comes up.
++6. Edit the mini dragon warning's message, go back to the cart and Charge. Pass: that warning comes back with the new text.
++7. Turn a warning **Off** and Charge: it does not appear. Delete one: it asks first.
++8. In Settings ▸ Staff, switch a cashier to **Minimal**, sign in as them, and Charge. Pass: the same window appears before payment.
++9. With a second register, wait about 25 seconds. Pass: the warnings are on it too.
++10. **Most important:** More ▸ Training, start any course with a warning set to always show. Pass: the practice till never shows the real warning, and Charge goes straight on.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index efb3cab..3854dec 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -141,6 +141,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0139 | 2026-10-16 | Training (B6), tier 3, task course 7 of the plan: **Customers on file** (`customers-list`, plan #25). The course lives on Checkout and More (`tabs: ['checkout', 'more']`, route `customers`). Info explains the Customers page (what is on file, New customer and Edit, Start sale, the search box). Show walks More ▸ Customers, the search box, opening a row, Start sale landing on Checkout, then the New customer form and Save. Guide: open More ▸ Customers, open Sam Rivera's row, Edit, add a mobile, Save, then Start sale with Sam on it. Check 1: create a customer, then start a sale from the customer you made. Check 2: Sam's mobile is missing (fix it), and the till already has Priya's items (cart injection), so Start sale puts her on the sale that is there. New spots `more.customers` on More; `customers.new`, `customers.search` and the per-customer `customers.row:<id>` on the Customers page; `customers.start`, `customers.edit` in a customer's window; `customers.form`, `customers.save` in the New / Edit window. New `customers` and `customersDraft` snapshot fields and a `customersDraft` probe. The Customers page saves locally in practice (`train-cu-new-<time>` ids) and never calls Shopify. New `tests/trainingcustomerslist.test.ts`. Device test T44 | B6 |
+ | 0140 | 2026-10-16 | Training (B6), tier 4, task course 8 of the plan: **Items and creating one** (`items`, plan #27). The course lives on Checkout and More (`tabs: ['checkout', 'more']`, routes `items`, `createItem`, `editItem`). Info explains the catalogue, search, editing price/SKU/barcode/cost, and Create item. Show walks More ▸ Items, the search box, opening a row, changing the price and saving (Save to Shopify), then the Create item form. Guide: open More ▸ Items, open Bumble Bee, type a new price, Save to Shopify, then Create item with a name, a price and a starting stock. Check 1: change the Highland Cow Small's SKU, then add a new tracked product. Check 2: the practice catalogue is seeded with a barcode that will not scan (a new `items` injection), so it is fixed and saved, then a new tracked product is added. New spots: `more.items` on the More tab; `items.new`, `items.search` and the per-variant `items.row:<id>` on the Items page; `items.form`, `items.create` on the Create item page; `items.edit.form`, `items.edit.save` on the Edit item page. New `items` and `itemDraft` snapshot fields, an `itemDraft` probe, and an `items` injection. The Items page creates and edits locally in practice (`train-v-new-<time>` ids) and never calls Shopify. New `tests/trainingitems.test.ts`. Device test T45 | B6 |
+ | 0141 | 2026-10-17 | Grid and status bar (your request, not on the checklist). **Grid:** the Qty ×1/×2/×3/×5/×10 chips, their Simple-mode hint (`qtyHint`), the Reader/Sync pills under the tabs (`StatusStrip`) and the logo and shop name above the search bar are gone from Checkout; more than one is now a repeat tap or **−/+** on the cart line. **Top bar** (`src/ui/AppStatusBar.tsx`): now shows time, **shop logo and name**, register name, a **Reader chip** and a **Sync chip** (same wording and colours the strip used; an amber or red one still opens the page that explains it) and battery. **Screensaver:** the same bar is drawn across the top of the saver (`interactive={false}`, saver colours), so it stays up while the saver is. **Double bar:** the screensaver is a full-screen window, and opening or closing one can bring the iOS bar back, which pushed our bar down (its top padding is the safe-area inset). Three guards: `UIStatusBarHidden` and `UIViewControllerBasedStatusBarAppearance=false` in `app.json` (needs `npm run ios:reset` or a prebuild to reach the native project); the saver re-hides the iOS bar as it appears, goes, and 450 ms later; and the bar keeps the smallest top inset it has seen per orientation (`src/lib/statusInset.ts`, `tests/statusinset.test.ts`) so a returning iOS bar cannot push it down. Help pages `sales` and `staff/screensaver` updated, `help.json` rebuilt. Cause of the double bar is my best reading, not confirmed on a device (see T46) | your request |
++| 0142 | 2026-10-17 | Cart warnings (your request, finishing the half-built feature from 0141). **Settings ▸ Cart warnings** (`CartWarningsSettings.tsx`, moved out of `Settings.tsx`): add, edit, delete and switch on or off warnings, each with a header (blank = *Customer Warning*), a message, **Show on every sale**, **Cashier must tick it**, and what it is for: a **Variation**, **Product** or **Category** (a Shopify collection), chosen from a searchable list (the first version listed only the first 50 variations and repeated products). **Charge** (`CartPane.tsx`, and `GuidedCheckout.tsx` for Minimal mode) now opens **Customer warning** first, before the price adjustment review and the bundle check: one page per warning with **Next** and **Back**, the items that set it off, and a tick on warnings that need one. **Continue to payment** is on the last page and stays off until every warning that needs ticking has been ticked (the first version only checked the page on screen). A warning already carried on from is not asked again on the same sale unless its text or its lines change; always-show warnings come up on every Charge; a part-paid sale skips them. Warnings are shared to every register with the other shared settings (`pushSharedSettings`), and Training's sandbox sets none (`sandboxSettings`). New `warning.back`, `warning.next`, `warning.ack` and `warning.continue` spots, `sheet_cart_warnings` on the navgraph (`graph:build` rerun). `category` is kept as another name for `collection`. New help page `sales/cart-warnings` (Pay and Settings pages link to it; `help.json` rebuilt). New `tests/cartwarnings.test.ts`. Device test T47. Not added: a Training module for it, and a way to reorder warnings (they show in the order added) | your request |
+ 
+ 
+ ---
+diff --git a/help/help.json b/help/help.json
+index 6023cac..5061b2a 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "edcc3471",
++ "version": "cf746d7b",
+  "pages": [
+   {
+    "id": "cash",
+@@ -893,7 +893,7 @@
+    "updated": "2026-10-11",
+    "lead": "The Payment screen is where a sale is paid for. You reach it with **Charge** on the cart (or **Take payment** in the guided checkout). Nothing is taken from the customer until they pay.",
+    "sections": {
+-    "basic": "### Getting there\nTap **Charge** on the cart. Two checks can come first, only if they apply:\n1. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].\n2. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].\n\nThen the **Payment** screen opens.\n\n### What you see\n- The big number is **Total due**. Once part of the bill is paid it changes to **Remaining**, with *of $…* underneath.\n- Under it, a list of the payments taken so far (card, cash, gift card) and what each paid.\n- The ways to pay. In standard mode the buttons read **Card**, **Cash**, **Gift card** and **Split amount**. In Simple and Minimal modes they read **Pay by card**, **Pay with cash**, **Pay with a gift card** and **Split the payment**, each with a line under it saying what it does, and a heading *How is the customer paying?*\n- If the card reader is not ready you see **Reader issue** in red at the top right. Cash and gift cards still work.\n\n### The four ways to pay\n- **Card**: the customer taps, inserts or swipes on the Zeller terminal. See [[pay/card]].\n- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back. See [[pay/cash]], and [[cash]] for the drawer record behind it.\n- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away. See [[pay/gift-card]].\n- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot. See [[pay/split-and-part]].\n\nEvery payment taken is added to the list. Pay the rest any way you like, in any order, until **Remaining** reaches $0.00.\n\n### When it is fully paid\nThe sale finishes by itself the moment nothing remains. It is saved and sent to Shopify in the background, and the **Receipt** sheet opens: show a QR code, email or text the link, share it, or tap **No receipt**. Tapping that (or finishing the receipt) clears the cart for the next customer. See [[pay/receipts]].\n\nIf the total is $0.00 (a free sale), there is one button, **Complete $0.00 sale**.\n\n### Going back\n- **Nothing paid yet:** **Back** returns you to the cart and nothing has changed.\n- **Part paid:** the cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. If you choose **Refund & cancel**, card payments are refunded to the customer's card, and gift-card payments are credited back to the same gift cards. For cash, collect any previously given change and return exactly the original notes and coins; the drawer ledger records the denominations. If an electronic return fails partway through, the sale stays in cancellation mode and remembers returns already completed; retry cancellation after resolving the problem. Do not take another payment for it.\n- **While the terminal is working** there is no Back button. Use **Cancel** on the *Waiting on terminal* strip first.\n\n### Good to know\n- A cash payment can be rounded to the nearest 5c if **Cash rounding (5c)** is on in Settings ▸ Payments. It only changes the cash amount due, and only when cash pays the whole of what remains. Card amounts are always exact.\n- The register will not lock, and staff cannot be switched, while a card payment is waiting on the terminal.\n- If the iPad is offline the sale is kept on it and sent when it is back online. Card payments need a connection, so they will not work offline, but cash will.",
++    "basic": "### Getting there\nTap **Charge** on the cart. Three checks can come first, only if they apply:\n1. A **Customer warning**, if something in the cart has one set. See [[sales/cart-warnings]].\n2. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].\n3. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].\n\nThen the **Payment** screen opens.\n\n### What you see\n- The big number is **Total due**. Once part of the bill is paid it changes to **Remaining**, with *of $…* underneath.\n- Under it, a list of the payments taken so far (card, cash, gift card) and what each paid.\n- The ways to pay. In standard mode the buttons read **Card**, **Cash**, **Gift card** and **Split amount**. In Simple and Minimal modes they read **Pay by card**, **Pay with cash**, **Pay with a gift card** and **Split the payment**, each with a line under it saying what it does, and a heading *How is the customer paying?*\n- If the card reader is not ready you see **Reader issue** in red at the top right. Cash and gift cards still work.\n\n### The four ways to pay\n- **Card**: the customer taps, inserts or swipes on the Zeller terminal. See [[pay/card]].\n- **Cash**: a sheet opens where you tap the notes and coins the customer hands over. It works out the change and which notes and coins to give back. See [[pay/cash]], and [[cash]] for the drawer record behind it.\n- **Gift card**: scan or type the gift card code. The amount taken is the card's balance, or what is still owed, whichever is less. The gift card is charged straight away. See [[pay/gift-card]].\n- **Split amount** (**Split the payment**): take part of the bill one way and the rest another way, or divide it equally. Pick **Split equally 2**, **3** or **4**, or key in the first amount and tap **Continue**. The next payment then says *Next payment: $…*. The amount must be less than what remains. Tap **Cancel split** to go back to paying the lot. See [[pay/split-and-part]].\n\nEvery payment taken is added to the list. Pay the rest any way you like, in any order, until **Remaining** reaches $0.00.\n\n### When it is fully paid\nThe sale finishes by itself the moment nothing remains. It is saved and sent to Shopify in the background, and the **Receipt** sheet opens: show a QR code, email or text the link, share it, or tap **No receipt**. Tapping that (or finishing the receipt) clears the cart for the next customer. See [[pay/receipts]].\n\nIf the total is $0.00 (a free sale), there is one button, **Complete $0.00 sale**.\n\n### Going back\n- **Nothing paid yet:** **Back** returns you to the cart and nothing has changed.\n- **Part paid:** the cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. If you choose **Refund & cancel**, card payments are refunded to the customer's card, and gift-card payments are credited back to the same gift cards. For cash, collect any previously given change and return exactly the original notes and coins; the drawer ledger records the denominations. If an electronic return fails partway through, the sale stays in cancellation mode and remembers returns already completed; retry cancellation after resolving the problem. Do not take another payment for it.\n- **While the terminal is working** there is no Back button. Use **Cancel** on the *Waiting on terminal* strip first.\n\n### Good to know\n- A cash payment can be rounded to the nearest 5c if **Cash rounding (5c)** is on in Settings ▸ Payments. It only changes the cash amount due, and only when cash pays the whole of what remains. Card amounts are always exact.\n- The register will not lock, and staff cannot be switched, while a card payment is waiting on the terminal.\n- If the iPad is offline the sale is kept on it and sent when it is back online. Card payments need a connection, so they will not work offline, but cash will.",
+     "deep": "### Part payments and the order they are taken in\nA sale is made of **payments** (the app calls them tenders). Each one has its own amount, and the sale is paid when they add up to the total. You can mix any methods, in any order, and as many as you like. The *Next payment* amount is just the figure the next card, cash or gift card payment will aim for: the split amount, an equal share, or everything that remains.\n\n### Cash rounding in a part-paid sale\nRounding is worked out on the cash that is **due**, not on the amount handed over. If cash pays the whole of what remains, the due amount is rounded to the nearest 5c and the difference is kept on the payment. If cash is only part of the bill, nothing is rounded.\n\n### The gift card is charged first, not last\nWhen you choose a gift card, the amount is taken off the card's balance straight away, before the sale finishes. If Shopify cannot do it you see **Gift card could not be charged** with the reason, and nothing is added to the sale. Cancelling a part-paid sale credits the amount back to the same card; a failed cancellation stays locked for a safe retry.\n\n### What \"finished\" means\nWhen the last payment makes **Remaining** $0.00, the app builds the sale record, takes the sold units off the stock count on this iPad, puts the sale in a queue for Shopify, and, if the sale started from a saved cart, removes that saved cart. The queue creates the Shopify order and adjusts Shopify's stock. If that fails or the iPad is offline, the sale stays queued and is retried. You can see how many are waiting in More ▸ Support & diagnostics ▸ Sync.\n\n### Why the cart locks\nOnce any payment is on the sale, changing the cart would make what was paid and what is owed disagree. So the lines, the keypad, Save cart and Clear cart all say **Payment in progress** until the sale is paid or cancelled.",
+     "advanced": "### From Charge to a finished sale\n```mermaid\nflowchart TD\n  A[Charge in CartPane.tsx or Take payment in GuidedCheckout.tsx] --> B[Pay.tsx: remaining = total minus paidTotal]\n  B --> C{which button}\n  C -->|card| D[runCard: see the card page]\n  C -->|cash| E[CashSheet then takeCash]\n  C -->|gift card| F[GiftCheckSheet then useGift debits the card]\n  C -->|split| G[plan sets the next payment amount]\n  D --> H[addTender adds to cart.tenders]\n  E --> H\n  F --> H\n  G --> B\n  H --> I{remaining is 0?}\n  I -->|no| B\n  I -->|yes| J[buildSale then applyLocalStock then recordSale]\n  J --> K[ReceiptPrompt then finishAll empties the cart]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen and all its state | `Pay` in `src/screens/Pay.tsx` |\n| Total, what is paid, what remains | `usePriced` in `src/state/selectors.ts` gives the total; `paidTotal` in `src/lib/saleBuilder.ts` adds up the payments; `Pay` itself works out what remains |\n| Building a payment | `cardTender`, `cashTender` in `src/lib/saleBuilder.ts`; the gift card payment is built in `useGift` in `Pay.tsx` |\n| Finishing | the `finalising` effect in `Pay.tsx`: `buildSale`, `applyLocalStock`, `recordSale` (`src/lib/saleBuilder.ts`, `src/lib/sync.ts`) |\n| Cash ledger | `postCashSale`, `recordCancelledCashTender`, `cashDue` in `src/lib/cashSale.ts` |\n| Cancelling a part-paid sale | `abandon` in `Pay.tsx` |\n| Which card states may use a sheet | `showsOwnSheet`, `showsWaitingStrip`, `lockPayButtons` in `src/lib/payUi.ts` |\n| Simple mode wording | `payTitle`, `payHint`, `payQuestion` in `src/lib/simpleLabels.ts` |\n| Receipt step | `ReceiptPrompt` in `src/screens/Receipt.tsx` |\n\nThe payments live on the cart as `cart.tenders`, so they survive leaving the screen and are what locks the cart. The sale's id (`cart.saleUuid`) is made at the first payment and kept until the sale is paid or cancelled. Card attempt references are built from it, which is how a payment can be matched to its sale later.\n\nThe finishing effect runs once (a `finalising` flag stops it repeating) when there is at least one payment, nothing remains, and the terminal is not waiting. The flag is only cleared by `finishAll`.\n\n### Reading the code for a fault\n- **Pay by card, Cash, Gift card and Split are all greyed out.** `lockPayButtons` is true while the card phase is waiting. If the app was closed mid-payment, reopen the Payment screen: the waiting state is not saved, but the attempt is. Check the card page for what happens to an unfinished attempt.\n- **Paid in full but the sale did not finish.** The effect holds off while the card phase is `waiting`. Look for the strip at the top of the screen.\n- **Cart is stuck as \"Payment in progress\" with nothing paid.** Something left a payment in `cart.tenders`. Open Payment and use **Back**, then **Refund & cancel**.\n- **Sale is finished but missing in Shopify.** It is in the queue: More ▸ Support & diagnostics ▸ Sync shows how many are waiting and the last error, and **Sync now** retries.\n- **A free sale has no payment buttons.** Expected: only **Complete $0.00 sale** shows, and it adds a $0 cash payment.\n- **Tests.** `tests/payui.test.ts` (which card states may draw a sheet), `tests/sale.test.ts` and `tests/cashsale.test.ts` (building sales and cash payments), `tests/simplelabels.test.ts` (Simple mode wording)."
+    }
+@@ -1081,12 +1081,13 @@
+     "keypad"
+    ],
+    "related": [
+-    "sales/cart-and-prices"
++    "sales/cart-and-prices",
++    "sales/cart-warnings"
+    ],
+    "updated": "2026-10-17",
+    "lead": "Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.",
+    "sections": {
+-    "basic": "### The three ways to add items\nAt the top of the left side, pick one:\n- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.\n- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.\n- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a \"Custom amount\".\n\nOn the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.\n\n### Items with several variations\nIf a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with \"stock will go negative\".\n\n### Adding more than one\nTap the item again for each one (the same item joins the same cart line), or change the number on its line in the cart with **−** and **+**. There is no quantity picker on the grid.\n\n### Other ways to find things\n- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.\n- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.\n- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.\n\n### The cart\nOn an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].\n\n### The bar along the top\nThe bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\\\"Reader issue\\\", \\\"Offline · 2 queued\\\", \\\"Sync issue\\\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.\n\n### When you cannot change the cart\nOnce part of a sale has been paid, the cart is locked and you see \"Payment in progress\". Finish the payment or cancel it first.",
++    "basic": "### The three ways to add items\nAt the top of the left side, pick one:\n- **Quick Menu**: your grid of tiles (items, categories, discounts and action buttons). This is the fastest way for the things you sell most.\n- **All products**: every product in alphabetical order, with a filter box. Use it for anything that is not on the grid.\n- **Keypad**: key in an amount and press **Add** for something with no item. It goes in the cart as a \"Custom amount\".\n\nOn the Quick Menu, a tile that opens a **category** takes you into it. The bar above the tiles shows where you are (for example *Home > Dragons > Highland cow*). Tap any earlier name to jump back there, or tap the arrow to go back one step.\n\n### Items with several variations\nIf a product has more than one variation (a colour or size), tapping it replaces the grid with one tile per variation. Tap the one you want and it is added, then you are back where you were. Out-of-stock variations can still be sold: the stock count is allowed to go below zero, and the screen warns you with \"stock will go negative\".\n\n### Adding more than one\nTap the item again for each one (the same item joins the same cart line), or change the number on its line in the cart with **−** and **+**. There is no quantity picker on the grid.\n\n### Other ways to find things\n- **Search** (the bar at the top): finds items (by name, variation, SKU or barcode), customers, discounts and saved carts. Tap a result to use it.\n- **Scan**: a Bluetooth scanner works whenever you are on Checkout and no pop-up is open. The camera icon scans with the iPad's camera. A scanned item is added straight away.\n- Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.\n\n### The cart\nOn an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready; if an item in the cart has a customer warning, you read it first (see [[sales/cart-warnings]]). Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].\n\n### The bar along the top\nThe bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\\\"Reader issue\\\", \\\"Offline · 2 queued\\\", \\\"Sync issue\\\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.\n\n### When you cannot change the cart\nOnce part of a sale has been paid, the cart is locked and you see \"Payment in progress\". Finish the payment or cancel it first.",
+     "deep": "### Why a tap does different things\nA tile is one of several kinds: an item, a category, a display group, a discount, or an action (such as Custom amount, Lock POS, Price check, Stock check or Check change). Items and variations go into the cart; categories and groups open a level of the grid; discounts apply to the whole cart; actions open a sheet or do a job. Categories can contain categories to any depth.\n\n### What \"consolidate\" means\nBy default, adding the same item again raises the quantity on its existing line instead of making a second line. A line is **not** merged into if it has been changed in some way (its price adjusted, a discount put on it, or a note added), because merging would mix a special line with a normal one. This can be turned off in Settings (Checkout ▸ Consolidate identical items).\n\n### How scanning finds an item\nA barcode is compared after removing spaces and leading zeros, so a 12-digit UPC and a 13-digit EAN with a leading 0 match the same item. If no barcode matches, the scan is tried as an exact SKU. If nothing matches you see \"No item for …\".\n\n### Why the grid sometimes does not show an item you expect\nAn item that sits in both a sub-category and its parent category shows only in the sub-category. Items you pin yourself as tiles are never hidden by that rule.\n\n### Your cart is saved as you go\nEvery change to the cart is written to the device (after a very short delay), so closing the app does not lose it.",
+     "advanced": "### What happens on a tap\n```mermaid\nflowchart TD\n  T[Tap an item tile or row] --> A[addItems in Checkout.tsx]\n  A -->|one variant| B[add]\n  A -->|several variants| P[VariantPicker sub-page]\n  P -->|tap one| B\n  B --> L{cart locked? tenders present}\n  L -->|yes| X[alert: Payment in progress]\n  L -->|no| C[ops.addVariant: cartOps.ts]\n  C --> S[useApp setCart: store.ts]\n  S --> W[persist 'pos' to storage, 400 ms debounce]\n  S --> R[usePriced: selectors.ts]\n  R --> Q[priceCart: pricing.ts]\n  Q --> V[CartPane re-renders with the new totals]\n```\n\n### What happens on a scan\n```mermaid\nflowchart TD\n  H[HidScanner or CameraScanner] --> O[onScan in Checkout.tsx]\n  O --> B{isBadgeCode?}\n  B -->|yes| I[signInWithPass, cart unchanged]\n  B -->|no| F[ops.findByBarcode: barcode, then SKU]\n  F -->|found| A[add 1 of the variant]\n  F -->|not found| G{isGiftQr?}\n  G -->|yes| M[toast: redeem from Charge, Gift card]\n  G -->|no| N[toast: No item for code]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The screen, tabs, search, scanning | `src/screens/Checkout.tsx` (`Checkout`) |\n| The bar along the top (clock, shop, reader and sync chips, battery) | `src/ui/AppStatusBar.tsx` |\n| Cart edits (pure) | `src/lib/cartOps.ts`: `addVariant`, `setQty`, `removeLine`, `patchLine`, `swapVariant`, `findByBarcode`, `normaliseBarcode` |\n| The line-merge rule | `sameLine` in `cartOps.ts` (item, same variant, no override, no discount, no note) |\n| Grid path and the variation sub-page | `src/lib/gridNav.ts`, `VariantPicker` in `src/screens/Tiles.tsx`, rules in `src/lib/lookup.ts` |\n| Store and saving | `src/state/store.ts` (`setCart`, `persist`) |\n| Scanner focus rules | `HidScanner` in `src/screens/Scanner.tsx`, `src/lib/focusGuard.ts` |\n\n### Reading the code for a fault\n- **A scan adds nothing and says \"No item\"**: the variant's `barcode` and `sku` on this device do not match what was scanned. A missing barcode on the item in Shopify is the usual cause; fix it there, then import again in Settings ▸ Shopify.\n- **A tap does nothing and shows \"Payment in progress\"**: `cart.tenders` has an entry, so `locked` is true. Finish or cancel the payment. A part-paid sale left over from a crash is the usual reason.\n- **The scanner stops working**: `HidScanner` is enabled only when `active`, the tab is Checkout, no sheet is open, no camera is open and the navigation stack is empty. Any one of those being false disables it.\n- **An item is on the grid but missing inside a category**: see `ownProductIds` in `src/lib/gridNav.ts` (deepest sub-category wins)."
+    }
+@@ -1148,6 +1149,38 @@
+     "advanced": "### The pricing pipeline\n```mermaid\nflowchart TD\n  U[usePriced: src/state/selectors.ts] --> P[priceCart cart, ctx]\n  P --> W[Work per line: item price or catalogue unit price]\n  W --> B1[1 matchBundles: bundles.ts]\n  B1 --> B2[2 chooseAutoDiscounts: pricing.ts]\n  B2 --> B3[3 manual line discount]\n  B3 --> B4[4 cart discount except fixed line prices]\n  B4 --> B5[5 apply line price adjustments]\n  B5 --> B6[6 spread whole order price over eligible lines]\n  B6 --> R[PricedCart totals and adjustment rows]\n  R --> UI[CartPane, Pay, receipts]\n  R --> S[splitLineForOrder for Shopify order lines]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The whole pipeline | `priceCart` in `src/lib/pricing.ts` |\n| Running it live | `usePriced` in `src/state/selectors.ts` (re-runs when the cart, catalogue, automatic discounts or the bundles setting change) |\n| Bundle matching | `matchBundles` in `src/lib/bundles.ts` |\n| Automatic discounts | `chooseAutoDiscounts`, `autoMove`, `isLot`, `activeNow` in `src/lib/pricing.ts` |\n| Clamping a discount to what is left | the local `add` in `priceCart` (`Math.min(d.cents, remaining(w))`) and `remaining` |\n| Percent and spreading cents | `pctOf`, `allocate` in `src/lib/money.ts` |\n| Which lines are discountable | `discountable` in `priceCart`: not `gift_card`, not `noDiscount`, no `no-discount` tag (`NO_DISCOUNT_TAG`) |\n| Rows shown in the cart | `invoiceRows`, `unitLine` in `src/lib/invoiceRows.ts` |\n| The cart screen | `src/screens/CartPane.tsx`; the line editor `LineEditor` in `src/screens/sheets.tsx` |\n| Item, line and whole-order price rules | `setItemPrice` in `src/lib/cartOps.ts`; `makeAdjust`, `reviewReasons` in `src/lib/lineAdjust.ts`; `orderAdjustProblem`, `orderReviewReasons` in `src/lib/orderAdjust.ts` |\n| Adjustment rows and payment gate | `adjustmentRows`, `needsAdjustReview`, `unresolvedRows` in `src/lib/adjustReview.ts`; `AdjustmentReviewSheet` in `src/screens/AdjustmentReview.tsx` |\n| Price-adjustment role rules | `src/lib/adjustPerms.ts`, `AdjustRoleRules` in `src/screens/Staff.tsx` |\n| Saving reasons to sales and reports | `saleAdjustments` in `src/lib/adjustReview.ts`, `encodeAdjustments` in `src/lib/adjustReason.ts`, `applyRecord` in `src/lib/rollup.ts` |\n| Splitting for Shopify | `splitLineForOrder` in `src/lib/pricing.ts` |\n| Tests | `tests/itemadjust.test.ts`, `tests/lineadjust.test.ts`, `tests/orderadjust.test.ts`, `tests/adjustreview.test.ts`, `tests/adjustreason.test.ts`, `tests/adjustperms.test.ts`; plus `tests/compound.test.ts`, `tests/autocombine.test.ts`, `tests/bundleform.test.ts`, `tests/swipe.test.ts` |\n\n### The data it returns\n`PricedCart` has `lines` (each with `baseUnitCents`, `grossCents`, `discounts`, `discountCents`, `netCents`, `bundleUnits`), the cart totals `itemsCents`, `discountCents` and `netCents`, `deals` (the discounts rolled up by type and label, which is what the totals area lists), and `bundles` (one entry per bundle application, with the units it used). Each entry in `discounts` has a `type` (`bundle`, `auto`, `manual` or `cart`), a `label`, `cents`, and for repeated deals a `times` count.\n\n### Reading the code for a fault\n- **A deal you expect did not apply.** Check, in order: is the line discountable (tag, `noDiscount`, gift card or custom amount)? Is the discount inside its dates (`activeNow` compares `startsAt` and `endsAt`)? Does the line's product, variation or collection match the discount's target (`matches`)? For a bundle, check its on/off switch, dates and \"most times per order\" in the bundle editor.\n- **A line discount you set vanished from the receipt.** The line also got a bundle discount, and step 3 skips lines that did (`w.discounts.some(d => d.type === 'bundle')`).\n- **The total is a cent out against Shopify.** Compare `splitLineForOrder` output with the order lines; the groups must add to `netCents`.\n- **A discount seems to apply to the wrong line.** The cart discount is spread over every discountable line, so each gets a share; look at the per-line `discounts` array, not just the rolled-up `deals`.\n- **Debugging a cart.** Call `priceCart` from a test with the same cart and context as the sale (see `tests/autocombine.test.ts` for how a context is built)."
+    }
+   },
++  {
++   "id": "sales/cart-warnings",
++   "title": "Customer warnings at Charge",
++   "parent": "sales",
++   "summary": "Prompts that appear before payment when the cart holds a chosen item or category, such as \"joints are fragile\", and how to set them up.",
++   "tags": [
++    "warning",
++    "customer warning",
++    "prompt",
++    "fragile",
++    "acknowledge",
++    "charge",
++    "category",
++    "always show",
++    "next",
++    "back"
++   ],
++   "related": [
++    "sales",
++    "sales/cart-and-prices",
++    "sales/bundles",
++    "pay",
++    "settings"
++   ],
++   "updated": "2026-10-17",
++   "lead": "A customer warning is a message the till shows the cashier when they press **Charge**, before payment starts. Use it for things the customer should be told, for example *Joints are fragile, do not bend or apply pressure as it will snap* on a mini dragon.",
++   "sections": {
++    "basic": "### What the cashier sees\nTap **Charge**. If anything in the cart has a warning, a window called **Customer warning** (or whatever header was set) opens before the price adjustments and bundle checks.\n- It shows one warning at a time, with *Warning 1 of 3* at the top and **For:** under the message naming the items that set it off.\n- Tap **Next** and **Back** to move between them.\n- On the last warning, tap **Continue to payment**. **Back to cart** closes the window so you can change the cart.\n- If a warning needs ticking, tap **I have read this and dealt with it** on each one. **Continue to payment** stays off until every warning that needs it has been ticked, and a note says how many are left.\n\nOnce you have carried on from a warning, it is not asked again on the same sale unless it changes (its text is edited, or another line sets it off). A warning set to always show comes up every time you press Charge.\n\n### Setting them up\nOpen **More ▸ Settings ▸ Cart warnings** (managers and owners). Tap **Add warning**, then:\n1. **Header**: the title of the window. Leave it blank for *Customer Warning*.\n2. **Message for the cashier**: the text shown.\n3. **Show on every sale**: turn on to show it on every Charge, whatever is in the cart.\n4. **Cashier must tick it**: turn on to stop payment until the cashier ticks that they have read it and dealt with it.\n5. **Shows when the cart has**: pick **Variation**, **Product** or **Category**, search, and tap the one you want. A *Product* covers every variation of it. A *Category* is a Shopify collection, so it covers every product in it. This is hidden when **Show on every sale** is on.\n6. Tap **Save**. **Save** stays off until there is a message and something to attach it to (or Show on every sale is on).\n\nIn the list, **On** and **Off** switch a warning without deleting it. **Edit** and **Delete** are on each card. Delete asks first.\n\n### Good to know\n- Gift cards and custom amounts never set a warning off.\n- Warnings are shared with the other registers, like the staff list and bundle deals.\n- Practice runs in Training never show the shop's real warnings.\n- A warning for an item or category that has since been removed from the catalogue shows its name as *no longer in the catalogue*. It never fires. Edit it or delete it.",
++    "deep": "### Order of the checks\nCharge runs the checks in this order, and each one only appears if it applies: customer warnings, then **Check the price adjustments**, then **Check these bundles**, then the Payment screen. A sale that is already part paid goes straight to Payment and skips all three.\n\n### What counts as \"already seen\"\nWhen you tap **Continue to payment**, the till remembers each warning you carried on from, along with which cart lines set it off and the exact header and message. If you come back to the cart and press Charge again, only warnings that are new or changed appear. Warnings set to always show are never remembered. Starting a new sale (an empty cart) forgets everything.\n\n### Ticking\nTicking is per warning, and it resets each time the window opens, so a cashier cannot tick on one visit and skip on the next. Ticking again un-ticks. **Next** and **Back** are always free, and **Continue to payment** only appears on the last warning so every one is paged through.\n\n### Order of the warnings\nWarnings appear in the order they were added in Settings.",
++    "advanced": "### From Charge to payment\n```mermaid\nflowchart TD\n  A[Charge in CartPane.tsx or takePayment in GuidedCheckout.tsx] --> B{sale part paid}\n  B -->|yes| P[adjustment review check]\n  B -->|no| C[useCartWarningGate pages]\n  C -->|none| P\n  C -->|some| D[CartWarningsSheet]\n  D -->|Continue| E[markSeen then afterWarnings]\n  E --> P\n  P --> F[bundle check then pay screen]\n```\n\n### Where it lives\n- `src/lib/cartWarnings.ts`: `matchCartWarnings` finds which warnings the cart sets off (variant, product, or collection through `collectionsOfProduct`; `category` is read as `collection`), `warningKey` fingerprints one, `pendingCartWarnings` drops those already seen, `unacknowledged` lists those still to tick.\n- `src/screens/CartWarningsSheet.tsx`: the window, and `useCartWarningGate`, the hook both checkouts use.\n- `src/screens/CartWarningsSettings.tsx`: the editor under Settings ▸ Cart warnings.\n- `Settings.cartWarnings` in `src/state/store.ts`, typed by `CartWarning` in `src/lib/types.ts`.\n- Shared between registers by `pushSharedSettings` and `pullSettings` in `src/lib/sync.ts`.\n- `sandboxSettings` in `src/lib/trainingSandbox.ts` sets `cartWarnings: []` so practice never meets the real ones.\n- Window controls are the `warning.*` spots in `src/lib/trainingSpots.ts`, placed on `sheet_cart_warnings` in `src/lib/appControls.ts` and `src/app.navgraph`.\n\n### Tracing a warning that does not show\n1. Is it **On** in Settings ▸ Cart warnings, and does it have a message and a target (or Show on every sale)?\n2. Does the cart line come from the catalogue? Gift cards and custom amounts are skipped.\n3. Does the line's product sit in the collection? A category warning uses the collection's product list from the last sync.\n4. Was it already carried on from on this sale? Only a change to the warning or its lines brings it back, unless it is set to always show.\n5. Is the sale part paid? Part-paid sales skip the warnings.\n\nTests: `tests/cartwarnings.test.ts`."
++   }
++  },
+   {
+    "id": "sales/customers",
+    "title": "Customers",
+@@ -1350,12 +1383,13 @@
+     "settings/theme",
+     "staff/screensaver",
+     "staff",
+-    "sales/bundles"
++    "sales/bundles",
++    "sales/cart-warnings"
+    ],
+    "updated": "2026-10-11",
+    "lead": "Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.",
+    "sections": {
+-    "basic": "### Find a setting\n- **Shopify** connects the register to your shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports CSV files or deletes local history.\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
++    "basic": "### Find a setting\n- **Shopify** connects the register to your shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports CSV files or deletes local history.\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
+     "deep": "### Settings are not all shared the same way\nSome choices apply only to this register, such as Smart change and Screensaver & display. Shared settings, such as staff and bundle deals, sync with the other registers. The screen or setting guide explains when a choice is local.\n\nThe Payments section shows fee rates used for estimates. Zeller does not report actual card fees to the POS, and the automatic cash tender machine is still under construction; cash is entered and given by hand.",
+     "advanced": "### Settings sections\n| Section | Component or route |\n|---|---|\n| Settings list and section navigation | `src/screens/Settings.tsx` |\n| Shopify connection and catalogue import | `ShopifySettings` in `src/screens/Settings.tsx` |\n| Payments, fees and cash rounding | Payments section in `src/screens/Settings.tsx` |\n| Bundle deals | `BundlesEditor` in `src/screens/BundleBuilder.tsx` |\n| Hardware scanner test | `HardwareTest` in `src/screens/Settings.tsx` |\n| Screensaver and display | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Settings model and defaults | `src/state/store.ts` |\n\nEach section is a panel within the Settings screen. Its values may be stored locally, shared with the other registers, or held in the iPad's secure storage depending on the setting."
+    }
+diff --git a/help/pay/index.md b/help/pay/index.md
+index 06706a2..b70913e 100644
+--- a/help/pay/index.md
++++ b/help/pay/index.md
+@@ -12,9 +12,10 @@ The Payment screen is where a sale is paid for. You reach it with **Charge** on
+ ## Basic
+ 
+ ### Getting there
+-Tap **Charge** on the cart. Two checks can come first, only if they apply:
+-1. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].
+-2. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].
++Tap **Charge** on the cart. Three checks can come first, only if they apply:
++1. A **Customer warning**, if something in the cart has one set. See [[sales/cart-warnings]].
++2. A list of **price adjustments** on the sale, which you keep, change or remove. See [[sales/cart-and-prices]].
++3. **Check these bundles**, if a bundle deal is not a recommended pair. See [[sales/bundles]].
+ 
+ Then the **Payment** screen opens.
+ 
+diff --git a/help/sales/cart-warnings.md b/help/sales/cart-warnings.md
+new file mode 100644
+index 0000000..7701802
+--- /dev/null
++++ b/help/sales/cart-warnings.md
+@@ -0,0 +1,85 @@
++---
++id: sales/cart-warnings
++title: Customer warnings at Charge
++parent: sales
++summary: Prompts that appear before payment when the cart holds a chosen item or category, such as "joints are fragile", and how to set them up.
++tags: [warning, customer warning, prompt, fragile, acknowledge, charge, category, always show, next, back]
++related: [sales, sales/cart-and-prices, sales/bundles, pay, settings]
++updated: 2026-10-17
++---
++A customer warning is a message the till shows the cashier when they press **Charge**, before payment starts. Use it for things the customer should be told, for example *Joints are fragile, do not bend or apply pressure as it will snap* on a mini dragon.
++
++## Basic
++
++### What the cashier sees
++Tap **Charge**. If anything in the cart has a warning, a window called **Customer warning** (or whatever header was set) opens before the price adjustments and bundle checks.
++- It shows one warning at a time, with *Warning 1 of 3* at the top and **For:** under the message naming the items that set it off.
++- Tap **Next** and **Back** to move between them.
++- On the last warning, tap **Continue to payment**. **Back to cart** closes the window so you can change the cart.
++- If a warning needs ticking, tap **I have read this and dealt with it** on each one. **Continue to payment** stays off until every warning that needs it has been ticked, and a note says how many are left.
++
++Once you have carried on from a warning, it is not asked again on the same sale unless it changes (its text is edited, or another line sets it off). A warning set to always show comes up every time you press Charge.
++
++### Setting them up
++Open **More ▸ Settings ▸ Cart warnings** (managers and owners). Tap **Add warning**, then:
++1. **Header**: the title of the window. Leave it blank for *Customer Warning*.
++2. **Message for the cashier**: the text shown.
++3. **Show on every sale**: turn on to show it on every Charge, whatever is in the cart.
++4. **Cashier must tick it**: turn on to stop payment until the cashier ticks that they have read it and dealt with it.
++5. **Shows when the cart has**: pick **Variation**, **Product** or **Category**, search, and tap the one you want. A *Product* covers every variation of it. A *Category* is a Shopify collection, so it covers every product in it. This is hidden when **Show on every sale** is on.
++6. Tap **Save**. **Save** stays off until there is a message and something to attach it to (or Show on every sale is on).
++
++In the list, **On** and **Off** switch a warning without deleting it. **Edit** and **Delete** are on each card. Delete asks first.
++
++### Good to know
++- Gift cards and custom amounts never set a warning off.
++- Warnings are shared with the other registers, like the staff list and bundle deals.
++- Practice runs in Training never show the shop's real warnings.
++- A warning for an item or category that has since been removed from the catalogue shows its name as *no longer in the catalogue*. It never fires. Edit it or delete it.
++
++## Deep
++
++### Order of the checks
++Charge runs the checks in this order, and each one only appears if it applies: customer warnings, then **Check the price adjustments**, then **Check these bundles**, then the Payment screen. A sale that is already part paid goes straight to Payment and skips all three.
++
++### What counts as "already seen"
++When you tap **Continue to payment**, the till remembers each warning you carried on from, along with which cart lines set it off and the exact header and message. If you come back to the cart and press Charge again, only warnings that are new or changed appear. Warnings set to always show are never remembered. Starting a new sale (an empty cart) forgets everything.
++
++### Ticking
++Ticking is per warning, and it resets each time the window opens, so a cashier cannot tick on one visit and skip on the next. Ticking again un-ticks. **Next** and **Back** are always free, and **Continue to payment** only appears on the last warning so every one is paged through.
++
++### Order of the warnings
++Warnings appear in the order they were added in Settings.
++
++## Advanced
++
++### From Charge to payment
++```mermaid
++flowchart TD
++  A[Charge in CartPane.tsx or takePayment in GuidedCheckout.tsx] --> B{sale part paid}
++  B -->|yes| P[adjustment review check]
++  B -->|no| C[useCartWarningGate pages]
++  C -->|none| P
++  C -->|some| D[CartWarningsSheet]
++  D -->|Continue| E[markSeen then afterWarnings]
++  E --> P
++  P --> F[bundle check then pay screen]
++```
++
++### Where it lives
++- `src/lib/cartWarnings.ts`: `matchCartWarnings` finds which warnings the cart sets off (variant, product, or collection through `collectionsOfProduct`; `category` is read as `collection`), `warningKey` fingerprints one, `pendingCartWarnings` drops those already seen, `unacknowledged` lists those still to tick.
++- `src/screens/CartWarningsSheet.tsx`: the window, and `useCartWarningGate`, the hook both checkouts use.
++- `src/screens/CartWarningsSettings.tsx`: the editor under Settings ▸ Cart warnings.
++- `Settings.cartWarnings` in `src/state/store.ts`, typed by `CartWarning` in `src/lib/types.ts`.
++- Shared between registers by `pushSharedSettings` and `pullSettings` in `src/lib/sync.ts`.
++- `sandboxSettings` in `src/lib/trainingSandbox.ts` sets `cartWarnings: []` so practice never meets the real ones.
++- Window controls are the `warning.*` spots in `src/lib/trainingSpots.ts`, placed on `sheet_cart_warnings` in `src/lib/appControls.ts` and `src/app.navgraph`.
++
++### Tracing a warning that does not show
++1. Is it **On** in Settings ▸ Cart warnings, and does it have a message and a target (or Show on every sale)?
++2. Does the cart line come from the catalogue? Gift cards and custom amounts are skipped.
++3. Does the line's product sit in the collection? A category warning uses the collection's product list from the last sync.
++4. Was it already carried on from on this sale? Only a change to the warning or its lines brings it back, unless it is set to always show.
++5. Is the sale part paid? Part-paid sales skip the warnings.
++
++Tests: `tests/cartwarnings.test.ts`.
+diff --git a/help/sales/index.md b/help/sales/index.md
+index 074abf2..7139caa 100644
+--- a/help/sales/index.md
++++ b/help/sales/index.md
+@@ -4,7 +4,7 @@ title: Checkout: the main screen
+ parent: start
+ summary: Adding items to a sale: the Quick Menu grid, All products, the keypad, search, scanning, and the cart.
+ tags: [checkout, sell, grid, scan, search, keypad]
+-related: [sales/cart-and-prices]
++related: [sales/cart-and-prices, sales/cart-warnings]
+ updated: 2026-10-17
+ ---
+ Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.
+@@ -31,7 +31,7 @@ Tap the item again for each one (the same item joins the same cart line), or cha
+ - Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.
+ 
+ ### The cart
+-On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
++On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready; if an item in the cart has a customer warning, you read it first (see [[sales/cart-warnings]]). Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
+ 
+ ### The bar along the top
+ The bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.
+diff --git a/help/settings/index.md b/help/settings/index.md
+index 90a5b2e..b82bcf4 100644
+--- a/help/settings/index.md
++++ b/help/settings/index.md
+@@ -4,7 +4,7 @@ title: Settings
+ parent: start
+ summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
+ tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
+-related: [settings/shopify, settings/payments, settings/hardware, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles]
++related: [settings/shopify, settings/payments, settings/hardware, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings]
+ updated: 2026-10-11
+ ---
+ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
+@@ -15,6 +15,7 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
+ - **Shopify** connects the register to your shop; see [[settings/shopify]].
+ - **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].
+ - **Discounts & bundles** manages the bundle deals used in Checkout.
++- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].
+ - **Hardware** opens the scanner test; see [[settings/hardware]].
+ - **Data** exports CSV files or deletes local history.
+ - **Square history** imports old Square sales for Reports.
+diff --git a/src/app.navgraph b/src/app.navgraph
+index c105326..f068a07 100644
+--- a/src/app.navgraph
++++ b/src/app.navgraph
+@@ -146,6 +146,7 @@ SCREEN sheet_cart_discount "Cart discount" { "kind": "sheet", "tab": "checkout",
+ SCREEN sheet_order_price "Whole order price" { "kind": "sheet", "tab": "checkout", "label": "Whole order price" }
+ SCREEN sheet_review "Check the price adjustments" { "kind": "sheet", "tab": "checkout", "label": "Check the price adjustments" }
+ SCREEN sheet_bundles "Check these bundles" { "kind": "sheet", "tab": "checkout", "label": "Check these bundles" }
++SCREEN sheet_cart_warnings "Customer warning" { "kind": "sheet", "tab": "checkout", "label": "Customer warning" }
+ SCREEN sheet_save_cart "Save cart" { "kind": "sheet", "tab": "checkout", "label": "Save cart" }
+ 
+ tab_checkout -> sheet_search [say="Tap Search."] { DO TAP { "target": "find.search" } }
+@@ -181,6 +182,10 @@ sheet_review -> page_cart [say="Close this window first."] { DO TAP { "target":
+ tab_checkout -> sheet_bundles [say="Tap Charge."] { DO TAP { "target": "cart.charge" } }
+ sheet_bundles -> page_pay [say="Tap Continue to payment."] { DO TAP { "target": "bundle.continue" } }
+ sheet_bundles -> page_cart [say="Tap Edit cart."] { DO TAP { "target": "bundle.edit" } }
++page_cart -> sheet_cart_warnings [say="Tap Charge."] { DO TAP { "target": "cart.charge" } }
++tab_checkout -> sheet_cart_warnings [say="Tap Charge."] { DO TAP { "target": "cart.charge" } }
++sheet_cart_warnings -> page_pay [say="Tap Continue to payment."] { DO TAP { "target": "warning.continue" } }
++sheet_cart_warnings -> page_cart [say="Close this window first."] { DO TAP { "target": "sheet.close" } }
+ 
+ # ------------------------------------------------------ Line editor sheets
+ SCREEN sheet_line "Item" { "kind": "sheet", "tab": "checkout", "label": "Item" }
+diff --git a/src/lib/appControls.ts b/src/lib/appControls.ts
+index da230f5..b0c93f6 100644
+--- a/src/lib/appControls.ts
++++ b/src/lib/appControls.ts
+@@ -77,6 +77,10 @@ export const SPOT_SCREEN: Record<string, string> = {
+   [SPOT.cartDeals]: 'tab_checkout',
+   [SPOT.bundleContinue]: 'sheet_bundles',
+   [SPOT.bundleEdit]: 'sheet_bundles',
++  [SPOT.warningBack]: 'sheet_cart_warnings',
++  [SPOT.warningNext]: 'sheet_cart_warnings',
++  [SPOT.warningAcknowledge]: 'sheet_cart_warnings',
++  [SPOT.warningContinue]: 'sheet_cart_warnings',
+   [SPOT.lineDone]: 'tab_checkout',
+   [SPOT.scanCamera]: 'tab_checkout',
+   [SPOT.scanDone]: 'tab_checkout',
+diff --git a/src/lib/appNavgraph.generated.ts b/src/lib/appNavgraph.generated.ts
+index e844b5f..67af764 100644
+--- a/src/lib/appNavgraph.generated.ts
++++ b/src/lib/appNavgraph.generated.ts
+@@ -1,7 +1,7 @@
+ // Location: src/lib/appNavgraph.generated.ts
+ // GENERATED from src/app.navgraph and src/app.navschema by scripts/build-navgraph.ts. Do not edit by hand.
+ // React Native has no filesystem (see routegraph llms.txt), so the graph travels with the app as text and the schema as data.
+-// Screens: 69 (5 tab, 2 view, 18 page, 39 sheet, 5 overlay). Edges: 160.
+-export const APP_NAVGRAPH: string = "NAVGRAPH/2\nAPP \"Aidens 3D POS\"\n\n# The line key of a per line window (its variant, or the line's own id for a\n# custom amount). The `sheet_line` template below is copied once per open line\n# at runtime, and the copy fills this in (see `ensureLineWindow` in appGraph).\nVAR ITEM_KEY : string\n\n# ============================================================================\n# The app as a graph. Screens are places a person can be. Edges are how they\n# move and what they do. Control level action nodes are registered at runtime\n# from src/lib/appControls.ts (node id = \"do:\" + spot id), so every button,\n# tile, row and gesture in the app joins this graph without hand editing.\n#\n# Node kinds (screen meta \"kind\"):\n#   tab      the five bottom bar tabs\n#   view     a mode inside Checkout (Keypad, All products; Quick Menu is the tab)\n#   page     a pushed route\n#   sheet    a window drawn over the page\n#   overlay  something drawn over everything (sign in, screensaver, practice)\n#   action   a control, a terminal node in a route\n#\n# Edge meta:\n#   say      the words said while pointing at this transition\n#   gesture  tap (default), or a swipe/hold/scroll\n#   spot     the UI spot this transition taps, when it has one\n#   roles    who may take it\n#   modules  which run the transition belongs to (a module id, or \"real\"); missing means every run\n# ============================================================================\n\n# ---------------------------------------------------------------- tabs -----\nSCREEN tab_checkout \"Checkout\" { \"kind\": \"tab\", \"tab\": \"checkout\", \"label\": \"Checkout\", \"summary\": \"Build the sale and take payment.\" }\nSCREEN tab_inventory \"Inventory\" { \"kind\": \"tab\", \"tab\": \"inventory\", \"label\": \"Inventory\" }\nSCREEN tab_transactions \"Transactions\" { \"kind\": \"tab\", \"tab\": \"transactions\", \"label\": \"Transactions\" }\nSCREEN tab_notifications \"Notifications\" { \"kind\": \"tab\", \"tab\": \"notifications\", \"label\": \"Notifications\" }\nSCREEN tab_more \"More\" { \"kind\": \"tab\", \"tab\": \"more\", \"label\": \"More\" }\n\ntab_checkout -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_checkout -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_checkout -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_checkout -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_inventory -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_inventory -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_inventory -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_inventory -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_transactions -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_transactions -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_transactions -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_transactions -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_notifications -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_notifications -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_notifications -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_notifications -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_more -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_more -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_more -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_more -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\n\n# ------------------------------------------------------- checkout views ----\nSCREEN view_keypad \"Keypad\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"Keypad\" }\nSCREEN view_all \"All products\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"All products\" }\n\ntab_checkout -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\ntab_checkout -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_keypad -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_keypad -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_all -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_all -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\n\n# ------------------------------------------------------------- pages -------\nSCREEN page_pay \"Payment\" { \"kind\": \"page\", \"route\": \"pay\", \"label\": \"Payment\" }\nSCREEN page_cart \"Cart\" { \"kind\": \"page\", \"route\": \"cart\", \"label\": \"Cart\" }\nSCREEN page_saved \"Saved carts\" { \"kind\": \"page\", \"route\": \"saved\", \"label\": \"Saved carts\" }\nSCREEN page_orders \"Orders\" { \"kind\": \"page\", \"route\": \"orders\", \"label\": \"Orders\" }\nSCREEN page_items \"Items\" { \"kind\": \"page\", \"route\": \"items\", \"label\": \"Items\" }\nSCREEN page_create_item \"New item\" { \"kind\": \"page\", \"route\": \"createItem\", \"label\": \"New item\" }\nSCREEN page_edit_item \"Edit item\" { \"kind\": \"page\", \"route\": \"editItem\", \"label\": \"Edit item\" }\nSCREEN page_customers \"Customers\" { \"kind\": \"page\", \"route\": \"customers\", \"label\": \"Customers\" }\nSCREEN page_reports \"Reports\" { \"kind\": \"page\", \"route\": \"reports\", \"label\": \"Reports\" }\nSCREEN page_giftcards \"Gift cards\" { \"kind\": \"page\", \"route\": \"giftcards\", \"label\": \"Gift cards\" }\nSCREEN page_drawer \"Cash drawer\" { \"kind\": \"page\", \"route\": \"drawer\", \"label\": \"Cash drawer\" }\nSCREEN page_settings \"Settings\" { \"kind\": \"page\", \"route\": \"settings\", \"label\": \"Settings\" }\nSCREEN page_staff \"Staff\" { \"kind\": \"page\", \"route\": \"staff\", \"label\": \"Staff\", \"roles\": [\"manager\", \"owner\"] }\nSCREEN page_diagnostics \"Support & diagnostics\" { \"kind\": \"page\", \"route\": \"diagnostics\", \"label\": \"Support & diagnostics\" }\nSCREEN page_help \"Help\" { \"kind\": \"page\", \"route\": \"help\", \"label\": \"Help\" }\nSCREEN page_training \"Training\" { \"kind\": \"page\", \"route\": \"training\", \"label\": \"Training\" }\nSCREEN page_training_run \"Training run\" { \"kind\": \"page\", \"route\": \"trainingRun\", \"label\": \"Training run\" }\nSCREEN page_terminal_play \"Practice terminal\" { \"kind\": \"page\", \"route\": \"terminalPlay\", \"label\": \"Practice terminal\" }\n\n# Checkout to payment and cart\ntab_checkout -> page_cart [say=\"Open the cart first.\"] { DO TAP { \"target\": \"cart.open\" } }\npage_cart -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\ntab_checkout -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_cart -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_pay -> page_cart [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_pay -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# More to its pages\ntab_more -> page_orders [say=\"Tap Orders.\"] { DO TAP { \"target\": \"more.orders\" } }\ntab_more -> page_items [say=\"Tap Items.\"] { DO TAP { \"target\": \"more.items\" } }\ntab_more -> page_customers [say=\"Tap Customers.\"] { DO TAP { \"target\": \"more.customers\" } }\ntab_more -> page_saved [say=\"Tap Saved carts.\"] { DO TAP { \"target\": \"more.saved\" } }\ntab_more -> page_giftcards [say=\"Tap Gift cards.\"] { DO TAP { \"target\": \"more.giftcards\" } }\ntab_more -> page_reports [say=\"Tap Reports.\"] { DO TAP { \"target\": \"more.reports\" } }\ntab_more -> page_drawer [say=\"Tap Cash drawer.\"] { DO TAP { \"target\": \"more.drawer\" } }\ntab_more -> page_staff [say=\"Tap Staff.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.staff\" } }\ntab_more -> page_settings [say=\"Tap Settings.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.settings\" } }\ntab_more -> page_diagnostics [say=\"Tap Support & diagnostics.\"] { DO TAP { \"target\": \"more.diagnostics\" } }\ntab_more -> page_help [say=\"Tap Help.\"] { DO TAP { \"target\": \"more.help\" } }\ntab_more -> page_training [say=\"Tap Training.\"] { DO TAP { \"target\": \"more.training\" } }\n\npage_orders -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_items -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_customers -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_saved -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_giftcards -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_reports -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_drawer -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_staff -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_settings -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_diagnostics -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_help -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Items pages\npage_items -> page_create_item [say=\"Tap New item.\"] { DO TAP { \"target\": \"items.new\" } }\npage_items -> page_edit_item [say=\"Tap the item.\"] { DO TAP { \"target\": \"items.row\" } }\npage_create_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_edit_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Training\npage_training -> page_training_run [say=\"Tap Start.\"] { DO TAP { \"target\": \"training.start\" } }\npage_training_run -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> page_terminal_play [say=\"Tap the practice terminal.\"] { DO TAP { \"target\": \"training.terminal\" } }\npage_terminal_play -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# ----------------------------------------------------------- Checkout sheets\nSCREEN sheet_search \"Search\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Search\" }\nSCREEN sheet_customer \"Customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer\" }\nSCREEN sheet_customer_new \"New customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"New customer\" }\nSCREEN sheet_custom_amount \"Custom amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Custom amount\" }\nSCREEN sheet_gift_sell \"Sell gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Sell gift card\" }\nSCREEN sheet_gift_sell_details \"Gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Gift card\" }\nSCREEN sheet_cart_menu \"Cart menu\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart menu\" }\nSCREEN sheet_cart_discount \"Cart discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart discount\" }\nSCREEN sheet_order_price \"Whole order price\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Whole order price\" }\nSCREEN sheet_review \"Check the price adjustments\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check the price adjustments\" }\nSCREEN sheet_bundles \"Check these bundles\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check these bundles\" }\nSCREEN sheet_save_cart \"Save cart\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Save cart\" }\n\ntab_checkout -> sheet_search [say=\"Tap Search.\"] { DO TAP { \"target\": \"find.search\" } }\nsheet_search -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\npage_cart -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\nsheet_customer -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_customer -> sheet_customer_new [say=\"Tap Create customer.\"] { DO TAP { \"target\": \"customer.create\" } }\nsheet_customer_new -> sheet_customer [say=\"Tap Back.\"] { DO TAP { \"target\": \"customer.back\" } }\ntab_checkout -> sheet_custom_amount [say=\"Tap Custom amount.\"] { DO TAP { \"target\": \"grid.action:custom\" } }\nsheet_custom_amount -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_gift_sell [say=\"Tap Sell gift card.\"] { DO TAP { \"target\": \"cart.menu.gift\" } }\nsheet_gift_sell -> sheet_gift_sell_details [say=\"Tap Next.\"] { DO TAP { \"target\": \"gift.next\" } }\nsheet_gift_sell_details -> sheet_gift_sell [say=\"Tap Change amount.\"] { DO TAP { \"target\": \"gift.change\" } }\nsheet_gift_sell_details -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_gift_sell -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\ntab_checkout -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\nsheet_cart_menu -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_cart_discount [say=\"Tap Apply cart discount.\"] { DO TAP { \"target\": \"cart.menu.discount\" } }\nsheet_cart_menu -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_cart_menu -> sheet_save_cart [say=\"Tap Save cart.\"] { DO TAP { \"target\": \"cart.menu.save\" } }\nsheet_cart_discount -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order_price -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_save_cart -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_review -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"review.continue\" } }\nsheet_review -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_bundles [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_bundles -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"bundle.continue\" } }\nsheet_bundles -> page_cart [say=\"Tap Edit cart.\"] { DO TAP { \"target\": \"bundle.edit\" } }\n\n# ------------------------------------------------------ Line editor sheets\nSCREEN sheet_line \"Item\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item\" }\nSCREEN sheet_line_discount \"Item discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item discount\" }\nSCREEN sheet_line_item_price \"Item price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item price adjustment\" }\nSCREEN sheet_line_line_price \"Line price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Line price adjustment\" }\n\n# The per line copies (sheet_line:<key>) and their controls are registered at\n# runtime as each line window opens (see `ensureLineWindow` in appGraph). These\n# static edges are the template: each copy fills $ITEM_KEY$ with its own line.\npage_cart -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\ntab_checkout -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\nsheet_line -> tab_checkout [say=\"Tap Done to close the item.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> sheet_line_discount [say=\"Tap Discount.\"] { DO TAP { \"target\": \"line.discount\" } }\nsheet_line -> sheet_line_item_price [say=\"Tap Item price adjustment.\"] { DO TAP { \"target\": \"line.price\" } }\nsheet_line -> sheet_line_line_price [say=\"Tap Line price adjustment.\"] { DO TAP { \"target\": \"line.adjust\" } }\nsheet_line_discount -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_item_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_line_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ----------------------------------------------------------------- Payment --\nSCREEN sheet_cash_receive \"Cash received\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cash received\" }\nSCREEN sheet_cash_change \"Give change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Give change\" }\nSCREEN sheet_check_change \"Check change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check change\" }\nSCREEN sheet_split \"Split amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Split amount\" }\nSCREEN sheet_gift_check \"Check gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check gift card\" }\nSCREEN sheet_receipt \"Receipt\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Receipt\" }\n\npage_pay -> sheet_cash_receive [say=\"Tap Cash.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_split [say=\"Tap Split.\"] { DO TAP { \"target\": \"pay.split\" } }\nsheet_split -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_receive -> sheet_cash_change [say=\"Tap Next: give change.\"] { DO TAP { \"target\": \"cash.next\" } }\nsheet_cash_receive -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_change -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_check_change [say=\"Check the change.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_gift_check [say=\"Tap Gift card.\"] { DO TAP { \"target\": \"pay.gift\" } }\nsheet_gift_check -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_receipt [say=\"Finish the sale.\"] { DO TAP { \"target\": \"pay.card\" } }\nsheet_receipt -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"receipt.none\" } }\n\n# ---------------------------------------------------------- Orders & refund -\nSCREEN sheet_order \"Order\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Order\" }\nSCREEN sheet_refund \"Return\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return\" }\nSCREEN sheet_refund_pick \"Replacement item\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Replacement item\" }\nSCREEN sheet_refund_done \"Done\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Done\" }\n\npage_orders -> sheet_order [say=\"Tap the order.\"] { DO TAP { \"target\": \"order.row\" } }\nsheet_order -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order -> sheet_refund [say=\"Tap Refund or return.\"] { DO TAP { \"target\": \"orders.refund\" } }\nsheet_refund -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_pick [say=\"Tap Add replacement item.\"] { DO TAP { \"target\": \"refund.replace\" } }\nsheet_refund_pick -> sheet_refund [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_done [say=\"Tap the refund button.\"] { DO TAP { \"target\": \"refund.go\" } }\nsheet_refund_done -> page_orders [say=\"Tap OK.\"] { DO TAP { \"target\": \"refund.done\" } }\n\n# ------------------------------------------------------- More page sheets ---\nSCREEN sheet_reports_filter \"Customise\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Customise\" }\nSCREEN sheet_drawer_open \"Open drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Open drawer\" }\nSCREEN sheet_drawer_close \"Close drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Close drawer\" }\nSCREEN sheet_drawer_float \"Daily float report\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Daily float report\" }\nSCREEN sheet_drawer_swap \"Swap my cash\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Swap my cash\" }\nSCREEN sheet_cash_give \"Give cash refund\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Give cash refund\" }\nSCREEN sheet_cash_return \"Return cash for cancelled sale\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return cash for cancelled sale\" }\nSCREEN sheet_switch_staff \"Switch staff\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Switch staff\" }\nSCREEN sheet_staff_pass \"Staff pass\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Staff pass\" }\nSCREEN sheet_tile \"Add to grid\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Add to grid\" }\nSCREEN sheet_inventory_filters \"Filters & sort\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Filters & sort\" }\nSCREEN sheet_inventory_product \"Product\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Product\" }\nSCREEN sheet_lookup \"Look up\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Look up\" }\n\npage_reports -> sheet_reports_filter [say=\"Tap Customise.\"] { DO TAP { \"target\": \"reports.filter\" } }\nsheet_reports_filter -> page_reports [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_drawer_open [say=\"Tap Open drawer.\"] { DO TAP { \"target\": \"drawer.open\" } }\npage_drawer -> sheet_drawer_close [say=\"Tap Close drawer.\"] { DO TAP { \"target\": \"drawer.close\" } }\npage_drawer -> sheet_drawer_float [say=\"Tap Daily float report.\"] { DO TAP { \"target\": \"drawer.float\" } }\npage_drawer -> sheet_drawer_swap [say=\"Tap Swap my cash.\"] { DO TAP { \"target\": \"drawer.swap\" } }\nsheet_drawer_open -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_close -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_float -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_swap -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_cash_give [say=\"Give cash.\"] { DO TAP { \"target\": \"drawer.givecash\" } }\npage_drawer -> sheet_cash_return [say=\"Return cash.\"] { DO TAP { \"target\": \"drawer.returncash\" } }\nsheet_cash_give -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"cash.gave\" } }\nsheet_cash_return -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_switch_staff [say=\"Tap the staff member.\"] { DO TAP { \"target\": \"staff.switch\" } }\nsheet_switch_staff -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_staff_pass [say=\"Tap the pass.\"] { DO TAP { \"target\": \"staff.pass\" } }\nsheet_staff_pass -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_inventory -> sheet_inventory_filters [say=\"Tap Filters & sort.\"] { DO TAP { \"target\": \"inv.filter\" } }\ntab_inventory -> sheet_inventory_product [say=\"Tap a product.\"] { DO TAP { \"target\": \"inv.product\" } }\nsheet_inventory_filters -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_inventory_product -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Price check.\"] { DO TAP { \"target\": \"grid.action:price_check\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Stock check.\"] { DO TAP { \"target\": \"grid.action:stock_check\" } }\nsheet_lookup -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_tile [say=\"Tap the tile.\"] { DO TAP { \"target\": \"tile.settings\" } }\nsheet_tile -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ------------------------------------------------------------- overlays ----\n# `modules` says which run a place belongs to: a training module id, or \"real\" for the everyday till. Only the places\n# that differ carry it; everything else is in every scope. The camera is the clear case: the everyday till opens the\n# real camera, while practice opens the drawn practice camera (see src/screens/Scanner.tsx).\nSCREEN overlay_lock \"Sign in\" { \"kind\": \"overlay\", \"label\": \"Sign in\" }\nSCREEN overlay_screensaver \"Screensaver\" { \"kind\": \"overlay\", \"label\": \"Screensaver\" }\nSCREEN overlay_practice_pass \"Scan your cashier pass\" { \"kind\": \"overlay\", \"label\": \"Scan your cashier pass\", \"modules\": [\"sign-in\"] }\nSCREEN overlay_practice_camera \"Practice camera\" { \"kind\": \"overlay\", \"label\": \"Practice camera\", \"modules\": [\"scanning\"] }\nSCREEN overlay_camera \"Camera\" { \"kind\": \"overlay\", \"label\": \"Camera\", \"modules\": [\"real\"] }\n\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.unlock\" } }\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.pinpad\" } }\noverlay_lock -> overlay_practice_pass [say=\"Tap Scan pass.\", modules=[\"sign-in\"]] { DO TAP { \"target\": \"login.scanpass\" } }\noverlay_practice_pass -> tab_checkout [say=\"Tap Scan this pass.\"] { DO TAP { \"target\": \"pass.scan\" } }\noverlay_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_practice_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_practice_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_screensaver -> tab_checkout [say=\"Tap the screen.\"] { DO TAP { \"target\": \"screensaver.tap\" } }\n\nEND\n";
++// Screens: 70 (5 tab, 2 view, 18 page, 40 sheet, 5 overlay). Edges: 164.
++export const APP_NAVGRAPH: string = "NAVGRAPH/2\nAPP \"Aidens 3D POS\"\n\n# The line key of a per line window (its variant, or the line's own id for a\n# custom amount). The `sheet_line` template below is copied once per open line\n# at runtime, and the copy fills this in (see `ensureLineWindow` in appGraph).\nVAR ITEM_KEY : string\n\n# ============================================================================\n# The app as a graph. Screens are places a person can be. Edges are how they\n# move and what they do. Control level action nodes are registered at runtime\n# from src/lib/appControls.ts (node id = \"do:\" + spot id), so every button,\n# tile, row and gesture in the app joins this graph without hand editing.\n#\n# Node kinds (screen meta \"kind\"):\n#   tab      the five bottom bar tabs\n#   view     a mode inside Checkout (Keypad, All products; Quick Menu is the tab)\n#   page     a pushed route\n#   sheet    a window drawn over the page\n#   overlay  something drawn over everything (sign in, screensaver, practice)\n#   action   a control, a terminal node in a route\n#\n# Edge meta:\n#   say      the words said while pointing at this transition\n#   gesture  tap (default), or a swipe/hold/scroll\n#   spot     the UI spot this transition taps, when it has one\n#   roles    who may take it\n#   modules  which run the transition belongs to (a module id, or \"real\"); missing means every run\n# ============================================================================\n\n# ---------------------------------------------------------------- tabs -----\nSCREEN tab_checkout \"Checkout\" { \"kind\": \"tab\", \"tab\": \"checkout\", \"label\": \"Checkout\", \"summary\": \"Build the sale and take payment.\" }\nSCREEN tab_inventory \"Inventory\" { \"kind\": \"tab\", \"tab\": \"inventory\", \"label\": \"Inventory\" }\nSCREEN tab_transactions \"Transactions\" { \"kind\": \"tab\", \"tab\": \"transactions\", \"label\": \"Transactions\" }\nSCREEN tab_notifications \"Notifications\" { \"kind\": \"tab\", \"tab\": \"notifications\", \"label\": \"Notifications\" }\nSCREEN tab_more \"More\" { \"kind\": \"tab\", \"tab\": \"more\", \"label\": \"More\" }\n\ntab_checkout -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_checkout -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_checkout -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_checkout -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_inventory -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_inventory -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_inventory -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_inventory -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_transactions -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_transactions -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_transactions -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_transactions -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_notifications -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_notifications -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_notifications -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_notifications -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_more -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_more -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_more -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_more -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\n\n# ------------------------------------------------------- checkout views ----\nSCREEN view_keypad \"Keypad\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"Keypad\" }\nSCREEN view_all \"All products\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"All products\" }\n\ntab_checkout -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\ntab_checkout -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_keypad -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_keypad -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_all -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_all -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\n\n# ------------------------------------------------------------- pages -------\nSCREEN page_pay \"Payment\" { \"kind\": \"page\", \"route\": \"pay\", \"label\": \"Payment\" }\nSCREEN page_cart \"Cart\" { \"kind\": \"page\", \"route\": \"cart\", \"label\": \"Cart\" }\nSCREEN page_saved \"Saved carts\" { \"kind\": \"page\", \"route\": \"saved\", \"label\": \"Saved carts\" }\nSCREEN page_orders \"Orders\" { \"kind\": \"page\", \"route\": \"orders\", \"label\": \"Orders\" }\nSCREEN page_items \"Items\" { \"kind\": \"page\", \"route\": \"items\", \"label\": \"Items\" }\nSCREEN page_create_item \"New item\" { \"kind\": \"page\", \"route\": \"createItem\", \"label\": \"New item\" }\nSCREEN page_edit_item \"Edit item\" { \"kind\": \"page\", \"route\": \"editItem\", \"label\": \"Edit item\" }\nSCREEN page_customers \"Customers\" { \"kind\": \"page\", \"route\": \"customers\", \"label\": \"Customers\" }\nSCREEN page_reports \"Reports\" { \"kind\": \"page\", \"route\": \"reports\", \"label\": \"Reports\" }\nSCREEN page_giftcards \"Gift cards\" { \"kind\": \"page\", \"route\": \"giftcards\", \"label\": \"Gift cards\" }\nSCREEN page_drawer \"Cash drawer\" { \"kind\": \"page\", \"route\": \"drawer\", \"label\": \"Cash drawer\" }\nSCREEN page_settings \"Settings\" { \"kind\": \"page\", \"route\": \"settings\", \"label\": \"Settings\" }\nSCREEN page_staff \"Staff\" { \"kind\": \"page\", \"route\": \"staff\", \"label\": \"Staff\", \"roles\": [\"manager\", \"owner\"] }\nSCREEN page_diagnostics \"Support & diagnostics\" { \"kind\": \"page\", \"route\": \"diagnostics\", \"label\": \"Support & diagnostics\" }\nSCREEN page_help \"Help\" { \"kind\": \"page\", \"route\": \"help\", \"label\": \"Help\" }\nSCREEN page_training \"Training\" { \"kind\": \"page\", \"route\": \"training\", \"label\": \"Training\" }\nSCREEN page_training_run \"Training run\" { \"kind\": \"page\", \"route\": \"trainingRun\", \"label\": \"Training run\" }\nSCREEN page_terminal_play \"Practice terminal\" { \"kind\": \"page\", \"route\": \"terminalPlay\", \"label\": \"Practice terminal\" }\n\n# Checkout to payment and cart\ntab_checkout -> page_cart [say=\"Open the cart first.\"] { DO TAP { \"target\": \"cart.open\" } }\npage_cart -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\ntab_checkout -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_cart -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_pay -> page_cart [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_pay -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# More to its pages\ntab_more -> page_orders [say=\"Tap Orders.\"] { DO TAP { \"target\": \"more.orders\" } }\ntab_more -> page_items [say=\"Tap Items.\"] { DO TAP { \"target\": \"more.items\" } }\ntab_more -> page_customers [say=\"Tap Customers.\"] { DO TAP { \"target\": \"more.customers\" } }\ntab_more -> page_saved [say=\"Tap Saved carts.\"] { DO TAP { \"target\": \"more.saved\" } }\ntab_more -> page_giftcards [say=\"Tap Gift cards.\"] { DO TAP { \"target\": \"more.giftcards\" } }\ntab_more -> page_reports [say=\"Tap Reports.\"] { DO TAP { \"target\": \"more.reports\" } }\ntab_more -> page_drawer [say=\"Tap Cash drawer.\"] { DO TAP { \"target\": \"more.drawer\" } }\ntab_more -> page_staff [say=\"Tap Staff.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.staff\" } }\ntab_more -> page_settings [say=\"Tap Settings.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.settings\" } }\ntab_more -> page_diagnostics [say=\"Tap Support & diagnostics.\"] { DO TAP { \"target\": \"more.diagnostics\" } }\ntab_more -> page_help [say=\"Tap Help.\"] { DO TAP { \"target\": \"more.help\" } }\ntab_more -> page_training [say=\"Tap Training.\"] { DO TAP { \"target\": \"more.training\" } }\n\npage_orders -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_items -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_customers -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_saved -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_giftcards -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_reports -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_drawer -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_staff -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_settings -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_diagnostics -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_help -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Items pages\npage_items -> page_create_item [say=\"Tap New item.\"] { DO TAP { \"target\": \"items.new\" } }\npage_items -> page_edit_item [say=\"Tap the item.\"] { DO TAP { \"target\": \"items.row\" } }\npage_create_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_edit_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Training\npage_training -> page_training_run [say=\"Tap Start.\"] { DO TAP { \"target\": \"training.start\" } }\npage_training_run -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> page_terminal_play [say=\"Tap the practice terminal.\"] { DO TAP { \"target\": \"training.terminal\" } }\npage_terminal_play -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# ----------------------------------------------------------- Checkout sheets\nSCREEN sheet_search \"Search\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Search\" }\nSCREEN sheet_customer \"Customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer\" }\nSCREEN sheet_customer_new \"New customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"New customer\" }\nSCREEN sheet_custom_amount \"Custom amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Custom amount\" }\nSCREEN sheet_gift_sell \"Sell gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Sell gift card\" }\nSCREEN sheet_gift_sell_details \"Gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Gift card\" }\nSCREEN sheet_cart_menu \"Cart menu\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart menu\" }\nSCREEN sheet_cart_discount \"Cart discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart discount\" }\nSCREEN sheet_order_price \"Whole order price\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Whole order price\" }\nSCREEN sheet_review \"Check the price adjustments\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check the price adjustments\" }\nSCREEN sheet_bundles \"Check these bundles\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check these bundles\" }\nSCREEN sheet_cart_warnings \"Customer warning\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer warning\" }\nSCREEN sheet_save_cart \"Save cart\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Save cart\" }\n\ntab_checkout -> sheet_search [say=\"Tap Search.\"] { DO TAP { \"target\": \"find.search\" } }\nsheet_search -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\npage_cart -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\nsheet_customer -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_customer -> sheet_customer_new [say=\"Tap Create customer.\"] { DO TAP { \"target\": \"customer.create\" } }\nsheet_customer_new -> sheet_customer [say=\"Tap Back.\"] { DO TAP { \"target\": \"customer.back\" } }\ntab_checkout -> sheet_custom_amount [say=\"Tap Custom amount.\"] { DO TAP { \"target\": \"grid.action:custom\" } }\nsheet_custom_amount -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_gift_sell [say=\"Tap Sell gift card.\"] { DO TAP { \"target\": \"cart.menu.gift\" } }\nsheet_gift_sell -> sheet_gift_sell_details [say=\"Tap Next.\"] { DO TAP { \"target\": \"gift.next\" } }\nsheet_gift_sell_details -> sheet_gift_sell [say=\"Tap Change amount.\"] { DO TAP { \"target\": \"gift.change\" } }\nsheet_gift_sell_details -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_gift_sell -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\ntab_checkout -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\nsheet_cart_menu -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_cart_discount [say=\"Tap Apply cart discount.\"] { DO TAP { \"target\": \"cart.menu.discount\" } }\nsheet_cart_menu -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_cart_menu -> sheet_save_cart [say=\"Tap Save cart.\"] { DO TAP { \"target\": \"cart.menu.save\" } }\nsheet_cart_discount -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order_price -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_save_cart -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_review -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"review.continue\" } }\nsheet_review -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_bundles [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_bundles -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"bundle.continue\" } }\nsheet_bundles -> page_cart [say=\"Tap Edit cart.\"] { DO TAP { \"target\": \"bundle.edit\" } }\npage_cart -> sheet_cart_warnings [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_cart_warnings [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_cart_warnings -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"warning.continue\" } }\nsheet_cart_warnings -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ------------------------------------------------------ Line editor sheets\nSCREEN sheet_line \"Item\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item\" }\nSCREEN sheet_line_discount \"Item discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item discount\" }\nSCREEN sheet_line_item_price \"Item price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item price adjustment\" }\nSCREEN sheet_line_line_price \"Line price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Line price adjustment\" }\n\n# The per line copies (sheet_line:<key>) and their controls are registered at\n# runtime as each line window opens (see `ensureLineWindow` in appGraph). These\n# static edges are the template: each copy fills $ITEM_KEY$ with its own line.\npage_cart -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\ntab_checkout -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\nsheet_line -> tab_checkout [say=\"Tap Done to close the item.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> sheet_line_discount [say=\"Tap Discount.\"] { DO TAP { \"target\": \"line.discount\" } }\nsheet_line -> sheet_line_item_price [say=\"Tap Item price adjustment.\"] { DO TAP { \"target\": \"line.price\" } }\nsheet_line -> sheet_line_line_price [say=\"Tap Line price adjustment.\"] { DO TAP { \"target\": \"line.adjust\" } }\nsheet_line_discount -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_item_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_line_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ----------------------------------------------------------------- Payment --\nSCREEN sheet_cash_receive \"Cash received\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cash received\" }\nSCREEN sheet_cash_change \"Give change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Give change\" }\nSCREEN sheet_check_change \"Check change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check change\" }\nSCREEN sheet_split \"Split amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Split amount\" }\nSCREEN sheet_gift_check \"Check gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check gift card\" }\nSCREEN sheet_receipt \"Receipt\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Receipt\" }\n\npage_pay -> sheet_cash_receive [say=\"Tap Cash.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_split [say=\"Tap Split.\"] { DO TAP { \"target\": \"pay.split\" } }\nsheet_split -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_receive -> sheet_cash_change [say=\"Tap Next: give change.\"] { DO TAP { \"target\": \"cash.next\" } }\nsheet_cash_receive -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_change -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_check_change [say=\"Check the change.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_gift_check [say=\"Tap Gift card.\"] { DO TAP { \"target\": \"pay.gift\" } }\nsheet_gift_check -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_receipt [say=\"Finish the sale.\"] { DO TAP { \"target\": \"pay.card\" } }\nsheet_receipt -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"receipt.none\" } }\n\n# ---------------------------------------------------------- Orders & refund -\nSCREEN sheet_order \"Order\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Order\" }\nSCREEN sheet_refund \"Return\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return\" }\nSCREEN sheet_refund_pick \"Replacement item\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Replacement item\" }\nSCREEN sheet_refund_done \"Done\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Done\" }\n\npage_orders -> sheet_order [say=\"Tap the order.\"] { DO TAP { \"target\": \"order.row\" } }\nsheet_order -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order -> sheet_refund [say=\"Tap Refund or return.\"] { DO TAP { \"target\": \"orders.refund\" } }\nsheet_refund -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_pick [say=\"Tap Add replacement item.\"] { DO TAP { \"target\": \"refund.replace\" } }\nsheet_refund_pick -> sheet_refund [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_done [say=\"Tap the refund button.\"] { DO TAP { \"target\": \"refund.go\" } }\nsheet_refund_done -> page_orders [say=\"Tap OK.\"] { DO TAP { \"target\": \"refund.done\" } }\n\n# ------------------------------------------------------- More page sheets ---\nSCREEN sheet_reports_filter \"Customise\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Customise\" }\nSCREEN sheet_drawer_open \"Open drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Open drawer\" }\nSCREEN sheet_drawer_close \"Close drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Close drawer\" }\nSCREEN sheet_drawer_float \"Daily float report\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Daily float report\" }\nSCREEN sheet_drawer_swap \"Swap my cash\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Swap my cash\" }\nSCREEN sheet_cash_give \"Give cash refund\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Give cash refund\" }\nSCREEN sheet_cash_return \"Return cash for cancelled sale\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return cash for cancelled sale\" }\nSCREEN sheet_switch_staff \"Switch staff\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Switch staff\" }\nSCREEN sheet_staff_pass \"Staff pass\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Staff pass\" }\nSCREEN sheet_tile \"Add to grid\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Add to grid\" }\nSCREEN sheet_inventory_filters \"Filters & sort\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Filters & sort\" }\nSCREEN sheet_inventory_product \"Product\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Product\" }\nSCREEN sheet_lookup \"Look up\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Look up\" }\n\npage_reports -> sheet_reports_filter [say=\"Tap Customise.\"] { DO TAP { \"target\": \"reports.filter\" } }\nsheet_reports_filter -> page_reports [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_drawer_open [say=\"Tap Open drawer.\"] { DO TAP { \"target\": \"drawer.open\" } }\npage_drawer -> sheet_drawer_close [say=\"Tap Close drawer.\"] { DO TAP { \"target\": \"drawer.close\" } }\npage_drawer -> sheet_drawer_float [say=\"Tap Daily float report.\"] { DO TAP { \"target\": \"drawer.float\" } }\npage_drawer -> sheet_drawer_swap [say=\"Tap Swap my cash.\"] { DO TAP { \"target\": \"drawer.swap\" } }\nsheet_drawer_open -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_close -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_float -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_swap -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_cash_give [say=\"Give cash.\"] { DO TAP { \"target\": \"drawer.givecash\" } }\npage_drawer -> sheet_cash_return [say=\"Return cash.\"] { DO TAP { \"target\": \"drawer.returncash\" } }\nsheet_cash_give -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"cash.gave\" } }\nsheet_cash_return -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_switch_staff [say=\"Tap the staff member.\"] { DO TAP { \"target\": \"staff.switch\" } }\nsheet_switch_staff -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_staff_pass [say=\"Tap the pass.\"] { DO TAP { \"target\": \"staff.pass\" } }\nsheet_staff_pass -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_inventory -> sheet_inventory_filters [say=\"Tap Filters & sort.\"] { DO TAP { \"target\": \"inv.filter\" } }\ntab_inventory -> sheet_inventory_product [say=\"Tap a product.\"] { DO TAP { \"target\": \"inv.product\" } }\nsheet_inventory_filters -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_inventory_product -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Price check.\"] { DO TAP { \"target\": \"grid.action:price_check\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Stock check.\"] { DO TAP { \"target\": \"grid.action:stock_check\" } }\nsheet_lookup -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_tile [say=\"Tap the tile.\"] { DO TAP { \"target\": \"tile.settings\" } }\nsheet_tile -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ------------------------------------------------------------- overlays ----\n# `modules` says which run a place belongs to: a training module id, or \"real\" for the everyday till. Only the places\n# that differ carry it; everything else is in every scope. The camera is the clear case: the everyday till opens the\n# real camera, while practice opens the drawn practice camera (see src/screens/Scanner.tsx).\nSCREEN overlay_lock \"Sign in\" { \"kind\": \"overlay\", \"label\": \"Sign in\" }\nSCREEN overlay_screensaver \"Screensaver\" { \"kind\": \"overlay\", \"label\": \"Screensaver\" }\nSCREEN overlay_practice_pass \"Scan your cashier pass\" { \"kind\": \"overlay\", \"label\": \"Scan your cashier pass\", \"modules\": [\"sign-in\"] }\nSCREEN overlay_practice_camera \"Practice camera\" { \"kind\": \"overlay\", \"label\": \"Practice camera\", \"modules\": [\"scanning\"] }\nSCREEN overlay_camera \"Camera\" { \"kind\": \"overlay\", \"label\": \"Camera\", \"modules\": [\"real\"] }\n\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.unlock\" } }\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.pinpad\" } }\noverlay_lock -> overlay_practice_pass [say=\"Tap Scan pass.\", modules=[\"sign-in\"]] { DO TAP { \"target\": \"login.scanpass\" } }\noverlay_practice_pass -> tab_checkout [say=\"Tap Scan this pass.\"] { DO TAP { \"target\": \"pass.scan\" } }\noverlay_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_practice_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_practice_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_screensaver -> tab_checkout [say=\"Tap the screen.\"] { DO TAP { \"target\": \"screensaver.tap\" } }\n\nEND\n";
+ 
+ export const APP_NAVSCHEMA: Record<string, unknown> = {"$schema":"https://routegraph.dev/schema/v1","schemaVersion":1,"name":"aidens3dp-pos","extends":"default","actions":{},"screenMetadata":{"kind":{"type":"string","enum":["app","tab","page","sheet","overlay","view","list","action"],"description":"What sort of place this node is. Used to word guidance and to reason about layers."},"label":{"type":"string","description":"What a person calls this place. Falls back to the screen name."},"tab":{"type":"string","description":"The bottom-bar tab this place belongs to, when it belongs to one."},"route":{"type":"string","description":"The pushed page this place is, when it is a page."},"roles":{"type":"array","items":{"type":"string"},"description":"Which staff roles may reach this place (cashier, manager, owner). Empty or missing means anyone."},"summary":{"type":"string","description":"One plain line about what this place is for."},"modules":{"type":"array","items":{"type":"string"},"description":"Which scopes this place exists in: a training module id (see src/training/index.ts), or \"real\" for the everyday till. Empty or missing means every scope, so only the places that differ carry it. Guidance never routes a run through a place outside its scope."}},"edgeMetadata":{"say":{"type":"string","description":"The words said while pointing at the control on this transition. Guidance prefixes the fix wording with this."},"gesture":{"type":"string","description":"tap, double, triple, hold, swipe-left, swipe-right, swipe-up, swipe-down, scroll-up, scroll-down. Left out is a tap."},"spot":{"type":"string","description":"The UI spot id this transition taps, when it has one. The runtime also learns this from the action payload."},"roles":{"type":"array","items":{"type":"string"},"description":"Which roles may take this transition. Empty or missing means anyone."},"modules":{"type":"array","items":{"type":"string"},"description":"Which scopes this transition exists in: a training module id, or \"real\" for the everyday till. Empty or missing means every scope. A transition is only used when the place it arrives at is also in scope."}}};
+diff --git a/src/lib/cartWarnings.ts b/src/lib/cartWarnings.ts
+index 1e461af..1fc0b80 100644
+--- a/src/lib/cartWarnings.ts
++++ b/src/lib/cartWarnings.ts
+@@ -1,75 +1,64 @@
+ // Location: src/lib/cartWarnings.ts
+-// Cart warning logic: detect which warnings match cart items
+-import type { Cart, CartWarning, Variant } from './types';
++// Cart warnings: prompts the cashier sees on Charge, before payment, when the cart holds a configured item or
++// category (or on every sale, for a warning set to always show). Pure, so it is testable.
++import type { Cart, CartWarning, CartWarningScope, Variant } from './types';
+ 
+-export type MatchedCartWarning = {
+-  warning: CartWarning;
+-  matches: Array<{ lineId: string; title: string; variantId?: string; productId?: string; collectionIds?: string[] }>;
+-};
++export type CartWarningMatch = { lineId: string; title: string; variantId?: string; productId?: string };
++export type MatchedCartWarning = { warning: CartWarning; matches: CartWarningMatch[] };
++export type CartWarningCatalog = { variants: Record<string, Variant>; collectionsOfProduct: Record<string, string[]> };
+ 
+-export function matchCartWarnings(cart: Cart, warnings: CartWarning[] | undefined, catalog: {
+-  variants: Record<string, Variant>;
+-  collectionsOfProduct: Record<string, string[]>;
+-}): MatchedCartWarning[] {
+-  const list = warnings ?? [];
+-  const enabled = list.filter(w => w.enabled && w.targetId);
+-  const result: MatchedCartWarning[] = [];
+-  
+-  for (const w of enabled) {
+-    const matches: MatchedCartWarning['matches'] = [];
+-    for (const line of cart.lines) {
+-      if (line.kind !== 'item' || !line.variantId) continue;
+-      const v = catalog.variants[line.variantId];
+-      if (!v) continue;
+-      let isMatch = false;
+-      switch (w.scope) {
+-        case 'variant':
+-          isMatch = v.id === w.targetId;
+-          break;
+-        case 'product':
+-          isMatch = v.productId === w.targetId;
+-          break;
+-        case 'collection':
+-        case 'category':
+-          {
+-            const cols = catalog.collectionsOfProduct[v.productId] ?? [];
+-            isMatch = cols.includes(w.targetId);
+-          }
+-          break;
+-      }
+-      if (isMatch) {
+-        matches.push({
+-          lineId: line.id,
+-          title: line.title,
+-          variantId: line.variantId,
+-          productId: v.productId,
+-          collectionIds: catalog.collectionsOfProduct[v.productId],
+-        });
++/** `category` is another name for `collection`. */
++export const normaliseScope = (s: CartWarningScope): 'variant' | 'product' | 'collection' => (s === 'category' ? 'collection' : s);
++
++/** What a person sees as the warning's header when they left it blank. */
++export const DEFAULT_WARNING_TITLE = 'Customer Warning';
++export const warningTitle = (w: Pick<CartWarning, 'title'>): string => w.title.trim() || DEFAULT_WARNING_TITLE;
++
++/**
++ * The warnings that apply to this cart, in the order they should be shown. A warning applies when it is on and either
++ * set to always show, or one of its item lines is the variant, product or collection it is for. Gift cards and custom
++ * amounts never trigger one.
++ */
++export function matchCartWarnings(cart: Cart, warnings: CartWarning[] | undefined, catalog: CartWarningCatalog): MatchedCartWarning[] {
++  const result: Array<MatchedCartWarning & { at: number }> = [];
++  (warnings ?? []).forEach((w, at) => {
++    if (!w.enabled) return;
++    if (!w.alwaysShow && !w.targetId) return;
++    const matches: CartWarningMatch[] = [];
++    if (w.targetId) {
++      const scope = normaliseScope(w.scope);
++      for (const line of cart.lines) {
++        if (line.kind !== 'item' || !line.variantId) continue;
++        const v = catalog.variants[line.variantId];
++        if (!v) continue;
++        const hit = scope === 'variant' ? v.id === w.targetId
++          : scope === 'product' ? v.productId === w.targetId
++          : (catalog.collectionsOfProduct[v.productId] ?? []).includes(w.targetId);
++        if (hit) matches.push({ lineId: line.id, title: line.title, variantId: line.variantId, productId: v.productId });
+       }
+     }
+-    if (matches.length > 0) {
+-      result.push({ warning: w, matches });
+-    }
+-  }
+-  // Sort by order if specified
+-  return result.sort((a, b) => {
+-    const ao = a.warning.order ?? 0;
+-    const bo = b.warning.order ?? 0;
+-    if (ao !== bo) return ao - bo;
+-    return 0;
++    if (matches.length > 0 || w.alwaysShow) result.push({ warning: w, matches, at });
+   });
++  return result.sort((a, b) => (a.warning.order ?? 0) - (b.warning.order ?? 0) || a.at - b.at).map(({ warning, matches }) => ({ warning, matches }));
+ }
+ 
+-/** Fingerprint of matched warnings for acknowledgment tracking. */
+-export const warningsKey = (matched: MatchedCartWarning[]): string =>
+-  matched.map(w => `${w.warning.id}|${w.matches.map(m => m.lineId).join(',')}|${w.warning.requireAcknowledgement ? '1' : '0'}`).sort().join('~');
++/** Names of the items that set a warning off, each once, for "Triggered by". */
++export const triggerNames = (m: MatchedCartWarning): string[] => Array.from(new Set(m.matches.map(x => x.title)));
++
++/**
++ * Fingerprint of one warning as it applies to this sale. Editing the warning, or changing which lines set it off,
++ * changes it, so a warning already seen comes back when it is different.
++ */
++export const warningKey = (m: MatchedCartWarning): string =>
++  [m.warning.id, m.matches.map(x => x.lineId).sort().join(','), warningTitle(m.warning), m.warning.body, m.warning.requireAcknowledgement ? '1' : '0'].join('|');
++
++/**
++ * The warnings to show now: those not yet seen on this sale, plus every one set to always show (those come up on each
++ * press of Charge). `seen` holds the `warningKey` of each warning the cashier already carried on from.
++ */
++export const pendingCartWarnings = (matched: MatchedCartWarning[], seen: string[]): MatchedCartWarning[] =>
++  matched.filter(m => m.warning.alwaysShow || !seen.includes(warningKey(m)));
+ 
+-/** Check if cart warnings need to be shown (unacknowledged or alwaysShow). */
+-export const needsCartWarnings = (matched: MatchedCartWarning[], acknowledgedKey: string): boolean => {
+-  const key = warningsKey(matched);
+-  if (key === '') return false;
+-  if (key === acknowledgedKey) return false;
+-  // If any warning has alwaysShow, it should always appear
+-  if (matched.some(m => m.warning.alwaysShow)) return true;
+-  return true;
+-};
++/** The pages (by key) that still need ticking before payment can start, given what the cashier has ticked. */
++export const unacknowledged = (pages: MatchedCartWarning[], ticked: string[]): MatchedCartWarning[] =>
++  pages.filter(m => m.warning.requireAcknowledgement && !ticked.includes(warningKey(m)));
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 437cecf..9420cfc 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -208,7 +208,7 @@ async function pullLayout() {
+ }
+ export async function pushSharedSettings() {
+   const snapshot = st().settings;
+-  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms };
++  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms, cartWarnings: snapshot.cartWarnings ?? [] };
+   st().patchSettings({ sharedSettingsPending: true });
+   if (!hasCreds()) return;
+   const version = snapshot.sharedVersion + 1;
+@@ -219,7 +219,7 @@ export async function pushSharedSettings() {
+     throw error;
+   }
+   const current = st().settings;
+-  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms });
++  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms, cartWarnings: current.cartWarnings ?? [] });
+   st().patchSettings({ sharedVersion: version, sharedSettingsPending: !stillMatches });
+ }
+ async function pullSettings() {
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+index 2b52bb5..43f1308 100644
+--- a/src/lib/trainingSandbox.ts
++++ b/src/lib/trainingSandbox.ts
+@@ -109,7 +109,7 @@ export function practiceStaff(): StaffMember[] {
+ /** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
+ export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
+ export function sandboxSettings(real: Settings, perms: unknown = {}): Settings {
+-  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, smartChange: false, cashRounding: true };
++  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, cartWarnings: [], smartChange: false, cashRounding: true };
+ }
+ export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
+ /** The real state to put back afterwards. */
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index dab1877..c8fa9bc 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -113,6 +113,10 @@ export const SPOT = {
+   cartDeals: 'cart.deals',             // the discount rows totalled above the Charge button
+   bundleContinue: 'bundle.continue',   // Continue to payment, in the Check these bundles window
+   bundleEdit: 'bundle.edit',           // Edit cart, in the Check these bundles window
++  warningBack: 'warning.back',         // Back, in the Customer warning window
++  warningNext: 'warning.next',         // Next, in the Customer warning window
++  warningAcknowledge: 'warning.ack',   // I have read this, on a warning that must be acknowledged
++  warningContinue: 'warning.continue', // Continue to payment, in the Customer warning window
+   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
+   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
+   moreOrders: 'more.orders',           // the Orders row on the More tab
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index 2155743..313a0af 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -230,16 +230,23 @@ export type Role = 'cashier' | 'manager' | 'owner';
+ export type StaffPreferences = { theme?: 'brand' | 'light' | 'dark' | 'system'; accent?: string; tileSize?: 'S' | 'M' | 'L' | number };
+ export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi; preferences?: StaffPreferences };
+ 
++/** What a cart warning is attached to. `category` is the same as `collection` (kept so a warning saved with it still works). */
+ export type CartWarningScope = 'variant' | 'product' | 'collection' | 'category';
+ export type CartWarning = {
+   id: string;
+   enabled: boolean;
++  /** The header of the prompt, e.g. "Customer Warning". */
+   title: string;
++  /** The text shown to the cashier, e.g. "Joints are fragile, do not bend and apply pressure as it will snap". */
+   body: string;
+   scope: CartWarningScope;
++  /** The variant, product or collection id the warning is for. Not needed when `alwaysShow` is on. */
+   targetId: string;
++  /** Show on every sale whatever is in the cart, and on every press of Charge. */
+   alwaysShow: boolean;
++  /** The cashier must tick that they have read and handled it before payment can start. */
+   requireAcknowledgement: boolean;
++  /** Lower comes first when several warnings show; ties keep the order they were added in. */
+   order?: number;
+ };
+ export type CartWarnings = CartWarning[];
+diff --git a/src/screens/CartPane.tsx b/src/screens/CartPane.tsx
+index 5e4fbea..57272ad 100644
+--- a/src/screens/CartPane.tsx
++++ b/src/screens/CartPane.tsx
+@@ -18,9 +18,8 @@ import { flaggedLines } from '../lib/lineAdjust';
+ import { orderReviewReasons } from '../lib/orderAdjust';
+ import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+ import { uid } from '../lib/ids';
+-import { matchCartWarnings, needsCartWarnings, warningsKey } from '../lib/cartWarnings';
+ import AdjustmentReviewSheet from './AdjustmentReview';
+-import CartWarningsSheet from './CartWarningsSheet';
++import CartWarningsSheet, { useCartWarningGate } from './CartWarningsSheet';
+ import SwipeRow from '../ui/SwipeRow';
+ import { gateAdjust } from '../ui/adjustGate';
+ import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
+@@ -39,17 +38,20 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+   const toast = useToast();
+   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
+   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
++  const warn = useCartWarningGate();
+   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj' | 'scan'>('none');
+   const [scanCam, setScanCam] = useState(false); const [scanCode, setScanCode] = useState(''); const [scanInfo, setScanInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [scanBusy, setScanBusy] = useState(false);
+   // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
+-  useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); }), []);
++  useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); warn.reset(); }), []);
+   const flagged = flaggedLines(priced); const orderReasons = orderReviewReasons(cart, priced); const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
+   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
+   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
+   const proceed = () => { if (needsBundleCheck(priced.bundles, ackKey)) setBundleCheck(true); else nav.push('pay'); };
+   // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
+   const adjRows = adjustmentRows(cart, priced);
+-  const charge = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else proceed(); };
++  const afterWarnings = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else proceed(); };
++  // Customer warnings come first, then the price adjustments, then the bundle check. A part-paid sale goes straight on to payment.
++  const charge = () => { if (!locked && warn.pages.length) warn.setOpen(true); else afterWarnings(); };
+   const doClear = async () => { setMenu(false); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (empty || await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) setCart(ops.emptyCart()); };
+ 
+   const look = async (raw: string) => {
+@@ -169,6 +171,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
+           <Btn spot={SPOT.bundleEdit} title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
+         </View>
+       </Sheet>
++      <CartWarningsSheet visible={warn.open} pages={warn.pages} onClose={() => warn.setOpen(false)}
++        onContinue={() => { warn.markSeen(); warn.setOpen(false); setTimeout(afterWarnings, 250); }} />
+       <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
+         onContinue={() => { setAdjAck(adjustReviewKey(adjRows)); setAdjReview(false); setTimeout(proceed, 250); }}
+         onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />
+diff --git a/src/screens/CartWarningsSettings.tsx b/src/screens/CartWarningsSettings.tsx
+new file mode 100644
+index 0000000..2e77fb3
+--- /dev/null
++++ b/src/screens/CartWarningsSettings.tsx
+@@ -0,0 +1,98 @@
++// Location: src/screens/CartWarningsSettings.tsx
++// Settings ▸ Cart warnings: prompts shown on Charge, before payment, when the cart holds a chosen item, product or
++// category (collection), or on every sale. Shared to every register like the staff list and bundle deals.
++import React, { useMemo, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Card, Chip, Empty, Field, Row, Section, Segmented, Sheet, Toggle, Txt, confirm } from '../ui/kit';
++import { useApp } from '../state/store';
++import { useCatalogue } from '../state/selectors';
++import { pushSharedSettings } from '../lib/sync';
++import { uid } from '../lib/ids';
++import { DEFAULT_WARNING_TITLE, normaliseScope, warningTitle } from '../lib/cartWarnings';
++import type { CartWarning } from '../lib/types';
++
++type Scope = 'variant' | 'product' | 'collection';
++const SCOPES: { v: Scope; label: string }[] = [{ v: 'variant', label: 'Variation' }, { v: 'product', label: 'Product' }, { v: 'collection', label: 'Category' }];
++const SCOPE_NOUN: Record<Scope, string> = { variant: 'variation', product: 'product', collection: 'category' };
++const MAX_SHOWN = 30;
++
++/** What the warning is for, in words: the item, product or category's name, or "Every sale". */
++function useTargetName() {
++  const cat = useCatalogue();
++  return (w: CartWarning): string => {
++    if (w.alwaysShow && !w.targetId) return 'Every sale';
++    const scope = normaliseScope(w.scope);
++    if (scope === 'variant') { const v = cat.variants[w.targetId]; return v ? `${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}` : 'An item that is no longer in the catalogue'; }
++    if (scope === 'product') { const v = cat.all.find(x => x.productId === w.targetId); return v ? v.productTitle : 'A product that is no longer in the catalogue'; }
++    return cat.collections.find(x => x.id === w.targetId)?.title ?? 'A category that is no longer in the catalogue';
++  };
++}
++
++export function CartWarningsSettings() {
++  const warnings = useApp(s => s.settings.cartWarnings) ?? []; const patch = useApp(s => s.patchSettings);
++  const [editing, setEditing] = useState<CartWarning | 'new' | null>(null); const nameOf = useTargetName();
++  const save = (next: CartWarning[]) => { patch({ cartWarnings: next }); void pushSharedSettings().catch(() => {}); };
++  const put = (w: CartWarning) => { save(warnings.some(x => x.id === w.id) ? warnings.map(x => (x.id === w.id ? w : x)) : [...warnings, w]); setEditing(null); };
++  const remove = async (w: CartWarning) => { if (await confirm('Delete this warning?', `“${warningTitle(w)}” stops appearing at Charge.`, 'Delete', true)) save(warnings.filter(x => x.id !== w.id)); };
++  return (
++    <View style={{ padding: 16, gap: 10 }}>
++      <Txt size={13} sub>When Charge is pressed, the cashier sees a warning for each of these that applies to the sale, one page each with Next and Back, before payment starts. It can need ticking off, and it is the same on every register.</Txt>
++      {warnings.length === 0 ? <Empty title="No warnings yet" sub="Add one for a fragile item, or one that shows on every sale." /> : warnings.map(w => (
++        <Card key={w.id} style={{ padding: 12, gap: 6, opacity: w.enabled ? 1 : 0.6 }}>
++          <Row title={warningTitle(w)} sub={nameOf(w)} last right={<Chip label={w.enabled ? 'On' : 'Off'} active={w.enabled} onPress={() => save(warnings.map(x => (x.id === w.id ? { ...x, enabled: !w.enabled } : x)))} />} />
++          <Txt size={13} sub numberOfLines={3}>{w.body}</Txt>
++          <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
++            {w.alwaysShow ? <Chip label="Always shows" active /> : null}
++            {w.requireAcknowledgement ? <Chip label="Must be ticked" active /> : null}
++          </View>
++          <View style={{ flexDirection: 'row', gap: 8 }}>
++            <Btn title="Edit" small kind="secondary" onPress={() => setEditing(w)} style={{ flex: 1 }} />
++            <Btn title="Delete" small kind="danger" onPress={() => void remove(w)} style={{ flex: 1 }} />
++          </View>
++        </Card>
++      ))}
++      <Btn title="Add warning" icon="add" onPress={() => setEditing('new')} />
++      <Sheet visible={editing !== null} onClose={() => setEditing(null)} title={editing === 'new' ? 'Add cart warning' : 'Edit cart warning'} full>
++        {editing !== null ? <WarningEditor initial={editing === 'new' ? undefined : editing} onSave={put} onCancel={() => setEditing(null)} /> : null}
++      </Sheet>
++    </View>
++  );
++}
++
++function WarningEditor({ initial, onSave, onCancel }: { initial?: CartWarning; onSave: (w: CartWarning) => void; onCancel: () => void }) {
++  const cat = useCatalogue();
++  const [w, setW] = useState<CartWarning>(() => initial ? { ...initial, scope: normaliseScope(initial.scope) } : { id: uid(), enabled: true, title: DEFAULT_WARNING_TITLE, body: '', scope: 'product', targetId: '', alwaysShow: false, requireAcknowledgement: false });
++  const [q, setQ] = useState('');
++  const scope = normaliseScope(w.scope);
++  const options = useMemo(() => {
++    const t = q.trim().toLowerCase(); const hit = (...xs: (string | undefined)[]) => !t || xs.some(x => x?.toLowerCase().includes(t));
++    if (scope === 'variant') return cat.list.filter(v => hit(v.productTitle, v.variantTitle, v.sku, v.barcode)).map(v => ({ id: v.id, title: v.productTitle + (v.variantTitle ? ' · ' + v.variantTitle : ''), sub: v.sku })).sort((a, b) => a.title.localeCompare(b.title));
++    if (scope === 'product') { const seen = new Map<string, string>(); for (const v of cat.list) if (!seen.has(v.productId) && hit(v.productTitle)) seen.set(v.productId, v.productTitle); return Array.from(seen, ([id, title]) => ({ id, title, sub: undefined as string | undefined })).sort((a, b) => a.title.localeCompare(b.title)); }
++    return cat.collections.filter(c => hit(c.title)).map(c => ({ id: c.id, title: c.title, sub: `${c.productIds.length} product${c.productIds.length === 1 ? '' : 's'}` })).sort((a, b) => a.title.localeCompare(b.title));
++  }, [cat, scope, q]);
++  const nameOf = useTargetName();
++  const ready = w.body.trim().length > 0 && (w.alwaysShow || !!w.targetId);
++  return (
++    <View style={{ gap: 12 }}>
++      <Field kind="name" label="Header" value={w.title} onChangeText={t => setW({ ...w, title: t })} placeholder={DEFAULT_WARNING_TITLE} />
++      <Field kind="text" label="Message for the cashier" value={w.body} onChangeText={t => setW({ ...w, body: t })} multiline numberOfLines={4} style={{ minHeight: 90 }} placeholder="e.g. Joints are fragile, do not bend or apply pressure as it will snap." />
++      <Toggle label="Show on every sale" sub="Appears every time Charge is pressed, whatever is in the cart." value={w.alwaysShow} onChange={v => setW({ ...w, alwaysShow: v })} />
++      <Toggle label="Cashier must tick it" sub="Payment cannot start until they tick that they have read it and dealt with it." value={w.requireAcknowledgement} onChange={v => setW({ ...w, requireAcknowledgement: v })} />
++      {w.alwaysShow ? null : <Section title="Shows when the cart has">
++        <View style={{ padding: 12, gap: 10 }}>
++          <Segmented value={scope} onChange={v => { setW({ ...w, scope: v, targetId: '' }); setQ(''); }} options={SCOPES} />
++          {w.targetId ? <Row title={nameOf(w)} sub={`Chosen ${SCOPE_NOUN[scope]}`} icon="checkmark-circle" last right={<Btn title="Clear" small kind="secondary" onPress={() => setW({ ...w, targetId: '' })} />} /> : null}
++          <Field kind="search" label={`Find a ${SCOPE_NOUN[scope]}`} value={q} onChangeText={setQ} placeholder="Search" />
++          {options.slice(0, MAX_SHOWN).map((o, i) => <Row key={o.id} title={o.title} sub={o.sub} icon={w.targetId === o.id ? 'radio-button-on' : 'radio-button-off'} onPress={() => setW({ ...w, targetId: o.id })} last={i === Math.min(options.length, MAX_SHOWN) - 1} />)}
++          {options.length > MAX_SHOWN ? <Txt size={12} sub>Showing {MAX_SHOWN} of {options.length}. Type to narrow it down.</Txt> : null}
++          {options.length === 0 ? <Txt size={13} sub>Nothing matches.</Txt> : null}
++        </View>
++      </Section>}
++      {!ready ? <Txt size={13} sub>{w.body.trim() ? 'Choose what it is for, or turn on Show on every sale.' : 'Write the message first.'}</Txt> : null}
++      <View style={{ flexDirection: 'row', gap: 8 }}>
++        <Btn title="Cancel" kind="secondary" onPress={onCancel} style={{ flex: 1 }} />
++        <Btn title="Save" disabled={!ready} onPress={() => onSave({ ...w, title: w.title.trim(), body: w.body.trim(), targetId: w.alwaysShow ? '' : w.targetId })} style={{ flex: 1 }} />
++      </View>
++    </View>
++  );
++}
+diff --git a/src/screens/CartWarningsSheet.tsx b/src/screens/CartWarningsSheet.tsx
+index 4c663ef..1e92317 100644
+--- a/src/screens/CartWarningsSheet.tsx
++++ b/src/screens/CartWarningsSheet.tsx
+@@ -1,104 +1,66 @@
+ // Location: src/screens/CartWarningsSheet.tsx
+-// Cart warnings prompt: shown by Charge before payment when cart items match configured warnings.
+-import React, { useState } from 'react';
++// "Customer warning": shown by Charge before payment (normal and guided checkout) when the cart holds an item or category
++// that has a warning set in Settings ▸ Cart warnings, or when a warning is set to always show. One page per warning.
++import React, { useEffect, useMemo, useState } from 'react';
+ import { ScrollView, View } from 'react-native';
+ import { Btn, Card, Sheet, Txt } from '../ui/kit';
+ import { SPOT } from '../lib/trainingSpots';
+ import { useTheme } from '../ui/theme';
+ import { useApp } from '../state/store';
+-import { matchCartWarnings, type MatchedCartWarning } from '../lib/cartWarnings';
+ import { useCatalogue } from '../state/selectors';
++import { matchCartWarnings, pendingCartWarnings, triggerNames, unacknowledged, warningKey, warningTitle, type MatchedCartWarning } from '../lib/cartWarnings';
+ 
+-export default function CartWarningsSheet({ visible, onClose, onContinue }: { visible: boolean; onClose: () => void; onContinue: () => void }) {
+-  const { c } = useTheme();
+-  const settings = useApp(s => s.settings);
+-  const cat = useCatalogue();
+-  const cart = useApp(s => s.pos.cart);
+-  const [page, setPage] = useState(0);
+-  const [acknowledged, setAcknowledged] = useState(false);
+-
+-  const matched = matchCartWarnings(cart, settings.cartWarnings, {
+-    variants: cat.variants,
+-    collectionsOfProduct: cat.collectionsOfProduct,
+-  });
+-
+-  const currentWarning = matched[page];
+-  const totalPages = matched.length;
+-  const canContinue = !currentWarning || !currentWarning.warning.requireAcknowledgement || acknowledged;
+-  const allAcknowledged = matched.every(w => !w.warning.requireAcknowledgement);
+-
+-  // When warnings change, reset page and ack
+-  const matchedKey = matched.map(w => `${w.warning.id}|${w.matches.map(m => m.lineId).join(',')}`).join('~');
+-  const [lastKey, setLastKey] = useState(matchedKey);
+-  if (matchedKey !== lastKey) {
+-    setPage(0);
+-    setAcknowledged(false);
+-    setLastKey(matchedKey);
+-  }
+-
+-  if (!visible || matched.length === 0) return null;
++/**
++ * Charge uses this to decide whether to stop at the warnings first. `pages` is what would be shown right now; `markSeen`
++ * remembers the ones the cashier carried on from, so a warning is not asked again on the same sale unless it changes
++ * (a warning set to always show is the exception: it comes up on every press of Charge).
++ */
++export function useCartWarningGate() {
++  const cart = useApp(s => s.pos.cart); const warnings = useApp(s => s.settings.cartWarnings); const cat = useCatalogue();
++  const [open, setOpen] = useState(false); const [seen, setSeen] = useState<string[]>([]);
++  const pages = useMemo(() => pendingCartWarnings(matchCartWarnings(cart, warnings, cat), seen), [cart, warnings, cat, seen]);
++  const markSeen = () => setSeen(s => Array.from(new Set([...s, ...pages.map(warningKey)])));
++  const reset = () => { setOpen(false); setSeen([]); };
++  // A new sale starts with nothing seen.
++  const empty = cart.lines.length === 0;
++  useEffect(() => { if (empty) setSeen([]); }, [empty]);
++  return { pages, open, setOpen, markSeen, reset };
++}
+ 
++export default function CartWarningsSheet({ visible, pages, onClose, onContinue }: { visible: boolean; pages: MatchedCartWarning[]; onClose: () => void; onContinue: () => void }) {
++  const { c } = useTheme();
++  const [page, setPage] = useState(0); const [ticked, setTicked] = useState<string[]>([]);
++  // Each time the window opens it starts on the first warning with nothing ticked.
++  useEffect(() => { if (visible) { setPage(0); setTicked([]); } }, [visible]);
++  const total = pages.length; const at = Math.min(page, Math.max(0, total - 1)); const cur = pages[at];
++  if (!cur) return null;
++  const last = at >= total - 1; const need = unacknowledged(pages, ticked); const done = ticked.includes(warningKey(cur));
++  const names = triggerNames(cur);
+   return (
+-    <Sheet
+-      visible={true}
+-      onClose={onClose}
+-      title={currentWarning ? currentWarning.warning.title : 'Customer Warning'}
+-      screen="sheet_cart_warnings"
+-    >
+-      <Txt sub style={{ marginBottom: 10 }}>
+-        {totalPages > 1 ? `Warning ${page + 1} of ${totalPages}` : 'Please review this warning before continuing.'}
+-      </Txt>
+-
++    <Sheet visible={visible} onClose={onClose} title={warningTitle(cur.warning)} screen="sheet_cart_warnings">
++      <Txt sub style={{ marginBottom: 10 }}>{total > 1 ? `Warning ${at + 1} of ${total}. Use Next and Back to read them all.` : 'Please read this before taking payment.'}</Txt>
+       <ScrollView style={{ maxHeight: 380 }} contentContainerStyle={{ gap: 10 }}>
+-        {currentWarning && (
+-          <Card style={{ padding: 14, gap: 6 }}>
+-            <Txt weight="700" numberOfLines={2}>{currentWarning.warning.title}</Txt>
+-            <Txt size={14} style={{ marginTop: 4 }}>{currentWarning.warning.body}</Txt>
+-            <Txt size={12} sub style={{ marginTop: 8, color: c.sub }}>
+-              Triggered by: {currentWarning.matches.map(m => m.title).join(', ')}
+-            </Txt>
+-          </Card>
+-        )}
++        <Card style={{ padding: 14, gap: 6, borderColor: c.warn }}>
++          <Txt size={15}>{cur.warning.body}</Txt>
++          {names.length ? <Txt size={12} sub style={{ marginTop: 8 }}>For: {names.join(', ')}</Txt> : null}
++        </Card>
+       </ScrollView>
+-
+-      {totalPages > 1 && (
+-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+-          <Btn
+-            spot={SPOT.warningBack}
+-            title="Back"
+-            kind="secondary"
+-            onPress={() => setPage(p => Math.max(0, p - 1))}
+-            disabled={page === 0}
+-          />
+-          <Btn
+-            spot={SPOT.warningNext}
+-            title="Next"
+-            onPress={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+-            disabled={page >= totalPages - 1}
+-          />
+-        </View>
+-      )}
+-
+-      {currentWarning?.warning.requireAcknowledgement && (
++      {cur.warning.requireAcknowledgement ? (
+         <View style={{ marginTop: 10 }}>
+-          <Btn
+-            spot={SPOT.warningAcknowledge}
+-            title={acknowledged ? 'Acknowledged ✓' : 'I have read and understood this warning'}
+-            kind={acknowledged ? 'secondary' : 'primary'}
+-            onPress={() => setAcknowledged(true)}
+-          />
++          <Btn spot={SPOT.warningAcknowledge} title={done ? 'Read and handled ✓' : 'I have read this and dealt with it'} kind={done ? 'secondary' : 'primary'} onPress={() => setTicked(t => (done ? t.filter(k => k !== warningKey(cur)) : [...t, warningKey(cur)]))} />
+         </View>
+-      )}
+-
++      ) : null}
++      {total > 1 ? (
++        <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
++          <Btn spot={SPOT.warningBack} title="Back" kind="secondary" disabled={at === 0} onPress={() => setPage(Math.max(0, at - 1))} style={{ flex: 1 }} />
++          <Btn spot={SPOT.warningNext} title="Next" kind={last ? 'secondary' : 'primary'} disabled={last} onPress={() => setPage(Math.min(total - 1, at + 1))} style={{ flex: 1 }} />
++        </View>
++      ) : null}
++      {last && need.length ? <Txt size={13} color={c.warn} weight="600" style={{ marginTop: 10, textAlign: 'center' }}>{need.length === 1 ? 'Tick the box on one warning to carry on.' : `Tick the box on ${need.length} warnings to carry on.`}</Txt> : null}
+       <View style={{ gap: 8, marginTop: 10 }}>
+-        <Btn
+-          spot={SPOT.warningContinue}
+-          title="Continue to payment"
+-          disabled={!canContinue}
+-          onPress={onContinue}
+-        />
++        {last ? <Btn spot={SPOT.warningContinue} title="Continue to payment" disabled={need.length > 0} onPress={onContinue} /> : null}
+         <Btn title="Back to cart" kind="secondary" onPress={onClose} />
+       </View>
+     </Sheet>
+   );
+-}
+\ No newline at end of file
++}
+diff --git a/src/screens/GuidedCheckout.tsx b/src/screens/GuidedCheckout.tsx
+index 348e3c6..e3bc3c7 100644
+--- a/src/screens/GuidedCheckout.tsx
++++ b/src/screens/GuidedCheckout.tsx
+@@ -19,6 +19,7 @@ import { BundleRow } from './CartPane';
+ import { CheckChangeSheet } from './CheckChange';
+ import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet, LineEditor, OrderAdjustSheet, SaveCartSheet } from './sheets';
+ import AdjustmentReviewSheet from './AdjustmentReview';
++import CartWarningsSheet, { useCartWarningGate } from './CartWarningsSheet';
+ import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
+ import type { CartLine } from '../lib/types';
+ import { useUi } from '../ui/uiProfile';
+@@ -32,7 +33,8 @@ export default function GuidedCheckout() {
+   const [sheet, setSheet] = useState<'none' | 'customer' | 'discount' | 'more' | 'custom' | 'gift' | 'save' | 'change' | 'orderadj'>('none');
+   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
+   // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
+-  useEffect(() => registerCheckoutReset(() => { setSheet('none'); setAdjReview(false); setAdjAck(''); setEdit(null); }), []);
++  const warn = useCartWarningGate();
++  useEffect(() => registerCheckoutReset(() => { setSheet('none'); setAdjReview(false); setAdjAck(''); setEdit(null); warn.reset(); }), []);
+   const [edit, setEdit] = useState<CartLine | null>(null);
+   const locked = !!cart.tenders?.length; const count = ops.itemCount(cart);
+   const ctx: FlowCtx = { itemCount: cart.lines.length, payStarted: locked };
+@@ -49,7 +51,8 @@ export default function GuidedCheckout() {
+   const odd = oddBundles(priced.bundles);
+   // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
+   const adjRows = adjustmentRows(cart, priced);
+-  const takePayment = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else nav.push('pay'); };
++  const afterWarnings = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else nav.push('pay'); };
++  const takePayment = () => { if (!locked && warn.pages.length) warn.setOpen(true); else afterWarnings(); };
+ 
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+@@ -154,6 +157,8 @@ export default function GuidedCheckout() {
+       {/* The same sheets the normal checkout uses */}
+       <CustomerSheet visible={sheet === 'customer'} onClose={() => setSheet('none')} onPick={cu => { setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } })); setSheet('none'); }} />
+       <DiscountSheet visible={sheet === 'discount'} onClose={() => setSheet('none')} current={cart.discount} title="Cart discount" onApply={d => setCart(cc => ops.setCartDiscount(cc, d))} />
++      <CartWarningsSheet visible={warn.open} pages={warn.pages} onClose={() => warn.setOpen(false)}
++        onContinue={() => { warn.markSeen(); warn.setOpen(false); setTimeout(afterWarnings, 250); }} />
+       <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
+         onContinue={() => { setAdjAck(adjustReviewKey(adjRows)); setAdjReview(false); setTimeout(() => nav.push('pay'), 250); }}
+         onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index ebc91dd..901b412 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -1,10 +1,10 @@
+ // Location: src/screens/Settings.tsx
+-import React, { useEffect, useMemo, useState } from 'react';
+-import { Image, Linking, Pressable, ScrollView, Share, View } from 'react-native';
++import React, { useEffect, useState } from 'react';
++import { Image, Linking, Pressable, Share, View } from 'react-native';
+ import * as DocPicker from 'expo-document-picker';
+ import * as FS from 'expo-file-system/legacy';
+ import * as Sharing from 'expo-sharing';
+-import { Btn, Card, Chip, Empty, Field, Page, Row, Section, Segmented, Sheet, Slider, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Slider, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
+@@ -21,7 +21,7 @@ import { BundlesEditor } from './BundleBuilder';
+ import { HidScanner } from './Scanner';
+ import { SquareHistorySettings } from './SquareHistory';
+ import { useCashProfile } from '../state/cashProfile';
+-import { useCatalogue } from '../state/selectors';
++import { CartWarningsSettings } from './CartWarningsSettings';
+ import { profileNote } from '../lib/changeScore';
+ import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+@@ -31,7 +31,7 @@ type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' |
+ const HELP_PAGE: Record<Sub, string> = {
+   menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
+   data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
+-  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'settings'
++  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings',
+ };
+ 
+ export default function Settings() {
+@@ -109,102 +109,6 @@ export default function Settings() {
+   );
+ }
+ 
+-
+-function CartWarningsSettings() {
+-  const s = useApp(st => st.settings);
+-  const patch = useApp(st => st.patchSettings);
+-  const cat = useCatalogue();
+-  const [sheet, setSheet] = useState<'none' | 'add'>('none');
+-  const [edit, setEdit] = useState<any>(null);
+-  const warnings = s.cartWarnings ?? [];
+-
+-  const addWarning = (w: any) => {
+-    const nw = { ...w, id: w.id ?? Date.now().toString() };
+-    patch({ cartWarnings: [...warnings, nw] });
+-    setSheet('none');
+-  };
+-  const updateWarning = (w: any) => {
+-    patch({ cartWarnings: warnings.map(x => x.id === w.id ? w : x) });
+-    setEdit(null);
+-  };
+-  const removeWarning = (id: string) => {
+-    patch({ cartWarnings: warnings.filter(x => x.id !== id) });
+-  };
+-
+-  return (
+-    <View style={{ padding: 16 }}>
+-      <Txt size={13} sub>Configure prompts that appear when certain items/categories are in the cart when charging.</Txt>
+-      {warnings.length === 0 ? (
+-        <Empty title="No warnings" sub="Add a warning to trigger prompts for specific items or categories." />
+-      ) : (
+-        warnings.map(w => (
+-          <Card key={w.id} style={{ padding: 12, marginTop: 10, gap: 6 }}>
+-            <Row title={w.title || 'Warning'} sub={`${w.scope}: ${w.targetId}`} right={<View style={{ flexDirection: 'row', gap: 4 }}>
+-              <Btn title="Edit" small kind="secondary" onPress={() => setEdit(w)} />
+-              <Btn title="Delete" small kind="danger" onPress={() => removeWarning(w.id)} />
+-            </View>} last />
+-            <Txt size={12} sub numberOfLines={2}>{w.body}</Txt>
+-            <View style={{ flexDirection: 'row', gap: 8 }}>
+-              {w.alwaysShow ? <Chip label="Always show" active /> : null}
+-              {w.requireAcknowledgement ? <Chip label="Require ack" active /> : null}
+-            </View>
+-          </Card>
+-        ))
+-      )}
+-      <Btn title="Add warning" icon="add" onPress={() => setSheet('add')} style={{ marginTop: 12 }} />
+-      <Sheet visible={sheet === 'add'} onClose={() => setSheet('none')} title="Add cart warning">
+-        <WarningEditor onSave={addWarning} onCancel={() => setSheet('none')} />
+-      </Sheet>
+-      <Sheet visible={!!edit} onClose={() => setEdit(null)} title="Edit cart warning">
+-        {edit ? <WarningEditor initial={edit} onSave={updateWarning} onCancel={() => setEdit(null)} /> : null}
+-      </Sheet>
+-    </View>
+-  );
+-}
+-
+-function WarningEditor({ initial, onSave, onCancel }: { initial?: any; onSave: (w: any) => void; onCancel: () => void }) {
+-  const cat = useCatalogue();
+-  const [w, setW] = useState<any>({
+-    id: initial?.id,
+-    enabled: initial?.enabled ?? true,
+-    title: initial?.title ?? 'Customer Warning',
+-    body: initial?.body ?? '',
+-    scope: initial?.scope ?? 'product',
+-    targetId: initial?.targetId ?? '',
+-    alwaysShow: initial?.alwaysShow ?? false,
+-    requireAcknowledgement: initial?.requireAcknowledgement ?? false,
+-    order: initial?.order ?? 0,
+-  });
+-  const items = useMemo(() => cat.list.slice(0, 50), [cat.list]);
+-  const collections = cat.collections;
+-  return (
+-    <View style={{ gap: 10 }}>
+-      <Field kind="name" label="Header/Title" value={w.title} onChangeText={t => setW({ ...w, title: t })} />
+-      <Field kind="text" label="Body text" value={w.body} onChangeText={t => setW({ ...w, body: t })} multiline numberOfLines={4} style={{ minHeight: 80 }} />
+-      <Txt size={13} sub weight="600">Scope</Txt>
+-      <Segmented value={w.scope} onChange={v => setW({ ...w, scope: v })} options={[{ v: 'variant', label: 'Variant' }, { v: 'product', label: 'Product' }, { v: 'collection', label: 'Collection' }, { v: 'category', label: 'Category' }]} />
+-      <Txt size={13} sub weight="600">Target</Txt>
+-      <ScrollView style={{ maxHeight: 200 }}>
+-        {w.scope === 'variant' && items.map((v: any) => (
+-          <Row key={v.id} title={`${v.productTitle}${v.variantTitle ? ' · ' + v.variantTitle : ''}`} sub={v.id} onPress={() => setW({ ...w, targetId: v.id })} last={false} />
+-        ))}
+-        {w.scope === 'product' && items.map((v: any) => (
+-          <Row key={v.productId} title={v.productTitle} sub={v.productId} onPress={() => setW({ ...w, targetId: v.productId })} last={false} />
+-        ))}
+-        {(w.scope === 'collection' || w.scope === 'category') && collections.map((c: any) => (
+-          <Row key={c.id} title={c.title} sub={c.id} onPress={() => setW({ ...w, targetId: c.id })} last={false} />
+-        ))}
+-      </ScrollView>
+-      <Field kind="code" label="Target ID" value={w.targetId} onChangeText={t => setW({ ...w, targetId: t })} />
+-      <Toggle label="Always show" value={w.alwaysShow} onChange={v => setW({ ...w, alwaysShow: v })} />
+-      <Toggle label="Require acknowledgement before continuing" value={w.requireAcknowledgement} onChange={v => setW({ ...w, requireAcknowledgement: v })} />
+-      <View style={{ flexDirection: 'row', gap: 8 }}>
+-        <Btn title="Cancel" kind="secondary" onPress={onCancel} style={{ flex: 1 }} />
+-        <Btn title="Save" onPress={() => onSave(w)} style={{ flex: 1 }} disabled={!w.targetId || !w.body} />
+-      </View>
+-    </View>
+-  );
+-}
+ void TILE_COLORS;
+ 
+ function ShopifySettings() {
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 8bf8430..15338f0 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -33,7 +33,7 @@ export type Settings = {
+   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
+   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
+   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
+-  cartWarnings?: CartWarnings;
++  cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
+diff --git a/tests/cartwarnings.test.ts b/tests/cartwarnings.test.ts
+new file mode 100644
+index 0000000..819eb61
+--- /dev/null
++++ b/tests/cartwarnings.test.ts
+@@ -0,0 +1,90 @@
++// Location: tests/cartwarnings.test.ts
++// Cart warnings: which warnings a cart sets off, their order, the "seen on this sale" memory, and always-show.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { addVariant } from '../src/lib/cartOps';
++import { matchCartWarnings, normaliseScope, pendingCartWarnings, triggerNames, unacknowledged, warningKey, warningTitle, type CartWarningCatalog } from '../src/lib/cartWarnings';
++import type { Cart, CartLine, CartWarning, Variant } from '../src/lib/types';
++
++const P = (n: number) => `gid://shopify/Product/${n}`;
++const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
++const variant = (id: number, prod: number, title: string, variantTitle = ''): Variant => ({ id: V(id), productId: P(prod), productTitle: title, variantTitle, priceCents: 1000, tracked: true, stock: 9, tags: [], active: true });
++const dragonS = variant(1, 1, 'Mini Dragon', 'Small'), dragonL = variant(2, 1, 'Mini Dragon', 'Large'), cow = variant(3, 2, 'Highland Cow'), tad = variant(4, 3, 'Tadling');
++const catalog: CartWarningCatalog = { variants: { [dragonS.id]: dragonS, [dragonL.id]: dragonL, [cow.id]: cow, [tad.id]: tad }, collectionsOfProduct: { [P(1)]: ['col-articulated'], [P(2)]: ['col-cows'] } };
++const warn = (over: Partial<CartWarning>): CartWarning => ({ id: 'w', enabled: true, title: 'Customer Warning', body: 'Joints are fragile.', scope: 'product', targetId: P(1), alwaysShow: false, requireAcknowledgement: false, ...over });
++const cartOf = (...vs: Variant[]): Cart => vs.reduce((c, v) => addVariant(c, v, 1), { id: 'c', lines: [] } as Cart);
++const gift: CartLine = { id: 'gift', kind: 'gift_card', title: 'Gift card', qty: 1, unitCents: 5000, noDiscount: true };
++
++test('a product warning is set off by any variation of it', () => {
++  const m = matchCartWarnings(cartOf(dragonL, cow), [warn({})], catalog);
++  assert.equal(m.length, 1);
++  assert.deepEqual(triggerNames(m[0]), ['Mini Dragon']);
++});
++
++test('a variation warning only fires for that variation', () => {
++  const w = warn({ scope: 'variant', targetId: dragonS.id });
++  assert.equal(matchCartWarnings(cartOf(dragonL), [w], catalog).length, 0);
++  assert.equal(matchCartWarnings(cartOf(dragonS), [w], catalog).length, 1);
++});
++
++test('a category (collection) warning fires for products in it, and "category" means collection', () => {
++  const w = warn({ scope: 'collection', targetId: 'col-articulated' });
++  assert.equal(matchCartWarnings(cartOf(dragonS), [w], catalog).length, 1);
++  assert.equal(matchCartWarnings(cartOf(cow), [w], catalog).length, 0);
++  assert.equal(matchCartWarnings(cartOf(dragonS), [{ ...w, scope: 'category' }], catalog).length, 1);
++  assert.equal(normaliseScope('category'), 'collection');
++});
++
++test('nothing fires for an empty target, a warning that is off, or a cart without the item', () => {
++  assert.equal(matchCartWarnings(cartOf(dragonS), [warn({ targetId: '' })], catalog).length, 0);
++  assert.equal(matchCartWarnings(cartOf(dragonS), [warn({ enabled: false })], catalog).length, 0);
++  assert.equal(matchCartWarnings(cartOf(cow, tad), [warn({})], catalog).length, 0);
++  assert.equal(matchCartWarnings(cartOf(dragonS), undefined, catalog).length, 0);
++});
++
++test('gift cards and custom amounts never set a warning off', () => {
++  const c: Cart = { id: 'c', lines: [gift] };
++  assert.equal(matchCartWarnings(c, [warn({ scope: 'variant', targetId: gift.id })], catalog).length, 0);
++});
++
++test('a warning set to always show applies to every sale, with no items needed', () => {
++  const w = warn({ alwaysShow: true, targetId: '' });
++  const m = matchCartWarnings(cartOf(cow), [w], catalog);
++  assert.equal(m.length, 1);
++  assert.deepEqual(triggerNames(m[0]), []);
++});
++
++test('several lines of the same warning are listed once each by name', () => {
++  const m = matchCartWarnings(cartOf(dragonS, dragonL), [warn({})], catalog);
++  assert.equal(m[0].matches.length, 2);
++  assert.deepEqual(triggerNames(m[0]), ['Mini Dragon']);
++});
++
++test('warnings come in order, ties in the order they were added', () => {
++  const a = warn({ id: 'a', targetId: P(2) }), b = warn({ id: 'b', order: -1 }), c = warn({ id: 'c', targetId: P(3) });
++  assert.deepEqual(matchCartWarnings(cartOf(dragonS, cow, tad), [a, b, c], catalog).map(m => m.warning.id), ['b', 'a', 'c']);
++});
++
++test('a warning already carried on from is not asked again, unless it changed or is set to always show', () => {
++  const w = warn({});
++  const first = matchCartWarnings(cartOf(dragonS), [w], catalog);
++  const seen = first.map(warningKey);
++  assert.equal(pendingCartWarnings(first, []).length, 1);
++  assert.equal(pendingCartWarnings(first, seen).length, 0, 'seen on this sale');
++  assert.equal(pendingCartWarnings(matchCartWarnings(cartOf(dragonS), [{ ...w, body: 'New text.' }], catalog), seen).length, 1, 'edited text comes back');
++  assert.equal(pendingCartWarnings(matchCartWarnings(cartOf(dragonS, dragonL), [w], catalog), seen).length, 1, 'another line sets it off');
++  const always = matchCartWarnings(cartOf(cow), [warn({ id: 'x', alwaysShow: true, targetId: '' })], catalog);
++  assert.equal(pendingCartWarnings(always, always.map(warningKey)).length, 1, 'always shows on every Charge');
++});
++
++test('only warnings that must be ticked hold the cashier up, and ticking clears them', () => {
++  const m = matchCartWarnings(cartOf(dragonS, cow), [warn({ id: 'a', requireAcknowledgement: true }), warn({ id: 'b', targetId: P(2) }), warn({ id: 'c', targetId: P(2), requireAcknowledgement: true })], catalog);
++  assert.deepEqual(unacknowledged(m, []).map(x => x.warning.id), ['a', 'c']);
++  assert.deepEqual(unacknowledged(m, [warningKey(m[0])]).map(x => x.warning.id), ['c']);
++  assert.deepEqual(unacknowledged(m, m.map(warningKey)), []);
++});
++
++test('a blank header shows as Customer Warning', () => {
++  assert.equal(warningTitle({ title: '   ' }), 'Customer Warning');
++  assert.equal(warningTitle({ title: 'Fragile' }), 'Fragile');
++});

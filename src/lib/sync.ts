@@ -208,7 +208,7 @@ async function pullLayout() {
 }
 export async function pushSharedSettings() {
   const snapshot = st().settings;
-  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms };
+  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms, cartWarnings: snapshot.cartWarnings ?? [] };
   st().patchSettings({ sharedSettingsPending: true });
   if (!hasCreds()) return;
   const version = snapshot.sharedVersion + 1;
@@ -219,7 +219,7 @@ export async function pushSharedSettings() {
     throw error;
   }
   const current = st().settings;
-  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms });
+  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms, cartWarnings: current.cartWarnings ?? [] });
   st().patchSettings({ sharedVersion: version, sharedSettingsPending: !stillMatches });
 }
 async function pullSettings() {

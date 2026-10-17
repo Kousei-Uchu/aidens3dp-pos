@@ -113,6 +113,10 @@ export const SPOT = {
   cartDeals: 'cart.deals',             // the discount rows totalled above the Charge button
   bundleContinue: 'bundle.continue',   // Continue to payment, in the Check these bundles window
   bundleEdit: 'bundle.edit',           // Edit cart, in the Check these bundles window
+  warningBack: 'warning.back',         // Back, in the Customer warning window
+  warningNext: 'warning.next',         // Next, in the Customer warning window
+  warningAcknowledge: 'warning.ack',   // I have read this, on a warning that must be acknowledged
+  warningContinue: 'warning.continue', // Continue to payment, in the Customer warning window
   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
   moreOrders: 'more.orders',           // the Orders row on the More tab

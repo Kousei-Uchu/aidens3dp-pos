@@ -18,9 +18,8 @@ import { flaggedLines } from '../lib/lineAdjust';
 import { orderReviewReasons } from '../lib/orderAdjust';
 import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjustReview';
 import { uid } from '../lib/ids';
-import { matchCartWarnings, needsCartWarnings, warningsKey } from '../lib/cartWarnings';
 import AdjustmentReviewSheet from './AdjustmentReview';
-import CartWarningsSheet from './CartWarningsSheet';
+import CartWarningsSheet, { useCartWarningGate } from './CartWarningsSheet';
 import SwipeRow from '../ui/SwipeRow';
 import { gateAdjust } from '../ui/adjustGate';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
@@ -39,17 +38,20 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
   const toast = useToast();
   const [bundleCheck, setBundleCheck] = useState(false); const [ackKey, setAckKey] = useState('');
   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
+  const warn = useCartWarningGate();
   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj' | 'scan'>('none');
   const [scanCam, setScanCam] = useState(false); const [scanCode, setScanCode] = useState(''); const [scanInfo, setScanInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [scanBusy, setScanBusy] = useState(false);
   // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
-  useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); }), []);
+  useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); warn.reset(); }), []);
   const flagged = flaggedLines(priced); const orderReasons = orderReviewReasons(cart, priced); const locked = !!cart.tenders?.length; const empty = cart.lines.length === 0; const qty = ops.itemCount(cart);
   const open = (s: typeof sheet) => { setMenu(false); setTimeout(() => setSheet(s), 250); };
   // A8.4: a bundle made from variations that aren't a recommended pair is shown to the cashier once before payment.
   const proceed = () => { if (needsBundleCheck(priced.bundles, ackKey)) setBundleCheck(true); else nav.push('pay'); };
   // A16.5: price adjustments are listed once before payment (flagged ones first) and again only when something about them changes.
   const adjRows = adjustmentRows(cart, priced);
-  const charge = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else proceed(); };
+  const afterWarnings = () => { if (!locked && needsAdjustReview(adjRows, adjAck)) setAdjReview(true); else proceed(); };
+  // Customer warnings come first, then the price adjustments, then the bundle check. A part-paid sale goes straight on to payment.
+  const charge = () => { if (!locked && warn.pages.length) warn.setOpen(true); else afterWarnings(); };
   const doClear = async () => { setMenu(false); if (locked) return alertMsg('Payment in progress', 'Cancel the payment first.'); if (empty || await confirm('Clear cart?', 'All items will be removed.', 'Clear', true)) setCart(ops.emptyCart()); };
 
   const look = async (raw: string) => {
@@ -169,6 +171,8 @@ export default function CartPane({ onClose }: { onClose?: () => void }) {
           <Btn spot={SPOT.bundleEdit} title="Edit cart" kind="secondary" onPress={() => setBundleCheck(false)} />
         </View>
       </Sheet>
+      <CartWarningsSheet visible={warn.open} pages={warn.pages} onClose={() => warn.setOpen(false)}
+        onContinue={() => { warn.markSeen(); warn.setOpen(false); setTimeout(afterWarnings, 250); }} />
       <AdjustmentReviewSheet visible={adjReview} onClose={() => setAdjReview(false)}
         onContinue={() => { setAdjAck(adjustReviewKey(adjRows)); setAdjReview(false); setTimeout(proceed, 250); }}
         onAdjust={row => { setAdjReview(false); setTimeout(() => { if (row.kind === 'order') setSheet('orderadj'); else { const l = cart.lines.find(x => x.id === row.lineId); if (l) setEdit(l); } }, 250); }} />

@@ -1,6 +1,7 @@
 // Location: src/lib/inventoryView.ts
 // Pure logic behind the Inventory list: filter, sort, group variants under their product, and flatten to rows. Unit-tested.
 import type { Variant } from './types';
+import { isSellableStatus, type ProductStatus } from './productStatus';
 
 export type StockFilter = 'all' | 'low' | 'zero' | 'neg' | 'tracked' | 'untracked';
 export type StatusFilter = 'active' | 'draft' | 'archived' | 'all';
@@ -8,7 +9,7 @@ export type InvSort = 'name' | 'stock-asc' | 'stock-desc' | 'price-asc' | 'price
 export type InvPrefs = { stock: StockFilter; status: StatusFilter; sort: InvSort; grouped: boolean; collectionId: string | null; lowAt: number };
 export const defaultInvPrefs = (): InvPrefs => ({ stock: 'all', status: 'active', sort: 'stock-asc', grouped: false, collectionId: null, lowAt: 2 });
 
-export const statusOf = (v: Variant): 'ACTIVE' | 'DRAFT' | 'ARCHIVED' => v.status ?? (v.active ? 'ACTIVE' : 'DRAFT');
+export const statusOf = (v: Variant): ProductStatus => v.status ?? (v.active ? 'ACTIVE' : 'DRAFT');
 const nameOf = (v: Variant) => `${v.productTitle} ${v.variantTitle}`.trim();
 const cmpText = (a: string, b: string) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
 
@@ -31,7 +32,7 @@ export function matchesStock(v: Variant, f: StockFilter, lowAt: number): boolean
 /** `productIdsInCollection`: pass the set for prefs.collectionId (or null for no category filter). */
 export function filterVariants(all: Variant[], prefs: InvPrefs, q: string, productIdsInCollection: Set<string> | null): Variant[] {
   return all.filter(v =>
-    (prefs.status === 'all' || statusOf(v) === prefs.status.toUpperCase()) &&
+    (prefs.status === 'all' || (prefs.status === 'active' ? isSellableStatus(statusOf(v)) : statusOf(v) === prefs.status.toUpperCase())) && // Active includes Unlisted
     (!productIdsInCollection || productIdsInCollection.has(v.productId)) &&
     matchesStock(v, prefs.stock, prefs.lowAt) && matchesQuery(v, q));
 }

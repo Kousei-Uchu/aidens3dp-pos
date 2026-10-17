@@ -4,7 +4,7 @@ title: Checkout: the main screen
 parent: start
 summary: Adding items to a sale: the Quick Menu grid, All products, the keypad, search, scanning, and the cart.
 tags: [checkout, sell, grid, scan, search, keypad]
-related: [sales/cart-and-prices]
+related: [sales/cart-and-prices, sales/cart-warnings]
 updated: 2026-10-17
 ---
 Checkout is where every sale starts. You add things to the cart here, then press **Charge** to take payment.
@@ -31,7 +31,7 @@ Tap the item again for each one (the same item joins the same cart line), or cha
 - Scanning a **cashier pass** signs that person in (your cart stays as it is). Scanning a **gift card QR** here tells you to redeem it from Charge ▸ Gift card.
 
 ### The cart
-On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready. Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
+On an iPad the cart is always on the right. On a phone, a bar at the bottom shows the item count and total; tap it to open the cart. Press **Charge** when you are ready; if an item in the cart has a customer warning, you read it first (see [[sales/cart-warnings]]). Details are on [[sales/cart-and-prices|The cart and how prices are worked out]].
 
 ### The bar along the top
 The bar along the very top of the screen is there on every screen except the Sign in screen. It shows the time, the shop logo and name, this register's name, the reader chip, the sync chip and the battery. On an iPad the chips always show **Reader ready** and **Synced** when all is well. If something is wrong you get an amber or red chip instead (\"Reader issue\", \"Offline · 2 queued\", \"Sync issue\"). Tap it to go to the page that explains it. On a phone the reader chip only appears when there is a problem. The bar stays at the top while the screensaver is showing; it does not respond to touches then.

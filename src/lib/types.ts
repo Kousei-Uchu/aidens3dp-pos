@@ -17,8 +17,8 @@ export type Variant = {
   stock: number | null; // null = not tracked. May be negative (allowed by design).
   image?: string;
   tags: string[];
-  active: boolean; // product status ACTIVE
-  status?: 'ACTIVE' | 'DRAFT' | 'ARCHIVED'; // full product status (older saved catalogues only have `active`)
+  active: boolean; // product status ACTIVE or UNLISTED (sellable); false for DRAFT and ARCHIVED
+  status?: 'ACTIVE' | 'UNLISTED' | 'DRAFT' | 'ARCHIVED'; // full product status (older saved catalogues only have `active`)
   updatedAt?: string;
 };
 export type Collection = { id: string; title: string; image?: string; productIds: string[] };
@@ -230,16 +230,23 @@ export type Role = 'cashier' | 'manager' | 'owner';
 export type StaffPreferences = { theme?: 'brand' | 'light' | 'dark' | 'system'; accent?: string; tileSize?: 'S' | 'M' | 'L' | number };
 export type StaffMember = { id: string; name: string; role: Role; salt: string; pinHash: string; badgeSalt?: string; badgeHash?: string; badgeAt?: string; /** Display mode (Standard/Simple/Minimal/Custom). Missing = Standard. */ ui?: StaffUi; preferences?: StaffPreferences };
 
+/** What a cart warning is attached to. `category` is the same as `collection` (kept so a warning saved with it still works). */
 export type CartWarningScope = 'variant' | 'product' | 'collection' | 'category';
 export type CartWarning = {
   id: string;
   enabled: boolean;
+  /** The header of the prompt, e.g. "Customer Warning". */
   title: string;
+  /** The text shown to the cashier, e.g. "Joints are fragile, do not bend and apply pressure as it will snap". */
   body: string;
   scope: CartWarningScope;
+  /** The variant, product or collection id the warning is for. Not needed when `alwaysShow` is on. */
   targetId: string;
+  /** Show on every sale whatever is in the cart, and on every press of Charge. */
   alwaysShow: boolean;
+  /** The cashier must tick that they have read and handled it before payment can start. */
   requireAcknowledgement: boolean;
+  /** Lower comes first when several warnings show; ties keep the order they were added in. */
   order?: number;
 };
 export type CartWarnings = CartWarning[];

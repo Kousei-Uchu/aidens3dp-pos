@@ -4,7 +4,7 @@ title: Settings
 parent: start
 summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
 tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
-related: [settings/shopify, settings/payments, settings/hardware, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles]
+related: [settings/shopify, settings/payments, settings/hardware, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings]
 updated: 2026-10-11
 ---
 Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
@@ -15,6 +15,7 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
 - **Shopify** connects the register to your shop; see [[settings/shopify]].
 - **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].
 - **Discounts & bundles** manages the bundle deals used in Checkout.
+- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].
 - **Hardware** opens the scanner test; see [[settings/hardware]].
 - **Data** exports CSV files or deletes local history.
 - **Square history** imports old Square sales for Reports.
