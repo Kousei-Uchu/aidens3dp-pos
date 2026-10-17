@@ -145,6 +145,10 @@ export type LogStore = {
   days: () => Promise<string[]>;
   /** Packs finished months and applies the cap. Runs after every append; exported so the app can run it at start up. */
   maintain: () => Promise<void>;
+  /** For the viewer (patch 0153): clears the whole log. The caller must confirm first. */
+  clear: () => Promise<void>;
+  /** For the viewer (patch 0153): writes every event to one export file, oldest first. */
+  exportAll: () => Promise<{ name: string; bytes: number }>;
 };
 
 export function createLogStore(fs: LogFs, o: { now?: () => number; capBytes?: () => number } = {}): LogStore {
@@ -230,5 +234,21 @@ export function createLogStore(fs: LogFs, o: { now?: () => number; capBytes?: ()
     return { events: out.sort((a, b) => a.at - b.at), bad };
   };
 
-  return { append, knows: id => known.has(id), status, meta: readMeta, events, days, maintain };
+  const clear = async (): Promise<void> => {
+    const files = await fs.list();
+    for (const f of files) await fs.remove(f.name);
+    await writeMeta({ v: 1, prompts: {}, purgedEvents: 0 });
+    known.clear();
+  };
+
+  const exportAll = async (): Promise<{ name: string; bytes: number }> => {
+    const r = await events();
+    const lines = r.events.map(e => JSON.stringify(e)).join('\n') + '\n';
+    const name = `assistant-log-export-${localDay(now())}.jsonl`;
+    const data = strToU8(lines);
+    await fs.write(name, data);
+    return { name, bytes: data.length };
+  };
+
+  return { append, knows: id => known.has(id), status, meta: readMeta, events, days, maintain, clear, exportAll };
 }

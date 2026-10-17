@@ -15,14 +15,16 @@ export type AssistantSettings = {
   contextSize: number;    // how much text the model can read at once, in tokens (the app cannot see this by itself)
   toolCallLimit: number;  // safety stop for a model stuck calling tools in a loop
   endpointMode: EndpointMode; // auto follows the address rules, local or remote forces the class (a tunnel on a 192.168 address can be forced remote)
+  logCapMB: number;       // audit log cap in MB (default 200)
 };
 
 export const DEFAULT_TIMEOUT_SEC = 120;
 export const DEFAULT_CONTEXT_SIZE = 8000;
 export const DEFAULT_TOOL_CALL_LIMIT = 15;
+export const DEFAULT_LOG_CAP_MB = 200;
 
 export const defaultAssistant = (): AssistantSettings => ({
-  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto',
+  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, endpointMode: 'auto', logCapMB: DEFAULT_LOG_CAP_MB,
 });
 
 const clampInt = (x: unknown, lo: number, hi: number, fallback: number): number => {
@@ -51,6 +53,7 @@ export function normaliseAssistant(x: unknown): AssistantSettings {
     contextSize: clampInt(o.contextSize, 1000, 2_000_000, d.contextSize),
     toolCallLimit: clampInt(o.toolCallLimit, 1, 100, d.toolCallLimit),
     endpointMode: readMode(o),
+    logCapMB: clampInt(o.logCapMB, 1, 10_000, d.logCapMB),
   };
 }
 

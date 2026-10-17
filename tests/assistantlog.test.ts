@@ -205,3 +205,46 @@ test('the log stays off the sync and out of backups, and nothing is logged in pr
   assert.match(io, /isTraining\(\)/); assert.ok(!/documentDirectory\s*\+/.test(io), 'the folder comes from logDirFromDocuments only');
   assert.match(readFileSync('src/screens/Assistant.tsx', 'utf8'), /logged for the manager/);
 });
+
+// ---- clear and export (patch 0153, built as 0156) ----
+test('clear removes every file and resets the meta', async () => {
+  const { fs, files } = memFs(); const store = createLogStore(fs, { now: () => at('2026-10-17') });
+  await store.append(ev(at('2026-10-17')), { hash: 'h', text: 'T' });
+  await store.append(ev(at('2026-10-17', 11)));
+  assert.ok(files.has('d-2026-10-17.jsonl') && files.has(META_NAME));
+  await store.clear();
+  // clear rewrites a fresh meta.json, so only that file remains
+  assert.equal(files.size, 1);
+  assert.ok(files.has(META_NAME));
+  const m = await store.meta();
+  assert.equal(m.v, 1); assert.deepEqual(m.prompts, {}); assert.equal(m.purgedEvents, 0);
+  assert.equal((await store.events()).events.length, 0);
+});
+
+test('exportAll writes every event to one file', async () => {
+  const { fs, files } = memFs(); const store = createLogStore(fs, { now: () => at('2026-10-17') });
+  await store.append(ev(at('2026-10-17', 9)));
+  await store.append(ev(at('2026-10-17', 11)));
+  const r = await store.exportAll();
+  assert.ok(r.name.endsWith('.jsonl'));
+  assert.ok(files.has(r.name));
+  const lines = strFromU8(files.get(r.name)!).split('\n').filter(Boolean);
+  assert.equal(lines.length, 2);
+  const parsed = lines.map(l => JSON.parse(l) as LogEvent);
+  assert.equal(parsed[0].id, (await store.events()).events[0].id);
+  assert.equal(parsed[1].id, (await store.events()).events[1].id);
+});
+
+test('ASSISTANT_OPEN_TO_ALL is true now the viewer exists', async () => {
+  const chat = await import('../src/lib/assistantChat');
+  assert.equal(chat.ASSISTANT_OPEN_TO_ALL, true);
+});
+
+test('the cap setting defaults to 200 MB and is clamped', async () => {
+  const cfg = await import('../src/lib/assistantConfig');
+  assert.equal(cfg.defaultAssistant().logCapMB, 200);
+  assert.equal(cfg.normaliseAssistant({ logCapMB: 500 }).logCapMB, 500);
+  assert.equal(cfg.normaliseAssistant({ logCapMB: 0 }).logCapMB, 1); // clamped to the minimum
+  assert.equal(cfg.normaliseAssistant({ logCapMB: 99999 }).logCapMB, 10000);
+  assert.equal(cfg.normaliseAssistant({}).logCapMB, 200);
+});

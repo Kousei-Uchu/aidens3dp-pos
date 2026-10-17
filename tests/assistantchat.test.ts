@@ -150,11 +150,11 @@ test('Retry is only offered where trying again can help, and only editors get th
   assert.equal(bannerAction(true), 'open_settings'); assert.equal(bannerAction(false), 'ask_manager');
 });
 
-test('the Help entry: never on the lock screen, editors only until the audit log lands', () => {
-  assert.equal(ASSISTANT_OPEN_TO_ALL, false);
+test('the Help entry: never on the lock screen, open to everyone now the viewer exists', () => {
+  assert.equal(ASSISTANT_OPEN_TO_ALL, true);
   assert.equal(assistantEntryVisible({ locked: true, canEdit: true }), false);
   assert.equal(assistantEntryVisible({ locked: false, canEdit: true }), true);
-  assert.equal(assistantEntryVisible({ locked: false, canEdit: false }), false);
+  assert.equal(assistantEntryVisible({ locked: false, canEdit: false }), true);
   assert.equal(assistantEntryVisible({ locked: false, canEdit: false, openToAll: true }), true);
   assert.equal(assistantEntryVisible({ locked: true, canEdit: false, openToAll: true }), false);
 });

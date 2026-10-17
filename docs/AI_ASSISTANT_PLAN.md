@@ -6,6 +6,12 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 12 (17 October 2026), patch 0156:** patch 3 (the audit log) is done. 0152 was the recording half. 0156 is the
+viewer half: the manager-only viewer (`src/screens/AssistantLog.tsx`), Export log, Clear log (typed `CLEAR`), the cap
+setting (default 200 MB) and `ASSISTANT_OPEN_TO_ALL` is now `true`, so the Help entry shows to everyone (never on the lock
+screen). The viewer filters by staff member, date range, errors, practice mode and remote endpoint. Each conversation can be
+opened to show what was sent to the model. Export writes every event to one JSONL file through the iPad's Files.
+
 **Revision 11 (17 October 2026), patch 0152:** patch 3 (the audit log) is split in two. 0152 is the recording half: the log
 store, the event format, the wiring into the chat and the one-line notice. 0153 is the viewer, Export log, Clear log, the cap
 setting and opening the chat to everyone. The owner's answers are in 3.13. The Help entry stays owner and manager only until
@@ -128,7 +134,9 @@ These are in the repo now and are the likely sources for the tools. Check each i
 Built in 0148: the Settings section and the OpenAI-compatible client with Test connection (3.1), the local or
 remote classification, and the policy docs. Built in 0149: the Auto / Local / Remote setting. Built in 0151: the chat
 screen and Help entry, per-staff history (3.5), the error banner (3.3, without the offline search), the small scrubber
-and the practice mode block (3.12), the dash filter (3.9), the prompt, and the "More detail" button.
+and the practice mode block (3.12), the dash filter (3.9), the prompt, and the "More detail" button. Built in 0152:
+the audit log recording (3.6). Built in 0156: the audit log viewer, Export log, Clear log, the cap setting and opening
+the chat to everyone (3.6, 3.13).
 
 Still to do:
 
@@ -136,7 +144,6 @@ Still to do:
 - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
   before anything reaches the model or the screen.
 - The read-only tools (3.2).
-- The audit log and its manager-only viewer (3.6).
 - The practice mode coach (3.7).
 - Model-free product and inventory lookup for the offline mode (3.3).
 - The data gate: the category rules and override toggles (3.1). All enforced in code. The small scrubber exists
@@ -442,9 +449,9 @@ chat screen patch can add streaming.
    the decisions in 3.12.
 2. **Done (0151).** Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5),
    a small scrubber (3.12) and the practice mode block (3.12).
-3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start. Split in two:
-   **3a. Done (0152):** recording, the store and the notice. **3b. Next (0153):** the viewer, Export log, Clear log, the cap setting and
-   opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
+3. **Done (0152 and 0156).** Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
+   Split in two: **3a. Done (0152):** recording, the store and the notice. **3b. Done (0156):** the viewer, Export log,
+   Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
    offline search (3.3).
 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data

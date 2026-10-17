@@ -5,7 +5,8 @@
 import * as FS from 'expo-file-system/legacy';
 import { b64ToBytes, bytesToB64 } from './squareHistoryIO';
 import { isTraining } from './trainingGuard';
-import { DEFAULT_LOG_CAP_BYTES, createLogStore, logDirFromDocuments, type LogFs, type LogSink } from './assistantLog';
+import { createLogStore, logDirFromDocuments, type LogFs, type LogSink } from './assistantLog';
+import { useApp } from '../state/store';
 
 const dir = (): string => { const d = logDirFromDocuments(FS.documentDirectory); if (!d) throw new Error('This device has no app folder for the log.'); return d; };
 let ready: Promise<void> | null = null;
@@ -42,7 +43,7 @@ const fs: LogFs = {
   },
 };
 
-/** The one log for this iPad. The cap is the default for now; the manager's setting arrives with the viewer (patch 0153). */
-export const assistantLog = createLogStore(fs, { capBytes: () => DEFAULT_LOG_CAP_BYTES });
+/** The one log for this iPad. The cap comes from the manager's setting (patch 0153). */
+export const assistantLog = createLogStore(fs, { capBytes: () => { const s = useApp.getState().settings.assistant; return (s.logCapMB || 200) * 1024 * 1024; } });
 /** Practice mode never writes anything real, so nothing is logged there (sending is blocked in practice mode anyway). */
 export const logSink: LogSink = async (e, prompt) => { if (isTraining()) return; await assistantLog.append(e, prompt); };

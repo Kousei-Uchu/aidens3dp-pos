@@ -6,29 +6,34 @@ import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Field, Section, Segmented, Txt, alertMsg } from '../ui/kit';
 import { useApp } from '../state/store';
+import { useNav } from '../ui/nav';
 import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
 import { classifyEndpoint, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg, type EndpointMode } from '../lib/assistantConfig';
 import { testConnection, type TestReport } from '../lib/assistantClient';
 import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
 import { isTraining } from '../lib/trainingGuard';
+import { AssistantLogViewer } from './AssistantLog';
 
 /** Whether this person may open the page. The Settings menu and the page itself both ask, so a role change closes it. */
 export function useCanEditAssistant(): boolean {
   return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
 }
 
-type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode };
-const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode });
+type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string };
+const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), endpointMode: a.endpointMode, logCapMB: String(a.logCapMB) });
 const fromDraft = (d: Draft): Cfg => normaliseAssistant({ ...d });
 
 export function AssistantSettings() {
   const allowed = useCanEditAssistant();
+  const nav = useNav();
   const saved = useApp(s => s.settings.assistant); const patch = useApp(s => s.patchSettings);
   const [d, setD] = useState<Draft>(() => toDraft(saved));
   const [savedKey, setSavedKey] = useState(''); const [newKey, setNewKey] = useState(''); const [removeKey, setRemoveKey] = useState(false);
   const [busy, setBusy] = useState(false); const [report, setReport] = useState<TestReport | null>(null); const [note, setNote] = useState('');
+  const [showLog, setShowLog] = useState(false);
   useEffect(() => { let on = true; void getAssistantKey().then(k => { if (on) setSavedKey(k); }); return () => { on = false; }; }, []);
   if (!allowed) return null;
+  if (showLog) return <AssistantLogViewer />;
 
   const set = (p: Partial<Draft>) => { setD(x => ({ ...x, ...p })); setReport(null); setNote(''); };
   const cfg = fromDraft(d);
@@ -83,6 +88,12 @@ export function AssistantSettings() {
           <Field kind="integer" label="Timeout in seconds (5 to 600)" value={d.timeoutSec} onChangeText={t => set({ timeoutSec: t })} />
           <Field kind="integer" label="Context size in tokens" value={d.contextSize} onChangeText={t => set({ contextSize: t })} />
           <Field kind="integer" label="Tool call limit per question (1 to 100)" value={d.toolCallLimit} onChangeText={t => set({ toolCallLimit: t })} />
+          <Field kind="integer" label="Conversation log cap in MB (1 to 10000)" value={d.logCapMB} onChangeText={t => set({ logCapMB: t })} />
+        </View>
+      </Section>
+      <Section title="Conversation log" footer="Every conversation with the model is logged on this iPad. Export it to a file, or clear it.">
+        <View style={{ padding: 12 }}>
+          <Btn kind="secondary" icon="document-text-outline" title="View conversation log" onPress={() => setShowLog(true)} />
         </View>
       </Section>
       <View style={{ gap: 8 }}>

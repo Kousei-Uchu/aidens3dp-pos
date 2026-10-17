@@ -673,3 +673,15 @@ On the iPad, with the model set up as in T49 and the chat as in T52. Sign in as 
 7. **Most important:** More ▸ Training, start any course, then open the chat. Pass: it says the assistant is switched off in practice mode. Nothing is logged and nothing reaches your server.
 8. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: nothing about the log comes across.
 
+## T54. Assistant conversation log, viewer (0156)
+
+On the iPad, with the model set up as in T49 and some conversations in the log (T53). Sign in as the owner or a manager.
+
+1. Settings ▸ AI assistant: tap **View conversation log**. Pass: the viewer opens, showing a list of conversations with staff member, time and the question.
+2. Use the filters: pick **Errors**, **Practice** or **Remote**. Pass: the list narrows to matching conversations. Type a staff member's name. Pass: only their conversations show.
+3. Tap a conversation. Pass: it expands to show the question, the reply, what was sent to the model, and what was masked.
+4. Tap **Export log**. Pass: a file is saved through the iPad's Files (check in Files app, On My iPad, in the till app's folder).
+5. Tap **Clear log**, type `CLEAR` and confirm. Pass: the log is emptied and the list shows no conversations.
+6. Change the **Conversation log cap** to a small value (for example 1 MB), save, then ask more questions. Pass: the oldest entries are removed when the cap is passed, and a note in the viewer says entries were purged.
+7. **Most important:** sign in as a cashier (not a manager or owner). Pass: the **View conversation log** button is not shown in Settings ▸ AI assistant, and the viewer cannot be opened.
+

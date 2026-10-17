@@ -166,8 +166,8 @@ export const ASK_MANAGER_LINE = 'Ask the owner or a manager to check the AI assi
 export const canRetry = (k: AssistantErrorKind): boolean => k === 'unreachable' || k === 'timeout' || k === 'server_error' || k === 'bad_reply';
 
 // ---------- who sees it, and when sending is blocked ----------
-/** Flipped to true in the audit log patch (3 in the plan). Until then only people who may edit the assistant settings see the entry. */
-export const ASSISTANT_OPEN_TO_ALL = false;
+/** Flipped to true in the audit log viewer patch (0153, built as 0156). The log now has a manager-only viewer, so everyone may use the chat. */
+export const ASSISTANT_OPEN_TO_ALL = true;
 /** The entry needs a signed in person (history is per staff member), so it is never on the lock screen. */
 export function assistantEntryVisible(i: { locked: boolean; canEdit: boolean; openToAll?: boolean }): boolean {
   if (i.locked) return false;
