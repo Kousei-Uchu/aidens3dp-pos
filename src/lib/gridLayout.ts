@@ -1,12 +1,25 @@
-export type TileSizePreference = 'S' | 'M' | 'L';
+export type TileSizePreference = 'S' | 'M' | 'L' | number;
 
 /** Space the grid keeps for its own side padding (8 on each side). */
 export const GRID_PADDING = 16;
 /** The tile width each size preference aims for. The real width is nudged up or down from this to fill the pane. */
-export const TILE_TARGET: Record<TileSizePreference, number> = { S: 96, M: 124, L: 160 };
+export const TILE_TARGET: Record<'S' | 'M' | 'L', number> = { S: 96, M: 124, L: 160 };
+export const TILE_MIN = 80;
+export const TILE_MAX = 220;
+export const DEFAULT_TILE_SIZE = 124;
 const MIN_COLUMNS = 2;
 /** Tile widths are rounded down to this step so the row can never add up to a hair more than the pane and wrap early. */
 const STEP = 0.25;
+
+export function resolveTileTarget(preference: TileSizePreference): number {
+  if (typeof preference === 'number' && !Number.isNaN(preference)) {
+    return Math.max(TILE_MIN, Math.min(TILE_MAX, preference));
+  }
+  if (preference === 'S' || preference === 'M' || preference === 'L') {
+    return TILE_TARGET[preference];
+  }
+  return DEFAULT_TILE_SIZE;
+}
 
 /**
  * How many columns to use for a pane. It tries the two column counts either side of the preferred tile width
@@ -15,7 +28,7 @@ const STEP = 0.25;
  * over, the tiles grow to use it. If more, one more column is added and the tiles shrink a little to fit it.
  */
 export function tileColumnsForPane(width: number, preference: TileSizePreference): number {
-  const target = TILE_TARGET[preference];
+  const target = resolveTileTarget(preference);
   const room = Math.max(0, width - GRID_PADDING);
   const fit = Math.floor(room / target);
   if (fit < MIN_COLUMNS) return MIN_COLUMNS;

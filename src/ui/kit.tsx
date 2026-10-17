@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme, useLayout } from './theme';
 import { useApp } from '../state/store';
 import { digitsToCents, fmt } from '../lib/money';
-import { NativeSegmented, NativeSwitch, hasSwiftUI } from './native';
+import { NativeSegmented, NativeSlider, NativeSwitch, hasSwiftUI } from './native';
 import { noteActivity } from '../lib/idle';
 import { fieldBlurred, fieldFocused } from '../lib/focusGuard';
 import { KIND_PROPS, needsDoneBar, type FieldKind } from '../lib/fieldKinds';
@@ -94,12 +94,12 @@ export function Chip({ label, active, onPress, icon, spot }: { label: string; ac
   return <Pressable ref={sref} onPress={() => { spotPressed(spot); tap(); onPress?.(); }} accessibilityRole="button" accessibilityState={{ selected: !!active }} style={{ paddingHorizontal: 14, paddingVertical: Math.round(8 * k), borderRadius: 999, backgroundColor: active ? c.accent : c.fill, flexDirection: 'row', gap: 6, alignItems: 'center' }}>
     {icon ? <Ionicons name={icon} size={14} color={active ? c.onAccent : c.text} /> : null}<Text style={{ color: active ? c.onAccent : c.text, fontWeight: '600', fontSize: Math.round(14 * k * 2) / 2 }}>{label}</Text></Pressable>;
 }
-export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void }) {
+export function Segmented<T extends string | number>({ value, options, onChange }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void }) {
   const { c } = useTheme(); const k = useUi().textScale;
-  if (hasSwiftUI) return <NativeSegmented value={value} options={options} onChange={v => { tap(); onChange(v); }} />;
-  return <View style={{ flexDirection: 'row', backgroundColor: c.fill, borderRadius: 12, padding: 3 }}>{options.map(o => (
-    <Pressable key={o.v} onPress={() => { tap(); onChange(o.v); }} accessibilityRole="button" accessibilityState={{ selected: o.v === value }} style={{ flex: 1, paddingVertical: Math.round(8 * k), borderRadius: 9, alignItems: 'center', backgroundColor: o.v === value ? c.card : 'transparent' }}>
-      <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: Math.round(14 * k * 2) / 2 }}>{o.label}</Text></Pressable>))}</View>;
+  if (hasSwiftUI && typeof value === 'string') return <NativeSegmented value={value as string} options={options as any} onChange={v => { tap(); onChange(v as T); }} />;
+  return <View style={{ flexDirection: 'row', backgroundColor: c.fill, borderRadius: 12, padding: 3, flexWrap: 'wrap', gap: 2 }}>{options.map(o => (
+    <Pressable key={String(o.v)} onPress={() => { tap(); onChange(o.v); }} accessibilityRole="button" accessibilityState={{ selected: o.v === value }} style={{ flex: 1, paddingVertical: Math.round(8 * k), paddingHorizontal: 6, borderRadius: 9, alignItems: 'center', backgroundColor: o.v === value ? c.card : 'transparent', minWidth: 60 }}>
+      <Text style={{ color: c.text, fontWeight: o.v === value ? '700' : '500', fontSize: Math.round(14 * k * 2) / 2, textAlign: 'center' }}>{o.label}</Text></Pressable>))}</View>;
 }
 /** `kind` picks the keyboard + capitalisation + autocorrect for the data (see lib/fieldKinds.ts); explicit props override it. */
 export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputProps & { label?: string; kind?: FieldKind }) {
@@ -118,6 +118,39 @@ export function Field({ label, style, onFocus, onBlur, kind, ...p }: TextInputPr
 export function Toggle({ label, sub, value, onChange, disabled }: { label: string; sub?: string; value: boolean; onChange: (v: boolean) => void; disabled?: boolean }) {
   const sw = <NativeSwitch value={value} onChange={v => { if (!disabled) { tap(); onChange(v); } }} label={label} />;
   return <Row title={label} sub={sub} right={disabled ? <View pointerEvents="none" accessibilityState={{ disabled: true }} style={{ opacity: 0.4 }}>{sw}</View> : sw} />;
+}
+/** Plain slider fallback (iOS-native SwiftUI slider when available). */
+export function Slider({ value, onValueChange, minimumValue = 0, maximumValue = 1, step = 1, disabled }: { value: number; onValueChange: (v: number) => void; minimumValue?: number; maximumValue?: number; step?: number; disabled?: boolean }) {
+  const { c } = useTheme();
+  if (hasSwiftUI) return <NativeSlider value={value} onChange={onValueChange} min={minimumValue} max={maximumValue} step={step} color={c.accent} />;
+  const [v, setV] = React.useState(value);
+  React.useEffect(() => setV(value), [value]);
+  return (
+    <View style={{ height: 40, justifyContent: 'center' }}>
+      <View style={{ height: 4, backgroundColor: c.line, borderRadius: 2 }} />
+      <Pressable
+        disabled={disabled}
+        onTouchMove={e => {
+          const x = e.nativeEvent.locationX;
+          const w = e.currentTarget.width || 1;
+          let nv = minimumValue + ((x / w) * (maximumValue - minimumValue));
+          if (step > 0) nv = Math.round(nv / step) * step;
+          nv = Math.max(minimumValue, Math.min(maximumValue, nv));
+          setV(nv); onValueChange(nv);
+        }}
+        onTouchStart={e => {
+          const x = e.nativeEvent.locationX;
+          const w = e.currentTarget.width || 1;
+          let nv = minimumValue + ((x / w) * (maximumValue - minimumValue));
+          if (step > 0) nv = Math.round(nv / step) * step;
+          nv = Math.max(minimumValue, Math.min(maximumValue, nv));
+          setV(nv); onValueChange(nv);
+        }}
+        style={{ position: 'absolute', left: 0, right: 0, top: 0, bottom: 0 }}
+      />
+      <View style={{ position: 'absolute', left: `${((v - minimumValue) / Math.max(1, maximumValue - minimumValue)) * 100}%`, width: 20, height: 20, borderRadius: 10, backgroundColor: c.accent, marginLeft: -10 }} />
+    </View>
+  );
 }
 export const Empty = ({ icon = 'file-tray-outline', title, sub }: { icon?: IconName; title: string; sub?: string }) => {
   const { c } = useTheme();

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View } from 'react-native';
-import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Slider, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { hashPin, newSalt, verifyPin } from '../lib/pin';
@@ -51,7 +51,19 @@ export default function Staff() {
             <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase', marginTop: 12 }}>Personal display preferences</Txt>
             <Txt size={12} sub>These override the register defaults for this staff member only.</Txt>
             <Segmented value={m.preferences?.theme ?? 'default'} onChange={v => setPreference(m.id, 'theme', v)} options={[{ v: 'default', label: 'Register' }, { v: 'brand', label: 'Brand' }, { v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
-            <Segmented value={m.preferences?.tileSize ?? 'default'} onChange={v => setPreference(m.id, 'tileSize', v)} options={[{ v: 'default', label: 'Register tiles' }, { v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
+            <Segmented value={(typeof m.preferences?.tileSize === 'number' ? 'custom' : m.preferences?.tileSize ?? 'default') as any} onChange={v => setPreference(m.id, 'tileSize', v)} options={[{ v: 'default', label: 'Register tiles' }, { v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }, { v: 'custom', label: 'Custom' }]} />
+            {(m.preferences?.tileSize === undefined ? false : typeof m.preferences?.tileSize === 'number') || (typeof m.preferences?.tileSize === 'number') ? (
+              typeof m.preferences?.tileSize === 'number' ? (
+                <View style={{ paddingTop: 6 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <Txt size={13} sub>{Math.round(m.preferences.tileSize)}px</Txt>
+                    <View style={{ flex: 1 }}>
+                      <Slider value={m.preferences.tileSize} minimumValue={80} maximumValue={220} step={4} onValueChange={v => setPreference(m.id, 'tileSize', Math.round(v))} />
+                    </View>
+                  </View>
+                </View>
+              ) : null
+            ) : null}
             <Segmented value={m.preferences?.accent ?? 'default'} onChange={v => setPreference(m.id, 'accent', v)} options={[{ v: 'default', label: 'Register accent' }, { v: '#FAE9DC', label: 'Peach' }, { v: '#13111C', label: 'Plum' }, { v: '#2563EB', label: 'Blue' }, { v: '#16A34A', label: 'Green' }, { v: '#9333EA', label: 'Purple' }]} />
           </View>
           <Row icon="qr-code-outline" title="Cashier pass" sub={hasBadge(m) ? 'Issued. Print it, add it to Apple Wallet, or replace it.' : 'Not issued yet'} onPress={() => { setSel(null); setTimeout(() => setPassFor(m.id), 350); }} />

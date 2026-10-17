@@ -4,7 +4,7 @@ import { Image, Linking, Pressable, Share, View } from 'react-native';
 import * as DocPicker from 'expo-document-picker';
 import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+import { Btn, Card, Chip, Field, Page, Row, Section, Segmented, Sheet, Slider, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
@@ -79,7 +79,22 @@ export default function Settings() {
         <Txt size={13} sub>Lets a customer scan a QR after you sell a gift card with no email, and enter their own name and email to receive it. See gift-claim-server/README. Leave empty to skip.</Txt></View> : null}
       {sub === 'theme' ? <View style={{ padding: 16, gap: 14 }}><Segmented value={s.theme} onChange={v => patch({ theme: v })} options={[{ v: 'brand', label: 'Aiden’s brand' }, { v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
         <Toggle label="Glass surfaces" sub="Adds blurred, translucent panels and buttons. This is a React Native glass-style effect, not Apple's exact iOS 26 Liquid Glass material." value={s.glassSurfaces} onChange={glassSurfaces => patch({ glassSurfaces })} />
-        <Txt weight="600">Tile size</Txt><Segmented value={s.tileSize} onChange={v => patch({ tileSize: v })} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }]} />
+        <Txt weight="600">Tile size</Txt>
+        <Segmented value={typeof s.tileSize === 'number' ? 'custom' : s.tileSize} onChange={v => { if (v === 'custom') patch({ tileSize: 124 }); else patch({ tileSize: v }); }} options={[{ v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }, { v: 'custom', label: 'Custom' }]} />
+        {typeof s.tileSize === 'number' ? (
+          <View style={{ paddingTop: 10 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Txt size={13} sub>{Math.round(s.tileSize)}px</Txt>
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 }}>
+                  <Txt size={11} sub>80</Txt><Txt size={11} sub>220</Txt>
+                </View>
+                <Slider value={s.tileSize} minimumValue={80} maximumValue={220} step={4} onValueChange={v => patch({ tileSize: Math.round(v) })} />
+              </View>
+            </View>
+            <Txt size={12} sub style={{ marginTop: 4 }}>Adjust the slider to make tile images larger or smaller while keeping adaptive sizing.</Txt>
+          </View>
+        ) : null}
         <Txt weight="600">Accent</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>{['#111111', '#FAE9DC', '#13111C', '#2563EB', '#16A34A', '#DC2626', '#9333EA', '#EA580C'].map(a => <Chip key={a} label={a === '#111111' ? 'Default' : a === '#FAE9DC' ? 'Brand peach' : a === '#13111C' ? 'Plum' : ' '} active={s.accent === a} onPress={() => patch({ accent: a })} />)}</View>
         <Section title="Item spotlight" footer="Show a brief, large confirmation on the checkout screen after an item is added. This applies to scans and taps.">
           <Toggle label="Show item name" value={s.itemSpotlight.name} onChange={name => patch({ itemSpotlight: { ...s.itemSpotlight, name } })} />

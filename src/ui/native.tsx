@@ -40,3 +40,22 @@ export function NativeSegmented<T extends string>({ value, options, onChange }: 
     </UI.Host>
   );
 }
+
+/** iOS-native slider (SwiftUI Slider). */
+export function NativeSlider({ value, onChange, min = 0, max = 1, step = 0, label, color }: { value: number; onChange: (v: number) => void; min?: number; max?: number; step?: number; label?: string; color?: string }) {
+  const { c, dark } = useTheme();
+  if (!hasSwiftUI || !UI || !MOD) return null;
+  return (
+    <UI.Host matchContents colorScheme={dark ? 'dark' : 'light'} style={{ flex: 1 }}>
+      <UI.Slider
+        value={value}
+        min={min}
+        max={max}
+        steps={step > 0 ? Math.round((max - min) / step) : 0}
+        color={color ?? c.accent}
+        onValueChange={onChange}
+        modifiers={label ? [MOD.accessibilityLabel(label)] : undefined}
+      />
+    </UI.Host>
+  );
+}

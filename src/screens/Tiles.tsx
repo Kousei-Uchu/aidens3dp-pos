@@ -56,7 +56,7 @@ export function TileView({ tile, idx, editing, onPress, onEdit, onRemove, onMove
           {info.icon ? <Ionicons name={info.icon} size={20} color="#111" /> : <View />}
           {info.stock && info.stock !== 'none' ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: info.stock === 'neg' ? '#DC2626' : info.stock === 'low' ? '#F59E0B' : '#16A34A' }} /> : null}
         </View>
-        <View style={img ? { backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, margin: -4 } : undefined}><Txt size={14} weight="700" color="#111" numberOfLines={img ? 2 : 3}>{info.label}</Txt>{v && !info.sub ? <Money cents={v.priceCents} size={13} color="#374151" /> : info.sub ? <Txt size={12} color="#374151">{info.sub}</Txt> : null}</View>
+        <View style={img ? { backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, margin: -4, marginTop: -6 } : undefined}><Txt size={14} weight="700" color="#111" numberOfLines={img ? 2 : 3}>{info.label}</Txt>{v && !info.sub ? <Money cents={v.priceCents} size={13} color="#374151" /> : info.sub ? <Txt size={12} color="#374151">{info.sub}</Txt> : null}</View>
       </Pressable>
       {editing ? <>
         <Pressable onPress={onRemove} hitSlop={8} accessibilityLabel={`Remove ${info.label}`} style={{ position: 'absolute', top: -2, left: -2 }}><Ionicons name="remove-circle" size={26} color="#DC2626" /></Pressable>
@@ -90,7 +90,7 @@ export function VariantPicker({ variants, onPick }: { variants: Variant[]; onPic
             style={({ pressed }) => ({ flex: 1, overflow: 'hidden', borderRadius: 14, backgroundColor: TILE_COLORS[3], padding: 10, justifyContent: 'space-between', opacity: pressed ? 0.7 : 1 })}>
             {v.image ? <Image source={{ uri: v.image }} resizeMode="cover" accessibilityIgnoresInvertColors style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, borderRadius: 14 }} /> : null}
             <View style={{ flexDirection: 'row', justifyContent: 'flex-end', minHeight: 9 }}>{dot ? <View style={{ width: 9, height: 9, borderRadius: 5, backgroundColor: dot }} /> : null}</View>
-            <View style={v.image ? { backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, margin: -4 } : undefined}>
+            <View style={v.image ? { backgroundColor: 'rgba(255,255,255,0.88)', borderRadius: 8, paddingHorizontal: 6, paddingVertical: 3, margin: -4, marginTop: -6 } : undefined}>
               <Txt size={14} weight="700" color="#111" numberOfLines={2}>{name}</Txt>
               <Money cents={v.priceCents} size={13} color="#374151" />
               <Txt size={12} color={tone === 'neg' ? '#B91C1C' : tone === 'out' || tone === 'low' ? '#B45309' : '#374151'} numberOfLines={1}>{stockText(v.stock)}</Txt>
