@@ -22,15 +22,15 @@ test('the course is registered after items and is valid', () => {
 });
 
 test('Check 1 requires Casey to reach pay', () => {
-  assert.ok(!won(adjustReview.check1, 'c1-casey', snap({ paying: false, staffId: PRACTICE_CASEY })));
-  assert.ok(won(adjustReview.check1, 'c1-casey', snap({ paying: true, staffId: PRACTICE_CASEY })));
-  assert.ok(!won(adjustReview.check1, 'c1-casey', snap({ paying: true, staffId: PRACTICE_MORGAN })));
+  assert.ok(!won(adjustReview.check1, 'c1-review', snap({ paying: false, staffId: PRACTICE_CASEY })));
+  assert.ok(won(adjustReview.check1, 'c1-review', snap({ paying: true, staffId: PRACTICE_CASEY })));
+  assert.ok(!won(adjustReview.check1, 'c1-review', snap({ paying: true, staffId: PRACTICE_MORGAN })));
 });
 
 test('Check 2 requires Morgan to reach pay', () => {
-  assert.ok(won(adjustReview.check2, 'c2-morgan', snap({ paying: true, staffId: PRACTICE_MORGAN })));
-  assert.ok(!won(adjustReview.check2, 'c2-morgan', snap({ paying: true, staffId: PRACTICE_CASEY })));
-  assert.ok(!won(adjustReview.check2, 'c2-morgan', snap({ paying: false, staffId: PRACTICE_MORGAN })));
+  assert.ok(won(adjustReview.check2, 'c2-keep', snap({ paying: true, staffId: PRACTICE_MORGAN })));
+  assert.ok(!won(adjustReview.check2, 'c2-keep', snap({ paying: true, staffId: PRACTICE_CASEY })));
+  assert.ok(!won(adjustReview.check2, 'c2-keep', snap({ paying: false, staffId: PRACTICE_MORGAN })));
 });
 
 test('Check 2 says where it was taught', () => {

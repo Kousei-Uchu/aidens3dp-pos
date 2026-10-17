@@ -60,8 +60,9 @@ export const adjustReview: TrainingModule = {
       ] },
     ],
     steps: [
-      { id: 'cart', title: 'A flagged line', say: 'The Bumble Bee had a line price set earlier, but another one was added. Tap Charge.', screen: 'cart', focus: 'charge', note: '$12.00 now' },
-      { id: 'review', title: 'The check window', say: 'The till lists the adjustment and why it is flagged. You must choose before you can continue.', tap: 'charge', screen: 'review', focus: 'rv-flag', note: 'Deal with the flag' },
+      { id: 'cart1', title: 'A flagged line', say: 'The Bumble Bee had a line price set earlier, but another one was added. Tap Charge.', screen: 'cart', focus: 'charge', note: '$12.00 now' },
+      { id: 'review1', title: 'The check window', say: 'The till lists the adjustment and why it is flagged. You must choose before you can continue.', tap: 'charge', screen: 'review', focus: 'rv-flag', note: 'Deal with the flag' },
+      { id: 'review2', title: 'Make your choice', say: 'Pick Keep, Adjust or Remove to clear the flag, then continue to payment.', screen: 'review', focus: 'rv-keep', note: 'Each role sees what it can do' },
     ],
   },
   guide: [
@@ -69,7 +70,7 @@ export const adjustReview: TrainingModule = {
     { id: 'g-cart', target: SPOT.cartCharge, say: 'As Casey (cashier), charge to see the flagged adjustment.', until: { kind: 'visible', id: SPOT.reviewContinue }, gesture: 'tap', allow: ['adjust'], at: place },
     { id: 'g-denied', target: SPOT.reviewContinue, say: 'Because Casey cannot keep it, only Remove is offered to resolve the flag. Tap Remove, then Continue to payment.', until: { kind: 'state', test: s => s.paying }, gesture: 'tap', allow: ['adjust'], at: placeWin },
     { id: 'g-switch', target: SPOT.tabMore, say: 'Now switch to Morgan (manager). Tap the More tab, then Switch staff to sign in as Morgan.', until: { kind: 'visible', id: SPOT.loginUnlock }, gesture: 'tap', allow: ['sale'], at: place },
-    { id: 'g-morgan', target: SPOT.loginUnlock, say: 'Morgan uses PIN 2468. Key it in and unlock.', until: { kind: 'state', test: s => s.staffId === PRACTICE_MORGAN }, typing: true, target: SPOT.loginPinpad, allow: [], at: { tabs: ['checkout'], routes: [], sheets: true } },
+    { id: 'g-morgan', target: SPOT.loginPinpad, say: 'Morgan uses PIN 2468. Key it in and unlock.', until: { kind: 'state', test: s => s.staffId === PRACTICE_MORGAN }, gesture: 'tap', typing: true, allow: [], at: { tabs: ['checkout'], routes: [], sheets: true } },
     { id: 'g-replay', target: SPOT.cartCharge, say: 'With Morgan, charge again. The flagged adjustment can be kept or adjusted. Keep it, then Continue to payment.', until: { kind: 'state', test: s => s.paying }, gesture: 'tap', allow: ['adjust'], at: placeWin },
     { id: 'g-done', say: 'The review catches changes after an adjustment was set. Removal is never blocked; keeping or adjusting can be limited by role.', until: { kind: 'next' }, at: place },
   ],
