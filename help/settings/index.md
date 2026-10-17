@@ -4,7 +4,7 @@ title: Settings
 parent: start
 summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
 tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
-related: [settings/shopify, settings/payments, settings/hardware, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings]
+related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings]
 updated: 2026-10-11
 ---
 Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
@@ -44,7 +44,7 @@ The Payments section shows fee rates used for estimates. Zeller does not report 
 | Shopify connection and catalogue import | `ShopifySettings` in `src/screens/Settings.tsx` |
 | Payments, fees and cash rounding | Payments section in `src/screens/Settings.tsx` |
 | Bundle deals | `BundlesEditor` in `src/screens/BundleBuilder.tsx` |
-| Hardware scanner test | `HardwareTest` in `src/screens/Settings.tsx` |
+| Hardware scanner test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` |
 | Screensaver and display | `DisplaySettings` in `src/screens/Settings.tsx` |
 | Settings model and defaults | `src/state/store.ts` |
 

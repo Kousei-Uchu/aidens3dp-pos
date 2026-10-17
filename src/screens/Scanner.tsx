@@ -42,7 +42,7 @@ function RealCameraScanner({ visible, onClose, onScan, title = 'Scan barcode' }:
  * Bluetooth HID scanners type the code then press Return. A hidden, always-focused TextInput captures that.
  * Mounted only on screens where scanning should add to the cart.
  */
-export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) => void; enabled?: boolean }) {
+export function HidScanner({ onScan, enabled = true, onText }: { onScan: (code: string) => void; enabled?: boolean; /** Called on every change of the scan box with the text so far and a millisecond clock. Used by the scanner speed test. */ onText?: (text: string, now: number) => void }) {
   const ref = useRef<TextInput>(null); const value = useRef(''); const [inputKey, setInputKey] = useState(0);
   // Never grab focus while someone is typing in a real field (that is what made the keyboard vanish): the guard
   // knows about every <Field>, and Keyboard.isVisible() covers any raw TextInput we don't own.
@@ -57,7 +57,7 @@ export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) 
     if (enabled && canGrab()) ref.current?.focus();
   }, [enabled, inputKey]);
   if (!enabled) return null;
-  return <TextInput key={inputKey} ref={ref} onChangeText={t => { noteActivity(); value.current = t; }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
+  return <TextInput key={inputKey} ref={ref} onChangeText={t => { noteActivity(); value.current = t; onText?.(t, nowMs()); }} showSoftInputOnFocus={false} autoCorrect={false} autoCapitalize="none" blurOnSubmit={false} caretHidden
     onSubmitEditing={({ nativeEvent }) => {
       const code = (nativeEvent.text || value.current).trim();
       value.current = '';
@@ -65,4 +65,6 @@ export function HidScanner({ onScan, enabled = true }: { onScan: (code: string) 
       if (code) onScan(code);
     }} style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01, top: 0, left: 0 }} accessibilityElementsHidden importantForAccessibility="no" />;
 }
+/** A millisecond clock that is never set back (performance.now when there is one). */
+export const nowMs = (): number => (typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now());
 export const ScannerHint = () => <Txt size={12} sub>Bluetooth scanner ready</Txt>;

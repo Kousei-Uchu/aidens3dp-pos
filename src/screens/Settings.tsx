@@ -18,7 +18,7 @@ import { applyBackup, collectBackup } from '../lib/backupIO';
 import { IDLE_CHOICES, LOCKED_CHOICES, SWATCHES, contrastOn, logoSource, normaliseHex, type ScreensaverSettings } from '../lib/screensaver';
 import { parseGrid, serialiseGrid } from '../lib/grid';
 import { BundlesEditor } from './BundleBuilder';
-import { HidScanner } from './Scanner';
+import { HardwareTest } from './ScannerSpeed';
 import { SquareHistorySettings } from './SquareHistory';
 import { useCashProfile } from '../state/cashProfile';
 import { CartWarningsSettings } from './CartWarningsSettings';
@@ -136,18 +136,6 @@ function ShopifySettings() {
       <Btn title="Disconnect" kind="ghost" onPress={async () => { if (await confirm('Disconnect Shopify?', 'Credentials are removed from this device. Catalogue stays until re-import.', 'Disconnect', true)) { await clearCreds(); setF({ domain: '', id: '', secret: '' }); } }} />
       {msg ? <Txt size={13} sub style={{ marginTop: 8 }}>{msg}</Txt> : null}
       <Txt size={12} sub style={{ marginTop: 10 }}>{Object.keys(data.variants).length} variants · {data.collections.length} collections · {data.customers.length} customers{data.catalogueAt ? ` · imported ${new Date(data.catalogueAt).toLocaleString()}` : ''}</Txt>
-    </View>
-  );
-}
-
-function HardwareTest() {
-  const [last, setLast] = useState<string[]>([]);
-  return (
-    <View style={{ padding: 16, gap: 10 }}>
-      <Txt>Pair your Bluetooth scanner in iOS Settings (HID keyboard mode), then scan any barcode:</Txt>
-      <HidScanner onScan={c => setLast(l => [c, ...l].slice(0, 8))} />
-      <Card>{last.length ? last.map((c, i) => <Row key={i} title={c} last={i === last.length - 1} />) : <Row title="Waiting for a scan…" last />}</Card>
-      <Txt size={12} sub>Scans here only test the scanner - nothing is added to the cart.</Txt>
     </View>
   );
 }

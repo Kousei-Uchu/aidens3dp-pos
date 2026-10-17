@@ -3,8 +3,10 @@
 // A page shows at the depth you chose (Basic, Deep or Advanced), which is remembered. `id` opens a page directly (used by the "?" buttons later).
 import React, { useEffect, useMemo, useState } from 'react';
 import { Pressable, ScrollView, View } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { Card, Chip, Empty, Field, IconBtn, Page, Row, Section, Segmented, Txt } from '../ui/kit';
 import Markdown from '../ui/Markdown';
+import ScannerCodes from './ScannerCodes';
 import { HelpMenu } from '../ui/HelpMenu';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
@@ -13,6 +15,10 @@ import { builtinHelp } from '../lib/helpBuiltin';
 import { DEPTHS, DEPTH_BLURB, DEPTH_LABEL, ROOT_ID, depthsPresent, resolveLinks, searchPages, selectDepth, trail, type Depth } from '../lib/helpDocs';
 import { parseBlocks } from '../lib/mdBlocks';
 import { fetchRemoteHelp } from '../lib/helpRemote';
+
+/** Pages that get a shortcut to the scanner setup barcodes. `big` is the large button at the very top (Checkout help). */
+const SCANNER_PAGE = 'settings/scanner-codes';
+const SCANNER_SHORTCUT: Record<string, { big: boolean }> = { sales: { big: true }, 'sales/scanners': { big: false }, 'settings/hardware': { big: false } };
 
 const asDepth = (v: unknown): Depth => ((DEPTHS as readonly string[]).includes(v as string) ? (v as Depth) : 'basic');
 
@@ -53,6 +59,17 @@ export default function Help({ id }: { id?: string }) {
     <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back} helpId={null}
       right={<View style={{ flexDirection: 'row' }}><IconBtn icon="list-outline" label="Contents" onPress={() => setMenu(true)} />{page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : null}</View>}>
       <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
+        {SCANNER_SHORTCUT[page.id] && !q.trim() && index.byId[SCANNER_PAGE] ? (
+          <Pressable onPress={() => go(SCANNER_PAGE)} accessibilityRole="button" accessibilityLabel="Open the scanner setup barcodes"
+            style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 14, borderRadius: 18, backgroundColor: pressed ? c.fill : c.accent, paddingVertical: SCANNER_SHORTCUT[page.id].big ? 26 : 14, paddingHorizontal: 20 })}>
+            <Ionicons name="barcode-outline" size={SCANNER_SHORTCUT[page.id].big ? 44 : 28} color={c.onAccent} />
+            <View style={{ flex: 1 }}>
+              <Txt size={SCANNER_SHORTCUT[page.id].big ? 22 : 16} weight="700" color={c.onAccent}>Scanner setup barcodes</Txt>
+              <Txt size={SCANNER_SHORTCUT[page.id].big ? 14 : 12} color={c.onAccent}>Scan one to change the scanner's sound, sleep, speed and pairing</Txt>
+            </View>
+            <Ionicons name="chevron-forward" size={22} color={c.onAccent} />
+          </Pressable>
+        ) : null}
         <Field kind="search" placeholder="Search help" value={q} onChangeText={setQ} />
         {remoteUnavailable ? <Txt size={12} sub>Showing built-in help. The newer online copy could not be reached.</Txt> : null}
         <Segmented value={depth} options={DEPTHS.map(d => ({ v: d, label: DEPTH_LABEL[d] }))} onChange={d => patch({ helpDepth: d })} />
@@ -67,6 +84,7 @@ export default function Help({ id }: { id?: string }) {
             {crumbs.length ? <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>{crumbs.map(p => <Chip key={p.id} label={p.id === ROOT_ID ? 'Help' : p.title} icon="chevron-back" onPress={() => go(p.id)} />)}</ScrollView> : null}
             {page.id !== ROOT_ID ? <Txt size={24} weight="700">{page.title}</Txt> : null}
             <Markdown blocks={blocks} onPage={go} />
+            {page.id === SCANNER_PAGE ? <ScannerCodes /> : null}
             {missing ? <View style={{ backgroundColor: c.fill, borderRadius: 10, padding: 12 }}><Txt size={13} sub>There are no {DEPTH_LABEL[depth]} notes for this page yet, so you are seeing everything it has.</Txt></View> : null}
           </>
         )}

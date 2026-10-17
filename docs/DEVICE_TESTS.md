@@ -582,3 +582,18 @@ On the iPad and on a phone. Use More ▸ Settings ▸ Cart warnings.
 9. With a second register, wait about 25 seconds. Pass: the warnings are on it too.
 10. **Most important:** More ▸ Training, start any course with a warning set to always show. Pass: the practice till never shows the real warning, and Charge goes straight on.
 11. (0145) On a phone and on the iPad in landscape, give one warning a very long message. Pass: the message scrolls inside the popup while the dots and buttons stay on screen, and the dots and buttons do not move when you go between a short page and a long one. Turn on Reduce Motion: pages change with no slide. Tap **Back to cart**: the popup closes and the cart is as it was. With only one warning in the cart there are no dots and no Back or Next.
+
+## T48. Scanner setup barcodes and speed test (0147)
+
+Set up: the POS-mate scanner paired as a keyboard. Turn the iPad's screen brightness up. Sign in as a manager or owner for steps 6 to 9, and as a cashier for step 10.
+
+1. Open More ▸ Help ▸ Checkout. Pass: a large **Scanner setup barcodes** button is at the very top. Open Help ▸ Scanning items and Help ▸ Hardware: a smaller version of the same button is at the top of each.
+2. Tap the button. Pass: the page lists Pairing, Vibration, Volume, Sleep, Scanning mode and Data entry speed, each code drawn as a barcode with its name, what it does and **(default)** on the factory setting.
+3. Tap **Vibration off**. Pass: the whole screen goes white and shows only that barcode, its name and one line saying what it does. Scan it with the scanner. Pass: the scanner confirms it took the setting. Tap anywhere: you are back on the list. Scan **Vibration on** to put it back.
+4. Try one more code from each group you care about (volume, sleep, scan mode). Note any code the scanner ignores, with the code's name.
+5. Open Settings ▸ Hardware. Tap **Show the speed test barcode**, scan it. Pass: the app shows the time per character, which speed it matches and the barcode for the next slower speed. Scan **Medium speed**, then the speed test again. Pass: the time per character goes up and the matching speed changes.
+6. Signed in as a manager or owner, open Settings ▸ Hardware ▸ **Admin ▸ Calibrate**. Pass: it is there. Pick **Fast**, scan **Fast speed**, then scan the speed test barcode 3 times. Pass: **Save** stays off until the third scan, then switches on with the measured range.
+7. Save, then do the same for Medium, Slow and Super slow. Tell me the four ranges you got. Pass: they do not overlap and run from fastest to slowest.
+8. Run the speed test at each speed. Pass: each is named as the speed it was set to.
+9. With a second register, wait about 25 seconds. Pass: Hardware ▸ Calibrate there shows the same calibration date. Tap **Reset to the manual's ranges** and confirm: both registers go back to the manual's ranges.
+10. Signed in as a cashier, open Settings ▸ Hardware. Pass: the speed test is there but **Admin ▸ Calibrate** is not.

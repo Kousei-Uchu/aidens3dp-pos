@@ -4,7 +4,7 @@ title: Scanning items, passes and gift cards
 parent: sales
 summary: The Bluetooth scanner and the camera, what a scan does on each screen, and what to do when scanning misbehaves.
 tags: [scanner, scan, barcode, bluetooth, camera, keyboard, sku, pass, qr]
-related: [sales, sales/variants-and-stock, settings/hardware]
+related: [sales, sales/variants-and-stock, settings/hardware, settings/scanner-codes]
 updated: 2026-10-11
 ---
 A scan is the quickest way to add an item. The POS understands three kinds of code: item barcodes, cashier passes and gift card QR codes.
@@ -77,7 +77,7 @@ flowchart TD
 | Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |
 | Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |
 | Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |
-| Hardware test | `HardwareTest` in `Settings.tsx` (keeps the last 8 scans) |
+| Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |
 | Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts` |
 
 ### How HidScanner keeps focus

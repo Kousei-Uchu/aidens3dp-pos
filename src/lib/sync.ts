@@ -9,6 +9,7 @@ import { parseGrid } from './grid';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
 import * as meta from './shopify/metaobjects';
+import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
 import { createGiftCard } from './shopify/giftcards';
 import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
@@ -132,6 +133,7 @@ export async function pollShared() {
   const s = st(); if (!hasCreds()) return;
   try {
     if (s.settings.sharedSettingsPending) await pushSharedSettings();
+    if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
     // stock
     if (s.settings.locationId && s.data.stockSince) {
       const since = new Date().toISOString();
@@ -144,7 +146,7 @@ export async function pollShared() {
       }
       s.patchData({ stockSince: since });
     }
-    await pullSaved(); await pullLayout(); await pullSettings();
+    await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration();
     st().set({ sync: { state: st().pos.outbox.length ? 'error' : 'idle', at: new Date().toISOString(), error: st().pos.outbox.length ? `${st().pos.outbox.length} queued` : undefined } });
   } catch (e: any) {
     st().set({ sync: { state: isNetworkError(e) ? 'offline' : 'error', at: st().sync.at, error: String(e?.message ?? e) } });
@@ -227,6 +229,34 @@ async function pullSettings() {
   const row = await meta.getByHandle(meta.TYPES.settings, 'shared'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v > st().settings.sharedVersion) { try { st().patchSettings({ ...JSON.parse(row.f.settings_json), sharedVersion: v }); } catch {} }
+}
+// ── scanner calibration (Settings ▸ Hardware ▸ Calibrate) ──────────────────────────────────────────
+// Its own record in the pos_settings metaobject (handle `scanner`), so it never collides with the shared settings above and needs no new definition.
+/** Save a calibration on this register and share it. Kept locally and retried if Shopify cannot be reached. `null` goes back to the manual's ranges. */
+export async function saveScannerCalibration(cal: ScannerCalibration | null) {
+  st().patchSettings({ scannerCal: cal ?? undefined, scannerCalPending: true });
+  await pushScannerCalibration();
+}
+export async function pushScannerCalibration() {
+  if (!hasCreds()) return;
+  const cal = st().settings.scannerCal ?? null;
+  try {
+    // Number it after whatever is already there, so another register's newer copy is never mistaken for older.
+    const remote = await meta.getByHandle(meta.TYPES.settings, 'scanner');
+    const version = Math.max(st().settings.scannerCalVersion ?? 0, Number(remote?.f.version) || 0) + 1;
+    await meta.upsert(meta.TYPES.settings, 'scanner', { settings_key: 'scanner', version, settings_json: JSON.stringify({ calibration: cal }) });
+    st().patchSettings({ scannerCalVersion: version, scannerCalPending: false });
+  } catch (error) {
+    st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Scanner calibration not uploaded: ${String((error as Error)?.message ?? error)}` } });
+    throw error;
+  }
+}
+async function pullScannerCalibration() {
+  if (st().settings.scannerCalPending) return; // our unsent change wins until it is pushed
+  const row = await meta.getByHandle(meta.TYPES.settings, 'scanner'); if (!row) return;
+  const v = Number(row.f.version) || 0;
+  if (v <= (st().settings.scannerCalVersion ?? 0)) return;
+  try { const j = JSON.parse(row.f.settings_json); st().patchSettings({ scannerCal: j.calibration ? readCalibration(j.calibration) ?? undefined : undefined, scannerCalVersion: v }); } catch { /* ignore a bad record */ }
 }
 export const bundleConfig = (): BundleConfig | null => { try { return st().settings.bundlesJson ? parseBundleConfig(st().settings.bundlesJson).cfg ?? null : null; } catch { return null; } };
 

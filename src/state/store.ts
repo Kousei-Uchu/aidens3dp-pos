@@ -15,6 +15,7 @@ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 import type { AdjustPerms } from '../lib/adjustPerms';
 import type { CartWarnings } from '../lib/types';
+import type { ScannerCalibration } from '../lib/scanSpeed';
 import { isTraining } from '../lib/trainingGuard';
 
 export type Settings = {
@@ -33,6 +34,7 @@ export type Settings = {
   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
+  scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
 };
 export const defaultSettings = (): Settings => ({
