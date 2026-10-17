@@ -1,0 +1,657 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index 1a42418..1dd4601 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -1,11 +1,18 @@
+ # In-app AI assistant: planning document
+ 
+-Repo: `github.com/Kousei-Uchu/aidens3dp-pos` (branch `dev`). Checked against the repo on 17 October 2026.
++Repo: `github.com/Kousei-Uchu/aidens3dp-pos` (branch `dev`). Checked against the repo on 18 October 2026.
+ 
+ This document is the starting point for planning the Help menu chatbot. Part 1 is what the repo says today.
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 16 (18 October 2026), patch 0160:** the offline mode (3.3) is built, apart from the product and inventory lookup, which waits for the product tools
++and the data gate. When the model cannot answer, or is not set up, the chat shows the error banner and a list of matches from the screens and the help pages,
++labelled *Model offline, showing search results*, using the same two searches the model's tools use (so the role filter in 3.4 applies). Only the question is stored,
++with a marker in place of a reply; the list is searched again each time it is shown, for the role signed in then. The model is never shown a question that only got a list.
++Help pages open on tap and screens get the same Open button the link tool makes (3.2 tool 3). The next question tries the model first, and Retry replaces the list. Offline searches are in the audit log as their own kind of line. Not in practice mode, and not after
++"More detail". Send works before the model is set up. The tool patches (guide, screen and register context, date and time) are still to come.
++
+ **Revision 15 (18 October 2026), patch 0159:** tool 3 of 4 is built: the link tool, as the model-facing tool `show_link`. The plan never said what the link tool
+ was, so it is taken to mean a tappable button under a reply that opens a help page or a screen. It checks the id with the same role filters as the searches,
+ the button is saved with the reply (at most 3) and checked again each time it is drawn, and only tabs and plain pages get one (views, windows and pages that
+@@ -155,10 +162,11 @@ the audit log recording (3.6). Built in 0156: the audit log viewer, Export log,
+ the chat to everyone (3.6, 3.13). Built in 0157: the docs tools (`search_docs`, `read_doc`), the tool runtime and loop, and the role header on help pages.
+ Built in 0158: the screen search tool (`search_screens`) and the role filter for screens.
+ Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
++Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
+ 
+ Still to do:
+ 
+-- The offline mode (3.3): a visible error plus a model-free search of the navgraph and docs.
++- The offline mode's product and inventory lookup (3.3), after the product tools and the data gate.
+ - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
+   before anything reaches the model or the screen.
+ - The read-only tools (3.2).
+@@ -472,7 +480,8 @@ chat screen patch can add streaming.
+    Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
+ 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
+    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
+-   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). Next: guide.
++   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). **0160 done:** the offline search
++   (screens and help pages; products and stock come with patch 6). Next: guide.
+ 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+    tools yet.
+ 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index ba81b30..679009e 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -725,3 +725,21 @@ On the iPad, with the model set up as in T55.
+ 8. As the owner, open the conversation log and open the step 1 conversation, then **Tools used**. Pass: the show_link call is listed with the note the model was given.
+ 9. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
+ 
++## T58. Assistant offline search (0160)
++
++On the iPad, with the model set up as in T55. Sign in as the owner (or a manager when the team has no owner).
++
++1. Turn the model off (switch off Ollama on the PC, or set a wrong address) and ask *Where do I count the cash drawer?* Pass: a red bar says it cannot reach the model, and under your question a box headed **Model offline, showing search results.** lists screens (with what each is for and taps starting from Checkout) and help pages.
++2. Tap a help page in the box. Pass: Help opens on that page, and Back returns to the chat with the list still there. Tap an **Open** button on a screen in the list (for example Cash drawer). Pass: that page opens. A screen that is a window (for example Close drawer) has no button, only its taps.
++3. Ask *teleporter*. Pass: the red bar shows and the box says it could not find anything on that.
++4. Turn the model back on and ask a new question. Pass: the model answers, the red bar goes, and the earlier list is still in the chat.
++5. Turn the model off, ask something, turn it back on and tap **Retry** on the red bar. Pass: the model's answer replaces that list, and your question appears once, not twice.
++6. With the model off, ask a question. Pass: there is no **More detail** button under the list. Turn the model on and ask a question. Pass: after its answer **More detail** is there. Turn the model off and tap it. Pass: the red bar shows and no list is added.
++7. Clear the address and model in Settings ▸ AI assistant, then open the chat and ask *How do I give a customer a receipt?* Pass: the red bar says it is not set up, Send works, and the list appears.
++8. Type `refund for jo@example.com` with the model off. Pass: your message shows [email address], and the list is about refunds.
++9. Sign in as a **cashier** (with a manager or owner on the team) and ask *Where do I add a staff member?* and *Where are the Shopify settings?* Pass: both get the could not find anything message and nothing names Settings or Staff. Sign in as a manager and ask the same: both are listed, with More, Staff and More, Settings.
++10. Signed in as a manager, with the model off, ask *Where do I add a staff member?* Pass: Staff is listed. Sign in as a cashier and open the chat. Pass: it is empty (each person has their own chat), and asking the same question lists no Staff or Settings.
++11. Settings ▸ AI assistant ▸ View conversation log. Pass: each offline search is a line headed with a search icon and *Offline search*. Opening it shows why the model was not used, and the screens and help pages it found. Nothing in it was sent to a model.
++12. Ask the same question again with the model on. Pass: the model's reply does not mention the earlier offline question or list.
++13. **Most important:** More ▸ Training, start any course, then open the chat and type a question. Pass: it says the assistant is switched off in practice mode, no list appears, and nothing is logged.
++
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 8feaf9c..7286d18 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -152,6 +152,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
++| 0160 | 2026-10-18 | AI assistant, patch 4, the offline mode (plan 3.3), a non-tool item taken from the plan: **when the model cannot answer, the chat still searches**. A question that fails (cannot reach the model, took too long, key rejected, model not found, wrong address, server problem, odd reply) or is asked before the model is set up now shows the red bar as before **and** a box headed *Model offline, showing search results*, listing screens (what each is for, and the taps from the Checkout tab) and help pages (tap one to read it, and a screen that is a tab or a page gets the same **Open** button the link tool makes, checked for the role signed in). It is the same two searches the model's tools use, so the role filter applies: a role is never listed a screen or page it cannot use, and a question about one gets the same *could not find anything* as one about something that does not exist. No model is involved, so the list is labelled as matches and not as an answer. Only the question is stored (scrubbed, as always) with a marker where a reply would be; the list is searched again each time the chat is shown, for whoever is signed in then. **The model is never shown a question that only got a list** (it would read a question with no reply, and some chat templates refuse two user messages in a row). The next question tries the model first, and **Retry** replaces the list with the model's answer instead of repeating the question. No list after **More detail**, and none in practice mode. Send now works before the model is set up. New `src/lib/assistantOffline.ts` (pure), history helpers `tidyOffline`, `forModel`, `withoutExchange` in `assistantChat.ts`, a new `offline` kind of log line (`buildOfflineEvent`, `logOffline`) shown in the conversation log with the screens and pages found and why the model was not used. Help page `settings/ask-assistant` updated, `help.json` rebuilt. Tests: `tests/assistantoffline.test.ts`. Device test T58. Not in this patch: product and inventory lookup in offline mode (needs the product tools and the data gate first), the highlight arrows (guide me there), the guide tool, the screen and register context tool, and the current screen as a starting point | your request |
+ | 0159 | 2026-10-18 | AI assistant, patch 4, tool 3 of 4 (your request: one tool at a time): **the link tool** (`show_link`). The assistant can now put a **button under its reply** that opens a help page or a screen: *Open Reports*, or the Taking cash page in Help. The model gives a kind (`doc` or `screen`) and an id it got from a search; `resolveLink` in `src/lib/assistantTools.ts` checks it against what the signed in role may see (the same filters the searches use), and a page or screen the role cannot reach gets exactly the same reply as one that does not exist. The button is not part of the reply text: the loop collects it from the tool call (`AssistantTool.link`), saves it on the reply (`ChatEntry.links`, at most 3, no repeats), and `liveLinks` checks every saved button again each time the chat is drawn, so a button a role can no longer reach disappears. Buttons are never sent back to the model. Only tabs and ordinary pages get a button: each screen in `src/lib/assistantScreens.ts` now has a `target` (a tab to switch to or a page to push), and views, windows and the pages that need a cart, an item or a lesson (`NOT_LINKABLE_ROUTES`: Payment, Cart, New item, Edit item, the chat itself, Training run, Practice terminal) have none, so the reply gives their taps in words. A button can never open a web address. The prompt now names the fourth tool and tells the model never to write a link or an id itself. New `tests/assistantlinks.test.ts` (and the tool list test now expects four tools). Device test T57. **Decided without you:** the plan never says what the link tool is, so I took it to mean tappable buttons to help pages and screens, and kept the highlight arrows ("Guide me there") for the guide tool, as in the plan's answer to question 8. Tell me if you meant something else. Not in this patch: the guide tool (the last of the four), the current screen as a starting point, the offline search, and the tool call limit as a Settings field | your request |
+ | 0158 | 2026-10-18 | AI assistant, patch 4, tool 2 of 4 (your request: one tool at a time): **the screen tool**, the navgraph search from the plan. The assistant can now **search the app's screens** (`search_screens`) by name or by what they are for, and says how to open each one from the Checkout tab in the app's own words ("Tap More.", "Tap Orders."). `src/lib/assistantScreens.ts` builds the list once from `src/app.navgraph`: tabs, views, pages and windows of the real till, without overlays or practice-only screens. **Roles are worked out by walking the graph once per role**, dropping every transition and screen that role may not use, so a role is only listed where it can really get there. That matters because Settings has no `roles` on the screen itself, only on the way into it; checking the screen alone would have shown it to a cashier. A screen a role cannot reach gets exactly the same reply as one that does not exist, and no summary shown to a cashier names Settings, Staff or a role (a test checks every one). Every searchable screen in `src/app.navgraph` now has a `summary` and `keywords` (documented in `src/app.navschema`), which is what lets a question in different words find it. Search takes whole sentences and needs one matching word, with more matching words ranking higher. The prompt now mentions the third tool and tells the model to give only the taps the tool lists. Also: `resultText` could return more than the size limit when a cut result was full of quotes (each quote is escaped again inside the wrapper); it now trims until it fits. `npm run graph:build` was run, because `src/lib/appNavgraph.generated.ts` had been out of date since 0151 (the Ask the assistant screen was in the graph but not in the copy the app bundles). New `tests/assistantscreens.test.ts`. Device test T56. Not in this patch: the link tool and the guide tool (next two patches), the current screen as a starting point (needs the screen and register context tool), the offline search, and the tool call limit as a Settings field | your request |
+ | 0157 | 2026-10-18 | AI assistant, patch 4, tool 1 of 4 (your request: one tool at a time): **the docs tools**. The assistant can now **search the help pages** (`search_docs`) and **read one** (`read_doc`, at Basic, Deep or Advanced), then answer from what it read. New tool runtime in `src/lib/assistantTools.ts` (replaces the unfinished stub that read `window.__docsPages` and returned placeholders): every tool is a plain function given only what it may read, results are cut to a limit that follows the context size, and a bad tool name, bad arguments or a failing tool come back to the model as an error it can recover from. `src/lib/assistantChat.ts` now runs the tool loop (up to 15 calls a question, then it stops and names the pages it read), counts the tool definitions against the context, and drops the oldest tool results first when a long run fills it. Help pages can carry a **`roles:`** header; the tools only ever see pages the signed in role may see, and a page a role cannot see gets exactly the same reply as one that does not exist, with links and see-also lists to it removed. Tagged `manager, owner`: every `settings/*` page except `settings/ask-assistant`, `staff`, and `orders/reports`. The audit log records each tool call with its arguments and the exact result the model was given, and the log viewer shows them. Search takes whole sentences (little words dropped, half the key words needed). The system prompt changes when tools are on. New `tests/assistanttools.test.ts`. Device test T55. Not in this patch: the tool call limit as a Settings field (it is the constant `DEFAULT_TOOL_LIMIT`, 15), the navgraph, link and guide tools (next three patches), the offline search, and role filtering for tools that do not exist yet | your request |
+diff --git a/help/help.json b/help/help.json
+index 29f89c8..8bb9e3f 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "a50c0230",
++ "version": "3f8a6ab3",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1433,9 +1433,9 @@
+    "updated": "2026-10-18",
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+-    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
+-    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode. Practice mode never sends anything out, and nothing is logged.",
+-    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### Limits of this version\nThe only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
++    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.\n\nBelow your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.",
++    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
++    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### The offline list\nThe list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens and help pages it found and why the model was not used.\n\n### Limits of this version\nThe offline list does not look up products, stock or customers yet. The only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+   },
+   {
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index 2644102..b9e3aab 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -21,7 +21,9 @@ When it points you at a help page or a screen, it can put a button under its rep
+ It cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
+ 
+ ### If it does not answer
+-A red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.
++A red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.
++
++Below your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.
+ 
+ ## Deep
+ 
+@@ -37,7 +39,7 @@ Every question you send and every answer or error is also written to a log on th
+ If a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*
+ 
+ ### Practice mode
+-The assistant is switched off in practice mode. Practice mode never sends anything out, and nothing is logged.
++The assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.
+ 
+ ## Advanced
+ 
+@@ -50,5 +52,8 @@ The model asks for a button with the `show_link` tool, giving a kind (help page
+ ### How the log is kept
+ One file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.
+ 
++### The offline list
++The list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens and help pages it found and why the model was not used.
++
+ ### Limits of this version
+-The only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
++The offline list does not look up products, stock or customers yet. The only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index b4d0100..f3614d1 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -82,7 +82,8 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false):
+ }
+ 
+ // ---------- history ----------
+-export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; /** Buttons shown under a reply (patch 0159). Never sent to the model: only the text is. */ links?: ChatLink[] };
++/** `links` are buttons shown under a reply (patch 0159), never sent to the model: only the text is. `offline` marks the entry that stands in for a reply when the model could not answer (patch 0160): a list of matches from the screens and help pages, searched again each time it is shown. */
++export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; links?: ChatLink[]; offline?: true };
+ export const HISTORY_CAP = 200;
+ export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
+ 
+@@ -103,12 +104,34 @@ export function readHistory(raw: unknown): ChatEntry[] {
+     const o = e as Record<string, unknown>;
+     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
+     const links = o.role === 'assistant' ? readLinks(o.links) : [];
+-    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}) });
++    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}), ...(o.role === 'assistant' && o.offline === true ? { offline: true as const } : {}) });
+   }
+   return capHistory(out);
+ }
++/**
++ * An offline entry is only meaningful straight after the question it answers, because its list is searched for from that question.
++ * One that has lost its question (the oldest messages were dropped, or storage was edited) is removed.
++ */
++export function tidyOffline(h: ChatEntry[]): ChatEntry[] {
++  return h.filter((e, i) => !e.offline || (i > 0 && h[i - 1].role === 'user' && !h[i - 1].offline));
++}
+ /** The oldest messages go first, so the history cannot grow without limit on an iPad. */
+-export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => (h.length > cap ? h.slice(h.length - cap) : h);
++export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => tidyOffline(h.length > cap ? h.slice(h.length - cap) : h);
++/**
++ * What the model gets to see of the history. A question that only got an offline list was never answered, so it and its list stay
++ * out: the model would otherwise read a question with no reply, and some chat templates refuse two user messages in a row.
++ */
++export function forModel(h: ChatEntry[]): ChatEntry[] {
++  const out: ChatEntry[] = [];
++  for (const e of tidyOffline(h)) { if (e.offline) { if (out.length && out[out.length - 1].role === 'user') out.pop(); continue; } out.push(e); }
++  return out;
++}
++/** Takes one exchange out of the history: the question with this id, and the offline list straight after it if it has one. Used when a retry replaces it. */
++export function withoutExchange(h: ChatEntry[], userId: string | undefined): ChatEntry[] {
++  if (!userId) return h;
++  const i = h.findIndex(e => e.id === userId && e.role === 'user'); if (i < 0) return h;
++  return h.filter((_e, j) => j !== i && !(j === i + 1 && h[j].offline));
++}
+ 
+ /** A rough token count. The app cannot see the model's own count, so this errs on the high side (about 3 characters a token). */
+ export const estimateTokens = (s: string): number => Math.ceil((s ?? '').length / 3) + 4;
+@@ -131,6 +154,7 @@ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, cont
+   const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
+   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
+   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
++  history = forModel(history);
+   for (let i = history.length - 1; i >= 0; i--) {
+     let text = scrubText(history[i].text).text;
+     let cost = estimateTokens(text);
+diff --git a/src/lib/assistantLog.ts b/src/lib/assistantLog.ts
+index 9cc3962..d9e7226 100644
+--- a/src/lib/assistantLog.ts
++++ b/src/lib/assistantLog.ts
+@@ -20,7 +20,7 @@ export type LogEndpoint = { host: string; model: string; scope: EndpointClass };
+ export type SentPart = { id: string; role: 'user' | 'assistant'; text?: string };
+ export type SentRecord = { sys: string; parts: SentPart[]; hash: string };
+ export type LogEvent = {
+-  v: 1; id: string; at: number; kind: 'ask' | 'error' | 'purge';
++  v: 1; id: string; at: number; kind: 'ask' | 'error' | 'offline' | 'purge';
+   staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; detail?: Detail;
+   user?: { id: string; text: string }; reply?: { id: string; text: string };
+   /** What the model received: the system prompt by hash (the text is in the log's prompt list) and the messages by id. */
+@@ -32,6 +32,8 @@ export type LogEvent = {
+   /** What the data gate withheld, by category (patch 5). The items themselves are never kept. */
+   withheld?: Record<string, number>;
+   ms?: number; error?: { kind: string; message: string };
++  /** A search with no model (patch 0160): why the model was not used, and the screens and help pages it found, by id. */
++  offline?: { cause: string; screens: string[]; pages: string[] };
+   purge?: { from: string; to: string; events: number; bytes: number };
+ };
+ export const TEXT_CLIP = 20000;
+@@ -78,10 +80,25 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
+   return { event, prompt: { hash: sysHash, text: i.p.system } };
+ }
+ 
++/** The log line for an offline search. Nothing goes to a model, so there is no request to record: the question, the cause and the ids found. */
++export function buildOfflineEvent(i: { id: string; now: number; staff: LogStaff; endpoint?: LogEndpoint; user: ChatEntry; cause: string; screens: string[]; pages: string[]; ms?: number; apiKey?: string }): LogEvent {
++  return {
++    v: 1, id: i.id, at: i.now, kind: 'offline', staff: i.staff, practice: false,
++    ...(i.endpoint ? { endpoint: i.endpoint } : {}),
++    user: { id: i.user.id, text: clip(redactSecrets(i.user.text, i.apiKey)) },
++    offline: { cause: i.cause, screens: i.screens.slice(0, 20), pages: i.pages.slice(0, 20) },
++    ...(typeof i.ms === 'number' ? { ms: i.ms } : {}),
++  };
++}
++
+ // ---------- asking, with the log ----------
+ export type LogSink = (e: LogEvent, prompt?: { hash: string; text: string }) => Promise<void>;
+ export type LogContext = { staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; apiKey: string; known: (id: string) => boolean; sink: LogSink; newId: () => string };
+ export const LOG_FAIL_LINE = 'This conversation could not be added to the log. Tell a manager.';
++/** Logs an offline search. As with a question, a log problem never stops anything: it comes back as the line to show, or nothing. */
++export async function logOffline(c: Pick<LogContext, 'sink'>, event: LogEvent): Promise<string | undefined> {
++  try { await c.sink(event); return undefined; } catch { return LOG_FAIL_LINE; }
++}
+ export type LoggedAsk =
+   | { ok: true; result: AskResult; logError?: string }
+   | { ok: false; error: unknown; logError?: string };
+diff --git a/src/lib/assistantOffline.ts b/src/lib/assistantOffline.ts
+new file mode 100644
+index 0000000..968b4cc
+--- /dev/null
++++ b/src/lib/assistantOffline.ts
+@@ -0,0 +1,50 @@
++// Location: src/lib/assistantOffline.ts
++// The assistant's offline mode (patch 0160, plan 3.3): when the model cannot answer, the chat still searches the screens and the
++// help pages, with no model, and shows the matches as a list. It is the same two searches the model's tools use
++// (`searchScreenList`, `searchDocPages`), so the role filter in 3.4 applies here too: a role is never shown a screen or a page it
++// cannot use, and a question about one gets the same reply as a question about something that does not exist.
++//
++// Pure, so it runs in the node tests. Nothing here talks to a model or to the network.
++import { maskedNote, scrubText, type ChatEntry } from './assistantChat';
++import { searchDocPages, searchScreenList, type DocHit, type ScreenHit, type ToolContext } from './assistantTools';
++
++/** What the pages and screens are searched with. A role sees only its own. */
++export type OfflineCtx = Pick<ToolContext, 'pages' | 'screens' | 'role'>;
++export type OfflineHits = { screens: ScreenHit[]; pages: DocHit[] };
++
++/** Said above the list, so nobody mistakes a list of matches for an answer. */
++export const OFFLINE_LABEL = 'Model offline, showing search results.';
++export const OFFLINE_EMPTY = 'I couldn\'t find anything on that. Try different key words, or open Help and look through the contents.';
++export const OFFLINE_MAX = 5;
++
++/** The scrubber's tags ("[card number]") are not words the person meant, so they are not searched for. */
++export const offlineQuery = (text: string): string => (text ?? '').replace(/\[(?:email address|phone number|card number|key|key or token)\]/g, ' ').replace(/\s+/g, ' ').trim();
++
++export const hasOfflineHits = (h: OfflineHits): boolean => h.screens.length > 0 || h.pages.length > 0;
++
++/**
++ * Searches the screens and the help pages for what was typed. Only what this role may see is searched. A search that fails
++ * for any reason is an empty list, because this runs when something has already gone wrong and must not add a second error.
++ */
++export function offlineSearch(ctx: OfflineCtx, text: string): OfflineHits {
++  const q = offlineQuery(text); if (!q) return { screens: [], pages: [] };
++  let screens: ScreenHit[] = []; let pages: DocHit[] = [];
++  try { screens = searchScreenList(ctx, q, OFFLINE_MAX); } catch { screens = []; }
++  try { pages = searchDocPages(ctx, q, OFFLINE_MAX); } catch { pages = []; }
++  return { screens, pages };
++}
++
++/** The marker that goes in the history in place of a reply. Its list is searched again each time it is shown, from the question before it. */
++export const makeOfflineEntry = (id: string, at: number): ChatEntry => ({ id, role: 'assistant', text: OFFLINE_LABEL, at, offline: true });
++
++export type OfflineExchange = { user: ChatEntry; reply: ChatEntry; hits: OfflineHits };
++/**
++ * What the chat adds when the model could not answer: the question (hidden by the scrubber, as always) and the marker that stands
++ * in for a reply. Only the question is stored. The matches are found again each time the chat is shown, with the role of whoever
++ * is signed in then, so a role that loses access to something stops being shown it.
++ */
++export function offlineExchange(i: { text: string; ctx: OfflineCtx; id: () => string; now: () => number }): OfflineExchange {
++  const s = scrubText((i.text ?? '').trim());
++  const user: ChatEntry = { id: i.id(), role: 'user', text: s.text, at: i.now(), ...(maskedNote(s.masked) ? { note: maskedNote(s.masked) } : {}) };
++  return { user, reply: makeOfflineEntry(i.id(), i.now()), hits: offlineSearch(i.ctx, s.text) };
++}
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index ad4972f..d255478 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -4,9 +4,11 @@
+ // a button under a reply that opens a help page or a screen. It still knows
+ // nothing about the shop's data. History is kept on
+ // this iPad, one per staff member, and cleared only by hand.
++// Since 0160, when the model cannot answer (or is not set up) the chat shows the error and still searches the screens and the help
++// pages with no model, and lists the matches (plan 3.3). The next question tries the model first again.
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { ScrollView, View } from 'react-native';
+-import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
++import { Btn, Field, IconBtn, Page, Row, Txt, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { useNav, type Tab } from '../ui/nav';
+ import { useKeyboardOverlap } from '../ui/keyboard';
+@@ -15,16 +17,56 @@ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
+ import { isConfigured } from '../lib/assistantConfig';
+ import { getAssistantKey } from '../lib/assistantKey';
+ import { AssistantError } from '../lib/assistantClient';
+-import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+-import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
++import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, withoutExchange, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
++import { LOG_FAIL_LINE, askLogged, buildOfflineEvent, logEndpoint, logOffline, logStaff } from '../lib/assistantLog';
++import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineSearch } from '../lib/assistantOffline';
+ import { assistantLog, logSink } from '../lib/assistantLogIO';
+-import { liveLinks, makeToolSet, type LinkAction } from '../lib/assistantTools';
+-import { builtinScreens } from '../lib/assistantScreens';
++import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
++import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
++import type { Page as HelpPage } from '../lib/helpDocs';
+ import { builtinHelp } from '../lib/helpBuiltin';
+ import { kvGet, kvSet, kvDel } from '../lib/kv';
+ import { isTraining } from '../lib/trainingGuard';
+ import { uid } from '../lib/ids';
+ 
++/**
++ * The list shown in place of a reply when the model could not answer. It is searched here, with the role signed in now, from the question
++ * before it. A help page opens on tap; a screen gets an Open button when it can be opened that way (the same rule as the model's buttons),
++ * and always lists the taps from Checkout.
++ */
++function OfflineList({ query, role, pages, screens, onOpen }: { query: string; role: string; pages: HelpPage[]; screens: ScreenEntry[]; onOpen: (a: LinkAction) => void }) {
++  const { c } = useTheme();
++  const hits = React.useMemo(() => offlineSearch({ pages, screens, role }, query), [pages, screens, role, query]);
++  return (
++    <View style={{ alignSelf: 'flex-start', maxWidth: '92%', gap: 8, backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.line, paddingVertical: 10 }}>
++      <Txt weight="700" style={{ paddingHorizontal: 14 }}>{OFFLINE_LABEL}</Txt>
++      {!hasOfflineHits(hits) ? <Txt size={13} sub style={{ paddingHorizontal: 14 }}>{OFFLINE_EMPTY}</Txt> : null}
++      {hits.screens.length ? (
++        <View style={{ gap: 10, paddingHorizontal: 14 }}>
++          <Txt size={12} sub weight="700">SCREENS</Txt>
++          {hits.screens.map(sc => {
++            const open = resolveLink({ pages, screens, role }, 'screen', sc.id);
++            return (
++              <View key={sc.id} style={{ gap: 2, alignItems: 'flex-start' }}>
++                <Txt weight="600">{sc.name} <Txt size={12} sub>({sc.kind})</Txt></Txt>
++                {sc.summary ? <Txt size={13} sub>{sc.summary}</Txt> : null}
++                {sc.how_to_open && sc.how_to_open.length ? <Txt size={13}>From Checkout: {sc.how_to_open.join(' ')}</Txt> : null}
++                {open ? <Btn small kind="secondary" icon="open-outline" title={open.link.label} onPress={() => onOpen(open.action)} /> : null}
++              </View>
++            );
++          })}
++        </View>
++      ) : null}
++      {hits.pages.length ? (
++        <View>
++          <Txt size={12} sub weight="700" style={{ paddingHorizontal: 14, paddingBottom: 2 }}>HELP PAGES</Txt>
++          {hits.pages.map((p, i) => <Row key={p.id} title={p.title} sub={p.summary} icon="document-text-outline" last={i === hits.pages.length - 1} onPress={() => onOpen({ to: 'help', id: p.id })} />)}
++        </View>
++      ) : null}
++    </View>
++  );
++}
++
+ export default function Assistant() {
+   const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
+   const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
+@@ -34,7 +76,8 @@ export default function Assistant() {
+   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
+   const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [secs, setSecs] = useState(0);
+   const [banner, setBanner] = useState<Banner | null>(null); const [logWarn, setLogWarn] = useState('');
+-  const failed = useRef<{ text: string; detail: Detail } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
++  // `search` is whether a failure also searches with no model (not for "More detail"); `replace` is the question a retry takes the place of.
++  const failed = useRef<{ text: string; detail: Detail; search: boolean; replace?: string } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
+   keyRef.current = key; histRef.current = hist;
+ 
+   useEffect(() => { // switching staff switches to that person's own history
+@@ -48,38 +91,56 @@ export default function Assistant() {
+   const blocked = sendBlock({ training: isTraining() });
+   const ready = isConfigured(cfg);
+ 
+-  const send = useCallback(async (input: string, detail: Detail) => {
++  const helpPages = React.useMemo(() => builtinHelp().pages, []);
++  const screenList = React.useMemo(() => builtinScreens(), []);
++
++  const send = useCallback(async (input: string, detail: Detail, o: { search?: boolean; replace?: string } = {}) => {
+     const trimmed = input.trim(); if (!trimmed || busy) return;
+     if (isTraining()) { setBanner({ kind: 'server_error', title: 'Switched off', body: PRACTICE_BLOCK }); return; }
+-    if (!isConfigured(cfg)) { setBanner(bannerFor(new AssistantError('not_set_up', 'Set up the address and model first.'))); return; }
+-    const forKey = keyRef.current; setBusy(true); setBanner(null); failed.current = null;
++    const search = o.search !== false; const forKey = keyRef.current; const t0 = Date.now();
++    setBusy(true); setBanner(null); failed.current = null;
+     let apiKey = '';
++    // The model could not answer: say why, and search the screens and help pages with no model (plan 3.3). It replaces the exchange a retry came from.
++    const goOffline = async (e: unknown) => {
++      const err = e instanceof AssistantError ? e : new AssistantError('server_error', String((e as Error)?.message ?? 'Something went wrong.'));
++      setBanner(bannerFor(err, apiKey));
++      if (!search) { failed.current = { text: trimmed, detail, search }; return; }
++      setText('');
++      const ex = offlineExchange({ text: trimmed, ctx: { pages: helpPages, screens: screenList, role }, id: uid, now: Date.now });
++      failed.current = { text: trimmed, detail, search, replace: ex.user.id };
++      const next = capHistory([...withoutExchange(histRef.current, o.replace), ex.user, ex.reply]); setHist(next); await kvSet(forKey, next);
++      const line = await logOffline({ sink: logSink }, buildOfflineEvent({ id: uid(), now: Date.now(), staff: logStaff(staffId, staffList, role), endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), user: ex.user, cause: err.kind, screens: ex.hits.screens.map(x => x.id), pages: ex.hits.pages.map(x => x.id), ms: Date.now() - t0, apiKey }));
++      if (forKey === keyRef.current) setLogWarn(line ?? '');
++    };
+     try {
++      if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
+       apiKey = await getAssistantKey();
+       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+-          tools: makeToolSet({ pages: builtinHelp().pages, screens: builtinScreens(), role, contextSize: cfg.contextSize }) },
++          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+       if (!out.ok) throw out.error;
+       const r = out.result;
+       if (forKey !== keyRef.current) return; // a different person signed in while the model was thinking
+-      const next = capHistory([...histRef.current, r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
++      const next = capHistory([...withoutExchange(histRef.current, o.replace), r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
+     } catch (e) {
+       if (forKey !== keyRef.current) return;
+-      failed.current = { text: trimmed, detail }; setBanner(bannerFor(e, apiKey));
++      await goOffline(e);
+     } finally { setBusy(false); }
+-  }, [busy, cfg, staffId, staffList, role]);
++  }, [busy, cfg, staffId, staffList, role, helpPages, screenList]);
+ 
+   const clear = async () => {
+     if (!(await confirm('Clear your chat history?', 'This clears your own messages with the assistant on this iPad. It cannot be undone.', 'Clear', true))) return;
+     setHist([]); setBanner(null); await kvDel(keyRef.current);
+   };
+ 
+-  const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant';
++  const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant' && !hist[hist.length - 1].offline;
+   const open = (a: LinkAction) => { if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route); };
+   // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
+-  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: builtinHelp().pages, screens: builtinScreens(), role }, e.links) : []);
+-  const bubble = (e: ChatEntry) => (
++  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: helpPages, screens: screenList, role }, e.links) : []);
++  const bubble = (e: ChatEntry, i: number) => e.offline ? (
++    <OfflineList key={e.id} query={hist[i - 1]?.text ?? ''} role={role} pages={helpPages} screens={screenList} onOpen={open} />
++  ) : (
+     <View key={e.id} style={{ alignSelf: e.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', gap: 3 }}>
+       <View style={{ backgroundColor: e.role === 'user' ? c.accent : c.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: e.role === 'user' ? 0 : 1, borderColor: c.line }}>
+         <Txt color={e.role === 'user' ? c.onAccent : undefined}>{e.text}</Txt>
+@@ -101,14 +162,14 @@ export default function Assistant() {
+           {!ready ? (
+             <View style={{ backgroundColor: c.fill, borderRadius: 12, padding: 14, gap: 8 }}>
+               <Txt weight="700">The assistant is not set up yet</Txt>
+-              <Txt size={13} sub>{canEdit ? 'Choose the model in More, Settings, AI assistant.' : ASK_MANAGER_LINE}</Txt>
++              <Txt size={13} sub>{canEdit ? 'Choose the model in More, Settings, AI assistant.' : ASK_MANAGER_LINE} Until then you can still ask here and it will search the screens and help pages.</Txt>
+               {canEdit ? <Btn small kind="secondary" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
+             </View>
+           ) : null}
+           {loaded && ready && !hist.length ? <Txt size={13} sub>Ask how something works. This assistant cannot see the shop's products, stock, customers or sales yet, and it never changes anything.</Txt> : null}
+-          {hist.map(bubble)}
++          {hist.map((e, i) => bubble(e, i))}
+           {busy ? <Txt size={13} sub>{secs >= 5 ? `Still working, ${secs} seconds so far.` : 'Thinking...'}</Txt> : null}
+-          {lastReply && !busy && !banner ? <Btn small kind="ghost" title="More detail" icon="add-circle-outline" onPress={() => void send('More detail please.', 'more')} /> : null}
++          {lastReply && !busy && !banner ? <Btn small kind="ghost" title="More detail" icon="add-circle-outline" onPress={() => void send('More detail please.', 'more', { search: false })} /> : null}
+         </ScrollView>
+         {banner ? (
+           <View style={{ marginHorizontal: 16, marginBottom: 8, backgroundColor: c.fill, borderRadius: 12, padding: 12, gap: 6, borderLeftWidth: 4, borderLeftColor: c.bad }}>
+@@ -116,7 +177,7 @@ export default function Assistant() {
+             <Txt size={13}>{banner.body}</Txt>
+             {!canEdit ? <Txt size={13} sub>{ASK_MANAGER_LINE}</Txt> : null}
+             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
+-              {canRetry(banner.kind) && failed.current ? <Btn small kind="secondary" title="Retry" onPress={() => { const f = failed.current; if (f) void send(f.text, f.detail); }} /> : null}
++              {canRetry(banner.kind) && failed.current ? <Btn small kind="secondary" title="Retry" onPress={() => { const f = failed.current; if (f) void send(f.text, f.detail, { search: f.search, replace: f.replace }); }} /> : null}
+               {canEdit ? <Btn small kind="ghost" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
+             </View>
+           </View>
+@@ -125,7 +186,7 @@ export default function Assistant() {
+         {blocked ? <Txt size={13} sub style={{ marginHorizontal: 16, marginBottom: 8 }}>{blocked}</Txt> : null}
+         <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
+           <Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} />
+-          <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked || !ready} onPress={() => void send(text, 'short')} />
++          <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked} onPress={() => void send(text, 'short')} />
+           <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Conversations are also logged for the manager. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
+         </View>
+       </View>
+diff --git a/src/screens/AssistantLog.tsx b/src/screens/AssistantLog.tsx
+index e96a46a..bcdc02e 100644
+--- a/src/screens/AssistantLog.tsx
++++ b/src/screens/AssistantLog.tsx
+@@ -143,9 +143,9 @@ export function AssistantLogViewer() {
+                     <View key={e.id}>
+                       <Row
+                         title={`${e.staff.name} · ${fmtTime(e.at)}`}
+-                        sub={e.kind === 'error' ? `Error: ${e.error?.kind ?? 'unknown'}` : e.user?.text?.slice(0, 80) ?? ''}
++                        sub={e.kind === 'error' ? `Error: ${e.error?.kind ?? 'unknown'}` : e.kind === 'offline' ? `Offline search: ${e.user?.text?.slice(0, 60) ?? ''}` : e.user?.text?.slice(0, 80) ?? ''}
+                         onPress={() => setOpenId(open ? null : e.id)}
+-                        icon={e.kind === 'error' ? 'alert-circle-outline' : e.practice ? 'school-outline' : 'chatbubble-outline'}
++                        icon={e.kind === 'error' ? 'alert-circle-outline' : e.kind === 'offline' ? 'search-outline' : e.practice ? 'school-outline' : 'chatbubble-outline'}
+                         danger={e.kind === 'error'}
+                       />
+                       {open ? (
+@@ -156,6 +156,7 @@ export function AssistantLogViewer() {
+                           {e.sent ? <View><Txt weight="600" size={13}>Sent to model</Txt><Txt size={12} sub>{e.sent.parts.length} messages · hash {e.sent.hash}</Txt></View> : null}
+                           {e.tools && e.tools.length ? <View style={{ gap: 4 }}><Txt weight="600" size={13}>Tools used ({e.tools.length})</Txt>{e.tools.map((t, i) => <View key={i}><Txt size={12} color={t.ok ? undefined : c.bad}>{t.name} {t.args}</Txt><Txt size={12} sub numberOfLines={6}>{t.result}</Txt></View>)}</View> : null}
+                           {e.masked && Object.keys(e.masked).length ? <Txt size={12} sub>Masked: {Object.entries(e.masked).map(([k, v]) => `${v} ${k}`).join(', ')}</Txt> : null}
++                          {e.offline ? <View><Txt weight="600" size={13}>Searched without a model ({e.offline.cause.replace(/_/g, ' ')})</Txt><Txt size={12} sub>Screens: {e.offline.screens.length ? e.offline.screens.join(', ') : 'none'}</Txt><Txt size={12} sub>Help pages: {e.offline.pages.length ? e.offline.pages.join(', ') : 'none'}</Txt></View> : null}
+                           {e.error ? <View><Txt weight="600" size={13} color={c.bad}>Error</Txt><Txt size={13} color={c.bad}>{e.error.message}</Txt></View> : null}
+                         </View>
+                       ) : null}
+diff --git a/tests/assistantoffline.test.ts b/tests/assistantoffline.test.ts
+new file mode 100644
+index 0000000..3990847
+--- /dev/null
++++ b/tests/assistantoffline.test.ts
+@@ -0,0 +1,130 @@
++// Location: tests/assistantoffline.test.ts
++// The assistant's offline mode (patch 0160, plan 3.3): the model-free search of screens and help pages, the marker in the history,
++// what the model is and is not shown of it, and the log line.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildMessagesDetailed, capHistory, forModel, readHistory, tidyOffline, withoutExchange, type ChatEntry } from '../src/lib/assistantChat';
++import { OFFLINE_LABEL, hasOfflineHits, makeOfflineEntry, offlineExchange, offlineQuery, offlineSearch } from '../src/lib/assistantOffline';
++import { buildOfflineEvent, createLogStore, logOffline, type LogFs, type LogStaff } from '../src/lib/assistantLog';
++import { buildScreenIndex } from '../src/lib/assistantScreens';
++import { resolveLink } from '../src/lib/assistantTools';
++import { builtinHelp } from '../src/lib/helpBuiltin';
++
++const pages = builtinHelp().pages; const screens = buildScreenIndex();
++const ctx = (role: string) => ({ pages, screens, role });
++const entry = (id: string, role: 'user' | 'assistant', text: string, extra: Partial<ChatEntry> = {}): ChatEntry => ({ id, role, text, at: 1, ...extra });
++const names = (h: ReturnType<typeof offlineSearch>) => h.screens.map(s => s.name);
++
++// ---- the search ----
++test('a question finds screens and help pages with no model, and a screen says how to open it', () => {
++  const h = offlineSearch(ctx('owner'), 'where do I count the cash drawer');
++  assert.ok(hasOfflineHits(h)); assert.ok(h.screens.length > 0 && h.pages.length > 0);
++  assert.ok(h.screens.some(s => s.how_to_open && s.how_to_open.length > 0));
++  assert.ok(h.screens.length <= 5 && h.pages.length <= 5);
++});
++test('nothing found is an empty list, and so are a blank question and one made only of hidden tags', () => {
++  assert.equal(hasOfflineHits(offlineSearch(ctx('owner'), 'zzqx plugh')), false);
++  assert.equal(hasOfflineHits(offlineSearch(ctx('owner'), '   ')), false);
++  assert.equal(hasOfflineHits(offlineSearch(ctx('owner'), '[card number] [email address]')), false);
++  assert.equal(offlineQuery('refund [card number] to [email address] please'), 'refund to please');
++});
++test('a cashier is never shown Settings, Staff or the help pages about them, and gets the same empty list as for something that is not there', () => {
++  for (const q of ['add a staff member', 'staff', 'settings', 'AI assistant model address', 'shopify settings']) {
++    const h = offlineSearch(ctx('cashier'), q);
++    const seen = [...h.screens.map(s => `${s.id} ${s.name} ${s.summary} ${(s.how_to_open ?? []).join(' ')}`), ...h.pages.map(p => `${p.id} ${p.title} ${p.summary} ${p.match}`)].join('\n');
++    assert.ok(!/\bsettings?\b/i.test(seen.replace(/\bsettings?\b(?= for (?:the )?cash)/gi, '')) || h.screens.every(s => s.id !== 'page_settings'), `${q}: ${seen}`);
++    assert.ok(!h.screens.some(s => ['page_settings', 'page_staff', 'sheet_switch_staff', 'sheet_staff_pass'].includes(s.id)), q);
++    assert.ok(!h.pages.some(p => p.id.startsWith('settings/') && p.id !== 'settings/ask-assistant') && !h.pages.some(p => p.id === 'staff'), q);
++  }
++  assert.deepEqual(offlineSearch(ctx('cashier'), 'teleporter'), { screens: [], pages: [] });
++  const asManager = offlineSearch(ctx('manager'), 'add a staff member');
++  assert.ok(asManager.screens.some(s => s.id === 'page_staff') && asManager.pages.some(p => p.id === 'staff'), 'a manager does get them');
++});
++test('an unknown role is shown no screens and none of the pages that name a role', () => {
++  const h = offlineSearch(ctx('visitor'), 'cash drawer refund staff settings');
++  assert.deepEqual(h.screens, []);
++  const restricted = new Set(pages.filter(p => p.roles && p.roles.length).map(p => p.id));
++  assert.ok(restricted.size > 0 && !h.pages.some(p => restricted.has(p.id)));
++});
++test('a search that throws is an empty list, not a second error', () => {
++  const bad = { pages: null as any, screens: null as any, role: 'owner' };
++  assert.deepEqual(offlineSearch(bad, 'refund'), { screens: [], pages: [] });
++});
++
++test('a screen in the list gets an Open button only when the link tool would make one, and a page always opens', () => {
++  const h = offlineSearch(ctx('owner'), 'cash drawer reports inventory refund');
++  const opens = h.screens.map(s => resolveLink(ctx('owner'), 'screen', s.id));
++  assert.ok(opens.some(o => o), 'some screens can be opened'); assert.ok(h.screens.some(s => s.kind === 'window') ? opens.some(o => !o) : true, 'a window has no button');
++  for (const o of opens) if (o) assert.match(o.link.label, /^Open /);
++  for (const p of h.pages) assert.deepEqual(resolveLink(ctx('owner'), 'doc', p.id)?.action, { to: 'help', id: p.id });
++  // what a cashier is listed can always be opened by a cashier, and what they cannot reach is neither listed nor openable
++  for (const s of offlineSearch(ctx('cashier'), 'cash drawer reports refund').screens) assert.ok(s.id !== 'page_settings' && s.id !== 'page_staff');
++  assert.equal(resolveLink(ctx('cashier'), 'screen', 'page_settings'), null);
++});
++
++// ---- the exchange ----
++test('the exchange stores the question with the scrubber applied, and a marker in place of a reply', () => {
++  let n = 0; const id = () => `e${++n}`;
++  const ex = offlineExchange({ text: '  refund to jo@example.com on 4111 1111 1111 1111 ', ctx: ctx('owner'), id, now: () => 5 });
++  assert.equal(ex.user.role, 'user'); assert.ok(!ex.user.text.includes('jo@example.com') && !ex.user.text.includes('4111'));
++  assert.match(ex.user.text, /\[email address\]/); assert.match(ex.user.note ?? '', /Hidden before sending/);
++  assert.deepEqual(ex.reply, { id: 'e2', role: 'assistant', text: OFFLINE_LABEL, at: 5, offline: true });
++  assert.ok(hasOfflineHits(ex.hits), 'it searched for "refund"');
++  assert.ok(!JSON.stringify(ex.reply).includes('Refund'), 'the list itself is not stored');
++});
++test('the list is found again for whoever is signed in, so a role that loses access stops being shown it', () => {
++  const q = 'add a staff member'; const asManager = offlineSearch(ctx('manager'), q); const asCashier = offlineSearch(ctx('cashier'), q);
++  assert.ok(asManager.screens.length > 0); assert.ok(!names(asCashier).some(x => /staff/i.test(x)));
++});
++
++// ---- the history ----
++test('history keeps the offline marker, and drops one that has lost its question', () => {
++  const h = readHistory([
++    { id: 'u1', role: 'user', text: 'a', at: 1 }, { id: 'o1', role: 'assistant', text: OFFLINE_LABEL, at: 2, offline: true },
++    { id: 'o2', role: 'assistant', text: OFFLINE_LABEL, at: 3, offline: true },        // two in a row: the second has no question
++    { id: 'u2', role: 'user', text: 'b', at: 4, offline: true },                         // only a reply can be offline
++    { id: 'a1', role: 'assistant', text: 'ok', at: 5, offline: 'yes' },                  // not exactly true: not offline
++  ]);
++  assert.deepEqual(h.map(e => [e.id, !!e.offline]), [['u1', false], ['o1', true], ['u2', false], ['a1', false]]);
++  assert.equal(readHistory([{ id: 'o', role: 'assistant', text: 'x', at: 1, offline: true }]).length, 0, 'a lone marker is dropped');
++});
++test('cutting the oldest messages never leaves a marker at the front', () => {
++  const h = [entry('u1', 'user', 'a'), makeOfflineEntry('o1', 2), entry('u2', 'user', 'b'), entry('a2', 'assistant', 'ok')];
++  assert.deepEqual(capHistory(h, 3).map(e => e.id), ['u2', 'a2']);
++  assert.deepEqual(tidyOffline(h).map(e => e.id), ['u1', 'o1', 'u2', 'a2']);
++});
++test('the model never sees an offline exchange: the question and the marker both stay out, so the chat still alternates', () => {
++  const h = [entry('u1', 'user', 'old question'), entry('a1', 'assistant', 'old answer'), entry('u2', 'user', 'asked while offline'), makeOfflineEntry('o2', 3), entry('u3', 'user', 'asked once the model was back')];
++  assert.deepEqual(forModel(h).map(e => e.id), ['u1', 'a1', 'u3']);
++  const b = buildMessagesDetailed(h, 'short', 8000);
++  const sent = b.messages.map(m => m.content).join('\n');
++  assert.ok(!sent.includes('asked while offline') && !sent.includes(OFFLINE_LABEL));
++  assert.deepEqual(b.messages.map(m => m.role), ['system', 'user', 'assistant', 'user']);
++  assert.deepEqual(b.included.map(e => e.id), ['u1', 'a1', 'u3']);
++  assert.deepEqual(forModel([entry('u1', 'user', 'x'), makeOfflineEntry('o1', 2)]), []);
++});
++test('a retry takes the place of the offline exchange it came from', () => {
++  const h = [entry('u0', 'user', 'a'), entry('a0', 'assistant', 'b'), entry('u1', 'user', 'q'), makeOfflineEntry('o1', 2), entry('u9', 'user', 'later'), entry('a9', 'assistant', 'later answer')];
++  assert.deepEqual(withoutExchange(h, 'u1').map(e => e.id), ['u0', 'a0', 'u9', 'a9']);
++  assert.equal(withoutExchange(h, 'nope'), h); assert.equal(withoutExchange(h, undefined), h);
++  assert.deepEqual(withoutExchange([entry('u1', 'user', 'q'), entry('a1', 'assistant', 'real answer')], 'u1').map(e => e.id), ['a1'], 'a real reply is not removed with its question');
++});
++
++// ---- the log ----
++const staff: LogStaff = { id: 's1', name: 'Casey', role: 'cashier' };
++test('an offline search is a log line with the question, why the model was not used and what was found, and never the key', async () => {
++  const KEY = 'sk-abcdefghijklmnop';
++  const user = entry('u1', 'user', `refund please ${KEY}`);
++  const ev = buildOfflineEvent({ id: 'x1', now: 100, staff, endpoint: { host: '10.0.0.5', model: 'm', scope: 'local' }, user, cause: 'unreachable', screens: ['sheet_refund', 'page_orders'], pages: ['orders/refunds'], ms: 12, apiKey: KEY });
++  assert.equal(ev.kind, 'offline'); assert.equal(ev.practice, false); assert.deepEqual(ev.offline, { cause: 'unreachable', screens: ['sheet_refund', 'page_orders'], pages: ['orders/refunds'] });
++  assert.ok(!JSON.stringify(ev).includes(KEY)); assert.equal(ev.sent, undefined, 'nothing was sent to a model, so there is no request to record');
++  const files = new Map<string, Uint8Array>();
++  const fs: LogFs = { read: async n => files.get(n) ?? null, write: async (n, d) => { files.set(n, d); }, remove: async n => { files.delete(n); }, list: async () => [...files].map(([name, d]) => ({ name, size: d.length })) };
++  const store = createLogStore(fs, { now: () => 100 });
++  assert.equal(await logOffline({ sink: store.append }, ev), undefined);
++  const back = (await store.events()).events; assert.equal(back.length, 1); assert.equal(back[0].kind, 'offline'); assert.deepEqual(back[0].offline?.pages, ['orders/refunds']);
++});
++test('a log that cannot be written never stops the list: it comes back as the line to show', async () => {
++  const ev = buildOfflineEvent({ id: 'x', now: 1, staff, user: entry('u', 'user', 'q'), cause: 'timeout', screens: [], pages: [] });
++  assert.match((await logOffline({ sink: async () => { throw new Error('disk full'); } }, ev)) ?? '', /could not be added to the log/);
++});

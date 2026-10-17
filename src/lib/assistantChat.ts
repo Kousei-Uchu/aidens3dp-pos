@@ -82,7 +82,8 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
 }
 
 // ---------- history ----------
-export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; /** Buttons shown under a reply (patch 0159). Never sent to the model: only the text is. */ links?: ChatLink[] };
+/** `links` are buttons shown under a reply (patch 0159), never sent to the model: only the text is. `offline` marks the entry that stands in for a reply when the model could not answer (patch 0160): a list of matches from the screens and help pages, searched again each time it is shown. */
+export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; links?: ChatLink[]; offline?: true };
 export const HISTORY_CAP = 200;
 export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
 
@@ -103,12 +104,34 @@ export function readHistory(raw: unknown): ChatEntry[] {
     const o = e as Record<string, unknown>;
     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
     const links = o.role === 'assistant' ? readLinks(o.links) : [];
-    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}) });
+    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}), ...(o.role === 'assistant' && o.offline === true ? { offline: true as const } : {}) });
   }
   return capHistory(out);
 }
+/**
+ * An offline entry is only meaningful straight after the question it answers, because its list is searched for from that question.
+ * One that has lost its question (the oldest messages were dropped, or storage was edited) is removed.
+ */
+export function tidyOffline(h: ChatEntry[]): ChatEntry[] {
+  return h.filter((e, i) => !e.offline || (i > 0 && h[i - 1].role === 'user' && !h[i - 1].offline));
+}
 /** The oldest messages go first, so the history cannot grow without limit on an iPad. */
-export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => (h.length > cap ? h.slice(h.length - cap) : h);
+export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => tidyOffline(h.length > cap ? h.slice(h.length - cap) : h);
+/**
+ * What the model gets to see of the history. A question that only got an offline list was never answered, so it and its list stay
+ * out: the model would otherwise read a question with no reply, and some chat templates refuse two user messages in a row.
+ */
+export function forModel(h: ChatEntry[]): ChatEntry[] {
+  const out: ChatEntry[] = [];
+  for (const e of tidyOffline(h)) { if (e.offline) { if (out.length && out[out.length - 1].role === 'user') out.pop(); continue; } out.push(e); }
+  return out;
+}
+/** Takes one exchange out of the history: the question with this id, and the offline list straight after it if it has one. Used when a retry replaces it. */
+export function withoutExchange(h: ChatEntry[], userId: string | undefined): ChatEntry[] {
+  if (!userId) return h;
+  const i = h.findIndex(e => e.id === userId && e.role === 'user'); if (i < 0) return h;
+  return h.filter((_e, j) => j !== i && !(j === i + 1 && h[j].offline));
+}
 
 /** A rough token count. The app cannot see the model's own count, so this errs on the high side (about 3 characters a token). */
 export const estimateTokens = (s: string): number => Math.ceil((s ?? '').length / 3) + 4;
@@ -131,6 +154,7 @@ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, cont
   const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
+  history = forModel(history);
   for (let i = history.length - 1; i >= 0; i--) {
     let text = scrubText(history[i].text).text;
     let cost = estimateTokens(text);

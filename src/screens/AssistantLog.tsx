@@ -143,9 +143,9 @@ export function AssistantLogViewer() {
                     <View key={e.id}>
                       <Row
                         title={`${e.staff.name} · ${fmtTime(e.at)}`}
-                        sub={e.kind === 'error' ? `Error: ${e.error?.kind ?? 'unknown'}` : e.user?.text?.slice(0, 80) ?? ''}
+                        sub={e.kind === 'error' ? `Error: ${e.error?.kind ?? 'unknown'}` : e.kind === 'offline' ? `Offline search: ${e.user?.text?.slice(0, 60) ?? ''}` : e.user?.text?.slice(0, 80) ?? ''}
                         onPress={() => setOpenId(open ? null : e.id)}
-                        icon={e.kind === 'error' ? 'alert-circle-outline' : e.practice ? 'school-outline' : 'chatbubble-outline'}
+                        icon={e.kind === 'error' ? 'alert-circle-outline' : e.kind === 'offline' ? 'search-outline' : e.practice ? 'school-outline' : 'chatbubble-outline'}
                         danger={e.kind === 'error'}
                       />
                       {open ? (
@@ -156,6 +156,7 @@ export function AssistantLogViewer() {
                           {e.sent ? <View><Txt weight="600" size={13}>Sent to model</Txt><Txt size={12} sub>{e.sent.parts.length} messages · hash {e.sent.hash}</Txt></View> : null}
                           {e.tools && e.tools.length ? <View style={{ gap: 4 }}><Txt weight="600" size={13}>Tools used ({e.tools.length})</Txt>{e.tools.map((t, i) => <View key={i}><Txt size={12} color={t.ok ? undefined : c.bad}>{t.name} {t.args}</Txt><Txt size={12} sub numberOfLines={6}>{t.result}</Txt></View>)}</View> : null}
                           {e.masked && Object.keys(e.masked).length ? <Txt size={12} sub>Masked: {Object.entries(e.masked).map(([k, v]) => `${v} ${k}`).join(', ')}</Txt> : null}
+                          {e.offline ? <View><Txt weight="600" size={13}>Searched without a model ({e.offline.cause.replace(/_/g, ' ')})</Txt><Txt size={12} sub>Screens: {e.offline.screens.length ? e.offline.screens.join(', ') : 'none'}</Txt><Txt size={12} sub>Help pages: {e.offline.pages.length ? e.offline.pages.join(', ') : 'none'}</Txt></View> : null}
                           {e.error ? <View><Txt weight="600" size={13} color={c.bad}>Error</Txt><Txt size={13} color={c.bad}>{e.error.message}</Txt></View> : null}
                         </View>
                       ) : null}

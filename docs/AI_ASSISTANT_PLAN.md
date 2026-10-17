@@ -1,10 +1,17 @@
 # In-app AI assistant: planning document
 
-Repo: `github.com/Kousei-Uchu/aidens3dp-pos` (branch `dev`). Checked against the repo on 17 October 2026.
+Repo: `github.com/Kousei-Uchu/aidens3dp-pos` (branch `dev`). Checked against the repo on 18 October 2026.
 
 This document is the starting point for planning the Help menu chatbot. Part 1 is what the repo says today.
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
+
+**Revision 16 (18 October 2026), patch 0160:** the offline mode (3.3) is built, apart from the product and inventory lookup, which waits for the product tools
+and the data gate. When the model cannot answer, or is not set up, the chat shows the error banner and a list of matches from the screens and the help pages,
+labelled *Model offline, showing search results*, using the same two searches the model's tools use (so the role filter in 3.4 applies). Only the question is stored,
+with a marker in place of a reply; the list is searched again each time it is shown, for the role signed in then. The model is never shown a question that only got a list.
+Help pages open on tap and screens get the same Open button the link tool makes (3.2 tool 3). The next question tries the model first, and Retry replaces the list. Offline searches are in the audit log as their own kind of line. Not in practice mode, and not after
+"More detail". Send works before the model is set up. The tool patches (guide, screen and register context, date and time) are still to come.
 
 **Revision 15 (18 October 2026), patch 0159:** tool 3 of 4 is built: the link tool, as the model-facing tool `show_link`. The plan never said what the link tool
 was, so it is taken to mean a tappable button under a reply that opens a help page or a screen. It checks the id with the same role filters as the searches,
@@ -155,10 +162,11 @@ the audit log recording (3.6). Built in 0156: the audit log viewer, Export log, 
 the chat to everyone (3.6, 3.13). Built in 0157: the docs tools (`search_docs`, `read_doc`), the tool runtime and loop, and the role header on help pages.
 Built in 0158: the screen search tool (`search_screens`) and the role filter for screens.
 Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
+Built in 0160: the offline mode (3.3), the visible error plus a model-free search of the screens and the help pages.
 
 Still to do:
 
-- The offline mode (3.3): a visible error plus a model-free search of the navgraph and docs.
+- The offline mode's product and inventory lookup (3.3), after the product tools and the data gate.
 - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
   before anything reaches the model or the screen.
 - The read-only tools (3.2).
@@ -472,7 +480,8 @@ chat screen patch can add streaming.
    Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
-   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). Next: guide.
+   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). **0160 done:** the offline search
+   (screens and help pages; products and stock come with patch 6). Next: guide.
 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.

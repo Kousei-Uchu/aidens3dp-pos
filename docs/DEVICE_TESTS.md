@@ -725,3 +725,21 @@ On the iPad, with the model set up as in T55.
 8. As the owner, open the conversation log and open the step 1 conversation, then **Tools used**. Pass: the show_link call is listed with the note the model was given.
 9. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
 
+## T58. Assistant offline search (0160)
+
+On the iPad, with the model set up as in T55. Sign in as the owner (or a manager when the team has no owner).
+
+1. Turn the model off (switch off Ollama on the PC, or set a wrong address) and ask *Where do I count the cash drawer?* Pass: a red bar says it cannot reach the model, and under your question a box headed **Model offline, showing search results.** lists screens (with what each is for and taps starting from Checkout) and help pages.
+2. Tap a help page in the box. Pass: Help opens on that page, and Back returns to the chat with the list still there. Tap an **Open** button on a screen in the list (for example Cash drawer). Pass: that page opens. A screen that is a window (for example Close drawer) has no button, only its taps.
+3. Ask *teleporter*. Pass: the red bar shows and the box says it could not find anything on that.
+4. Turn the model back on and ask a new question. Pass: the model answers, the red bar goes, and the earlier list is still in the chat.
+5. Turn the model off, ask something, turn it back on and tap **Retry** on the red bar. Pass: the model's answer replaces that list, and your question appears once, not twice.
+6. With the model off, ask a question. Pass: there is no **More detail** button under the list. Turn the model on and ask a question. Pass: after its answer **More detail** is there. Turn the model off and tap it. Pass: the red bar shows and no list is added.
+7. Clear the address and model in Settings ▸ AI assistant, then open the chat and ask *How do I give a customer a receipt?* Pass: the red bar says it is not set up, Send works, and the list appears.
+8. Type `refund for jo@example.com` with the model off. Pass: your message shows [email address], and the list is about refunds.
+9. Sign in as a **cashier** (with a manager or owner on the team) and ask *Where do I add a staff member?* and *Where are the Shopify settings?* Pass: both get the could not find anything message and nothing names Settings or Staff. Sign in as a manager and ask the same: both are listed, with More, Staff and More, Settings.
+10. Signed in as a manager, with the model off, ask *Where do I add a staff member?* Pass: Staff is listed. Sign in as a cashier and open the chat. Pass: it is empty (each person has their own chat), and asking the same question lists no Staff or Settings.
+11. Settings ▸ AI assistant ▸ View conversation log. Pass: each offline search is a line headed with a search icon and *Offline search*. Opening it shows why the model was not used, and the screens and help pages it found. Nothing in it was sent to a model.
+12. Ask the same question again with the model on. Pass: the model's reply does not mention the earlier offline question or list.
+13. **Most important:** More ▸ Training, start any course, then open the chat and type a question. Pass: it says the assistant is switched off in practice mode, no list appears, and nothing is logged.
+

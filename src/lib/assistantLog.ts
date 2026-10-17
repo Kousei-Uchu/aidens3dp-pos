@@ -20,7 +20,7 @@ export type LogEndpoint = { host: string; model: string; scope: EndpointClass };
 export type SentPart = { id: string; role: 'user' | 'assistant'; text?: string };
 export type SentRecord = { sys: string; parts: SentPart[]; hash: string };
 export type LogEvent = {
-  v: 1; id: string; at: number; kind: 'ask' | 'error' | 'purge';
+  v: 1; id: string; at: number; kind: 'ask' | 'error' | 'offline' | 'purge';
   staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; detail?: Detail;
   user?: { id: string; text: string }; reply?: { id: string; text: string };
   /** What the model received: the system prompt by hash (the text is in the log's prompt list) and the messages by id. */
@@ -32,6 +32,8 @@ export type LogEvent = {
   /** What the data gate withheld, by category (patch 5). The items themselves are never kept. */
   withheld?: Record<string, number>;
   ms?: number; error?: { kind: string; message: string };
+  /** A search with no model (patch 0160): why the model was not used, and the screens and help pages it found, by id. */
+  offline?: { cause: string; screens: string[]; pages: string[] };
   purge?: { from: string; to: string; events: number; bytes: number };
 };
 export const TEXT_CLIP = 20000;
@@ -78,10 +80,25 @@ export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: st
   return { event, prompt: { hash: sysHash, text: i.p.system } };
 }
 
+/** The log line for an offline search. Nothing goes to a model, so there is no request to record: the question, the cause and the ids found. */
+export function buildOfflineEvent(i: { id: string; now: number; staff: LogStaff; endpoint?: LogEndpoint; user: ChatEntry; cause: string; screens: string[]; pages: string[]; ms?: number; apiKey?: string }): LogEvent {
+  return {
+    v: 1, id: i.id, at: i.now, kind: 'offline', staff: i.staff, practice: false,
+    ...(i.endpoint ? { endpoint: i.endpoint } : {}),
+    user: { id: i.user.id, text: clip(redactSecrets(i.user.text, i.apiKey)) },
+    offline: { cause: i.cause, screens: i.screens.slice(0, 20), pages: i.pages.slice(0, 20) },
+    ...(typeof i.ms === 'number' ? { ms: i.ms } : {}),
+  };
+}
+
 // ---------- asking, with the log ----------
 export type LogSink = (e: LogEvent, prompt?: { hash: string; text: string }) => Promise<void>;
 export type LogContext = { staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; apiKey: string; known: (id: string) => boolean; sink: LogSink; newId: () => string };
 export const LOG_FAIL_LINE = 'This conversation could not be added to the log. Tell a manager.';
+/** Logs an offline search. As with a question, a log problem never stops anything: it comes back as the line to show, or nothing. */
+export async function logOffline(c: Pick<LogContext, 'sink'>, event: LogEvent): Promise<string | undefined> {
+  try { await c.sink(event); return undefined; } catch { return LOG_FAIL_LINE; }
+}
 export type LoggedAsk =
   | { ok: true; result: AskResult; logError?: string }
   | { ok: false; error: unknown; logError?: string };

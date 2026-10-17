@@ -4,9 +4,11 @@
 // a button under a reply that opens a help page or a screen. It still knows
 // nothing about the shop's data. History is kept on
 // this iPad, one per staff member, and cleared only by hand.
+// Since 0160, when the model cannot answer (or is not set up) the chat shows the error and still searches the screens and the help
+// pages with no model, and lists the matches (plan 3.3). The next question tries the model first again.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
-import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
+import { Btn, Field, IconBtn, Page, Row, Txt, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useNav, type Tab } from '../ui/nav';
 import { useKeyboardOverlap } from '../ui/keyboard';
@@ -15,15 +17,55 @@ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
 import { isConfigured } from '../lib/assistantConfig';
 import { getAssistantKey } from '../lib/assistantKey';
 import { AssistantError } from '../lib/assistantClient';
-import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
-import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
+import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, withoutExchange, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+import { LOG_FAIL_LINE, askLogged, buildOfflineEvent, logEndpoint, logOffline, logStaff } from '../lib/assistantLog';
+import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineSearch } from '../lib/assistantOffline';
 import { assistantLog, logSink } from '../lib/assistantLogIO';
-import { liveLinks, makeToolSet, type LinkAction } from '../lib/assistantTools';
-import { builtinScreens } from '../lib/assistantScreens';
+import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
+import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+import type { Page as HelpPage } from '../lib/helpDocs';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
 import { uid } from '../lib/ids';
+
+/**
+ * The list shown in place of a reply when the model could not answer. It is searched here, with the role signed in now, from the question
+ * before it. A help page opens on tap; a screen gets an Open button when it can be opened that way (the same rule as the model's buttons),
+ * and always lists the taps from Checkout.
+ */
+function OfflineList({ query, role, pages, screens, onOpen }: { query: string; role: string; pages: HelpPage[]; screens: ScreenEntry[]; onOpen: (a: LinkAction) => void }) {
+  const { c } = useTheme();
+  const hits = React.useMemo(() => offlineSearch({ pages, screens, role }, query), [pages, screens, role, query]);
+  return (
+    <View style={{ alignSelf: 'flex-start', maxWidth: '92%', gap: 8, backgroundColor: c.card, borderRadius: 16, borderWidth: 1, borderColor: c.line, paddingVertical: 10 }}>
+      <Txt weight="700" style={{ paddingHorizontal: 14 }}>{OFFLINE_LABEL}</Txt>
+      {!hasOfflineHits(hits) ? <Txt size={13} sub style={{ paddingHorizontal: 14 }}>{OFFLINE_EMPTY}</Txt> : null}
+      {hits.screens.length ? (
+        <View style={{ gap: 10, paddingHorizontal: 14 }}>
+          <Txt size={12} sub weight="700">SCREENS</Txt>
+          {hits.screens.map(sc => {
+            const open = resolveLink({ pages, screens, role }, 'screen', sc.id);
+            return (
+              <View key={sc.id} style={{ gap: 2, alignItems: 'flex-start' }}>
+                <Txt weight="600">{sc.name} <Txt size={12} sub>({sc.kind})</Txt></Txt>
+                {sc.summary ? <Txt size={13} sub>{sc.summary}</Txt> : null}
+                {sc.how_to_open && sc.how_to_open.length ? <Txt size={13}>From Checkout: {sc.how_to_open.join(' ')}</Txt> : null}
+                {open ? <Btn small kind="secondary" icon="open-outline" title={open.link.label} onPress={() => onOpen(open.action)} /> : null}
+              </View>
+            );
+          })}
+        </View>
+      ) : null}
+      {hits.pages.length ? (
+        <View>
+          <Txt size={12} sub weight="700" style={{ paddingHorizontal: 14, paddingBottom: 2 }}>HELP PAGES</Txt>
+          {hits.pages.map((p, i) => <Row key={p.id} title={p.title} sub={p.summary} icon="document-text-outline" last={i === hits.pages.length - 1} onPress={() => onOpen({ to: 'help', id: p.id })} />)}
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 export default function Assistant() {
   const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
@@ -34,7 +76,8 @@ export default function Assistant() {
   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [secs, setSecs] = useState(0);
   const [banner, setBanner] = useState<Banner | null>(null); const [logWarn, setLogWarn] = useState('');
-  const failed = useRef<{ text: string; detail: Detail } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
+  // `search` is whether a failure also searches with no model (not for "More detail"); `replace` is the question a retry takes the place of.
+  const failed = useRef<{ text: string; detail: Detail; search: boolean; replace?: string } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
   keyRef.current = key; histRef.current = hist;
 
   useEffect(() => { // switching staff switches to that person's own history
@@ -48,38 +91,56 @@ export default function Assistant() {
   const blocked = sendBlock({ training: isTraining() });
   const ready = isConfigured(cfg);
 
-  const send = useCallback(async (input: string, detail: Detail) => {
+  const helpPages = React.useMemo(() => builtinHelp().pages, []);
+  const screenList = React.useMemo(() => builtinScreens(), []);
+
+  const send = useCallback(async (input: string, detail: Detail, o: { search?: boolean; replace?: string } = {}) => {
     const trimmed = input.trim(); if (!trimmed || busy) return;
     if (isTraining()) { setBanner({ kind: 'server_error', title: 'Switched off', body: PRACTICE_BLOCK }); return; }
-    if (!isConfigured(cfg)) { setBanner(bannerFor(new AssistantError('not_set_up', 'Set up the address and model first.'))); return; }
-    const forKey = keyRef.current; setBusy(true); setBanner(null); failed.current = null;
+    const search = o.search !== false; const forKey = keyRef.current; const t0 = Date.now();
+    setBusy(true); setBanner(null); failed.current = null;
     let apiKey = '';
+    // The model could not answer: say why, and search the screens and help pages with no model (plan 3.3). It replaces the exchange a retry came from.
+    const goOffline = async (e: unknown) => {
+      const err = e instanceof AssistantError ? e : new AssistantError('server_error', String((e as Error)?.message ?? 'Something went wrong.'));
+      setBanner(bannerFor(err, apiKey));
+      if (!search) { failed.current = { text: trimmed, detail, search }; return; }
+      setText('');
+      const ex = offlineExchange({ text: trimmed, ctx: { pages: helpPages, screens: screenList, role }, id: uid, now: Date.now });
+      failed.current = { text: trimmed, detail, search, replace: ex.user.id };
+      const next = capHistory([...withoutExchange(histRef.current, o.replace), ex.user, ex.reply]); setHist(next); await kvSet(forKey, next);
+      const line = await logOffline({ sink: logSink }, buildOfflineEvent({ id: uid(), now: Date.now(), staff: logStaff(staffId, staffList, role), endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), user: ex.user, cause: err.kind, screens: ex.hits.screens.map(x => x.id), pages: ex.hits.pages.map(x => x.id), ms: Date.now() - t0, apiKey }));
+      if (forKey === keyRef.current) setLogWarn(line ?? '');
+    };
     try {
+      if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
       apiKey = await getAssistantKey();
       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
-          tools: makeToolSet({ pages: builtinHelp().pages, screens: builtinScreens(), role, contextSize: cfg.contextSize }) },
+          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;
       const r = out.result;
       if (forKey !== keyRef.current) return; // a different person signed in while the model was thinking
-      const next = capHistory([...histRef.current, r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
+      const next = capHistory([...withoutExchange(histRef.current, o.replace), r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
     } catch (e) {
       if (forKey !== keyRef.current) return;
-      failed.current = { text: trimmed, detail }; setBanner(bannerFor(e, apiKey));
+      await goOffline(e);
     } finally { setBusy(false); }
-  }, [busy, cfg, staffId, staffList, role]);
+  }, [busy, cfg, staffId, staffList, role, helpPages, screenList]);
 
   const clear = async () => {
     if (!(await confirm('Clear your chat history?', 'This clears your own messages with the assistant on this iPad. It cannot be undone.', 'Clear', true))) return;
     setHist([]); setBanner(null); await kvDel(keyRef.current);
   };
 
-  const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant';
+  const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant' && !hist[hist.length - 1].offline;
   const open = (a: LinkAction) => { if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route); };
   // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
-  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: builtinHelp().pages, screens: builtinScreens(), role }, e.links) : []);
-  const bubble = (e: ChatEntry) => (
+  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: helpPages, screens: screenList, role }, e.links) : []);
+  const bubble = (e: ChatEntry, i: number) => e.offline ? (
+    <OfflineList key={e.id} query={hist[i - 1]?.text ?? ''} role={role} pages={helpPages} screens={screenList} onOpen={open} />
+  ) : (
     <View key={e.id} style={{ alignSelf: e.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', gap: 3 }}>
       <View style={{ backgroundColor: e.role === 'user' ? c.accent : c.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: e.role === 'user' ? 0 : 1, borderColor: c.line }}>
         <Txt color={e.role === 'user' ? c.onAccent : undefined}>{e.text}</Txt>
@@ -101,14 +162,14 @@ export default function Assistant() {
           {!ready ? (
             <View style={{ backgroundColor: c.fill, borderRadius: 12, padding: 14, gap: 8 }}>
               <Txt weight="700">The assistant is not set up yet</Txt>
-              <Txt size={13} sub>{canEdit ? 'Choose the model in More, Settings, AI assistant.' : ASK_MANAGER_LINE}</Txt>
+              <Txt size={13} sub>{canEdit ? 'Choose the model in More, Settings, AI assistant.' : ASK_MANAGER_LINE} Until then you can still ask here and it will search the screens and help pages.</Txt>
               {canEdit ? <Btn small kind="secondary" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
             </View>
           ) : null}
           {loaded && ready && !hist.length ? <Txt size={13} sub>Ask how something works. This assistant cannot see the shop's products, stock, customers or sales yet, and it never changes anything.</Txt> : null}
-          {hist.map(bubble)}
+          {hist.map((e, i) => bubble(e, i))}
           {busy ? <Txt size={13} sub>{secs >= 5 ? `Still working, ${secs} seconds so far.` : 'Thinking...'}</Txt> : null}
-          {lastReply && !busy && !banner ? <Btn small kind="ghost" title="More detail" icon="add-circle-outline" onPress={() => void send('More detail please.', 'more')} /> : null}
+          {lastReply && !busy && !banner ? <Btn small kind="ghost" title="More detail" icon="add-circle-outline" onPress={() => void send('More detail please.', 'more', { search: false })} /> : null}
         </ScrollView>
         {banner ? (
           <View style={{ marginHorizontal: 16, marginBottom: 8, backgroundColor: c.fill, borderRadius: 12, padding: 12, gap: 6, borderLeftWidth: 4, borderLeftColor: c.bad }}>
@@ -116,7 +177,7 @@ export default function Assistant() {
             <Txt size={13}>{banner.body}</Txt>
             {!canEdit ? <Txt size={13} sub>{ASK_MANAGER_LINE}</Txt> : null}
             <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
-              {canRetry(banner.kind) && failed.current ? <Btn small kind="secondary" title="Retry" onPress={() => { const f = failed.current; if (f) void send(f.text, f.detail); }} /> : null}
+              {canRetry(banner.kind) && failed.current ? <Btn small kind="secondary" title="Retry" onPress={() => { const f = failed.current; if (f) void send(f.text, f.detail, { search: f.search, replace: f.replace }); }} /> : null}
               {canEdit ? <Btn small kind="ghost" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
             </View>
           </View>
@@ -125,7 +186,7 @@ export default function Assistant() {
         {blocked ? <Txt size={13} sub style={{ marginHorizontal: 16, marginBottom: 8 }}>{blocked}</Txt> : null}
         <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
           <Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} />
-          <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked || !ready} onPress={() => void send(text, 'short')} />
+          <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked} onPress={() => void send(text, 'short')} />
           <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Conversations are also logged for the manager. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
         </View>
       </View>
