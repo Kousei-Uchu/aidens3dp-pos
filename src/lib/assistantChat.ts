@@ -98,40 +98,55 @@ export const estimateTokens = (s: string): number => Math.ceil((s ?? '').length 
 /** A share of the context is kept free for the reply. */
 export const REPLY_SHARE = 0.25;
 
+export type Masked = Partial<Record<MaskKind, number>>;
+const addMasks = (into: Masked, from: Masked): Masked => { for (const k of Object.keys(from) as MaskKind[]) into[k] = (into[k] ?? 0) + (from[k] ?? 0); return into; };
+export type BuiltMessages = { messages: ChatMessage[]; /** The history entries behind the non system messages, in order. */ included: ChatEntry[]; /** What the scrubber hid on the history at send time. */ masked: Masked; system: string };
+
 /**
  * The messages sent with the next question: the system prompt, then as many of the newest messages as fit in the context
  * size, oldest dropped first. The scrubber runs over every message again here, so history written earlier never goes out
  * with data the current rules would mask. The newest message is always kept, cut down if it alone is too long.
+ * Also says which entries went and what was hidden, for the audit log (patch 0152).
  */
-export function buildMessages(history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] {
+export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number): BuiltMessages {
   const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail) };
   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? ''));
-  const picked: ChatMessage[] = []; let used = 0;
+  const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
   for (let i = history.length - 1; i >= 0; i--) {
     let text = scrubText(history[i].text).text;
     let cost = estimateTokens(text);
     if (picked.length === 0 && cost > budget) { text = text.slice(0, Math.max(1, (budget - 4) * 3)); cost = estimateTokens(text); }
     if (used + cost > budget) break;
-    picked.unshift({ role: history[i].role, content: text }); used += cost;
+    picked.unshift({ role: history[i].role, content: text }); entries.unshift(history[i]); used += cost;
   }
-  while (picked.length && picked[0].role !== 'user') picked.shift(); // a chat never opens on a reply
-  return [system, ...picked];
+  while (picked.length && picked[0].role !== 'user') { picked.shift(); entries.shift(); } // a chat never opens on a reply
+  const masked: Masked = {}; for (const e of entries) addMasks(masked, scrubText(e.text).masked);
+  return { messages: [system, ...picked], included: entries, masked, system: system.content ?? '' };
 }
+export const buildMessages = (history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] => buildMessagesDetailed(history, detail, contextSize).messages;
 
 // ---------- asking the model ----------
 export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number };
 export type AskResult = { user: ChatEntry; reply: ChatEntry };
+/** Everything decided before the network call, so the audit log can record a request even when it fails. */
+export type Prepared = { user: ChatEntry; messages: ChatMessage[]; included: ChatEntry[]; system: string; /** Hidden in what was typed plus hidden in old history at send time. */ masked: Masked };
 
-/** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
-export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> {
+/** Scrubs what was typed and builds the request. Nothing is sent or stored here. */
+export function prepare(a: AskInput): Prepared {
   const s = scrubText(a.text.trim());
   const user: ChatEntry = { id: a.id(), role: 'user', text: s.text, at: a.now(), ...(maskedNote(s.masked) ? { note: maskedNote(s.masked) } : {}) };
-  const messages = buildMessages([...a.history, user], a.detail, a.settings.contextSize);
-  const res = await chat(f, a.endpoint, { messages, temperature: a.settings.temperature });
+  const b = buildMessagesDetailed([...a.history, user], a.detail, a.settings.contextSize);
+  return { user, messages: b.messages, included: b.included, system: b.system, masked: addMasks({ ...s.masked }, b.masked) };
+}
+/** Sends a prepared request and cleans the reply. Throws AssistantError. */
+export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promise<AskResult> {
+  const res = await chat(f, a.endpoint, { messages: p.messages, temperature: a.settings.temperature });
   const raw = (res.message.content ?? '').trim();
   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
-  return { user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
+  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
 }
+/** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
+export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> { return runPrepared(f, a, prepare(a)); }
 
 // ---------- the error banner ----------
 export type Banner = { kind: AssistantErrorKind; title: string; body: string };

@@ -12,7 +12,9 @@ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
 import { isConfigured } from '../lib/assistantConfig';
 import { getAssistantKey } from '../lib/assistantKey';
 import { AssistantError } from '../lib/assistantClient';
-import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, ask, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
+import { assistantLog, logSink } from '../lib/assistantLogIO';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
 import { uid } from '../lib/ids';
@@ -21,15 +23,16 @@ export default function Assistant() {
   const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
   const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
   const canEdit = useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
+  const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId));
   const key = historyKey(staffId);
   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [secs, setSecs] = useState(0);
-  const [banner, setBanner] = useState<Banner | null>(null);
+  const [banner, setBanner] = useState<Banner | null>(null); const [logWarn, setLogWarn] = useState('');
   const failed = useRef<{ text: string; detail: Detail } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
   keyRef.current = key; histRef.current = hist;
 
   useEffect(() => { // switching staff switches to that person's own history
-    let on = true; setLoaded(false); setHist([]); setBanner(null); setText('');
+    let on = true; setLoaded(false); setHist([]); setBanner(null); setLogWarn(''); setText('');
     void kvGet<unknown>(key, []).then(r => { if (on) { setHist(readHistory(r)); setLoaded(true); } });
     return () => { on = false; };
   }, [key]);
@@ -47,14 +50,18 @@ export default function Assistant() {
     let apiKey = '';
     try {
       apiKey = await getAssistantKey();
-      const r = await ask(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now });
+      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now },
+        { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+      if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+      if (!out.ok) throw out.error;
+      const r = out.result;
       if (forKey !== keyRef.current) return; // a different person signed in while the model was thinking
       const next = capHistory([...histRef.current, r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
     } catch (e) {
       if (forKey !== keyRef.current) return;
       failed.current = { text: trimmed, detail }; setBanner(bannerFor(e, apiKey));
     } finally { setBusy(false); }
-  }, [busy, cfg]);
+  }, [busy, cfg, staffId, staffList, role]);
 
   const clear = async () => {
     if (!(await confirm('Clear your chat history?', 'This clears your own messages with the assistant on this iPad. It cannot be undone.', 'Clear', true))) return;
@@ -99,11 +106,12 @@ export default function Assistant() {
             </View>
           </View>
         ) : null}
+        {logWarn ? <Txt size={13} style={{ marginHorizontal: 16, marginBottom: 8 }} color={c.bad}>{logWarn}</Txt> : null}
         {blocked ? <Txt size={13} sub style={{ marginHorizontal: 16, marginBottom: 8 }}>{blocked}</Txt> : null}
         <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
           <Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} />
           <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked || !ready} onPress={() => void send(text, 'short')} />
-          <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
+          <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Conversations are also logged for the manager. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
         </View>
       </View>
     </Page>

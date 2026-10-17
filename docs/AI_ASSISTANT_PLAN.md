@@ -6,6 +6,11 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 11 (17 October 2026), patch 0152:** patch 3 (the audit log) is split in two. 0152 is the recording half: the log
+store, the event format, the wiring into the chat and the one-line notice. 0153 is the viewer, Export log, Clear log, the cap
+setting and opening the chat to everyone. The owner's answers are in 3.13. The Help entry stays owner and manager only until
+0153, because staff would otherwise be told they are logged for a manager who has no way to read the log.
+
 **Revision 10 (17 October 2026), patch 0151:** patch 2 was built: the chat screen and its Help entry (`src/screens/Assistant.tsx`, route
 `assistant`), the chat logic in `src/lib/assistantChat.ts`, per-staff history on the device, the error banner, the small
 scrubber, the dash filter and the practice mode block, as decided in 3.12. It has no tools, so the model sees only what
@@ -437,7 +442,9 @@ chat screen patch can add streaming.
    the decisions in 3.12.
 2. **Done (0151).** Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5),
    a small scrubber (3.12) and the practice mode block (3.12).
-3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
+3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start. Split in two:
+   **3a. Done (0152):** recording, the store and the notice. **3b. Next (0153):** the viewer, Export log, Clear log, the cap setting and
+   opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
    offline search (3.3).
 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
@@ -463,6 +470,26 @@ The gate comes before any tool that returns shop data, so no tool is ever added 
    signed-in person.
 4. **Practice mode.** Until the practice mode coach exists (patch 9), sending is blocked while practice mode is on, and
    the chat says so. Practice mode must never send anything out (section 4).
+
+### 3.13 Decisions for the audit log patches (owner answered, 17 October 2026)
+
+1. **When the log is full, send anyway and purge the oldest entries.** Sending is never blocked by the log. The oldest files go
+   first, never today's. A purge line is written in the log and the meta file records the day purged through, so nobody mistakes
+   the log for complete. The manager is warned from 80 percent of the cap. Default cap 200 MB; the manager's setting is in 0153.
+2. **Compact entries.** An event stores the new question and the reply. The messages that went with it are listed by id, with
+   the text inline only when the log does not already have it (old history, or after an app restart). The system prompt is
+   stored once by hash in `meta.json`. A checksum of the exact request lets the viewer say whether it rebuilt it exactly.
+3. **Hidden app folder.** `Library/Application Support/assistant-log/`, a sibling of Documents, which Files.app can see because
+   `UIFileSharingEnabled` is on. Export log (0153) is the only way out. Checked in `expo-file-system`: its legacy API allows
+   reading and writing the Application Support directory. On a device with no `/Documents/` path the app's private files folder is used.
+4. **Typed word for Clear log: `CLEAR`** (0153).
+5. **Who can open the viewer:** the same check as the assistant settings (`useCanEditAssistant`: an owner, or a manager when
+   the team has no owner) (0153).
+
+Things worth knowing about 0152: the log is written after the model answers or fails, so a request cut off by closing the app
+leaves no line; a failed request is logged as an error with the question that was about to be sent; nothing is logged in
+practice mode (sending is blocked there anyway); a log write problem shows the cashier a line to tell a manager and never
+stops the answer.
 
 ### 3.11 Confirmed by the owner
 

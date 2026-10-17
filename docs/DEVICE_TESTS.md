@@ -659,3 +659,17 @@ On the iPad, with a model server set up as in T49 (Ollama on a PC on the same Wi
 10. **Most important:** More ▸ Training, start any course, then open Help and the chat. Pass: the chat says the assistant is switched off in practice mode, and Send does nothing. Nothing reaches your server (check its log).
 11. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: the chat history does NOT come across.
 12. Open the chat before the model is set up (clear the address and model). Pass: a box says it is not set up, with **Open model settings** for the owner. Tap it. Pass: the AI assistant settings page opens, and Back returns to the chat.
+
+## T53. Assistant conversation log, recording (0152)
+
+On the iPad, with the model set up as in T49 and the chat as in T52. Sign in as the owner. There is no viewer yet, so most of this is checked by what the chat does and by what is NOT visible.
+
+1. Open the chat and ask *How do I give a customer a receipt?* Pass: the answer arrives as before, and the small print under the box now says conversations are also logged for the manager.
+2. Open the Files app, then On My iPad, then the till app's folder. Pass: there is no assistant-log folder there (the log is kept where Files cannot see it).
+3. Ask five or six more questions, including one with a pasted email address and card number (`jo@example.com`, `4111 1111 1111 1111`), and one after turning the PC's Ollama off. Pass: nothing looks different in the chat. The failed one shows the usual red bar.
+4. Tap the bin in the chat and confirm. Pass: your history clears and the log is unaffected (it cannot be checked until the viewer in 0153; for now just confirm nothing breaks).
+5. Sign in as a different staff member who may open the chat, ask a question. Pass: it works.
+6. Fill the iPad's storage nearly full (or ask the developer for a build with a tiny log cap) and ask a question. Pass: you still get the answer, and a red line under the chat says *This conversation could not be added to the log. Tell a manager.*
+7. **Most important:** More ▸ Training, start any course, then open the chat. Pass: it says the assistant is switched off in practice mode. Nothing is logged and nothing reaches your server.
+8. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: nothing about the log comes across.
+

@@ -1,0 +1,810 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index 853f576..6ed3851 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,11 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 11 (17 October 2026), patch 0152:** patch 3 (the audit log) is split in two. 0152 is the recording half: the log
++store, the event format, the wiring into the chat and the one-line notice. 0153 is the viewer, Export log, Clear log, the cap
++setting and opening the chat to everyone. The owner's answers are in 3.13. The Help entry stays owner and manager only until
++0153, because staff would otherwise be told they are logged for a manager who has no way to read the log.
++
+ **Revision 10 (17 October 2026), patch 0151:** patch 2 was built: the chat screen and its Help entry (`src/screens/Assistant.tsx`, route
+ `assistant`), the chat logic in `src/lib/assistantChat.ts`, per-staff history on the device, the error banner, the small
+ scrubber, the dash filter and the practice mode block, as decided in 3.12. It has no tools, so the model sees only what
+@@ -437,7 +442,9 @@ chat screen patch can add streaming.
+    the decisions in 3.12.
+ 2. **Done (0151).** Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5),
+    a small scrubber (3.12) and the practice mode block (3.12).
+-3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
++3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start. Split in two:
++   **3a. Done (0152):** recording, the store and the notice. **3b. Next (0153):** the viewer, Export log, Clear log, the cap setting and
++   opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
+ 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
+    offline search (3.3).
+ 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+@@ -464,6 +471,26 @@ The gate comes before any tool that returns shop data, so no tool is ever added
+ 4. **Practice mode.** Until the practice mode coach exists (patch 9), sending is blocked while practice mode is on, and
+    the chat says so. Practice mode must never send anything out (section 4).
+ 
++### 3.13 Decisions for the audit log patches (owner answered, 17 October 2026)
++
++1. **When the log is full, send anyway and purge the oldest entries.** Sending is never blocked by the log. The oldest files go
++   first, never today's. A purge line is written in the log and the meta file records the day purged through, so nobody mistakes
++   the log for complete. The manager is warned from 80 percent of the cap. Default cap 200 MB; the manager's setting is in 0153.
++2. **Compact entries.** An event stores the new question and the reply. The messages that went with it are listed by id, with
++   the text inline only when the log does not already have it (old history, or after an app restart). The system prompt is
++   stored once by hash in `meta.json`. A checksum of the exact request lets the viewer say whether it rebuilt it exactly.
++3. **Hidden app folder.** `Library/Application Support/assistant-log/`, a sibling of Documents, which Files.app can see because
++   `UIFileSharingEnabled` is on. Export log (0153) is the only way out. Checked in `expo-file-system`: its legacy API allows
++   reading and writing the Application Support directory. On a device with no `/Documents/` path the app's private files folder is used.
++4. **Typed word for Clear log: `CLEAR`** (0153).
++5. **Who can open the viewer:** the same check as the assistant settings (`useCanEditAssistant`: an owner, or a manager when
++   the team has no owner) (0153).
++
++Things worth knowing about 0152: the log is written after the model answers or fails, so a request cut off by closing the app
++leaves no line; a failed request is logged as an error with the question that was about to be sent; nothing is logged in
++practice mode (sending is blocked there anyway); a log write problem shows the cashier a line to tell a manager and never
++stops the answer.
++
+ ### 3.11 Confirmed by the owner
+ 
+ 1. The audit log viewer is for the manager role only. Confirmed.
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 2c7dfc5..7a2fca1 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -659,3 +659,17 @@ On the iPad, with a model server set up as in T49 (Ollama on a PC on the same Wi
+ 10. **Most important:** More ▸ Training, start any course, then open Help and the chat. Pass: the chat says the assistant is switched off in practice mode, and Send does nothing. Nothing reaches your server (check its log).
+ 11. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: the chat history does NOT come across.
+ 12. Open the chat before the model is set up (clear the address and model). Pass: a box says it is not set up, with **Open model settings** for the owner. Tap it. Pass: the AI assistant settings page opens, and Back returns to the chat.
++
++## T53. Assistant conversation log, recording (0152)
++
++On the iPad, with the model set up as in T49 and the chat as in T52. Sign in as the owner. There is no viewer yet, so most of this is checked by what the chat does and by what is NOT visible.
++
++1. Open the chat and ask *How do I give a customer a receipt?* Pass: the answer arrives as before, and the small print under the box now says conversations are also logged for the manager.
++2. Open the Files app, then On My iPad, then the till app's folder. Pass: there is no assistant-log folder there (the log is kept where Files cannot see it).
++3. Ask five or six more questions, including one with a pasted email address and card number (`jo@example.com`, `4111 1111 1111 1111`), and one after turning the PC's Ollama off. Pass: nothing looks different in the chat. The failed one shows the usual red bar.
++4. Tap the bin in the chat and confirm. Pass: your history clears and the log is unaffected (it cannot be checked until the viewer in 0153; for now just confirm nothing breaks).
++5. Sign in as a different staff member who may open the chat, ask a question. Pass: it works.
++6. Fill the iPad's storage nearly full (or ask the developer for a build with a tiny log cap) and ask a question. Pass: you still get the answer, and a red line under the chat says *This conversation could not be added to the log. Tell a manager.*
++7. **Most important:** More ▸ Training, start any course, then open the chat. Pass: it says the assistant is switched off in practice mode. Nothing is logged and nothing reaches your server.
++8. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: nothing about the log comes across.
++
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index e71dd5d..20566a3 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -151,6 +151,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0149 | 2026-10-17 | AI assistant, a small step before patch 2 (your request): the **Treat this address as local** switch in **More ▸ Settings ▸ AI assistant** is now a three way choice, **Auto / Local / Remote** (`endpointMode` in `src/lib/assistantConfig.ts`). Auto follows the address as before. **Remote** is new: it forces an address to count as remote, for a tunnel or proxy on a private looking address. Settings saved by 0148 move over by themselves (switch on becomes Local, off becomes Auto), including restored backups. Still per iPad, never shared between registers, and still carried in Backup & transfer. `docs/AI_ASSISTANT_PLAN.md` (revision 9, new section 3.12) and `docs/WRITING_ASSISTANT.md` now record the decisions for the chat patch: small scrubber pulled forward into it, the Help entry shown only to people who may edit assistant settings until the audit log lands, sending blocked in practice mode until the coach exists, and this patch ahead of it. Help: `settings/assistant`. Tests: `assistantconfig`, `assistantsettings`. Device test T50. | your request |
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
++| 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
+ 
+ 
+ ---
+@@ -503,6 +504,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N59 **Non-blocking (B6, 0138):** device check for the offline course (More ▸ Training ▸ When the internet is down), steps in `docs/DEVICE_TESTS.md` T43. Most important: the status bar reads Offline throughout, a cash sale finishes and appears queued in Notifications, a stuck sale is retried without a second sale, and the real terminal is switched off so no practice sale is ever uploaded. No real data is touched.
+ - [ ] N60 **Non-blocking (B6, 0139):** device check for the customers-list course (More ▸ Training ▸ Customers on file), steps in `docs/DEVICE_TESTS.md` T44. Most important: the More row for Customers opens the page, the New customer and search spots are ringed, Sam Rivera's window shows Start sale/Edit, editing Sam adds a mobile, and Start sale lands on Checkout with the customer attached. A customer made in practice stays on the iPad and is never sent to Shopify (check the real customer list is unchanged after leaving practice). No real data is touched.
+ - [ ] N61 **Non-blocking (B6, 0140):** device check for the items course (More ▸ Training ▸ Items and creating one), steps in `docs/DEVICE_TESTS.md` T45. Most important: the More row for Items opens the page, the Create item and search spots are ringed, opening Bumble Bee shows its price/SKU/barcode and Save to Shopify, editing the price and saving returns to the list with the new price, and a product made in practice stays on the iPad and is never sent to Shopify (check the real catalogue is unchanged after leaving practice). No real data is touched.
++- [ ] N62 **Non-blocking (AI assistant, 0152):** device check for the conversation log, steps in `docs/DEVICE_TESTS.md` T53. Most important: no assistant-log folder in the Files app, a full or unwritable log still lets the answer through with the red *tell a manager* line, and nothing is logged in practice mode. The viewer comes in 0153, so recording cannot be read back on the iPad yet.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/help/help.json b/help/help.json
+index f681f62..5067863 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "e8dd8372",
++ "version": "944da915",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1413,6 +1413,8 @@
+     "chat",
+     "ask",
+     "history",
++    "log",
++    "audit",
+     "privacy",
+     "practice mode"
+    ],
+@@ -1424,8 +1426,8 @@
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+     "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
+-    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### Practice mode\nThe assistant is switched off in practice mode. Practice mode never sends anything out.",
+-    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### Limits of this version\nThere are no tools, so no shop data is sent at all. The full data rules, role filtering, the audit log and the search tools arrive in later patches. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
++    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode. Practice mode never sends anything out, and nothing is logged.",
++    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### Limits of this version\nThere are no tools, so no shop data is sent at all. The full data rules, role filtering, the log viewer and the search tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+   },
+   {
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index 66e6ce7..9f014bd 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -3,7 +3,7 @@ id: settings/ask-assistant
+ title: Ask the assistant
+ parent: settings/assistant
+ summary: Chat with the Help assistant: what it can and cannot do yet, what is kept, and what is hidden before anything is sent.
+-tags: [AI, assistant, chatbot, chat, ask, history, privacy, practice mode]
++tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode]
+ related: [settings/assistant, settings/backup]
+ updated: 2026-10-17
+ ---
+@@ -28,13 +28,21 @@ Your messages and its replies are kept on this iPad, for you only. Each person w
+ ### What is hidden before sending
+ Before anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.
+ 
++### The conversation log
++Every question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.
++
++If a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*
++
+ ### Practice mode
+-The assistant is switched off in practice mode. Practice mode never sends anything out.
++The assistant is switched off in practice mode. Practice mode never sends anything out, and nothing is logged.
+ 
+ ## Advanced
+ 
+ ### What goes to the model
+ Only the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.
+ 
++### How the log is kept
++One file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.
++
+ ### Limits of this version
+-There are no tools, so no shop data is sent at all. The full data rules, role filtering, the audit log and the search tools arrive in later patches. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
++There are no tools, so no shop data is sent at all. The full data rules, role filtering, the log viewer and the search tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index d066f74..f9055b0 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -98,40 +98,55 @@ export const estimateTokens = (s: string): number => Math.ceil((s ?? '').length
+ /** A share of the context is kept free for the reply. */
+ export const REPLY_SHARE = 0.25;
+ 
++export type Masked = Partial<Record<MaskKind, number>>;
++const addMasks = (into: Masked, from: Masked): Masked => { for (const k of Object.keys(from) as MaskKind[]) into[k] = (into[k] ?? 0) + (from[k] ?? 0); return into; };
++export type BuiltMessages = { messages: ChatMessage[]; /** The history entries behind the non system messages, in order. */ included: ChatEntry[]; /** What the scrubber hid on the history at send time. */ masked: Masked; system: string };
++
+ /**
+  * The messages sent with the next question: the system prompt, then as many of the newest messages as fit in the context
+  * size, oldest dropped first. The scrubber runs over every message again here, so history written earlier never goes out
+  * with data the current rules would mask. The newest message is always kept, cut down if it alone is too long.
++ * Also says which entries went and what was hidden, for the audit log (patch 0152).
+  */
+-export function buildMessages(history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] {
++export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number): BuiltMessages {
+   const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail) };
+   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? ''));
+-  const picked: ChatMessage[] = []; let used = 0;
++  const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
+   for (let i = history.length - 1; i >= 0; i--) {
+     let text = scrubText(history[i].text).text;
+     let cost = estimateTokens(text);
+     if (picked.length === 0 && cost > budget) { text = text.slice(0, Math.max(1, (budget - 4) * 3)); cost = estimateTokens(text); }
+     if (used + cost > budget) break;
+-    picked.unshift({ role: history[i].role, content: text }); used += cost;
++    picked.unshift({ role: history[i].role, content: text }); entries.unshift(history[i]); used += cost;
+   }
+-  while (picked.length && picked[0].role !== 'user') picked.shift(); // a chat never opens on a reply
+-  return [system, ...picked];
++  while (picked.length && picked[0].role !== 'user') { picked.shift(); entries.shift(); } // a chat never opens on a reply
++  const masked: Masked = {}; for (const e of entries) addMasks(masked, scrubText(e.text).masked);
++  return { messages: [system, ...picked], included: entries, masked, system: system.content ?? '' };
+ }
++export const buildMessages = (history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] => buildMessagesDetailed(history, detail, contextSize).messages;
+ 
+ // ---------- asking the model ----------
+ export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number };
+ export type AskResult = { user: ChatEntry; reply: ChatEntry };
++/** Everything decided before the network call, so the audit log can record a request even when it fails. */
++export type Prepared = { user: ChatEntry; messages: ChatMessage[]; included: ChatEntry[]; system: string; /** Hidden in what was typed plus hidden in old history at send time. */ masked: Masked };
+ 
+-/** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
+-export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> {
++/** Scrubs what was typed and builds the request. Nothing is sent or stored here. */
++export function prepare(a: AskInput): Prepared {
+   const s = scrubText(a.text.trim());
+   const user: ChatEntry = { id: a.id(), role: 'user', text: s.text, at: a.now(), ...(maskedNote(s.masked) ? { note: maskedNote(s.masked) } : {}) };
+-  const messages = buildMessages([...a.history, user], a.detail, a.settings.contextSize);
+-  const res = await chat(f, a.endpoint, { messages, temperature: a.settings.temperature });
++  const b = buildMessagesDetailed([...a.history, user], a.detail, a.settings.contextSize);
++  return { user, messages: b.messages, included: b.included, system: b.system, masked: addMasks({ ...s.masked }, b.masked) };
++}
++/** Sends a prepared request and cleans the reply. Throws AssistantError. */
++export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promise<AskResult> {
++  const res = await chat(f, a.endpoint, { messages: p.messages, temperature: a.settings.temperature });
+   const raw = (res.message.content ?? '').trim();
+   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
+-  return { user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
++  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
+ }
++/** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
++export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> { return runPrepared(f, a, prepare(a)); }
+ 
+ // ---------- the error banner ----------
+ export type Banner = { kind: AssistantErrorKind; title: string; body: string };
+diff --git a/src/lib/assistantLog.ts b/src/lib/assistantLog.ts
+new file mode 100644
+index 0000000..3178cbf
+--- /dev/null
++++ b/src/lib/assistantLog.ts
+@@ -0,0 +1,234 @@
++// Location: src/lib/assistantLog.ts
++// The assistant's audit log (patch 0152, plan 3.6): a record of every exchange with the model, kept on this device only,
++// so the manager can see what was asked, what was sent and what came back. Pure logic over a tiny file interface, so it
++// runs in the node tests; assistantLogIO.ts gives it the real (hidden) folder on the iPad. Nothing here is synced or backed up.
++//
++// Format: one JSON line per event. The current month is one plain text file per day (d-YYYY-MM-DD.jsonl). Finished months are
++// packed into one gzip file each (m-YYYY-MM.jsonl.gz). When the folder passes its cap, the oldest files are removed and a
++// purge event says so. The log never holds more than the model was sent: withheld data is counted by category, never kept.
++import { gunzipSync, gzipSync, strFromU8, strToU8 } from 'fflate';
++import type { Role } from './types';
++import { classifyEndpoint, parseBaseUrl, type EndpointClass, type EndpointMode } from './assistantConfig';
++import { AssistantError, redactSecrets, type FetchLike } from './assistantClient';
++import { prepare, runPrepared, type AskInput, type AskResult, type ChatEntry, type Detail, type Masked, type Prepared } from './assistantChat';
++
++// ---------- events ----------
++export type LogStaff = { id: string; name: string; role: Role | 'none' };
++export type LogEndpoint = { host: string; model: string; scope: EndpointClass };
++/** One message that went to the model. The text is only stored when this log has not already got it as an earlier question or reply. */
++export type SentPart = { id: string; role: 'user' | 'assistant'; text?: string };
++export type SentRecord = { sys: string; parts: SentPart[]; hash: string };
++export type LogEvent = {
++  v: 1; id: string; at: number; kind: 'ask' | 'error' | 'purge';
++  staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; detail?: Detail;
++  user?: { id: string; text: string }; reply?: { id: string; text: string };
++  /** What the model received: the system prompt by hash (the text is in the log's prompt list) and the messages by id. */
++  sent?: SentRecord;
++  /** What the scrubber hid, by category. */
++  masked?: Masked;
++  /** What the data gate withheld, by category (patch 5). The items themselves are never kept. */
++  withheld?: Record<string, number>;
++  ms?: number; error?: { kind: string; message: string };
++  purge?: { from: string; to: string; events: number; bytes: number };
++};
++export const TEXT_CLIP = 20000;
++const clip = (s: string): string => (s.length > TEXT_CLIP ? `${s.slice(0, TEXT_CLIP)}[cut]` : s);
++
++/** A short checksum, so the viewer can say whether it rebuilt a request exactly. Not a security feature. */
++export function fnv1a(s: string): string {
++  let h = 0x811c9dc5;
++  for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
++  return h.toString(16).padStart(8, '0');
++}
++
++export const logStaff = (staffId: string | undefined, staff: { id: string; name: string }[], role: Role | 'none'): LogStaff => {
++  const m = staffId ? staff.find(x => x.id === staffId) : undefined;
++  return { id: staffId && staffId.trim() ? staffId : 'owner', name: m?.name ?? 'Owner', role };
++};
++/** Host only: never the path, the port's query or the key. */
++export function logEndpoint(baseUrl: string, model: string, mode: EndpointMode): LogEndpoint {
++  const p = parseBaseUrl(baseUrl);
++  return { host: p.ok ? p.host : '', model, scope: classifyEndpoint(baseUrl, mode) };
++}
++
++export type BuildInput = {
++  id: string; now: number; staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; detail: Detail; p: Prepared;
++  /** True when the log already holds this message's text. */
++  known: (id: string) => boolean; reply?: ChatEntry; error?: { kind: string; message: string }; ms: number; apiKey?: string;
++};
++/** Builds one event. Every text is clipped and run through the key remover, so the key can never reach a line. */
++export function buildEvent(i: BuildInput): { event: LogEvent; prompt: { hash: string; text: string } } {
++  const key = (t: string) => clip(redactSecrets(t, i.apiKey));
++  const sysHash = fnv1a(i.p.system);
++  const parts: SentPart[] = i.p.included.map(e => ({ id: e.id, role: e.role, ...(e.id === i.p.user.id || i.known(e.id) ? {} : { text: key(e.text) }) }));
++  const event: LogEvent = {
++    v: 1, id: i.id, at: i.now, kind: i.error ? 'error' : 'ask', staff: i.staff, practice: i.practice,
++    ...(i.endpoint ? { endpoint: i.endpoint } : {}), detail: i.detail,
++    user: { id: i.p.user.id, text: key(i.p.user.text) },
++    ...(i.reply ? { reply: { id: i.reply.id, text: key(i.reply.text) } } : {}),
++    sent: { sys: sysHash, parts, hash: fnv1a(JSON.stringify(i.p.messages)) },
++    ...(Object.keys(i.p.masked).length ? { masked: i.p.masked } : {}),
++    ms: i.ms,
++    ...(i.error ? { error: { kind: i.error.kind, message: key(i.error.message) } } : {}),
++  };
++  return { event, prompt: { hash: sysHash, text: i.p.system } };
++}
++
++// ---------- asking, with the log ----------
++export type LogSink = (e: LogEvent, prompt?: { hash: string; text: string }) => Promise<void>;
++export type LogContext = { staff: LogStaff; practice: boolean; endpoint?: LogEndpoint; apiKey: string; known: (id: string) => boolean; sink: LogSink; newId: () => string };
++export const LOG_FAIL_LINE = 'This conversation could not be added to the log. Tell a manager.';
++export type LoggedAsk =
++  | { ok: true; result: AskResult; logError?: string }
++  | { ok: false; error: unknown; logError?: string };
++
++/**
++ * Asks the model and logs the exchange. A log problem never stops the question or the answer (the owner's choice): it is
++ * reported in `logError` so the cashier can tell a manager. A failed request is logged too, with what was going to be sent.
++ */
++export async function askLogged(f: FetchLike, a: AskInput, c: LogContext): Promise<LoggedAsk> {
++  const p = prepare(a); const t0 = a.now();
++  const base = { id: c.newId(), staff: c.staff, practice: c.practice, endpoint: c.endpoint, detail: a.detail, p, known: c.known, apiKey: c.apiKey };
++  let result: AskResult | undefined; let failure: unknown;
++  try { result = await runPrepared(f, a, p); } catch (e) { failure = e; }
++  const now = a.now();
++  const b = result
++    ? buildEvent({ ...base, now, reply: result.reply, ms: now - t0 })
++    : buildEvent({ ...base, now, ms: now - t0, error: failure instanceof AssistantError ? { kind: failure.kind, message: failure.message } : { kind: 'server_error', message: String((failure as Error)?.message ?? 'Something went wrong.') } });
++  let logError: string | undefined;
++  try { await c.sink(b.event, b.prompt); } catch { logError = LOG_FAIL_LINE; }
++  return result ? { ok: true, result, ...(logError ? { logError } : {}) } : { ok: false, error: failure, ...(logError ? { logError } : {}) };
++}
++
++// ---------- the store ----------
++export type LogFs = {
++  read(name: string): Promise<Uint8Array | null>;
++  write(name: string, data: Uint8Array): Promise<void>;
++  remove(name: string): Promise<void>;
++  list(): Promise<{ name: string; size: number }[]>;
++};
++export const DEFAULT_LOG_CAP_BYTES = 200 * 1024 * 1024;
++export const LOG_WARN_AT = 0.8;
++/** After a purge the folder is brought down to this share of the cap, so it does not purge on every message. */
++export const LOG_PURGE_TO = 0.9;
++export const META_NAME = 'meta.json';
++export type LogMeta = { v: 1; prompts: Record<string, string>; purgedThrough?: string; purgedEvents: number; lastPurgeAt?: number };
++export type LogStatus = { bytes: number; capBytes: number; percent: number; warn: boolean; purgedThrough?: string; purgedEvents: number; lastPurgeAt?: number };
++
++const DAY_FILE = /^d-(\d{4}-\d{2}-\d{2})\.jsonl$/;
++const MONTH_FILE = /^m-(\d{4}-\d{2})\.jsonl\.gz$/;
++export const dayName = (day: string): string => `d-${day}.jsonl`;
++export const monthName = (month: string): string => `m-${month}.jsonl.gz`;
++const two = (n: number): string => String(n).padStart(2, '0');
++/** The shop's local day, as YYYY-MM-DD. */
++export const localDay = (ms: number): string => { const d = new Date(ms); return `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())}`; };
++
++/** Where the log lives. On iOS a sibling of Documents, so Files.app cannot see it; elsewhere the app's private files folder. */
++export function logDirFromDocuments(documentDirectory: string | null | undefined): string | null {
++  const d = documentDirectory ?? ''; if (!d) return null;
++  if (/\/Documents\/$/.test(d)) return `${d.replace(/Documents\/$/, '')}Library/Application Support/assistant-log/`;
++  return d.endsWith('/') ? `${d}assistant-log/` : `${d}/assistant-log/`;
++}
++
++const joinBytes = (a: Uint8Array, b: Uint8Array): Uint8Array => { const o = new Uint8Array(a.length + b.length); o.set(a, 0); o.set(b, a.length); return o; };
++const linesOf = (text: string): string[] => text.split('\n').filter(l => l.trim() !== '');
++const idOf = (line: string): string | null => { try { const j = JSON.parse(line); return typeof j?.id === 'string' ? j.id : null; } catch { return null; } };
++const countLines = (bytes: Uint8Array): number => linesOf(strFromU8(bytes)).length;
++
++export type LogStore = {
++  append: LogSink;
++  knows: (id: string) => boolean;
++  status: () => Promise<LogStatus>;
++  meta: () => Promise<LogMeta>;
++  /** For the viewer (patch 0153): every event on the given days (inclusive, YYYY-MM-DD), oldest first. `bad` counts lines that could not be read. */
++  events: (range?: { from?: string; to?: string }) => Promise<{ events: LogEvent[]; bad: number }>;
++  days: () => Promise<string[]>;
++  /** Packs finished months and applies the cap. Runs after every append; exported so the app can run it at start up. */
++  maintain: () => Promise<void>;
++};
++
++export function createLogStore(fs: LogFs, o: { now?: () => number; capBytes?: () => number } = {}): LogStore {
++  const now = o.now ?? Date.now; const cap = o.capBytes ?? (() => DEFAULT_LOG_CAP_BYTES);
++  const known = new Set<string>(); let chain: Promise<unknown> = Promise.resolve();
++  const queue = <T,>(fn: () => Promise<T>): Promise<T> => { const r = chain.then(fn); chain = r.catch(() => undefined); return r; };
++
++  const readMeta = async (): Promise<LogMeta> => {
++    try { const b = await fs.read(META_NAME); if (b) { const j = JSON.parse(strFromU8(b)); return { v: 1, prompts: j && typeof j.prompts === 'object' && j.prompts ? j.prompts : {}, purgedThrough: typeof j.purgedThrough === 'string' ? j.purgedThrough : undefined, purgedEvents: Number.isFinite(j.purgedEvents) ? j.purgedEvents : 0, lastPurgeAt: Number.isFinite(j.lastPurgeAt) ? j.lastPurgeAt : undefined }; } } catch { /* unreadable: start again */ }
++    return { v: 1, prompts: {}, purgedEvents: 0 };
++  };
++  const writeMeta = (m: LogMeta) => fs.write(META_NAME, strToU8(JSON.stringify(m)));
++
++  const writeLine = async (ev: LogEvent) => {
++    const name = dayName(localDay(ev.at)); const old = await fs.read(name);
++    await fs.write(name, joinBytes(old ?? new Uint8Array(0), strToU8(`${JSON.stringify(ev)}\n`)));
++  };
++
++  /** Finished months go into one gzip file each. Lines are de-duplicated by id, so a crash half way through repeats nothing. */
++  const pack = async () => {
++    const thisMonth = localDay(now()).slice(0, 7);
++    const files = await fs.list(); const byMonth = new Map<string, string[]>();
++    for (const f of files) { const m = DAY_FILE.exec(f.name); if (m && m[1].slice(0, 7) < thisMonth) byMonth.set(m[1].slice(0, 7), [...(byMonth.get(m[1].slice(0, 7)) ?? []), m[1]]); }
++    for (const [month, days] of [...byMonth.entries()].sort()) {
++      const seen = new Set<string>(); const out: string[] = [];
++      const take = (text: string) => { for (const l of linesOf(text)) { const id = idOf(l); if (id) { if (seen.has(id)) continue; seen.add(id); } out.push(l); } };
++      const existing = await fs.read(monthName(month)); if (existing) take(strFromU8(gunzipSync(existing)));
++      for (const d of days.sort()) { const b = await fs.read(dayName(d)); if (b) take(strFromU8(b)); }
++      await fs.write(monthName(month), gzipSync(strToU8(`${out.join('\n')}\n`)));
++      for (const d of days) await fs.remove(dayName(d));
++    }
++  };
++
++  /** Oldest files go first, never today's. Says so in the log and in the meta, so nobody thinks the log is complete. */
++  const enforceCap = async () => {
++    const limit = cap(); let files = await fs.list(); let total = files.reduce((n, f) => n + f.size, 0);
++    if (total <= limit) return;
++    const today = dayName(localDay(now()));
++    const order = files.filter(f => MONTH_FILE.test(f.name) || (DAY_FILE.test(f.name) && f.name !== today))
++      .sort((a, b) => (MONTH_FILE.test(a.name) ? 0 : 1) - (MONTH_FILE.test(b.name) ? 0 : 1) || a.name.localeCompare(b.name));
++    const target = limit * LOG_PURGE_TO; let events = 0; let bytes = 0; let from = ''; let to = '';
++    for (const f of order) {
++      if (total <= target) break;
++      const raw = await fs.read(f.name); const m = MONTH_FILE.exec(f.name); const d = DAY_FILE.exec(f.name);
++      if (raw) { try { events += countLines(m ? gunzipSync(raw) : raw); } catch { /* count what we can */ } }
++      const label = (m ? m[1] : d ? d[1] : f.name); if (!from) from = label; to = label; bytes += f.size; total -= f.size;
++      await fs.remove(f.name);
++    }
++    if (!from) return;
++    const meta = await readMeta(); meta.purgedThrough = to; meta.purgedEvents += events; meta.lastPurgeAt = now(); await writeMeta(meta);
++    await writeLine({ v: 1, id: `purge-${now()}`, at: now(), kind: 'purge', staff: { id: 'system', name: 'System', role: 'none' }, practice: false, purge: { from, to, events, bytes } });
++  };
++
++  const maintain = () => queue(async () => { await pack(); await enforceCap(); });
++
++  const append: LogSink = (ev, prompt) => queue(async () => {
++    if (prompt) { const m = await readMeta(); if (m.prompts[prompt.hash] === undefined) { m.prompts[prompt.hash] = prompt.text; await writeMeta(m); } }
++    await writeLine(ev);
++    if (ev.user) known.add(ev.user.id); if (ev.reply) known.add(ev.reply.id);
++    try { await pack(); await enforceCap(); } catch { /* the line is safe; maintenance tries again next time */ }
++  });
++
++  const status = async (): Promise<LogStatus> => {
++    const files = await fs.list(); const bytes = files.reduce((n, f) => n + f.size, 0); const m = await readMeta(); const c = cap();
++    return { bytes, capBytes: c, percent: c > 0 ? Math.min(100, Math.round((bytes / c) * 100)) : 100, warn: c > 0 && bytes >= c * LOG_WARN_AT, purgedThrough: m.purgedThrough, purgedEvents: m.purgedEvents, lastPurgeAt: m.lastPurgeAt };
++  };
++
++  const days = async (): Promise<string[]> => {
++    const out = new Set<string>(); for (const f of await fs.list()) { const d = DAY_FILE.exec(f.name); if (d) out.add(d[1]); }
++    return [...out].sort();
++  };
++
++  const events: LogStore['events'] = async (range = {}) => {
++    const files = await fs.list(); const out: LogEvent[] = []; let bad = 0;
++    const inRange = (day: string) => (!range.from || day >= range.from) && (!range.to || day <= range.to);
++    const monthIn = (month: string) => (!range.from || `${month}-31` >= range.from) && (!range.to || `${month}-01` <= range.to);
++    const parse = (text: string) => { for (const l of linesOf(text)) { try { const e = JSON.parse(l) as LogEvent; if (e && typeof e.at === 'number' && inRange(localDay(e.at))) out.push(e); else if (!e || typeof e.at !== 'number') bad++; } catch { bad++; } } };
++    for (const f of files) {
++      const m = MONTH_FILE.exec(f.name); const d = DAY_FILE.exec(f.name);
++      if (m && monthIn(m[1])) { const b = await fs.read(f.name); if (b) { try { parse(strFromU8(gunzipSync(b))); } catch { bad++; } } }
++      else if (d && inRange(d[1])) { const b = await fs.read(f.name); if (b) parse(strFromU8(b)); }
++    }
++    return { events: out.sort((a, b) => a.at - b.at), bad };
++  };
++
++  return { append, knows: id => known.has(id), status, meta: readMeta, events, days, maintain };
++}
+diff --git a/src/lib/assistantLogIO.ts b/src/lib/assistantLogIO.ts
+new file mode 100644
+index 0000000..12b1f9c
+--- /dev/null
++++ b/src/lib/assistantLogIO.ts
+@@ -0,0 +1,48 @@
++// Location: src/lib/assistantLogIO.ts
++// Device side of the assistant's audit log (patch 0152). The files live in the app's Library/Application Support folder, next
++// to Documents and not inside it, so Files.app cannot see them (Documents is shared on purpose, see app.json). The only way
++// out is the viewer's Export log (patch 0153). Nothing here is synced or put in a backup file.
++import * as FS from 'expo-file-system/legacy';
++import { b64ToBytes, bytesToB64 } from './squareHistoryIO';
++import { isTraining } from './trainingGuard';
++import { DEFAULT_LOG_CAP_BYTES, createLogStore, logDirFromDocuments, type LogFs, type LogSink } from './assistantLog';
++
++const dir = (): string => { const d = logDirFromDocuments(FS.documentDirectory); if (!d) throw new Error('This device has no app folder for the log.'); return d; };
++let ready: Promise<void> | null = null;
++const ensure = (): Promise<void> => {
++  if (!ready) ready = FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(e => { ready = null; throw e; });
++  return ready;
++};
++const exists = async (path: string): Promise<boolean> => (await FS.getInfoAsync(path)).exists;
++
++const fs: LogFs = {
++  async read(name) {
++    await ensure(); const p = dir() + name;
++    if (!(await exists(p))) return null;
++    return b64ToBytes(await FS.readAsStringAsync(p, { encoding: FS.EncodingType.Base64 }));
++  },
++  async write(name, data) {
++    await ensure(); const p = dir() + name; const tmp = `${p}.tmp`;
++    await FS.writeAsStringAsync(tmp, bytesToB64(data), { encoding: FS.EncodingType.Base64 });
++    await FS.deleteAsync(p, { idempotent: true }); await FS.moveAsync({ from: tmp, to: p });
++  },
++  async remove(name) { await ensure(); await FS.deleteAsync(dir() + name, { idempotent: true }); },
++  async list() {
++    await ensure(); const names = await FS.readDirectoryAsync(dir()); const out: { name: string; size: number }[] = [];
++    for (const n of names) {
++      if (n.endsWith('.tmp')) { // a write was cut off between the delete and the move: finish it
++        const real = n.slice(0, -4);
++        if (!names.includes(real)) { try { await FS.moveAsync({ from: dir() + n, to: dir() + real }); const i = await FS.getInfoAsync(dir() + real); if (i.exists) out.push({ name: real, size: (i as any).size ?? 0 }); } catch { /* leave it */ } }
++        else { try { await FS.deleteAsync(dir() + n, { idempotent: true }); } catch { /* leave it */ } }
++        continue;
++      }
++      const i = await FS.getInfoAsync(dir() + n); if (i.exists && !(i as any).isDirectory) out.push({ name: n, size: (i as any).size ?? 0 });
++    }
++    return out;
++  },
++};
++
++/** The one log for this iPad. The cap is the default for now; the manager's setting arrives with the viewer (patch 0153). */
++export const assistantLog = createLogStore(fs, { capBytes: () => DEFAULT_LOG_CAP_BYTES });
++/** Practice mode never writes anything real, so nothing is logged there (sending is blocked in practice mode anyway). */
++export const logSink: LogSink = async (e, prompt) => { if (isTraining()) return; await assistantLog.append(e, prompt); };
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index 88d7f8a..2d5e7cf 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -12,7 +12,9 @@ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
+ import { isConfigured } from '../lib/assistantConfig';
+ import { getAssistantKey } from '../lib/assistantKey';
+ import { AssistantError } from '../lib/assistantClient';
+-import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, ask, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
++import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
++import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
++import { assistantLog, logSink } from '../lib/assistantLogIO';
+ import { kvGet, kvSet, kvDel } from '../lib/kv';
+ import { isTraining } from '../lib/trainingGuard';
+ import { uid } from '../lib/ids';
+@@ -21,15 +23,16 @@ export default function Assistant() {
+   const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
+   const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
+   const canEdit = useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
++  const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId));
+   const key = historyKey(staffId);
+   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
+   const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [secs, setSecs] = useState(0);
+-  const [banner, setBanner] = useState<Banner | null>(null);
++  const [banner, setBanner] = useState<Banner | null>(null); const [logWarn, setLogWarn] = useState('');
+   const failed = useRef<{ text: string; detail: Detail } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
+   keyRef.current = key; histRef.current = hist;
+ 
+   useEffect(() => { // switching staff switches to that person's own history
+-    let on = true; setLoaded(false); setHist([]); setBanner(null); setText('');
++    let on = true; setLoaded(false); setHist([]); setBanner(null); setLogWarn(''); setText('');
+     void kvGet<unknown>(key, []).then(r => { if (on) { setHist(readHistory(r)); setLoaded(true); } });
+     return () => { on = false; };
+   }, [key]);
+@@ -47,14 +50,18 @@ export default function Assistant() {
+     let apiKey = '';
+     try {
+       apiKey = await getAssistantKey();
+-      const r = await ask(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now });
++      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now },
++        { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
++      if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
++      if (!out.ok) throw out.error;
++      const r = out.result;
+       if (forKey !== keyRef.current) return; // a different person signed in while the model was thinking
+       const next = capHistory([...histRef.current, r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
+     } catch (e) {
+       if (forKey !== keyRef.current) return;
+       failed.current = { text: trimmed, detail }; setBanner(bannerFor(e, apiKey));
+     } finally { setBusy(false); }
+-  }, [busy, cfg]);
++  }, [busy, cfg, staffId, staffList, role]);
+ 
+   const clear = async () => {
+     if (!(await confirm('Clear your chat history?', 'This clears your own messages with the assistant on this iPad. It cannot be undone.', 'Clear', true))) return;
+@@ -99,11 +106,12 @@ export default function Assistant() {
+             </View>
+           </View>
+         ) : null}
++        {logWarn ? <Txt size={13} style={{ marginHorizontal: 16, marginBottom: 8 }} color={c.bad}>{logWarn}</Txt> : null}
+         {blocked ? <Txt size={13} sub style={{ marginHorizontal: 16, marginBottom: 8 }}>{blocked}</Txt> : null}
+         <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
+           <Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} />
+           <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked || !ready} onPress={() => void send(text, 'short')} />
+-          <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
++          <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Conversations are also logged for the manager. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
+         </View>
+       </View>
+     </Page>
+diff --git a/tests/assistantlog.test.ts b/tests/assistantlog.test.ts
+new file mode 100644
+index 0000000..a56fc78
+--- /dev/null
++++ b/tests/assistantlog.test.ts
+@@ -0,0 +1,207 @@
++// Location: tests/assistantlog.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { gzipSync, strFromU8, strToU8 } from 'fflate';
++import { AssistantError, type FetchLike } from '../src/lib/assistantClient';
++import { buildMessages, buildMessagesDetailed, prepare, type ChatEntry } from '../src/lib/assistantChat';
++import {
++  LOG_FAIL_LINE, META_NAME, TEXT_CLIP, askLogged, buildEvent, createLogStore, dayName, fnv1a, localDay, logDirFromDocuments, logEndpoint, logStaff, monthName,
++  type LogContext, type LogEvent, type LogFs,
++} from '../src/lib/assistantLog';
++
++// ---- helpers ----
++function memFs() {
++  const files = new Map<string, Uint8Array>(); const fail = { write: false };
++  const fs: LogFs = {
++    async read(n) { return files.get(n) ?? null; },
++    async write(n, d) { if (fail.write) throw new Error('disk full'); files.set(n, d); },
++    async remove(n) { files.delete(n); },
++    async list() { return [...files.entries()].map(([name, d]) => ({ name, size: d.length })); },
++  };
++  return { fs, files, fail };
++}
++const at = (day: string, h = 10) => new Date(`${day}T${String(h).padStart(2, '0')}:00:00`).getTime();
++const staff = { id: 's1', name: 'Casey', role: 'cashier' as const };
++let n = 0;
++const ev = (when: number, over: Partial<LogEvent> = {}): LogEvent => ({ v: 1, id: `ev${++n}`, at: when, kind: 'ask', staff, practice: false, user: { id: `u${n}`, text: 'hi' }, reply: { id: `r${n}`, text: 'hello' }, ...over });
++const lines = (b: Uint8Array) => strFromU8(b).split('\n').filter(Boolean).map(l => JSON.parse(l) as LogEvent);
++const KEY = 'sk-test-SECRETSECRET1234';
++const entry = (i: number, role: 'user' | 'assistant', text: string): ChatEntry => ({ id: `h${i}`, role, text, at: i });
++
++function fake(reply: unknown, status = 200) {
++  const seen: { messages: unknown }[] = [];
++  const f: FetchLike = async (_u, init) => { seen.push({ messages: JSON.parse(init.body ?? '{}').messages }); return { ok: status < 300, status, text: async () => JSON.stringify(reply) }; };
++  return { f, seen };
++}
++const okReply = (content: string) => ({ choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] });
++let t = at('2026-10-17'); let idn = 0;
++const input = (text: string, history: ChatEntry[] = [], detail: 'short' | 'more' = 'short') => ({ history, text, detail, settings: { contextSize: 8000, temperature: 0.2 }, endpoint: { baseUrl: 'http://192.168.1.20:11434/v1', model: 'm', timeoutSec: 5, apiKey: KEY }, id: () => `id${++idn}`, now: () => (t += 10) });
++function ctx(sink: LogContext['sink'], known: (id: string) => boolean = () => false): LogContext {
++  return { staff, practice: false, endpoint: logEndpoint('http://192.168.1.20:11434/v1', 'm', 'auto'), apiKey: KEY, known, sink, newId: () => `ev-${++idn}` };
++}
++
++// ---- where it lives ----
++test('the log folder is next to Documents on iOS, so Files.app cannot see it', () => {
++  const d = logDirFromDocuments('file:///var/mobile/Containers/Data/Application/ABC/Documents/');
++  assert.equal(d, 'file:///var/mobile/Containers/Data/Application/ABC/Library/Application Support/assistant-log/');
++  assert.ok(!/\/Documents\//.test(d!));
++  assert.equal(logDirFromDocuments('file:///data/user/0/app/files/'), 'file:///data/user/0/app/files/assistant-log/');
++  assert.equal(logDirFromDocuments(''), null); assert.equal(logDirFromDocuments(null), null);
++});
++
++test('staff and endpoint records hold a name and a host, nothing else', () => {
++  assert.deepEqual(logStaff('s1', [{ id: 's1', name: 'Casey' }], 'cashier'), staff);
++  assert.deepEqual(logStaff(undefined, [], 'owner'), { id: 'owner', name: 'Owner', role: 'owner' });
++  assert.deepEqual(logEndpoint('http://192.168.1.20:11434/v1', 'gpt-oss:20b', 'auto'), { host: '192.168.1.20', model: 'gpt-oss:20b', scope: 'local' });
++  assert.equal(logEndpoint('https://api.example.com/v1?key=abc', 'm', 'auto').scope, 'remote');
++  assert.ok(!JSON.stringify(logEndpoint('https://api.example.com/v1?key=abc', 'm', 'auto')).includes('abc'));
++  assert.equal(logEndpoint('http://192.168.1.20:11434/v1', 'm', 'remote').scope, 'remote'); // the override wins
++});
++
++// ---- what the chat now reports ----
++test('buildMessagesDetailed says which entries went and what old history had hidden, and buildMessages is unchanged', () => {
++  const h = [entry(1, 'user', 'q1'), entry(2, 'assistant', 'a1 write to jo@example.com'), entry(3, 'user', 'q2')];
++  const d = buildMessagesDetailed(h, 'short', 8000);
++  assert.deepEqual(d.included.map(e => e.id), ['h1', 'h2', 'h3']); assert.deepEqual(d.masked, { email: 1 });
++  assert.deepEqual(d.messages, buildMessages(h, 'short', 8000)); assert.equal(d.system, d.messages[0].content);
++  const tight = buildMessagesDetailed([...h.slice(0, 2), entry(3, 'user', 'z'.repeat(900))], 'short', 1); // the context floor is 200 tokens, so only the newest (cut down) fits
++  assert.deepEqual(tight.included.map(e => e.id), ['h3']);
++});
++test('prepare counts what was hidden in the typed text as well', () => {
++  const p = prepare(input('mail me at jo@example.com'));
++  assert.deepEqual(p.masked, { email: 1 }); assert.equal(p.included[p.included.length - 1].id, p.user.id); assert.ok(!p.user.text.includes('jo@'));
++});
++
++// ---- events ----
++test('askLogged records the question, the reply, what was sent and what was hidden, and the hash matches the request', async () => {
++  const { fs, files } = memFs(); const store = createLogStore(fs, { now: () => at('2026-10-17') });
++  const { f, seen } = fake(okReply('Tap Charge.'));
++  const out = await askLogged(f, input('My card is 4111 1111 1111 1111, how do I charge?'), ctx(store.append));
++  assert.ok(out.ok && !out.logError);
++  const e = lines(files.get(dayName('2026-10-17'))!)[0];
++  assert.equal(e.kind, 'ask'); assert.equal(e.staff.name, 'Casey'); assert.equal(e.practice, false);
++  assert.equal(e.reply?.text, 'Tap Charge.'); assert.ok(!e.user!.text.includes('4111')); assert.deepEqual(e.masked, { card: 1 });
++  assert.equal(e.sent!.hash, fnv1a(JSON.stringify(seen[0].messages)));
++  assert.deepEqual(e.endpoint, { host: '192.168.1.20', model: 'm', scope: 'local' });
++  assert.equal((await store.meta()).prompts[e.sent!.sys]?.startsWith('You are the help assistant'), true);
++});
++
++test('a failed request is logged as an error with the question that was going to be sent', async () => {
++  const { fs } = memFs(); const store = createLogStore(fs, { now: () => at('2026-10-17') });
++  const { f } = fake({ error: { message: `bad key ${KEY}` } }, 401);
++  const out = await askLogged(f, input('How do I refund?'), ctx(store.append));
++  assert.ok(!out.ok && out.error instanceof AssistantError);
++  const { events } = await store.events(); assert.equal(events.length, 1);
++  assert.equal(events[0].kind, 'error'); assert.equal(events[0].error?.kind, 'key_rejected'); assert.equal(events[0].user?.text, 'How do I refund?');
++  assert.equal(events[0].reply, undefined); assert.ok(!JSON.stringify(events[0]).includes('SECRETSECRET'));
++});
++
++test('the key can never reach a log line, even if the model or an error repeats it', () => {
++  const p = { user: entry(9, 'user', 'q'), messages: [{ role: 'system' as const, content: 's' }, { role: 'user' as const, content: 'q' }], included: [entry(1, 'assistant', `old ${KEY}`), entry(9, 'user', 'q')], system: 's', masked: {} };
++  const b = buildEvent({ id: 'x', now: 1, staff, practice: false, detail: 'short', p, known: () => false, reply: entry(10, 'assistant', `here: ${KEY} and Bearer abcdefghijkl`), error: { kind: 'bad_reply', message: `oops ${KEY}` }, ms: 1, apiKey: KEY });
++  const s = JSON.stringify(b.event); assert.ok(!s.includes('SECRETSECRET') && !s.includes('abcdefghijkl'), s);
++});
++
++test('long texts are cut so one reply cannot flood the log', () => {
++  const big = 'x'.repeat(TEXT_CLIP + 500);
++  const p = { user: entry(9, 'user', 'q'), messages: [], included: [entry(9, 'user', 'q')], system: 's', masked: {} };
++  const b = buildEvent({ id: 'x', now: 1, staff, practice: false, detail: 'short', p, known: () => false, reply: entry(10, 'assistant', big), ms: 1 });
++  assert.ok(b.event.reply!.text.length <= TEXT_CLIP + 5 && b.event.reply!.text.endsWith('[cut]'));
++});
++
++test('earlier messages are stored by id once the log has them, and inline when it does not (after a restart, or old history)', async () => {
++  const a = memFs(); const s1 = createLogStore(a.fs, { now: () => at('2026-10-17') });
++  const old = [entry(1, 'user', 'earlier question'), entry(2, 'assistant', 'earlier answer')];
++  await askLogged(fake(okReply('one')).f, input('first', old), ctx(s1.append, s1.knows));
++  let evs = (await s1.events()).events; assert.equal(evs[0].sent!.parts.length, 3);
++  assert.deepEqual(evs[0].sent!.parts.map(p => p.text !== undefined), [true, true, false]); // old history was never logged: inline. The new question is the event's own text.
++  const hist = [...old, evs[0].user as any, evs[0].reply as any].map((x, i) => (i < 2 ? x : { id: x.id, role: i === 2 ? 'user' : 'assistant', text: x.text, at: i }));
++  await askLogged(fake(okReply('two')).f, input('second', hist as ChatEntry[]), ctx(s1.append, s1.knows));
++  evs = (await s1.events()).events; const parts = evs[1].sent!.parts;
++  assert.deepEqual(parts.map(p => p.text !== undefined), [true, true, false, false, false]); // the first answered pair is now known, so only ids
++  const s2 = createLogStore(a.fs, { now: () => at('2026-10-17') }); // a restart: nothing is known in memory
++  await askLogged(fake(okReply('three')).f, input('third', hist as ChatEntry[]), ctx(s2.append, s2.knows));
++  assert.equal((await s2.events()).events[2].sent!.parts.filter(p => p.text !== undefined).length, 4);
++});
++
++test('a log that cannot be written never stops the answer, and says so', async () => {
++  const { fs, fail } = memFs(); const store = createLogStore(fs, { now: () => at('2026-10-17') }); fail.write = true;
++  const ok = await askLogged(fake(okReply('fine')).f, input('q'), ctx(store.append));
++  assert.ok(ok.ok); assert.equal(ok.logError, LOG_FAIL_LINE); if (ok.ok) assert.equal(ok.result.reply.text, 'fine');
++  const bad = await askLogged(fake({}, 500).f, input('q'), ctx(store.append));
++  assert.ok(!bad.ok); assert.equal(bad.logError, LOG_FAIL_LINE);
++});
++
++// ---- the store ----
++test('events go to one file a day, in order, and the system prompt is kept once', async () => {
++  const { fs, files } = memFs(); let clock = at('2026-10-17'); const store = createLogStore(fs, { now: () => clock });
++  const prompt = { hash: 'abc12345', text: 'RULES' };
++  await store.append(ev(at('2026-10-17', 9)), prompt); await store.append(ev(at('2026-10-17', 11)), prompt); clock = at('2026-10-18');
++  await store.append(ev(at('2026-10-18', 9)), prompt);
++  assert.deepEqual([...files.keys()].filter(k => k.startsWith('d-')).sort(), ['d-2026-10-17.jsonl', 'd-2026-10-18.jsonl']);
++  assert.equal(lines(files.get('d-2026-10-17.jsonl')!).length, 2);
++  assert.deepEqual((await store.meta()).prompts, { abc12345: 'RULES' });
++  assert.deepEqual(await store.days(), ['2026-10-17', '2026-10-18']);
++  const r = await store.events({ from: '2026-10-18' }); assert.equal(r.events.length, 1);
++});
++
++test('finished months are packed into one gzip file and the days are removed; the current month stays as days', async () => {
++  const { fs, files } = memFs(); let clock = at('2026-09-05'); const store = createLogStore(fs, { now: () => clock });
++  await store.append(ev(at('2026-09-05'))); await store.append(ev(at('2026-09-20')));
++  assert.ok(files.has('d-2026-09-05.jsonl'));
++  clock = at('2026-10-02'); await store.append(ev(at('2026-10-02')));
++  assert.ok(files.has(monthName('2026-09')) && !files.has('d-2026-09-05.jsonl') && !files.has('d-2026-09-20.jsonl') && files.has('d-2026-10-02.jsonl'));
++  const all = await store.events(); assert.equal(all.events.length, 3); assert.equal(all.bad, 0);
++  assert.equal((await store.events({ from: '2026-09-01', to: '2026-09-30' })).events.length, 2);
++  assert.equal((await store.events({ from: '2026-10-01' })).events.length, 1);
++});
++
++test('a crash half way through packing repeats nothing: lines are matched by id', async () => {
++  const { fs, files } = memFs(); const a = ev(at('2026-09-05')); const b = ev(at('2026-09-06'));
++  files.set(monthName('2026-09'), gzipSync(strToU8(`${JSON.stringify(a)}\n`)));
++  files.set('d-2026-09-05.jsonl', strToU8(`${JSON.stringify(a)}\n`)); files.set('d-2026-09-06.jsonl', strToU8(`${JSON.stringify(b)}\n`));
++  const store = createLogStore(fs, { now: () => at('2026-10-02') }); await store.maintain();
++  const r = await store.events(); assert.deepEqual(r.events.map(e => e.id), [a.id, b.id]); assert.ok(![...files.keys()].some(k => k.startsWith('d-')));
++});
++
++test('unreadable lines are counted, not fatal', async () => {
++  const { fs, files } = memFs(); files.set('d-2026-10-17.jsonl', strToU8(`${JSON.stringify(ev(at('2026-10-17')))}\nnot json\n{"id":"x"}\n`));
++  const r = await createLogStore(fs, { now: () => at('2026-10-17') }).events(); assert.equal(r.events.length, 1); assert.equal(r.bad, 2);
++});
++
++test('past the cap the oldest files go first, a purge event and the meta say so, and today is never removed', async () => {
++  const { fs, files } = memFs(); let clock = at('2026-10-17');
++  const big = (day: string) => ev(at(day), { reply: { id: `r-${day}`, text: 'y'.repeat(400) } });
++  const store = createLogStore(fs, { now: () => clock, capBytes: () => 2500 });
++  for (const d of ['2026-10-10', '2026-10-11', '2026-10-12', '2026-10-13']) { clock = at(d); await store.append(big(d)); }
++  clock = at('2026-10-17'); await store.append(big('2026-10-17')); await store.append(big('2026-10-17'));
++  const st = await store.status(); assert.ok(st.purgedEvents > 0 && st.purgedThrough, JSON.stringify(st));
++  assert.ok(files.has('d-2026-10-17.jsonl')); assert.ok(!files.has('d-2026-10-10.jsonl'), 'the oldest day is gone');
++  const purge = (await store.events()).events.find(e => e.kind === 'purge'); assert.ok(purge && purge.purge!.events >= 1 && purge.purge!.from === '2026-10-10');
++  assert.ok(st.bytes <= 2500 * 1.2, `${st.bytes}`);
++  const tiny = createLogStore(memFs().fs, { now: () => at('2026-10-17'), capBytes: () => 10 }); await tiny.append(big('2026-10-17'));
++  assert.equal((await tiny.events()).events.filter(e => e.kind === 'ask').length, 1); // only today is left, so nothing more can go
++});
++
++test('status warns from 80 percent of the cap and not before', async () => {
++  const { fs } = memFs(); const store = createLogStore(fs, { now: () => at('2026-10-17'), capBytes: () => 100000 });
++  await store.append(ev(at('2026-10-17'))); assert.equal((await store.status()).warn, false);
++  const used = (await store.status()).bytes; const s2 = createLogStore(fs, { now: () => at('2026-10-17'), capBytes: () => Math.ceil(used / 0.85) });
++  const st = await s2.status(); assert.equal(st.warn, true); assert.ok(st.percent >= 80 && st.percent < 100);
++});
++
++test('the meta file is never counted as a conversation and a damaged one is replaced', async () => {
++  const { fs, files } = memFs(); files.set(META_NAME, strToU8('{not json'));
++  const store = createLogStore(fs, { now: () => at('2026-10-17') }); assert.deepEqual(await store.meta(), { v: 1, prompts: {}, purgedEvents: 0 });
++  await store.append(ev(at('2026-10-17')), { hash: 'h', text: 'T' }); assert.equal((await store.meta()).prompts.h, 'T');
++  assert.equal((await store.events()).events.length, 1);
++});
++
++// ---- the rules about where the log may go ----
++test('the log stays off the sync and out of backups, and nothing is logged in practice mode', () => {
++  for (const f of ['src/lib/sync.ts', 'src/lib/backupFile.ts', 'src/lib/backupIO.ts']) assert.ok(!/assistantLog|assistant-log/.test(readFileSync(f, 'utf8')), `${f} must not touch the log`);
++  const io = readFileSync('src/lib/assistantLogIO.ts', 'utf8');
++  assert.match(io, /isTraining\(\)/); assert.ok(!/documentDirectory\s*\+/.test(io), 'the folder comes from logDirFromDocuments only');
++  assert.match(readFileSync('src/screens/Assistant.tsx', 'utf8'), /logged for the manager/);
++});
