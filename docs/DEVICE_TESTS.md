@@ -697,3 +697,15 @@ On the iPad, with the model set up in Settings ▸ AI assistant (the model must 
 6. **Most important:** the cashier's questions in step 4 show in the log with the tool results, and those results never contain a Settings or Staff page.
 7. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
 
+
+## T56. Assistant screen tool (0158)
+
+On the iPad, with the model set up as in T55.
+
+1. Ask *Where do I count the cash drawer at the end of the day?* Pass: it names the Cash drawer page and the Close drawer window, and gives taps that start from the Checkout tab (More, Cash drawer, Close drawer). The taps match what you do on the iPad.
+2. Ask *How do I refund a sale?* Pass: it points to Orders and the Return window with the taps (More, Orders, the order, Refund or return), and explains the steps from the Refunds help page.
+3. Ask *Where is the split payment screen?* Pass: it says Charge, then Split.
+4. Ask *Where is the teleporter screen?* Pass: it says it could not find anything on that, and does not invent a screen.
+5. Sign in as a **cashier** and ask *Where do I add a staff member?* and *Where are the Shopify settings?* Pass: both get "I couldn't find anything on that" and neither names Settings or Staff. Sign in as a manager and ask the same: both are answered, with More, Staff and More, Settings.
+6. **Most important:** as the owner, open the conversation log for the cashier's questions in step 5 and open **Tools used**. Pass: the search_screens results contain no Settings, Staff, Switch staff or Staff pass screen.
+7. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.

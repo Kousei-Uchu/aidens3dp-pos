@@ -5,14 +5,14 @@ parent: settings/assistant
 summary: Chat with the Help assistant: what it can and cannot do yet, what is kept, and what is hidden before anything is sent.
 tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode]
 related: [settings/assistant, settings/backup]
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].
 
 ## Basic
 
 ### What it can do
-Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. If it finds nothing, it says so. It only looks at help pages for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
+Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
 
 ### What it cannot do yet
 It cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
@@ -45,4 +45,4 @@ Only the short rules the app gives it, then as many of the newest messages as fi
 One file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.
 
 ### Limits of this version
-There are no tools, so no shop data is sent at all. The full data rules, role filtering, the log viewer and the search tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+The only tools are for the help pages and the screens, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.

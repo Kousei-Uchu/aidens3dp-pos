@@ -1,5 +1,5 @@
 // Location: src/lib/assistantTools.ts
-// The assistant's tools (patch 0157 adds the first two: search_docs and read_doc). Plain functions that read what they are
+// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 adds search_screens). Plain functions that read what they are
 // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
 // runs in the node tests.
 //
@@ -7,10 +7,14 @@
 // size limit. Every result is cut to that limit, so a long page cannot flood a small model's context.
 import { redactSecrets, type ChatMessage, type ToolCall, type ToolDef } from './assistantClient';
 import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
+// A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
+import type { ScreenEntry } from './assistantScreens';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
   pages: Page[];
+  /** Every screen the assistant may know about (patch 0158). Tools filter these by role themselves, through `visibleScreens`. Left out, there are none. */
+  screens?: ScreenEntry[];
   role: string;
   /** Longest result, in characters. Set from the context size so a small model is not flooded. */
   maxChars: number;
@@ -29,6 +33,9 @@ export const resultCharsFor = (contextSize: number): number => Math.max(MIN_RESU
 
 /** The pages this role may see. The one place pages are filtered, so a tool cannot forget to. */
 export const visiblePages = (ctx: Pick<ToolContext, 'pages' | 'role'>): Page[] => ctx.pages.filter(p => pageVisibleTo(p, ctx.role));
+
+/** The screens this role can get to. The one place screens are filtered, so a tool cannot forget to. An unknown role sees none. */
+export const visibleScreens = (ctx: Pick<ToolContext, 'screens' | 'role'>): ScreenEntry[] => (ctx.screens ?? []).filter(e => e.roles.includes(ctx.role));
 
 // ---------- search_docs ----------
 const STOP = new Set(('a an and are as at be but by can do does for from how i if in is it its me my of on or so that the then there this to was what when where which who why will with you your ' +
@@ -115,8 +122,45 @@ const readDoc: AssistantTool = {
   },
 };
 
+// ---------- search_screens ----------
+/** Words that tell nothing about which screen is meant ("open the Reports page"), so they are not searched for. */
+const SCREEN_NOISE = new Set(('screen page window button tab up out open go find see look tap press click take show').split(' '));
+export type ScreenHit = { id: string; name: string; kind: string; summary: string; how_to_open?: string[] };
+/**
+ * Finds screens for a question, by name or by what they are for. One matching word is enough, because a screen's name and
+ * summary are short and a whole sentence rarely matches half of them; screens that match more of the words come first, and the
+ * name counts most, then the other words people use for it, then its summary. Only screens this role can get to are searched.
+ */
+export function searchScreenList(ctx: Pick<ToolContext, 'screens' | 'role'>, query: string, max = 5): ScreenHit[] {
+  const terms = searchTerms(query).filter(t => !SCREEN_NOISE.has(t)); if (!terms.length) return [];
+  const scored: { e: ScreenEntry; hit: number; score: number }[] = [];
+  for (const e of visibleScreens(ctx)) {
+    const name = e.name.toLowerCase(), kws = e.keywords.join(' ').toLowerCase(), sum = e.summary.toLowerCase();
+    let hit = 0, score = 0;
+    for (const t of terms) { const w = (name.includes(t) ? 10 : 0) + (kws.includes(t) ? 6 : 0) + (sum.includes(t) ? 3 : 0); if (w) { hit++; score += w; } }
+    if (hit > 0) scored.push({ e, hit, score });
+  }
+  scored.sort((a, b) => b.hit - a.hit || b.score - a.score || a.e.name.localeCompare(b.e.name));
+  return scored.slice(0, max).map(({ e }) => { const how = e.steps[ctx.role]; return { id: e.id, name: e.name, kind: e.kind, summary: e.summary, ...(how && how.length ? { how_to_open: how } : {}) }; });
+}
+
+const searchScreens: AssistantTool = {
+  def: { type: 'function', function: {
+    name: 'search_screens',
+    description: 'Search the till\'s screens (tabs, pages and windows) by name or by what they are for. Use it when someone asks where something is or how to get to it. Give a few key words, not a whole sentence. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use a screen, follow up with search_docs and read_doc.',
+    parameters: { type: 'object', properties: { query: { type: 'string', description: 'A few key words, for example "cash drawer" or "discount one item".' } }, required: ['query'], additionalProperties: false },
+  } },
+  run: (args, ctx) => {
+    const query = typeof args.query === 'string' ? args.query : '';
+    if (!query.trim()) return { error: 'Give a query: a few key words to search for.' };
+    const results = searchScreenList(ctx, query);
+    if (!results.length) return { results: [], note: 'No screen matched. Try different key words.' };
+    return { results, ...(results.some(r => r.how_to_open) ? { note: 'how_to_open starts from the Checkout tab. The person may already be part of the way there.' } : {}) };
+  },
+};
+
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens];
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
 
 // ---------- running a call ----------
@@ -124,7 +168,11 @@ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}
 /** The result as the text the model reads. Cut to the limit, and always valid JSON. */
 export function resultText(result: unknown, maxChars: number): string {
   let json = ''; try { json = JSON.stringify(result) ?? 'null'; } catch { json = JSON.stringify({ error: 'The tool could not return a result.' }); }
-  return json.length > maxChars ? JSON.stringify({ cut: true, text: json.slice(0, Math.max(0, maxChars - 40)) }) : json;
+  if (json.length <= maxChars) return json;
+  // The cut text is escaped again inside the wrapper (every quote gets a backslash), so keep trimming until the whole thing fits.
+  let keep = Math.max(0, maxChars - 40); let out = JSON.stringify({ cut: true, text: json.slice(0, keep) });
+  while (out.length > maxChars && keep > 0) { keep = Math.max(0, keep - Math.max(1, out.length - maxChars)); out = JSON.stringify({ cut: true, text: json.slice(0, keep) }); }
+  return out;
 }
 /**
  * Runs one tool call the model asked for. It never throws: an unknown tool, arguments that are not JSON, or a tool that
@@ -148,5 +196,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[] }): ToolSet =>
-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, role: o.role, maxChars: resultCharsFor(o.contextSize) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[] }): ToolSet =>
+  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });

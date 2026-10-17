@@ -1,5 +1,5 @@
 // Location: tests/assistanttools.test.ts
-// The assistant's docs tools (patch 0157): search_docs and read_doc, the role filter, the tool runner, and the tool loop.
+// The assistant's tools (patch 0157: search_docs and read_doc, the role filter, the tool runner, and the tool loop; the screen tool is in assistantscreens.test.ts).
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { ChatMessage, Endpoint, FetchLike } from '../src/lib/assistantClient';
@@ -115,7 +115,7 @@ test('the record keeps the arguments and result, with any key removed', () => {
 });
 test('every tool has a name, a description and object parameters, and none can write', () => {
   const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
-  assert.deepEqual(names, ['search_docs', 'read_doc']);
+  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens']);
   for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
 });
 
@@ -141,7 +141,7 @@ test('the loop: the model searches, reads, then answers; results go back to it a
   ]);
   const a = ask(); const out = await runPrepared(f, a, prepare(a));
   assert.equal(out.reply.text, 'Open Refunds, pick the sale.');
-  assert.equal(sent.length, 3); assert.ok(sent[0].tools.length === 2);
+  assert.equal(sent.length, 3); assert.equal(sent[0].tools.length, ASSISTANT_TOOLS.length);
   const last: ChatMessage[] = sent[2].messages; const tools = last.filter(m => m.role === 'tool');
   assert.equal(tools.length, 2); assert.match(tools[0].content ?? '', /orders\/refunds/); assert.match(tools[1].content ?? '', /Basic text for Refunds/);
   assert.equal(last.filter(m => m.role === 'assistant' && m.tool_calls).length, 2);

@@ -1,7 +1,7 @@
 // Location: src/lib/assistantChat.ts
 // The Help chatbot's chat logic (patch 0151): what is sent, what is shown, what is kept. Pure logic, no React Native imports,
-// so it runs in the node tests. There are no tools yet, so the model knows nothing about the shop: it only sees what the
-// cashier types and the earlier messages of the same chat.
+// so it runs in the node tests. The tools (assistantTools.ts) let it look at the help pages and the app's screens, and nothing
+// else: it knows nothing about the shop's data, and it only sees what the cashier types and the earlier messages of the same chat.
 import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
 import { runToolCall, toolDefs, visiblePages, type ToolSet } from './assistantTools';
 
@@ -66,9 +66,9 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
     'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
     ...(withTools ? [
-      'You have two tools for the till\'s help pages. search_docs finds pages. read_doc reads one. For any question about how the app works or where something is, search first, then read the best page before you answer.',
+      'You have three tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
-      'Say which help page you used, by its title. Do not make up page names, screens, buttons or steps.',
+      'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
     ] : [
       'Answer only from what the person has told you in this chat. If you do not know, say so plainly. Do not fill the gap with general knowledge about how other shops or tills work.',
     ]),

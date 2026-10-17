@@ -1,6 +1,7 @@
 // Location: src/screens/Assistant.tsx
 // Help ▸ Ask the assistant (patch 0151): a chat with the model set up in Settings ▸ AI assistant. Since 0157 it can search and read
-// the help pages (limited to what the signed in role may see). It still knows nothing about the shop's data. History is kept on
+// the help pages, and since 0158 it can search the app's screens (both limited to what the signed in role may see). It still knows
+// nothing about the shop's data. History is kept on
 // this iPad, one per staff member, and cleared only by hand.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
@@ -17,6 +18,7 @@ import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, cap
 import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
 import { assistantLog, logSink } from '../lib/assistantLogIO';
 import { makeToolSet } from '../lib/assistantTools';
+import { builtinScreens } from '../lib/assistantScreens';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
@@ -54,7 +56,7 @@ export default function Assistant() {
     try {
       apiKey = await getAssistantKey();
       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
-          tools: makeToolSet({ pages: builtinHelp().pages, role, contextSize: cfg.contextSize }) },
+          tools: makeToolSet({ pages: builtinHelp().pages, screens: builtinScreens(), role, contextSize: cfg.contextSize }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;
