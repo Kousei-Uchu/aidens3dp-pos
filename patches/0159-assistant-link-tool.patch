@@ -1,0 +1,553 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index cce6e94..1a42418 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,11 +6,16 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 15 (18 October 2026), patch 0159:** tool 3 of 4 is built: the link tool, as the model-facing tool `show_link`. The plan never said what the link tool
++was, so it is taken to mean a tappable button under a reply that opens a help page or a screen. It checks the id with the same role filters as the searches,
++the button is saved with the reply (at most 3) and checked again each time it is drawn, and only tabs and plain pages get one (views, windows and pages that
++need a cart, an item or a lesson do not). The highlight arrows (\"Guide me there\", question 8) stay with the guide tool. Next: the guide tool.
++
+ **Revision 14 (18 October 2026), patch 0158:** tool 2 of 4 is built: the navgraph search, as the model-facing tool `search_screens`. A screen list is built once
+ from `src/app.navgraph` (`src/lib/assistantScreens.ts`) and filtered by role by walking the graph once per role, so a role is only listed where it can
+ really get there (Settings has no `roles` on the screen, only on the transition into it, so checking the screen alone would have let a cashier see it).
+ Each result has a name, what it is for and the taps to open it from the Checkout tab. Screens in the graph gained a `summary` and `keywords`. The result size
+-limit now holds when a cut result is full of quotes. Next: the link tool, then the guide tool. The current screen is not used as a starting point yet,
++limit now holds when a cut result is full of quotes. Next: the link tool (built in 0159), then the guide tool. The current screen is not used as a starting point yet,
+ because that needs the screen and register context tool.
+ 
+ **Revision 13 (18 October 2026), patch 0157:** patch 4 is split by tool, one patch each, as the owner asked. 0157 is tool 1: the docs
+@@ -149,6 +154,7 @@ and the practice mode block (3.12), the dash filter (3.9), the prompt, and the "
+ the audit log recording (3.6). Built in 0156: the audit log viewer, Export log, Clear log, the cap setting and opening
+ the chat to everyone (3.6, 3.13). Built in 0157: the docs tools (`search_docs`, `read_doc`), the tool runtime and loop, and the role header on help pages.
+ Built in 0158: the screen search tool (`search_screens`) and the role filter for screens.
++Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
+ 
+ Still to do:
+ 
+@@ -466,7 +472,7 @@ chat screen patch can add streaming.
+    Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
+ 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
+    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
+-   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens). Next: link, guide.
++   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). Next: guide.
+ 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
+    tools yet.
+ 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 0bb76f7..ba81b30 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -709,3 +709,19 @@ On the iPad, with the model set up as in T55.
+ 5. Sign in as a **cashier** and ask *Where do I add a staff member?* and *Where are the Shopify settings?* Pass: both get "I couldn't find anything on that" and neither names Settings or Staff. Sign in as a manager and ask the same: both are answered, with More, Staff and More, Settings.
+ 6. **Most important:** as the owner, open the conversation log for the cashier's questions in step 5 and open **Tools used**. Pass: the search_screens results contain no Settings, Staff, Switch staff or Staff pass screen.
+ 7. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
++
++
++## T57. Assistant link tool (0159)
++
++On the iPad, with the model set up as in T55.
++
++1. Ask *Where are the reports?* Pass: the reply says where Reports is, and an **Open Reports** button is under it. Tap it. Pass: the Reports page opens, and Back returns to the chat.
++2. Ask *How do I take a cash payment?* Pass: the reply names the Taking cash help page, with a button for it under the reply. Tap it. Pass: Help opens on that page.
++3. Ask *Where is the refund window?* Pass: the reply gives the taps (More, Orders, the order, Refund or return). Pass: there is no button for the window itself, though there may be one for Orders.
++4. Ask *Take me to Inventory.* Pass: an **Open Inventory** button appears. Tap it. Pass: the Inventory tab opens.
++5. Close the app and open the chat again. Pass: the buttons are still under the earlier replies and still work.
++6. Sign in as a **cashier** and ask *Take me to Settings* and *Open the staff page.* Pass: both get "I couldn't find anything on that", and no button appears for Settings or Staff.
++7. **Most important:** sign in as the owner, ask *Where are the Shopify settings?* (a button for Settings appears), then sign in as a cashier. Pass: the cashier cannot see the owner's history, and the owner's history has no Settings button once the role loses access (for example after changing that person to a cashier and signing in as them).
++8. As the owner, open the conversation log and open the step 1 conversation, then **Tools used**. Pass: the show_link call is listed with the note the model was given.
++9. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
++
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 7b2b00d..8feaf9c 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -152,6 +152,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
++| 0159 | 2026-10-18 | AI assistant, patch 4, tool 3 of 4 (your request: one tool at a time): **the link tool** (`show_link`). The assistant can now put a **button under its reply** that opens a help page or a screen: *Open Reports*, or the Taking cash page in Help. The model gives a kind (`doc` or `screen`) and an id it got from a search; `resolveLink` in `src/lib/assistantTools.ts` checks it against what the signed in role may see (the same filters the searches use), and a page or screen the role cannot reach gets exactly the same reply as one that does not exist. The button is not part of the reply text: the loop collects it from the tool call (`AssistantTool.link`), saves it on the reply (`ChatEntry.links`, at most 3, no repeats), and `liveLinks` checks every saved button again each time the chat is drawn, so a button a role can no longer reach disappears. Buttons are never sent back to the model. Only tabs and ordinary pages get a button: each screen in `src/lib/assistantScreens.ts` now has a `target` (a tab to switch to or a page to push), and views, windows and the pages that need a cart, an item or a lesson (`NOT_LINKABLE_ROUTES`: Payment, Cart, New item, Edit item, the chat itself, Training run, Practice terminal) have none, so the reply gives their taps in words. A button can never open a web address. The prompt now names the fourth tool and tells the model never to write a link or an id itself. New `tests/assistantlinks.test.ts` (and the tool list test now expects four tools). Device test T57. **Decided without you:** the plan never says what the link tool is, so I took it to mean tappable buttons to help pages and screens, and kept the highlight arrows ("Guide me there") for the guide tool, as in the plan's answer to question 8. Tell me if you meant something else. Not in this patch: the guide tool (the last of the four), the current screen as a starting point, the offline search, and the tool call limit as a Settings field | your request |
+ | 0158 | 2026-10-18 | AI assistant, patch 4, tool 2 of 4 (your request: one tool at a time): **the screen tool**, the navgraph search from the plan. The assistant can now **search the app's screens** (`search_screens`) by name or by what they are for, and says how to open each one from the Checkout tab in the app's own words ("Tap More.", "Tap Orders."). `src/lib/assistantScreens.ts` builds the list once from `src/app.navgraph`: tabs, views, pages and windows of the real till, without overlays or practice-only screens. **Roles are worked out by walking the graph once per role**, dropping every transition and screen that role may not use, so a role is only listed where it can really get there. That matters because Settings has no `roles` on the screen itself, only on the way into it; checking the screen alone would have shown it to a cashier. A screen a role cannot reach gets exactly the same reply as one that does not exist, and no summary shown to a cashier names Settings, Staff or a role (a test checks every one). Every searchable screen in `src/app.navgraph` now has a `summary` and `keywords` (documented in `src/app.navschema`), which is what lets a question in different words find it. Search takes whole sentences and needs one matching word, with more matching words ranking higher. The prompt now mentions the third tool and tells the model to give only the taps the tool lists. Also: `resultText` could return more than the size limit when a cut result was full of quotes (each quote is escaped again inside the wrapper); it now trims until it fits. `npm run graph:build` was run, because `src/lib/appNavgraph.generated.ts` had been out of date since 0151 (the Ask the assistant screen was in the graph but not in the copy the app bundles). New `tests/assistantscreens.test.ts`. Device test T56. Not in this patch: the link tool and the guide tool (next two patches), the current screen as a starting point (needs the screen and register context tool), the offline search, and the tool call limit as a Settings field | your request |
+ | 0157 | 2026-10-18 | AI assistant, patch 4, tool 1 of 4 (your request: one tool at a time): **the docs tools**. The assistant can now **search the help pages** (`search_docs`) and **read one** (`read_doc`, at Basic, Deep or Advanced), then answer from what it read. New tool runtime in `src/lib/assistantTools.ts` (replaces the unfinished stub that read `window.__docsPages` and returned placeholders): every tool is a plain function given only what it may read, results are cut to a limit that follows the context size, and a bad tool name, bad arguments or a failing tool come back to the model as an error it can recover from. `src/lib/assistantChat.ts` now runs the tool loop (up to 15 calls a question, then it stops and names the pages it read), counts the tool definitions against the context, and drops the oldest tool results first when a long run fills it. Help pages can carry a **`roles:`** header; the tools only ever see pages the signed in role may see, and a page a role cannot see gets exactly the same reply as one that does not exist, with links and see-also lists to it removed. Tagged `manager, owner`: every `settings/*` page except `settings/ask-assistant`, `staff`, and `orders/reports`. The audit log records each tool call with its arguments and the exact result the model was given, and the log viewer shows them. Search takes whole sentences (little words dropped, half the key words needed). The system prompt changes when tools are on. New `tests/assistanttools.test.ts`. Device test T55. Not in this patch: the tool call limit as a Settings field (it is the constant `DEFAULT_TOOL_LIMIT`, 15), the navgraph, link and guide tools (next three patches), the offline search, and role filtering for tools that do not exist yet | your request |
+ | 0156 | 2026-10-17 | AI assistant, patch 3 of 10, second half: the **conversation log viewer**, export, clear, the cap setting and opening the chat to everyone. The viewer (`src/screens/AssistantLog.tsx`) is manager-only (same check as the assistant settings) and shows every exchange with filters (staff member, date range, errors, practice mode, remote endpoint). Each conversation can be opened to show what was sent to the model. **Export log** writes every event to one JSONL file and shares it through the iPad's Files. **Clear log** asks for a typed `CLEAR` confirmation and removes every file. The **cap setting** (default 200 MB, 1 to 10000) is on the assistant settings page and the log store reads it at runtime. `ASSISTANT_OPEN_TO_ALL` is now `true`, so the Help entry shows to everyone (still never on the lock screen). Tests: `tests/assistantlog.test.ts`, `tests/assistantchat.test.ts`. Device check: `docs/DEVICE_TESTS.md` T54. |
+diff --git a/help/help.json b/help/help.json
+index 6c99075..29f89c8 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "07a9a31c",
++ "version": "a50c0230",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1433,9 +1433,9 @@
+    "updated": "2026-10-18",
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+-    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
++    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
+     "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### Practice mode\nThe assistant is switched off in practice mode. Practice mode never sends anything out, and nothing is logged.",
+-    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### Limits of this version\nThe only tools are for the help pages and the screens, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
++    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### Limits of this version\nThe only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+   },
+   {
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index 6d2dc0b..2644102 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -12,7 +12,10 @@ Open **Help** and tap the sparkles button at the top. For now only an owner can
+ ## Basic
+ 
+ ### What it can do
+-Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
++Type a question and tap **Send**. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.
++
++### Buttons under a reply
++When it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
+ 
+ ### What it cannot do yet
+ It cannot see the shop's data. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
+@@ -41,8 +44,11 @@ The assistant is switched off in practice mode. Practice mode never sends anythi
+ ### What goes to the model
+ Only the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.
+ 
++### How the buttons work
++The model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.
++
+ ### How the log is kept
+ One file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.
+ 
+ ### Limits of this version
+-The only tools are for the help pages and the screens, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
++The only tools are for the help pages and the screens, and the button tool for opening them, so no shop data is sent at all. The full data rules, the shop data tools and the guide tools (the highlight arrows) arrive in later patches. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index 9558145..b4d0100 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -3,7 +3,7 @@
+ // so it runs in the node tests. The tools (assistantTools.ts) let it look at the help pages and the app's screens, and nothing
+ // else: it knows nothing about the shop's data, and it only sees what the cashier types and the earlier messages of the same chat.
+ import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
+-import { runToolCall, toolDefs, visiblePages, type ToolSet } from './assistantTools';
++import { MAX_LINKS, runToolCall, toolDefs, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
+ 
+ // ---------- the small scrubber ----------
+ // The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
+@@ -66,7 +66,8 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false):
+     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
+     'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
+     ...(withTools ? [
+-      'You have three tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
++      'You have four tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
++      'Use show_link for the one or two best places only, and only after a search gave you the id. The button is shown for you, so never write a link, an id or a page id in your reply.',
+       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
+       'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
+     ] : [
+@@ -81,10 +82,18 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false):
+ }
+ 
+ // ---------- history ----------
+-export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string };
++export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; /** Buttons shown under a reply (patch 0159). Never sent to the model: only the text is. */ links?: ChatLink[] };
+ export const HISTORY_CAP = 200;
+ export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
+ 
++/** Buttons read back from storage: well formed ones only, at most MAX_LINKS. Whether each still works is checked when it is drawn. */
++export function readLinks(raw: unknown): ChatLink[] {
++  if (!Array.isArray(raw)) return [];
++  const out: ChatLink[] = [];
++  for (const l of raw) { const o = l as Record<string, unknown> | null; if (o && typeof o === 'object' && (o.kind === 'doc' || o.kind === 'screen') && typeof o.id === 'string' && o.id && typeof o.label === 'string' && o.label && out.length < MAX_LINKS) out.push({ kind: o.kind, id: o.id, label: o.label.slice(0, 120) }); }
++  return out;
++}
++
+ /** Anything read back from storage is untrusted: keep well formed entries only, newest 200. */
+ export function readHistory(raw: unknown): ChatEntry[] {
+   if (!Array.isArray(raw)) return [];
+@@ -93,7 +102,8 @@ export function readHistory(raw: unknown): ChatEntry[] {
+     if (!e || typeof e !== 'object') continue;
+     const o = e as Record<string, unknown>;
+     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
+-    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}) });
++    const links = o.role === 'assistant' ? readLinks(o.links) : [];
++    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}) });
+   }
+   return capHistory(out);
+ }
+@@ -174,7 +184,7 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
+   }
+   const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
+   const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
+-  let messages = [...p.messages]; let calls = 0; let raw = '';
++  let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = [];
+   for (;;) {
+     const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
+     const wanted = res.message.tool_calls ?? [];
+@@ -185,10 +195,10 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
+       raw = limitReply(set.limit, read); break;
+     }
+     messages = [...messages, { role: 'assistant', content: res.message.content ?? null, tool_calls: wanted }];
+-    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; }
++    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; if (r.link && links.length < MAX_LINKS && !links.some(l => l.kind === r.link!.kind && l.id === r.link!.id)) links.push(r.link); }
+   }
+   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
+-  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
++  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now(), ...(links.length ? { links } : {}) } };
+ }
+ /** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
+ export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> { return runPrepared(f, a, prepare(a)); }
+diff --git a/src/lib/assistantScreens.ts b/src/lib/assistantScreens.ts
+index da394ca..8deeea7 100644
+--- a/src/lib/assistantScreens.ts
++++ b/src/lib/assistantScreens.ts
+@@ -10,6 +10,14 @@ import { findReachable, planRoute, type Edge, type JsonObject } from 'routegraph
+ import { metaInScope, scopeForReal, tree } from './appGraph';
+ import { PAGE_ROLES } from './helpDocs';
+ 
++/** How a button can open a screen (patch 0159): a tab to switch to, or a page to push. Only these two can be opened without knowing anything else. */
++export type ScreenTarget = { tab: string } | { route: string };
++/**
++ * Pages that need something the link cannot give: a cart or an item to work on, a lesson to run, or nothing useful (the chat
++ * itself). They are still searchable, so the assistant can say where they are, but no button is made for them.
++ */
++export const NOT_LINKABLE_ROUTES: readonly string[] = ['pay', 'cart', 'createItem', 'editItem', 'assistant', 'trainingRun', 'terminalPlay'];
++
+ /** One screen, ready for the assistant's search. */
+ export type ScreenEntry = {
+   id: string;
+@@ -22,6 +30,8 @@ export type ScreenEntry = {
+   roles: string[];
+   /** How to open it from the Checkout tab, for each role that can. Missing when no walk could be planned. */
+   steps: Partial<Record<string, string[]>>;
++  /** How a button opens it. Missing for views and windows (they only exist on top of something else) and for the pages in NOT_LINKABLE_ROUTES. */
++  target?: ScreenTarget;
+ };
+ 
+ /** Where every walk starts. Checkout is the screen the till opens on. */
+@@ -71,7 +81,9 @@ export function buildScreenIndex(roles: readonly string[] = PAGE_ROLES): ScreenE
+     const who = roles.filter(r => reach[r]?.has(s.id)); if (!who.length) continue;
+     const label = typeof s.meta.label === 'string' && s.meta.label ? s.meta.label : s.name;
+     const byRole: Partial<Record<string, string[]>> = {}; for (const r of who) { const w = steps[r].get(s.id); if (w) byRole[r] = w; }
+-    out.push({ id: s.id, name: label, kind: KIND_WORD[kind], summary: typeof s.meta.summary === 'string' ? s.meta.summary : '', keywords: strings(s.meta.keywords), roles: who, steps: byRole });
++    const tab = typeof s.meta.tab === 'string' ? s.meta.tab : ''; const route = typeof s.meta.route === 'string' ? s.meta.route : '';
++    const target: ScreenTarget | undefined = kind === 'tab' && tab ? { tab } : kind === 'page' && route && !NOT_LINKABLE_ROUTES.includes(route) ? { route } : undefined;
++    out.push({ id: s.id, name: label, kind: KIND_WORD[kind], summary: typeof s.meta.summary === 'string' ? s.meta.summary : '', keywords: strings(s.meta.keywords), roles: who, steps: byRole, ...(target ? { target } : {}) });
+   }
+   return out;
+ }
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index ed01868..e12ad9b 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -1,5 +1,5 @@
+ // Location: src/lib/assistantTools.ts
+-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 adds search_screens). Plain functions that read what they are
++// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link). Plain functions that read what they are
+ // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
+ // runs in the node tests.
+ //
+@@ -8,7 +8,7 @@
+ import { redactSecrets, type ChatMessage, type ToolCall, type ToolDef } from './assistantClient';
+ import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
+ // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
+-import type { ScreenEntry } from './assistantScreens';
++import type { ScreenEntry, ScreenTarget } from './assistantScreens';
+ 
+ export type ToolContext = {
+   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
+@@ -19,7 +19,17 @@ export type ToolContext = {
+   /** Longest result, in characters. Set from the context size so a small model is not flooded. */
+   maxChars: number;
+ };
+-export type AssistantTool = { def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown };
++export type AssistantTool = {
++  def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown;
++  /** Tools that put a button under the reply say which one for a call that worked. The runtime collects them; the model never sees this. */
++  link?: (args: Record<string, unknown>, ctx: ToolContext) => ChatLink | null;
++};
++
++/** A button under a reply (patch 0159). It only says what to open; what tapping does is worked out again when it is drawn, for the role signed in then. */
++export type ChatLink = { kind: 'doc' | 'screen'; id: string; /** What the button says, for example "Open Reports". */ label: string };
++/** What tapping a button does. The screen turns this into navigation. */
++export type LinkAction = { to: 'help'; id: string } | { to: 'tab'; tab: string } | { to: 'route'; route: string };
++export const MAX_LINKS = 3;
+ 
+ /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
+ export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number };
+@@ -159,8 +169,41 @@ const searchScreens: AssistantTool = {
+   },
+ };
+ 
++// ---------- show_link ----------
++/**
++ * Works out a button for a help page or a screen, or null. The one place a button is checked, used when the model asks for one
++ * and again when the button is drawn, so a button saved in the history is gone once the signed in role can no longer reach it.
++ * A page or screen this role may not see gets null, exactly like one that does not exist.
++ */
++export function resolveLink(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, kind: unknown, id: unknown): { link: ChatLink; action: LinkAction } | null {
++  const key = typeof id === 'string' ? id.trim() : ''; if (!key) return null;
++  if (kind === 'doc') { const p = visiblePages(ctx).find(x => x.id === key); return p ? { link: { kind: 'doc', id: p.id, label: p.title }, action: { to: 'help', id: p.id } } : null; }
++  if (kind === 'screen') {
++    const e = visibleScreens(ctx).find(x => x.id === key); const t: ScreenTarget | undefined = e?.target; if (!e || !t) return null;
++    return { link: { kind: 'screen', id: e.id, label: `Open ${e.name}` }, action: 'tab' in t ? { to: 'tab', tab: t.tab } : { to: 'route', route: t.route } };
++  }
++  return null;
++}
++/** The buttons that still work for this role, with what each does. Anything else is dropped. */
++export function liveLinks(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, links: ChatLink[] | undefined): { link: ChatLink; action: LinkAction }[] {
++  const out: { link: ChatLink; action: LinkAction }[] = [];
++  for (const l of links ?? []) { const r = resolveLink(ctx, l.kind, l.id); if (r && !out.some(o => o.link.kind === r.link.kind && o.link.id === r.link.id)) out.push(r); }
++  return out;
++}
++
++const NO_LINK = { error: 'No button can be made for that. Use search_docs or search_screens to find the id, and give the taps in words instead.' };
++const showLink: AssistantTool = {
++  def: { type: 'function', function: {
++    name: 'show_link',
++    description: 'Put a button under your reply that opens a help page or a screen. Use it for the one or two best places, after search_docs or search_screens gave you the id. Give kind "doc" with a page id, or kind "screen" with a screen id. Some screens, such as windows, cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
++    parameters: { type: 'object', properties: { kind: { type: 'string', enum: ['doc', 'screen'], description: '"doc" for a help page, "screen" for a screen.' }, id: { type: 'string', description: 'The id from search_docs or search_screens, for example "pay/cash" or "page_reports".' } }, required: ['kind', 'id'], additionalProperties: false },
++  } },
++  run: (args, ctx) => { const r = resolveLink(ctx, args.kind, args.id); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. Do not write the link yourself.` } : NO_LINK; },
++  link: (args, ctx) => resolveLink(ctx, args.kind, args.id)?.link ?? null,
++};
++
+ /** The tools in this build. Later patches add to the end. */
+-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens];
++export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink];
+ export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
+ 
+ // ---------- running a call ----------
+@@ -178,18 +221,21 @@ export function resultText(result: unknown, maxChars: number): string {
+  * Runs one tool call the model asked for. It never throws: an unknown tool, arguments that are not JSON, or a tool that
+  * fails all come back as an error result the model can read and recover from. The result is what goes back to the model.
+  */
+-export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord } {
+-  const t0 = now(); let ok = true; let result: unknown;
++export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord; /** The button this call asked for, when it worked (patch 0159). */ link?: ChatLink } {
++  const t0 = now(); let ok = true; let result: unknown; let link: ChatLink | undefined; let usedArgs: Record<string, unknown> = {};
+   const tool = set.tools.find(t => t.def.function.name === call.function.name);
+   if (!tool) { ok = false; result = { error: `There is no tool called "${call.function.name}".` }; }
+   else {
+     let args: Record<string, unknown> = {};
+     try { const raw = call.function.arguments?.trim(); const parsed = raw ? JSON.parse(raw) : {}; if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed as Record<string, unknown>; else throw new Error('not an object'); }
+     catch { ok = false; result = { error: 'The arguments were not a JSON object.' }; }
++    usedArgs = args;
+     if (ok) { try { result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false; } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; } }
++    if (ok && tool.link) { try { link = tool.link(usedArgs, set.ctx) ?? undefined; } catch { link = undefined; } }
+   }
+   const content = resultText(result, set.ctx.maxChars);
+   return {
++    ...(link ? { link } : {}),
+     message: { role: 'tool', tool_call_id: call.id, name: call.function.name, content },
+     record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0) },
+   };
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index 759bbde..ad4972f 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -1,13 +1,14 @@
+ // Location: src/screens/Assistant.tsx
+ // Help ▸ Ask the assistant (patch 0151): a chat with the model set up in Settings ▸ AI assistant. Since 0157 it can search and read
+-// the help pages, and since 0158 it can search the app's screens (both limited to what the signed in role may see). It still knows
++// the help pages, since 0158 it can search the app's screens (both limited to what the signed in role may see), and since 0159 it can put
++// a button under a reply that opens a help page or a screen. It still knows
+ // nothing about the shop's data. History is kept on
+ // this iPad, one per staff member, and cleared only by hand.
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { ScrollView, View } from 'react-native';
+ import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+-import { useNav } from '../ui/nav';
++import { useNav, type Tab } from '../ui/nav';
+ import { useKeyboardOverlap } from '../ui/keyboard';
+ import { useApp } from '../state/store';
+ import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
+@@ -17,7 +18,7 @@ import { AssistantError } from '../lib/assistantClient';
+ import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
+ import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
+ import { assistantLog, logSink } from '../lib/assistantLogIO';
+-import { makeToolSet } from '../lib/assistantTools';
++import { liveLinks, makeToolSet, type LinkAction } from '../lib/assistantTools';
+ import { builtinScreens } from '../lib/assistantScreens';
+ import { builtinHelp } from '../lib/helpBuiltin';
+ import { kvGet, kvSet, kvDel } from '../lib/kv';
+@@ -75,12 +76,20 @@ export default function Assistant() {
+   };
+ 
+   const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant';
++  const open = (a: LinkAction) => { if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route); };
++  // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
++  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: builtinHelp().pages, screens: builtinScreens(), role }, e.links) : []);
+   const bubble = (e: ChatEntry) => (
+     <View key={e.id} style={{ alignSelf: e.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', gap: 3 }}>
+       <View style={{ backgroundColor: e.role === 'user' ? c.accent : c.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: e.role === 'user' ? 0 : 1, borderColor: c.line }}>
+         <Txt color={e.role === 'user' ? c.onAccent : undefined}>{e.text}</Txt>
+       </View>
+       {e.note ? <Txt size={12} sub style={{ alignSelf: 'flex-end' }}>{e.note}</Txt> : null}
++      {buttons(e).length ? (
++        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
++          {buttons(e).map(b => <Btn key={`${b.link.kind}:${b.link.id}`} small kind="secondary" icon={b.link.kind === 'doc' ? 'book-outline' : 'open-outline'} title={b.link.label} onPress={() => open(b.action)} />)}
++        </View>
++      ) : null}
+     </View>
+   );
+ 
+diff --git a/tests/assistantlinks.test.ts b/tests/assistantlinks.test.ts
+new file mode 100644
+index 0000000..cb75e75
+--- /dev/null
++++ b/tests/assistantlinks.test.ts
+@@ -0,0 +1,136 @@
++// Location: tests/assistantlinks.test.ts
++// The assistant's link tool (patch 0159): show_link, the check that a button is allowed, the buttons kept in the history, and the loop collecting them.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import type { Endpoint, FetchLike } from '../src/lib/assistantClient';
++import { buildSystemPrompt, prepare, readHistory, readLinks, runPrepared, type AskInput } from '../src/lib/assistantChat';
++import { ASSISTANT_TOOLS, MAX_LINKS, liveLinks, makeToolSet, resolveLink, runToolCall } from '../src/lib/assistantTools';
++import { NOT_LINKABLE_ROUTES, buildScreenIndex, type ScreenEntry } from '../src/lib/assistantScreens';
++import type { Page } from '../src/lib/helpDocs';
++
++const mk = (id: string, title: string, extra: Partial<Page> = {}): Page => ({ id, title, parent: id === 'start' ? undefined : 'start', summary: `About ${title.toLowerCase()}.`, tags: [], related: [], lead: '', sections: { basic: `Basic text for ${title}.`, deep: '', advanced: '' }, file: `${id}.md`, ...extra });
++const pages: Page[] = [mk('start', 'Start'), mk('pay/cash', 'Taking cash'), mk('settings/hardware', 'Hardware settings', { roles: ['manager', 'owner'] })];
++const screens = buildScreenIndex();
++const byId = (id: string): ScreenEntry => { const e = screens.find(x => x.id === id); assert.ok(e, `missing ${id}`); return e!; };
++const ctxFor = (role: string) => ({ pages, screens, role, maxChars: 4000 });
++const call = (name: string, args: unknown, id = 'c1') => ({ id, type: 'function' as const, function: { name, arguments: typeof args === 'string' ? args : JSON.stringify(args) } });
++const runLink = (args: unknown, role = 'cashier') => runToolCall(call('show_link', args), { tools: ASSISTANT_TOOLS, ctx: ctxFor(role) });
++const body = (r: ReturnType<typeof runLink>) => JSON.parse(r.message.content ?? '{}');
++
++// ---- which screens can have a button ----
++test('tabs and plain pages can have a button; windows, views and pages that need something cannot', () => {
++  assert.deepEqual(byId('tab_more').target, { tab: 'more' });
++  assert.deepEqual(byId('tab_inventory').target, { tab: 'inventory' });
++  assert.deepEqual(byId('page_reports').target, { route: 'reports' });
++  assert.deepEqual(byId('page_drawer').target, { route: 'drawer' });
++  for (const id of ['sheet_refund', 'view_keypad']) assert.equal(byId(id).target, undefined, id);
++  for (const e of screens) if (e.target && 'route' in e.target) assert.ok(!NOT_LINKABLE_ROUTES.includes(e.target.route), `${e.id} must not be linkable`);
++});
++test('pages that need a cart, an item, a lesson or the chat itself have no button, though they can still be found', () => {
++  for (const id of ['page_pay', 'page_cart', 'page_create_item', 'page_edit_item', 'page_assistant', 'page_training_run', 'page_terminal_play']) assert.equal(byId(id).target, undefined, id);
++});
++test('every target is something the app can open: a real tab, or a route the app has', () => {
++  const tabs = ['checkout', 'inventory', 'transactions', 'notifications', 'more'];
++  for (const e of screens) { if (!e.target) continue; if ('tab' in e.target) assert.ok(tabs.includes(e.target.tab), e.id); else assert.match(e.target.route, /^[a-z][A-Za-z]+$/, e.id); }
++});
++
++// ---- show_link ----
++test('show_link makes a button for a help page and for a screen, and tells the model not to write the link itself', () => {
++  const doc = runLink({ kind: 'doc', id: 'pay/cash' }); assert.equal(doc.link?.label, 'Taking cash'); assert.deepEqual(doc.link && [doc.link.kind, doc.link.id], ['doc', 'pay/cash']);
++  assert.equal(body(doc).ok, true); assert.match(body(doc).note, /Do not write the link yourself/);
++  const sc = runLink({ kind: 'screen', id: 'page_reports' }); assert.deepEqual(sc.link, { kind: 'screen', id: 'page_reports', label: 'Open Reports' });
++  assert.ok(!('link' in body(sc)), 'the button is not part of what the model reads');
++});
++test('show_link: a page or screen the role may not see gets the same answer as one that does not exist', () => {
++  const hidden = runLink({ kind: 'doc', id: 'settings/hardware' }, 'cashier'); const none = runLink({ kind: 'doc', id: 'no/such' }, 'cashier');
++  assert.equal(hidden.message.content, none.message.content); assert.equal(hidden.link, undefined); assert.equal(hidden.record.ok, false);
++  const s1 = runLink({ kind: 'screen', id: 'page_settings' }, 'cashier'); const s2 = runLink({ kind: 'screen', id: 'page_nothing' }, 'cashier');
++  assert.equal(s1.message.content, s2.message.content); assert.equal(s1.link, undefined);
++  assert.doesNotMatch(s1.message.content ?? '', /settings|staff|manager|owner/i);
++  assert.ok(runLink({ kind: 'doc', id: 'settings/hardware' }, 'manager').link); assert.ok(runLink({ kind: 'screen', id: 'page_settings' }, 'owner').link);
++});
++test('show_link: a screen with no button, a bad kind, a missing id and bad arguments are errors the model can recover from', () => {
++  for (const args of [{ kind: 'screen', id: 'sheet_refund' }, { kind: 'screen', id: 'page_pay' }, { kind: 'url', id: 'https://example.com' }, { kind: 'doc' }, { kind: 'doc', id: '   ' }, { kind: 'doc', id: 7 }, '[1]', 'not json']) {
++    const r = runLink(args, 'owner'); assert.equal(r.link, undefined, JSON.stringify(args)); assert.equal(r.record.ok, false); assert.ok(typeof body(r).error === 'string');
++  }
++});
++test('show_link never makes a button for a web address, whatever the model puts in the id', () => {
++  for (const id of ['https://example.com', 'javascript:alert(1)', '../../etc/passwd']) for (const kind of ['doc', 'screen']) assert.equal(resolveLink(ctxFor('owner'), kind, id), null);
++});
++test('show_link is read-only: it is given nothing it could write with, and the result is only the note', () => {
++  const t = ASSISTANT_TOOLS.find(x => x.def.function.name === 'show_link')!; assert.ok(t);
++  assert.deepEqual(Object.keys(t.def.function.parameters as any).sort(), ['additionalProperties', 'properties', 'required', 'type']);
++  assert.deepEqual(Object.keys(body(runLink({ kind: 'doc', id: 'start' }))).sort(), ['note', 'ok']);
++});
++
++// ---- checking again when drawn ----
++test('a saved button is checked again for the role signed in now, and goes when that role cannot reach it', () => {
++  const links = [{ kind: 'doc' as const, id: 'settings/hardware', label: 'Hardware settings' }, { kind: 'screen' as const, id: 'page_settings', label: 'Open Settings' }, { kind: 'screen' as const, id: 'page_reports', label: 'Open Reports' }];
++  assert.deepEqual(liveLinks(ctxFor('owner'), links).map(l => l.link.id), ['settings/hardware', 'page_settings', 'page_reports']);
++  assert.deepEqual(liveLinks(ctxFor('cashier'), links).map(l => l.link.id), ['page_reports']);
++  assert.deepEqual(liveLinks(ctxFor('visitor'), links), []); assert.deepEqual(liveLinks(ctxFor('owner'), undefined), []);
++});
++test('what a button does: help opens the page, a tab switches tab, a page is pushed', () => {
++  assert.deepEqual(resolveLink(ctxFor('owner'), 'doc', 'pay/cash')?.action, { to: 'help', id: 'pay/cash' });
++  assert.deepEqual(resolveLink(ctxFor('owner'), 'screen', 'tab_more')?.action, { to: 'tab', tab: 'more' });
++  assert.deepEqual(resolveLink(ctxFor('owner'), 'screen', 'page_orders')?.action, { to: 'route', route: 'orders' });
++});
++test('the same button twice is shown once', () => {
++  const l = { kind: 'doc' as const, id: 'pay/cash', label: 'Taking cash' }; assert.equal(liveLinks(ctxFor('owner'), [l, l]).length, 1);
++});
++
++// ---- history ----
++test('buttons are kept in the history, well formed ones only and at most three, and only on replies', () => {
++  const h = readHistory([
++    { id: 'a', role: 'assistant', text: 'ok', at: 1, links: [{ kind: 'doc', id: 'pay/cash', label: 'Taking cash' }, { kind: 'x', id: 'q', label: 'bad' }, { kind: 'doc', id: 'a', label: 'A' }, { kind: 'doc', id: 'b', label: 'B' }, { kind: 'doc', id: 'c', label: 'C' }, 'junk', null] },
++    { id: 'u', role: 'user', text: 'hi', at: 0, links: [{ kind: 'doc', id: 'pay/cash', label: 'Taking cash' }] },
++    { id: 'n', role: 'assistant', text: 'plain', at: 2, links: 'nope' },
++  ]);
++  assert.equal(h.find(e => e.id === 'a')!.links!.length, MAX_LINKS); assert.equal(h.find(e => e.id === 'u')!.links, undefined); assert.equal(h.find(e => e.id === 'n')!.links, undefined);
++  assert.deepEqual(readLinks(undefined), []); assert.equal(readLinks([{ kind: 'doc', id: 'x', label: 'y'.repeat(500) }])[0].label.length, 120);
++});
++test('buttons are never sent to the model: only the text of earlier messages goes out', () => {
++  const entry = { id: 'a', role: 'assistant' as const, text: 'Open Reports.', at: 1, links: [{ kind: 'screen' as const, id: 'page_reports', label: 'Open Reports' }] };
++  const a: AskInput = { history: [{ id: 'u0', role: 'user', text: 'where is it', at: 0 }, entry], text: 'thanks', detail: 'short', settings: { contextSize: 8000, temperature: 0.2 }, endpoint: ep(), id: () => 'x', now: () => 1 };
++  const p = prepare(a); assert.doesNotMatch(JSON.stringify(p.messages), /page_reports|links/);
++});
++
++// ---- the loop ----
++function ep(): Endpoint { return { baseUrl: 'http://localhost:11434/v1', model: 'm', timeoutSec: 5 }; }
++function scripted(steps: Array<{ content?: string | null; calls?: { name: string; args: unknown }[] }>) {
++  let i = 0;
++  const f: FetchLike = async () => {
++    const s = steps[Math.min(i++, steps.length - 1)]; const message: any = { role: 'assistant', content: s.content ?? null };
++    if (s.calls) message.tool_calls = s.calls.map((c, k) => ({ id: `call_${i}_${k}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
++    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message, finish_reason: s.calls ? 'tool_calls' : 'stop' }] }) };
++  };
++  return f;
++}
++const ask = (role = 'cashier'): AskInput => ({ history: [], text: 'Where are reports?', detail: 'short', settings: { contextSize: 8000, temperature: 0.2 }, endpoint: ep(), id: (() => { let n = 0; return () => `id${++n}`; })(), now: () => 1000, tools: makeToolSet({ pages, screens, role, contextSize: 8000 }) });
++
++test('the loop: buttons the model asked for end up on the reply, once each, at most three', async () => {
++  const f = scripted([
++    { calls: [{ name: 'show_link', args: { kind: 'screen', id: 'page_reports' } }, { name: 'show_link', args: { kind: 'screen', id: 'page_reports' } }, { name: 'show_link', args: { kind: 'doc', id: 'pay/cash' } }] },
++    { calls: [{ name: 'show_link', args: { kind: 'screen', id: 'page_orders' } }, { name: 'show_link', args: { kind: 'screen', id: 'page_items' } }] },
++    { content: 'Reports is under More.' },
++  ]);
++  const a = ask(); const out = await runPrepared(f, a, prepare(a));
++  assert.deepEqual(out.reply.links!.map(l => l.id), ['page_reports', 'pay/cash', 'page_orders']); assert.equal(out.reply.text, 'Reports is under More.');
++});
++test('the loop: a refused button is not on the reply, and a reply with none has no links field', async () => {
++  let a = ask('cashier'); let out = await runPrepared(scripted([{ calls: [{ name: 'show_link', args: { kind: 'screen', id: 'page_settings' } }] }, { content: "I couldn't find anything on that." }]), a, prepare(a));
++  assert.equal(out.reply.links, undefined); assert.ok(!('links' in out.reply));
++  a = ask('cashier'); out = await runPrepared(scripted([{ content: 'Hello.' }]), a, prepare(a)); assert.ok(!('links' in out.reply));
++});
++test('the loop: the audit log still sees the show_link call and what the model was told', async () => {
++  const a = ask(); await runPrepared(scripted([{ calls: [{ name: 'show_link', args: { kind: 'doc', id: 'pay/cash' } }] }, { content: 'Done.' }]), a, prepare(a));
++  assert.deepEqual(a.tools!.records.map(r => [r.name, r.ok]), [['show_link', true]]); assert.match(a.tools!.records[0].result, /will be shown under your reply/);
++});
++
++// ---- the prompt ----
++test('the prompt names the link tool and tells the model not to write links or ids, and still names nothing restricted', () => {
++  const p = buildSystemPrompt('short', true);
++  assert.match(p, /four tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
++  assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page/i);
++  assert.doesNotMatch(buildSystemPrompt('short', false), /show_link/);
++});
+diff --git a/tests/assistanttools.test.ts b/tests/assistanttools.test.ts
+index 82262bf..af0e011 100644
+--- a/tests/assistanttools.test.ts
++++ b/tests/assistanttools.test.ts
+@@ -115,7 +115,7 @@ test('the record keeps the arguments and result, with any key removed', () => {
+ });
+ test('every tool has a name, a description and object parameters, and none can write', () => {
+   const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
+-  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens']);
++  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link']);
+   for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
+ });
+ 

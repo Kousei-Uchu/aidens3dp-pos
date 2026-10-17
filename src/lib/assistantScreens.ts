@@ -10,6 +10,14 @@ import { findReachable, planRoute, type Edge, type JsonObject } from 'routegraph
 import { metaInScope, scopeForReal, tree } from './appGraph';
 import { PAGE_ROLES } from './helpDocs';
 
+/** How a button can open a screen (patch 0159): a tab to switch to, or a page to push. Only these two can be opened without knowing anything else. */
+export type ScreenTarget = { tab: string } | { route: string };
+/**
+ * Pages that need something the link cannot give: a cart or an item to work on, a lesson to run, or nothing useful (the chat
+ * itself). They are still searchable, so the assistant can say where they are, but no button is made for them.
+ */
+export const NOT_LINKABLE_ROUTES: readonly string[] = ['pay', 'cart', 'createItem', 'editItem', 'assistant', 'trainingRun', 'terminalPlay'];
+
 /** One screen, ready for the assistant's search. */
 export type ScreenEntry = {
   id: string;
@@ -22,6 +30,8 @@ export type ScreenEntry = {
   roles: string[];
   /** How to open it from the Checkout tab, for each role that can. Missing when no walk could be planned. */
   steps: Partial<Record<string, string[]>>;
+  /** How a button opens it. Missing for views and windows (they only exist on top of something else) and for the pages in NOT_LINKABLE_ROUTES. */
+  target?: ScreenTarget;
 };
 
 /** Where every walk starts. Checkout is the screen the till opens on. */
@@ -71,7 +81,9 @@ export function buildScreenIndex(roles: readonly string[] = PAGE_ROLES): ScreenE
     const who = roles.filter(r => reach[r]?.has(s.id)); if (!who.length) continue;
     const label = typeof s.meta.label === 'string' && s.meta.label ? s.meta.label : s.name;
     const byRole: Partial<Record<string, string[]>> = {}; for (const r of who) { const w = steps[r].get(s.id); if (w) byRole[r] = w; }
-    out.push({ id: s.id, name: label, kind: KIND_WORD[kind], summary: typeof s.meta.summary === 'string' ? s.meta.summary : '', keywords: strings(s.meta.keywords), roles: who, steps: byRole });
+    const tab = typeof s.meta.tab === 'string' ? s.meta.tab : ''; const route = typeof s.meta.route === 'string' ? s.meta.route : '';
+    const target: ScreenTarget | undefined = kind === 'tab' && tab ? { tab } : kind === 'page' && route && !NOT_LINKABLE_ROUTES.includes(route) ? { route } : undefined;
+    out.push({ id: s.id, name: label, kind: KIND_WORD[kind], summary: typeof s.meta.summary === 'string' ? s.meta.summary : '', keywords: strings(s.meta.keywords), roles: who, steps: byRole, ...(target ? { target } : {}) });
   }
   return out;
 }

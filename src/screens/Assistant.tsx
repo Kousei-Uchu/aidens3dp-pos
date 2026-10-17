@@ -1,13 +1,14 @@
 // Location: src/screens/Assistant.tsx
 // Help ▸ Ask the assistant (patch 0151): a chat with the model set up in Settings ▸ AI assistant. Since 0157 it can search and read
-// the help pages, and since 0158 it can search the app's screens (both limited to what the signed in role may see). It still knows
+// the help pages, since 0158 it can search the app's screens (both limited to what the signed in role may see), and since 0159 it can put
+// a button under a reply that opens a help page or a screen. It still knows
 // nothing about the shop's data. History is kept on
 // this iPad, one per staff member, and cleared only by hand.
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ScrollView, View } from 'react-native';
 import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
-import { useNav } from '../ui/nav';
+import { useNav, type Tab } from '../ui/nav';
 import { useKeyboardOverlap } from '../ui/keyboard';
 import { useApp } from '../state/store';
 import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
@@ -17,7 +18,7 @@ import { AssistantError } from '../lib/assistantClient';
 import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
 import { LOG_FAIL_LINE, askLogged, logEndpoint, logStaff } from '../lib/assistantLog';
 import { assistantLog, logSink } from '../lib/assistantLogIO';
-import { makeToolSet } from '../lib/assistantTools';
+import { liveLinks, makeToolSet, type LinkAction } from '../lib/assistantTools';
 import { builtinScreens } from '../lib/assistantScreens';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
@@ -75,12 +76,20 @@ export default function Assistant() {
   };
 
   const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant';
+  const open = (a: LinkAction) => { if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route); };
+  // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
+  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: builtinHelp().pages, screens: builtinScreens(), role }, e.links) : []);
   const bubble = (e: ChatEntry) => (
     <View key={e.id} style={{ alignSelf: e.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', gap: 3 }}>
       <View style={{ backgroundColor: e.role === 'user' ? c.accent : c.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: e.role === 'user' ? 0 : 1, borderColor: c.line }}>
         <Txt color={e.role === 'user' ? c.onAccent : undefined}>{e.text}</Txt>
       </View>
       {e.note ? <Txt size={12} sub style={{ alignSelf: 'flex-end' }}>{e.note}</Txt> : null}
+      {buttons(e).length ? (
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+          {buttons(e).map(b => <Btn key={`${b.link.kind}:${b.link.id}`} small kind="secondary" icon={b.link.kind === 'doc' ? 'book-outline' : 'open-outline'} title={b.link.label} onPress={() => open(b.action)} />)}
+        </View>
+      ) : null}
     </View>
   );
 

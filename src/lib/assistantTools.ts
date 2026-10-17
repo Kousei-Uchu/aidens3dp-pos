@@ -1,5 +1,5 @@
 // Location: src/lib/assistantTools.ts
-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 adds search_screens). Plain functions that read what they are
+// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link). Plain functions that read what they are
 // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
 // runs in the node tests.
 //
@@ -8,7 +8,7 @@
 import { redactSecrets, type ChatMessage, type ToolCall, type ToolDef } from './assistantClient';
 import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Page } from './helpDocs';
 // A type only, so this file stays free of the app graph and runs in the node tests. The list itself is built in assistantScreens.ts.
-import type { ScreenEntry } from './assistantScreens';
+import type { ScreenEntry, ScreenTarget } from './assistantScreens';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -19,7 +19,17 @@ export type ToolContext = {
   /** Longest result, in characters. Set from the context size so a small model is not flooded. */
   maxChars: number;
 };
-export type AssistantTool = { def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown };
+export type AssistantTool = {
+  def: ToolDef; run: (args: Record<string, unknown>, ctx: ToolContext) => unknown;
+  /** Tools that put a button under the reply say which one for a call that worked. The runtime collects them; the model never sees this. */
+  link?: (args: Record<string, unknown>, ctx: ToolContext) => ChatLink | null;
+};
+
+/** A button under a reply (patch 0159). It only says what to open; what tapping does is worked out again when it is drawn, for the role signed in then. */
+export type ChatLink = { kind: 'doc' | 'screen'; id: string; /** What the button says, for example "Open Reports". */ label: string };
+/** What tapping a button does. The screen turns this into navigation. */
+export type LinkAction = { to: 'help'; id: string } | { to: 'tab'; tab: string } | { to: 'route'; route: string };
+export const MAX_LINKS = 3;
 
 /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
 export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number };
@@ -159,8 +169,41 @@ const searchScreens: AssistantTool = {
   },
 };
 
+// ---------- show_link ----------
+/**
+ * Works out a button for a help page or a screen, or null. The one place a button is checked, used when the model asks for one
+ * and again when the button is drawn, so a button saved in the history is gone once the signed in role can no longer reach it.
+ * A page or screen this role may not see gets null, exactly like one that does not exist.
+ */
+export function resolveLink(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, kind: unknown, id: unknown): { link: ChatLink; action: LinkAction } | null {
+  const key = typeof id === 'string' ? id.trim() : ''; if (!key) return null;
+  if (kind === 'doc') { const p = visiblePages(ctx).find(x => x.id === key); return p ? { link: { kind: 'doc', id: p.id, label: p.title }, action: { to: 'help', id: p.id } } : null; }
+  if (kind === 'screen') {
+    const e = visibleScreens(ctx).find(x => x.id === key); const t: ScreenTarget | undefined = e?.target; if (!e || !t) return null;
+    return { link: { kind: 'screen', id: e.id, label: `Open ${e.name}` }, action: 'tab' in t ? { to: 'tab', tab: t.tab } : { to: 'route', route: t.route } };
+  }
+  return null;
+}
+/** The buttons that still work for this role, with what each does. Anything else is dropped. */
+export function liveLinks(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, links: ChatLink[] | undefined): { link: ChatLink; action: LinkAction }[] {
+  const out: { link: ChatLink; action: LinkAction }[] = [];
+  for (const l of links ?? []) { const r = resolveLink(ctx, l.kind, l.id); if (r && !out.some(o => o.link.kind === r.link.kind && o.link.id === r.link.id)) out.push(r); }
+  return out;
+}
+
+const NO_LINK = { error: 'No button can be made for that. Use search_docs or search_screens to find the id, and give the taps in words instead.' };
+const showLink: AssistantTool = {
+  def: { type: 'function', function: {
+    name: 'show_link',
+    description: 'Put a button under your reply that opens a help page or a screen. Use it for the one or two best places, after search_docs or search_screens gave you the id. Give kind "doc" with a page id, or kind "screen" with a screen id. Some screens, such as windows, cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
+    parameters: { type: 'object', properties: { kind: { type: 'string', enum: ['doc', 'screen'], description: '"doc" for a help page, "screen" for a screen.' }, id: { type: 'string', description: 'The id from search_docs or search_screens, for example "pay/cash" or "page_reports".' } }, required: ['kind', 'id'], additionalProperties: false },
+  } },
+  run: (args, ctx) => { const r = resolveLink(ctx, args.kind, args.id); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. Do not write the link yourself.` } : NO_LINK; },
+  link: (args, ctx) => resolveLink(ctx, args.kind, args.id)?.link ?? null,
+};
+
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink];
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
 
 // ---------- running a call ----------
@@ -178,18 +221,21 @@ export function resultText(result: unknown, maxChars: number): string {
  * Runs one tool call the model asked for. It never throws: an unknown tool, arguments that are not JSON, or a tool that
  * fails all come back as an error result the model can read and recover from. The result is what goes back to the model.
  */
-export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord } {
-  const t0 = now(); let ok = true; let result: unknown;
+export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>, now: () => number = Date.now, apiKey?: string): { message: ChatMessage; record: ToolRecord; /** The button this call asked for, when it worked (patch 0159). */ link?: ChatLink } {
+  const t0 = now(); let ok = true; let result: unknown; let link: ChatLink | undefined; let usedArgs: Record<string, unknown> = {};
   const tool = set.tools.find(t => t.def.function.name === call.function.name);
   if (!tool) { ok = false; result = { error: `There is no tool called "${call.function.name}".` }; }
   else {
     let args: Record<string, unknown> = {};
     try { const raw = call.function.arguments?.trim(); const parsed = raw ? JSON.parse(raw) : {}; if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed as Record<string, unknown>; else throw new Error('not an object'); }
     catch { ok = false; result = { error: 'The arguments were not a JSON object.' }; }
+    usedArgs = args;
     if (ok) { try { result = tool.run(args, set.ctx); if (result && typeof result === 'object' && 'error' in (result as object)) ok = false; } catch { ok = false; result = { error: 'The tool failed. Try something else.' }; } }
+    if (ok && tool.link) { try { link = tool.link(usedArgs, set.ctx) ?? undefined; } catch { link = undefined; } }
   }
   const content = resultText(result, set.ctx.maxChars);
   return {
+    ...(link ? { link } : {}),
     message: { role: 'tool', tool_call_id: call.id, name: call.function.name, content },
     record: { name: call.function.name, args: clip(redactSecrets(call.function.arguments ?? '', apiKey), 500), ok, result: clip(redactSecrets(content, apiKey), 4000), ms: Math.max(0, now() - t0) },
   };

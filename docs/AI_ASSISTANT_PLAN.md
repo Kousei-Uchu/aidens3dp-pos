@@ -6,11 +6,16 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 15 (18 October 2026), patch 0159:** tool 3 of 4 is built: the link tool, as the model-facing tool `show_link`. The plan never said what the link tool
+was, so it is taken to mean a tappable button under a reply that opens a help page or a screen. It checks the id with the same role filters as the searches,
+the button is saved with the reply (at most 3) and checked again each time it is drawn, and only tabs and plain pages get one (views, windows and pages that
+need a cart, an item or a lesson do not). The highlight arrows (\"Guide me there\", question 8) stay with the guide tool. Next: the guide tool.
+
 **Revision 14 (18 October 2026), patch 0158:** tool 2 of 4 is built: the navgraph search, as the model-facing tool `search_screens`. A screen list is built once
 from `src/app.navgraph` (`src/lib/assistantScreens.ts`) and filtered by role by walking the graph once per role, so a role is only listed where it can
 really get there (Settings has no `roles` on the screen, only on the transition into it, so checking the screen alone would have let a cashier see it).
 Each result has a name, what it is for and the taps to open it from the Checkout tab. Screens in the graph gained a `summary` and `keywords`. The result size
-limit now holds when a cut result is full of quotes. Next: the link tool, then the guide tool. The current screen is not used as a starting point yet,
+limit now holds when a cut result is full of quotes. Next: the link tool (built in 0159), then the guide tool. The current screen is not used as a starting point yet,
 because that needs the screen and register context tool.
 
 **Revision 13 (18 October 2026), patch 0157:** patch 4 is split by tool, one patch each, as the owner asked. 0157 is tool 1: the docs
@@ -149,6 +154,7 @@ and the practice mode block (3.12), the dash filter (3.9), the prompt, and the "
 the audit log recording (3.6). Built in 0156: the audit log viewer, Export log, Clear log, the cap setting and opening
 the chat to everyone (3.6, 3.13). Built in 0157: the docs tools (`search_docs`, `read_doc`), the tool runtime and loop, and the role header on help pages.
 Built in 0158: the screen search tool (`search_screens`) and the role filter for screens.
+Built in 0159: the link tool (`show_link`), buttons under a reply that open a help page or a screen.
 
 Still to do:
 
@@ -466,7 +472,7 @@ chat screen patch can add streaming.
    Clear log, the cap setting and opening the chat to everyone (`ASSISTANT_OPEN_TO_ALL`).
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
    offline search (3.3). One tool per patch: **0157 done** (docs search and read, the runtime and loop, role header on help
-   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens). Next: link, guide.
+   pages), **0158 done** (navgraph search, as `search_screens`, with the role filter for screens), **0159 done** (link, as `show_link`). Next: guide.
 5. The data gate (3.1) with its tests, and the category toggles, building on the small scrubber from patch 2. No data
    tools yet.
 6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.

@@ -709,3 +709,19 @@ On the iPad, with the model set up as in T55.
 5. Sign in as a **cashier** and ask *Where do I add a staff member?* and *Where are the Shopify settings?* Pass: both get "I couldn't find anything on that" and neither names Settings or Staff. Sign in as a manager and ask the same: both are answered, with More, Staff and More, Settings.
 6. **Most important:** as the owner, open the conversation log for the cashier's questions in step 5 and open **Tools used**. Pass: the search_screens results contain no Settings, Staff, Switch staff or Staff pass screen.
 7. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
+
+
+## T57. Assistant link tool (0159)
+
+On the iPad, with the model set up as in T55.
+
+1. Ask *Where are the reports?* Pass: the reply says where Reports is, and an **Open Reports** button is under it. Tap it. Pass: the Reports page opens, and Back returns to the chat.
+2. Ask *How do I take a cash payment?* Pass: the reply names the Taking cash help page, with a button for it under the reply. Tap it. Pass: Help opens on that page.
+3. Ask *Where is the refund window?* Pass: the reply gives the taps (More, Orders, the order, Refund or return). Pass: there is no button for the window itself, though there may be one for Orders.
+4. Ask *Take me to Inventory.* Pass: an **Open Inventory** button appears. Tap it. Pass: the Inventory tab opens.
+5. Close the app and open the chat again. Pass: the buttons are still under the earlier replies and still work.
+6. Sign in as a **cashier** and ask *Take me to Settings* and *Open the staff page.* Pass: both get "I couldn't find anything on that", and no button appears for Settings or Staff.
+7. **Most important:** sign in as the owner, ask *Where are the Shopify settings?* (a button for Settings appears), then sign in as a cashier. Pass: the cashier cannot see the owner's history, and the owner's history has no Settings button once the role loses access (for example after changing that person to a cashier and signing in as them).
+8. As the owner, open the conversation log and open the step 1 conversation, then **Tools used**. Pass: the show_link call is listed with the note the model was given.
+9. Turn the model off (wrong address) and ask anything. Pass: the red bar shows as before.
+

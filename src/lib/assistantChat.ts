@@ -3,7 +3,7 @@
 // so it runs in the node tests. The tools (assistantTools.ts) let it look at the help pages and the app's screens, and nothing
 // else: it knows nothing about the shop's data, and it only sees what the cashier types and the earlier messages of the same chat.
 import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
-import { runToolCall, toolDefs, visiblePages, type ToolSet } from './assistantTools';
+import { MAX_LINKS, runToolCall, toolDefs, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
 
 // ---------- the small scrubber ----------
 // The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
@@ -66,7 +66,8 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
     'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
     ...(withTools ? [
-      'You have three tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
+      'You have four tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
+      'Use show_link for the one or two best places only, and only after a search gave you the id. The button is shown for you, so never write a link, an id or a page id in your reply.',
       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
       'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
     ] : [
@@ -81,9 +82,17 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
 }
 
 // ---------- history ----------
-export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string };
+export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string; /** Buttons shown under a reply (patch 0159). Never sent to the model: only the text is. */ links?: ChatLink[] };
 export const HISTORY_CAP = 200;
 export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
+
+/** Buttons read back from storage: well formed ones only, at most MAX_LINKS. Whether each still works is checked when it is drawn. */
+export function readLinks(raw: unknown): ChatLink[] {
+  if (!Array.isArray(raw)) return [];
+  const out: ChatLink[] = [];
+  for (const l of raw) { const o = l as Record<string, unknown> | null; if (o && typeof o === 'object' && (o.kind === 'doc' || o.kind === 'screen') && typeof o.id === 'string' && o.id && typeof o.label === 'string' && o.label && out.length < MAX_LINKS) out.push({ kind: o.kind, id: o.id, label: o.label.slice(0, 120) }); }
+  return out;
+}
 
 /** Anything read back from storage is untrusted: keep well formed entries only, newest 200. */
 export function readHistory(raw: unknown): ChatEntry[] {
@@ -93,7 +102,8 @@ export function readHistory(raw: unknown): ChatEntry[] {
     if (!e || typeof e !== 'object') continue;
     const o = e as Record<string, unknown>;
     if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
-    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}) });
+    const links = o.role === 'assistant' ? readLinks(o.links) : [];
+    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}), ...(links.length ? { links } : {}) });
   }
   return capHistory(out);
 }
@@ -174,7 +184,7 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
   }
   const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
   const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
-  let messages = [...p.messages]; let calls = 0; let raw = '';
+  let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = [];
   for (;;) {
     const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
     const wanted = res.message.tool_calls ?? [];
@@ -185,10 +195,10 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
       raw = limitReply(set.limit, read); break;
     }
     messages = [...messages, { role: 'assistant', content: res.message.content ?? null, tool_calls: wanted }];
-    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; }
+    for (const c of wanted) { const r = runToolCall(c, set, a.now, a.endpoint.apiKey); set.records.push(r.record); messages.push(r.message); calls++; if (r.link && links.length < MAX_LINKS && !links.some(l => l.kind === r.link!.kind && l.id === r.link!.id)) links.push(r.link); }
   }
   if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
-  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
+  return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now(), ...(links.length ? { links } : {}) } };
 }
 /** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
 export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> { return runPrepared(f, a, prepare(a)); }
