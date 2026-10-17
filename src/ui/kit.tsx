@@ -61,6 +61,18 @@ export function Card({ children, style }: { children: React.ReactNode; style?: S
     {children}
   </View>;
 }
+/**
+ * Page dots for anything stepped through with Next and Back: the Show and Info stages, and the Customer warning popup. Not tappable.
+ * The current page is a wider pill, pages up to and including it are filled, later ones are faint. `label` is read out by screen readers.
+ */
+export function PageDots({ count, index, label }: { count: number; index: number; label?: string }) {
+  const { c } = useTheme();
+  return (
+    <View accessible={!!label} accessibilityLabel={label} accessibilityLiveRegion="polite" style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>
+      {Array.from({ length: count }, (_, k) => <View key={k} style={{ width: k === index ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: k <= index ? c.text : c.line }} />)}
+    </View>
+  );
+}
 /** Product thumbnail with a neutral placeholder when there is no image (or it fails to load). */
 export function Thumb({ uri, size = 44, radius = 10 }: { uri?: string | null; size?: number; radius?: number }) {
   const { c } = useTheme(); const [bad, setBad] = useState(false);
@@ -176,8 +188,12 @@ export function Page({ title, onBack, right, helpId = 'start', children, scroll 
   );
 }
 
-/** Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view. */
-export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string }) {
+/**
+ * Bottom sheet on phone, centred card on tablet. Sits above the keyboard and scrolls the focused field into view.
+ * `popup` makes it a centred popup on every device with no title bar, no X and no scroll of its own: the caller draws everything inside it
+ * (the Customer warning is one). It keeps the same window handling as a sheet (open gap, activity, Training layer).
+ */
+export function Sheet({ visible, onClose, title, children, full, dismissable = true, screen, popup }: { visible: boolean; onClose: () => void; title?: string; children: React.ReactNode; full?: boolean; dismissable?: boolean; screen?: string; popup?: boolean }) {
   const { c } = useTheme(); const { tablet, height } = useLayout(); const overlap = useKeyboardOverlap();
   // A window never opens in the same moment another is closing (see lib/sheetGate.ts): iOS can leave an invisible window over the screen if it does.
   // A window that is closing says so here, during the render, and not in the effect below: when a line window comes back as its Discount or
@@ -192,15 +208,19 @@ export function Sheet({ visible, onClose, title, children, full, dismissable = t
   }, [visible]);
   useEffect(() => () => { if (shownRef.current) noteSheetHide(); }, []);
   return (
-    <Modal visible={shown} transparent animationType="slide" onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
-      <View onTouchStart={noteActivity} style={{ flex: 1, justifyContent: tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay, paddingBottom: overlap }}>
+    <Modal visible={shown} transparent animationType={popup ? 'fade' : 'slide'} onRequestClose={dismissable ? onClose : undefined} supportedOrientations={['portrait', 'landscape']}>
+      <View onTouchStart={noteActivity} style={{ flex: 1, justifyContent: popup || tablet ? 'center' : 'flex-end', alignItems: 'center', backgroundColor: c.overlay, paddingBottom: overlap, paddingHorizontal: popup ? 20 : 0 }}>
         <Pressable style={{ position: 'absolute', top: 0, bottom: 0, left: 0, right: 0 }} onPress={dismissable ? onClose : undefined} accessibilityLabel="Dismiss" />
-        <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
-          <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 }}>
-            <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} spot={SPOT.sheetClose} /> : null}
+        {popup ? (
+          <View style={{ width: '100%', maxWidth: 520, maxHeight: sheetMaxHeight(height, overlap, 0.92, 32), backgroundColor: c.card, borderRadius: 24, borderWidth: 1, borderColor: c.line, padding: 20 }}>{children}</View>
+        ) : (
+          <View style={{ width: '100%', maxWidth: tablet ? 560 : undefined, maxHeight: sheetMaxHeight(height, overlap, full ? 0.94 : 0.86, tablet ? 48 : 56), backgroundColor: c.card, borderTopLeftRadius: 24, borderTopRightRadius: 24, borderBottomLeftRadius: tablet ? 24 : 0, borderBottomRightRadius: tablet ? 24 : 0, paddingBottom: overlap ? 8 : tablet ? 8 : 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16, paddingBottom: 8 }}>
+              <Txt size={18} weight="700" style={{ flex: 1 }}>{title ?? ''}</Txt>{dismissable ? <IconBtn icon="close" label="Close" onPress={onClose} spot={SPOT.sheetClose} /> : null}
+            </View>
+            <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
           </View>
-          <RevealScroll contentContainerStyle={{ padding: 16, paddingTop: 4 }}>{children}</RevealScroll>
-        </View>
+        )}
         <TrainingLayer visible={shown} screen={screen} />
       </View>
     </Modal>

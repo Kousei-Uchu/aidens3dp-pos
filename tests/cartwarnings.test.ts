@@ -2,9 +2,13 @@
 // Cart warnings: which warnings a cart sets off, their order, the "seen on this sale" memory, and always-show.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { addVariant } from '../src/lib/cartOps';
 import { matchCartWarnings, normaliseScope, pendingCartWarnings, triggerNames, unacknowledged, warningKey, warningTitle, type CartWarningCatalog } from '../src/lib/cartWarnings';
 import type { Cart, CartLine, CartWarning, Variant } from '../src/lib/types';
+import { SPOT, isKnownSpot } from '../src/lib/trainingSpots';
+import { SPOT_SCREEN } from '../src/lib/appControls';
 
 const P = (n: number) => `gid://shopify/Product/${n}`;
 const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
@@ -87,4 +91,25 @@ test('only warnings that must be ticked hold the cashier up, and ticking clears 
 test('a blank header shows as Customer Warning', () => {
   assert.equal(warningTitle({ title: '   ' }), 'Customer Warning');
   assert.equal(warningTitle({ title: 'Fragile' }), 'Fragile');
+});
+
+// The window: the popup is the warning itself, paged like Show (0145). These read the source, like the spot tests do.
+const src = (p: string) => readFileSync(join(process.cwd(), p), 'utf8');
+
+test('the popup keeps every control as a spot on the warning window, including Back to cart', () => {
+  for (const id of [SPOT.warningBack, SPOT.warningNext, SPOT.warningAcknowledge, SPOT.warningContinue, SPOT.warningCancel]) { assert.ok(isKnownSpot(id), id); assert.equal(SPOT_SCREEN[id], 'sheet_cart_warnings', id); }
+  assert.match(src('src/app.navgraph'), /sheet_cart_warnings -> page_cart .*"target": "warning\.cancel"/);
+});
+
+test('the popup uses the shared dots, is a Sheet popup (so it keeps the open gap and Training layer) and has no card inside it', () => {
+  const sheet = src('src/screens/CartWarningsSheet.tsx');
+  assert.match(sheet, /<Sheet [^>]*\bpopup\b[^>]*screen="sheet_cart_warnings"/);
+  assert.match(sheet, /<PageDots /); assert.doesNotMatch(sheet, /<Card\b/); assert.doesNotMatch(sheet, /<Modal\b/);
+  assert.match(src('src/screens/TrainingRun.tsx'), /<PageDots /);
+  const kit = src('src/ui/kit.tsx'); assert.match(kit, /export function PageDots/); assert.match(kit, /popup \? 'fade' : 'slide'/);
+});
+
+test('Next becomes Continue to payment on the last warning, on the same spots as before', () => {
+  const sheet = src('src/screens/CartWarningsSheet.tsx');
+  assert.match(sheet, /spot=\{SPOT\.warningNext\} title="Next"/); assert.match(sheet, /spot=\{SPOT\.warningContinue\} title="Continue to payment" disabled=\{need\.length > 0\}/);
 });

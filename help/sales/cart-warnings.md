@@ -12,10 +12,10 @@ A customer warning is a message the till shows the cashier when they press **Cha
 ## Basic
 
 ### What the cashier sees
-Tap **Charge**. If anything in the cart has a warning, a window called **Customer warning** (or whatever header was set) opens before the price adjustments and bundle checks.
-- It shows one warning at a time, with *Warning 1 of 3* at the top and **For:** under the message naming the items that set it off.
-- Tap **Next** and **Back** to move between them.
-- On the last warning, tap **Continue to payment**. **Back to cart** closes the window so you can change the cart.
+Tap **Charge**. If anything in the cart has a warning, a popup opens before the price adjustments and bundle checks. The popup is the warning: its title is the header that was set (*Customer Warning* if left blank), with a warning icon, and the message is the big text in the middle. **For:** under the message names the items that set it off.
+- With one warning there is just the message, **Continue to payment** and **Back to cart**.
+- With several warnings it is still one popup, one warning per page. Dots at the bottom show which page you are on. Tap **Next** and **Back** to move between them.
+- On the last warning, **Next** becomes **Continue to payment**. **Back to cart** is on every page and closes the popup so you can change the cart.
 - If a warning needs ticking, tap **I have read this and dealt with it** on each one. **Continue to payment** stays off until every warning that needs it has been ticked, and a note says how many are left.
 
 Once you have carried on from a warning, it is not asked again on the same sale unless it changes (its text is edited, or another line sets it off). A warning set to always show comes up every time you press Charge.
@@ -46,7 +46,7 @@ Charge runs the checks in this order, and each one only appears if it applies: c
 When you tap **Continue to payment**, the till remembers each warning you carried on from, along with which cart lines set it off and the exact header and message. If you come back to the cart and press Charge again, only warnings that are new or changed appear. Warnings set to always show are never remembered. Starting a new sale (an empty cart) forgets everything.
 
 ### Ticking
-Ticking is per warning, and it resets each time the window opens, so a cashier cannot tick on one visit and skip on the next. Ticking again un-ticks. **Next** and **Back** are always free, and **Continue to payment** only appears on the last warning so every one is paged through.
+Ticking is per warning, and it resets each time the window opens, so a cashier cannot tick on one visit and skip on the next. Ticking again un-ticks. **Next** and **Back** are always free, and **Continue to payment** only takes the place of **Next** on the last warning so every one is paged through.
 
 ### Order of the warnings
 Warnings appear in the order they were added in Settings.
@@ -68,12 +68,12 @@ flowchart TD
 
 ### Where it lives
 - `src/lib/cartWarnings.ts`: `matchCartWarnings` finds which warnings the cart sets off (variant, product, or collection through `collectionsOfProduct`; `category` is read as `collection`), `warningKey` fingerprints one, `pendingCartWarnings` drops those already seen, `unacknowledged` lists those still to tick.
-- `src/screens/CartWarningsSheet.tsx`: the window, and `useCartWarningGate`, the hook both checkouts use.
+- `src/screens/CartWarningsSheet.tsx`: the popup, and `useCartWarningGate`, the hook both checkouts use. It is a `Sheet` in popup mode (`src/ui/kit.tsx`), with the dots from `PageDots`, the same ones the Show stage uses.
 - `src/screens/CartWarningsSettings.tsx`: the editor under Settings ▸ Cart warnings.
 - `Settings.cartWarnings` in `src/state/store.ts`, typed by `CartWarning` in `src/lib/types.ts`.
 - Shared between registers by `pushSharedSettings` and `pullSettings` in `src/lib/sync.ts`.
 - `sandboxSettings` in `src/lib/trainingSandbox.ts` sets `cartWarnings: []` so practice never meets the real ones.
-- Window controls are the `warning.*` spots in `src/lib/trainingSpots.ts`, placed on `sheet_cart_warnings` in `src/lib/appControls.ts` and `src/app.navgraph`.
+- Popup controls (Back, Next, the tick, Continue to payment, Back to cart) are the `warning.*` spots in `src/lib/trainingSpots.ts`, placed on `sheet_cart_warnings` in `src/lib/appControls.ts` and `src/app.navgraph`.
 
 ### Tracing a warning that does not show
 1. Is it **On** in Settings ▸ Cart warnings, and does it have a message and a target (or Show on every sale)?

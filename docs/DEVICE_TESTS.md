@@ -573,11 +573,12 @@ On the iPad and on a phone. Use More ▸ Settings ▸ Cart warnings.
 
 1. Add a warning: header *Customer Warning*, message *Joints are fragile, do not bend or apply pressure as it will snap.*, **Shows when the cart has** a **Product**, and pick a mini dragon from the search list. Save. It appears in the list with the product's name.
 2. Add a second one for a **Category** (a collection), with its own header and message, and turn on **Cashier must tick it**. Add a third with **Show on every sale** on (the target list disappears).
-3. Put a mini dragon in the cart and tap **Charge**. Pass: **Customer warning** opens before anything else, says *Warning 1 of …*, lists the mini dragon under **For:**, and **Next** and **Back** move between pages. The always-on warning is in there too.
-4. Go to the last page. On the ticked-required warning, **Continue to payment** is off and a note says how many to tick. Tick it on its own page and Continue switches on. Pass: ticking only the page you are on is not enough if two need it.
+3. Put a mini dragon in the cart and tap **Charge**. Pass: a popup opens before anything else. Its title is the header you set, the message is the big text in the middle (not in a box), the mini dragon is listed under **For:**, there are dots at the bottom, and **Next** and **Back** move between pages with a quick slide. The always-on warning is in there too. There is no *Warning 1 of …* line and no X.
+4. Go to the last page. Pass: **Next** has become **Continue to payment**. On the ticked-required warning it is off and a note says how many to tick. Tick it on its own page and Continue switches on. Pass: ticking only the page you are on is not enough if two need it.
 5. Tap **Continue to payment**. Pass: the Payment screen opens (or the price adjustment review, if the sale has one). Go back and tap Charge again: only the always-on warning comes up.
 6. Edit the mini dragon warning's message, go back to the cart and Charge. Pass: that warning comes back with the new text.
 7. Turn a warning **Off** and Charge: it does not appear. Delete one: it asks first.
 8. In Settings ▸ Staff, switch a cashier to **Minimal**, sign in as them, and Charge. Pass: the same window appears before payment.
 9. With a second register, wait about 25 seconds. Pass: the warnings are on it too.
 10. **Most important:** More ▸ Training, start any course with a warning set to always show. Pass: the practice till never shows the real warning, and Charge goes straight on.
+11. (0145) On a phone and on the iPad in landscape, give one warning a very long message. Pass: the message scrolls inside the popup while the dots and buttons stay on screen, and the dots and buttons do not move when you go between a short page and a long one. Turn on Reduce Motion: pages change with no slide. Tap **Back to cart**: the popup closes and the cart is as it was. With only one warning in the cart there are no dots and no Back or Next.

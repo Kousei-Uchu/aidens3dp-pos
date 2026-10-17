@@ -81,6 +81,7 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.warningNext]: 'sheet_cart_warnings',
   [SPOT.warningAcknowledge]: 'sheet_cart_warnings',
   [SPOT.warningContinue]: 'sheet_cart_warnings',
+  [SPOT.warningCancel]: 'sheet_cart_warnings',
   [SPOT.lineDone]: 'tab_checkout',
   [SPOT.scanCamera]: 'tab_checkout',
   [SPOT.scanDone]: 'tab_checkout',

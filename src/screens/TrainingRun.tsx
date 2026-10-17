@@ -5,7 +5,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, ScrollView, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { Btn, Page, Txt, alertMsg } from '../ui/kit';
+import { Btn, Page, PageDots, Txt, alertMsg } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useSpotlight } from '../ui/spotlight';
 import { useNav, type Tab } from '../ui/nav';
@@ -58,7 +58,7 @@ export default function TrainingRun() {
  * Nothing moves on by itself: Next goes to the following step, Back returns to the one before, Replay plays the current step again.
  */
 function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
-  const { c } = useTheme(); const win = useWindowDimensions(); const side = demoLayout({ w: win.width, h: win.height }) === 'side';
+  const win = useWindowDimensions(); const side = demoLayout({ w: win.width, h: win.height }) === 'side';
   const demo = scene === 'info' ? mod.info : mod.show; const last = demo.steps.length - 1; const [i, setI] = useState(0); const [replay, setReplay] = useState(0); const step = demo.steps[i];
   const go = () => useTraining.getState().completeStage();
   // The picture takes whatever room is left and the words and buttons are always on screen with it, so nothing needs scrolling:
@@ -71,7 +71,7 @@ function Demo({ mod, scene }: { mod: TrainingModule; scene: 'info' | 'show' }) {
   );
   const controls = (
     <View style={{ gap: 12 }}>
-      <View style={{ flexDirection: 'row', gap: 6, justifyContent: 'center' }}>{demo.steps.map((_, k) => <View key={k} style={{ width: k === i ? 22 : 8, height: 8, borderRadius: 4, backgroundColor: k <= i ? c.text : c.line }} />)}</View>
+      <PageDots count={demo.steps.length} index={i} />
       <View style={{ flexDirection: 'row', gap: 10 }}>
         <Btn title="Back" kind="secondary" disabled={i === 0} onPress={() => setI(i - 1)} style={{ flex: 1 }} />
         <Btn title="Replay" kind="secondary" icon="refresh" onPress={() => setReplay(replay + 1)} style={{ flex: 1 }} />

@@ -19,7 +19,7 @@ Legend: ✅ built · 🧪 built + unit-tested logic · ⚠️ partial/simplified
 - ✅ Cart ⋯ menu: Clear, Save, Create customer, Custom amount, Cart discount, Sell gift card, Check gift card
 - 🧪 Automatic discounts + bundles, struck-through price and deal name; `no-discount` tag; manual discounts incl. Shopify code presets and custom %/$ keypad
 - ✅ Customer attach
-- 🧪 Customer warnings: Settings ▸ Cart warnings (item, product or category, or every sale; optional must-tick); Charge shows them first, one page each with Next / Back: `CartWarningsSettings.tsx`, `CartWarningsSheet.tsx`, `lib/cartWarnings.ts`
+- 🧪 Customer warnings: Settings ▸ Cart warnings (item, product or category, or every sale; optional must-tick); Charge shows them first in one popup, one page each with dots and Next / Back (Next becomes Continue to payment on the last): `CartWarningsSettings.tsx`, `CartWarningsSheet.tsx`, `lib/cartWarnings.ts`
 - 🧪 Charge: Card / Cash / Gift card / Split Amount (enter first payment or split equally); partial approved tenders persist on the sale (no void timer)
 - 🧪 Card: live `onEvent` status; declines & 51/1009 messages keep cart; unknown result → "Checking…" via `getTransactions({reference})`, never re-charge until resolved, manual resolve logs who
 - 🧪 Cash: chips + custom, 5c rounding, change shown
