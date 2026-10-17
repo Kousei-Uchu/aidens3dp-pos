@@ -22,22 +22,23 @@ import { HardwareTest } from './ScannerSpeed';
 import { SquareHistorySettings } from './SquareHistory';
 import { useCashProfile } from '../state/cashProfile';
 import { CartWarningsSettings } from './CartWarningsSettings';
+import { AssistantSettings, useCanEditAssistant } from './AssistantSettings';
 import { profileNote } from '../lib/changeScore';
 import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
 import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
 
-type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings';
+type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings' | 'assistant';
 const HELP_PAGE: Record<Sub, string> = {
   menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
   data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
-  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings',
+  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings', assistant: 'settings/assistant',
 };
 
 export default function Settings() {
   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
-  const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
-  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings' };
+  const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const canAssistant = useCanEditAssistant();
+  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings', assistant: 'AI assistant' };
   return (
     <Page title={titles[sub]} onBack={back} helpId={HELP_PAGE[sub]}>
       {sub === 'menu' ? <>
@@ -50,6 +51,7 @@ export default function Settings() {
           <Row icon="archive-outline" title="Square history" sub="Import old Square sales for reports" onPress={() => setSub('square')} />
           <Row icon="grid-outline" title="Grid import / export" onPress={() => setSub('grid')} />
           <Row icon="warning-outline" title="Cart warnings" sub="Prompts when certain items or categories are in cart" onPress={() => setSub('warnings')} />
+          {canAssistant ? <Row icon="sparkles-outline" title="AI assistant" sub={s.assistant.model ? s.assistant.model : 'Not set up'} onPress={() => setSub('assistant')} /> : null}
           <Row icon="gift-outline" title="Gift cards" onPress={() => setSub('gift')} />
           <Row icon="receipt-outline" title="Receipts" sub={s.receipt.serverUrl ? (s.receipt.gstRegistered ? 'Tax invoices · QR link' : 'Receipts · QR link') : 'Not set up'} onPress={() => setSub('receipts')} />
           <Row icon="swap-horizontal-outline" title="Backup & transfer" sub="Move settings and logins to another device" onPress={() => setSub('backup')} />
@@ -103,6 +105,7 @@ export default function Settings() {
           <Toggle label="Show item image" value={s.itemSpotlight.image} onChange={image => patch({ itemSpotlight: { ...s.itemSpotlight, image } })} />
         </Section></View> : null}
       {sub === 'warnings' ? <CartWarningsSettings /> : null}
+      {sub === 'assistant' ? <AssistantSettings /> : null}
       {sub === 'about' ? <Section><Row title="Register" sub={`${s.registerName} · ${s.registerId}`} /><Row title="Shopify API" sub="2026-07" /><Row title="Currency" sub="AUD" last /></Section> : null}
       {sub === 'about' ? <View style={{ padding: 16 }}><Field kind="name" label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
     </Page>

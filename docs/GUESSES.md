@@ -31,11 +31,11 @@ Everything in this file is a guess from me, not a decision from you.
 - The style skill is adopted from `conorbronsdon/avoid-ai-writing` (MIT). Its rules apply to any prose I write
   in this repo: docs, Help text and commit messages. Australian English, no em or en dashes in editable prose,
   and none of the AI phrasings it lists.
-- **Model policy**, if any writing-assistant runs in this project: use a model that is **free forever** and has
-  a **validated zero-retention policy**. An **on-device or local-network model is preferred**. If a hosted model
-  is used, it must be served through **OpenRouter** and meet both conditions. Guess: prefer a local model
-  (for example Ollama on the same Mac) and fall back to a free OpenRouter model only when no local model is
-  available. The exact model id is recorded in `docs/WRITING_ASSISTANT.md`.
+- **Model policy** (changed 17 October 2026, patch 0148): the chatbot's model is a Settings entry using the
+  OpenAI-compatible API, so any provider works, Ollama included. There is no hard-wired model and no hosted
+  fallback of ours. What the model may see depends on whether the address is local (private network, this device,
+  `.local`) or remote, enforced in code. Details and the data rules are in `docs/WRITING_ASSISTANT.md` and
+  `docs/AI_ASSISTANT_PLAN.md`.
 
 ## Other guesses
 

@@ -1,0 +1,1657 @@
+diff --git a/app.json b/app.json
+index 5707cbe..873e670 100644
+--- a/app.json
++++ b/app.json
+@@ -19,7 +19,7 @@
+         "UIStatusBarHidden": true,
+         "UIViewControllerBasedStatusBarAppearance": false,
+         "NSAppTransportSecurity": { "NSAllowsLocalNetworking": true },
+-        "NSLocalNetworkUsageDescription": "Used once to copy your old Square sales history from your PC on the same Wi-Fi."
++        "NSLocalNetworkUsageDescription": "Used to copy your old Square sales history from your PC, and to reach the AI assistant's model if you run it on a computer on the same Wi-Fi."
+       },
+       "appleTeamId": "HD264P8365"
+     },
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+new file mode 100644
+index 0000000..0627543
+--- /dev/null
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -0,0 +1,466 @@
++# In-app AI assistant: planning document
++
++Repo: `github.com/Kousei-Uchu/aidens3dp-pos` (branch `dev`). Checked against the repo on 17 October 2026.
++
++This document is the starting point for planning the Help menu chatbot. Part 1 is what the repo says today.
++Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
++Part 4 is how to work in this repo.
++
++**Revision 8 (17 October 2026), patch 0148:** the plan was checked against the repo and patch 1 was built.
++Changes from the check: the latest patch was 0146, not 0143, and a scanner patch took 0147 before patch 1 was finished, so patch 1 is 0148; there are three roles
++(cashier, manager, owner), so "manager only" now means the same rule as price adjustment permissions (an owner, or a
++manager when the team has no owner); and the assistant settings, including the API key, are part of Backup & transfer
++(decided by the owner). Patch 1 (3.10) is done: the Settings page, the OpenAI-compatible client, Test connection,
++the local or remote classifier, and the policy docs. Nothing else is built.
++
++**Revision 7 (17 October 2026), final:** the six points in 3.11 are confirmed (all yes), with one change: the manager
++can change the context size in Settings. Nothing is left open.
++
++**Revision 6:** all 19 questions answered. New sections: 3.6 audit log, 3.7 practice mode coach, 3.8 limits,
++3.9 reply style and language, 3.10 patch order and 3.11 (six small points). Tools 10 to 15 are all accepted.
++
++**Revision 5:** question 7 answered (chat history), the roles reply changed so the model does not know about
++restricted things at all (3.4), and new section 3.5 on chat history.
++
++**Revision 4:** question 4 answered (everyone can use it, roles limit what it knows), new section 3.4 on roles.
++
++**Revision 3:** the four points left to confirm in revision 2 are settled, and question 3 (what happens when the
++model is unreachable) is answered, see 3.3.
++
++**Revision 2:** owner answers added for the model setup (questions 1 and 2) and for data access (questions 5 and 6).
++The tool list has grown. The model decision in 1.3 is now superseded, see 3.1.
++
++## 1. What exists today
++
++### 1.1 Status
++
++Patch 0148 added the Settings page and the connection client. There is still no chat screen, no tools and no
++data gate. The written spec and model policy are in the files below.
++
++| Where | What it holds |
++| --- | --- |
++| `docs/WRITING_ASSISTANT.md`, section "The in-app AI assistant (Help menu chatbot)" | The spec of what the chatbot should do |
++| `docs/WRITING_ASSISTANT.md`, section "The model" | The model policy as changed in 0148 |
++| `docs/GUESSES.md`, section "The writing assistant (style skill and model)" | Repeats the model policy and points to the spec |
++| `src/lib/assistantConfig.ts`, `assistantClient.ts`, `assistantKey.ts`, `src/screens/AssistantSettings.tsx` | Patch 0148: settings, address reading, local or remote, the client, the key |
++
++The style checker is not the chatbot. It scans text for AI-sounding writing and for em and en dashes, uses no model,
++and is run with `node scripts/style-check.mjs`. It lives in `.opencode/skills/ai-writing-detector/` and
++`.opencode/skills/avoid-ai-writing/`. The chatbot has to follow the same style rules in its replies.
++
++### 1.2 The spec (as written in the repo)
++
++A chatbot lives in the Help menu. It answers questions, guides the cashier to the right screen, looks up Shopify
++data (products, customers, orders, gift cards), and searches the docs.
++
++It is given read-only tools:
++
++1. Navgraph search: find a screen by name or purpose.
++2. Docs search: training manuals, specs, checklists.
++3. Shopify data search: products, variants, customers, orders, gift cards.
++4. Local CSV export: sales history.
++
++It never performs actions that change state. No price changes, no refunds, no cart edits, no settings changes. It
++only answers and points.
++
++It follows the app's style rules: Australian English, no em dashes, no en dashes.
++
++The tool list is extended in 3.2. The read-only rule and the style rules stay as they are.
++
++### 1.3 The model decision (recorded 15 Oct 2026, superseded)
++
++The first decision was a local model only, with no hosted fallback, because every free model on OpenRouter retains
++prompts on its free endpoint. The owner then asked for the model to be a setting using the OpenAI-compatible API,
++so any provider works, including Ollama. The app can no longer guarantee zero retention by construction, because
++the endpoint is the owner's choice. The guarantee moved into the app's data rules (3.1): what the model is allowed
++to see depends on whether the endpoint is local. `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` were updated in
++0148 to say this.
++
++### 1.4 Existing parts the assistant can build on
++
++These are in the repo now and are the likely sources for the tools. Check each in the code before relying on it.
++
++- **Navgraph:** `src/app.navgraph` is the hand-written map of screens and the way between them. It is built into
++  `src/lib/appNavgraph.generated.ts` by `npm run graph:build`. `src/lib/appControls.ts` says which screen each
++  control (spot) lives on. Screens and edges can carry `roles` (`roleCanReach` in `src/lib/appGraph.ts`), which the
++  role filter in 3.4 can reuse. Settings sub pages are not nodes in the graph.
++- **Help docs:** Markdown pages under `help/`, each with Basic, Deep and Advanced sections, built into
++  `help/help.json` by `npm run help:build`. `src/screens/Help.tsx` is the Help screen. `src/lib/helpRemote.ts` and
++  `docs-server/` serve the same pages to the website. `help/README.md` explains the page format. Whether help pages
++  carry role information is not yet checked (needed for 3.4).
++- **Shopify data:** `src/lib/shopify/catalogue.ts` imports variants, collections and customers. The local catalogue
++  is in the app store (`useApp(s => s.data)`), read through `useCatalogue()` in `src/state/selectors.ts`.
++  Orders are in `src/lib/shopify/orders.ts` and `orderModel.ts`. Gift cards are in the gift card code.
++- **Sales history:** local sales records and the CSV export under Settings > Data. Square history can also be
++  imported.
++- **Roles:** `Role` is `cashier | manager | owner` (`src/lib/types.ts`). `actingRole()` and `canEditAdjustPerms()` in
++  `src/lib/adjustPerms.ts` decide who may do what. A till with no PIN lock acts as the owner.
++- **Training:** `src/lib/trainingSandbox.ts` swaps in a practice till. `src/lib/trainingGuard.ts` (`isTraining()`)
++  is the one flag that blocks real writes and sends. Hints are a ladder in `src/lib/trainingHints.ts`, and each
++  goal in `src/lib/trainingModule.ts` has its own `ladder` and a separate `reveal` spot, so hints and answers look
++  separable (to confirm in patch 9).
++- **Settings sharing:** `pushSharedSettings` in `src/lib/sync.ts` shares some settings between registers by an
++  explicit list. The model address and key are per-register settings and are not on it (a test checks this).
++- **Backups:** `src/lib/backupFile.ts` and `backupIO.ts` export the whole settings object and the logins. The
++  assistant settings and key travel in them (owner's decision).
++
++## 2. What is not built
++
++Built in 0148: the Settings section and the OpenAI-compatible client with Test connection (3.1), the local or
++remote classification, and the policy docs.
++
++Still to do:
++
++- A chat screen and an entry for it in the Help menu.
++- The offline mode (3.3): a visible error plus a model-free search of the navgraph and docs.
++- Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
++  before anything reaches the model or the screen.
++- The read-only tools (3.2).
++- The audit log and its manager-only viewer (3.6).
++- The practice mode coach (3.7).
++- Model-free product and inventory lookup for the offline mode (3.3).
++- The data gate: the category rules and override toggles, and the scrubber (3.1). All enforced in code.
++- The prompt that tells the model its rules (read-only, Australian English, no dashes, say when it does not know).
++- A way to keep it from changing anything, enforced in code and not only in the prompt.
++- Tests, a help page, a device test and a progress log entry for each later patch.
++
++## 3. Decisions
++
++All 19 questions are answered. Where an answer needed design work, the design is in 3.1 to 3.10. Six small points
++that came out of the answers were confirmed in 3.11.
++
++1. **Where does the model run?**
++   Answer: wherever the owner points it. It is a Settings entry, not a fixed machine. Examples: Ollama on the shop
++   PC over the Wi-Fi, or a hosted provider.
++2. **Which model and runtime?**
++   Answer: any provider that speaks the OpenAI-compatible API. Settings hold URL, API key, model name and whatever
++   else is needed (see 3.1). No model id is hard-wired. Ollama must work.
++3. **When the model is unreachable, what should the chat say? Should it still search the docs without a model?**
++   Answer: yes, it still searches without a model, and it also shows an error. Details in 3.3.
++4. **Who can use it? Does Simple or Minimal mode change it?**
++   Answer: everyone can use it. Simple and Minimal modes leave it as it is for now, with shrinking it as a
++   possible later change. What each role can ask about is limited by 3.4.
++5. **What data may it see?**
++   Answer: see the data rules table in 3.1.
++6. **Is anything sent to the model that identifies a customer?**
++   Answer: only when the endpoint is local, and the owner can override per category (3.1).
++7. **Chat history:** kept on the device, kept per staff member, or cleared when the chat closes?
++   Answer: kept on the device, kept per staff member, and cleared only manually. Details in 3.5.
++8. **"Guide me there":** point with the same highlight arrows training uses, or only say where to tap?
++   Answer: say where to tap first, add the highlight arrows in a later patch.
++9. **Practice mode:** can it be used during Training? Does it then see only practice data?
++   Answer: yes, as a coach that works like the hint button but smarter. It must not hand over the answers and turn
++   training into a free ride. Details in 3.7.
++10. **Scope of the first patches:**
++    Answer: the suggested order was accepted, then adjusted to fit later answers. The current order is in 3.10.
++11. **Languages:** English only?
++    Answer: English only for the interface and help. The model may reply in the cashier's language, but only if that
++    costs essentially no extra work. Details in 3.9.
++12. **Shopify data search:** from the local catalogue only, or live queries to Shopify?
++    Answer: local catalogue and local order records only.
++13. **Anything else it should do or must not do:**
++    Answer: nothing else for now.
++14. **Proposed tools 10 to 15 in 3.2:**
++    Answer: yes to all six. Tools 12 and 15 can come later in the order but are in.
++15. **Offline product and inventory lookup:**
++    Answer: as early as possible, but not in the very first patches. See 3.3 and 3.10.
++16. **Who may change the assistant's settings** (endpoint, key, model, category toggles)?
++    Answer: the manager role. Settled in 0148 as the same rule as price adjustment permissions: an owner, or a
++    manager when the team has no owner. A till with no accounts acts as the owner. Other roles do not see the row.
++17. **Audit view:**
++    Answer: yes, and as a full log of every conversation for all users for all time, so every event can be seen.
++    Details in 3.6.
++18. **Limits:** tool calls per question, context, timeout.
++    Answer: many tool calls (unsure whether a limit is needed), as much context as the model allows (unsure how this
++    works), 120 seconds. Explained and settled in 3.8.
++19. **Reply style:**
++    Answer: short by default with a "more detail" option, and the model scales the length to the size of the
++    question. Details in 3.9.
++
++### 3.1 Model setup and data rules
++
++**Settings (per register, never synced; built in 0148 except the category toggles):**
++
++- Base URL, for example the shop PC's address and port with `/v1`.
++- API key (optional, since Ollama does not need one). Stored in the Keychain only and never shown back in full,
++  never logged, never sent to the model, never included in the sync. **It is included in Backup & transfer**, with
++  the other logins (owner's decision), so a restored iPad can reach the same model. The address, model name and
++  options travel in the backup too.
++- Model name.
++- Extra options: temperature, request timeout (default 120 seconds), context size and the tool call limit (3.8).
++- Only an owner, or a manager when there is no owner, can see or change any of these (see question 16).
++- "Test connection": checks the endpoint answers, the model replies, and a trivial tool call works. It sends fixed
++  test text and nothing from the shop.
++- "Treat this endpoint as local" switch, as a manual override (see below).
++
++**Local or remote:** the app classifies the endpoint from its host. Local means `localhost`, `127.x.x.x`, `::1`, the
++private ranges (`10.x.x.x`, `172.16.x.x` to `172.31.x.x`, `192.168.x.x`) and `.local` names. Everything else is
++remote. The manual switch exists because some local-looking addresses forward traffic out (a tunnel or a proxy),
++and because some owners will want a private network that the rules do not recognise. The default for an unknown
++or unreadable host is remote. The switch can only make an address local.
++
++**Data rules (owner's answers):**
++
++| Data | Local endpoint | Remote endpoint |
++| --- | --- | --- |
++| Customer names, phone numbers, addresses and any other personally identifiable data | Allowed | Never sent |
++| Email addresses | Allowed | Never sent |
++| Gift card balances | Allowed | Never sent |
++| Gift card codes | Last four characters only | Never sent |
++| Payment information (card details, tender and terminal details) | Never sent | Never sent |
++| Anything that looks like a secret key, token or password | Never sent | Never sent |
++| Order totals and line items | Allowed, customer fields removed unless the customer rule allows them | Allowed, customer fields removed |
++| Cost prices and profit | Allowed | Allowed |
++| Inventory levels, sales history, product and variant data, deals, cash drawer status, date and time | Allowed | Allowed, customer fields removed |
++
++Confirmed by the owner:
++
++- Payment information and secret-key lookalikes are never sent, even to a local endpoint. Emails and other
++  personal data are sent only to a local endpoint.
++- Gift card codes are masked to the last four characters even on a local endpoint. Balances are local only.
++
++**Per-category override toggles:** each category in the table gets a Settings toggle with three states: Auto
++(follow the table above), Always allow, and Never allow. The two "never sent" rows (payment information and
++secrets) have no Always allow state. The owner asked for these toggles. They are built with the gate (patch 5).
++
++**Enforcement in code, not in the prompt:**
++
++- Every tool result passes through one gate before it goes into the request. The gate removes or masks fields by
++  category, using the endpoint classification and the toggles.
++- A scrubber runs over all text going out, including free text fields such as order notes and customer notes,
++  where personal data tends to hide. It masks things that look like email addresses, phone numbers, card numbers
++  (digit runs that pass the Luhn check), and keys (long random strings, `sk-` style prefixes, bearer tokens).
++- The same scrubber runs over what the cashier types into the chat, so a pasted email or card number never leaves
++  the device (confirmed by the owner).
++- The gate has its own tests, and a test that fails the build if a tool returns a field the gate does not know
++  about.
++
++### 3.2 Tools
++
++**Asked for by the owner:**
++
++1. Navgraph search: find a screen by name or purpose.
++2. Docs search: training manuals, specs, checklists.
++3. Shopify data search: products, variants, customers, orders, gift cards.
++4. Sales history: local sales records, including the CSV export and imported Square history.
++5. Inventory levels.
++6. Product and variant data.
++7. Deals.
++8. Cash drawer status and tools (read-only, see the question below).
++9. Current date and time.
++
++**Cash drawer (confirmed by the owner):** status only (what the drawer should hold, the float report, change
++breakdowns) plus calculators. Opening the drawer, recording a count, or anything that writes is out, because of
++the read-only rule.
++
++**Proposed by Claude, all six accepted by the owner (12 and 15 may come later in the order):**
++
++10. Screen and register context: which screen the cashier is on, the display mode, the staff role and whether
++    practice mode is on. This is what makes "guide me there" work from where the cashier is standing.
++11. Current cart: contents, totals and active warnings, read-only. Lets it answer "why won't this sale go
++    through".
++12. Settings reader: current values of non-secret settings, read-only. The model key and any other secret is
++    excluded in code.
++13. Calculators: change breakdown, split payments and float suggestions, using the app's own algorithms and
++    returning numbers only. Small models do arithmetic badly, so this stops them guessing.
++14. Report summaries: daily totals, top sellers, takings by tender, already added up. Small local models are poor
++    at crunching raw sales rows, so a pre-added summary is more reliable than the raw history alone.
++15. App and sync status: app version, last sync time, whether the printer and terminal are connected, and a
++    scrubbed recent error list. Useful for "something is not working" questions.
++
++**Rules that apply to every tool:**
++
++- Read-only, enforced in code. Tools are plain functions that read state and return data. None is given a
++  reference to anything that can write.
++- Every result goes through the gate in 3.1.
++- In practice mode some tools are switched off or limited to practice data (3.7).
++- Every result has a size limit, so a big sales history cannot flood a small model's context.
++
++### 3.3 When the model is unreachable
++
++Owner's answer: still search without a model, and show an error as well.
++
++- **The error is always shown.** A banner at the top of the chat says what went wrong in plain words. The causes to
++  tell apart: not set up yet, endpoint unreachable, request timed out, key rejected, model name not found, and the
++  model does not support tool calling (these are the error kinds in `assistantClient.ts`). The banner has "Retry"
++  and "Open model settings". The text never contains the API key.
++- **The chat keeps working as a search.** While the model is down, what the cashier types is run through the
++  navgraph search and the docs search, and the results are shown as a list: screens to open and help pages to read.
++  The role filter in 3.4 applies to this list too. Each result can be opened, and screens can use "guide me there"
++  once question 8 is built. No model text is generated in this mode.
++- **It says what it is doing.** The results are labelled something like "Model offline, showing search results", so
++  nobody mistakes a list of matches for an answer.
++- **It recovers on its own.** The next message retries the model first, and the banner clears when the endpoint
++  answers.
++- **Product and inventory lookup, with no model (owner wants this early, but not first):** in offline mode the
++  search box also looks up products, variants and stock levels from the local catalogue and shows them as a list.
++  It reuses the same product and inventory tools the model uses, so there is one implementation. The data never
++  leaves the device, so the remote rules in 3.1 do not come into it, but the role filter in 3.4 still does. It comes
++  right after those tools exist (3.10).
++
++### 3.4 Roles and permissions
++
++Owner's rule: if a role lacks access to something, the assistant does not guide them to it, does not do it for
++them, and does not tell them anything about it.
++
++How that is built, all in code:
++
++- **One permission check.** The assistant reuses whatever the app already uses to decide what a role may open or
++  see (`actingRole`, `roleCanReach` and the screens' `roles`). It does not get a second list of its own that could
++  drift out of step.
++- **The model is only given what the role may use.** Tools the role cannot use are left out of the request
++  entirely. The tools that remain return only what the role may see, so there is nothing for the model to leak.
++- **Navgraph and docs search are filtered.** Screens the role cannot open do not appear in results, and neither do
++  help pages about features it cannot use. This applies to the model's searches and to the offline search in 3.3.
++- **The prompt never names restricted things.** The instructions to the model are built per role, so a restricted
++  screen or feature is not mentioned in them at all.
++- **The model does not know restricted things exist.** Because of the points above, a question about a restricted
++  feature gets the same reply as a question about something that does not exist, the standard "I couldn't find
++  anything on that" reply used whenever the tools return nothing. There is no separate "you are not allowed"
++  message, because that would confirm the thing is there. The prompt must tell the model to answer only from tool
++  results, so it does not fill the gap from general knowledge (for example by explaining how refunds usually work).
++  Tests should ask restricted questions as a restricted role and check that the reply gives nothing away.
++- **Guidance and highlights follow the same filter.** "Guide me there" never points at a screen the role cannot
++  open.
++- **History follows the staff member, not the register.** Each staff member sees only their own history (3.5). If a
++  staff member's role later loses access to something, history that mentions it is hidden or removed.
++
++### 3.5 Chat history
++
++Owner's answer: on the device, per staff member, cleared only manually.
++
++- **Stored on the device only.** It is never part of the sync between registers, never in the shared settings and
++  never in an export or backup that leaves the device.
++- **One history per staff member.** Switching staff switches to that person's own history.
++- **Cleared only by hand.** A "Clear history" button in the chat clears the signed-in staff member's history. There
++  is no automatic clearing, and clearing it does not touch the audit log (3.6).
++- **The gate runs on the stored history again at send time.** Old messages may hold personal data from a time when
++  the endpoint was local. If the endpoint is later changed to a remote one, that history must not be sent on with
++  the next question. So every request re-applies the current gate and scrubber to the history it includes, using
++  the current endpoint and toggles, and not the ones in force when the message was written.
++- **Only recent messages are sent as context** (see 3.8). The full history stays on the device for the cashier to
++  scroll.
++- **Storage is capped**, with the oldest messages dropped first, so the history cannot grow without limit on an iPad.
++- **No keys in history.** The API key is never stored in or near the chat history.
++
++### 3.6 Audit log
++
++Owner's answer: a full log of every conversation, for every staff member, for all time, so every event can be seen.
++
++- **What is recorded:** each message the staff member sent (after the scrubber), each model reply, each tool call
++  and the result that was sent to the model (after the gate), the endpoint and model used and whether it counted as
++  local or remote, errors, offline searches, the staff member and role, whether practice mode was on, time stamps,
++  and for each request a count of what was masked or withheld and in which category.
++- **What is not recorded:** the API key, and the content of anything the gate withheld. The log keeps the
++  category and count of withheld items, not the items. So the log never holds more than the model was sent.
++- **Separate from chat history.** A staff member clearing their own history (3.5) does not touch the log.
++- **Device only.** Not synced, not in any export or backup that leaves the device, because on a local endpoint it
++  holds personal data. Only the manager role can open the viewer (follows question 16).
++- **Built for all time:** entries are compressed and older months are rolled into compressed files, with a storage
++  use figure in the viewer and an "Export log" that saves a file through the iPad's Files so it can be moved to a
++  PC. Clearing the log is manual, manager only, and asks for a typed confirmation.
++- **The viewer:** filter by staff member, date, tool, errors, practice mode, and "sent to a remote endpoint". Each
++  request can be opened to show exactly what the model received.
++- **Staff are told.** A one-line notice in the chat says conversations are logged for the manager.
++
++### 3.7 Practice mode (Training)
++
++Owner's answer: like the hint button but smarter, and not a free ride.
++
++- **A coach, not an answer key.** The model is not given the answers to training tasks (expected amounts, the
++  correct item, the finished sequence). This is the same idea as 3.4: it cannot give away what it does not have.
++  The prompt gets the task description and the app's existing hint text. The repo has to be checked for how the
++  training modules and the hint button store these, and whether the answer can be kept separate from the task.
++- **A hint ladder set by the app, not the model.** Level one is a nudge (which area to look at, or a question
++  back). Level two is more specific. Level three says where to tap, but never the final values. The app decides
++  which level is allowed and raises it, for example after repeated asks on the same task. Saying "just tell me"
++  does not skip a level, because the model never decides that.
++- **Tools in practice mode.** Docs search and navgraph search stay on, on practice data only. The calculators and
++  report summaries are off, because they would do the sums the task is testing. Real sales history and all real
++  data are off. This follows the rule in section 4 that practice mode never touches real data.
++- **Logged and marked as practice** in the audit log, so the manager can see where trainees needed help.
++
++### 3.8 Limits
++
++- **Tool calls per question (limit 15 by default, confirmed).** A limit is still needed, but only as a safety stop.
++  A model can get stuck calling tools in a loop, which wastes time and, on a hosted provider, money. Normal
++  questions use a handful of calls, so a high ceiling costs nothing. Default 15, changeable in Settings by the
++  manager. When it is reached the chat says it stopped and shows what it found so far.
++- **Context (the manager can change the size in Settings, confirmed).** The context window is how much text the
++  model can read at once. The instructions, the tool definitions, the chat history and the tool results all share
++  it. The app cannot see the limit by itself, so Settings has a "context size" value. The app fills it with the
++  newest messages and tool results and drops the oldest first. "Test connection" fills it in when the provider
++  reports it, and the default is a cautious 8000 otherwise. Setting it to the model's maximum gives the owner the
++  "as big as the model allows" behaviour. A bigger context also makes local models slower. Ollama's own context size
++  has to be set on the Ollama side, because the OpenAI-compatible endpoint does not let a request set it, so a large
++  value in Settings would not help if Ollama is still cutting the text short.
++- **Timeout.** 120 seconds as asked, with a "still working" indicator and a Retry button.
++
++### 3.9 Reply style and language
++
++- **Short by default, with a "More detail" button.** The prompt tells the model to match the length to the size of
++  the question: a sentence or two for a simple one, a fuller answer with steps for a complex one. Tests should use a
++  set of simple and complex questions and check the lengths come out right.
++- **Language.** The interface and help stay English. The prompt gets one line telling the model to reply in the
++  language the cashier writes in. No translation work, no extra tests. If a model does this badly, that is a limit
++  of that model.
++- **The dash rule in code.** Models use em and en dashes a lot and a prompt alone does not stop it, so a small
++  filter replaces em and en dashes in replies before they are shown. The rest of the style rules (Australian
++  English) stay in the prompt.
++
++### 3.10 Patch order
++
++Patch 1 is 0148. Later numbers are assigned when each patch is written, and other patches (such as the scanner patch 0147) can land in between. Replies are not streamed in patch 1; the
++chat screen patch can add streaming.
++
++1. **Done (0148).** Settings section, the OpenAI-compatible client and "Test connection". No chat screen yet.
++   `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` updated for the changed model policy (1.3).
++2. Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5).
++3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
++4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
++   offline search (3.3).
++5. The data gate and scrubber (3.1) with their tests, and the category toggles. No data tools yet.
++6. Product and inventory tools through the gate, then the model-free product and inventory lookup in offline mode.
++7. The remaining data tools: sales history, deals, customers, orders, gift cards and report summaries.
++8. Cash drawer status, calculators and current cart.
++9. Practice mode coach (3.7).
++10. Settings reader and app and sync status, then the "Guide me there" highlight arrows.
++
++The gate comes before any tool that returns shop data, so no tool is ever added without it.
++
++### 3.11 Confirmed by the owner
++
++1. The audit log viewer is for the manager role only. Confirmed.
++2. A one-line notice in the chat says conversations are logged. Confirmed.
++3. Clearing the audit log is manager only, with a typed confirmation, plus the "Export log" option. Confirmed.
++4. Practice mode uses a three-step hint ladder raised by the app and not the model. Confirmed.
++5. Tool call limit 15 and default context size 8000 (3.8). Confirmed, and the manager can change the context size
++   in Settings.
++6. The dash filter on replies in code (3.9). Confirmed.
++
++## 4. How to work in this repo
++
++These come from `DEV_NOTES.md`, `docs/PROGRESS.md` and the last few patches.
++
++- Return changes as numbered `.patch` files, one idea per patch, small chunks. Patch 0148 is the assistant settings,
++  so the next is 0149. Check `docs/PROGRESS.md` and `patches/` first (`patches/APPLIED.txt` stops at 0107 and is
++  not the record to trust).
++- Start from a fresh clone of `dev`. Do not trust memory of the repo over the repo.
++- Each patch also updates `docs/PROGRESS.md` (a row in the patch log), adds a device test to `docs/DEVICE_TESTS.md`,
++  and adds or updates help pages, then runs `npm run help:build` and, if the navgraph changes, `npm run graph:build`.
++- Checks to run: `npx tsc --noEmit` and `npm test`. Four tests already fail on an untouched checkout
++  (`tests/trainingitems.test.ts` and `tests/trainingstocklookup.test.ts`, a stock-lookup training module that
++  looks unfinished), and `tsc` reports errors only in `tests/trainingstocklookup.test.ts`. Those are not caused by
++  new work.
++- Writing rules: Australian English, no em or en dashes in prose, dollar amounts like `$12.50`. Run
++  `node scripts/style-check.mjs` on new text.
++- Every control training or guidance can point at needs a spot id in `src/lib/trainingSpots.ts` and a screen in
++  `src/lib/appControls.ts` and `src/app.navgraph`.
++- Practice mode must never touch real data or send anything out.
++
++## 5. Suggested prompt to send with this document
++
++> Read `docs/AI_ASSISTANT_PLAN.md`, then clone the latest `dev` branch of the repo and check it against the document.
++> Tell me anything in the document that the repo does not support. Then turn the next patch in 3.10 into a plan,
++> listing anything you still need from me. Do not write code until I approve the plan. Follow section 4 for every
++> patch.
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 1b56c80..f7e99c0 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -597,3 +597,20 @@ Set up: the POS-mate scanner paired as a keyboard. Turn the iPad's screen bright
+ 8. Run the speed test at each speed. Pass: each is named as the speed it was set to.
+ 9. With a second register, wait about 25 seconds. Pass: Hardware ▸ Calibrate there shows the same calibration date. Tap **Reset to the manual's ranges** and confirm: both registers go back to the manual's ranges.
+ 10. Signed in as a cashier, open Settings ▸ Hardware. Pass: the speed test is there but **Admin ▸ Calibrate** is not.
++
++## T49. AI assistant settings (0148)
++
++On the iPad. This needs the new native build, because the local network permission text changed in `app.json`. There is no chat screen yet, so this only tests the Settings page. You need a model server: Ollama on a PC on the same Wi-Fi is the easiest.
++
++1. More ▸ Settings. Pass: there is an **AI assistant** row that says *Not set up*. Sign in as a cashier (when staff sign-in is on). Pass: the row is not there. With an owner on the team, sign in as a manager. Pass: the row is not there either. Sign in as the owner and open it.
++2. Type your PC's address, for example `192.168.1.20:11434/v1`, and a model name your Ollama has. Pass: the page says **This address counts as: Local**. Change the address to `https://api.example.com/v1`. Pass: it says **Remote**. Change it to `http://localhost@evil.com/v1` and tap **Test connection**. Pass: it refuses the address and says to remove the user name and password.
++3. Put the real address back and tap **Test connection**. Pass: iPadOS asks to allow local network access (tap Allow), then three lines show **Passed**: the server answers, the model replies, the model can call a tool.
++4. Turn the PC's Ollama off (or use the wrong port) and test again. Pass: **Failed** on the first line, the other two say *Not checked*, and the message says the server could not be reached.
++5. Type a model name that does not exist. Pass: the second line fails, says the server does not have that model, and lists the names it does have.
++6. If you have a model that cannot use tools, test with it. Pass: the third line fails and says so.
++7. Tap **Save**, leave Settings and come back. Pass: the address and options are still there, and the row shows the model name.
++8. Enter an API key (any text), tap **Save**, and reopen the page. Pass: the key box is empty with a hint like *Saved, ends 1234* (or just *Saved* for a short key), never the whole key. Tap **Remove saved key**, then **Save**. Pass: the hint goes.
++9. Set **Timeout** to 5 and point the address at a PC that is switched on but has a firewall that drops the connection. Pass: after about 5 seconds the message says the model did not answer in time. Set the timeout back to 120.
++10. Type absurd numbers in the options (temperature 99, timeout 1, tool call limit 0), Save, and reopen. Pass: they have been brought into range (2, 5, 1).
++11. **Most important:** Settings ▸ Backup & transfer. Export an encrypted backup with a passphrase, then Restore it on a second iPad (or after removing the key and the address here). Pass: the address, model, options and the API key come back. On a register that is sharing settings with another, change the address on one and wait about 25 seconds. Pass: the other register's address does not change.
++12. More ▸ Training, start any course, then open Settings ▸ AI assistant. Pass: Save and Test connection say they are switched off in practice mode.
+diff --git a/docs/GUESSES.md b/docs/GUESSES.md
+index a0d124f..e556e81 100644
+--- a/docs/GUESSES.md
++++ b/docs/GUESSES.md
+@@ -31,11 +31,11 @@ Everything in this file is a guess from me, not a decision from you.
+ - The style skill is adopted from `conorbronsdon/avoid-ai-writing` (MIT). Its rules apply to any prose I write
+   in this repo: docs, Help text and commit messages. Australian English, no em or en dashes in editable prose,
+   and none of the AI phrasings it lists.
+-- **Model policy**, if any writing-assistant runs in this project: use a model that is **free forever** and has
+-  a **validated zero-retention policy**. An **on-device or local-network model is preferred**. If a hosted model
+-  is used, it must be served through **OpenRouter** and meet both conditions. Guess: prefer a local model
+-  (for example Ollama on the same Mac) and fall back to a free OpenRouter model only when no local model is
+-  available. The exact model id is recorded in `docs/WRITING_ASSISTANT.md`.
++- **Model policy** (changed 17 October 2026, patch 0148): the chatbot's model is a Settings entry using the
++  OpenAI-compatible API, so any provider works, Ollama included. There is no hard-wired model and no hosted
++  fallback of ours. What the model may see depends on whether the address is local (private network, this device,
++  `.local`) or remote, enforced in code. Details and the data rules are in `docs/WRITING_ASSISTANT.md` and
++  `docs/AI_ASSISTANT_PLAN.md`.
+ 
+ ## Other guesses
+ 
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 54803b3..a8cd326 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -147,6 +147,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0145 | 2026-10-17 | Cart warnings, redesign (your request): **the Customer warning is now the popup itself, not a card inside a sheet.** `CartWarningsSheet.tsx` is a centred popup on phone and tablet (`Sheet` gets a `popup` mode in `kit.tsx` that keeps the open gap, activity and Training layer): the warning's header is the title with a warning icon, the message is the large main text, **For:** is small under it, no inner card, no instruction line, no X. Several warnings are one popup paged like Show: new shared `PageDots` (`kit.tsx`, now also used by Show and Info in `TrainingRun.tsx`, no visible change), **Back** and **Next**, and **Next** becomes **Continue to payment** on the last warning; **Back to cart** is a quiet button on every page. The message area slides a little between pages (off with Reduce Motion) and is as tall as the tallest page so the buttons never move. Tick rules, order, already-seen memory and the call sites are unchanged. New `warning.cancel` spot (Back to cart) and the navgraph edge now taps it (`graph:build` rerun). Help page `sales/cart-warnings`, device test T47 (steps 3, 4 and new 11) and `tests/cartwarnings.test.ts` updated | your request |
+ | 0146 | 2026-10-17 | Auto recommended pairs (your request). **Settings ▸ Discounts & bundles**, in a deal's **Recommended pairs**: a new **Auto** button beside **Add a recommended pair**. It pairs variations by **style** (read from the product title, so *Mini Gemstone Dragon* and *Gemstone Egg Dragon (Outer Egg)* are both *gemstone*) and **colour** (the variation title), one variation per position of the deal. Colours are compared as whole sets of words, so *Green* never pairs with *Green Black Dual Colour*; *Black/Red*, *Black & Red* and *Red Black* match. Three passes, strictest first: same words in order, same words in any order, then ignoring *Dual Colour*, *Assorted* and bracketed tags such as *(EOP)*. Each variation is used once per position and unmatched ones are skipped; a note under the buttons gives the count added and names the variations with no match. Pairs already on the deal are kept and their variations are not reused, so Auto only adds. When the groups share no style at all (for example *Highland Cow* with *Tadling*), only colour is compared. New `src/lib/autoPairs.ts` (`autoRecommendedPairs`), `runAuto` in `BundleBuilder.tsx`, new `tests/autopairs.test.ts` (checked against the Python script it came from: same 43 pairs on the dragon deal). Help page `sales/bundles` updated, `help.json` rebuilt. Auto reads names only, so check the list after running it. Not added: an undo for the last Auto run (delete pairs one by one, or use the existing remove buttons) | your request |
+ | 0147 | 2026-10-17 | Scanner setup barcodes and speed test (your request, not on the checklist). **Help ▸ Scanner setup barcodes** (`settings/scanner-codes`, `ScannerCodes.tsx`): the POS-mate scanner's setup codes (pairing, vibration, volume, sleep, scan mode, data entry speed) drawn on screen as Code 128 from plain text in `src/lib/scannerCodes.ts`; tap one and the whole screen goes white with only that barcode and a line saying what it does, tap anywhere to close. A large shortcut button sits at the top of the Checkout help page and smaller ones on `sales/scanners` and `settings/hardware`. **Settings ▸ Hardware** (`HardwareTest` moved out of `Settings.tsx` into `ScannerSpeed.tsx`) now times each scan (milliseconds per character, `src/lib/scanSpeed.ts`), names the speed it matches and offers the next slower speed's barcode. Managers and owners also get **Admin ▸ Calibrate**: pick a speed, scan the speed test barcode 3 to 12 times, **Save** the measured range (widened 10%, refused if the speeds end up out of order), or **Reset to the manual's ranges**. Calibrations are shared with every register through the `pos_settings` metaobject (handle `scanner`, `saveScannerCalibration` and `pullScannerCalibration` in `sync.ts`), kept as device-only keys in backups, and fall back to the manual's ranges. `HidScanner` gains an optional `onText` callback for the timing. Help pages `settings/scanner-codes` (new), `settings/hardware`, `sales/scanners` and `settings/index` updated, `help.json` rebuilt. New `tests/scannercodes.test.ts` and `tests/scanspeed.test.ts`. Combines two earlier patches into one. Needs your iPad and scanner to confirm the timing numbers (device test T48) | your request |
++| 0148 | 2026-10-17 | AI assistant, patch 1 of 10 (your request): **More ▸ Settings ▸ AI assistant**, the connection setup for the Help chatbot. Address, model name, optional API key, temperature, timeout (120 s), context size (8000) and tool call limit (15), a **Test connection** button (server answers, model replies, model can call a tool; each failure says its cause in plain words), and a Local or Remote label with a **Treat this address as local** switch. Any OpenAI-compatible server works, Ollama included. Only an owner, or a manager when the team has no owner, sees the row. Per iPad: it is not shared between registers (a test checks this), and it travels in Backup & transfer, **including the key**, which is otherwise kept only in the Keychain. Test connection sends fixed test text and nothing from the shop. There is **no chat screen yet**. Also: the model policy in `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` is rewritten (any provider, data rules decide what it may see), the plan is saved as `docs/AI_ASSISTANT_PLAN.md`, and the iOS local network permission text now mentions the assistant (needs a new native build, not only an update). Help: `settings/assistant`. Tests: `assistantconfig`, `assistantclient`, `assistantsettings`. Device test T49. Not added: streaming replies, the data gate, any tool (later patches in the plan). | your request |
+ 
+ 
+ ---
+diff --git a/docs/WRITING_ASSISTANT.md b/docs/WRITING_ASSISTANT.md
+index af69dbb..5ef7c15 100644
+--- a/docs/WRITING_ASSISTANT.md
++++ b/docs/WRITING_ASSISTANT.md
+@@ -51,29 +51,37 @@ no settings changes. It only answers and points.
+ 
+ The assistant must follow the same style rules as the rest of the app (Australian English, no em/en dashes).
+ 
+-## The model, if one is ever used
+-
+-Requirement, from the owner: any model the assistant uses must be **free forever** and have a
+-**validated zero retention policy**. An **on-device or local network model is preferred**.
+-
+-Finding on 15 October 2026 (from OpenRouter's own provider table at
+-`https://openrouter.ai/api/frontend/v1/all-providers` and the endpoints for each free model):
+-
+-- Every free model on OpenRouter is served by a first party lab, and each of those labs retains prompts on
+-  its free endpoint. Examples: Google AI Studio keeps prompts 55 days, Cohere 30 days, Thinking Machines
+-  and Liquid train on them, Poolside and AtlasCloud retain them.
+-- So there is **no** OpenRouter free model that meets both "free forever" and "validated zero retention"
+-  today. A hosted option that fails the retention test is not used.
+-
+-Decision:
+-
+-- **Use a local model.** Run a model through Ollama (or another local server) on the same machine or
+-  the local network. This is free forever and zero retention by construction, because the text never leaves
+-  the machine. Any current instruction tuned model will do; the vendored checker needs no model at all, so a
+-  local model is only for rewriting prose by hand when wanted.
+-- **No hosted fallback.** If a local model is not available, do the rewrite by hand with the vendored
+-  checker. Do not send repo text to a paid or free hosted endpoint that retains prompts.
+-
+-If a hosted model is used later, it must be re-checked against the provider table above and must route with
+-`provider: { data_collection: "deny" }` so only zero retention providers are used. Record the exact model id
+-here before use.
+\ No newline at end of file
++The tool list has since grown, and the plan, decisions and patch order are in `docs/AI_ASSISTANT_PLAN.md`. The read-only
++rule and the style rules above are unchanged.
++
++## The model
++
++Updated 17 October 2026 (patch 0148). This replaces the earlier "local model only" decision.
++
++**What changed:** the model is a Settings entry (More ▸ Settings ▸ AI assistant), using the OpenAI-compatible API, so
++any provider works, Ollama on the shop PC included. No model id is hard-wired. The app can no longer promise zero
++retention by construction, because the address is the owner's choice. The promise moves into the app's data rules:
++what the model is allowed to see depends on whether the address counts as local.
++
++- **Local or remote.** Local means this device, the private ranges (`10.x.x.x`, `172.16.x.x` to `172.31.x.x`,
++  `192.168.x.x`), `127.x.x.x`, `::1`, `localhost` and `.local` names. Everything else, and anything the app cannot
++  read, is remote. A manual "Treat this address as local" switch can only make an address local. The code is
++  `classifyEndpoint` in `src/lib/assistantConfig.ts`.
++- **Data rules.** Personal data (customer details, emails) and gift card balances go only to a local address. Payment
++  information and anything that looks like a key or password never go anywhere. The full table is in
++  `docs/AI_ASSISTANT_PLAN.md` section 3.1. The rules are enforced in code by a gate that is built before any tool
++  returns shop data (patch 5 in the plan). Until then nothing from the shop is sent: Test connection sends fixed
++  test text only.
++- **Who can change it.** An owner, or a manager when the team has no owner (the same rule as price adjustment
++  permissions). A till with no accounts acts as the owner.
++- **The key.** The API key is kept in the iPad's Keychain, never in the settings, the shared settings, any log or
++  the chat history. It is part of Backup & transfer, with the other logins, so a restored iPad can reach the same
++  model. The address, model name and options travel in the backup too. None of it is shared between registers.
++- **The original policy, for a hosted model.** The earlier finding still holds: on 15 October 2026 every free model
++  on OpenRouter was served by a first party lab that retains prompts on its free endpoint (examples: Google AI Studio
++  55 days, Cohere 30 days, Thinking Machines and Liquid train on them, Poolside and AtlasCloud retain them). If the
++  owner points the assistant at a hosted provider, that provider's retention is the owner's responsibility, and the
++  data rules above keep personal data off it. A model that is used through OpenRouter should route with
++  `provider: { data_collection: "deny" }`.
++
++The vendored style checker needs no model at all. A model is only for the chatbot, or for rewriting prose by hand.
+diff --git a/help/help.json b/help/help.json
+index ccd1b0b..1d1d93e 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "db5aaacd",
++ "version": "18029e5f",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1386,16 +1386,48 @@
+     "staff/screensaver",
+     "staff",
+     "sales/bundles",
+-    "sales/cart-warnings"
++    "sales/cart-warnings",
++    "settings/assistant"
+    ],
+    "updated": "2026-10-11",
+    "lead": "Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.",
+    "sections": {
+-    "basic": "### Find a setting\n- **Shopify** connects the register to your shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports CSV files or deletes local history.\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
++    "basic": "### Find a setting\n- **Shopify** connects the register to your shop; see [[settings/shopify]].\n- **Payments** contains cash rounding, Smart change and card fee estimates; see [[settings/payments]].\n- **Discounts & bundles** manages the bundle deals used in Checkout.\n- **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].\n- **Hardware** opens the scanner test; see [[settings/hardware]].\n- **Data** exports CSV files or deletes local history.\n- **Square history** imports old Square sales for Reports.\n- **Grid import / export** moves the Checkout tile layout.\n- **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].\n- **Gift cards** has the claim-page and cashier-pass server settings.\n- **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].\n- **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].\n- **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].\n- **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.\n\nThe Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.",
+     "deep": "### Settings are not all shared the same way\nSome choices apply only to this register, such as Smart change and Screensaver & display. Shared settings, such as staff and bundle deals, sync with the other registers. The screen or setting guide explains when a choice is local.\n\nThe Payments section shows fee rates used for estimates. Zeller does not report actual card fees to the POS, and the automatic cash tender machine is still under construction; cash is entered and given by hand.",
+     "advanced": "### Settings sections\n| Section | Component or route |\n|---|---|\n| Settings list and section navigation | `src/screens/Settings.tsx` |\n| Shopify connection and catalogue import | `ShopifySettings` in `src/screens/Settings.tsx` |\n| Payments, fees and cash rounding | Payments section in `src/screens/Settings.tsx` |\n| Bundle deals | `BundlesEditor` in `src/screens/BundleBuilder.tsx` |\n| Hardware scanner test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` |\n| Screensaver and display | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Settings model and defaults | `src/state/store.ts` |\n\nEach section is a panel within the Settings screen. Its values may be stored locally, shared with the other registers, or held in the iPad's secure storage depending on the setting."
+    }
+   },
++  {
++   "id": "settings/assistant",
++   "title": "AI assistant settings",
++   "parent": "settings",
++   "summary": "Point the Help assistant at a model server (Ollama or any OpenAI-compatible provider) and test the connection.",
++   "tags": [
++    "AI",
++    "assistant",
++    "chatbot",
++    "model",
++    "Ollama",
++    "OpenAI",
++    "API key",
++    "local",
++    "remote",
++    "test connection",
++    "privacy"
++   ],
++   "related": [
++    "settings",
++    "settings/backup",
++    "staff"
++   ],
++   "updated": "2026-10-17",
++   "lead": "Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.\n\n**The chat screen is not built yet.** This page only sets up and tests the connection, so there is nothing to ask the assistant yet.",
++   "sections": {
++    "basic": "### Set it up with Ollama on the shop PC\n1. On the PC, install Ollama and download a model that supports tools.\n2. Make sure the iPad and the PC are on the same Wi-Fi, and that Ollama accepts connections from the network.\n3. In **Address**, type the PC's address and port with `/v1` on the end, for example `http://192.168.1.20:11434/v1`.\n4. In **Model name**, type the model, for example `llama3.1:8b`. Leave **API key** empty, because Ollama does not need one.\n5. Tap **Test connection**. Three checks run: the server answers, the model replies, and the model can call a tool.\n6. Tap **Save**.\n\nThe first time the iPad talks to a computer on your Wi-Fi, iPadOS asks for permission to find devices on the local network. Tap **Allow**.\n\n### Use a hosted provider instead\nType the provider's address (it ends in `/v1`), the model name it gives you, and the API key. The key is kept in the iPad's Keychain and is never shown back in full.\n\n### What the test sends\nTest connection sends a short fixed message and a fake test tool. It sends nothing from the shop: no products, customers or sales.\n\n### If a check fails\nThe message says what went wrong: the server could not be reached, the request took too long, the key was not accepted, the model name was not found (it lists the names the server has), or the model does not support tools. Fix that one thing and test again.",
++    "deep": "### Local or remote\nUnder the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.\n\nThe assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. The switch **Treat this address as local** is for a private network the app does not recognise, and can only make an address local. Do not turn it on for a tunnel or proxy that forwards out of your network.\n\n### Options\n- **Temperature** is how adventurous the model's wording is. Low is steadier.\n- **Timeout** is how long one request may take. The default is 120 seconds.\n- **Context size** is how much text the model can read at once. If the provider reports it, Test connection fills it in. With Ollama, set the context size on the Ollama side too, because this connection cannot set it.\n- **Tool call limit** stops a model that gets stuck calling tools in a loop. The default is 15.\n\n### Per iPad, and in backups\nThese settings are for this iPad and are not shared with other registers. They are included in **Backup & transfer**, together with the key, so a restored iPad can reach the same model. See [[settings/backup]].",
++    "advanced": "### How it is built\n```mermaid\nflowchart TD\n  A[AssistantSettings.tsx] --> B[parseBaseUrl and classifyEndpoint in assistantConfig.ts]\n  A --> C[testConnection in assistantClient.ts]\n  C --> D[listModels then chat then chat with the test tool]\n  A --> E[assistantKey.ts in the Keychain]\n  A --> F[settings.assistant in store.ts]\n```\n\n- The settings are `settings.assistant` (type `AssistantSettings` in `src/lib/assistantConfig.ts`). `normaliseAssistant` fills defaults and clamps every value, on load and on restore.\n- `pushSharedSettings` in `src/lib/sync.ts` builds its list by hand and does not include `assistant`, so nothing here syncs between registers.\n- The key is stored as `pos.assistantKey` through `src/lib/assistantKey.ts`. It is not in `settings`. It is carried in the backup credentials as `assistantKey` (`src/lib/backupFile.ts`, `src/lib/backupIO.ts`).\n- `src/lib/assistantClient.ts` takes a `fetch` function, so the tests run without a network. It does not stream replies. Server error text is cut short and the key is removed from it before it is shown.\n- The row is shown when `canEditAdjustPerms(actingRole(...), staff)` is true. Practice mode blocks saving, Test connection and writing the key.\n- iOS reaches a local address over plain http because the local networking exception (NSAllowsLocalNetworking) is set in `app.json`.\n\nTests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`.\n\nKnown to change: the chat screen, the data rules (a gate in front of every tool result) and the per-category toggles are later patches. See `docs/AI_ASSISTANT_PLAN.md`."
++   }
++  },
+   {
+    "id": "settings/backup",
+    "title": "Backup, transfer and local data",
+@@ -1417,12 +1449,13 @@
+     "settings",
+     "settings/shopify",
+     "settings/receipts",
++    "settings/assistant",
+     "staff/screensaver"
+    ],
+    "updated": "2026-10-11",
+    "lead": "Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.",
+    "sections": {
+-    "basic": "### Create a backup\n1. In **Backup & transfer**, enter a passphrase of at least **8 characters** in **Passphrase** and **Repeat passphrase**.\n2. Tap **Export encrypted backup**, then save or share the file somewhere safe.\n3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.\n\nThe encrypted backup includes settings, staff, the grid layout and logins. It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.\n\n**Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.\n\n### Restore on another iPad\nTap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.\n\nAfter restoring, open **Settings ▸ Shopify** and tap **Import from Shopify** to reload the catalogue. Pair the Zeller reader again on the receiving device.\n\n### Export or delete CSV history\nOpen **Settings ▸ Data**. **Export CSV** shares the local history files. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.\n\n**Delete local history** asks twice before erasing the CSV files from this iPad. Export first if you need them. Deleting these local files does not delete the orders in Shopify.",
++    "basic": "### Create a backup\n1. In **Backup & transfer**, enter a passphrase of at least **8 characters** in **Passphrase** and **Repeat passphrase**.\n2. Tap **Export encrypted backup**, then save or share the file somewhere safe.\n3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.\n\nThe encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.\n\n**Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.\n\n### Restore on another iPad\nTap **Choose backup file…** and select the backup. For an encrypted file, enter its passphrase and tap **Decrypt & restore**. Confirm the restore. It replaces the receiving iPad's settings, grid and logins, but keeps that iPad's own register name and ID.\n\nAfter restoring, open **Settings ▸ Shopify** and tap **Import from Shopify** to reload the catalogue. Pair the Zeller reader again on the receiving device.\n\n### Export or delete CSV history\nOpen **Settings ▸ Data**. **Export CSV** shares the local history files. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.\n\n**Delete local history** asks twice before erasing the CSV files from this iPad. Export first if you need them. Deleting these local files does not delete the orders in Shopify.",
+     "deep": "### What is and is not transferred\nThe backup carries settings, staff, the Checkout grid and configured logins such as Shopify, receipt and pass-server credentials. Sales history and the imported catalogue are not in the backup; Shopify remains the source to import them again. The Zeller reader pairing, register name and register ID belong to the receiving device and are not overwritten.\n\nAn encrypted file cannot be opened without its passphrase. A plain JSON backup includes secrets and should be treated like a password file. Uploaded screensaver logos can be included in the backup; the device-specific local file path is not copied.\n\n### Local CSV history\nThe CSV files are separate from Shopify orders and the backup. They stay in the app's files on this iPad until you share or delete them. Deleting the local files cannot be undone from this screen.",
+     "advanced": "### Backup and restore path\n```mermaid\nflowchart TD\n  A[Collect settings grid and credentials] --> B[Encrypt with passphrase or export plain JSON]\n  B --> C[Share backup file]\n  C --> D[Choose file on receiving iPad]\n  D --> E[Decrypt when needed and confirm restore]\n  E --> F[Keep destination register identity]\n  E --> G[Import catalogue from Shopify]\n```\n\n| Job | Where |\n|---|---|\n| Backup and Data screens | `BackupSettings`, `DataSettings` in `src/screens/Settings.tsx` |\n| Collect and apply settings, logins and grid | `collectBackup`, `applyBackup` in `src/lib/backupIO.ts` |\n| Validate, encrypt and decrypt backup files | `validateBackup`, `encryptBackup`, `decryptBackup` in `src/lib/backupFile.ts` |\n| CSV export and deletion | `src/lib/csvStore.ts` |\n| Test backup and restore rules | `tests/backup.test.ts` |\n\nEncrypted backups use a passphrase-derived key and authenticated encryption. Plain JSON explicitly confirms before exporting because it contains credentials. Restoring merges nested settings with the receiving app's defaults and preserves its register identity."
+    }
+diff --git a/help/settings/assistant.md b/help/settings/assistant.md
+new file mode 100644
+index 0000000..9b83b8f
+--- /dev/null
++++ b/help/settings/assistant.md
+@@ -0,0 +1,72 @@
++---
++id: settings/assistant
++title: AI assistant settings
++parent: settings
++summary: Point the Help assistant at a model server (Ollama or any OpenAI-compatible provider) and test the connection.
++tags: [AI, assistant, chatbot, model, Ollama, OpenAI, API key, local, remote, test connection, privacy]
++related: [settings, settings/backup, staff]
++updated: 2026-10-17
++---
++Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.
++
++**The chat screen is not built yet.** This page only sets up and tests the connection, so there is nothing to ask the assistant yet.
++
++## Basic
++
++### Set it up with Ollama on the shop PC
++1. On the PC, install Ollama and download a model that supports tools.
++2. Make sure the iPad and the PC are on the same Wi-Fi, and that Ollama accepts connections from the network.
++3. In **Address**, type the PC's address and port with `/v1` on the end, for example `http://192.168.1.20:11434/v1`.
++4. In **Model name**, type the model, for example `llama3.1:8b`. Leave **API key** empty, because Ollama does not need one.
++5. Tap **Test connection**. Three checks run: the server answers, the model replies, and the model can call a tool.
++6. Tap **Save**.
++
++The first time the iPad talks to a computer on your Wi-Fi, iPadOS asks for permission to find devices on the local network. Tap **Allow**.
++
++### Use a hosted provider instead
++Type the provider's address (it ends in `/v1`), the model name it gives you, and the API key. The key is kept in the iPad's Keychain and is never shown back in full.
++
++### What the test sends
++Test connection sends a short fixed message and a fake test tool. It sends nothing from the shop: no products, customers or sales.
++
++### If a check fails
++The message says what went wrong: the server could not be reached, the request took too long, the key was not accepted, the model name was not found (it lists the names the server has), or the model does not support tools. Fix that one thing and test again.
++
++## Deep
++
++### Local or remote
++Under the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.
++
++The assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. The switch **Treat this address as local** is for a private network the app does not recognise, and can only make an address local. Do not turn it on for a tunnel or proxy that forwards out of your network.
++
++### Options
++- **Temperature** is how adventurous the model's wording is. Low is steadier.
++- **Timeout** is how long one request may take. The default is 120 seconds.
++- **Context size** is how much text the model can read at once. If the provider reports it, Test connection fills it in. With Ollama, set the context size on the Ollama side too, because this connection cannot set it.
++- **Tool call limit** stops a model that gets stuck calling tools in a loop. The default is 15.
++
++### Per iPad, and in backups
++These settings are for this iPad and are not shared with other registers. They are included in **Backup & transfer**, together with the key, so a restored iPad can reach the same model. See [[settings/backup]].
++
++## Advanced
++
++### How it is built
++```mermaid
++flowchart TD
++  A[AssistantSettings.tsx] --> B[parseBaseUrl and classifyEndpoint in assistantConfig.ts]
++  A --> C[testConnection in assistantClient.ts]
++  C --> D[listModels then chat then chat with the test tool]
++  A --> E[assistantKey.ts in the Keychain]
++  A --> F[settings.assistant in store.ts]
++```
++
++- The settings are `settings.assistant` (type `AssistantSettings` in `src/lib/assistantConfig.ts`). `normaliseAssistant` fills defaults and clamps every value, on load and on restore.
++- `pushSharedSettings` in `src/lib/sync.ts` builds its list by hand and does not include `assistant`, so nothing here syncs between registers.
++- The key is stored as `pos.assistantKey` through `src/lib/assistantKey.ts`. It is not in `settings`. It is carried in the backup credentials as `assistantKey` (`src/lib/backupFile.ts`, `src/lib/backupIO.ts`).
++- `src/lib/assistantClient.ts` takes a `fetch` function, so the tests run without a network. It does not stream replies. Server error text is cut short and the key is removed from it before it is shown.
++- The row is shown when `canEditAdjustPerms(actingRole(...), staff)` is true. Practice mode blocks saving, Test connection and writing the key.
++- iOS reaches a local address over plain http because the local networking exception (NSAllowsLocalNetworking) is set in `app.json`.
++
++Tests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`.
++
++Known to change: the chat screen, the data rules (a gate in front of every tool result) and the per-category toggles are later patches. See `docs/AI_ASSISTANT_PLAN.md`.
+diff --git a/help/settings/backup.md b/help/settings/backup.md
+index 611001f..43bd429 100644
+--- a/help/settings/backup.md
++++ b/help/settings/backup.md
+@@ -4,7 +4,7 @@ title: Backup, transfer and local data
+ parent: settings
+ summary: Export and restore settings securely, move them to another iPad, or export and delete local CSV history.
+ tags: [backup, transfer, restore, export, import, CSV, history, passphrase, secrets, data]
+-related: [settings, settings/shopify, settings/receipts, staff/screensaver]
++related: [settings, settings/shopify, settings/receipts, settings/assistant, staff/screensaver]
+ updated: 2026-10-11
+ ---
+ Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.
+@@ -16,7 +16,7 @@ Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to a
+ 2. Tap **Export encrypted backup**, then save or share the file somewhere safe.
+ 3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.
+ 
+-The encrypted backup includes settings, staff, the grid layout and logins. It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.
++The encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.
+ 
+ **Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.
+ 
+diff --git a/help/settings/index.md b/help/settings/index.md
+index fef0253..841f1ab 100644
+--- a/help/settings/index.md
++++ b/help/settings/index.md
+@@ -4,7 +4,7 @@ title: Settings
+ parent: start
+ summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
+ tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
+-related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings]
++related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
+ updated: 2026-10-11
+ ---
+ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
+@@ -20,6 +20,7 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
+ - **Data** exports CSV files or deletes local history.
+ - **Square history** imports old Square sales for Reports.
+ - **Grid import / export** moves the Checkout tile layout.
++- **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].
+ - **Gift cards** has the claim-page and cashier-pass server settings.
+ - **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].
+ - **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].
+diff --git a/src/lib/assistantClient.ts b/src/lib/assistantClient.ts
+new file mode 100644
+index 0000000..054d958
+--- /dev/null
++++ b/src/lib/assistantClient.ts
+@@ -0,0 +1,146 @@
++// Location: src/lib/assistantClient.ts
++// A small client for any server that speaks the OpenAI-compatible chat API (Ollama, LM Studio, a hosted provider).
++// Pure logic: the fetch function is passed in, so it runs in the node tests. Nothing here reads shop data.
++// Replies are not streamed yet (non-streaming is the reliable path in React Native); the chat screen can add streaming later.
++import { parseBaseUrl } from './assistantConfig';
++
++export type AssistantErrorKind = 'not_set_up' | 'unreachable' | 'timeout' | 'key_rejected' | 'model_not_found' | 'no_tools' | 'bad_address' | 'server_error' | 'bad_reply';
++export class AssistantError extends Error {
++  kind: AssistantErrorKind; status?: number;
++  constructor(kind: AssistantErrorKind, message: string, status?: number) { super(message); this.name = 'AssistantError'; this.kind = kind; this.status = status; }
++}
++
++export type Endpoint = { baseUrl: string; apiKey?: string; model: string; timeoutSec: number };
++export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body?: string; signal?: AbortSignal }) => Promise<{ ok: boolean; status: number; text: () => Promise<string> }>;
++export type ChatMessage = { role: 'system' | 'user' | 'assistant' | 'tool'; content: string | null; tool_calls?: ToolCall[]; tool_call_id?: string; name?: string };
++export type ToolCall = { id: string; type: 'function'; function: { name: string; arguments: string } };
++export type ToolDef = { type: 'function'; function: { name: string; description: string; parameters: Record<string, unknown> } };
++export type ChatResult = { message: { role: 'assistant'; content: string | null; tool_calls?: ToolCall[] }; finishReason: string };
++
++/** Takes the key (and anything shaped like one) out of text that may be shown on screen or logged. */
++export function redactSecrets(text: string, apiKey?: string): string {
++  let t = text ?? '';
++  const k = (apiKey ?? '').trim();
++  if (k.length >= 4) t = t.split(k).join('[key]');
++  return t.replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}/g, '[key]').replace(/Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi, 'Bearer [key]');
++}
++
++const short = (s: string, n = 200) => (s.length > n ? `${s.slice(0, n)}...` : s);
++function serverMessage(body: string): string {
++  try { const j = JSON.parse(body); const m = j?.error?.message ?? (typeof j?.error === 'string' ? j.error : undefined) ?? j?.message; if (typeof m === 'string') return m; } catch { /* not JSON */ }
++  return body.trim().startsWith('<') ? '' : body.trim();
++}
++const NO_TOOLS = /(does not support|doesn't support|no endpoints? found that support|not supported|unsupported).{0,40}tool|tool.{0,40}(not supported|unsupported|not available)/i;
++const NO_MODEL = /model.{0,80}(not found|does not exist|unknown|not available)|(not found|does not exist|unknown).{0,40}model/i;
++
++const REQUIRED = 'Set up the address and model first.';
++function checked(ep: Endpoint): { base: string } {
++  const p = parseBaseUrl(ep.baseUrl);
++  if (!p.ok || !ep.model.trim()) throw new AssistantError('not_set_up', REQUIRED);
++  return { base: p.base };
++}
++
++async function call(f: FetchLike, ep: Endpoint, base: string, path: string, body?: unknown): Promise<{ status: number; text: string }> {
++  const ctl = new AbortController(); let timedOut = false;
++  const timer = setTimeout(() => { timedOut = true; ctl.abort(); }, Math.max(1, ep.timeoutSec) * 1000);
++  try {
++    const headers: Record<string, string> = { accept: 'application/json' };
++    if (body !== undefined) headers['content-type'] = 'application/json';
++    if (ep.apiKey && ep.apiKey.trim()) headers.authorization = `Bearer ${ep.apiKey.trim()}`;
++    const res = await f(`${base}${path}`, { method: body === undefined ? 'GET' : 'POST', headers, body: body === undefined ? undefined : JSON.stringify(body), signal: ctl.signal });
++    const text = await res.text();
++    if (!res.ok) throw httpError(res.status, text, ep);
++    return { status: res.status, text };
++  } catch (e: any) {
++    if (e instanceof AssistantError) throw e;
++    if (timedOut || e?.name === 'AbortError') throw new AssistantError('timeout', `The model did not answer within ${ep.timeoutSec} seconds.`);
++    throw new AssistantError('unreachable', 'Could not reach the server. Check the address, that the server is on, and that this iPad is on the same Wi-Fi.');
++  } finally { clearTimeout(timer); }
++}
++
++function httpError(status: number, body: string, ep: Endpoint): AssistantError {
++  const said = redactSecrets(short(serverMessage(body)), ep.apiKey); const tail = said ? ` The server said: ${said}` : '';
++  if (status === 401 || status === 403) return new AssistantError('key_rejected', `The server did not accept the API key.${tail}`, status);
++  if (NO_TOOLS.test(said)) return new AssistantError('no_tools', `This model does not support tool calling.${tail}`, status);
++  if (NO_MODEL.test(said) || (status === 404 && /model/i.test(said))) return new AssistantError('model_not_found', `The server does not have a model called "${ep.model}".${tail}`, status);
++  if (status === 404 || status === 405) return new AssistantError('bad_address', `The server answered, but not at this address. The address usually ends in /v1.${tail}`, status);
++  return new AssistantError('server_error', `The server returned an error (${status}).${tail}`, status);
++}
++
++export type ModelList = { ids: string[]; contexts: Record<string, number> };
++export async function listModels(f: FetchLike, ep: Endpoint): Promise<ModelList> {
++  const { base } = checked(ep);
++  const { text } = await call(f, ep, base, '/models');
++  let j: any; try { j = JSON.parse(text); } catch { throw new AssistantError('bad_reply', 'The server answered, but not with a model list. Check that the address points at an OpenAI-compatible API.'); }
++  const rows: any[] = Array.isArray(j?.data) ? j.data : Array.isArray(j?.models) ? j.models : [];
++  const ids: string[] = []; const contexts: Record<string, number> = {};
++  for (const r of rows) {
++    const id = typeof r === 'string' ? r : typeof r?.id === 'string' ? r.id : typeof r?.name === 'string' ? r.name : '';
++    if (!id) continue; ids.push(id);
++    const c = Number(r?.context_length ?? r?.context_window ?? r?.max_context_length);
++    if (Number.isFinite(c) && c > 0) contexts[id] = Math.round(c);
++  }
++  return { ids, contexts };
++}
++
++export async function chat(f: FetchLike, ep: Endpoint, req: { messages: ChatMessage[]; tools?: ToolDef[]; temperature?: number }): Promise<ChatResult> {
++  const { base } = checked(ep);
++  const body: Record<string, unknown> = { model: ep.model.trim(), messages: req.messages, stream: false };
++  if (req.temperature !== undefined) body.temperature = req.temperature;
++  if (req.tools && req.tools.length) { body.tools = req.tools; body.tool_choice = 'auto'; }
++  const { text } = await call(f, ep, base, '/chat/completions', body);
++  let j: any; try { j = JSON.parse(text); } catch { throw new AssistantError('bad_reply', 'The server answered, but not in the format this app expects.'); }
++  const choice = j?.choices?.[0]; const m = choice?.message;
++  if (!m || typeof m !== 'object') throw new AssistantError('bad_reply', 'The server answered, but the reply had no message in it.');
++  const calls: ToolCall[] | undefined = Array.isArray(m.tool_calls) && m.tool_calls.length
++    ? m.tool_calls.filter((c: any) => c?.function && typeof c.function.name === 'string').map((c: any, i: number) => ({ id: String(c.id ?? `call_${i}`), type: 'function' as const, function: { name: c.function.name, arguments: typeof c.function.arguments === 'string' ? c.function.arguments : JSON.stringify(c.function.arguments ?? {}) } }))
++    : undefined;
++  return { message: { role: 'assistant', content: typeof m.content === 'string' ? m.content : null, ...(calls && calls.length ? { tool_calls: calls } : {}) }, finishReason: String(choice?.finish_reason ?? '') };
++}
++
++// ---------- Test connection ----------
++/** Fixed test text. It never holds shop data, which is the only reason Test connection is safe to send before the data rules exist. */
++export const TEST_PROMPT = 'Reply with the single word OK.';
++export const TEST_TOOL_PROMPT = 'Call the tool named test_ping now. Do not answer in words.';
++export const TEST_TOOL: ToolDef = { type: 'function', function: { name: 'test_ping', description: 'A test tool. Call it once with no arguments.', parameters: { type: 'object', properties: {}, additionalProperties: false } } };
++
++export type TestStep = { id: 'endpoint' | 'model' | 'tools'; label: string; status: 'ok' | 'failed' | 'skipped'; detail: string; kind?: AssistantErrorKind };
++export type TestReport = { ok: boolean; steps: TestStep[]; contextSize?: number };
++const LABEL = { endpoint: 'The server answers', model: 'The model replies', tools: 'The model can call a tool' } as const;
++
++/** Runs the three checks in order and stops at the first failure. */
++export async function testConnection(f: FetchLike, ep: Endpoint): Promise<TestReport> {
++  const steps: TestStep[] = []; let contextSize: number | undefined;
++  const fail = (id: TestStep['id'], e: unknown): TestReport => {
++    const err = e instanceof AssistantError ? e : new AssistantError('server_error', redactSecrets(String((e as Error)?.message ?? e), ep.apiKey));
++    steps.push({ id, label: LABEL[id], status: 'failed', detail: err.message, kind: err.kind });
++    for (const next of (['endpoint', 'model', 'tools'] as const).filter(x => !steps.some(s => s.id === x))) steps.push({ id: next, label: LABEL[next], status: 'skipped', detail: 'Not checked.' });
++    return { ok: false, steps, contextSize };
++  };
++  try { checked(ep); } catch (e) { return fail('endpoint', e); }
++
++  let listed: ModelList | null = null;
++  try { listed = await listModels(f, ep); steps.push({ id: 'endpoint', label: LABEL.endpoint, status: 'ok', detail: `${listed.ids.length} model${listed.ids.length === 1 ? '' : 's'} listed.` }); }
++  catch (e) {
++    if (e instanceof AssistantError && e.kind === 'bad_address') steps.push({ id: 'endpoint', label: LABEL.endpoint, status: 'ok', detail: 'This server does not list its models, so the next step checks the model by asking it.' });
++    else return fail('endpoint', e);
++  }
++  if (listed) { const m = ep.model.trim(); const hit = listed.ids.find(id => id === m || id === `${m}:latest`); if (hit && listed.contexts[hit]) contextSize = listed.contexts[hit]; }
++
++  try {
++    await chat(f, ep, { messages: [{ role: 'user', content: TEST_PROMPT }] });
++    steps.push({ id: 'model', label: LABEL.model, status: 'ok', detail: `"${ep.model.trim()}" replied.` });
++  } catch (e) {
++    if (e instanceof AssistantError && e.kind === 'model_not_found' && listed && listed.ids.length) {
++      return fail('model', new AssistantError('model_not_found', `${e.message} Models on this server: ${listed.ids.slice(0, 5).join(', ')}${listed.ids.length > 5 ? ', and more' : ''}.`, e.status));
++    }
++    return fail('model', e);
++  }
++
++  try {
++    const r = await chat(f, ep, { messages: [{ role: 'user', content: TEST_TOOL_PROMPT }], tools: [TEST_TOOL] });
++    if (r.message.tool_calls?.some(c => c.function.name === TEST_TOOL.function.name)) steps.push({ id: 'tools', label: LABEL.tools, status: 'ok', detail: 'The model called the test tool.' });
++    else return fail('tools', new AssistantError('no_tools', 'The model answered in words instead of calling the test tool. It may not support tool calling, or it may be too small to use tools reliably.'));
++  } catch (e) { return fail('tools', e); }
++  return { ok: true, steps, contextSize };
++}
+diff --git a/src/lib/assistantConfig.ts b/src/lib/assistantConfig.ts
+new file mode 100644
+index 0000000..ad47b54
+--- /dev/null
++++ b/src/lib/assistantConfig.ts
+@@ -0,0 +1,121 @@
++// Location: src/lib/assistantConfig.ts
++// Settings ▸ AI assistant: the shape of the settings, how an address is read, and whether it counts as local.
++// Pure logic only (no React Native imports) so it runs in the node tests.
++// The API key is NOT part of these settings. It lives in the Keychain (assistantKey.ts) and travels in backups as a login.
++
++export type AssistantSettings = {
++  baseUrl: string;        // OpenAI-compatible base, for example http://192.168.1.20:11434/v1 (Ollama) or https://api.example.com/v1
++  model: string;
++  temperature: number;
++  timeoutSec: number;     // how long one request may take
++  contextSize: number;    // how much text the model can read at once, in tokens (the app cannot see this by itself)
++  toolCallLimit: number;  // safety stop for a model stuck calling tools in a loop
++  treatAsLocal: boolean;  // manual override: count this address as local even if it does not look local
++};
++
++export const DEFAULT_TIMEOUT_SEC = 120;
++export const DEFAULT_CONTEXT_SIZE = 8000;
++export const DEFAULT_TOOL_CALL_LIMIT = 15;
++
++export const defaultAssistant = (): AssistantSettings => ({
++  baseUrl: '', model: '', temperature: 0.2, timeoutSec: DEFAULT_TIMEOUT_SEC, contextSize: DEFAULT_CONTEXT_SIZE, toolCallLimit: DEFAULT_TOOL_CALL_LIMIT, treatAsLocal: false,
++});
++
++const clampInt = (x: unknown, lo: number, hi: number, fallback: number): number => {
++  const n = typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? Number(x) : NaN;
++  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : fallback;
++};
++const clampNum = (x: unknown, lo: number, hi: number, fallback: number): number => {
++  const n = typeof x === 'number' ? x : typeof x === 'string' && x.trim() !== '' ? Number(x) : NaN;
++  return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : fallback;
++};
++
++/** Anything stored, typed or restored from a file becomes a valid settings object. Missing or bad values get the defaults. */
++export function normaliseAssistant(x: unknown): AssistantSettings {
++  const d = defaultAssistant(); const o = (x && typeof x === 'object' && !Array.isArray(x) ? x : {}) as Record<string, unknown>;
++  return {
++    baseUrl: typeof o.baseUrl === 'string' ? o.baseUrl.trim() : d.baseUrl,
++    model: typeof o.model === 'string' ? o.model.trim() : d.model,
++    temperature: clampNum(o.temperature, 0, 2, d.temperature),
++    timeoutSec: clampInt(o.timeoutSec, 5, 600, d.timeoutSec),
++    contextSize: clampInt(o.contextSize, 1000, 2_000_000, d.contextSize),
++    toolCallLimit: clampInt(o.toolCallLimit, 1, 100, d.toolCallLimit),
++    treatAsLocal: o.treatAsLocal === true,
++  };
++}
++
++// ---------- reading an address ----------
++export type ParsedUrl = { ok: true; base: string; host: string; https: boolean } | { ok: false; error: string };
++
++/** Splits `host[:port]` or `[ipv6][:port]`. Returns null when it does not look like a host. */
++function splitHost(authority: string): { host: string } | null {
++  let host = authority;
++  if (host.startsWith('[')) { const end = host.indexOf(']'); if (end < 0) return null; const rest = host.slice(end + 1); if (rest && !/^:\d{1,5}$/.test(rest)) return null; host = host.slice(1, end); return /^[0-9a-f:.]+$/i.test(host) && host.includes(':') ? { host: host.toLowerCase() } : null; }
++  const m = /^([^:]+)(?::(\d{1,5}))?$/.exec(host); if (!m) return null;
++  host = m[1].toLowerCase().replace(/\.$/, '');
++  return /^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$/.test(host) ? { host } : null;
++}
++
++/** Reads what the manager typed. No address scheme means http for a local looking host and https for anything else. A trailing slash is dropped. */
++export function parseBaseUrl(raw: string): ParsedUrl {
++  const text = (raw ?? '').trim();
++  if (!text) return { ok: false, error: 'Enter the address of the model server.' };
++  if (/\s/.test(text)) return { ok: false, error: 'The address has a space in it.' };
++  const hasScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(text);
++  let rest = text, https = false;
++  if (hasScheme) {
++    const m = /^(https?):\/\/(.*)$/i.exec(text);
++    if (!m) return { ok: false, error: 'The address must start with http:// or https://.' };
++    https = m[1].toLowerCase() === 'https'; rest = m[2];
++  } else {
++    const first = splitHost(rest.split(/[/?#]/)[0]);
++    https = !(first && classifyHost(first.host) === 'local');
++  }
++  const cut = rest.search(/[/?#]/); const authority = cut < 0 ? rest : rest.slice(0, cut); const tail = cut < 0 ? '' : rest.slice(cut);
++  if (authority.includes('@')) return { ok: false, error: 'Remove the user name and password from the address. Put the key in the API key box.' };
++  if (/[?#]/.test(tail)) return { ok: false, error: 'Remove everything after a ? or # from the address.' };
++  const h = splitHost(authority); if (!h) return { ok: false, error: 'That does not look like a server address.' };
++  const path = tail.replace(/\/+$/, '');
++  return { ok: true, base: `${https ? 'https' : 'http'}://${authority.toLowerCase()}${path}`, host: h.host, https };
++}
++
++// ---------- local or remote ----------
++export type EndpointClass = 'local' | 'remote';
++
++const quad = (host: string): number[] | null => {
++  const p = host.split('.'); if (p.length !== 4) return null;
++  const n: number[] = [];
++  for (const s of p) { if (!/^(0|[1-9]\d{0,2})$/.test(s)) return null; const v = Number(s); if (v > 255) return null; n.push(v); }
++  return n;
++};
++
++/** Local means this device, the private ranges and .local names. Everything else, including a bare name or a malformed address, is remote. */
++export function classifyHost(hostRaw: string): EndpointClass {
++  const host = (hostRaw ?? '').toLowerCase().replace(/\.$/, '');
++  if (!host) return 'remote';
++  if (host === 'localhost' || host.endsWith('.localhost')) return 'local';
++  if (host === '::1') return 'local';
++  const q = quad(host);
++  if (q) {
++    const [a, b] = q;
++    if (a === 127 || a === 10 || (a === 192 && b === 168) || (a === 172 && b >= 16 && b <= 31)) return 'local';
++    return 'remote';
++  }
++  if (host.endsWith('.local') && host.length > '.local'.length && !host.startsWith('.')) return 'local';
++  return 'remote';
++}
++
++/** The class the data rules use. An unreadable or empty address counts as remote, the safe side. The manual switch can only make an address local. */
++export function classifyEndpoint(baseUrl: string, treatAsLocal: boolean): EndpointClass {
++  if (treatAsLocal) return 'local';
++  const p = parseBaseUrl(baseUrl);
++  return p.ok ? classifyHost(p.host) : 'remote';
++}
++
++export const isConfigured = (a: Pick<AssistantSettings, 'baseUrl' | 'model'>): boolean => parseBaseUrl(a.baseUrl).ok && a.model.trim() !== '';
++
++/** What to show for a saved key without giving it back: nothing but the last four characters, and only when it is long enough that those say little. */
++export function maskKey(key: string): string {
++  const k = (key ?? '').trim(); if (!k) return '';
++  return k.length >= 12 ? `Saved, ends ${k.slice(-4)}` : 'Saved';
++}
+diff --git a/src/lib/assistantKey.ts b/src/lib/assistantKey.ts
+new file mode 100644
+index 0000000..42cf19d
+--- /dev/null
++++ b/src/lib/assistantKey.ts
+@@ -0,0 +1,13 @@
++// Location: src/lib/assistantKey.ts
++// The model API key. Keychain only (expo-secure-store): never in settings, never in the shared settings, never in chat history or the log.
++// It does travel in the Backup & transfer file with the other logins, so a restored iPad can reach the same model.
++import * as SecureStore from 'expo-secure-store';
++import { isTraining } from './trainingGuard';
++
++const KEY = 'pos.assistantKey';
++export const getAssistantKey = async (): Promise<string> => { try { return (await SecureStore.getItemAsync(KEY)) ?? ''; } catch { return ''; } };
++/** Empty text removes the key. Practice mode never writes it. */
++export const setAssistantKey = async (v: string): Promise<void> => {
++  if (isTraining()) return;
++  try { const t = v.trim(); if (t) await SecureStore.setItemAsync(KEY, t); else await SecureStore.deleteItemAsync(KEY); } catch { /* the Keychain can refuse on a locked device; the next save tries again */ }
++};
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index a2c7d34..ee9c757 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -5,6 +5,7 @@
+ import { scryptAsync } from '@noble/hashes/scrypt';
+ import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils';
+ import { xchacha20poly1305 } from '@noble/ciphers/chacha';
++import { normaliseAssistant } from './assistantConfig';
+ 
+ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+@@ -12,7 +13,7 @@ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+ export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending'] as const;
+ 
+-export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string };
++export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+   app: typeof BACKUP_APP; v: number; createdAt: string;
+   settings: Record<string, unknown>; grid?: { grid: unknown; version: number };
+@@ -43,18 +44,19 @@ export function validateBackup(x: unknown): BackupV1 {
+   if (!b.settings || typeof b.settings !== 'object' || Array.isArray(b.settings)) throw new Error('The backup has no settings.');
+   const c = b.credentials ?? {};
+   const settings = { ...b.settings }; for (const k of DEVICE_KEYS) delete settings[k]; // never trust a file to overwrite this device's identity
++  if ('assistant' in settings) settings.assistant = normaliseAssistant(settings.assistant); // a file may not carry odd values into the assistant settings
+   dropLogoPath(settings);
+   return {
+     app: BACKUP_APP, v: b.v, createdAt: str(b.createdAt), settings,
+     ...(b.grid && typeof b.grid === 'object' && b.grid.grid ? { grid: { grid: b.grid.grid, version: Number(b.grid.version) || 0 } } : {}),
+-    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret), claimSecret: str(c.claimSecret) },
++    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret), claimSecret: str(c.claimSecret), ...(str(c.assistantKey) ? { assistantKey: str(c.assistantKey) } : {}) },
+   };
+ }
+ 
+ /** Restored settings laid over this device's current ones; nested groups merge so new fields keep their defaults. */
+ export function mergeSettings<S extends Record<string, any>>(current: S, restored: Record<string, any>): S {
+   const out: Record<string, any> = { ...current, ...restored };
+-  for (const k of ['fees', 'receipt', 'screensaver', 'inventory']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
++  for (const k of ['fees', 'receipt', 'screensaver', 'inventory', 'assistant']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
+   for (const k of DEVICE_KEYS) if (k in current) out[k] = current[k];
+   return out as S;
+ }
+diff --git a/src/lib/backupIO.ts b/src/lib/backupIO.ts
+index 5c4a059..abc052e 100644
+--- a/src/lib/backupIO.ts
++++ b/src/lib/backupIO.ts
+@@ -3,16 +3,17 @@
+ import * as FS from 'expo-file-system/legacy';
+ import { useApp } from '../state/store';
+ import { getClaimSecret, getPassSecret, getReceiptSecret, getToken, loadCreds, saveCreds, setClaimSecret, setPassSecret, setReceiptSecret } from './shopify/client';
++import { getAssistantKey, setAssistantKey } from './assistantKey';
+ import { parseGrid } from './grid';
+ import { buildBackup, mergeSettings, type BackupV1 } from './backupFile';
+ 
+ export async function collectBackup(): Promise<BackupV1> {
+   const c = await loadCreds();
+-  const [passSecret, receiptSecret, claimSecret] = await Promise.all([getPassSecret(), getReceiptSecret(), getClaimSecret()]);
++  const [passSecret, receiptSecret, claimSecret, assistantKey] = await Promise.all([getPassSecret(), getReceiptSecret(), getClaimSecret(), getAssistantKey()]);
+   const st = useApp.getState();
+   const b = buildBackup({
+     settings: st.settings as unknown as Record<string, unknown>, grid: st.grid, gridVersion: st.gridVersion,
+-    credentials: { shopifyDomain: c?.domain ?? '', shopifyClientId: c?.clientId ?? '', shopifyClientSecret: c?.clientSecret ?? '', passSecret, receiptSecret, claimSecret },
++    credentials: { shopifyDomain: c?.domain ?? '', shopifyClientId: c?.clientId ?? '', shopifyClientSecret: c?.clientSecret ?? '', passSecret, receiptSecret, claimSecret, ...(assistantKey ? { assistantKey } : {}) },
+   });
+   const logoData = await readLogoData(st.settings.screensaver.logoFile);
+   if (logoData) b.settings.screensaver = { ...(b.settings.screensaver as object), logoData };
+@@ -62,6 +63,7 @@ export async function applyBackup(b: BackupV1): Promise<string> {
+   if (c.passSecret) await setPassSecret(c.passSecret);
+   if (c.receiptSecret) await setReceiptSecret(c.receiptSecret);
+   if (c.claimSecret) await setClaimSecret(c.claimSecret);
++  if (c.assistantKey) await setAssistantKey(c.assistantKey);
+   if (!hasShopify) return `Settings restored. The backup had no Shopify login, so set that up under Settings ▸ Shopify.${gridNote}`;
+   try { await getToken(true); return `Restored. The Shopify login works. Next, open Settings ▸ Shopify and tap Import from Shopify to load the catalogue.${gridNote}`; }
+   catch (e: any) { return `Settings restored, but the Shopify login did not work: ${e.message}${gridNote}`; }
+diff --git a/src/screens/AssistantSettings.tsx b/src/screens/AssistantSettings.tsx
+new file mode 100644
+index 0000000..ce2b54f
+--- /dev/null
++++ b/src/screens/AssistantSettings.tsx
+@@ -0,0 +1,100 @@
++// Location: src/screens/AssistantSettings.tsx
++// Settings ▸ AI assistant: where the Help chatbot's model lives (any OpenAI-compatible server, Ollama included), plus a
++// Test connection button. Only a person who may change staff permissions (owner, or a manager when there is no owner)
++// sees this. There is no chat screen yet: this page only sets up and tests the connection.
++import React, { useEffect, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Field, Section, Toggle, Txt, alertMsg } from '../ui/kit';
++import { useApp } from '../state/store';
++import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
++import { classifyEndpoint, maskKey, normaliseAssistant, parseBaseUrl, type AssistantSettings as Cfg } from '../lib/assistantConfig';
++import { testConnection, type TestReport } from '../lib/assistantClient';
++import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
++import { isTraining } from '../lib/trainingGuard';
++
++/** Whether this person may open the page. The Settings menu and the page itself both ask, so a role change closes it. */
++export function useCanEditAssistant(): boolean {
++  return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
++}
++
++type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; treatAsLocal: boolean };
++const toDraft = (a: Cfg): Draft => ({ baseUrl: a.baseUrl, model: a.model, temperature: String(a.temperature), timeoutSec: String(a.timeoutSec), contextSize: String(a.contextSize), toolCallLimit: String(a.toolCallLimit), treatAsLocal: a.treatAsLocal });
++const fromDraft = (d: Draft): Cfg => normaliseAssistant({ ...d });
++
++export function AssistantSettings() {
++  const allowed = useCanEditAssistant();
++  const saved = useApp(s => s.settings.assistant); const patch = useApp(s => s.patchSettings);
++  const [d, setD] = useState<Draft>(() => toDraft(saved));
++  const [savedKey, setSavedKey] = useState(''); const [newKey, setNewKey] = useState(''); const [removeKey, setRemoveKey] = useState(false);
++  const [busy, setBusy] = useState(false); const [report, setReport] = useState<TestReport | null>(null); const [note, setNote] = useState('');
++  useEffect(() => { let on = true; void getAssistantKey().then(k => { if (on) setSavedKey(k); }); return () => { on = false; }; }, []);
++  if (!allowed) return null;
++
++  const set = (p: Partial<Draft>) => { setD(x => ({ ...x, ...p })); setReport(null); setNote(''); };
++  const cfg = fromDraft(d);
++  const parsed = parseBaseUrl(d.baseUrl);
++  const cls = classifyEndpoint(d.baseUrl, d.treatAsLocal);
++  const keyShown = removeKey ? '' : newKey.trim() ? 'A new key will be saved.' : maskKey(savedKey);
++  const effectiveKey = removeKey ? '' : newKey.trim() || savedKey;
++  const dirty = JSON.stringify(cfg) !== JSON.stringify(saved) || removeKey || !!newKey.trim();
++
++  const save = async () => {
++    if (isTraining()) { alertMsg('Practice mode', 'Settings cannot be changed in practice mode.'); return; }
++    if (d.baseUrl.trim() && !parsed.ok) { alertMsg('Check the address', parsed.error); return; }
++    const next = { ...cfg, baseUrl: parsed.ok ? parsed.base : '' };
++    patch({ assistant: next }); setD(toDraft(next));
++    if (removeKey || newKey.trim()) { await setAssistantKey(removeKey ? '' : newKey); setSavedKey(removeKey ? '' : newKey.trim()); setNewKey(''); setRemoveKey(false); }
++    setNote('Saved on this iPad.');
++  };
++
++  const test = async () => {
++    if (isTraining()) { alertMsg('Practice mode', 'Test connection is switched off in practice mode.'); return; }
++    if (!parsed.ok) { alertMsg('Check the address', parsed.error); return; }
++    setBusy(true); setReport(null); setNote('');
++    try {
++      const r = await testConnection(fetch as any, { baseUrl: parsed.base, apiKey: effectiveKey, model: cfg.model, timeoutSec: cfg.timeoutSec });
++      setReport(r);
++      if (r.ok && r.contextSize && r.contextSize !== cfg.contextSize) { setD(x => ({ ...x, contextSize: String(r.contextSize) })); setNote(`The provider reports a context size of ${r.contextSize}, so that is filled in below. Save to keep it.`); }
++    } finally { setBusy(false); }
++  };
++
++  return (
++    <View style={{ padding: 16, gap: 12 }}>
++      <Txt size={13} sub>Choose the server the Help assistant will use. Any server that speaks the OpenAI-compatible API works, including Ollama on the shop PC. There is no chat screen yet: this page only sets up and tests the connection. Test connection sends a fixed test message and nothing from the shop.</Txt>
++      <Section title="Connection" footer="Per iPad, so it is not shared with other registers. It is included in Backup & transfer, and the key is stored in the iPad's Keychain.">
++        <View style={{ padding: 12, gap: 10 }}>
++          <Field kind="url" label="Address (usually ends in /v1)" placeholder="http://192.168.1.20:11434/v1" value={d.baseUrl} onChangeText={t => set({ baseUrl: t })} />
++          <Field kind="code" label="Model name" placeholder="for example llama3.1:8b" value={d.model} onChangeText={t => set({ model: t })} />
++          <Field kind="secret" label="API key (optional, Ollama does not need one)" placeholder={keyShown || 'Not set'} value={newKey} onChangeText={t => { setNewKey(t); setRemoveKey(false); setReport(null); }} />
++          {savedKey && !removeKey ? <Btn small kind="ghost" title="Remove saved key" onPress={() => { setRemoveKey(true); setNewKey(''); setReport(null); }} /> : null}
++          {removeKey ? <Txt size={12} sub>The key will be removed when you save.</Txt> : null}
++        </View>
++      </Section>
++      <Section footer={cls === 'local' ? 'Local: stays on this iPad or your own network. Customer details may be allowed, once the data rules are built.' : 'Remote: the data rules will keep customer details, emails and gift card details off this server.'}>
++        <View style={{ padding: 12 }}><Txt weight="600">This address counts as: {cls === 'local' ? 'Local' : 'Remote'}{!d.baseUrl.trim() ? ' (no address yet)' : ''}</Txt></View>
++        <Toggle label="Treat this address as local" sub="Only for a private network the app does not recognise. A tunnel or proxy that forwards out of your network is not local." value={d.treatAsLocal} onChange={v => set({ treatAsLocal: v })} />
++      </Section>
++      <Section title="Options" footer="Context size is how much text the model can read at once. Setting it to the model's maximum lets it use the most history, but local models get slower. With Ollama, the context size must also be set on the Ollama side, because this connection cannot set it.">
++        <View style={{ padding: 12, gap: 10 }}>
++          <Field kind="decimal" label="Temperature (0 to 2)" value={d.temperature} onChangeText={t => set({ temperature: t })} />
++          <Field kind="integer" label="Timeout in seconds (5 to 600)" value={d.timeoutSec} onChangeText={t => set({ timeoutSec: t })} />
++          <Field kind="integer" label="Context size in tokens" value={d.contextSize} onChangeText={t => set({ contextSize: t })} />
++          <Field kind="integer" label="Tool call limit per question (1 to 100)" value={d.toolCallLimit} onChangeText={t => set({ toolCallLimit: t })} />
++        </View>
++      </Section>
++      <View style={{ gap: 8 }}>
++        <Btn title="Test connection" kind="secondary" icon="pulse-outline" busy={busy} disabled={!d.baseUrl.trim() || !d.model.trim()} onPress={() => void test()} />
++        <Btn title="Save" disabled={!dirty} onPress={() => void save()} />
++        {note ? <Txt size={13} sub>{note}</Txt> : null}
++      </View>
++      {report ? <Section title={report.ok ? 'All checks passed' : 'Something needs fixing'}>
++        {report.steps.map(s => (
++          <View key={s.id} style={{ padding: 12, gap: 2 }}>
++            <Txt weight="600">{s.status === 'ok' ? 'Passed' : s.status === 'failed' ? 'Failed' : 'Not checked'}: {s.label}</Txt>
++            <Txt size={13} sub>{s.detail}</Txt>
++          </View>
++        ))}
++      </Section> : null}
++    </View>
++  );
++}
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index 6332f14..3b8c7d5 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -22,22 +22,23 @@ import { HardwareTest } from './ScannerSpeed';
+ import { SquareHistorySettings } from './SquareHistory';
+ import { useCashProfile } from '../state/cashProfile';
+ import { CartWarningsSettings } from './CartWarningsSettings';
++import { AssistantSettings, useCanEditAssistant } from './AssistantSettings';
+ import { profileNote } from '../lib/changeScore';
+ import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
+ 
+-type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings';
++type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings' | 'assistant';
+ const HELP_PAGE: Record<Sub, string> = {
+   menu: 'settings', shopify: 'settings/shopify', payments: 'settings/payments', discounts: 'sales/bundles', hardware: 'settings/hardware',
+   data: 'settings/backup', square: 'orders/square-history', grid: 'sales/grid', gift: 'gift', receipts: 'settings/receipts',
+-  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings',
++  backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings', assistant: 'settings/assistant',
+ };
+ 
+ export default function Settings() {
+   const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
+-  const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings);
+-  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings' };
++  const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const canAssistant = useCanEditAssistant();
++  const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings', assistant: 'AI assistant' };
+   return (
+     <Page title={titles[sub]} onBack={back} helpId={HELP_PAGE[sub]}>
+       {sub === 'menu' ? <>
+@@ -50,6 +51,7 @@ export default function Settings() {
+           <Row icon="archive-outline" title="Square history" sub="Import old Square sales for reports" onPress={() => setSub('square')} />
+           <Row icon="grid-outline" title="Grid import / export" onPress={() => setSub('grid')} />
+           <Row icon="warning-outline" title="Cart warnings" sub="Prompts when certain items or categories are in cart" onPress={() => setSub('warnings')} />
++          {canAssistant ? <Row icon="sparkles-outline" title="AI assistant" sub={s.assistant.model ? s.assistant.model : 'Not set up'} onPress={() => setSub('assistant')} /> : null}
+           <Row icon="gift-outline" title="Gift cards" onPress={() => setSub('gift')} />
+           <Row icon="receipt-outline" title="Receipts" sub={s.receipt.serverUrl ? (s.receipt.gstRegistered ? 'Tax invoices · QR link' : 'Receipts · QR link') : 'Not set up'} onPress={() => setSub('receipts')} />
+           <Row icon="swap-horizontal-outline" title="Backup & transfer" sub="Move settings and logins to another device" onPress={() => setSub('backup')} />
+@@ -103,6 +105,7 @@ export default function Settings() {
+           <Toggle label="Show item image" value={s.itemSpotlight.image} onChange={image => patch({ itemSpotlight: { ...s.itemSpotlight, image } })} />
+         </Section></View> : null}
+       {sub === 'warnings' ? <CartWarningsSettings /> : null}
++      {sub === 'assistant' ? <AssistantSettings /> : null}
+       {sub === 'about' ? <Section><Row title="Register" sub={`${s.registerName} · ${s.registerId}`} /><Row title="Shopify API" sub="2026-07" /><Row title="Currency" sub="AUD" last /></Section> : null}
+       {sub === 'about' ? <View style={{ padding: 16 }}><Field kind="name" label="Register name" defaultValue={s.registerName} onEndEditing={e => patch({ registerName: e.nativeEvent.text.trim() || s.registerName })} /></View> : null}
+     </Page>
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 003686a..1ff5502 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -10,6 +10,7 @@ import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPres
+ import type { Totals } from '../lib/rollup';
+ import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
+ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
++import { defaultAssistant, normaliseAssistant, type AssistantSettings } from '../lib/assistantConfig';
+ import type { Depth } from '../lib/helpDocs';
+ import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
+ import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
+@@ -36,10 +37,11 @@ export type Settings = {
+   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
+   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
++  assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
+-  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: []
++  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: [], assistant: defaultAssistant()
+ });
+ 
+ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+@@ -109,7 +111,7 @@ export const useApp = create<App>((set, get) => ({
+     ]);
+     const migrateTheme = !!settings && settings.themeSetupVersion !== 1;
+     set({
+-      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
++      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant) }, data: { ...emptyData(), ...(data ?? {}) },
+       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
+     });
+     if (!settings || migrateTheme) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme migration
+diff --git a/tests/assistantclient.test.ts b/tests/assistantclient.test.ts
+new file mode 100644
+index 0000000..7df667e
+--- /dev/null
++++ b/tests/assistantclient.test.ts
+@@ -0,0 +1,131 @@
++// Location: tests/assistantclient.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { AssistantError, TEST_PROMPT, TEST_TOOL, TEST_TOOL_PROMPT, chat, listModels, redactSecrets, testConnection, type Endpoint, type FetchLike } from '../src/lib/assistantClient';
++
++const KEY = 'sk-test-SECRETSECRET1234';
++const ep = (o: Partial<Endpoint> = {}): Endpoint => ({ baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama3.1:8b', timeoutSec: 5, apiKey: '', ...o });
++type Call = { url: string; method: string; headers: Record<string, string>; body?: any };
++const json = (status: number, body: unknown) => ({ ok: status >= 200 && status < 300, status, text: async () => (typeof body === 'string' ? body : JSON.stringify(body)) });
++function server(handler: (c: Call) => ReturnType<typeof json> | Promise<ReturnType<typeof json>>) {
++  const calls: Call[] = [];
++  const f: FetchLike = async (url, init) => { const c = { url, method: init.method, headers: init.headers, body: init.body ? JSON.parse(init.body) : undefined }; calls.push(c); return handler(c); };
++  return { f, calls };
++}
++const reply = (message: any) => json(200, { choices: [{ message, finish_reason: 'stop' }] });
++const toolReply = reply({ role: 'assistant', content: null, tool_calls: [{ id: 'c1', type: 'function', function: { name: 'test_ping', arguments: '{}' } }] });
++const good = (c: Call) => c.url.endsWith('/models') ? json(200, { data: [{ id: 'llama3.1:8b' }, { id: 'other' }] }) : c.body?.tools ? toolReply : reply({ role: 'assistant', content: 'OK' });
++
++test('chat: posts to /chat/completions with the model, never streams, and sends the key only as a bearer header', async () => {
++  const s = server(() => reply({ role: 'assistant', content: 'Hi' }));
++  const r = await chat(s.f, ep({ apiKey: KEY }), { messages: [{ role: 'user', content: 'hello' }], temperature: 0.2 });
++  assert.equal(r.message.content, 'Hi'); assert.equal(s.calls[0].url, 'http://192.168.1.20:11434/v1/chat/completions'); assert.equal(s.calls[0].method, 'POST');
++  assert.equal(s.calls[0].body.model, 'llama3.1:8b'); assert.equal(s.calls[0].body.stream, false); assert.equal(s.calls[0].headers.authorization, `Bearer ${KEY}`);
++  assert.ok(!JSON.stringify(s.calls[0].body).includes(KEY));
++});
++
++test('chat: no key means no authorization header; tools are only sent when given', async () => {
++  const s = server(() => reply({ role: 'assistant', content: 'x' }));
++  await chat(s.f, ep(), { messages: [] });
++  assert.ok(!('authorization' in s.calls[0].headers)); assert.ok(!('tools' in s.calls[0].body));
++  await chat(s.f, ep(), { messages: [], tools: [TEST_TOOL] });
++  assert.equal(s.calls[1].body.tools.length, 1);
++});
++
++test('chat: tool calls are read, with object arguments turned into text', async () => {
++  const s = server(() => reply({ role: 'assistant', content: '', tool_calls: [{ function: { name: 'a', arguments: { x: 1 } } }, { function: { name: 5 } }] }));
++  const r = await chat(s.f, ep(), { messages: [] });
++  assert.equal(r.message.tool_calls?.length, 1); assert.equal(r.message.tool_calls?.[0].function.arguments, '{"x":1}'); assert.equal(r.message.tool_calls?.[0].id, 'call_0');
++});
++
++test('errors: each failure maps to one plain cause', async () => {
++  const kind = async (h: (c: Call) => any, e = ep()) => { try { await chat(server(h).f, e, { messages: [] }); return 'none'; } catch (x) { assert.ok(x instanceof AssistantError); return x.kind; } };
++  assert.equal(await kind(() => json(401, { error: { message: 'bad key' } })), 'key_rejected');
++  assert.equal(await kind(() => json(403, 'no')), 'key_rejected');
++  assert.equal(await kind(() => json(404, { error: { message: 'model "x" not found, try pulling it first' } })), 'model_not_found');
++  assert.equal(await kind(() => json(404, { error: { code: 'model_not_found', message: 'The model `x` does not exist' } })), 'model_not_found');
++  assert.equal(await kind(() => json(400, { error: { message: 'registry.ollama.ai/library/x does not support tools' } })), 'no_tools');
++  assert.equal(await kind(() => json(404, { error: { message: 'No endpoints found that support tool use' } })), 'no_tools');
++  assert.equal(await kind(() => json(404, '<html>Not Found</html>')), 'bad_address');
++  assert.equal(await kind(() => json(500, 'boom')), 'server_error');
++  assert.equal(await kind(() => json(200, 'not json')), 'bad_reply');
++  assert.equal(await kind(() => json(200, { choices: [] })), 'bad_reply');
++  assert.equal(await kind(() => { throw new TypeError('Network request failed'); }), 'unreachable');
++  assert.equal(await kind(() => json(200, {}), ep({ model: '' })), 'not_set_up');
++  assert.equal(await kind(() => json(200, {}), ep({ baseUrl: '' })), 'not_set_up');
++  assert.equal(await kind(() => json(200, {}), ep({ baseUrl: 'http://u:p@h/v1' })), 'not_set_up');
++});
++
++test('a request that does not finish in time is a timeout, not an unreachable server', async () => {
++  const f: FetchLike = (_u, init) => new Promise((_res, rej) => { init.signal?.addEventListener('abort', () => { const e: any = new Error('aborted'); e.name = 'AbortError'; rej(e); }); });
++  await assert.rejects(() => chat(f, ep({ timeoutSec: 0.05 as any }), { messages: [] }), (e: any) => e.kind === 'timeout' && /seconds/.test(e.message));
++});
++
++test('the key never appears in an error message, even when the server echoes it back', async () => {
++  const echo = server(() => json(401, { error: { message: `Incorrect API key provided: ${KEY}. Authorization: Bearer ${KEY}` } }));
++  for (const run of [() => chat(echo.f, ep({ apiKey: KEY }), { messages: [] }), () => listModels(echo.f, ep({ apiKey: KEY })), () => testConnection(echo.f, ep({ apiKey: KEY }))]) {
++    let text = ''; try { const r: any = await run(); text = JSON.stringify(r); } catch (e: any) { text = String(e.message); }
++    assert.ok(!text.includes('SECRETSECRET'), text); assert.ok(!text.includes(KEY));
++  }
++  assert.equal(redactSecrets(`a ${KEY} b`, KEY), 'a [key] b'); assert.equal(redactSecrets('x sk-abcdefghijkl y'), 'x [key] y'); assert.equal(redactSecrets('Bearer abcdefghijklmnop'), 'Bearer [key]');
++  assert.equal(redactSecrets('abc', ''), 'abc'); assert.equal(redactSecrets('abc', 'ab'), 'abc'); // a very short key is not blanked out of ordinary text
++});
++
++test('server messages are shortened', async () => {
++  const s = server(() => json(500, { error: { message: 'x'.repeat(2000) } }));
++  await assert.rejects(() => chat(s.f, ep(), { messages: [] }), (e: any) => e.message.length < 400);
++});
++
++test('listModels: reads OpenAI, Ollama and OpenRouter shapes, and context sizes when given', async () => {
++  const a = await listModels(server(() => json(200, { data: [{ id: 'a', context_length: 32768 }, { id: 'b' }, {}] })).f, ep());
++  assert.deepEqual(a.ids, ['a', 'b']); assert.deepEqual(a.contexts, { a: 32768 });
++  const b = await listModels(server(() => json(200, { models: [{ name: 'llama3:latest' }] })).f, ep());
++  assert.deepEqual(b.ids, ['llama3:latest']);
++});
++
++test('testConnection: all three checks pass, and what is sent is only the fixed test text', async () => {
++  const s = server(good);
++  const r = await testConnection(s.f, ep());
++  assert.equal(r.ok, true); assert.deepEqual(r.steps.map(x => x.status), ['ok', 'ok', 'ok']);
++  assert.equal(s.calls.length, 3);
++  const sent = s.calls.filter(c => c.body).map(c => c.body.messages);
++  assert.deepEqual(sent, [[{ role: 'user', content: TEST_PROMPT }], [{ role: 'user', content: TEST_TOOL_PROMPT }]]);
++  assert.ok(![TEST_PROMPT, TEST_TOOL_PROMPT, JSON.stringify(TEST_TOOL)].join(' ').match(/@|customer|order|\$\d/i));
++});
++
++test('testConnection: reports the context size when the provider gives one, and tolerates Ollama :latest', async () => {
++  const s = server(c => c.url.endsWith('/models') ? json(200, { data: [{ id: 'llama3.1:latest', context_length: 131072 }] }) : good(c));
++  const r = await testConnection(s.f, ep({ model: 'llama3.1' }));
++  assert.equal(r.ok, true); assert.equal(r.contextSize, 131072);
++});
++
++test('testConnection: stops at the first failure and marks the rest not checked', async () => {
++  const down = await testConnection(server(() => { throw new TypeError('Network request failed'); }).f, ep());
++  assert.equal(down.ok, false); assert.deepEqual(down.steps.map(x => x.status), ['failed', 'skipped', 'skipped']); assert.equal(down.steps[0].kind, 'unreachable');
++  const badKey = await testConnection(server(() => json(401, {})).f, ep());
++  assert.equal(badKey.steps[0].kind, 'key_rejected');
++  const unset = await testConnection(server(good).f, ep({ model: '' }));
++  assert.equal(unset.steps[0].kind, 'not_set_up'); assert.deepEqual(unset.steps.map(x => x.status), ['failed', 'skipped', 'skipped']);
++});
++
++test('testConnection: a wrong model name lists what the server has', async () => {
++  const s = server(c => c.url.endsWith('/models') ? json(200, { data: [{ id: 'a' }, { id: 'b' }] }) : json(404, { error: { message: 'model "zzz" not found' } }));
++  const r = await testConnection(s.f, ep({ model: 'zzz' }));
++  assert.deepEqual(r.steps.map(x => x.status), ['ok', 'failed', 'skipped']); assert.equal(r.steps[1].kind, 'model_not_found'); assert.match(r.steps[1].detail, /a, b/);
++});
++
++test('testConnection: a model that answers in words instead of calling the tool is reported as no tool support', async () => {
++  const s = server(c => c.url.endsWith('/models') ? json(200, { data: [{ id: 'llama3.1:8b' }] }) : reply({ role: 'assistant', content: 'OK' }));
++  const r = await testConnection(s.f, ep());
++  assert.equal(r.ok, false); assert.equal(r.steps[2].kind, 'no_tools'); assert.deepEqual(r.steps.map(x => x.status), ['ok', 'ok', 'failed']);
++  const s2 = server(c => c.url.endsWith('/models') ? json(200, { data: [{ id: 'llama3.1:8b' }] }) : c.body?.tools ? json(400, { error: { message: 'llama3.1:8b does not support tools' } }) : reply({ role: 'assistant', content: 'OK' }));
++  assert.equal((await testConnection(s2.f, ep())).steps[2].kind, 'no_tools');
++});
++
++test('testConnection: a server with no model list is still checked by asking the model', async () => {
++  const s = server(c => c.url.endsWith('/models') ? json(404, 'Not Found') : good(c));
++  const r = await testConnection(s.f, ep());
++  assert.equal(r.ok, true); assert.match(r.steps[0].detail, /does not list/);
++  const wrong = await testConnection(server(() => json(404, 'Not Found')).f, ep());
++  assert.equal(wrong.ok, false); assert.equal(wrong.steps[1].kind, 'bad_address');
++});
+diff --git a/tests/assistantconfig.test.ts b/tests/assistantconfig.test.ts
+new file mode 100644
+index 0000000..78a5e41
+--- /dev/null
++++ b/tests/assistantconfig.test.ts
+@@ -0,0 +1,67 @@
++// Location: tests/assistantconfig.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { classifyEndpoint, classifyHost, defaultAssistant, isConfigured, maskKey, normaliseAssistant, parseBaseUrl } from '../src/lib/assistantConfig';
++
++test('classifyHost: this device, the private ranges and .local names are local', () => {
++  for (const h of ['localhost', 'LOCALHOST', 'localhost.', 'app.localhost', '127.0.0.1', '127.9.9.9', '10.0.0.5', '10.255.255.255', '192.168.1.20', '172.16.0.1', '172.31.255.254', '::1', 'shop-pc.local', 'SHOP-PC.LOCAL']) assert.equal(classifyHost(h), 'local', h);
++});
++
++test('classifyHost: everything else is remote, including lookalikes and bare names', () => {
++  for (const h of ['', 'example.com', 'api.openai.com', '8.8.8.8', '172.15.0.1', '172.32.0.1', '192.169.1.1', '11.0.0.1', '100.64.0.1', '192.168.1.1.example.com', 'localhost.example.com', 'local', '.local', 'evil.local.com', 'shop-pc', '192.168.1', '192.168.1.256', '192.168.01.1', '0177.0.0.1', '2130706433', '::2', 'fe80::1', 'fd00::1']) assert.equal(classifyHost(h), 'remote', h);
++});
++
++test('parseBaseUrl: reads typical addresses', () => {
++  assert.deepEqual(parseBaseUrl('http://192.168.1.20:11434/v1'), { ok: true, base: 'http://192.168.1.20:11434/v1', host: '192.168.1.20', https: false });
++  assert.deepEqual(parseBaseUrl('  https://API.Example.com/v1/  '), { ok: true, base: 'https://api.example.com/v1', host: 'api.example.com', https: true });
++  assert.deepEqual(parseBaseUrl('http://[::1]:11434/v1'), { ok: true, base: 'http://[::1]:11434/v1', host: '::1', https: false });
++  assert.deepEqual(parseBaseUrl('http://shop-pc.local:11434/v1///'), { ok: true, base: 'http://shop-pc.local:11434/v1', host: 'shop-pc.local', https: false });
++});
++
++test('parseBaseUrl: no scheme means http for a local host and https for anything else', () => {
++  const a = parseBaseUrl('192.168.1.20:11434/v1'); assert.ok(a.ok); assert.equal(a.ok && a.base, 'http://192.168.1.20:11434/v1');
++  const b = parseBaseUrl('api.example.com/v1'); assert.ok(b.ok); assert.equal(b.ok && b.base, 'https://api.example.com/v1');
++  const c = parseBaseUrl('localhost:11434/v1'); assert.ok(c.ok); assert.equal(c.ok && c.base, 'http://localhost:11434/v1');
++});
++
++test('parseBaseUrl: refuses what could hide the real host or leak the key', () => {
++  for (const bad of ['', '   ', 'ftp://host/v1', 'file:///etc/passwd', 'http://', 'http://user:pass@host/v1', 'http://localhost@evil.com/v1', 'http://host/v1?key=abc', 'http://host/v1#x', 'http://host name/v1', 'http://[::1/v1', 'http://host:abc/v1', 'javascript:alert(1)'])
++    assert.equal(parseBaseUrl(bad).ok, false, bad);
++});
++
++test('classifyEndpoint: an address with userinfo or garbage is never local, and the switch only flips remote to local', () => {
++  assert.equal(classifyEndpoint('http://localhost@evil.com/v1', false), 'remote');
++  assert.equal(classifyEndpoint('http://192.168.1.1.example.com/v1', false), 'remote');
++  assert.equal(classifyEndpoint('', false), 'remote');
++  assert.equal(classifyEndpoint('nonsense', false), 'remote');
++  assert.equal(classifyEndpoint('http://192.168.1.20:11434/v1', false), 'local');
++  assert.equal(classifyEndpoint('https://api.example.com/v1', false), 'remote');
++  assert.equal(classifyEndpoint('https://api.example.com/v1', true), 'local');
++  assert.equal(classifyEndpoint('', true), 'local');
++});
++
++test('normaliseAssistant: defaults, clamps and ignores junk', () => {
++  assert.deepEqual(normaliseAssistant(undefined), defaultAssistant());
++  assert.deepEqual(normaliseAssistant('x'), defaultAssistant());
++  assert.deepEqual(normaliseAssistant([1]), defaultAssistant());
++  const d = defaultAssistant();
++  assert.equal(d.timeoutSec, 120); assert.equal(d.contextSize, 8000); assert.equal(d.toolCallLimit, 15); assert.equal(d.treatAsLocal, false);
++  const n = normaliseAssistant({ baseUrl: '  http://h/v1 ', model: ' m ', temperature: 9, timeoutSec: 1, contextSize: '32000', toolCallLimit: 1000, treatAsLocal: 'yes' });
++  assert.equal(n.baseUrl, 'http://h/v1'); assert.equal(n.model, 'm'); assert.equal(n.temperature, 2); assert.equal(n.timeoutSec, 5); assert.equal(n.contextSize, 32000); assert.equal(n.toolCallLimit, 100); assert.equal(n.treatAsLocal, false);
++  const bad = normaliseAssistant({ temperature: 'hot', timeoutSec: NaN, contextSize: '', toolCallLimit: null, baseUrl: 5, model: {} });
++  assert.deepEqual(bad, d);
++  assert.equal(normaliseAssistant({ treatAsLocal: true }).treatAsLocal, true);
++});
++
++test('isConfigured needs a readable address and a model', () => {
++  assert.equal(isConfigured({ baseUrl: '', model: 'm' }), false);
++  assert.equal(isConfigured({ baseUrl: 'http://h/v1', model: '' }), false);
++  assert.equal(isConfigured({ baseUrl: 'http://user:p@h/v1', model: 'm' }), false);
++  assert.equal(isConfigured({ baseUrl: 'http://h/v1', model: 'm' }), true);
++});
++
++test('maskKey shows at most the last four characters of a long key', () => {
++  assert.equal(maskKey(''), ''); assert.equal(maskKey('short'), 'Saved');
++  assert.equal(maskKey('sk-abcdefghijklmnop1234'), 'Saved, ends 1234');
++  assert.ok(!maskKey('sk-abcdefghijklmnop1234').includes('abcdefghijklmnop'));
++});
+diff --git a/tests/assistantsettings.test.ts b/tests/assistantsettings.test.ts
+new file mode 100644
+index 0000000..3fc7a54
+--- /dev/null
++++ b/tests/assistantsettings.test.ts
+@@ -0,0 +1,70 @@
++// Location: tests/assistantsettings.test.ts
++// The rules around the assistant settings: never shared between registers, travel in backups (key included), role gate.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import path from 'node:path';
++import { buildBackup, decryptBackup, encryptBackup, mergeSettings, validateBackup } from '../src/lib/backupFile';
++import { defaultAssistant, normaliseAssistant } from '../src/lib/assistantConfig';
++import { actingRole, canEditAdjustPerms } from '../src/lib/adjustPerms';
++
++const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id', shopifyClientSecret: 'secret', passSecret: 'p', receiptSecret: 'r', claimSecret: 'c' };
++const assistant = { ...defaultAssistant(), baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama3.1:8b', contextSize: 32000, treatAsLocal: true };
++const KEY = 'sk-test-BACKUPKEY-1234';
++
++test('the assistant settings are never part of the shared settings that go to other registers', () => {
++  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'lib', 'sync.ts'), 'utf8');
++  const pushLine = src.split('\n').find(l => l.includes('const shared = {')); assert.ok(pushLine, 'pushSharedSettings builds an explicit list');
++  const stillLine = src.split('\n').find(l => l.includes('const stillMatches')); assert.ok(stillLine);
++  for (const l of [pushLine!, stillLine!]) assert.ok(!/assistant/i.test(l), l);
++  assert.ok(!/assistant/i.test(src.slice(src.indexOf('export async function pushSharedSettings'), src.indexOf('export const bundleConfig'))), 'nothing about the assistant between pushSharedSettings and pullSettings');
++});
++
++test('the settings object has no place for a key, and a stray key field is dropped', () => {
++  assert.ok(!('apiKey' in defaultAssistant()));
++  const n = normaliseAssistant({ ...assistant, apiKey: KEY, key: KEY, secret: KEY });
++  assert.ok(!JSON.stringify(n).includes(KEY)); assert.deepEqual(Object.keys(n).sort(), Object.keys(defaultAssistant()).sort());
++});
++
++test('backup: the address, model, options and the key all travel', () => {
++  const b = buildBackup({ settings: { shopName: 'x', assistant }, credentials: { ...creds, assistantKey: KEY } });
++  assert.deepEqual(b.settings.assistant, assistant); assert.equal(b.credentials.assistantKey, KEY);
++  const v = validateBackup(JSON.parse(JSON.stringify(b)));
++  assert.deepEqual(v.settings.assistant, assistant); assert.equal(v.credentials.assistantKey, KEY);
++});
++
++test('backup: with no key set, the credentials are unchanged from before', () => {
++  const b = buildBackup({ settings: { assistant }, credentials: creds });
++  assert.ok(!('assistantKey' in validateBackup(JSON.parse(JSON.stringify(b))).credentials));
++  const old = validateBackup({ app: 'shopify-zeller-pos', v: 1, createdAt: '', settings: { shopName: 'old' }, credentials: creds });
++  assert.ok(!('assistant' in old.settings)); assert.deepEqual(old.credentials, creds);
++});
++
++test('backup: the encrypted file carries the key, and the key is not readable in the file', async () => {
++  const b = buildBackup({ settings: { assistant }, credentials: { ...creds, assistantKey: KEY } });
++  const file = await encryptBackup(JSON.stringify(b), 'a long passphrase');
++  assert.ok(!file.includes('BACKUPKEY')); assert.ok(!file.includes('llama3'));
++  assert.equal(validateBackup(JSON.parse(await decryptBackup(file, 'a long passphrase'))).credentials.assistantKey, KEY);
++});
++
++test('backup: odd values in a file are cleaned before they reach the settings', () => {
++  const v = validateBackup({ app: 'shopify-zeller-pos', v: 1, settings: { assistant: { baseUrl: 5, model: ' m ', temperature: 99, timeoutSec: -3, contextSize: 'huge', toolCallLimit: 0, treatAsLocal: 'true', apiKey: KEY } }, credentials: { ...creds, assistantKey: 42 } });
++  const a: any = v.settings.assistant;
++  assert.equal(a.baseUrl, ''); assert.equal(a.model, 'm'); assert.equal(a.temperature, 2); assert.equal(a.timeoutSec, 5); assert.equal(a.contextSize, 8000); assert.equal(a.toolCallLimit, 1); assert.equal(a.treatAsLocal, false); assert.ok(!('apiKey' in a));
++  assert.ok(!('assistantKey' in v.credentials));
++});
++
++test('restoring merges the assistant group, so a newer app version keeps its own new fields', () => {
++  const current: any = { assistant: { ...defaultAssistant(), futureField: 7 }, registerId: 'mine' };
++  const out = mergeSettings(current, { assistant: { model: 'restored' }, registerId: 'theirs' }) as any;
++  assert.equal(out.assistant.model, 'restored'); assert.equal(out.assistant.futureField, 7); assert.equal(out.registerId, 'mine');
++});
++
++test('who sees the page: an owner, or a manager only when the team has no owner, and a cashier never', () => {
++  const m = { id: 'm', role: 'manager' as const }, o = { id: 'o', role: 'owner' as const }, c = { id: 'c', role: 'cashier' as const };
++  const can = (staff: any[], id: string | undefined, pin = true) => canEditAdjustPerms(actingRole(pin, staff, id), staff);
++  assert.equal(can([o, m, c], 'o'), true); assert.equal(can([o, m, c], 'm'), false); assert.equal(can([o, m, c], 'c'), false);
++  assert.equal(can([m, c], 'm'), true); assert.equal(can([m, c], 'c'), false);
++  assert.equal(can([], undefined, false), true); // a till with no accounts acts as the owner
++  assert.equal(can([o, c], undefined), false); // locked and nobody signed in
++});

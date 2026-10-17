@@ -51,29 +51,37 @@ no settings changes. It only answers and points.
 
 The assistant must follow the same style rules as the rest of the app (Australian English, no em/en dashes).
 
-## The model, if one is ever used
+The tool list has since grown, and the plan, decisions and patch order are in `docs/AI_ASSISTANT_PLAN.md`. The read-only
+rule and the style rules above are unchanged.
 
-Requirement, from the owner: any model the assistant uses must be **free forever** and have a
-**validated zero retention policy**. An **on-device or local network model is preferred**.
+## The model
 
-Finding on 15 October 2026 (from OpenRouter's own provider table at
-`https://openrouter.ai/api/frontend/v1/all-providers` and the endpoints for each free model):
+Updated 17 October 2026 (patch 0148). This replaces the earlier "local model only" decision.
 
-- Every free model on OpenRouter is served by a first party lab, and each of those labs retains prompts on
-  its free endpoint. Examples: Google AI Studio keeps prompts 55 days, Cohere 30 days, Thinking Machines
-  and Liquid train on them, Poolside and AtlasCloud retain them.
-- So there is **no** OpenRouter free model that meets both "free forever" and "validated zero retention"
-  today. A hosted option that fails the retention test is not used.
+**What changed:** the model is a Settings entry (More ▸ Settings ▸ AI assistant), using the OpenAI-compatible API, so
+any provider works, Ollama on the shop PC included. No model id is hard-wired. The app can no longer promise zero
+retention by construction, because the address is the owner's choice. The promise moves into the app's data rules:
+what the model is allowed to see depends on whether the address counts as local.
 
-Decision:
+- **Local or remote.** Local means this device, the private ranges (`10.x.x.x`, `172.16.x.x` to `172.31.x.x`,
+  `192.168.x.x`), `127.x.x.x`, `::1`, `localhost` and `.local` names. Everything else, and anything the app cannot
+  read, is remote. A manual "Treat this address as local" switch can only make an address local. The code is
+  `classifyEndpoint` in `src/lib/assistantConfig.ts`.
+- **Data rules.** Personal data (customer details, emails) and gift card balances go only to a local address. Payment
+  information and anything that looks like a key or password never go anywhere. The full table is in
+  `docs/AI_ASSISTANT_PLAN.md` section 3.1. The rules are enforced in code by a gate that is built before any tool
+  returns shop data (patch 5 in the plan). Until then nothing from the shop is sent: Test connection sends fixed
+  test text only.
+- **Who can change it.** An owner, or a manager when the team has no owner (the same rule as price adjustment
+  permissions). A till with no accounts acts as the owner.
+- **The key.** The API key is kept in the iPad's Keychain, never in the settings, the shared settings, any log or
+  the chat history. It is part of Backup & transfer, with the other logins, so a restored iPad can reach the same
+  model. The address, model name and options travel in the backup too. None of it is shared between registers.
+- **The original policy, for a hosted model.** The earlier finding still holds: on 15 October 2026 every free model
+  on OpenRouter was served by a first party lab that retains prompts on its free endpoint (examples: Google AI Studio
+  55 days, Cohere 30 days, Thinking Machines and Liquid train on them, Poolside and AtlasCloud retain them). If the
+  owner points the assistant at a hosted provider, that provider's retention is the owner's responsibility, and the
+  data rules above keep personal data off it. A model that is used through OpenRouter should route with
+  `provider: { data_collection: "deny" }`.
 
-- **Use a local model.** Run a model through Ollama (or another local server) on the same machine or
-  the local network. This is free forever and zero retention by construction, because the text never leaves
-  the machine. Any current instruction tuned model will do; the vendored checker needs no model at all, so a
-  local model is only for rewriting prose by hand when wanted.
-- **No hosted fallback.** If a local model is not available, do the rewrite by hand with the vendored
-  checker. Do not send repo text to a paid or free hosted endpoint that retains prompts.
-
-If a hosted model is used later, it must be re-checked against the provider table above and must route with
-`provider: { data_collection: "deny" }` so only zero retention providers are used. Record the exact model id
-here before use.
+The vendored style checker needs no model at all. A model is only for the chatbot, or for rewriting prose by hand.

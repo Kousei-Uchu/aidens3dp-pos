@@ -597,3 +597,20 @@ Set up: the POS-mate scanner paired as a keyboard. Turn the iPad's screen bright
 8. Run the speed test at each speed. Pass: each is named as the speed it was set to.
 9. With a second register, wait about 25 seconds. Pass: Hardware ▸ Calibrate there shows the same calibration date. Tap **Reset to the manual's ranges** and confirm: both registers go back to the manual's ranges.
 10. Signed in as a cashier, open Settings ▸ Hardware. Pass: the speed test is there but **Admin ▸ Calibrate** is not.
+
+## T49. AI assistant settings (0148)
+
+On the iPad. This needs the new native build, because the local network permission text changed in `app.json`. There is no chat screen yet, so this only tests the Settings page. You need a model server: Ollama on a PC on the same Wi-Fi is the easiest.
+
+1. More ▸ Settings. Pass: there is an **AI assistant** row that says *Not set up*. Sign in as a cashier (when staff sign-in is on). Pass: the row is not there. With an owner on the team, sign in as a manager. Pass: the row is not there either. Sign in as the owner and open it.
+2. Type your PC's address, for example `192.168.1.20:11434/v1`, and a model name your Ollama has. Pass: the page says **This address counts as: Local**. Change the address to `https://api.example.com/v1`. Pass: it says **Remote**. Change it to `http://localhost@evil.com/v1` and tap **Test connection**. Pass: it refuses the address and says to remove the user name and password.
+3. Put the real address back and tap **Test connection**. Pass: iPadOS asks to allow local network access (tap Allow), then three lines show **Passed**: the server answers, the model replies, the model can call a tool.
+4. Turn the PC's Ollama off (or use the wrong port) and test again. Pass: **Failed** on the first line, the other two say *Not checked*, and the message says the server could not be reached.
+5. Type a model name that does not exist. Pass: the second line fails, says the server does not have that model, and lists the names it does have.
+6. If you have a model that cannot use tools, test with it. Pass: the third line fails and says so.
+7. Tap **Save**, leave Settings and come back. Pass: the address and options are still there, and the row shows the model name.
+8. Enter an API key (any text), tap **Save**, and reopen the page. Pass: the key box is empty with a hint like *Saved, ends 1234* (or just *Saved* for a short key), never the whole key. Tap **Remove saved key**, then **Save**. Pass: the hint goes.
+9. Set **Timeout** to 5 and point the address at a PC that is switched on but has a firewall that drops the connection. Pass: after about 5 seconds the message says the model did not answer in time. Set the timeout back to 120.
+10. Type absurd numbers in the options (temperature 99, timeout 1, tool call limit 0), Save, and reopen. Pass: they have been brought into range (2, 5, 1).
+11. **Most important:** Settings ▸ Backup & transfer. Export an encrypted backup with a passphrase, then Restore it on a second iPad (or after removing the key and the address here). Pass: the address, model, options and the API key come back. On a register that is sharing settings with another, change the address on one and wait about 25 seconds. Pass: the other register's address does not change.
+12. More ▸ Training, start any course, then open Settings ▸ AI assistant. Pass: Save and Test connection say they are switched off in practice mode.

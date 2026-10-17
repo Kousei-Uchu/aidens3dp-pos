@@ -4,7 +4,7 @@ title: Settings
 parent: start
 summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
 tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
-related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings]
+related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
 updated: 2026-10-11
 ---
 Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware and this register. Tap a section to open it; use the back button to return to the Settings list.
@@ -20,6 +20,7 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
 - **Data** exports CSV files or deletes local history.
 - **Square history** imports old Square sales for Reports.
 - **Grid import / export** moves the Checkout tile layout.
+- **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].
 - **Gift cards** has the claim-page and cashier-pass server settings.
 - **Receipts** configures receipt and tax-invoice details; see [[settings/receipts]].
 - **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].

@@ -10,6 +10,7 @@ import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPres
 import type { Totals } from '../lib/rollup';
 import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
 import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
+import { defaultAssistant, normaliseAssistant, type AssistantSettings } from '../lib/assistantConfig';
 import type { Depth } from '../lib/helpDocs';
 import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
@@ -36,10 +37,11 @@ export type Settings = {
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
+  assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: []
+  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: [], assistant: defaultAssistant()
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
@@ -109,7 +111,7 @@ export const useApp = create<App>((set, get) => ({
     ]);
     const migrateTheme = !!settings && settings.themeSetupVersion !== 1;
     set({
-      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) } }, data: { ...emptyData(), ...(data ?? {}) },
+      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant) }, data: { ...emptyData(), ...(data ?? {}) },
       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
     });
     if (!settings || migrateTheme) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme migration

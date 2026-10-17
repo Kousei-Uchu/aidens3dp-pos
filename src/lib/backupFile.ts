@@ -5,6 +5,7 @@
 import { scryptAsync } from '@noble/hashes/scrypt';
 import { bytesToHex, hexToBytes, utf8ToBytes } from '@noble/hashes/utils';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+import { normaliseAssistant } from './assistantConfig';
 
 export const BACKUP_APP = 'shopify-zeller-pos';
 export const BACKUP_VERSION = 1;
@@ -12,7 +13,7 @@ export const MIN_PASSPHRASE = 8;
 /** Settings that identify this particular device and must never be copied to another one. */
 export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending'] as const;
 
-export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string };
+export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
 export type BackupV1 = {
   app: typeof BACKUP_APP; v: number; createdAt: string;
   settings: Record<string, unknown>; grid?: { grid: unknown; version: number };
@@ -43,18 +44,19 @@ export function validateBackup(x: unknown): BackupV1 {
   if (!b.settings || typeof b.settings !== 'object' || Array.isArray(b.settings)) throw new Error('The backup has no settings.');
   const c = b.credentials ?? {};
   const settings = { ...b.settings }; for (const k of DEVICE_KEYS) delete settings[k]; // never trust a file to overwrite this device's identity
+  if ('assistant' in settings) settings.assistant = normaliseAssistant(settings.assistant); // a file may not carry odd values into the assistant settings
   dropLogoPath(settings);
   return {
     app: BACKUP_APP, v: b.v, createdAt: str(b.createdAt), settings,
     ...(b.grid && typeof b.grid === 'object' && b.grid.grid ? { grid: { grid: b.grid.grid, version: Number(b.grid.version) || 0 } } : {}),
-    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret), claimSecret: str(c.claimSecret) },
+    credentials: { shopifyDomain: str(c.shopifyDomain), shopifyClientId: str(c.shopifyClientId), shopifyClientSecret: str(c.shopifyClientSecret), passSecret: str(c.passSecret), receiptSecret: str(c.receiptSecret), claimSecret: str(c.claimSecret), ...(str(c.assistantKey) ? { assistantKey: str(c.assistantKey) } : {}) },
   };
 }
 
 /** Restored settings laid over this device's current ones; nested groups merge so new fields keep their defaults. */
 export function mergeSettings<S extends Record<string, any>>(current: S, restored: Record<string, any>): S {
   const out: Record<string, any> = { ...current, ...restored };
-  for (const k of ['fees', 'receipt', 'screensaver', 'inventory']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
+  for (const k of ['fees', 'receipt', 'screensaver', 'inventory', 'assistant']) if (current[k] && typeof current[k] === 'object') out[k] = { ...current[k], ...(restored[k] ?? {}) };
   for (const k of DEVICE_KEYS) if (k in current) out[k] = current[k];
   return out as S;
 }

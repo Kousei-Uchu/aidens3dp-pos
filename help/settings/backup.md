@@ -4,7 +4,7 @@ title: Backup, transfer and local data
 parent: settings
 summary: Export and restore settings securely, move them to another iPad, or export and delete local CSV history.
 tags: [backup, transfer, restore, export, import, CSV, history, passphrase, secrets, data]
-related: [settings, settings/shopify, settings/receipts, staff/screensaver]
+related: [settings, settings/shopify, settings/receipts, settings/assistant, staff/screensaver]
 updated: 2026-10-11
 ---
 Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to another iPad. Use **More ▸ Settings ▸ Data** to export or delete this iPad's local CSV history; these are separate tools.
@@ -16,7 +16,7 @@ Use **More ▸ Settings ▸ Backup & transfer** to move settings and logins to a
 2. Tap **Export encrypted backup**, then save or share the file somewhere safe.
 3. Keep the passphrase separate and safe. It is needed to open the encrypted backup.
 
-The encrypted backup includes settings, staff, the grid layout and logins. It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.
+The encrypted backup includes settings, staff, the grid layout and logins, including the AI assistant's address, model and API key (see [[settings/assistant]]). It does not include sales history or the product catalogue. Zeller reader pairing stays on the original iPad.
 
 **Export plain JSON (not encrypted)** is available only after a warning and confirmation. The file contains Shopify and other login secrets in readable text. Prefer the encrypted backup; if you export plain JSON, protect it and delete it after importing.
 
