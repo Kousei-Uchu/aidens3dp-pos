@@ -35,8 +35,8 @@ const HELP_PAGE: Record<Sub, string> = {
   backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings', assistant: 'settings/assistant',
 };
 
-export default function Settings() {
-  const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
+export default function Settings({ open }: { open?: Sub } = {}) {
+  const nav = useNav(); const [sub, setSub] = useState<Sub>(open ?? 'menu'); const back = () => (sub === 'menu' || open ? nav.pop() : setSub('menu')); // opened straight onto a page (from the chat): Back returns to where it came from
   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const canAssistant = useCanEditAssistant();
   const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings', assistant: 'AI assistant' };
   return (

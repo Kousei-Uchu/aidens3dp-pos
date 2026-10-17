@@ -6,12 +6,19 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 10 (17 October 2026), patch 0151:** patch 2 was built: the chat screen and its Help entry (`src/screens/Assistant.tsx`, route
+`assistant`), the chat logic in `src/lib/assistantChat.ts`, per-staff history on the device, the error banner, the small
+scrubber, the dash filter and the practice mode block, as decided in 3.12. It has no tools, so the model sees only what
+the cashier types. Two details worth knowing: the scrubber runs on every endpoint, local or remote, and the cashier's
+message is stored already scrubbed, so a pasted card number never reaches the disk; and the Help entry is wired to
+`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, which the audit log patch flips to true.
+
 **Revision 9 (17 October 2026), patch 0149:** the owner approved the plan for patch 2 (the chat screen), and the decisions
 are recorded here. The "Treat this address as local" switch becomes a three-way Auto / Local / Remote setting (3.1), so an
 address can also be forced remote. Four decisions change the order of work: a small scrubber moves forward into the chat
 patch, the Help entry shows only to people who may edit assistant settings until the audit log lands, sending is blocked
 in practice mode until the coach exists, and the three-way setting gets its own tiny patch (0149) ahead of the chat patch
-(0150). See 3.10 and 3.12.
+(0151). See 3.10 and 3.12.
 
 **Revision 8 (17 October 2026), patch 0148:** the plan was checked against the repo and patch 1 was built.
 Changes from the check: the latest patch was 0146, not 0143, and a scanner patch took 0147 before patch 1 was finished, so patch 1 is 0148; there are three roles
@@ -41,8 +48,8 @@ The tool list has grown. The model decision in 1.3 is now superseded, see 3.1.
 
 ### 1.1 Status
 
-Patch 0148 added the Settings page and the connection client. There is still no chat screen, no tools and no
-data gate. The written spec and model policy are in the files below.
+Patch 0148 added the Settings page and the connection client, and patch 0151 added the chat screen. There are still no
+tools and no data gate. The written spec and model policy are in the files below.
 
 | Where | What it holds |
 | --- | --- |
@@ -114,11 +121,12 @@ These are in the repo now and are the likely sources for the tools. Check each i
 ## 2. What is not built
 
 Built in 0148: the Settings section and the OpenAI-compatible client with Test connection (3.1), the local or
-remote classification, and the policy docs.
+remote classification, and the policy docs. Built in 0149: the Auto / Local / Remote setting. Built in 0151: the chat
+screen and Help entry, per-staff history (3.5), the error banner (3.3, without the offline search), the small scrubber
+and the practice mode block (3.12), the dash filter (3.9), the prompt, and the "More detail" button.
 
 Still to do:
 
-- A chat screen and an entry for it in the Help menu.
 - The offline mode (3.3): a visible error plus a model-free search of the navgraph and docs.
 - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
   before anything reaches the model or the screen.
@@ -126,8 +134,9 @@ Still to do:
 - The audit log and its manager-only viewer (3.6).
 - The practice mode coach (3.7).
 - Model-free product and inventory lookup for the offline mode (3.3).
-- The data gate: the category rules and override toggles, and the scrubber (3.1). All enforced in code.
-- The prompt that tells the model its rules (read-only, Australian English, no dashes, say when it does not know).
+- The data gate: the category rules and override toggles (3.1). All enforced in code. The small scrubber exists
+  already (0151) and the gate builds on it.
+- The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
 - A way to keep it from changing anything, enforced in code and not only in the prompt.
 - Tests, a help page, a device test and a progress log entry for each later patch.
 
@@ -426,7 +435,7 @@ chat screen patch can add streaming.
    `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` updated for the changed model policy (1.3).
    **0149 (tiny, before the chat patch):** the Auto / Local / Remote setting, and this document brought up to date with
    the decisions in 3.12.
-2. Chat screen and Help menu entry (patch 0150). Plain chat with no tools, the error banner, per-staff history (3.5),
+2. **Done (0151).** Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5),
    a small scrubber (3.12) and the practice mode block (3.12).
 3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the

@@ -28,6 +28,7 @@ import Settings from './src/screens/Settings';
 import Staff, { PinLock } from './src/screens/Staff';
 import Diagnostics from './src/screens/Diagnostics';
 import Help from './src/screens/Help';
+import Assistant from './src/screens/Assistant';
 import Training from './src/screens/Training';
 import TrainingRun from './src/screens/TrainingRun';
 import TerminalPlay from './src/screens/TerminalPlay';
@@ -67,7 +68,8 @@ function Routes({ route: top }: { route: Route }) {
     case 'reports': return <Reports />;
     case 'giftcards': return <GiftCards />;
     case 'drawer': return <Drawer />;
-    case 'settings': return <Settings />;
+    case 'settings': return <Settings open={p.sub} />;
+    case 'assistant': return <Assistant />;
     case 'staff': return <Staff />;
     case 'diagnostics': return <Diagnostics />;
     case 'help': return <Help id={p.id} />;

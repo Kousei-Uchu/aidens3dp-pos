@@ -60,7 +60,7 @@ export function AssistantSettings() {
 
   return (
     <View style={{ padding: 16, gap: 12 }}>
-      <Txt size={13} sub>Choose the server the Help assistant will use. Any server that speaks the OpenAI-compatible API works, including Ollama on the shop PC. There is no chat screen yet: this page only sets up and tests the connection. Test connection sends a fixed test message and nothing from the shop.</Txt>
+      <Txt size={13} sub>Choose the server the Help assistant will use. Any server that speaks the OpenAI-compatible API works, including Ollama on the shop PC. Test connection sends a fixed test message and nothing from the shop. To chat, open Help and tap the sparkles button.</Txt>
       <Section title="Connection" footer="Per iPad, so it is not shared with other registers. It is included in Backup & transfer, and the key is stored in the iPad's Keychain.">
         <View style={{ padding: 12, gap: 10 }}>
           <Field kind="url" label="Address (usually ends in /v1)" placeholder="http://192.168.1.20:11434/v1" value={d.baseUrl} onChangeText={t => set({ baseUrl: t })} />

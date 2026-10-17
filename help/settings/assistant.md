@@ -4,12 +4,12 @@ title: AI assistant settings
 parent: settings
 summary: Point the Help assistant at a model server (Ollama or any OpenAI-compatible provider) and test the connection.
 tags: [AI, assistant, chatbot, model, Ollama, OpenAI, API key, local, remote, test connection, privacy]
-related: [settings, settings/backup, staff]
+related: [settings, settings/backup, staff, settings/ask-assistant]
 updated: 2026-10-17
 ---
 Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.
 
-**The chat screen is not built yet.** This page only sets up and tests the connection, so there is nothing to ask the assistant yet.
+This page sets up and tests the connection. To use the assistant, see [[settings/ask-assistant]].
 
 ## Basic
 

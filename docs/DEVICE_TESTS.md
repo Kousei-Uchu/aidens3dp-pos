@@ -642,3 +642,20 @@ Needs two iPads on the same Wi-Fi, and the new native build on both (the TCP ser
 10. Start sharing, then change one digit of the key in the address on the second iPad and import. Pass: it fails and reports a 404.
 11. More ▸ Training, start any course, then try **Show QR for another register**. Pass: it says sharing is switched off in practice mode.
 12. Start sharing and leave the iPad alone for the length of your screensaver delay. Pass: the screen stays awake and the QR stays up (sharing keeps the screen awake).
+
+## T52. Ask the assistant: the chat screen (0151)
+
+On the iPad, with a model server set up as in T49 (Ollama on a PC on the same Wi-Fi is the easiest). Sign in as the owner (or a manager when the team has no owner). This chat has no tools, so it knows nothing about the shop.
+
+1. Open **Help**. Pass: a sparkles button sits at the top, beside Contents. Sign in as a cashier (or as a manager when there is an owner). Pass: the button is not there. Lock the till. Pass: Help from the sign in screen has no sparkles button either.
+2. As the owner, tap it and ask *How do I give a customer a receipt?* Pass: after a moment a short reply appears. Tap **More detail**. Pass: a fuller reply follows.
+3. Ask *Hi*, then ask a long question that needs steps. Pass: the first answer is a line or two and the second is longer.
+4. Ask *What is the price of the Mini Gemstone Dragon?* Pass: it says it cannot look up the shop's products yet and does not make up a price.
+5. Type `my email is jo@example.com and my card is 4111 1111 1111 1111` and send. Pass: your message shows the tags [email address] and [card number], a line under it says what was hidden, and the reply does not repeat either.
+6. Pass for dashes: none of the replies contain a long dash (em or en dash). Ask for *a list of opening hours from 9 to 5* to try to provoke one.
+7. Ask a question in another language, for example *Comment fait-on un remboursement ?* Pass: it replies in that language.
+8. Leave the chat and come back. Pass: the messages are still there. Sign in as a different staff member who may open the chat (or turn staff sign in off and on). Pass: their chat is empty, and yours is back when you return. Tap the bin and confirm. Pass: only the signed in person's history clears.
+9. Turn the PC's Ollama off and ask something. Pass: a bar says it cannot reach the model, with **Retry** and **Open model settings**. Turn Ollama on and tap **Retry**. Pass: the answer arrives and the bar goes. Set a wrong model name in settings and ask. Pass: the bar says the model was not found. Set the timeout to 5 and ask a long question on a slow model. Pass: after 5 seconds the bar says the model took too long, and *Still working* showed while it waited.
+10. **Most important:** More ▸ Training, start any course, then open Help and the chat. Pass: the chat says the assistant is switched off in practice mode, and Send does nothing. Nothing reaches your server (check its log).
+11. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: the chat history does NOT come across.
+12. Open the chat before the model is set up (clear the address and model). Pass: a box says it is not set up, with **Open model settings** for the owner. Tap it. Pass: the AI assistant settings page opens, and Back returns to the chat.

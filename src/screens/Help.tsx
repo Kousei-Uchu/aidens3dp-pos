@@ -11,6 +11,10 @@ import { HelpMenu } from '../ui/HelpMenu';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
+import { SPOT } from '../lib/trainingSpots';
+import { isLockScreen } from '../lib/posLock';
+import { assistantEntryVisible } from '../lib/assistantChat';
+import { useCanEditAssistant } from './AssistantSettings';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { DEPTHS, DEPTH_BLURB, DEPTH_LABEL, ROOT_ID, depthsPresent, resolveLinks, searchPages, selectDepth, trail, type Depth } from '../lib/helpDocs';
 import { parseBlocks } from '../lib/mdBlocks';
@@ -42,6 +46,8 @@ export default function Help({ id }: { id?: string }) {
   const depth = asDepth(useApp(s => s.settings.helpDepth)); const patch = useApp(s => s.patchSettings);
   const [hist, setHist] = useState<string[]>([id && index.byId[id] ? id : ROOT_ID]);
   const [q, setQ] = useState(''); const [menu, setMenu] = useState(false);
+  const locked = useApp(s => isLockScreen({ staffCount: s.settings.staff.length, unlocked: s.unlocked })); const canEditAssistant = useCanEditAssistant();
+  const showAssistant = assistantEntryVisible({ locked, canEdit: canEditAssistant });
   const cur = hist[hist.length - 1]; const page = index.byId[cur] ?? index.byId[ROOT_ID];
   const go = (to: string) => { if (!index.byId[to]) return; setQ(''); setHist(h => (h[h.length - 1] === to ? h : [...h, to])); };
   const back = () => (q ? setQ('') : hist.length > 1 ? setHist(h => h.slice(0, -1)) : nav.pop());
@@ -57,7 +63,7 @@ export default function Help({ id }: { id?: string }) {
 
   return (
     <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back} helpId={null}
-      right={<View style={{ flexDirection: 'row' }}><IconBtn icon="list-outline" label="Contents" onPress={() => setMenu(true)} />{page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : null}</View>}>
+      right={<View style={{ flexDirection: 'row' }}>{showAssistant ? <IconBtn icon="sparkles-outline" label="Ask the assistant" onPress={() => nav.push('assistant')} spot={SPOT.helpAssistant} /> : null}<IconBtn icon="list-outline" label="Contents" onPress={() => setMenu(true)} />{page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : null}</View>}>
       <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
         {SCANNER_SHORTCUT[page.id] && !q.trim() && index.byId[SCANNER_PAGE] ? (
           <Pressable onPress={() => go(SCANNER_PAGE)} accessibilityRole="button" accessibilityLabel="Open the scanner setup barcodes"

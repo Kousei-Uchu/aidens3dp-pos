@@ -8,6 +8,7 @@ export const SPOT = {
   tabMore: 'tab.more',
   tabNotifications: 'tab.notifications', // the Notifications tab at the bottom of the screen
   moreTraining: 'more.training',
+  helpAssistant: 'help.assistant', // the sparkles button at the top of Help that opens the AI assistant chat
   back: 'page.back',           // the Back arrow at the top of every pushed page
   sheetClose: 'sheet.close',   // the Close button of a sheet
   terminalTap: 'terminal.tap',         // the customer's Tap card button under the practice terminal (manual mode)

@@ -1,0 +1,839 @@
+diff --git a/App.tsx b/App.tsx
+index 25b4a06..e2ac206 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -28,6 +28,7 @@ import Settings from './src/screens/Settings';
+ import Staff, { PinLock } from './src/screens/Staff';
+ import Diagnostics from './src/screens/Diagnostics';
+ import Help from './src/screens/Help';
++import Assistant from './src/screens/Assistant';
+ import Training from './src/screens/Training';
+ import TrainingRun from './src/screens/TrainingRun';
+ import TerminalPlay from './src/screens/TerminalPlay';
+@@ -67,7 +68,8 @@ function Routes({ route: top }: { route: Route }) {
+     case 'reports': return <Reports />;
+     case 'giftcards': return <GiftCards />;
+     case 'drawer': return <Drawer />;
+-    case 'settings': return <Settings />;
++    case 'settings': return <Settings open={p.sub} />;
++    case 'assistant': return <Assistant />;
+     case 'staff': return <Staff />;
+     case 'diagnostics': return <Diagnostics />;
+     case 'help': return <Help id={p.id} />;
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index ccd167d..853f576 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,12 +6,19 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 10 (17 October 2026), patch 0151:** patch 2 was built: the chat screen and its Help entry (`src/screens/Assistant.tsx`, route
++`assistant`), the chat logic in `src/lib/assistantChat.ts`, per-staff history on the device, the error banner, the small
++scrubber, the dash filter and the practice mode block, as decided in 3.12. It has no tools, so the model sees only what
++the cashier types. Two details worth knowing: the scrubber runs on every endpoint, local or remote, and the cashier's
++message is stored already scrubbed, so a pasted card number never reaches the disk; and the Help entry is wired to
++`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, which the audit log patch flips to true.
++
+ **Revision 9 (17 October 2026), patch 0149:** the owner approved the plan for patch 2 (the chat screen), and the decisions
+ are recorded here. The "Treat this address as local" switch becomes a three-way Auto / Local / Remote setting (3.1), so an
+ address can also be forced remote. Four decisions change the order of work: a small scrubber moves forward into the chat
+ patch, the Help entry shows only to people who may edit assistant settings until the audit log lands, sending is blocked
+ in practice mode until the coach exists, and the three-way setting gets its own tiny patch (0149) ahead of the chat patch
+-(0150). See 3.10 and 3.12.
++(0151). See 3.10 and 3.12.
+ 
+ **Revision 8 (17 October 2026), patch 0148:** the plan was checked against the repo and patch 1 was built.
+ Changes from the check: the latest patch was 0146, not 0143, and a scanner patch took 0147 before patch 1 was finished, so patch 1 is 0148; there are three roles
+@@ -41,8 +48,8 @@ The tool list has grown. The model decision in 1.3 is now superseded, see 3.1.
+ 
+ ### 1.1 Status
+ 
+-Patch 0148 added the Settings page and the connection client. There is still no chat screen, no tools and no
+-data gate. The written spec and model policy are in the files below.
++Patch 0148 added the Settings page and the connection client, and patch 0151 added the chat screen. There are still no
++tools and no data gate. The written spec and model policy are in the files below.
+ 
+ | Where | What it holds |
+ | --- | --- |
+@@ -114,11 +121,12 @@ These are in the repo now and are the likely sources for the tools. Check each i
+ ## 2. What is not built
+ 
+ Built in 0148: the Settings section and the OpenAI-compatible client with Test connection (3.1), the local or
+-remote classification, and the policy docs.
++remote classification, and the policy docs. Built in 0149: the Auto / Local / Remote setting. Built in 0151: the chat
++screen and Help entry, per-staff history (3.5), the error banner (3.3, without the offline search), the small scrubber
++and the practice mode block (3.12), the dash filter (3.9), the prompt, and the "More detail" button.
+ 
+ Still to do:
+ 
+-- A chat screen and an entry for it in the Help menu.
+ - The offline mode (3.3): a visible error plus a model-free search of the navgraph and docs.
+ - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
+   before anything reaches the model or the screen.
+@@ -126,8 +134,9 @@ Still to do:
+ - The audit log and its manager-only viewer (3.6).
+ - The practice mode coach (3.7).
+ - Model-free product and inventory lookup for the offline mode (3.3).
+-- The data gate: the category rules and override toggles, and the scrubber (3.1). All enforced in code.
+-- The prompt that tells the model its rules (read-only, Australian English, no dashes, say when it does not know).
++- The data gate: the category rules and override toggles (3.1). All enforced in code. The small scrubber exists
++  already (0151) and the gate builds on it.
++- The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
+ - A way to keep it from changing anything, enforced in code and not only in the prompt.
+ - Tests, a help page, a device test and a progress log entry for each later patch.
+ 
+@@ -426,7 +435,7 @@ chat screen patch can add streaming.
+    `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` updated for the changed model policy (1.3).
+    **0149 (tiny, before the chat patch):** the Auto / Local / Remote setting, and this document brought up to date with
+    the decisions in 3.12.
+-2. Chat screen and Help menu entry (patch 0150). Plain chat with no tools, the error banner, per-staff history (3.5),
++2. **Done (0151).** Chat screen and Help menu entry. Plain chat with no tools, the error banner, per-staff history (3.5),
+    a small scrubber (3.12) and the practice mode block (3.12).
+ 3. Audit log and the manager-only viewer (3.6), so every later patch is logged from the start.
+ 4. Navgraph and docs search, current date and time, screen and register context, role filtering (3.4) and the
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index ddd0dad..2c7dfc5 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -642,3 +642,20 @@ Needs two iPads on the same Wi-Fi, and the new native build on both (the TCP ser
+ 10. Start sharing, then change one digit of the key in the address on the second iPad and import. Pass: it fails and reports a 404.
+ 11. More ▸ Training, start any course, then try **Show QR for another register**. Pass: it says sharing is switched off in practice mode.
+ 12. Start sharing and leave the iPad alone for the length of your screensaver delay. Pass: the screen stays awake and the QR stays up (sharing keeps the screen awake).
++
++## T52. Ask the assistant: the chat screen (0151)
++
++On the iPad, with a model server set up as in T49 (Ollama on a PC on the same Wi-Fi is the easiest). Sign in as the owner (or a manager when the team has no owner). This chat has no tools, so it knows nothing about the shop.
++
++1. Open **Help**. Pass: a sparkles button sits at the top, beside Contents. Sign in as a cashier (or as a manager when there is an owner). Pass: the button is not there. Lock the till. Pass: Help from the sign in screen has no sparkles button either.
++2. As the owner, tap it and ask *How do I give a customer a receipt?* Pass: after a moment a short reply appears. Tap **More detail**. Pass: a fuller reply follows.
++3. Ask *Hi*, then ask a long question that needs steps. Pass: the first answer is a line or two and the second is longer.
++4. Ask *What is the price of the Mini Gemstone Dragon?* Pass: it says it cannot look up the shop's products yet and does not make up a price.
++5. Type `my email is jo@example.com and my card is 4111 1111 1111 1111` and send. Pass: your message shows the tags [email address] and [card number], a line under it says what was hidden, and the reply does not repeat either.
++6. Pass for dashes: none of the replies contain a long dash (em or en dash). Ask for *a list of opening hours from 9 to 5* to try to provoke one.
++7. Ask a question in another language, for example *Comment fait-on un remboursement ?* Pass: it replies in that language.
++8. Leave the chat and come back. Pass: the messages are still there. Sign in as a different staff member who may open the chat (or turn staff sign in off and on). Pass: their chat is empty, and yours is back when you return. Tap the bin and confirm. Pass: only the signed in person's history clears.
++9. Turn the PC's Ollama off and ask something. Pass: a bar says it cannot reach the model, with **Retry** and **Open model settings**. Turn Ollama on and tap **Retry**. Pass: the answer arrives and the bar goes. Set a wrong model name in settings and ask. Pass: the bar says the model was not found. Set the timeout to 5 and ask a long question on a slow model. Pass: after 5 seconds the bar says the model took too long, and *Still working* showed while it waited.
++10. **Most important:** More ▸ Training, start any course, then open Help and the chat. Pass: the chat says the assistant is switched off in practice mode, and Send does nothing. Nothing reaches your server (check its log).
++11. Settings ▸ Backup & transfer: export a backup, restore it on a second iPad. Pass: the chat history does NOT come across.
++12. Open the chat before the model is set up (clear the address and model). Pass: a box says it is not set up, with **Open model settings** for the owner. Tap it. Pass: the AI assistant settings page opens, and Back returns to the chat.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 03eeee5..e71dd5d 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -150,6 +150,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0148 | 2026-10-17 | AI assistant, patch 1 of 10 (your request): **More ▸ Settings ▸ AI assistant**, the connection setup for the Help chatbot. Address, model name, optional API key, temperature, timeout (120 s), context size (8000) and tool call limit (15), a **Test connection** button (server answers, model replies, model can call a tool; each failure says its cause in plain words), and a Local or Remote label with a **Treat this address as local** switch. Any OpenAI-compatible server works, Ollama included. Only an owner, or a manager when the team has no owner, sees the row. Per iPad: it is not shared between registers (a test checks this), and it travels in Backup & transfer, **including the key**, which is otherwise kept only in the Keychain. Test connection sends fixed test text and nothing from the shop. There is **no chat screen yet**. Also: the model policy in `docs/WRITING_ASSISTANT.md` and `docs/GUESSES.md` is rewritten (any provider, data rules decide what it may see), the plan is saved as `docs/AI_ASSISTANT_PLAN.md`, and the iOS local network permission text now mentions the assistant (needs a new native build, not only an update). Help: `settings/assistant`. Tests: `assistantconfig`, `assistantclient`, `assistantsettings`. Device test T49. Not added: streaming replies, the data gate, any tool (later patches in the plan). | your request |
+ | 0149 | 2026-10-17 | AI assistant, a small step before patch 2 (your request): the **Treat this address as local** switch in **More ▸ Settings ▸ AI assistant** is now a three way choice, **Auto / Local / Remote** (`endpointMode` in `src/lib/assistantConfig.ts`). Auto follows the address as before. **Remote** is new: it forces an address to count as remote, for a tunnel or proxy on a private looking address. Settings saved by 0148 move over by themselves (switch on becomes Local, off becomes Auto), including restored backups. Still per iPad, never shared between registers, and still carried in Backup & transfer. `docs/AI_ASSISTANT_PLAN.md` (revision 9, new section 3.12) and `docs/WRITING_ASSISTANT.md` now record the decisions for the chat patch: small scrubber pulled forward into it, the Help entry shown only to people who may edit assistant settings until the audit log lands, sending blocked in practice mode until the coach exists, and this patch ahead of it. Help: `settings/assistant`. Tests: `assistantconfig`, `assistantsettings`. Device test T50. | your request |
+ | 0150 | 2026-10-17 | Square history can be copied from one register to another by QR (your request). **Settings ▸ Square history ▸ Share with another register ▸ Show QR for another register** turns the register into what the PC script is: a small read-only web server on the shop Wi-Fi behind a random key, serving only `manifest.json` and the monthly files already stored there. The QR holds one short address of the same shape the PC script prints (`http://<ip>:8787/<key>/manifest.json`), so there are no data QRs, and the other register scans it with the existing **Scan QR from PC** and `installFromUrl`, which re-matches the history to its own Shopify catalogue. The page shows how many registers have been sent everything, keeps the screen awake while sharing, and sharing stops by itself after 10 minutes, when the app leaves the screen, or on **Stop sharing**. Switched off in practice mode. New: `src/lib/squareShare.ts` (address, key, request routing, progress; pure), `src/lib/squareShareIO.ts` (the server, using the new `react-native-tcp-socket` dependency and `react-native-device-info` for the Wi-Fi address), `tests/squareshare.test.ts` (including a real HTTP round trip). `squareHistoryIO.ts` gains read-only `storedManifest`, `readStoredFile`, `storedFileExists`; `QR` gains a `label`. Help page `orders/square-history` updated, `help.json` rebuilt, iOS local network text updated. **Needs a native rebuild** (`npm install` then `npm run ios:reset`) because of the new native module. Needs two iPads to confirm (device test T51) | your request |
++| 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ 
+ 
+ ---
+diff --git a/help/help.json b/help/help.json
+index 8452bc8..f681f62 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "e0c35119",
++ "version": "e8dd8372",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1401,6 +1401,33 @@
+     "advanced": "### Settings sections\n| Section | Component or route |\n|---|---|\n| Settings list and section navigation | `src/screens/Settings.tsx` |\n| Shopify connection and catalogue import | `ShopifySettings` in `src/screens/Settings.tsx` |\n| Payments, fees and cash rounding | Payments section in `src/screens/Settings.tsx` |\n| Bundle deals | `BundlesEditor` in `src/screens/BundleBuilder.tsx` |\n| Hardware scanner test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` |\n| Screensaver and display | `DisplaySettings` in `src/screens/Settings.tsx` |\n| Settings model and defaults | `src/state/store.ts` |\n\nEach section is a panel within the Settings screen. Its values may be stored locally, shared with the other registers, or held in the iPad's secure storage depending on the setting."
+    }
+   },
++  {
++   "id": "settings/ask-assistant",
++   "title": "Ask the assistant",
++   "parent": "settings/assistant",
++   "summary": "Chat with the Help assistant: what it can and cannot do yet, what is kept, and what is hidden before anything is sent.",
++   "tags": [
++    "AI",
++    "assistant",
++    "chatbot",
++    "chat",
++    "ask",
++    "history",
++    "privacy",
++    "practice mode"
++   ],
++   "related": [
++    "settings/assistant",
++    "settings/backup"
++   ],
++   "updated": "2026-10-17",
++   "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
++   "sections": {
++    "basic": "### What it can do\nType a question and tap **Send**. It answers in plain words, in the language you write in. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### What it cannot do yet\nIt cannot see the shop. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.\n\n### If it does not answer\nA red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.",
++    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.\n\n### Practice mode\nThe assistant is switched off in practice mode. Practice mode never sends anything out.",
++    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### Limits of this version\nThere are no tools, so no shop data is sent at all. The full data rules, role filtering, the audit log and the search tools arrive in later patches. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
++   }
++  },
+   {
+    "id": "settings/assistant",
+    "title": "AI assistant settings",
+@@ -1422,10 +1449,11 @@
+    "related": [
+     "settings",
+     "settings/backup",
+-    "staff"
++    "staff",
++    "settings/ask-assistant"
+    ],
+    "updated": "2026-10-17",
+-   "lead": "Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.\n\n**The chat screen is not built yet.** This page only sets up and tests the connection, so there is nothing to ask the assistant yet.",
++   "lead": "Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.\n\nThis page sets up and tests the connection. To use the assistant, see [[settings/ask-assistant]].",
+    "sections": {
+     "basic": "### Set it up with Ollama on the shop PC\n1. On the PC, install Ollama and download a model that supports tools.\n2. Make sure the iPad and the PC are on the same Wi-Fi, and that Ollama accepts connections from the network.\n3. In **Address**, type the PC's address and port with `/v1` on the end, for example `http://192.168.1.20:11434/v1`.\n4. In **Model name**, type the model, for example `llama3.1:8b`. Leave **API key** empty, because Ollama does not need one.\n5. Tap **Test connection**. Three checks run: the server answers, the model replies, and the model can call a tool.\n6. Tap **Save**.\n\nThe first time the iPad talks to a computer on your Wi-Fi, iPadOS asks for permission to find devices on the local network. Tap **Allow**.\n\n### Use a hosted provider instead\nType the provider's address (it ends in `/v1`), the model name it gives you, and the API key. The key is kept in the iPad's Keychain and is never shown back in full.\n\n### What the test sends\nTest connection sends a short fixed message and a fake test tool. It sends nothing from the shop: no products, customers or sales.\n\n### If a check fails\nThe message says what went wrong: the server could not be reached, the request took too long, the key was not accepted, the model name was not found (it lists the names the server has), or the model does not support tools. Fix that one thing and test again.",
+     "deep": "### Local or remote\nUnder the address, the page says whether it counts as **Local** or **Remote**. Local means this iPad, a private network address (`192.168.x.x`, `10.x.x.x`, `172.16.x.x` to `172.31.x.x`) or a name ending in `.local`. Everything else counts as remote, including an address the app cannot read.\n\nThe assistant's data rules use this. Customer details and emails may go to a local address only, and payment details and keys never go anywhere. Those rules arrive with the assistant's data tools. Below that is a three way choice. **Auto** follows the address, and is right for nearly everyone. **Local** is for a private network the app does not recognise. **Remote** is for a tunnel or proxy that forwards out of your network, even when its address looks private. If you are not sure, choose Remote: it only means less is shared with the model. When you choose Local or Remote, the page adds *(set by you)* to the line above.\n\n### Options\n- **Temperature** is how adventurous the model's wording is. Low is steadier.\n- **Timeout** is how long one request may take. The default is 120 seconds.\n- **Context size** is how much text the model can read at once. If the provider reports it, Test connection fills it in. With Ollama, set the context size on the Ollama side too, because this connection cannot set it.\n- **Tool call limit** stops a model that gets stuck calling tools in a loop. The default is 15.\n\n### Per iPad, and in backups\nThese settings are for this iPad and are not shared with other registers. They are included in **Backup & transfer**, together with the key, so a restored iPad can reach the same model. See [[settings/backup]].",
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+new file mode 100644
+index 0000000..66e6ce7
+--- /dev/null
++++ b/help/settings/ask-assistant.md
+@@ -0,0 +1,40 @@
++---
++id: settings/ask-assistant
++title: Ask the assistant
++parent: settings/assistant
++summary: Chat with the Help assistant: what it can and cannot do yet, what is kept, and what is hidden before anything is sent.
++tags: [AI, assistant, chatbot, chat, ask, history, privacy, practice mode]
++related: [settings/assistant, settings/backup]
++updated: 2026-10-17
++---
++Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].
++
++## Basic
++
++### What it can do
++Type a question and tap **Send**. It answers in plain words, in the language you write in. Short questions get short answers. Tap **More detail** under a reply for a fuller one.
++
++### What it cannot do yet
++It cannot see the shop. It does not know your products, prices, stock, customers, orders or sales, and it will say so instead of guessing. It never changes anything either: no prices, refunds, carts or settings. It only answers.
++
++### If it does not answer
++A red bar at the top says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.
++
++## Deep
++
++### What is kept
++Your messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.
++
++### What is hidden before sending
++Before anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new.
++
++### Practice mode
++The assistant is switched off in practice mode. Practice mode never sends anything out.
++
++## Advanced
++
++### What goes to the model
++Only the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.
++
++### Limits of this version
++There are no tools, so no shop data is sent at all. The full data rules, role filtering, the audit log and the search tools arrive in later patches. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+diff --git a/help/settings/assistant.md b/help/settings/assistant.md
+index f09faa2..ade1da7 100644
+--- a/help/settings/assistant.md
++++ b/help/settings/assistant.md
+@@ -4,12 +4,12 @@ title: AI assistant settings
+ parent: settings
+ summary: Point the Help assistant at a model server (Ollama or any OpenAI-compatible provider) and test the connection.
+ tags: [AI, assistant, chatbot, model, Ollama, OpenAI, API key, local, remote, test connection, privacy]
+-related: [settings, settings/backup, staff]
++related: [settings, settings/backup, staff, settings/ask-assistant]
+ updated: 2026-10-17
+ ---
+ Use **More ▸ Settings ▸ AI assistant** to choose the model the Help assistant will use. Only an owner can open it, or a manager when the team has no owner. When staff sign-in is off, anyone can. Other people do not see the row.
+ 
+-**The chat screen is not built yet.** This page only sets up and tests the connection, so there is nothing to ask the assistant yet.
++This page sets up and tests the connection. To use the assistant, see [[settings/ask-assistant]].
+ 
+ ## Basic
+ 
+diff --git a/src/app.navgraph b/src/app.navgraph
+index cd28a35..7258fec 100644
+--- a/src/app.navgraph
++++ b/src/app.navgraph
+@@ -83,6 +83,7 @@ SCREEN page_settings "Settings" { "kind": "page", "route": "settings", "label":
+ SCREEN page_staff "Staff" { "kind": "page", "route": "staff", "label": "Staff", "roles": ["manager", "owner"] }
+ SCREEN page_diagnostics "Support & diagnostics" { "kind": "page", "route": "diagnostics", "label": "Support & diagnostics" }
+ SCREEN page_help "Help" { "kind": "page", "route": "help", "label": "Help" }
++SCREEN page_assistant "Ask the assistant" { "kind": "page", "route": "assistant", "label": "Ask the assistant", "roles": ["manager", "owner"] }
+ SCREEN page_training "Training" { "kind": "page", "route": "training", "label": "Training" }
+ SCREEN page_training_run "Training run" { "kind": "page", "route": "trainingRun", "label": "Training run" }
+ SCREEN page_terminal_play "Practice terminal" { "kind": "page", "route": "terminalPlay", "label": "Practice terminal" }
+@@ -120,6 +121,8 @@ page_staff -> tab_more [say="Tap Back to return."] { DO TAP { "target": "page.ba
+ page_settings -> tab_more [say="Tap Back to return."] { DO TAP { "target": "page.back" } }
+ page_diagnostics -> tab_more [say="Tap Back to return."] { DO TAP { "target": "page.back" } }
+ page_help -> tab_more [say="Tap Back to return."] { DO TAP { "target": "page.back" } }
++page_help -> page_assistant [say="Tap the sparkles button at the top.", roles=["manager", "owner"]] { DO TAP { "target": "help.assistant" } }
++page_assistant -> page_help [say="Tap Back to return."] { DO TAP { "target": "page.back" } }
+ page_training -> tab_more [say="Tap Back to return."] { DO TAP { "target": "page.back" } }
+ 
+ # Items pages
+diff --git a/src/lib/appControls.ts b/src/lib/appControls.ts
+index b539989..c06fbcc 100644
+--- a/src/lib/appControls.ts
++++ b/src/lib/appControls.ts
+@@ -92,6 +92,7 @@ export const SPOT_SCREEN: Record<string, string> = {
+   // More tab.
+   [SPOT.tabMore]: 'tab_more',
+   [SPOT.moreTraining]: 'tab_more',
++  [SPOT.helpAssistant]: 'page_help',
+   [SPOT.moreOrders]: 'tab_more',
+   [SPOT.moreSaved]: 'tab_more',
+   [SPOT.moreDiagnostics]: 'tab_more',
+diff --git a/src/lib/appNavgraph.generated.ts b/src/lib/appNavgraph.generated.ts
+index e3d563d..14f054e 100644
+--- a/src/lib/appNavgraph.generated.ts
++++ b/src/lib/appNavgraph.generated.ts
+@@ -1,7 +1,7 @@
+ // Location: src/lib/appNavgraph.generated.ts
+ // GENERATED from src/app.navgraph and src/app.navschema by scripts/build-navgraph.ts. Do not edit by hand.
+ // React Native has no filesystem (see routegraph llms.txt), so the graph travels with the app as text and the schema as data.
+-// Screens: 70 (5 tab, 2 view, 18 page, 40 sheet, 5 overlay). Edges: 164.
+-export const APP_NAVGRAPH: string = "NAVGRAPH/2\nAPP \"Aidens 3D POS\"\n\n# The line key of a per line window (its variant, or the line's own id for a\n# custom amount). The `sheet_line` template below is copied once per open line\n# at runtime, and the copy fills this in (see `ensureLineWindow` in appGraph).\nVAR ITEM_KEY : string\n\n# ============================================================================\n# The app as a graph. Screens are places a person can be. Edges are how they\n# move and what they do. Control level action nodes are registered at runtime\n# from src/lib/appControls.ts (node id = \"do:\" + spot id), so every button,\n# tile, row and gesture in the app joins this graph without hand editing.\n#\n# Node kinds (screen meta \"kind\"):\n#   tab      the five bottom bar tabs\n#   view     a mode inside Checkout (Keypad, All products; Quick Menu is the tab)\n#   page     a pushed route\n#   sheet    a window drawn over the page\n#   overlay  something drawn over everything (sign in, screensaver, practice)\n#   action   a control, a terminal node in a route\n#\n# Edge meta:\n#   say      the words said while pointing at this transition\n#   gesture  tap (default), or a swipe/hold/scroll\n#   spot     the UI spot this transition taps, when it has one\n#   roles    who may take it\n#   modules  which run the transition belongs to (a module id, or \"real\"); missing means every run\n# ============================================================================\n\n# ---------------------------------------------------------------- tabs -----\nSCREEN tab_checkout \"Checkout\" { \"kind\": \"tab\", \"tab\": \"checkout\", \"label\": \"Checkout\", \"summary\": \"Build the sale and take payment.\" }\nSCREEN tab_inventory \"Inventory\" { \"kind\": \"tab\", \"tab\": \"inventory\", \"label\": \"Inventory\" }\nSCREEN tab_transactions \"Transactions\" { \"kind\": \"tab\", \"tab\": \"transactions\", \"label\": \"Transactions\" }\nSCREEN tab_notifications \"Notifications\" { \"kind\": \"tab\", \"tab\": \"notifications\", \"label\": \"Notifications\" }\nSCREEN tab_more \"More\" { \"kind\": \"tab\", \"tab\": \"more\", \"label\": \"More\" }\n\ntab_checkout -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_checkout -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_checkout -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_checkout -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_inventory -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_inventory -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_inventory -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_inventory -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_transactions -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_transactions -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_transactions -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_transactions -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_notifications -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_notifications -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_notifications -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_notifications -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_more -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_more -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_more -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_more -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\n\n# ------------------------------------------------------- checkout views ----\nSCREEN view_keypad \"Keypad\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"Keypad\" }\nSCREEN view_all \"All products\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"All products\" }\n\ntab_checkout -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\ntab_checkout -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_keypad -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_keypad -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_all -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_all -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\n\n# ------------------------------------------------------------- pages -------\nSCREEN page_pay \"Payment\" { \"kind\": \"page\", \"route\": \"pay\", \"label\": \"Payment\" }\nSCREEN page_cart \"Cart\" { \"kind\": \"page\", \"route\": \"cart\", \"label\": \"Cart\" }\nSCREEN page_saved \"Saved carts\" { \"kind\": \"page\", \"route\": \"saved\", \"label\": \"Saved carts\" }\nSCREEN page_orders \"Orders\" { \"kind\": \"page\", \"route\": \"orders\", \"label\": \"Orders\" }\nSCREEN page_items \"Items\" { \"kind\": \"page\", \"route\": \"items\", \"label\": \"Items\" }\nSCREEN page_create_item \"New item\" { \"kind\": \"page\", \"route\": \"createItem\", \"label\": \"New item\" }\nSCREEN page_edit_item \"Edit item\" { \"kind\": \"page\", \"route\": \"editItem\", \"label\": \"Edit item\" }\nSCREEN page_customers \"Customers\" { \"kind\": \"page\", \"route\": \"customers\", \"label\": \"Customers\" }\nSCREEN page_reports \"Reports\" { \"kind\": \"page\", \"route\": \"reports\", \"label\": \"Reports\" }\nSCREEN page_giftcards \"Gift cards\" { \"kind\": \"page\", \"route\": \"giftcards\", \"label\": \"Gift cards\" }\nSCREEN page_drawer \"Cash drawer\" { \"kind\": \"page\", \"route\": \"drawer\", \"label\": \"Cash drawer\" }\nSCREEN page_settings \"Settings\" { \"kind\": \"page\", \"route\": \"settings\", \"label\": \"Settings\" }\nSCREEN page_staff \"Staff\" { \"kind\": \"page\", \"route\": \"staff\", \"label\": \"Staff\", \"roles\": [\"manager\", \"owner\"] }\nSCREEN page_diagnostics \"Support & diagnostics\" { \"kind\": \"page\", \"route\": \"diagnostics\", \"label\": \"Support & diagnostics\" }\nSCREEN page_help \"Help\" { \"kind\": \"page\", \"route\": \"help\", \"label\": \"Help\" }\nSCREEN page_training \"Training\" { \"kind\": \"page\", \"route\": \"training\", \"label\": \"Training\" }\nSCREEN page_training_run \"Training run\" { \"kind\": \"page\", \"route\": \"trainingRun\", \"label\": \"Training run\" }\nSCREEN page_terminal_play \"Practice terminal\" { \"kind\": \"page\", \"route\": \"terminalPlay\", \"label\": \"Practice terminal\" }\n\n# Checkout to payment and cart\ntab_checkout -> page_cart [say=\"Open the cart first.\"] { DO TAP { \"target\": \"cart.open\" } }\npage_cart -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\ntab_checkout -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_cart -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_pay -> page_cart [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_pay -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# More to its pages\ntab_more -> page_orders [say=\"Tap Orders.\"] { DO TAP { \"target\": \"more.orders\" } }\ntab_more -> page_items [say=\"Tap Items.\"] { DO TAP { \"target\": \"more.items\" } }\ntab_more -> page_customers [say=\"Tap Customers.\"] { DO TAP { \"target\": \"more.customers\" } }\ntab_more -> page_saved [say=\"Tap Saved carts.\"] { DO TAP { \"target\": \"more.saved\" } }\ntab_more -> page_giftcards [say=\"Tap Gift cards.\"] { DO TAP { \"target\": \"more.giftcards\" } }\ntab_more -> page_reports [say=\"Tap Reports.\"] { DO TAP { \"target\": \"more.reports\" } }\ntab_more -> page_drawer [say=\"Tap Cash drawer.\"] { DO TAP { \"target\": \"more.drawer\" } }\ntab_more -> page_staff [say=\"Tap Staff.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.staff\" } }\ntab_more -> page_settings [say=\"Tap Settings.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.settings\" } }\ntab_more -> page_diagnostics [say=\"Tap Support & diagnostics.\"] { DO TAP { \"target\": \"more.diagnostics\" } }\ntab_more -> page_help [say=\"Tap Help.\"] { DO TAP { \"target\": \"more.help\" } }\ntab_more -> page_training [say=\"Tap Training.\"] { DO TAP { \"target\": \"more.training\" } }\n\npage_orders -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_items -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_customers -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_saved -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_giftcards -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_reports -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_drawer -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_staff -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_settings -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_diagnostics -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_help -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Items pages\npage_items -> page_create_item [say=\"Tap New item.\"] { DO TAP { \"target\": \"items.new\" } }\npage_items -> page_edit_item [say=\"Tap the item.\"] { DO TAP { \"target\": \"items.row\" } }\npage_create_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_edit_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Training\npage_training -> page_training_run [say=\"Tap Start.\"] { DO TAP { \"target\": \"training.start\" } }\npage_training_run -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> page_terminal_play [say=\"Tap the practice terminal.\"] { DO TAP { \"target\": \"training.terminal\" } }\npage_terminal_play -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# ----------------------------------------------------------- Checkout sheets\nSCREEN sheet_search \"Search\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Search\" }\nSCREEN sheet_customer \"Customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer\" }\nSCREEN sheet_customer_new \"New customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"New customer\" }\nSCREEN sheet_custom_amount \"Custom amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Custom amount\" }\nSCREEN sheet_gift_sell \"Sell gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Sell gift card\" }\nSCREEN sheet_gift_sell_details \"Gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Gift card\" }\nSCREEN sheet_cart_menu \"Cart menu\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart menu\" }\nSCREEN sheet_cart_discount \"Cart discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart discount\" }\nSCREEN sheet_order_price \"Whole order price\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Whole order price\" }\nSCREEN sheet_review \"Check the price adjustments\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check the price adjustments\" }\nSCREEN sheet_bundles \"Check these bundles\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check these bundles\" }\nSCREEN sheet_cart_warnings \"Customer warning\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer warning\" }\nSCREEN sheet_save_cart \"Save cart\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Save cart\" }\n\ntab_checkout -> sheet_search [say=\"Tap Search.\"] { DO TAP { \"target\": \"find.search\" } }\nsheet_search -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\npage_cart -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\nsheet_customer -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_customer -> sheet_customer_new [say=\"Tap Create customer.\"] { DO TAP { \"target\": \"customer.create\" } }\nsheet_customer_new -> sheet_customer [say=\"Tap Back.\"] { DO TAP { \"target\": \"customer.back\" } }\ntab_checkout -> sheet_custom_amount [say=\"Tap Custom amount.\"] { DO TAP { \"target\": \"grid.action:custom\" } }\nsheet_custom_amount -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_gift_sell [say=\"Tap Sell gift card.\"] { DO TAP { \"target\": \"cart.menu.gift\" } }\nsheet_gift_sell -> sheet_gift_sell_details [say=\"Tap Next.\"] { DO TAP { \"target\": \"gift.next\" } }\nsheet_gift_sell_details -> sheet_gift_sell [say=\"Tap Change amount.\"] { DO TAP { \"target\": \"gift.change\" } }\nsheet_gift_sell_details -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_gift_sell -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\ntab_checkout -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\nsheet_cart_menu -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_cart_discount [say=\"Tap Apply cart discount.\"] { DO TAP { \"target\": \"cart.menu.discount\" } }\nsheet_cart_menu -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_cart_menu -> sheet_save_cart [say=\"Tap Save cart.\"] { DO TAP { \"target\": \"cart.menu.save\" } }\nsheet_cart_discount -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order_price -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_save_cart -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_review -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"review.continue\" } }\nsheet_review -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_bundles [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_bundles -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"bundle.continue\" } }\nsheet_bundles -> page_cart [say=\"Tap Edit cart.\"] { DO TAP { \"target\": \"bundle.edit\" } }\npage_cart -> sheet_cart_warnings [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_cart_warnings [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_cart_warnings -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"warning.continue\" } }\nsheet_cart_warnings -> page_cart [say=\"Tap Back to cart.\"] { DO TAP { \"target\": \"warning.cancel\" } }\n\n# ------------------------------------------------------ Line editor sheets\nSCREEN sheet_line \"Item\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item\" }\nSCREEN sheet_line_discount \"Item discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item discount\" }\nSCREEN sheet_line_item_price \"Item price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item price adjustment\" }\nSCREEN sheet_line_line_price \"Line price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Line price adjustment\" }\n\n# The per line copies (sheet_line:<key>) and their controls are registered at\n# runtime as each line window opens (see `ensureLineWindow` in appGraph). These\n# static edges are the template: each copy fills $ITEM_KEY$ with its own line.\npage_cart -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\ntab_checkout -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\nsheet_line -> tab_checkout [say=\"Tap Done to close the item.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> sheet_line_discount [say=\"Tap Discount.\"] { DO TAP { \"target\": \"line.discount\" } }\nsheet_line -> sheet_line_item_price [say=\"Tap Item price adjustment.\"] { DO TAP { \"target\": \"line.price\" } }\nsheet_line -> sheet_line_line_price [say=\"Tap Line price adjustment.\"] { DO TAP { \"target\": \"line.adjust\" } }\nsheet_line_discount -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_item_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_line_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ----------------------------------------------------------------- Payment --\nSCREEN sheet_cash_receive \"Cash received\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cash received\" }\nSCREEN sheet_cash_change \"Give change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Give change\" }\nSCREEN sheet_check_change \"Check change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check change\" }\nSCREEN sheet_split \"Split amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Split amount\" }\nSCREEN sheet_gift_check \"Check gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check gift card\" }\nSCREEN sheet_receipt \"Receipt\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Receipt\" }\n\npage_pay -> sheet_cash_receive [say=\"Tap Cash.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_split [say=\"Tap Split.\"] { DO TAP { \"target\": \"pay.split\" } }\nsheet_split -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_receive -> sheet_cash_change [say=\"Tap Next: give change.\"] { DO TAP { \"target\": \"cash.next\" } }\nsheet_cash_receive -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_change -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_check_change [say=\"Check the change.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_gift_check [say=\"Tap Gift card.\"] { DO TAP { \"target\": \"pay.gift\" } }\nsheet_gift_check -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_receipt [say=\"Finish the sale.\"] { DO TAP { \"target\": \"pay.card\" } }\nsheet_receipt -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"receipt.none\" } }\n\n# ---------------------------------------------------------- Orders & refund -\nSCREEN sheet_order \"Order\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Order\" }\nSCREEN sheet_refund \"Return\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return\" }\nSCREEN sheet_refund_pick \"Replacement item\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Replacement item\" }\nSCREEN sheet_refund_done \"Done\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Done\" }\n\npage_orders -> sheet_order [say=\"Tap the order.\"] { DO TAP { \"target\": \"order.row\" } }\nsheet_order -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order -> sheet_refund [say=\"Tap Refund or return.\"] { DO TAP { \"target\": \"orders.refund\" } }\nsheet_refund -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_pick [say=\"Tap Add replacement item.\"] { DO TAP { \"target\": \"refund.replace\" } }\nsheet_refund_pick -> sheet_refund [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_done [say=\"Tap the refund button.\"] { DO TAP { \"target\": \"refund.go\" } }\nsheet_refund_done -> page_orders [say=\"Tap OK.\"] { DO TAP { \"target\": \"refund.done\" } }\n\n# ------------------------------------------------------- More page sheets ---\nSCREEN sheet_reports_filter \"Customise\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Customise\" }\nSCREEN sheet_drawer_open \"Open drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Open drawer\" }\nSCREEN sheet_drawer_close \"Close drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Close drawer\" }\nSCREEN sheet_drawer_float \"Daily float report\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Daily float report\" }\nSCREEN sheet_drawer_swap \"Swap my cash\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Swap my cash\" }\nSCREEN sheet_cash_give \"Give cash refund\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Give cash refund\" }\nSCREEN sheet_cash_return \"Return cash for cancelled sale\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return cash for cancelled sale\" }\nSCREEN sheet_switch_staff \"Switch staff\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Switch staff\" }\nSCREEN sheet_staff_pass \"Staff pass\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Staff pass\" }\nSCREEN sheet_tile \"Add to grid\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Add to grid\" }\nSCREEN sheet_inventory_filters \"Filters & sort\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Filters & sort\" }\nSCREEN sheet_inventory_product \"Product\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Product\" }\nSCREEN sheet_lookup \"Look up\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Look up\" }\n\npage_reports -> sheet_reports_filter [say=\"Tap Customise.\"] { DO TAP { \"target\": \"reports.filter\" } }\nsheet_reports_filter -> page_reports [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_drawer_open [say=\"Tap Open drawer.\"] { DO TAP { \"target\": \"drawer.open\" } }\npage_drawer -> sheet_drawer_close [say=\"Tap Close drawer.\"] { DO TAP { \"target\": \"drawer.close\" } }\npage_drawer -> sheet_drawer_float [say=\"Tap Daily float report.\"] { DO TAP { \"target\": \"drawer.float\" } }\npage_drawer -> sheet_drawer_swap [say=\"Tap Swap my cash.\"] { DO TAP { \"target\": \"drawer.swap\" } }\nsheet_drawer_open -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_close -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_float -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_swap -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_cash_give [say=\"Give cash.\"] { DO TAP { \"target\": \"drawer.givecash\" } }\npage_drawer -> sheet_cash_return [say=\"Return cash.\"] { DO TAP { \"target\": \"drawer.returncash\" } }\nsheet_cash_give -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"cash.gave\" } }\nsheet_cash_return -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_switch_staff [say=\"Tap the staff member.\"] { DO TAP { \"target\": \"staff.switch\" } }\nsheet_switch_staff -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_staff_pass [say=\"Tap the pass.\"] { DO TAP { \"target\": \"staff.pass\" } }\nsheet_staff_pass -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_inventory -> sheet_inventory_filters [say=\"Tap Filters & sort.\"] { DO TAP { \"target\": \"inv.filter\" } }\ntab_inventory -> sheet_inventory_product [say=\"Tap a product.\"] { DO TAP { \"target\": \"inv.product\" } }\nsheet_inventory_filters -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_inventory_product -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Price check.\"] { DO TAP { \"target\": \"grid.action:price_check\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Stock check.\"] { DO TAP { \"target\": \"grid.action:stock_check\" } }\nsheet_lookup -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_tile [say=\"Tap the tile.\"] { DO TAP { \"target\": \"tile.settings\" } }\nsheet_tile -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ------------------------------------------------------------- overlays ----\n# `modules` says which run a place belongs to: a training module id, or \"real\" for the everyday till. Only the places\n# that differ carry it; everything else is in every scope. The camera is the clear case: the everyday till opens the\n# real camera, while practice opens the drawn practice camera (see src/screens/Scanner.tsx).\nSCREEN overlay_lock \"Sign in\" { \"kind\": \"overlay\", \"label\": \"Sign in\" }\nSCREEN overlay_screensaver \"Screensaver\" { \"kind\": \"overlay\", \"label\": \"Screensaver\" }\nSCREEN overlay_practice_pass \"Scan your cashier pass\" { \"kind\": \"overlay\", \"label\": \"Scan your cashier pass\", \"modules\": [\"sign-in\"] }\nSCREEN overlay_practice_camera \"Practice camera\" { \"kind\": \"overlay\", \"label\": \"Practice camera\", \"modules\": [\"scanning\"] }\nSCREEN overlay_camera \"Camera\" { \"kind\": \"overlay\", \"label\": \"Camera\", \"modules\": [\"real\"] }\n\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.unlock\" } }\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.pinpad\" } }\noverlay_lock -> overlay_practice_pass [say=\"Tap Scan pass.\", modules=[\"sign-in\"]] { DO TAP { \"target\": \"login.scanpass\" } }\noverlay_practice_pass -> tab_checkout [say=\"Tap Scan this pass.\"] { DO TAP { \"target\": \"pass.scan\" } }\noverlay_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_practice_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_practice_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_screensaver -> tab_checkout [say=\"Tap the screen.\"] { DO TAP { \"target\": \"screensaver.tap\" } }\n\nEND\n";
++// Screens: 71 (5 tab, 2 view, 19 page, 40 sheet, 5 overlay). Edges: 166.
++export const APP_NAVGRAPH: string = "NAVGRAPH/2\nAPP \"Aidens 3D POS\"\n\n# The line key of a per line window (its variant, or the line's own id for a\n# custom amount). The `sheet_line` template below is copied once per open line\n# at runtime, and the copy fills this in (see `ensureLineWindow` in appGraph).\nVAR ITEM_KEY : string\n\n# ============================================================================\n# The app as a graph. Screens are places a person can be. Edges are how they\n# move and what they do. Control level action nodes are registered at runtime\n# from src/lib/appControls.ts (node id = \"do:\" + spot id), so every button,\n# tile, row and gesture in the app joins this graph without hand editing.\n#\n# Node kinds (screen meta \"kind\"):\n#   tab      the five bottom bar tabs\n#   view     a mode inside Checkout (Keypad, All products; Quick Menu is the tab)\n#   page     a pushed route\n#   sheet    a window drawn over the page\n#   overlay  something drawn over everything (sign in, screensaver, practice)\n#   action   a control, a terminal node in a route\n#\n# Edge meta:\n#   say      the words said while pointing at this transition\n#   gesture  tap (default), or a swipe/hold/scroll\n#   spot     the UI spot this transition taps, when it has one\n#   roles    who may take it\n#   modules  which run the transition belongs to (a module id, or \"real\"); missing means every run\n# ============================================================================\n\n# ---------------------------------------------------------------- tabs -----\nSCREEN tab_checkout \"Checkout\" { \"kind\": \"tab\", \"tab\": \"checkout\", \"label\": \"Checkout\", \"summary\": \"Build the sale and take payment.\" }\nSCREEN tab_inventory \"Inventory\" { \"kind\": \"tab\", \"tab\": \"inventory\", \"label\": \"Inventory\" }\nSCREEN tab_transactions \"Transactions\" { \"kind\": \"tab\", \"tab\": \"transactions\", \"label\": \"Transactions\" }\nSCREEN tab_notifications \"Notifications\" { \"kind\": \"tab\", \"tab\": \"notifications\", \"label\": \"Notifications\" }\nSCREEN tab_more \"More\" { \"kind\": \"tab\", \"tab\": \"more\", \"label\": \"More\" }\n\ntab_checkout -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_checkout -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_checkout -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_checkout -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_inventory -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_inventory -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_inventory -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_inventory -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_transactions -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_transactions -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_transactions -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\ntab_transactions -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_notifications -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_notifications -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_notifications -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_notifications -> tab_more [say=\"Tap More.\"] { DO TAP { \"target\": \"tab.more\" } }\ntab_more -> tab_checkout [say=\"Tap Checkout.\"] { DO TAP { \"target\": \"tab.checkout\" } }\ntab_more -> tab_inventory [say=\"Tap Inventory.\"] { DO TAP { \"target\": \"tab.inventory\" } }\ntab_more -> tab_transactions [say=\"Tap Transactions.\"] { DO TAP { \"target\": \"tab.transactions\" } }\ntab_more -> tab_notifications [say=\"Tap Notifications.\"] { DO TAP { \"target\": \"tab.notifications\" } }\n\n# ------------------------------------------------------- checkout views ----\nSCREEN view_keypad \"Keypad\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"Keypad\" }\nSCREEN view_all \"All products\" { \"kind\": \"view\", \"tab\": \"checkout\", \"label\": \"All products\" }\n\ntab_checkout -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\ntab_checkout -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_keypad -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_keypad -> view_all [say=\"Tap All products.\"] { DO TAP { \"target\": \"find.tab:all\" } }\nview_all -> tab_checkout [say=\"Tap Quick Menu.\"] { DO TAP { \"target\": \"find.tab:quick\" } }\nview_all -> view_keypad [say=\"Tap Keypad.\"] { DO TAP { \"target\": \"find.tab:keypad\" } }\n\n# ------------------------------------------------------------- pages -------\nSCREEN page_pay \"Payment\" { \"kind\": \"page\", \"route\": \"pay\", \"label\": \"Payment\" }\nSCREEN page_cart \"Cart\" { \"kind\": \"page\", \"route\": \"cart\", \"label\": \"Cart\" }\nSCREEN page_saved \"Saved carts\" { \"kind\": \"page\", \"route\": \"saved\", \"label\": \"Saved carts\" }\nSCREEN page_orders \"Orders\" { \"kind\": \"page\", \"route\": \"orders\", \"label\": \"Orders\" }\nSCREEN page_items \"Items\" { \"kind\": \"page\", \"route\": \"items\", \"label\": \"Items\" }\nSCREEN page_create_item \"New item\" { \"kind\": \"page\", \"route\": \"createItem\", \"label\": \"New item\" }\nSCREEN page_edit_item \"Edit item\" { \"kind\": \"page\", \"route\": \"editItem\", \"label\": \"Edit item\" }\nSCREEN page_customers \"Customers\" { \"kind\": \"page\", \"route\": \"customers\", \"label\": \"Customers\" }\nSCREEN page_reports \"Reports\" { \"kind\": \"page\", \"route\": \"reports\", \"label\": \"Reports\" }\nSCREEN page_giftcards \"Gift cards\" { \"kind\": \"page\", \"route\": \"giftcards\", \"label\": \"Gift cards\" }\nSCREEN page_drawer \"Cash drawer\" { \"kind\": \"page\", \"route\": \"drawer\", \"label\": \"Cash drawer\" }\nSCREEN page_settings \"Settings\" { \"kind\": \"page\", \"route\": \"settings\", \"label\": \"Settings\" }\nSCREEN page_staff \"Staff\" { \"kind\": \"page\", \"route\": \"staff\", \"label\": \"Staff\", \"roles\": [\"manager\", \"owner\"] }\nSCREEN page_diagnostics \"Support & diagnostics\" { \"kind\": \"page\", \"route\": \"diagnostics\", \"label\": \"Support & diagnostics\" }\nSCREEN page_help \"Help\" { \"kind\": \"page\", \"route\": \"help\", \"label\": \"Help\" }\nSCREEN page_assistant \"Ask the assistant\" { \"kind\": \"page\", \"route\": \"assistant\", \"label\": \"Ask the assistant\", \"roles\": [\"manager\", \"owner\"] }\nSCREEN page_training \"Training\" { \"kind\": \"page\", \"route\": \"training\", \"label\": \"Training\" }\nSCREEN page_training_run \"Training run\" { \"kind\": \"page\", \"route\": \"trainingRun\", \"label\": \"Training run\" }\nSCREEN page_terminal_play \"Practice terminal\" { \"kind\": \"page\", \"route\": \"terminalPlay\", \"label\": \"Practice terminal\" }\n\n# Checkout to payment and cart\ntab_checkout -> page_cart [say=\"Open the cart first.\"] { DO TAP { \"target\": \"cart.open\" } }\npage_cart -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\ntab_checkout -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_cart -> page_pay [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\npage_pay -> page_cart [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_pay -> tab_checkout [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# More to its pages\ntab_more -> page_orders [say=\"Tap Orders.\"] { DO TAP { \"target\": \"more.orders\" } }\ntab_more -> page_items [say=\"Tap Items.\"] { DO TAP { \"target\": \"more.items\" } }\ntab_more -> page_customers [say=\"Tap Customers.\"] { DO TAP { \"target\": \"more.customers\" } }\ntab_more -> page_saved [say=\"Tap Saved carts.\"] { DO TAP { \"target\": \"more.saved\" } }\ntab_more -> page_giftcards [say=\"Tap Gift cards.\"] { DO TAP { \"target\": \"more.giftcards\" } }\ntab_more -> page_reports [say=\"Tap Reports.\"] { DO TAP { \"target\": \"more.reports\" } }\ntab_more -> page_drawer [say=\"Tap Cash drawer.\"] { DO TAP { \"target\": \"more.drawer\" } }\ntab_more -> page_staff [say=\"Tap Staff.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.staff\" } }\ntab_more -> page_settings [say=\"Tap Settings.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"more.settings\" } }\ntab_more -> page_diagnostics [say=\"Tap Support & diagnostics.\"] { DO TAP { \"target\": \"more.diagnostics\" } }\ntab_more -> page_help [say=\"Tap Help.\"] { DO TAP { \"target\": \"more.help\" } }\ntab_more -> page_training [say=\"Tap Training.\"] { DO TAP { \"target\": \"more.training\" } }\n\npage_orders -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_items -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_customers -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_saved -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_giftcards -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_reports -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_drawer -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_staff -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_settings -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_diagnostics -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_help -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_help -> page_assistant [say=\"Tap the sparkles button at the top.\", roles=[\"manager\", \"owner\"]] { DO TAP { \"target\": \"help.assistant\" } }\npage_assistant -> page_help [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> tab_more [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Items pages\npage_items -> page_create_item [say=\"Tap New item.\"] { DO TAP { \"target\": \"items.new\" } }\npage_items -> page_edit_item [say=\"Tap the item.\"] { DO TAP { \"target\": \"items.row\" } }\npage_create_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_edit_item -> page_items [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# Training\npage_training -> page_training_run [say=\"Tap Start.\"] { DO TAP { \"target\": \"training.start\" } }\npage_training_run -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\npage_training -> page_terminal_play [say=\"Tap the practice terminal.\"] { DO TAP { \"target\": \"training.terminal\" } }\npage_terminal_play -> page_training [say=\"Tap Back to return.\"] { DO TAP { \"target\": \"page.back\" } }\n\n# ----------------------------------------------------------- Checkout sheets\nSCREEN sheet_search \"Search\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Search\" }\nSCREEN sheet_customer \"Customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer\" }\nSCREEN sheet_customer_new \"New customer\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"New customer\" }\nSCREEN sheet_custom_amount \"Custom amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Custom amount\" }\nSCREEN sheet_gift_sell \"Sell gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Sell gift card\" }\nSCREEN sheet_gift_sell_details \"Gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Gift card\" }\nSCREEN sheet_cart_menu \"Cart menu\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart menu\" }\nSCREEN sheet_cart_discount \"Cart discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cart discount\" }\nSCREEN sheet_order_price \"Whole order price\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Whole order price\" }\nSCREEN sheet_review \"Check the price adjustments\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check the price adjustments\" }\nSCREEN sheet_bundles \"Check these bundles\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check these bundles\" }\nSCREEN sheet_cart_warnings \"Customer warning\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Customer warning\" }\nSCREEN sheet_save_cart \"Save cart\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Save cart\" }\n\ntab_checkout -> sheet_search [say=\"Tap Search.\"] { DO TAP { \"target\": \"find.search\" } }\nsheet_search -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\npage_cart -> sheet_customer [say=\"Tap the customer row.\"] { DO TAP { \"target\": \"cart.customer\" } }\nsheet_customer -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_customer -> sheet_customer_new [say=\"Tap Create customer.\"] { DO TAP { \"target\": \"customer.create\" } }\nsheet_customer_new -> sheet_customer [say=\"Tap Back.\"] { DO TAP { \"target\": \"customer.back\" } }\ntab_checkout -> sheet_custom_amount [say=\"Tap Custom amount.\"] { DO TAP { \"target\": \"grid.action:custom\" } }\nsheet_custom_amount -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_gift_sell [say=\"Tap Sell gift card.\"] { DO TAP { \"target\": \"cart.menu.gift\" } }\nsheet_gift_sell -> sheet_gift_sell_details [say=\"Tap Next.\"] { DO TAP { \"target\": \"gift.next\" } }\nsheet_gift_sell_details -> sheet_gift_sell [say=\"Tap Change amount.\"] { DO TAP { \"target\": \"gift.change\" } }\nsheet_gift_sell_details -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_gift_sell -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\ntab_checkout -> sheet_cart_menu [say=\"Tap the three dots in the cart.\"] { DO TAP { \"target\": \"cart.menu\" } }\nsheet_cart_menu -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cart_menu -> sheet_cart_discount [say=\"Tap Apply cart discount.\"] { DO TAP { \"target\": \"cart.menu.discount\" } }\nsheet_cart_menu -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_cart_menu -> sheet_save_cart [say=\"Tap Save cart.\"] { DO TAP { \"target\": \"cart.menu.save\" } }\nsheet_cart_discount -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order_price -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_order_price [say=\"Tap Whole order price.\"] { DO TAP { \"target\": \"cart.menu.order\" } }\nsheet_save_cart -> sheet_cart_menu [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\npage_cart -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_review [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_review -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"review.continue\" } }\nsheet_review -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_bundles [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_bundles -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"bundle.continue\" } }\nsheet_bundles -> page_cart [say=\"Tap Edit cart.\"] { DO TAP { \"target\": \"bundle.edit\" } }\npage_cart -> sheet_cart_warnings [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\ntab_checkout -> sheet_cart_warnings [say=\"Tap Charge.\"] { DO TAP { \"target\": \"cart.charge\" } }\nsheet_cart_warnings -> page_pay [say=\"Tap Continue to payment.\"] { DO TAP { \"target\": \"warning.continue\" } }\nsheet_cart_warnings -> page_cart [say=\"Tap Back to cart.\"] { DO TAP { \"target\": \"warning.cancel\" } }\n\n# ------------------------------------------------------ Line editor sheets\nSCREEN sheet_line \"Item\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item\" }\nSCREEN sheet_line_discount \"Item discount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item discount\" }\nSCREEN sheet_line_item_price \"Item price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Item price adjustment\" }\nSCREEN sheet_line_line_price \"Line price adjustment\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Line price adjustment\" }\n\n# The per line copies (sheet_line:<key>) and their controls are registered at\n# runtime as each line window opens (see `ensureLineWindow` in appGraph). These\n# static edges are the template: each copy fills $ITEM_KEY$ with its own line.\npage_cart -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\ntab_checkout -> sheet_line [say=\"Open the item's window first.\"] { DO TAP { \"target\": \"cart.line:$ITEM_KEY$\" } }\nsheet_line -> tab_checkout [say=\"Tap Done to close the item.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> page_cart [say=\"Close this window first.\"] { DO TAP { \"target\": \"line.done\" } }\nsheet_line -> sheet_line_discount [say=\"Tap Discount.\"] { DO TAP { \"target\": \"line.discount\" } }\nsheet_line -> sheet_line_item_price [say=\"Tap Item price adjustment.\"] { DO TAP { \"target\": \"line.price\" } }\nsheet_line -> sheet_line_line_price [say=\"Tap Line price adjustment.\"] { DO TAP { \"target\": \"line.adjust\" } }\nsheet_line_discount -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_item_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_line_line_price -> sheet_line [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ----------------------------------------------------------------- Payment --\nSCREEN sheet_cash_receive \"Cash received\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Cash received\" }\nSCREEN sheet_cash_change \"Give change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Give change\" }\nSCREEN sheet_check_change \"Check change\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check change\" }\nSCREEN sheet_split \"Split amount\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Split amount\" }\nSCREEN sheet_gift_check \"Check gift card\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Check gift card\" }\nSCREEN sheet_receipt \"Receipt\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Receipt\" }\n\npage_pay -> sheet_cash_receive [say=\"Tap Cash.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_split [say=\"Tap Split.\"] { DO TAP { \"target\": \"pay.split\" } }\nsheet_split -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_receive -> sheet_cash_change [say=\"Tap Next: give change.\"] { DO TAP { \"target\": \"cash.next\" } }\nsheet_cash_receive -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_cash_change -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_check_change [say=\"Check the change.\"] { DO TAP { \"target\": \"pay.cash\" } }\npage_pay -> sheet_gift_check [say=\"Tap Gift card.\"] { DO TAP { \"target\": \"pay.gift\" } }\nsheet_gift_check -> page_pay [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_pay -> sheet_receipt [say=\"Finish the sale.\"] { DO TAP { \"target\": \"pay.card\" } }\nsheet_receipt -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"receipt.none\" } }\n\n# ---------------------------------------------------------- Orders & refund -\nSCREEN sheet_order \"Order\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Order\" }\nSCREEN sheet_refund \"Return\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return\" }\nSCREEN sheet_refund_pick \"Replacement item\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Replacement item\" }\nSCREEN sheet_refund_done \"Done\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Done\" }\n\npage_orders -> sheet_order [say=\"Tap the order.\"] { DO TAP { \"target\": \"order.row\" } }\nsheet_order -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_order -> sheet_refund [say=\"Tap Refund or return.\"] { DO TAP { \"target\": \"orders.refund\" } }\nsheet_refund -> page_orders [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_pick [say=\"Tap Add replacement item.\"] { DO TAP { \"target\": \"refund.replace\" } }\nsheet_refund_pick -> sheet_refund [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_refund -> sheet_refund_done [say=\"Tap the refund button.\"] { DO TAP { \"target\": \"refund.go\" } }\nsheet_refund_done -> page_orders [say=\"Tap OK.\"] { DO TAP { \"target\": \"refund.done\" } }\n\n# ------------------------------------------------------- More page sheets ---\nSCREEN sheet_reports_filter \"Customise\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Customise\" }\nSCREEN sheet_drawer_open \"Open drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Open drawer\" }\nSCREEN sheet_drawer_close \"Close drawer\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Close drawer\" }\nSCREEN sheet_drawer_float \"Daily float report\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Daily float report\" }\nSCREEN sheet_drawer_swap \"Swap my cash\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Swap my cash\" }\nSCREEN sheet_cash_give \"Give cash refund\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Give cash refund\" }\nSCREEN sheet_cash_return \"Return cash for cancelled sale\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Return cash for cancelled sale\" }\nSCREEN sheet_switch_staff \"Switch staff\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Switch staff\" }\nSCREEN sheet_staff_pass \"Staff pass\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Staff pass\" }\nSCREEN sheet_tile \"Add to grid\" { \"kind\": \"sheet\", \"tab\": \"more\", \"label\": \"Add to grid\" }\nSCREEN sheet_inventory_filters \"Filters & sort\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Filters & sort\" }\nSCREEN sheet_inventory_product \"Product\" { \"kind\": \"sheet\", \"tab\": \"inventory\", \"label\": \"Product\" }\nSCREEN sheet_lookup \"Look up\" { \"kind\": \"sheet\", \"tab\": \"checkout\", \"label\": \"Look up\" }\n\npage_reports -> sheet_reports_filter [say=\"Tap Customise.\"] { DO TAP { \"target\": \"reports.filter\" } }\nsheet_reports_filter -> page_reports [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_drawer_open [say=\"Tap Open drawer.\"] { DO TAP { \"target\": \"drawer.open\" } }\npage_drawer -> sheet_drawer_close [say=\"Tap Close drawer.\"] { DO TAP { \"target\": \"drawer.close\" } }\npage_drawer -> sheet_drawer_float [say=\"Tap Daily float report.\"] { DO TAP { \"target\": \"drawer.float\" } }\npage_drawer -> sheet_drawer_swap [say=\"Tap Swap my cash.\"] { DO TAP { \"target\": \"drawer.swap\" } }\nsheet_drawer_open -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_close -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_float -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_drawer_swap -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_drawer -> sheet_cash_give [say=\"Give cash.\"] { DO TAP { \"target\": \"drawer.givecash\" } }\npage_drawer -> sheet_cash_return [say=\"Return cash.\"] { DO TAP { \"target\": \"drawer.returncash\" } }\nsheet_cash_give -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"cash.gave\" } }\nsheet_cash_return -> page_drawer [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_switch_staff [say=\"Tap the staff member.\"] { DO TAP { \"target\": \"staff.switch\" } }\nsheet_switch_staff -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\npage_staff -> sheet_staff_pass [say=\"Tap the pass.\"] { DO TAP { \"target\": \"staff.pass\" } }\nsheet_staff_pass -> page_staff [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_inventory -> sheet_inventory_filters [say=\"Tap Filters & sort.\"] { DO TAP { \"target\": \"inv.filter\" } }\ntab_inventory -> sheet_inventory_product [say=\"Tap a product.\"] { DO TAP { \"target\": \"inv.product\" } }\nsheet_inventory_filters -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\nsheet_inventory_product -> tab_inventory [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Price check.\"] { DO TAP { \"target\": \"grid.action:price_check\" } }\ntab_checkout -> sheet_lookup [say=\"Tap Stock check.\"] { DO TAP { \"target\": \"grid.action:stock_check\" } }\nsheet_lookup -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\ntab_checkout -> sheet_tile [say=\"Tap the tile.\"] { DO TAP { \"target\": \"tile.settings\" } }\nsheet_tile -> tab_checkout [say=\"Close this window first.\"] { DO TAP { \"target\": \"sheet.close\" } }\n\n# ------------------------------------------------------------- overlays ----\n# `modules` says which run a place belongs to: a training module id, or \"real\" for the everyday till. Only the places\n# that differ carry it; everything else is in every scope. The camera is the clear case: the everyday till opens the\n# real camera, while practice opens the drawn practice camera (see src/screens/Scanner.tsx).\nSCREEN overlay_lock \"Sign in\" { \"kind\": \"overlay\", \"label\": \"Sign in\" }\nSCREEN overlay_screensaver \"Screensaver\" { \"kind\": \"overlay\", \"label\": \"Screensaver\" }\nSCREEN overlay_practice_pass \"Scan your cashier pass\" { \"kind\": \"overlay\", \"label\": \"Scan your cashier pass\", \"modules\": [\"sign-in\"] }\nSCREEN overlay_practice_camera \"Practice camera\" { \"kind\": \"overlay\", \"label\": \"Practice camera\", \"modules\": [\"scanning\"] }\nSCREEN overlay_camera \"Camera\" { \"kind\": \"overlay\", \"label\": \"Camera\", \"modules\": [\"real\"] }\n\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.unlock\" } }\noverlay_lock -> tab_checkout [say=\"Unlock the till.\"] { DO TAP { \"target\": \"login.pinpad\" } }\noverlay_lock -> overlay_practice_pass [say=\"Tap Scan pass.\", modules=[\"sign-in\"]] { DO TAP { \"target\": \"login.scanpass\" } }\noverlay_practice_pass -> tab_checkout [say=\"Tap Scan this pass.\"] { DO TAP { \"target\": \"pass.scan\" } }\noverlay_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_practice_camera -> tab_checkout [say=\"Tap Done.\"] { DO TAP { \"target\": \"scan.done\" } }\ntab_checkout -> overlay_practice_camera [say=\"Tap the scan button.\"] { DO TAP { \"target\": \"scan.camera\" } }\noverlay_screensaver -> tab_checkout [say=\"Tap the screen.\"] { DO TAP { \"target\": \"screensaver.tap\" } }\n\nEND\n";
+ 
+ export const APP_NAVSCHEMA: Record<string, unknown> = {"$schema":"https://routegraph.dev/schema/v1","schemaVersion":1,"name":"aidens3dp-pos","extends":"default","actions":{},"screenMetadata":{"kind":{"type":"string","enum":["app","tab","page","sheet","overlay","view","list","action"],"description":"What sort of place this node is. Used to word guidance and to reason about layers."},"label":{"type":"string","description":"What a person calls this place. Falls back to the screen name."},"tab":{"type":"string","description":"The bottom-bar tab this place belongs to, when it belongs to one."},"route":{"type":"string","description":"The pushed page this place is, when it is a page."},"roles":{"type":"array","items":{"type":"string"},"description":"Which staff roles may reach this place (cashier, manager, owner). Empty or missing means anyone."},"summary":{"type":"string","description":"One plain line about what this place is for."},"modules":{"type":"array","items":{"type":"string"},"description":"Which scopes this place exists in: a training module id (see src/training/index.ts), or \"real\" for the everyday till. Empty or missing means every scope, so only the places that differ carry it. Guidance never routes a run through a place outside its scope."}},"edgeMetadata":{"say":{"type":"string","description":"The words said while pointing at the control on this transition. Guidance prefixes the fix wording with this."},"gesture":{"type":"string","description":"tap, double, triple, hold, swipe-left, swipe-right, swipe-up, swipe-down, scroll-up, scroll-down. Left out is a tap."},"spot":{"type":"string","description":"The UI spot id this transition taps, when it has one. The runtime also learns this from the action payload."},"roles":{"type":"array","items":{"type":"string"},"description":"Which roles may take this transition. Empty or missing means anyone."},"modules":{"type":"array","items":{"type":"string"},"description":"Which scopes this transition exists in: a training module id, or \"real\" for the everyday till. Empty or missing means every scope. A transition is only used when the place it arrives at is also in scope."}}};
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+new file mode 100644
+index 0000000..d066f74
+--- /dev/null
++++ b/src/lib/assistantChat.ts
+@@ -0,0 +1,163 @@
++// Location: src/lib/assistantChat.ts
++// The Help chatbot's chat logic (patch 0151): what is sent, what is shown, what is kept. Pure logic, no React Native imports,
++// so it runs in the node tests. There are no tools yet, so the model knows nothing about the shop: it only sees what the
++// cashier types and the earlier messages of the same chat.
++import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
++
++// ---------- the small scrubber ----------
++// The full data gate arrives in patch 5. Until then this keeps the obvious things off the wire, on every endpoint:
++// a pasted email address, phone number, card number or key never leaves the iPad, so it cannot reach a remote server.
++export type MaskKind = 'email' | 'phone' | 'card' | 'key';
++export type Scrubbed = { text: string; masked: Partial<Record<MaskKind, number>> };
++export const MASK_WORD: Record<MaskKind, [string, string]> = { email: ['email address', 'email addresses'], phone: ['phone number', 'phone numbers'], card: ['card number', 'card numbers'], key: ['key or token', 'keys or tokens'] };
++
++/** The Luhn check, used so a long number is only masked as a card when it can be one. */
++export function luhnOk(digits: string): boolean {
++  if (!/^\d{13,19}$/.test(digits)) return false;
++  let sum = 0; let dbl = false;
++  for (let i = digits.length - 1; i >= 0; i--) { let d = digits.charCodeAt(i) - 48; if (dbl) { d *= 2; if (d > 9) d -= 9; } sum += d; dbl = !dbl; }
++  return sum % 10 === 0;
++}
++
++const CARD_RUN = /(?<![\d])\d(?:[ -]?\d){12,18}(?![\d])/g;
++const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+/g;
++const AU_PHONE = /(?<![\w])(?:\+61|0)[2-478](?:[ -]?\d){8}(?![\d])/g;
++const INTL_PHONE = /(?<![\w])\+\d{1,3}(?:[ -]?\d){7,12}(?![\d])/g;
++const LONG_TOKEN = /(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{32,}(?![A-Za-z0-9_-])/g;
++
++export function scrubText(input: string): Scrubbed {
++  const masked: Partial<Record<MaskKind, number>> = {};
++  const bump = (k: MaskKind) => { masked[k] = (masked[k] ?? 0) + 1; };
++  let t = input ?? '';
++  const before = t;
++  t = redactSecrets(t); if (t !== before) { const n = (before.match(/\b(sk|pk|rk)-[A-Za-z0-9_-]{8,}|Bearer\s+[A-Za-z0-9._~+/=-]{8,}/gi) ?? []).length; for (let i = 0; i < Math.max(1, n); i++) bump('key'); }
++  t = t.replace(CARD_RUN, m => { if (luhnOk(m.replace(/[ -]/g, ''))) { bump('card'); return '[card number]'; } return m; });
++  t = t.replace(EMAIL, () => { bump('email'); return '[email address]'; });
++  t = t.replace(AU_PHONE, () => { bump('phone'); return '[phone number]'; });
++  t = t.replace(INTL_PHONE, () => { bump('phone'); return '[phone number]'; });
++  t = t.replace(LONG_TOKEN, m => { if (/[A-Za-z]/.test(m) && /\d/.test(m)) { bump('key'); return '[key]'; } return m; });
++  return { text: t, masked };
++}
++
++/** "Hidden before sending: 1 email address and 2 phone numbers." Empty when nothing was masked. */
++export function maskedNote(masked: Partial<Record<MaskKind, number>>): string {
++  const parts = (Object.keys(MASK_WORD) as MaskKind[]).filter(k => (masked[k] ?? 0) > 0).map(k => `${masked[k]} ${MASK_WORD[k][masked[k] === 1 ? 0 : 1]}`);
++  if (!parts.length) return '';
++  const list = parts.length === 1 ? parts[0] : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
++  return `Hidden before sending: ${list}.`;
++}
++
++// ---------- the dash rule ----------
++/** Models use em and en dashes a lot and a prompt alone does not stop it, so replies are cleaned before they are shown. */
++export function stripDashes(text: string): string {
++  return (text ?? '')
++    .replace(/(\d)\s*\u2013\s*(\d)/g, '$1 to $2')
++    .replace(/\s*[\u2014\u2013]\s*/g, ', ')
++    .replace(/,\s*,/g, ',');
++}
++
++// ---------- the prompt ----------
++export type Detail = 'short' | 'more';
++/** Built in code. It never names a screen, feature or role, so there is nothing in it to leak. Tools will add to it in later patches. */
++export function buildSystemPrompt(detail: Detail = 'short'): string {
++  const lines = [
++    'You are the help assistant inside a shop till app, used by shop staff.',
++    'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
++    'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
++    'Answer only from what the person has told you in this chat. If you do not know, say so plainly. Do not fill the gap with general knowledge about how other shops or tills work.',
++    'Write in Australian English. Never use em dashes or en dashes. Write dollar amounts like $12.50.',
++    'Match the length of your answer to the size of the question: a sentence or two for a simple question, a fuller answer with steps for a complex one. Do not give an essay for a simple question, and do not oversimplify a complex one.',
++    'Reply in the language the person writes in.',
++  ];
++  if (detail === 'more') lines.push('The person asked for more detail. Give a fuller answer with steps where they help.');
++  return lines.join('\n');
++}
++
++// ---------- history ----------
++export type ChatEntry = { id: string; role: 'user' | 'assistant'; text: string; at: number; note?: string };
++export const HISTORY_CAP = 200;
++export const historyKey = (staffId: string | undefined): string => `assistant.history.v1.${staffId && staffId.trim() ? staffId : 'owner'}`;
++
++/** Anything read back from storage is untrusted: keep well formed entries only, newest 200. */
++export function readHistory(raw: unknown): ChatEntry[] {
++  if (!Array.isArray(raw)) return [];
++  const out: ChatEntry[] = [];
++  for (const e of raw) {
++    if (!e || typeof e !== 'object') continue;
++    const o = e as Record<string, unknown>;
++    if ((o.role !== 'user' && o.role !== 'assistant') || typeof o.text !== 'string' || typeof o.id !== 'string') continue;
++    out.push({ id: o.id, role: o.role, text: o.text, at: typeof o.at === 'number' && Number.isFinite(o.at) ? o.at : 0, ...(typeof o.note === 'string' && o.note ? { note: o.note } : {}) });
++  }
++  return capHistory(out);
++}
++/** The oldest messages go first, so the history cannot grow without limit on an iPad. */
++export const capHistory = (h: ChatEntry[], cap = HISTORY_CAP): ChatEntry[] => (h.length > cap ? h.slice(h.length - cap) : h);
++
++/** A rough token count. The app cannot see the model's own count, so this errs on the high side (about 3 characters a token). */
++export const estimateTokens = (s: string): number => Math.ceil((s ?? '').length / 3) + 4;
++/** A share of the context is kept free for the reply. */
++export const REPLY_SHARE = 0.25;
++
++/**
++ * The messages sent with the next question: the system prompt, then as many of the newest messages as fit in the context
++ * size, oldest dropped first. The scrubber runs over every message again here, so history written earlier never goes out
++ * with data the current rules would mask. The newest message is always kept, cut down if it alone is too long.
++ */
++export function buildMessages(history: ChatEntry[], detail: Detail, contextSize: number): ChatMessage[] {
++  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail) };
++  const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? ''));
++  const picked: ChatMessage[] = []; let used = 0;
++  for (let i = history.length - 1; i >= 0; i--) {
++    let text = scrubText(history[i].text).text;
++    let cost = estimateTokens(text);
++    if (picked.length === 0 && cost > budget) { text = text.slice(0, Math.max(1, (budget - 4) * 3)); cost = estimateTokens(text); }
++    if (used + cost > budget) break;
++    picked.unshift({ role: history[i].role, content: text }); used += cost;
++  }
++  while (picked.length && picked[0].role !== 'user') picked.shift(); // a chat never opens on a reply
++  return [system, ...picked];
++}
++
++// ---------- asking the model ----------
++export type AskInput = { history: ChatEntry[]; text: string; detail: Detail; settings: { contextSize: number; temperature: number }; endpoint: Endpoint; id: () => string; now: () => number };
++export type AskResult = { user: ChatEntry; reply: ChatEntry };
++
++/** Scrubs what was typed, asks the model, cleans the reply. Throws AssistantError. Nothing is stored here. */
++export async function ask(f: FetchLike, a: AskInput): Promise<AskResult> {
++  const s = scrubText(a.text.trim());
++  const user: ChatEntry = { id: a.id(), role: 'user', text: s.text, at: a.now(), ...(maskedNote(s.masked) ? { note: maskedNote(s.masked) } : {}) };
++  const messages = buildMessages([...a.history, user], a.detail, a.settings.contextSize);
++  const res = await chat(f, a.endpoint, { messages, temperature: a.settings.temperature });
++  const raw = (res.message.content ?? '').trim();
++  if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
++  return { user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
++}
++
++// ---------- the error banner ----------
++export type Banner = { kind: AssistantErrorKind; title: string; body: string };
++const TITLE: Record<AssistantErrorKind, string> = {
++  not_set_up: 'The assistant is not set up yet', unreachable: 'Cannot reach the model', timeout: 'The model took too long', key_rejected: 'The model rejected the key',
++  model_not_found: 'The model was not found', no_tools: 'This model cannot use tools', bad_address: 'Wrong model address', server_error: 'The model server had a problem', bad_reply: 'The model sent an odd reply',
++};
++/** What the banner says. The API key never appears in it. */
++export function bannerFor(e: unknown, apiKey?: string): Banner {
++  const err = e instanceof AssistantError ? e : new AssistantError('server_error', String((e as Error)?.message ?? 'Something went wrong.'));
++  return { kind: err.kind, title: TITLE[err.kind], body: redactSecrets(err.message, apiKey) };
++}
++/** Who gets a button to the model settings. Everyone else is told to ask. */
++export const bannerAction = (canEdit: boolean): 'open_settings' | 'ask_manager' => (canEdit ? 'open_settings' : 'ask_manager');
++export const ASK_MANAGER_LINE = 'Ask the owner or a manager to check the AI assistant settings.';
++/** A retry only helps when waiting or trying again can change something. */
++export const canRetry = (k: AssistantErrorKind): boolean => k === 'unreachable' || k === 'timeout' || k === 'server_error' || k === 'bad_reply';
++
++// ---------- who sees it, and when sending is blocked ----------
++/** Flipped to true in the audit log patch (3 in the plan). Until then only people who may edit the assistant settings see the entry. */
++export const ASSISTANT_OPEN_TO_ALL = false;
++/** The entry needs a signed in person (history is per staff member), so it is never on the lock screen. */
++export function assistantEntryVisible(i: { locked: boolean; canEdit: boolean; openToAll?: boolean }): boolean {
++  if (i.locked) return false;
++  return (i.openToAll ?? ASSISTANT_OPEN_TO_ALL) || i.canEdit;
++}
++export const PRACTICE_BLOCK = 'The assistant is switched off in practice mode. Practice mode never sends anything out.';
++/** Why sending is blocked right now, or null when it is not. */
++export function sendBlock(i: { training: boolean }): string | null { return i.training ? PRACTICE_BLOCK : null; }
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index 19d8718..7d60728 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -8,6 +8,7 @@ export const SPOT = {
+   tabMore: 'tab.more',
+   tabNotifications: 'tab.notifications', // the Notifications tab at the bottom of the screen
+   moreTraining: 'more.training',
++  helpAssistant: 'help.assistant', // the sparkles button at the top of Help that opens the AI assistant chat
+   back: 'page.back',           // the Back arrow at the top of every pushed page
+   sheetClose: 'sheet.close',   // the Close button of a sheet
+   terminalTap: 'terminal.tap',         // the customer's Tap card button under the practice terminal (manual mode)
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+new file mode 100644
+index 0000000..88d7f8a
+--- /dev/null
++++ b/src/screens/Assistant.tsx
+@@ -0,0 +1,112 @@
++// Location: src/screens/Assistant.tsx
++// Help ▸ Ask the assistant (patch 0151): a plain chat with the model set up in Settings ▸ AI assistant. There are no tools yet,
++// so it knows nothing about the shop. History is kept on this iPad, one per staff member, and cleared only by hand.
++import React, { useCallback, useEffect, useRef, useState } from 'react';
++import { ScrollView, View } from 'react-native';
++import { Btn, Field, IconBtn, Page, Txt, confirm } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useNav } from '../ui/nav';
++import { useKeyboardOverlap } from '../ui/keyboard';
++import { useApp } from '../state/store';
++import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
++import { isConfigured } from '../lib/assistantConfig';
++import { getAssistantKey } from '../lib/assistantKey';
++import { AssistantError } from '../lib/assistantClient';
++import { ASK_MANAGER_LINE, HISTORY_CAP, PRACTICE_BLOCK, ask, bannerFor, canRetry, capHistory, historyKey, readHistory, sendBlock, type Banner, type ChatEntry, type Detail } from '../lib/assistantChat';
++import { kvGet, kvSet, kvDel } from '../lib/kv';
++import { isTraining } from '../lib/trainingGuard';
++import { uid } from '../lib/ids';
++
++export default function Assistant() {
++  const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
++  const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
++  const canEdit = useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
++  const key = historyKey(staffId);
++  const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
++  const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [secs, setSecs] = useState(0);
++  const [banner, setBanner] = useState<Banner | null>(null);
++  const failed = useRef<{ text: string; detail: Detail } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
++  keyRef.current = key; histRef.current = hist;
++
++  useEffect(() => { // switching staff switches to that person's own history
++    let on = true; setLoaded(false); setHist([]); setBanner(null); setText('');
++    void kvGet<unknown>(key, []).then(r => { if (on) { setHist(readHistory(r)); setLoaded(true); } });
++    return () => { on = false; };
++  }, [key]);
++  useEffect(() => { if (!busy) { setSecs(0); return; } const t = setInterval(() => setSecs(x => x + 1), 1000); return () => clearInterval(t); }, [busy]);
++  useEffect(() => { const t = setTimeout(() => scroller.current?.scrollToEnd({ animated: true }), 50); return () => clearTimeout(t); }, [hist.length, busy, banner]);
++
++  const blocked = sendBlock({ training: isTraining() });
++  const ready = isConfigured(cfg);
++
++  const send = useCallback(async (input: string, detail: Detail) => {
++    const trimmed = input.trim(); if (!trimmed || busy) return;
++    if (isTraining()) { setBanner({ kind: 'server_error', title: 'Switched off', body: PRACTICE_BLOCK }); return; }
++    if (!isConfigured(cfg)) { setBanner(bannerFor(new AssistantError('not_set_up', 'Set up the address and model first.'))); return; }
++    const forKey = keyRef.current; setBusy(true); setBanner(null); failed.current = null;
++    let apiKey = '';
++    try {
++      apiKey = await getAssistantKey();
++      const r = await ask(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now });
++      if (forKey !== keyRef.current) return; // a different person signed in while the model was thinking
++      const next = capHistory([...histRef.current, r.user, r.reply]); setHist(next); setText(''); await kvSet(forKey, next);
++    } catch (e) {
++      if (forKey !== keyRef.current) return;
++      failed.current = { text: trimmed, detail }; setBanner(bannerFor(e, apiKey));
++    } finally { setBusy(false); }
++  }, [busy, cfg]);
++
++  const clear = async () => {
++    if (!(await confirm('Clear your chat history?', 'This clears your own messages with the assistant on this iPad. It cannot be undone.', 'Clear', true))) return;
++    setHist([]); setBanner(null); await kvDel(keyRef.current);
++  };
++
++  const lastReply = hist.length > 0 && hist[hist.length - 1].role === 'assistant';
++  const bubble = (e: ChatEntry) => (
++    <View key={e.id} style={{ alignSelf: e.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '85%', gap: 3 }}>
++      <View style={{ backgroundColor: e.role === 'user' ? c.accent : c.card, borderRadius: 16, paddingHorizontal: 14, paddingVertical: 10, borderWidth: e.role === 'user' ? 0 : 1, borderColor: c.line }}>
++        <Txt color={e.role === 'user' ? c.onAccent : undefined}>{e.text}</Txt>
++      </View>
++      {e.note ? <Txt size={12} sub style={{ alignSelf: 'flex-end' }}>{e.note}</Txt> : null}
++    </View>
++  );
++
++  return (
++    <Page title="Ask the assistant" onBack={nav.pop} helpId="settings/assistant"
++      right={hist.length ? <IconBtn icon="trash-outline" label="Clear history" onPress={() => void clear()} /> : undefined} scroll={false}>
++      <View style={{ flex: 1, width: '100%', maxWidth: 760, alignSelf: 'center', paddingBottom: overlap }}>
++        <ScrollView ref={scroller} style={{ flex: 1 }} contentContainerStyle={{ padding: 16, gap: 10 }} keyboardShouldPersistTaps="handled">
++          {!ready ? (
++            <View style={{ backgroundColor: c.fill, borderRadius: 12, padding: 14, gap: 8 }}>
++              <Txt weight="700">The assistant is not set up yet</Txt>
++              <Txt size={13} sub>{canEdit ? 'Choose the model in More, Settings, AI assistant.' : ASK_MANAGER_LINE}</Txt>
++              {canEdit ? <Btn small kind="secondary" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
++            </View>
++          ) : null}
++          {loaded && ready && !hist.length ? <Txt size={13} sub>Ask how something works. This assistant cannot see the shop's products, stock, customers or sales yet, and it never changes anything.</Txt> : null}
++          {hist.map(bubble)}
++          {busy ? <Txt size={13} sub>{secs >= 5 ? `Still working, ${secs} seconds so far.` : 'Thinking...'}</Txt> : null}
++          {lastReply && !busy && !banner ? <Btn small kind="ghost" title="More detail" icon="add-circle-outline" onPress={() => void send('More detail please.', 'more')} /> : null}
++        </ScrollView>
++        {banner ? (
++          <View style={{ marginHorizontal: 16, marginBottom: 8, backgroundColor: c.fill, borderRadius: 12, padding: 12, gap: 6, borderLeftWidth: 4, borderLeftColor: c.bad }}>
++            <Txt weight="700">{banner.title}</Txt>
++            <Txt size={13}>{banner.body}</Txt>
++            {!canEdit ? <Txt size={13} sub>{ASK_MANAGER_LINE}</Txt> : null}
++            <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
++              {canRetry(banner.kind) && failed.current ? <Btn small kind="secondary" title="Retry" onPress={() => { const f = failed.current; if (f) void send(f.text, f.detail); }} /> : null}
++              {canEdit ? <Btn small kind="ghost" title="Open model settings" onPress={() => nav.push('settings', { sub: 'assistant' })} /> : null}
++            </View>
++          </View>
++        ) : null}
++        {blocked ? <Txt size={13} sub style={{ marginHorizontal: 16, marginBottom: 8 }}>{blocked}</Txt> : null}
++        <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 6 }}>
++          <Field value={text} onChangeText={setText} placeholder="Ask a question" multiline editable={!blocked} />
++          <Btn title="Send" icon="send" busy={busy} disabled={!text.trim() || !!blocked || !ready} onPress={() => void send(text, 'short')} />
++          <Txt size={11} sub>Kept on this iPad for you only, newest {HISTORY_CAP} messages. Emails, phone numbers, card numbers and keys are hidden before anything is sent.</Txt>
++        </View>
++      </View>
++    </Page>
++  );
++}
++
+diff --git a/src/screens/AssistantSettings.tsx b/src/screens/AssistantSettings.tsx
+index 9d304fd..2657a57 100644
+--- a/src/screens/AssistantSettings.tsx
++++ b/src/screens/AssistantSettings.tsx
+@@ -60,7 +60,7 @@ export function AssistantSettings() {
+ 
+   return (
+     <View style={{ padding: 16, gap: 12 }}>
+-      <Txt size={13} sub>Choose the server the Help assistant will use. Any server that speaks the OpenAI-compatible API works, including Ollama on the shop PC. There is no chat screen yet: this page only sets up and tests the connection. Test connection sends a fixed test message and nothing from the shop.</Txt>
++      <Txt size={13} sub>Choose the server the Help assistant will use. Any server that speaks the OpenAI-compatible API works, including Ollama on the shop PC. Test connection sends a fixed test message and nothing from the shop. To chat, open Help and tap the sparkles button.</Txt>
+       <Section title="Connection" footer="Per iPad, so it is not shared with other registers. It is included in Backup & transfer, and the key is stored in the iPad's Keychain.">
+         <View style={{ padding: 12, gap: 10 }}>
+           <Field kind="url" label="Address (usually ends in /v1)" placeholder="http://192.168.1.20:11434/v1" value={d.baseUrl} onChangeText={t => set({ baseUrl: t })} />
+diff --git a/src/screens/Help.tsx b/src/screens/Help.tsx
+index 46cdf6f..3e373e0 100644
+--- a/src/screens/Help.tsx
++++ b/src/screens/Help.tsx
+@@ -11,6 +11,10 @@ import { HelpMenu } from '../ui/HelpMenu';
+ import { useTheme } from '../ui/theme';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
++import { SPOT } from '../lib/trainingSpots';
++import { isLockScreen } from '../lib/posLock';
++import { assistantEntryVisible } from '../lib/assistantChat';
++import { useCanEditAssistant } from './AssistantSettings';
+ import { builtinHelp } from '../lib/helpBuiltin';
+ import { DEPTHS, DEPTH_BLURB, DEPTH_LABEL, ROOT_ID, depthsPresent, resolveLinks, searchPages, selectDepth, trail, type Depth } from '../lib/helpDocs';
+ import { parseBlocks } from '../lib/mdBlocks';
+@@ -42,6 +46,8 @@ export default function Help({ id }: { id?: string }) {
+   const depth = asDepth(useApp(s => s.settings.helpDepth)); const patch = useApp(s => s.patchSettings);
+   const [hist, setHist] = useState<string[]>([id && index.byId[id] ? id : ROOT_ID]);
+   const [q, setQ] = useState(''); const [menu, setMenu] = useState(false);
++  const locked = useApp(s => isLockScreen({ staffCount: s.settings.staff.length, unlocked: s.unlocked })); const canEditAssistant = useCanEditAssistant();
++  const showAssistant = assistantEntryVisible({ locked, canEdit: canEditAssistant });
+   const cur = hist[hist.length - 1]; const page = index.byId[cur] ?? index.byId[ROOT_ID];
+   const go = (to: string) => { if (!index.byId[to]) return; setQ(''); setHist(h => (h[h.length - 1] === to ? h : [...h, to])); };
+   const back = () => (q ? setQ('') : hist.length > 1 ? setHist(h => h.slice(0, -1)) : nav.pop());
+@@ -57,7 +63,7 @@ export default function Help({ id }: { id?: string }) {
+ 
+   return (
+     <Page key={page.id} title={q ? 'Search help' : page.id === ROOT_ID ? 'Help' : page.title} onBack={back} helpId={null}
+-      right={<View style={{ flexDirection: 'row' }}><IconBtn icon="list-outline" label="Contents" onPress={() => setMenu(true)} />{page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : null}</View>}>
++      right={<View style={{ flexDirection: 'row' }}>{showAssistant ? <IconBtn icon="sparkles-outline" label="Ask the assistant" onPress={() => nav.push('assistant')} spot={SPOT.helpAssistant} /> : null}<IconBtn icon="list-outline" label="Contents" onPress={() => setMenu(true)} />{page.id !== ROOT_ID && !q ? <IconBtn icon="home-outline" label="Help home" onPress={() => { setHist([ROOT_ID]); }} /> : null}</View>}>
+       <View style={{ width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 8, gap: 12 }}>
+         {SCANNER_SHORTCUT[page.id] && !q.trim() && index.byId[SCANNER_PAGE] ? (
+           <Pressable onPress={() => go(SCANNER_PAGE)} accessibilityRole="button" accessibilityLabel="Open the scanner setup barcodes"
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index 3b8c7d5..6d02542 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -35,8 +35,8 @@ const HELP_PAGE: Record<Sub, string> = {
+   backup: 'settings/backup', display: 'staff/screensaver', theme: 'settings/theme', about: 'start', warnings: 'sales/cart-warnings', assistant: 'settings/assistant',
+ };
+ 
+-export default function Settings() {
+-  const nav = useNav(); const [sub, setSub] = useState<Sub>('menu'); const back = () => (sub === 'menu' ? nav.pop() : setSub('menu'));
++export default function Settings({ open }: { open?: Sub } = {}) {
++  const nav = useNav(); const [sub, setSub] = useState<Sub>(open ?? 'menu'); const back = () => (sub === 'menu' || open ? nav.pop() : setSub('menu')); // opened straight onto a page (from the chat): Back returns to where it came from
+   const s = useApp(st => st.settings); const patch = useApp(st => st.patchSettings); const canAssistant = useCanEditAssistant();
+   const titles: Record<Sub, string> = { menu: 'Settings', shopify: 'Shopify', payments: 'Payments', discounts: 'Discounts & bundles', hardware: 'Hardware', data: 'Data', square: 'Square history', grid: 'Grid import / export', gift: 'Gift cards', receipts: 'Receipts', backup: 'Backup & transfer', display: 'Screensaver & display', theme: 'Theme', about: 'About', warnings: 'Cart warnings', assistant: 'AI assistant' };
+   return (
+diff --git a/tests/assistantchat.test.ts b/tests/assistantchat.test.ts
+new file mode 100644
+index 0000000..169f2dd
+--- /dev/null
++++ b/tests/assistantchat.test.ts
+@@ -0,0 +1,171 @@
++// Location: tests/assistantchat.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { AssistantError, type FetchLike } from '../src/lib/assistantClient';
++import {
++  ASSISTANT_OPEN_TO_ALL, HISTORY_CAP, PRACTICE_BLOCK, ask, assistantEntryVisible, bannerAction, bannerFor, buildMessages, buildSystemPrompt, canRetry, capHistory,
++  estimateTokens, historyKey, luhnOk, maskedNote, readHistory, scrubText, sendBlock, stripDashes, type ChatEntry,
++} from '../src/lib/assistantChat';
++
++const EM = '\u2014'; const EN = '\u2013';
++const entry = (i: number, role: 'user' | 'assistant', text: string): ChatEntry => ({ id: `e${i}`, role, text, at: i });
++
++test('luhnOk accepts real test card numbers and refuses the rest', () => {
++  assert.equal(luhnOk('4111111111111111'), true);
++  assert.equal(luhnOk('4111111111111112'), false);
++  assert.equal(luhnOk('12345'), false);
++  assert.equal(luhnOk('4111 1111 1111 1111'), false); // digits only: the caller strips spaces first
++});
++
++test('scrubText masks emails, phone numbers, Luhn valid cards and keys, and counts them', () => {
++  const r = scrubText('Email jo@example.com or 0412 345 678, card 4111 1111 1111 1111, key sk-abcdefgh12345678, intl +61 412 345 678');
++  assert.ok(!r.text.includes('jo@example.com') && !r.text.includes('345 678') && !r.text.includes('4111') && !r.text.includes('sk-abc'), r.text);
++  assert.deepEqual(r.masked, { key: 1, card: 1, email: 1, phone: 2 });
++  assert.match(r.text, /\[email address\]/); assert.match(r.text, /\[card number\]/); assert.match(r.text, /\[phone number\]/);
++});
++
++test('scrubText leaves prices, dates, order numbers and ordinary words alone', () => {
++  for (const ok of ['The total was $1,234.50 on 2026-10-17', 'Order #123456789 for 12 items', 'Call the shop on Monday', 'A card number 1234 5678 9012 3456 that fails the check', 'SKU ABCDEFGHIJKLMNOPQRSTUVWXYZABCDEFGH']) {
++    const r = scrubText(ok); assert.equal(r.text, ok, ok); assert.deepEqual(r.masked, {});
++  }
++});
++
++test('scrubText masks long mixed letter and digit tokens, and bearer tokens', () => {
++  const r = scrubText('token a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6 and Authorization: Bearer abcdefghijklmnop1234');
++  assert.ok(!r.text.includes('a1b2c3d4e5f6a1b2') && !r.text.includes('abcdefghijklmnop1234'), r.text);
++  assert.equal(r.masked.key, 2);
++});
++
++test('maskedNote reads naturally and is empty when nothing was hidden', () => {
++  assert.equal(maskedNote({}), '');
++  assert.equal(maskedNote({ email: 1 }), 'Hidden before sending: 1 email address.');
++  assert.equal(maskedNote({ email: 2, phone: 1 }), 'Hidden before sending: 2 email addresses and 1 phone number.');
++  assert.equal(maskedNote({ email: 1, phone: 2, card: 1 }), 'Hidden before sending: 1 email address, 2 phone numbers and 1 card number.');
++});
++
++test('stripDashes removes em and en dashes from replies', () => {
++  const out = stripDashes(`Tap Charge ${EM} then pick a tender${EN}cash or card. Open 9${EN}5 daily. Done${EM}`);
++  assert.ok(!out.includes(EM) && !out.includes(EN), out);
++  assert.match(out, /9 to 5/); assert.match(out, /Tap Charge, then pick a tender, cash or card/);
++  assert.equal(stripDashes('plain-hyphen text'), 'plain-hyphen text');
++});
++
++test('the system prompt states the rules and carries no dashes of its own, in either detail setting', () => {
++  for (const d of ['short', 'more'] as const) {
++    const p = buildSystemPrompt(d);
++    assert.ok(!p.includes(EM) && !p.includes(EN));
++    for (const must of ['Australian English', 'never change anything', 'Never use em dashes', 'Reply in the language', 'cannot see products']) assert.ok(p.toLowerCase().includes(must.toLowerCase()), must);
++  }
++  assert.ok(buildSystemPrompt('more').includes('more detail')); assert.ok(!buildSystemPrompt('short').includes('more detail'));
++});
++
++test('the system prompt names no screen, feature or role, so there is nothing in it to leak', () => {
++  const p = buildSystemPrompt('short').toLowerCase();
++  for (const word of ['refund screen', 'settings screen', 'cash drawer', 'manager', 'owner', 'cashier', 'gift card', 'staff screen', 'audit']) assert.ok(!p.includes(word), word);
++});
++
++test('history is per staff member, and the key never holds anything but the id', () => {
++  assert.equal(historyKey('s1'), 'assistant.history.v1.s1'); assert.notEqual(historyKey('s1'), historyKey('s2'));
++  assert.equal(historyKey(undefined), 'assistant.history.v1.owner'); assert.equal(historyKey('  '), 'assistant.history.v1.owner');
++});
++
++test('readHistory keeps only well formed entries and caps at 200, newest kept', () => {
++  assert.deepEqual(readHistory(undefined), []); assert.deepEqual(readHistory('x'), []);
++  const rows = readHistory([{ id: 'a', role: 'user', text: 'hi', at: 1 }, { id: 'b', role: 'system', text: 'no', at: 2 }, { id: 'c', role: 'assistant', text: 5, at: 3 }, null, { id: 'd', role: 'assistant', text: 'yo', at: 'x', note: 'n' }]);
++  assert.deepEqual(rows.map(r => r.id), ['a', 'd']); assert.equal(rows[1].at, 0); assert.equal(rows[1].note, 'n');
++  const many = Array.from({ length: 250 }, (_, i) => entry(i, i % 2 ? 'assistant' : 'user', `m${i}`));
++  const capped = capHistory(many); assert.equal(capped.length, HISTORY_CAP); assert.equal(capped[0].id, 'e50'); assert.equal(capped[capped.length - 1].id, 'e249');
++  assert.equal(readHistory(many).length, HISTORY_CAP);
++});
++
++test('buildMessages: system prompt first, oldest dropped first to fit the context, never opens on a reply', () => {
++  const h: ChatEntry[] = []; for (let i = 0; i < 40; i++) h.push(entry(i, i % 2 === 0 ? 'user' : 'assistant', `message number ${i} ` + 'x'.repeat(200)));
++  h.push(entry(40, 'user', 'the newest question'));
++  const m = buildMessages(h, 'short', 1200);
++  assert.equal(m[0].role, 'system'); assert.equal(m[m.length - 1].content, 'the newest question'); assert.equal(m[1].role, 'user');
++  assert.ok(m.length < h.length + 1 && m.length >= 2);
++  const total = m.reduce((n, x) => n + estimateTokens(x.content ?? ''), 0); assert.ok(total <= 1200 * 0.75 + 5, String(total));
++  const ids = m.slice(1).map(x => x.content as string).filter(c => c.startsWith('message number')).map(c => Number(/number (\d+)/.exec(c)![1]));
++  assert.deepEqual(ids, [...ids].sort((a, b) => a - b)); assert.ok(!ids.includes(0));
++});
++
++test('buildMessages keeps the newest message even when it alone is too long, cut down to fit', () => {
++  const m = buildMessages([entry(1, 'user', 'y'.repeat(50000))], 'short', 2000);
++  assert.equal(m.length, 2); assert.ok((m[1].content ?? '').length < 50000); assert.ok((m[1].content ?? '').length > 100);
++});
++
++test('buildMessages scrubs old history again at send time', () => {
++  const m = buildMessages([entry(1, 'user', 'my email is old@example.com'), entry(2, 'assistant', 'ok'), entry(3, 'user', 'and now?')], 'short', 8000);
++  assert.ok(!JSON.stringify(m).includes('old@example.com')); assert.ok(JSON.stringify(m).includes('[email address]'));
++});
++
++type Body = { model: string; messages: { role: string; content: string }[]; stream: boolean; tools?: unknown; temperature?: number };
++function fake(reply: unknown, status = 200) {
++  const seen: { url: string; headers: Record<string, string>; body: Body }[] = [];
++  const f: FetchLike = async (url, init) => { seen.push({ url, headers: init.headers, body: JSON.parse(init.body ?? '{}') }); return { ok: status < 300, status, text: async () => (typeof reply === 'string' ? reply : JSON.stringify(reply)) }; };
++  return { f, seen };
++}
++const okReply = (content: string | null) => ({ choices: [{ message: { role: 'assistant', content }, finish_reason: 'stop' }] });
++let n = 0; const input = (text: string, history: ChatEntry[] = []) => ({ history, text, detail: 'short' as const, settings: { contextSize: 8000, temperature: 0.2 }, endpoint: { baseUrl: 'http://192.168.1.20:11434/v1', model: 'm', timeoutSec: 5, apiKey: 'sk-test-SECRETSECRET1234' }, id: () => `id${++n}`, now: () => 1000 + n });
++
++test('ask sends scrubbed text, no tools, no streaming, and shows a dash free reply', async () => {
++  const { f, seen } = fake(okReply(`Tap Charge ${EM} that is it.`));
++  const r = await ask(f, input('My card is 4111 1111 1111 1111 and jo@example.com, how do I charge?'));
++  const b = seen[0].body;
++  assert.equal(b.stream, false); assert.equal(b.tools, undefined); assert.equal(b.model, 'm'); assert.equal(b.messages[0].role, 'system');
++  assert.ok(!JSON.stringify(b).includes('4111') && !JSON.stringify(b).includes('jo@example.com'));
++  assert.equal(b.messages[b.messages.length - 1].role, 'user');
++  assert.equal(r.reply.text, 'Tap Charge, that is it.'); assert.ok(!r.reply.text.includes(EM));
++  assert.equal(r.user.role, 'user'); assert.ok(!r.user.text.includes('4111')); assert.match(r.user.note ?? '', /1 email address and 1 card number|1 card number and 1 email address|card number/);
++  assert.equal(seen[0].headers.authorization, 'Bearer sk-test-SECRETSECRET1234'); // the key goes in the header and nowhere in the body
++  assert.ok(!JSON.stringify(b).includes('SECRETSECRET'));
++});
++
++test('ask puts the extra line in the prompt for More detail, and the earlier messages ahead of the new one', async () => {
++  const { f, seen } = fake(okReply('Here are the steps.'));
++  const hist = [entry(1, 'user', 'how do I charge?'), entry(2, 'assistant', 'Tap Charge.')];
++  await ask(f, { ...input('More detail please.', hist), detail: 'more' });
++  const b = seen[0].body; assert.ok(b.messages[0].content.includes('more detail'));
++  assert.deepEqual(b.messages.slice(1).map(x => x.content), ['how do I charge?', 'Tap Charge.', 'More detail please.']);
++});
++
++test('ask turns an empty reply into an error, and server problems keep their kind', async () => {
++  await assert.rejects(ask(fake(okReply('   ')).f, input('hi')), (e: AssistantError) => e.kind === 'bad_reply');
++  await assert.rejects(ask(fake(okReply(null)).f, input('hi')), (e: AssistantError) => e.kind === 'bad_reply');
++  await assert.rejects(ask(fake({ error: { message: 'bad key' } }, 401).f, input('hi')), (e: AssistantError) => e.kind === 'key_rejected');
++  await assert.rejects(ask(fake('x').f, { ...input('hi'), endpoint: { baseUrl: '', model: '', timeoutSec: 5 } }), (e: AssistantError) => e.kind === 'not_set_up');
++});
++
++test('bannerFor gives each failure its own words, and never shows the key', () => {
++  const kinds = ['not_set_up', 'unreachable', 'timeout', 'key_rejected', 'model_not_found', 'no_tools', 'bad_address', 'server_error', 'bad_reply'] as const;
++  const titles = new Set(kinds.map(k => bannerFor(new AssistantError(k, 'x')).title)); assert.equal(titles.size, kinds.length);
++  const b = bannerFor(new AssistantError('server_error', 'The server said: bad sk-test-SECRETSECRET1234 here'), 'sk-test-SECRETSECRET1234');
++  assert.ok(!b.body.includes('SECRETSECRET')); assert.equal(bannerFor(new Error('boom')).kind, 'server_error');
++});
++
++test('Retry is only offered where trying again can help, and only editors get the settings button', () => {
++  assert.deepEqual((['unreachable', 'timeout', 'server_error', 'bad_reply'] as const).map(canRetry), [true, true, true, true]);
++  assert.deepEqual((['not_set_up', 'key_rejected', 'model_not_found', 'no_tools', 'bad_address'] as const).map(canRetry), [false, false, false, false, false]);
++  assert.equal(bannerAction(true), 'open_settings'); assert.equal(bannerAction(false), 'ask_manager');
++});
++
++test('the Help entry: never on the lock screen, editors only until the audit log lands', () => {
++  assert.equal(ASSISTANT_OPEN_TO_ALL, false);
++  assert.equal(assistantEntryVisible({ locked: true, canEdit: true }), false);
++  assert.equal(assistantEntryVisible({ locked: false, canEdit: true }), true);
++  assert.equal(assistantEntryVisible({ locked: false, canEdit: false }), false);
++  assert.equal(assistantEntryVisible({ locked: false, canEdit: false, openToAll: true }), true);
++  assert.equal(assistantEntryVisible({ locked: true, canEdit: false, openToAll: true }), false);
++});
++
++test('sending is blocked in practice mode and not otherwise', () => {
++  assert.equal(sendBlock({ training: true }), PRACTICE_BLOCK); assert.equal(sendBlock({ training: false }), null);
++});
++
++test('the screens use these rules: the Help button checks the lock and the editor rule, the chat checks practice mode and keeps history per staff member', () => {
++  const help = readFileSync('src/screens/Help.tsx', 'utf8'); const chat = readFileSync('src/screens/Assistant.tsx', 'utf8');
++  assert.match(help, /assistantEntryVisible\(\{ locked, canEdit: canEditAssistant \}\)/); assert.match(help, /isLockScreen/);
++  assert.match(chat, /sendBlock\(\{ training: isTraining\(\) \}\)/); assert.match(chat, /historyKey\(staffId\)/); assert.match(chat, /if \(isTraining\(\)\)/);
++  assert.ok(!/localStorage|pushSharedSettings|AsyncStorage/.test(chat), 'history goes through kv only');
++});

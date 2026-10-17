@@ -92,6 +92,7 @@ export const SPOT_SCREEN: Record<string, string> = {
   // More tab.
   [SPOT.tabMore]: 'tab_more',
   [SPOT.moreTraining]: 'tab_more',
+  [SPOT.helpAssistant]: 'page_help',
   [SPOT.moreOrders]: 'tab_more',
   [SPOT.moreSaved]: 'tab_more',
   [SPOT.moreDiagnostics]: 'tab_more',
