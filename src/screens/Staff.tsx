@@ -51,14 +51,14 @@ export default function Staff() {
             <Txt size={13} sub weight="600" style={{ textTransform: 'uppercase', marginTop: 12 }}>Personal display preferences</Txt>
             <Txt size={12} sub>These override the register defaults for this staff member only.</Txt>
             <Segmented value={m.preferences?.theme ?? 'default'} onChange={v => setPreference(m.id, 'theme', v)} options={[{ v: 'default', label: 'Register' }, { v: 'brand', label: 'Brand' }, { v: 'light', label: 'Light' }, { v: 'dark', label: 'Dark' }, { v: 'system', label: 'System' }]} />
-            <Segmented value={(typeof m.preferences?.tileSize === 'number' ? 'custom' : m.preferences?.tileSize ?? 'default') as any} onChange={v => setPreference(m.id, 'tileSize', v)} options={[{ v: 'default', label: 'Register tiles' }, { v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }, { v: 'custom', label: 'Custom' }]} />
+            <Segmented value={(typeof m.preferences?.tileSize === 'number' ? 'custom' : m.preferences?.tileSize ?? 'default') as any} onChange={v => setPreference(m.id, 'tileSize', v as any)} options={[{ v: 'default', label: 'Register tiles' }, { v: 'S', label: 'Small' }, { v: 'M', label: 'Medium' }, { v: 'L', label: 'Large' }, { v: 'custom', label: 'Custom' }]} />
             {(m.preferences?.tileSize === undefined ? false : typeof m.preferences?.tileSize === 'number') || (typeof m.preferences?.tileSize === 'number') ? (
               typeof m.preferences?.tileSize === 'number' ? (
                 <View style={{ paddingTop: 6 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                     <Txt size={13} sub>{Math.round(m.preferences.tileSize)}px</Txt>
                     <View style={{ flex: 1 }}>
-                      <Slider value={m.preferences.tileSize} minimumValue={80} maximumValue={220} step={4} onValueChange={v => setPreference(m.id, 'tileSize', Math.round(v))} />
+                      <Slider value={m.preferences.tileSize} minimumValue={80} maximumValue={220} step={4} onValueChange={v => setPreference(m.id, 'tileSize', Math.round(v) as any)} />
                     </View>
                   </View>
                 </View>

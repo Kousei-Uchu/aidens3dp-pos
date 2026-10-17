@@ -3,7 +3,7 @@ export type TileSizePreference = 'S' | 'M' | 'L' | number;
 /** Space the grid keeps for its own side padding (8 on each side). */
 export const GRID_PADDING = 16;
 /** The tile width each size preference aims for. The real width is nudged up or down from this to fill the pane. */
-export const TILE_TARGET: Record<'S' | 'M' | 'L', number> = { S: 96, M: 124, L: 160 };
+export const TILE_TARGET: Record<string, number> = { S: 96, M: 124, L: 160 } as Record<string, number>;
 export const TILE_MIN = 80;
 export const TILE_MAX = 220;
 export const DEFAULT_TILE_SIZE = 124;

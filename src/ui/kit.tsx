@@ -131,16 +131,18 @@ export function Slider({ value, onValueChange, minimumValue = 0, maximumValue = 
       <Pressable
         disabled={disabled}
         onTouchMove={e => {
-          const x = e.nativeEvent.locationX;
-          const w = e.currentTarget.width || 1;
+          const x = e.nativeEvent.locationX as number;
+          const target = e.currentTarget as any;
+          const w = (target?.width || target?.layout?.width) as number || 1;
           let nv = minimumValue + ((x / w) * (maximumValue - minimumValue));
           if (step > 0) nv = Math.round(nv / step) * step;
           nv = Math.max(minimumValue, Math.min(maximumValue, nv));
           setV(nv); onValueChange(nv);
         }}
         onTouchStart={e => {
-          const x = e.nativeEvent.locationX;
-          const w = e.currentTarget.width || 1;
+          const x = e.nativeEvent.locationX as number;
+          const target = e.currentTarget as any;
+          const w = (target?.width || target?.layout?.width) as number || 1;
           let nv = minimumValue + ((x / w) * (maximumValue - minimumValue));
           if (step > 0) nv = Math.round(nv / step) * step;
           nv = Math.max(minimumValue, Math.min(maximumValue, nv));
