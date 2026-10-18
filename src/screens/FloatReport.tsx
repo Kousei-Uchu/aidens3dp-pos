@@ -7,6 +7,7 @@ import { View } from 'react-native';
 import { Btn, Money, Sheet, Txt, confirm } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff } from '../state/store';
+import { drawerChanged } from '../lib/sync';
 import { useCashProfile } from '../state/cashProfile';
 import { applyEntry, newEntry, summariseCounts, totalOf, type Counts } from '../lib/cashLedger';
 import { CountSquares } from '../ui/CountSquares';
@@ -32,7 +33,7 @@ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { vis
     if (!shown || !totalOf(shown.takeOut)) return;
     if (!(await confirm('Write this banking into the ledger?', `Takes ${summariseCounts(shown.takeOut)} (${fmt(shown.takeOutTotal)}) out of the drawer ledger as a paid out. Only do this once the cash has really been taken out.`, 'Record it'))) return;
     const entry = newEntry('paid_out', Object.fromEntries(Object.entries(shown.takeOut).map(([v, n]) => [v, -n])), { staff: currentStaff()?.name, note: 'Daily banking (float report)' });
-    patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, entry), ...(shift.open ? { shift: { ...shift, paidOutCents: shift.paidOutCents + shown.takeOutTotal } } : {}) }); onClose();
+    patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, entry), ...(shift.open ? { shift: { ...shift, paidOutCents: shift.paidOutCents + shown.takeOutTotal } } : {}) }); drawerChanged(shift.open); onClose();
   };
   const box = (title: string, counts: Counts, tone?: string) => (
     <View style={{ backgroundColor: (tone ?? c.fill) + (tone ? '18' : ''), borderRadius: 14, padding: 14, gap: 2, ...(tone ? { borderWidth: 1.5, borderColor: tone } : {}) }}><CountSquares counts={counts} label={title} total /></View>

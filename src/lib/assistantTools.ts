@@ -1,5 +1,5 @@
 // Location: src/lib/assistantTools.ts
-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts). Plain functions that read what they are
+// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts, patch 0166 current_time, patch 0167 screen_context). Plain functions that read what they are
 // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
 // runs in the node tests.
 //
@@ -14,6 +14,7 @@ import type { Guide } from './assistantGuide';
 import type { AssistantData } from './assistantData';
 import { DATA_TOOLS } from './assistantDataTools';
 import { currentTimeTool } from './assistantTime';
+import { contextInfo, type RegisterContext } from './assistantContext';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -29,6 +30,8 @@ export type ToolContext = {
   data?: AssistantData;
   /** The time the question was asked, in milliseconds (patch 0166). Left out, the clock is read when the tool runs. */
   now?: number;
+  /** Where the person was and how the till is set up for them, when the question was asked (patch 0167). Left out, `screen_context` says it does not know. */
+  where?: RegisterContext;
 };
 export type AssistantTool = {
   /** Which fields the tool can return and what category each is in (patch 0161). Every result goes through the data gate by this map. 'content' is for tools that only return help text and screen names. */
@@ -236,8 +239,24 @@ const showGuide: AssistantTool = {
   link: (args, ctx) => resolveLink(ctx, 'guide', args.screen)?.link ?? null,
 };
 
+// ---------- screen_context ----------
+/**
+ * Every field is shop data (the category the plan gives the app's own state), and there is nothing personal in it: the role, the mode,
+ * the tab names, the register's name. The screen is looked up in `visibleScreens`, the one place screens are filtered by role, so a
+ * page this role cannot reach is answered exactly like a page the till cannot name.
+ */
+const screenContext: AssistantTool = {
+  gate: { role: 'shop', display_mode: 'shop', tabs_shown: 'shop', guided_checkout: 'shop', practice_mode: 'shop', register: 'shop', selected_tab: 'shop', screen: { name: 'shop', kind: 'shop', summary: 'shop' } },
+  def: { type: 'function', function: {
+    name: 'screen_context',
+    description: 'Where the person is on the till and how it is set up for them: the tab or page they were on when they opened the chat, their role, their display mode and which tabs it shows, and whether practice mode is on. Use it when the answer depends on where they are, such as which tab to tap first, or when they say "this screen" or "here".',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  } },
+  run: (_args, ctx) => contextInfo(ctx.role, ctx.where, ctx.where?.screen ? visibleScreens(ctx).find(e => e.id === ctx.where!.screen) : undefined),
+};
+
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, ...DATA_TOOLS];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, screenContext, ...DATA_TOOLS];
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
 
 // ---------- running a call ----------
@@ -282,5 +301,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number }): ToolSet =>
-  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext }): ToolSet =>
+  ({ tools: o.tools ?? ASSISTANT_TOOLS, ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });

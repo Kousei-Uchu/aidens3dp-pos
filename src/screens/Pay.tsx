@@ -9,7 +9,7 @@ import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder
 import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult, type RefundResult } from '../lib/zeller';
 import { getTerminal, checkReader } from '../zellerBridge';
 import { csv } from '../lib/csvStore';
-import { applyLocalStock, recordSale, updateSaved } from '../lib/sync';
+import { applyLocalStock, drawerChanged, recordSale, updateSaved } from '../lib/sync';
 import { digitsToCents, fmt } from '../lib/money';
 import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
 import { uid } from '../lib/ids';
@@ -63,7 +63,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
     for (const tn of tenders) if (tn.kind === 'cash' && cash[tn.id]) {
       ledger = recordCancelledCashTender(ledger, tn, cash[tn.id].returned, cash[tn.id].collected, { saleUuid: cart.saleUuid, staff: staffName });
     }
-    if (ledger !== useApp.getState().pos.ledger) useApp.getState().patchPos({ ledger });
+    if (ledger !== useApp.getState().pos.ledger) { useApp.getState().patchPos({ ledger }); drawerChanged(); }
     void csv.event({ kind: 'void', saleUuid: cart.saleUuid, amountCents: paid, staff: staffName, message: 'Partial sale cancelled; electronic tenders returned and exact cash denominations logged' });
     setCancelCash(null);
     setCart(c0 => ({ ...c0, tenders: undefined, saleUuid: undefined, cancelPending: undefined, returnedTenderIds: undefined }));
@@ -138,7 +138,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
     const isFinal = target === remaining && r.applyCents === undefined; const { tender, settles } = cashTender(r.applyCents ?? target, r.tendered, settings.cashRounding && isFinal);
     if (!settles && r.tendered <= 0) return;
     const uuid = saleUuid(); const t: Tender = { ...tender, cashIn: r.received, cashOut: r.given };
-    useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) });
+    useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) }); drawerChanged();
     addTender(t, uuid, r.plan); setCashOpen(false);
   };
 

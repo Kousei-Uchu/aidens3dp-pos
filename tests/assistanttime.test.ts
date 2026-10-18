@@ -37,5 +37,5 @@ test('it is offered with the other tools, takes no arguments, and the time reach
   assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.now, undefined);
 });
 test('the prompt names it, and it still names no restricted thing', () => {
-  const p = buildSystemPrompt('short', true); assert.match(p, /current_time/); assert.match(p, /never guess the date/i); assert.match(p, /thirteen tools/); assert.doesNotMatch(p, /[\u2013\u2014]/);
+  const p = buildSystemPrompt('short', true); assert.match(p, /current_time/); assert.match(p, /never guess the date/i); assert.match(p, /fourteen tools/); assert.doesNotMatch(p, /[\u2013\u2014]/);
 });

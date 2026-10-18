@@ -1,11 +1,14 @@
 // Location: src/lib/sync.ts
 // Outbox + polling. Cash and saved carts work offline; sales queue locally and upload later; card needs internet.
 // Every outbox step is idempotent, so a crash or retry never double-books.
-import { useApp, type OutboxItem, type SavedCart } from '../state/store';
+import { useApp, type OutboxItem, type SavedCart, type Shift } from '../state/store';
 import { csv } from './csvStore';
 import { applyRecord, emptyTotals, rollupKey, type Totals } from './rollup';
 import { parseBundleConfig } from './bundles';
 import { parseGrid } from './grid';
+import { readLedger } from './cashLedger';
+import { mergeDrawer } from './drawerSync';
+import { isTraining } from './trainingGuard';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
 import * as meta from './shopify/metaobjects';
@@ -134,6 +137,7 @@ export async function pollShared() {
   try {
     if (s.settings.sharedSettingsPending) await pushSharedSettings();
     if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
+    if (s.settings.drawerPending) await pushDrawer().catch(() => {});
     // stock
     if (s.settings.locationId && s.data.stockSince) {
       const since = new Date().toISOString();
@@ -146,7 +150,7 @@ export async function pollShared() {
       }
       s.patchData({ stockSince: since });
     }
-    await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration();
+    await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration(); await pullDrawer();
     st().set({ sync: { state: st().pos.outbox.length ? 'error' : 'idle', at: new Date().toISOString(), error: st().pos.outbox.length ? `${st().pos.outbox.length} queued` : undefined } });
   } catch (e: any) {
     st().set({ sync: { state: isNetworkError(e) ? 'offline' : 'error', at: st().sync.at, error: String(e?.message ?? e) } });
@@ -257,6 +261,59 @@ async function pullScannerCalibration() {
   const v = Number(row.f.version) || 0;
   if (v <= (st().settings.scannerCalVersion ?? 0)) return;
   try { const j = JSON.parse(row.f.settings_json); st().patchSettings({ scannerCal: j.calibration ? readCalibration(j.calibration) ?? undefined : undefined, scannerCalVersion: v }); } catch { /* ignore a bad record */ }
+}
+
+// ── shared cash drawer (0168) ─────────────────────────────────────────────────────────────────────
+// One physical drawer for the shop, so its state is shared between registers the same way settings are: a versioned
+// record in the pos_settings metaobject (handle `drawer`, like `shared` and `scanner`, so no new definition is needed).
+// A change is written locally first — the drawer keeps working offline, exactly as before — and uploaded here. Another
+// register's entries are folded in before we write, so a push never drops their history.
+/** A drawer change on this register. `shift` marks a change to open/paid in/out/close, which a push must keep over an older copy. */
+export function drawerChanged(shift = false) {
+  st().patchSettings({ drawerPending: true, ...(shift ? { drawerShiftPending: true } : {}) });
+  void pushDrawer();
+}
+
+export async function pushDrawer() {
+  const s = st();
+  if (isTraining()) return; // practice data is never sent
+  s.patchSettings({ drawerPending: true });
+  if (!hasCreds()) return;
+  const pos = st().pos;
+  let shift = pos.shift; let ledger = pos.ledger;
+  let version = (st().settings.drawerVersion ?? 0) + 1;
+  try {
+    const remote = await meta.getByHandle(meta.TYPES.settings, 'drawer');
+    const remoteV = Number(remote?.f.version) || 0;
+    version = Math.max(st().settings.drawerVersion ?? 0, remoteV) + 1;
+    if (remote?.f.settings_json) {
+      let r: { shift?: Shift; ledger?: unknown } | null = null; try { r = JSON.parse(remote.f.settings_json); } catch { r = null; }
+      if (r?.ledger) ledger = mergeDrawer(ledger, readLedger(r.ledger));
+      // Another register changed the shift after our last look and we made no shift change of our own: follow theirs,
+      // so a cash sale here never reverts a drawer another register just opened.
+      if (!st().settings.drawerShiftPending && remoteV > (st().settings.drawerVersion ?? 0) && r?.shift) shift = r.shift;
+    }
+  } catch { /* a read that fails leaves our own copy to upload */ }
+  try {
+    await meta.upsert(meta.TYPES.settings, 'drawer', { settings_key: 'drawer', version, settings_json: JSON.stringify({ shift, ledger }) });
+  } catch (error) {
+    st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Drawer not uploaded: ${String((error as Error)?.message ?? error)}` } });
+    throw error;
+  }
+  st().patchPos({ ledger, shift });
+  st().patchSettings({ drawerVersion: version, drawerPending: false, drawerShiftPending: false });
+}
+
+async function pullDrawer() {
+  if (isTraining() || st().settings.drawerPending) return; // our unsent change wins until it is pushed
+  const row = await meta.getByHandle(meta.TYPES.settings, 'drawer'); if (!row) return;
+  const v = Number(row.f.version) || 0;
+  if (v <= (st().settings.drawerVersion ?? 0)) return;
+  try {
+    const j = JSON.parse(row.f.settings_json) as { shift?: Shift; ledger?: unknown };
+    st().patchPos({ shift: j.shift ?? st().pos.shift, ledger: readLedger(j.ledger) });
+    st().patchSettings({ drawerVersion: v });
+  } catch { /* ignore a bad record */ }
 }
 export const bundleConfig = (): BundleConfig | null => { try { return st().settings.bundlesJson ? parseBundleConfig(st().settings.bundlesJson).cfg ?? null : null; } catch { return null; } };
 

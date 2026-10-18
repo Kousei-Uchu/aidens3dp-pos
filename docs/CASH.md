@@ -3,6 +3,9 @@
 ## What it tracks
 The drawer screen (More ▸ Cash drawer) keeps a ledger of which notes and coins are in the drawer, and a history of what went in and out, when, and who was signed in. Money is Australian: $100, $50, $20, $10, $5, $2, $1, 50c, 20c, 10c, 5c.
 
+## One drawer, every register
+The drawer is one physical drawer for the shop, so its status is shared between registers. Opening it, paid in or out, a count, a swap, daily banking and every cash sale or refund sync through Shopify (the same `pos_settings` record the shared settings use), and another register picks the change up on the next poll. It keeps working with no connection and the changes merge in when the connection returns; a cash sale on one register is never lost when another uploads. Because it is one drawer, **expected cash counts cash from every register** since the drawer was opened, not just this one.
+
 ## Entering money
 Tap the note or coin. Each tap adds one (use ×5 or ×10 for several). Switch to **Remove** to take some off. **Undo** reverses the last tap and tells you what it took off and the new total. **Start over** clears the entry.
 

@@ -842,3 +842,28 @@ On the iPad, with the model set up as in T55. Note the date and time shown on th
 4. As a manager, open the conversation log and open the conversation from step 2, then **Tools used**. Pass: a `current_time` call is listed before the sales call, and its result holds only dates, the weekday and the time.
 5. Change the iPad to a different time zone (Settings ▸ General ▸ Date & Time) and ask step 1 again. Pass: it follows the iPad's clock.
 6. **Most important:** turn on practice mode. Pass: sending is still blocked. Nothing about the date changes anything.
+
+## T65. Assistant screen and register context tool (0167)
+
+On the iPad, with the model set up as in T55. You need one cashier set to **Minimal** display mode (More ▸ Staff ▸ their name ▸ Display mode) and one set to **Standard**.
+
+1. Sign in as the Standard person. Open **More ▸ Help**, tap the sparkles button and ask *Which screen was I on before this chat, and what is it for?* Pass: it says the More tab, the menu of the other pages, and does not name a page you did not visit.
+2. Ask *Which tabs can I see?* Pass: it lists all five (Checkout, Inventory, Transactions, Notifications, More) and says Standard.
+3. Sign out and sign in as the Minimal person, open the chat the same way and ask *Which tabs can I see?* Pass: Checkout, Transactions and More only, and it says Minimal.
+4. As the Minimal person ask *How do I check stock levels?* Pass: it does not tell you to tap the Inventory tab, because that tab is not on this person's tab bar. A small model may still slip here; note which model if it does.
+5. Ask *Which register is this?* Pass: the name matches this register's name on the **Reports** page.
+6. Optional, if you can get a Help button from a message on a page (for example an error shown while taking a payment), tap it, open the assistant from there and ask *What page was I on?* Pass: it names that page and the More tab is not given as the answer.
+7. As a manager, open the conversation log, open the conversation from step 2, then **Tools used**. Pass: a `screen_context` call is listed, and its result holds only the role, display mode, tabs, guided checkout, practice mode, register name, selected tab and a screen name, kind and summary. No ids, no staff name.
+8. **Most important:** turn on practice mode. Pass: sending is still blocked, and nothing about where you are changes anything.
+
+## T66. Cash drawer shared between registers (0168)
+
+You need two iPads on the same shop, both past **Import from Shopify**, with the model setup in T55 not needed. Register A and register B.
+
+1. On A, open **More ▸ Cash drawer** and open the drawer with a float of $200. Pass: the drawer opens on A.
+2. On B, open **More ▸ Cash drawer**. Pass: within about 25 seconds (or immediately after **More ▸ Diagnostics ▸ Sync now**) it shows the same open drawer, the same $200 float and the same history, without opening it again.
+3. On B, tap **Paid in**, put in $50 with a reason. Pass: B moves to $250 expected. On A, within ~25 seconds the $50 and the reason appear in the history and the paid-in total matches.
+4. On A, take a **cash sale** of, say, $12.50. Pass: on B the ledger shows the cash received and change given, and the expected amount includes A's sale (expected cash counts every register). Do the same on B and check A.
+5. On B, **Count & close** to $0 (or the counted amount). Pass: A follows to closed within ~25 seconds.
+6. Go into **airplane mode** on A (no connection). Open the drawer on A and take a cash sale. Pass: A still works with no connection. Turn the connection back on, wait for the poll (or **Sync now**). Pass: A's entries merge into B and nothing B did is lost; B's entries are on A.
+7. **Most important:** turn on practice mode on both. Open and use the drawer. Pass: nothing is sent, and the drawers do not change each other. When you leave practice mode, the real drawer is exactly as you left it.

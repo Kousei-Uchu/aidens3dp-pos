@@ -9,6 +9,7 @@ import { DenomPad } from '../ui/DenomPad';
 import { CountSquares } from '../ui/CountSquares';
 import { useTheme } from '../ui/theme';
 import { useApp, currentStaff } from '../state/store';
+import { drawerChanged } from '../lib/sync';
 import { useCashProfile } from '../state/cashProfile';
 import { applyEntry, draftCounts, newEntry, summariseCounts, totalOf, type Draft } from '../lib/cashLedger';
 import { planSwap, swapIsValid, type SwapPlan } from '../lib/cashSwap';
@@ -39,7 +40,7 @@ export function SwapCashSheet({ visible, onClose }: { visible: boolean; onClose:
     if (!plan || !found) return;
     if (!(await confirm('Write this swap into the ledger?', `The drawer takes in ${summariseCounts(plan.give)} and gives out ${summariseCounts(plan.take)} (${fmt(totalOf(plan.give))} each way). Only do this once the notes and coins have really changed hands.`, 'Record it'))) return;
     const delta: Record<string, number> = { ...plan.give }; for (const [k, n] of Object.entries(plan.take)) delta[k] = (delta[k] ?? 0) - n;
-    patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, newEntry('adjust', delta, { staff: currentStaff()?.name, note: 'Swapped with own cash' })) }); onClose();
+    patchPos({ ledger: applyEntry(useApp.getState().pos.ledger, newEntry('adjust', delta, { staff: currentStaff()?.name, note: 'Swapped with own cash' })) }); drawerChanged(); onClose();
   };
   return (
     <Sheet visible={visible} onClose={onClose} title="Swap my cash" full screen="sheet_drawer_swap">

@@ -8,7 +8,7 @@ import { setRuntimeScreen } from '../lib/trainingProbe';
 import { useApp, currentStaff } from '../state/store';
 import { useCatalogue } from '../state/selectors';
 import { priceCart } from '../lib/pricing';
-import { bundleConfig } from '../lib/sync';
+import { bundleConfig, drawerChanged } from '../lib/sync';
 import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { exchangeSummary, refundableByGateway, type RefundMethod } from '../lib/returns';
@@ -100,7 +100,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
         <Field kind="search" placeholder="Search products" value={q} onChangeText={setQ} />
         {hits.map((v: Variant) => <Row key={v.id} spot={refundPickSpot(v.id)} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Money cents={v.priceCents} />} onPress={() => { setRepl(r => ops.addVariant(r, v, 1, true)); setPick(false); }} />)}
       </Sheet>
-      <GiveCashSheet visible={!!cashGive} amount={cashGive?.amount ?? 0} onDone={given => { const g = cashGive; setCashGive(null); if (!g) return; if (given) useApp.getState().patchPos({ ledger: postCashRefund(useApp.getState().pos.ledger, { saleUuid: g.uuid, given, staff: currentStaff()?.name }) }); setResult(g.text); }} />
+      <GiveCashSheet visible={!!cashGive} amount={cashGive?.amount ?? 0} onDone={given => { const g = cashGive; setCashGive(null); if (!g) return; if (given) { useApp.getState().patchPos({ ledger: postCashRefund(useApp.getState().pos.ledger, { saleUuid: g.uuid, given, staff: currentStaff()?.name }) }); drawerChanged(); } setResult(g.text); }} />
       <Sheet visible={!!result} onClose={() => { setResult(null); onClose(); }} title="Done" screen="sheet_refund_done"><Txt size={16} style={{ marginBottom: 14 }}>{result}</Txt><Btn spot={SPOT.refundDone} title="OK" onPress={() => { setResult(null); onClose(); }} /></Sheet>
       <View style={{ height: 0, backgroundColor: c.bg }} />
     </Page>

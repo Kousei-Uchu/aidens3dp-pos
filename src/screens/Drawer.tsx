@@ -6,20 +6,22 @@ import { FloatReportSheet } from './FloatReport';
 import { SwapCashSheet } from './SwapCash';
 import { useNav } from '../ui/nav';
 import { useApp, currentStaff } from '../state/store';
+import { drawerChanged } from '../lib/sync';
 import { csv } from '../lib/csvStore';
 import { fmt } from '../lib/money';
 import { DENOMS, LEDGER_LABEL, applyEntry, diffCounts, draftCounts, entryTotal, newEntry, shortfall, summariseCounts, totalOf, type Draft, type LedgerKind } from '../lib/cashLedger';
 import { Spot } from '../ui/Spot';
 import { SPOT } from '../lib/trainingSpots';
 
-/** Current cash drawer: float, paid in/out, count vs expected, Z-report (simplified, per register). */
-export const cashSince = (sinceISO: string, registerId: string, sales = useApp.getState().pos.sales) =>
-  sales.filter(s => s.registerId === registerId && s.ts >= sinceISO).reduce((sum, s) => sum + s.tenders.filter(t => t.kind === 'cash').reduce((x, t) => x + (s.type === 'sale' ? t.amountCents + (t.roundingCents ?? 0) : -t.amountCents), 0), 0);
+/** Current cash drawer: float, paid in/out, count vs expected, Z-report. One shared drawer for the shop (0167), so it is
+ *  synced between registers and cash is counted from every register, not just this one. */
+export const cashSince = (sinceISO: string, registerId: string | undefined, sales = useApp.getState().pos.sales) =>
+  sales.filter(s => (!registerId || s.registerId === registerId) && s.ts >= sinceISO).reduce((sum, s) => sum + s.tenders.filter(t => t.kind === 'cash').reduce((x, t) => x + (s.type === 'sale' ? t.amountCents + (t.roundingCents ?? 0) : -t.amountCents), 0), 0);
 
 export default function Drawer() {
-  const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const reg = useApp(s => s.settings.registerId); const patchPos = useApp(s => s.patchPos); const ledger = useApp(s => s.pos.ledger);
+  const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const patchPos = useApp(s => s.patchPos); const ledger = useApp(s => s.pos.ledger);
   const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close' | 'fix'>('none'); const [floatOpen, setFloatOpen] = useState(false); const [swapOpen, setSwapOpen] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [note, setNote] = useState('');
-  const staff = currentStaff()?.name; const cash = shift.open && shift.openedAt ? cashSince(shift.openedAt, reg, sales) : 0;
+  const staff = currentStaff()?.name; const cash = shift.open && shift.openedAt ? cashSince(shift.openedAt, undefined, sales) : 0;
   const expected = shift.floatCents + cash + shift.paidInCents - shift.paidOutCents;
   // open and "fix contents" start from what the drawer holds (adjust it); in, out and the closing count start empty (a blind count)
   const base = sheet === 'open' || sheet === 'fix' ? ledger.counts : {};
@@ -30,28 +32,28 @@ export default function Drawer() {
   const submit = async () => {
     if (sheet === 'open') {
       const l = record('open', diffCounts(entered, ledger.counts), 'Float ' + fmt(amt));
-      patchPos({ shift: { open: true, openedAt: new Date().toISOString(), floatCents: amt, paidInCents: 0, paidOutCents: 0, staff }, ledger: l }); void csv.event({ kind: 'shift_open', amountCents: amt, staff, message: summariseCounts(entered) });
+      patchPos({ shift: { open: true, openedAt: new Date().toISOString(), floatCents: amt, paidInCents: 0, paidOutCents: 0, staff }, ledger: l }); drawerChanged(true); void csv.event({ kind: 'shift_open', amountCents: amt, staff, message: summariseCounts(entered) });
     }
     if (sheet === 'in') {
       if (!amt) return alertMsg('Nothing entered', 'Tap the notes and coins that went in.');
-      patchPos({ shift: { ...shift, paidInCents: shift.paidInCents + amt }, ledger: record('paid_in', entered, note) }); void csv.event({ kind: 'paid_in', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
+      patchPos({ shift: { ...shift, paidInCents: shift.paidInCents + amt }, ledger: record('paid_in', entered, note) }); drawerChanged(true); void csv.event({ kind: 'paid_in', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
     }
     if (sheet === 'out') {
       if (!amt) return alertMsg('Nothing entered', 'Tap the notes and coins that came out.');
       const short = shortfall(ledger.counts, entered);
       if (short.length && !(await confirm('More than the drawer should hold', `You are taking ${short.map(x => `${x.need} × ${DENOMS.find(d => d.cents === x.cents)?.label} (ledger has ${x.have})`).join(', ')}. The ledger may not know about recent cash sales yet. Take it out anyway?`, 'Take out'))) return;
-      patchPos({ shift: { ...shift, paidOutCents: shift.paidOutCents + amt }, ledger: record('paid_out', Object.fromEntries(Object.entries(entered).map(([v, n]) => [v, -n])), note) }); void csv.event({ kind: 'paid_out', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
+      patchPos({ shift: { ...shift, paidOutCents: shift.paidOutCents + amt }, ledger: record('paid_out', Object.fromEntries(Object.entries(entered).map(([v, n]) => [v, -n])), note) }); drawerChanged(true); void csv.event({ kind: 'paid_out', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
     }
     if (sheet === 'fix') {
       const delta = diffCounts(entered, ledger.counts); if (!Object.keys(delta).length) return done();
-      patchPos({ ledger: record('adjust', delta, note || 'Corrected by hand') });
+      patchPos({ ledger: record('adjust', delta, note || 'Corrected by hand') }); drawerChanged();
     }
     if (sheet === 'close') {
       const diff = amt - expected; const byDenom = diffCounts(entered, ledger.counts);
       const z = [`Z-report · ${new Date().toLocaleString()}`, `Opened ${shift.openedAt ? new Date(shift.openedAt).toLocaleString() : ''}`, `Float ${fmt(shift.floatCents)}`, `Cash sales (net of refunds) ${fmt(cash)}`, `Paid in ${fmt(shift.paidInCents)}`, `Paid out ${fmt(shift.paidOutCents)}`, `Expected ${fmt(expected)}`, `Counted ${fmt(amt)}`, `Difference ${fmt(diff)}`, `In the drawer: ${summariseCounts(entered)}`].join('\n');
       void csv.event({ kind: 'shift_close', amountCents: amt, message: `expected ${expected} diff ${diff}; ${summariseCounts(entered)}`, staff });
       // what was counted becomes what the ledger says is in the drawer; the next opening starts from it
-      patchPos({ shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, ledger: record('close', byDenom, `Counted ${fmt(amt)}`) }); done(); await Share.share({ message: z }); return;
+      patchPos({ shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, ledger: record('close', byDenom, `Counted ${fmt(amt)}`) }); drawerChanged(true); done(); await Share.share({ message: z }); return;
     }
     done();
   };
@@ -61,7 +63,7 @@ export default function Drawer() {
   const recent = ledger.entries.slice(0, 15);
   return (
     <Page title="Cash drawer" onBack={nav.pop} helpId="cash">
-      {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open on this register.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} spot={SPOT.drawerOpen} /></View> : <>
+      {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open.</Txt><Txt size={13} sub>This is one drawer shared with every register: open it here and it is open on all of them.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} spot={SPOT.drawerOpen} /></View> : <>
         <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
         <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} spot={SPOT.drawerPaidIn} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} spot={SPOT.drawerPaidOut} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} spot={SPOT.drawerCountClose} /></View></>}
 
@@ -71,7 +73,7 @@ export default function Drawer() {
       </Section>
       <View style={{ paddingHorizontal: 16, paddingTop: 10 }}><Btn title="Correct contents" kind="secondary" icon="create-outline" onPress={() => setSheet('fix')} spot={SPOT.drawerCorrect} /><Btn title="Daily float report" kind="secondary" icon="stats-chart-outline" onPress={() => setFloatOpen(true)} style={{ marginTop: 8 }} spot={SPOT.drawerFloatReport} /><Btn title="Swap my cash" kind="secondary" icon="swap-horizontal-outline" onPress={() => setSwapOpen(true)} style={{ marginTop: 8 }} spot={SPOT.drawerSwapCash} /></View>
       <SwapCashSheet visible={swapOpen} onClose={() => setSwapOpen(false)} />
-      <FloatReportSheet visible={floatOpen} onClose={() => setFloatOpen(false)} since={shift.open ? shift.openedAt : undefined} cashTakings={since => cashSince(since, reg, sales)} />
+      <FloatReportSheet visible={floatOpen} onClose={() => setFloatOpen(false)} since={shift.open ? shift.openedAt : undefined} cashTakings={since => cashSince(since, undefined, sales)} />
 
       <Section title="Cash history">
         {recent.length ? recent.map((e, i) => { const t = entryTotal(e); return <Row key={e.id} last={i === recent.length - 1} icon={t < 0 ? 'arrow-up-circle-outline' : 'arrow-down-circle-outline'} title={`${LEDGER_LABEL[e.kind]}${e.staff ? ` · ${e.staff}` : ''}`}

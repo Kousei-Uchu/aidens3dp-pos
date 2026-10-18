@@ -36,6 +36,10 @@ export type Settings = {
   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+  // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
+  // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
+  // `drawerShiftPending` says that change included the shift (open/paid in/out/close), so a push must not be beaten by an older one.
+  drawerVersion?: number; drawerPending?: boolean; drawerShiftPending?: boolean;
   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
   assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
 };

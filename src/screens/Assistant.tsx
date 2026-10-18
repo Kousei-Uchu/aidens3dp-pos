@@ -14,6 +14,7 @@ import ChatMarkdown from '../ui/ChatMarkdown';
 import { useTheme } from '../ui/theme';
 import { useNav, type Tab } from '../ui/nav';
 import { useKeyboardOverlap } from '../ui/keyboard';
+import { useUi } from '../ui/uiProfile';
 import { useApp } from '../state/store';
 import { actingRole, canEditAdjustPerms } from '../lib/adjustPerms';
 import { classifyEndpoint, isConfigured } from '../lib/assistantConfig';
@@ -27,6 +28,8 @@ import { resolvePolicy } from '../lib/assistantGate';
 import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
 import { takeAssistantData, takeCatalogue } from '../lib/assistantDataIO';
 import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+import { registerContext } from '../lib/assistantContext';
+import { screenOfRoute } from '../lib/appGraph';
 import { startGuide } from '../lib/assistantGuide';
 import type { Page as HelpPage } from '../lib/helpDocs';
 import { builtinHelp } from '../lib/helpBuiltin';
@@ -112,6 +115,9 @@ export default function Assistant() {
   // `search` is whether a failure also searches with no model (not for "More detail"); `replace` is the question a retry takes the place of.
   const failed = useRef<{ text: string; detail: Detail; search: boolean; replace?: string } | null>(null); const scroller = useRef<ScrollView>(null); const histRef = useRef<ChatEntry[]>([]); const keyRef = useRef(key);
   keyRef.current = key; histRef.current = hist;
+  // Where the person was and how the till is set up for them, read when a question is sent (patch 0167), so the send callback does not change on every tap.
+  const ui = useUi(); const registerName = useApp(s => s.settings.registerName);
+  const navRef = useRef(nav); const uiRef = useRef(ui); const regRef = useRef(registerName); navRef.current = nav; uiRef.current = ui; regRef.current = registerName;
 
   useEffect(() => { // switching staff switches to that person's own history
     let on = true; setLoaded(false); setHist([]); setBanner(null); setLogWarn(''); setText('');
@@ -131,6 +137,8 @@ export default function Assistant() {
     const trimmed = input.trim(); if (!trimmed || busy) return;
     if (isTraining()) { setBanner({ kind: 'server_error', title: 'Switched off', body: PRACTICE_BLOCK }); return; }
     const search = o.search !== false; const forKey = keyRef.current; const t0 = Date.now();
+    // Taken now, before anything is awaited, so it is where the person was when they asked, even if they leave the chat while the model thinks.
+    const where = registerContext({ tab: navRef.current.tab, stack: navRef.current.stack, screenOfRoute, mode: uiRef.current.mode, tabs: uiRef.current.tabs, guided: uiRef.current.guided, practice: isTraining(), register: regRef.current });
     setBusy(true); setBanner(null); failed.current = null;
     let apiKey = '';
     // The model could not answer: say why, and search the screens and help pages with no model (plan 3.3). It replaces the exchange a retry came from.
@@ -150,7 +158,7 @@ export default function Assistant() {
       apiKey = await getAssistantKey();
       const shopData = await takeAssistantData();
       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}) }) },
+          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), where }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;

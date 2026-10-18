@@ -115,7 +115,7 @@ test('the record keeps the arguments and result, with any key removed', () => {
 });
 test('every tool has a name, a description and object parameters, and none can write', () => {
   const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
-  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'current_time', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
+  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'current_time', 'screen_context', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
   for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
 });
 

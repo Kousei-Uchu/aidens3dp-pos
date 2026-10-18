@@ -24,6 +24,9 @@ const ROUTE_SCREEN: Record<string, string> = {
   terminalPlay: 'page_terminal_play',
 };
 
+/** The graph screen for a page the app pushes by route name, or undefined when the graph has no node for it (patch 0167). The assistant uses it to say which page a person is on. */
+export const screenOfRoute = (route: string): string | undefined => (Object.prototype.hasOwnProperty.call(ROUTE_SCREEN, route) ? ROUTE_SCREEN[route] : undefined);
+
 let built: NavigationTree | null | undefined;
 const registered = new Set<string>();
 
