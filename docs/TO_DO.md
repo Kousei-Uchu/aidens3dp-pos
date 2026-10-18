@@ -59,7 +59,15 @@ No owner input needed.
 | Id | What is left |
 | --- | --- |
 | B7e | The Help experience: you want a more visual, interactive one. Screenshots are a proposal, not built. You do not have to take them; two ways are in `docs/PROGRESS.md` (draw them from the mock screens, or capture them in Demo mode once F8 exists). Needs your yes. |
-| B8 | Live Shopify verification of the gift-card changes from 0056 (putting value back when a part-paid sale is cancelled, reload or replace on a refund). Steps in `docs/DEVICE_TESTS.md` T10. Needs the `write_gift_card_transactions` scope on your Dev Dashboard app. |
+| B8 | Live Shopify verification of the gift-card changes from 0056 (putting value back when a part-paid sale is cancelled, reload or replace on a refund). Steps in `docs/DEVICE_TESTS.md` T10. **Permission already granted** (`write_gift_card_transactions`). Needs you to run the steps and report pass/fail (with balances and any error text). |
+
+
+## 5. Training Modules
+
+Training courses and their status are tracked in `docs/TRAINING_MODULE_CHECKLIST.md`, `docs/TRAINING_PLAN.md`, `docs/TRAINING_MODULE_BUGS.md` and `docs/TRAINING_CORRECTIONS.md`. No open items outside training were moved here.
+## 6. AI Assistant
+
+The in-app AI assistant plan is tracked separately in `docs/AI_ASSISTANT_PLAN.md`. Assistant-related patches and work are not listed here by design.
 
 ## 4. Flagged in the repo but not on a list
 
