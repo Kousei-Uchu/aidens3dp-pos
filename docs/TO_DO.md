@@ -34,7 +34,7 @@ These are the tests only the owner can run. Each has exact steps in `docs/DEVICE
 | N25 | Price adjustments: the checkout review list in normal and guided checkout. |
 | N26 | Price adjustments: reasons, the transaction card, the Reports card, the Shopify `pos_adjustments` attribute. |
 | N27 | The Help screen itself: search, depth flip, links, back walk, flowcharts, Simple and Minimal modes, dark theme. |
-| N32 | **Blocking F4.** Send a style skill (or written guide) for removing AI-sounding writing and for Australian English. One may already exist in `.opencode/skills/avoid-ai-writing/`; confirm it is the one to use. |
+| N32 | **Resolved.** F4 (2026-10-18) used the `avoid-ai-writing` skill at `.opencode/skills/avoid-ai-writing/` for the AI-sounding/Australian-English sweep, so the style-skill question is answered. No action needed. |
 
 ## 2. Buildable now
 
@@ -43,14 +43,14 @@ No owner input needed.
 | Id | What it is | Notes |
 | --- | --- | --- |
 | F1 | Review Copilot's work. Patches 0054 to 0058 and 0063 to 0065 are marked "review pending". Read each, run its tests, note anything to fix, undo or rewrite. | **Done (2026-10-18).** Full review in `docs/REVIEW-F1.md`: every patch OK, nothing to undo. Six doc follow-ups found and all fixed (stale starting-stock section, stale gift-card cancellation text, wrong code path in reader help, a future-dated page, glossary wording, a stale placeholder). |
-| F2 | Sweep the whole app for inconsistencies and missed parts: screens that lead nowhere, settings that do nothing, two ways to do one thing, dead ends after an error. | Could start today. |
-| F3 | Clean up the repo files and the historical commits: stray files, old patches and zips, dead code, commit messages and history. | See the duplicate files note below. |
+| F2 | Sweep the whole app for inconsistencies and missed parts: screens that lead nowhere, settings that do nothing, two ways to do one thing, dead ends after an error. | **Done (2026-10-18).** Findings in `docs/F2-SWEEP.md`; fixes in commit `99f5ef1`. |
+| F3 | Clean up the repo files and the historical commits: stray files, old patches and zips, dead code, commit messages and history. | **Done (2026-10-18).** No Finder-style duplicate files exist anywhere in the repo. Left the 11 unlisted patches in place (see section 4). |
 | F4 | Remove AI indicators (em and en dashes, AI phrasings) from the whole repo, docs and Help text; use Australian English throughout. | **Done (2026-10-18).** Help and src were already clean; swept docs/ from 68 em dashes to 2 (both kept: your own dictated asides in the bug list). Fixed US spellings (optimise etc.) in help and docs. Used the `avoid-ai-writing` skill. |
 | F5 | The GitHub public face: README, CONTRIBUTING, SECURITY, a code of conduct, issue and PR templates, a changelog, Discussions on or off, and a licence decision. | **Mostly done (2026-10-18).** README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, a bug-report issue template and a PR template added. **Open: your licence choice** (no LICENSE file added; README says all rights reserved for now, see GUESSES.md) and whether to turn Discussions on. |
 | F6 | Fix docs gaps and wrong bits. Known one: the Help page `pay/gift-card` still says cancelling a part-paid sale does not put the money back on the gift card, but patch 0056 changed that. | **Done (2026-10-18)** as part of the F1 follow-ups: gift-card page rewritten to describe the credit-back behaviour, plus the other five fixes the review found. |
-| F7 | A full step-by-step test guide as one HTML file, a notes box under each step, exporting the findings at the end (same style as `docs/next-steps.html`). `docs/DEVICE_TESTS.md` is the source. | **Done (2026-10-18).** `docs/DEVICE_TEST_GUIDE.html`: 478 steps across 68 sections, notes per step, pass/fail, auto-save, Export (JSON/Markdown), printable. |
+| F7 | A full step-by-step test guide as one HTML file, a notes box under each step, exporting the findings at the end (same style as `docs/next-steps.html`). `docs/DEVICE_TESTS.md` is the source. | **Done (2026-10-18).** `docs/DEVICE_TEST_GUIDE.html`: 486 steps across 69 sections (T68, Demo mode, added later the same day), notes per step, pass/fail, auto-save, Export (JSON/Markdown), printable. |
 | F8 | Demo mode: the app locks into a full demo with virtual terminals (card, drawer, scanner, receipts) so nothing real is touched, with a home screen showing every feature in the Training Show style. Built on the Training fixture state. | **Done (2026-10-18).** More > Demo mode. One guard locks the till onto the Training fixtures (card terminal, scanner, drawer, receipts and every sync seam are the practice ones), signed in as a made-up owner so every feature is on show. `src/screens/DemoHome.tsx` lists every feature by area; each one plays its Training Show or opens live. A bar across the top says so and leaves in one tap. Nothing is written or sent; leaving restores the real till exactly. Details and guesses in `docs/GUESSES.md`. |
-| F9 | A new public template repo from the app, with everything personal stripped (store, domains, keys, branding, staff, passes, certificates, history), published as open source. | After F3 to F6. |
+| F9 | A new public template repo from the app, with everything personal stripped (store, domains, keys, branding, staff, passes, certificates, history), published as open source. | **Waiting on you.** Needs your answers to seven decisions: which branding to strip, what to do with the assets, the secrets/config placeholder rules, whether to keep or discard the git history, exactly what counts as me-specific, whether the three Workers ship as is or are left out, and the licence choice. Once answered, I can prepare the public repo. |
 | D5 | Fill in the tender machine adapter (built in 0024 as one empty function plus a locked-Off setting). | Waits on your hardware. |
 | D7 | Extra ideas, saved for last after E1. | Not started. |
 
@@ -62,16 +62,18 @@ No owner input needed.
 | B8 | Live Shopify verification of the gift-card changes from 0056 (putting value back when a part-paid sale is cancelled, reload or replace on a refund). Steps in `docs/DEVICE_TESTS.md` T10. **Permission already granted** (`write_gift_card_transactions`). Needs you to run the steps and report pass/fail (with balances and any error text). |
 
 
+## 4. Flagged in the repo but not on a list
+
+- **Duplicate docs (stale, closed).** F3 checked the whole repo for Finder-style copies (`AI_ASSISTANT_PLAN 2.md`, and the same pattern for `PROGRESS` and `DEVICE_TESTS`): none exist. Nothing to delete.
+- **Patch files not in `patches/APPLIED.txt` (11).** F3 found these on disk but unlisted, and left them in place: `0167-assistant-screen-context.patch`, `0168-cash-drawer-sync-finish.patch`, `0169-assistant-settings-status-tools.patch`, `TEMP-allow-http.patch`, `assistant-network-check.patch`, `assistant-raw-socket-fallback.patch`, `assistant-real-network-error.patch`, `drawer-pull-merge.patch`, `qr-ask-for-ip.patch`, `qr-wifi-fix.patch`, `shopify-receipt-fix.patch`. Decide before F9 whether `patches/` belongs in the public repo at all.
+
 ## 5. Training Modules
 
 Training courses and their status are tracked in `docs/TRAINING_MODULE_CHECKLIST.md`, `docs/TRAINING_PLAN.md`, `docs/TRAINING_MODULE_BUGS.md` and `docs/TRAINING_CORRECTIONS.md`. No open items outside training were moved here.
+
 ## 6. AI Assistant
 
 The in-app AI assistant plan is tracked separately in `docs/AI_ASSISTANT_PLAN.md`. Assistant-related patches and work are not listed here by design.
-
-## 4. Flagged in the repo but not on a list
-
-- **Duplicate docs.** These look like copies and are likely F3 cleanup: `docs/AI_ASSISTANT_PLAN 2.md`, `AI_ASSISTANT_PLAN 3.md`, `AI_ASSISTANT_PLAN 4.md`, and the same pattern for `PROGRESS` and `DEVICE_TESTS`. Confirm before deleting.
 
 ## Notes
 

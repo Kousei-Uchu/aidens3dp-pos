@@ -1,6 +1,6 @@
 # Device tests: how to do each one
 
-These are the tests only you can run (they need the iPad, a scanner, a cash drawer or a live Shopify store). Each one lists what to set up, the steps in order, what a pass looks like, and what to tell me. Menu names are the ones in the app today. The full click-through guide with a notes box for every step is a Final Touches item (F7); this file is its source.
+These are the tests only you can run (they need the iPad, a scanner, a cash drawer or a live Shopify store). Each one lists what to set up, the steps in order, what a pass looks like, and what to tell me. Menu names are the ones in the app today. The full click-through guide with a notes box for every step is `docs/DEVICE_TEST_GUIDE.html` (F7); this file is its source.
 
 Report back in one line per test: **pass**, **fail** or **awkward**, plus anything you saw. A screenshot is welcome but never required.
 
@@ -880,3 +880,18 @@ On the iPad, with the model set up as in T55. Do steps 1 to 4 as an owner, then 
 6. As a manager, open the conversation log, open the conversation from step 3, then **Tools used**. Pass: a `read_settings` call is listed with its result, and the result holds no address, key, PIN or staff name. Open the cashier's conversation from step 5. Pass: no `read_settings` call is listed.
 7. In **Settings ▸ AI assistant**, set *Stock, sales, products and deals* to **Never allow** and ask step 1 again. Pass: it says it cannot show that, and does not guess. Set it back to **Auto**.
 8. **Most important:** turn on practice mode. Pass: sending is still blocked, and nothing about the till's settings or status changes anything.
+
+## T68. Demo mode (F8)
+
+Set up: the latest build, on a normal till (whatever you have open is fine). Before step 1, note your real cart, drawer state and sale count so you can compare at step 8.
+
+1. Open **More ▸ Demo mode** (the top row). Pass: the Demo mode home opens, a bar across the top reads **DEMO MODE · nothing here is real**, and the home lists features grouped by area (Selling, Taking payment, Customers and carts, Products and stock, Money and reporting, Setup and help).
+2. Check that nothing is real. Open **Transactions**. Pass: five made-up sales and a refund, not your own sales. Open **More ▸ Orders**, **Customers** and **Items**, and (as owner) **Reports**. Pass: made-up data throughout. Note your real cart, drawer state and sale count now.
+3. Check who you are. The More header reads **Alex Demo** (owner) and the top row now says **Leave demo mode**. Open **More ▸ Staff**. Pass: Alex Demo (Owner) and Jordan Demo (Manager) only, with no real names.
+4. Watch a feature. On the Demo mode home, tap **Watch** on any feature (for example Build a cart). Pass: the Training Show plays, Back / Replay / Next work, and leaving the Show returns to the home.
+5. Try a feature live. Tap **Try it** (or **Open**) on a feature. Pass: it opens on the demo data, and a change you make (add an item to the cart) sticks until you leave.
+6. The virtual card terminal. Ring up an amount and pay by card. Pass: the practice Zeller terminal appears on the iPad itself, and finishing it completes the sale without charging any card. Your real card reader must not wake or charge.
+7. The virtual scanner, drawer and receipt. Scan a practice barcode. Pass: the practice barcode sheet appears, not the camera. Open **More ▸ Cash drawer** and open the drawer or take a cash sale. Pass: the demo figures move and your real drawer is not opened. Take a receipt. Pass: it is the practice receipt and nothing is sent (any QR page says it is not published).
+8. **Most important:** leaving puts everything back. Leave with **Leave** on the top bar (or **More ▸ Leave demo mode**). Pass: the bar disappears and your real till returns exactly as at step 2: same cart, same drawer, same sales, with no demo sale added. Force-quit and reopen the app. Pass: no demo data appears; it is your normal till.
+
+Tell me: whether the Demo mode home is easy to find and read, anything that looked too much like your real data, and whether any virtual part (card, scanner, drawer, receipt) still touched the real thing instead.
