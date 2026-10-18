@@ -162,8 +162,8 @@ test('with no snapshot (practice data) both tools say they could not read the ti
 });
 test('the request leaves read_settings out for a cashier and keeps it for a manager and an owner', () => {
   const names = (role: string) => makeToolSet({ pages: [], role, contextSize: 8000 }).tools.map(t => t.def.function.name);
-  assert.ok(!names('cashier').includes('read_settings')); assert.ok(names('cashier').includes('app_status')); assert.equal(names('cashier').length, 15);
-  for (const r of ['manager', 'owner']) { assert.ok(names(r).includes('read_settings')); assert.equal(names(r).length, 16); }
+  assert.ok(!names('cashier').includes('read_settings')); assert.ok(names('cashier').includes('app_status')); assert.equal(names('cashier').length, 18);
+  for (const r of ['manager', 'owner']) { assert.ok(names(r).includes('read_settings')); assert.equal(names(r).length, 19); }
   assert.ok(!names('anything else').includes('read_settings'), 'an unknown role is treated as the least access');
   assert.deepEqual(toolsFor('cashier').map(t => t.def.function.name), names('cashier'));
   const custom = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, tools: [readSettingsTool, appStatusTool] }); assert.deepEqual(custom.tools.map(t => t.def.function.name), ['app_status'], 'a tool list handed in is filtered by role too');
@@ -209,11 +209,11 @@ test('the status tool is offered with the other tools and keeps every role', () 
 // ---- the prompt ----
 test('the prompt for a cashier names app_status and never read_settings, and counts the tools it offers', () => {
   const p = buildSystemPrompt('short', true);
-  assert.match(p, /fifteen tools/); assert.match(p, /app_status/); assert.doesNotMatch(p, /read_settings/); assert.doesNotMatch(p, /manager|owner|printer|hardware|settings page|web address/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
+  assert.match(p, /eighteen tools/); assert.match(p, /app_status/); assert.doesNotMatch(p, /read_settings/); assert.doesNotMatch(p, /manager|owner|printer|hardware|settings page|web address/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
   const cashier = buildSystemPrompt('short', true, toolsFor('cashier').map(t => t.def.function.name)); assert.equal(cashier, p, 'the default is the tools every role has');
   assert.doesNotMatch(buildSystemPrompt('short', false), /app_status/);
 });
 test('the prompt for a manager or an owner also names read_settings and says to point at the screen, never change it', () => {
   const p = buildSystemPrompt('short', true, toolsFor('manager').map(t => t.def.function.name));
-  assert.match(p, /sixteen tools/); assert.match(p, /read_settings/); assert.match(p, /Never change one/); assert.match(p, /never show a web address, key or PIN/); assert.doesNotMatch(p, /[\u2013\u2014]/); assert.doesNotMatch(p, /\bmanager\b|\bowner\b|printer/i);
+  assert.match(p, /nineteen tools/); assert.match(p, /read_settings/); assert.match(p, /Never change one/); assert.match(p, /never show a web address, key or PIN/); assert.doesNotMatch(p, /[\u2013\u2014]/); assert.doesNotMatch(p, /\bmanager\b|\bowner\b|printer/i);
 });

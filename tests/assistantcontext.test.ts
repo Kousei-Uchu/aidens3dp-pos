@@ -103,7 +103,7 @@ test('the tab names are the ones in the app graph, so they cannot drift', () => 
 test('it is offered with the other tools, takes no arguments and cannot write', () => {
   const tool = ASSISTANT_TOOLS.find(t => t.def.function.name === 'screen_context')!;
   assert.deepEqual(tool.def.function.parameters, { type: 'object', properties: {}, additionalProperties: false }); assert.ok(tool.def.function.description.length > 20); assert.doesNotMatch(JSON.stringify(tool.def), /[–—]/); assert.equal(tool.link, undefined);
-  assert.equal(ASSISTANT_TOOLS.length, 16);
+  assert.equal(ASSISTANT_TOOLS.length, 19);
 });
 test('makeToolSet hands the context to the tool, and leaving it out leaves the tool saying it does not know', () => {
   const w = where({ screen: 'page_reports' }); const set = makeToolSet({ pages: [], screens: index, role: 'owner', contextSize: 8000, where: w }); assert.equal(set.ctx.where, w);
@@ -112,7 +112,7 @@ test('makeToolSet hands the context to the tool, and leaving it out leaves the t
   assert.match(runToolCall(call(), makeToolSet({ pages: [], role: 'owner', contextSize: 8000 })).message.content ?? '', /not known/);
 });
 test('the prompt names it and still names no restricted thing', () => {
-  const p = buildSystemPrompt('short', true); assert.match(p, /screen_context/); assert.match(p, /fifteen tools/); assert.match(p, /never tell them to tap a tab that it does not list/i);
+  const p = buildSystemPrompt('short', true); assert.match(p, /screen_context/); assert.match(p, /eighteen tools/); assert.match(p, /never tell them to tap a tab that it does not list/i);
   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page|settings page/i); assert.doesNotMatch(p, /[–—]/);
   assert.doesNotMatch(buildSystemPrompt('short', false), /screen_context/);
 });
