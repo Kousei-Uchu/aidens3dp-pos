@@ -70,3 +70,14 @@ test('merging an empty remote drawer changes nothing', () => {
   assert.deepEqual(out.counts, { '2000': 2 });
   assert.deepEqual(out.entries.map(x => x.id), ['a']);
 });
+
+test('a remote entry already trimmed from our full history is not applied again', () => {
+  const old = e('old', '2026-10-01T00:00:00Z', 'sale_in', { '2000': 1 });
+  const mine = ledger({ '2000': 5 }, Array.from({ length: MAX_ENTRIES }, (_, i) => e('m' + i, new Date(Date.UTC(2026, 9, 2, 0, 0, i)).toISOString(), 'sale_in', {})));
+  assert.deepEqual(mergeDrawer(mine, ledger({}, [old])).counts, { '2000': 5 });
+});
+test('ledgerCashSince counts sale-linked entries from any register', async () => {
+  const { ledgerCashSince } = await import('../src/lib/drawerSync');
+  const l = ledger({}, [{ ...e('a', '2026-10-18T10:00:00Z', 'sale_in', { '2000': 1 }), saleUuid: 's' }, { ...e('b', '2026-10-18T10:00:00Z', 'sale_change', { '500': -1 }), saleUuid: 's' }, e('c', '2026-10-18T10:00:00Z', 'paid_in', { '1000': 1 }), { ...e('d', '2026-10-17T10:00:00Z', 'sale_in', { '1000': 1 }), saleUuid: 'z' }]);
+  assert.equal(ledgerCashSince(l, '2026-10-18T00:00:00Z'), 1500);
+});

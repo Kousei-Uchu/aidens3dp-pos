@@ -7,6 +7,7 @@ import { SwapCashSheet } from './SwapCash';
 import { useNav } from '../ui/nav';
 import { useApp, currentStaff } from '../state/store';
 import { drawerChanged } from '../lib/sync';
+import { ledgerCashSince } from '../lib/drawerSync';
 import { csv } from '../lib/csvStore';
 import { fmt } from '../lib/money';
 import { DENOMS, LEDGER_LABEL, applyEntry, diffCounts, draftCounts, entryTotal, newEntry, shortfall, summariseCounts, totalOf, type Draft, type LedgerKind } from '../lib/cashLedger';
@@ -16,7 +17,7 @@ import { SPOT } from '../lib/trainingSpots';
 /** Current cash drawer: float, paid in/out, count vs expected, Z-report. One shared drawer for the shop (0167), so it is
  *  synced between registers and cash is counted from every register, not just this one. */
 export const cashSince = (sinceISO: string, registerId: string | undefined, sales = useApp.getState().pos.sales) =>
-  sales.filter(s => (!registerId || s.registerId === registerId) && s.ts >= sinceISO).reduce((sum, s) => sum + s.tenders.filter(t => t.kind === 'cash').reduce((x, t) => x + (s.type === 'sale' ? t.amountCents + (t.roundingCents ?? 0) : -t.amountCents), 0), 0);
+  !registerId ? ledgerCashSince(useApp.getState().pos.ledger, sinceISO) : sales.filter(s => (!registerId || s.registerId === registerId) && s.ts >= sinceISO).reduce((sum, s) => sum + s.tenders.filter(t => t.kind === 'cash').reduce((x, t) => x + (s.type === 'sale' ? t.amountCents + (t.roundingCents ?? 0) : -t.amountCents), 0), 0);
 
 export default function Drawer() {
   const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const patchPos = useApp(s => s.patchPos); const ledger = useApp(s => s.pos.ledger);
