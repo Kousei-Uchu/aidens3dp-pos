@@ -47,7 +47,7 @@ flowchart TD
 | Job | Where |
 |---|---|
 | Reader status, pairing and test purchase | `src/screens/Diagnostics.tsx` |
-| One terminal handle and pairing calls | `checkReader`, `pairReader` in `App.tsx` |
+| One terminal handle and pairing calls | `checkReader`, `pairReader` in `src/zellerBridge.tsx` |
 | Reader issue notifications | `src/zellerBridge.tsx`, `src/screens/Pay.tsx` |
 | Terminal response mapping | `src/lib/zeller.ts` |
 | Payment settings and Reader & pairing entry | `src/screens/Settings.tsx` |

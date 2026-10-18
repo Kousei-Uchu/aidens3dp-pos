@@ -87,7 +87,7 @@ function pageHTML(nonce: string): string {
 <body>
   <header><img class="brand-mark" src="https://www.aidens3dp.com/cdn/shop/files/Untitled_design_1.png?height=108&amp;v=1745546152" alt="Aiden’s 3D Printing"><strong>POS Help</strong><span>Aiden’s 3D Printing · Shopify Zeller POS</span></header>
   <div id="layout">
-    <aside><p class="nav-heading">Browse help</p><input id="search" type="search" placeholder="Search 58 guides" aria-label="Search help"><div id="tree"></div></aside>
+    <aside><p class="nav-heading">Browse help</p><input id="search" type="search" placeholder="Search all guides" aria-label="Search help"><div id="tree"></div></aside>
     <main>
       <div id="crumb"></div><h1 id="title">Loading help…</h1><p id="summary"></p>
       <div class="reader-tools"><label for="depth">How much detail?</label><select id="depth" aria-label="Detail level"><option value="basic">Basic</option><option value="deep">Deep</option><option value="advanced">Advanced</option></select></div>

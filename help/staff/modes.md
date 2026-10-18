@@ -5,7 +5,7 @@ parent: staff
 summary: Set each staff member’s Standard, Simple, Minimal or Custom mode plus their personal theme, accent and tile size.
 tags: [display mode, Standard, Simple, Minimal, Custom, text size, tabs, More menu, guided checkout, personal preferences]
 related: [staff, staff/guided-checkout, settings/theme]
-updated: 2026-11-10
+updated: 2026-10-10
 ---
 Each staff member has a display mode and personal appearance preferences, set from their row in **More ▸ Staff**. These change how the POS looks for them, not their role permissions.
 

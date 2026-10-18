@@ -35,7 +35,7 @@ Use this page when a POS or Shopify term is unfamiliar. Button names appear in *
 - A card **decline** is a known result. An **unknown** result is not a decline and is not safe to retry until checked.
 
 ### Guided checkout and price adjustments
-- **Guided checkout:** a step-by-step checkout that asks about items, customer, discount, review and payment.
+- **Guided checkout:** a step-by-step checkout that asks about items, discount, review and payment, with customer details as an optional extra step.
 - **Line price:** a chosen price for the whole line and its quantity.
 - **Item price:** a chosen unit price for a selected quantity of one item.
 - **Whole order price:** a chosen total distributed over eligible cart lines.

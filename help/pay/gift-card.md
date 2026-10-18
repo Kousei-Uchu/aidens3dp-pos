@@ -47,14 +47,14 @@ The amount taken is the card's balance or the next payment amount, whichever is 
 ### Good to know
 - A gift card is never rounded and has no card fee.
 - You cannot pay for a gift card with itself. A gift card sold in the same sale does not exist until that sale is paid.
-- If you cancel a part-paid sale, the money is **not** put back on the gift card. The POS tells you to deal with it by hand. Ask someone who can edit gift cards in Shopify.
+- If you cancel a part-paid sale, the money **is** put back on the gift card automatically. The POS credits the card once, with a "POS cancel" note on the transaction, so running it again does not double-credit.
 - To check a balance without paying, use the **Check gift card** option in the cart menu or More ▸ Gift cards.
 For a balance check, redemption history, and the difference between a card QR and a claim QR, see [[gift/check-redeem]].
 
 ## Deep
 
 ### Why the card is charged first
-The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once, but it means a cancelled sale leaves the money gone. The POS charges the card, and only if Shopify agrees does it add the payment to the sale.
+The balance is taken off the card the moment you tap **Use as payment**, before the sale is finished. That stops two registers spending the same balance at once. The POS charges the card, and only if Shopify agrees does it add the payment to the sale. If you cancel the sale afterwards, the POS puts the money back on the card with a "POS cancel" note.
 
 ### How a code is found
 Shopify can only search for gift cards by their last four characters. The POS searches that way, then looks at a hidden note on each candidate that holds a fingerprint of the full code, made when the POS created the card. A match is a verified card. If none match, the POS accepts a card **only** when exactly one candidate has no POS note at all and the code has eight or more characters, and then shows **code could not be verified**. Anything else is **No gift card found**.

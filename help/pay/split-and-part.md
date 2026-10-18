@@ -44,7 +44,7 @@ You do not have to split first. A payment can simply be less than the bill:
 In every case the **Payment** screen then says **Remaining**, with *of $…* under it, and the payments so far are listed. Pay the rest any way you like.
 
 ### While part of the sale is paid
-The cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds card payments through the terminal and credits gift-card payments back to the same cards. For cash, the app asks you to collect any exact change previously given and return the exact denominations originally received; it does not optimize this exchange. If a cancellation step fails, the sale stays locked, records electronic returns already completed and offers a safe retry. Do not take another payment for that sale. See [[pay]].
+The cart is locked, so you cannot change items, clear it or save it. **Back** asks **Cancel this sale?**. **Refund & cancel** refunds card payments through the terminal and credits gift-card payments back to the same cards. For cash, the app asks you to collect any exact change previously given and return the exact denominations originally received; it does not optimise this exchange. If a cancellation step fails, the sale stays locked, records electronic returns already completed and offers a safe retry. Do not take another payment for that sale. See [[pay]].
 
 ### On the receipt
 The receipt lists every payment with its amount, and the sale is sent to Shopify with one payment per entry.

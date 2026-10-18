@@ -30,8 +30,8 @@ Each variation has its own price and identifiers. A product with multiple variat
 ### What the create form writes
 The form creates an active Shopify product with its default variant, then sets the variant's price, barcode, SKU, cost and inventory tracking. It activates inventory at the selected location and can add the product to one chosen Shopify collection. The app refreshes its local catalogue after creation.
 
-### A known starting-stock issue
-When **Starting stock** is left blank, the form does not set an opening quantity. When a whole-number quantity is entered, the app applies it at the selected location after activating inventory. Zero is a valid starting count.
+### How starting stock is applied
+When **Starting stock** is left blank, the form does not set an opening quantity. When a whole-number quantity is entered, the app applies it at the selected location after activating inventory. Zero is a valid starting count. If the item is created but the stock write fails, the POS tells you so you can set the quantity by hand.
 
 ## Advanced
 
