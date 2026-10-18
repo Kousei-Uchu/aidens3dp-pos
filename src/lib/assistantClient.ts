@@ -54,7 +54,10 @@ async function call(f: FetchLike, ep: Endpoint, base: string, path: string, body
   } catch (e: any) {
     if (e instanceof AssistantError) throw e;
     if (timedOut || e?.name === 'AbortError') throw new AssistantError('timeout', `The model did not answer within ${ep.timeoutSec} seconds.`);
-    throw new AssistantError('unreachable', 'Could not reach the server. Check the address, that the server is on, and that this iPad is on the same Wi-Fi.');
+    // Say what the network layer actually reported (and which address was tried), so a failure can be told apart: a refused connection,
+    // a blocked or unreachable route, a bad certificate, a DNS failure. Never includes the key.
+    const why = redactSecrets(short(`${e?.name ?? 'Error'}: ${e?.message ?? String(e)}${e?.cause?.message ? ` (${e.cause.message})` : ''}`, 300), ep.apiKey);
+    throw new AssistantError('unreachable', `Could not reach the server at ${base}${path}. Network error: ${why}. Check the address, that the server is on, and that this iPad is on the same Wi-Fi (or the VPN is connected).`);
   } finally { clearTimeout(timer); }
 }
 

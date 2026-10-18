@@ -1,0 +1,210 @@
+From a90e867328b45446bf221597d06d67ee5faf1171 Mon Sep 17 00:00:00 2001
+From: Claude <c@x>
+Date: Sun, 18 Oct 2026 03:30:37 +0000
+Subject: [PATCH] Assistant: fall back to a raw socket for plain http when the
+ system refuses; add raw connection line to network check
+
+---
+ src/lib/assistantProbe.ts         |  7 ++++-
+ src/lib/tcpFetch.ts               | 45 +++++++++++++++++++++++++++++++
+ src/lib/tcpFetchIO.ts             | 42 +++++++++++++++++++++++++++++
+ src/screens/Assistant.tsx         |  3 ++-
+ src/screens/AssistantSettings.tsx |  5 ++--
+ tests/tcpfetch.test.ts            | 20 ++++++++++++++
+ 6 files changed, 118 insertions(+), 4 deletions(-)
+ create mode 100644 src/lib/tcpFetch.ts
+ create mode 100644 src/lib/tcpFetchIO.ts
+ create mode 100644 tests/tcpfetch.test.ts
+
+diff --git a/src/lib/assistantProbe.ts b/src/lib/assistantProbe.ts
+index 27062e1..d4fb6df 100644
+--- a/src/lib/assistantProbe.ts
++++ b/src/lib/assistantProbe.ts
+@@ -17,8 +17,13 @@ export function probeTargets(baseUrl: string): { label: string; url: string }[]
+   ];
+ }
+ 
+-export async function runProbes(f: FetchLike, baseUrl: string, timeoutMs = 6000): Promise<ProbeResult[]> {
++/** `raw` opens a plain socket (no web request) so the check can tell a refused web request from a refused connection. */
++export async function runProbes(f: FetchLike, baseUrl: string, timeoutMs = 6000, raw?: (host: string, port: number) => Promise<void>): Promise<ProbeResult[]> {
+   const out: ProbeResult[] = [];
++  const hp = /^http:\/\/([^/?#:]+):?(\d*)/i.exec(baseUrl.trim());
++  if (raw && hp) { const t0 = Date.now(); const port = Number(hp[2]) || 80; const url = `tcp://${hp[1]}:${port}`;
++    try { await raw(hp[1], port); out.push({ label: 'Your server (raw connection, no web request)', url, ok: true, ms: Date.now() - t0, detail: 'connected' }); }
++    catch (e: any) { out.push({ label: 'Your server (raw connection, no web request)', url, ok: false, ms: Date.now() - t0, detail: `${e?.name ?? 'Error'}: ${e?.message ?? String(e)}` }); } }
+   for (const t of probeTargets(baseUrl)) {
+     const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeoutMs); const t0 = Date.now();
+     try {
+diff --git a/src/lib/tcpFetch.ts b/src/lib/tcpFetch.ts
+new file mode 100644
+index 0000000..4cafda4
+--- /dev/null
++++ b/src/lib/tcpFetch.ts
+@@ -0,0 +1,45 @@
++// Location: src/lib/tcpFetch.ts
++// Pure half of a tiny HTTP/1.1 client over a raw socket (the socket itself is in tcpFetchIO.ts). Used only as a fallback for plain
++// http:// addresses when the system's web request is refused, e.g. a Tailscale 100.x address. No TLS, no redirects, no keep-alive:
++// one request, "Connection: close", read to the end. Strings here are "binary" (one char per byte) so lengths are byte lengths.
++export type TcpTarget = { host: string; port: number; path: string; hostHeader: string };
++
++export function parseHttpUrl(url: string): TcpTarget | null {
++  const m = /^http:\/\/([^/?#:]+|\[[0-9a-f:]+\])(?::(\d{1,5}))?([/?][^#]*)?$/i.exec(url.trim()); if (!m) return null;
++  const port = m[2] ? Number(m[2]) : 80; if (!(port > 0 && port < 65536)) return null;
++  return { host: m[1], port, path: m[3] || '/', hostHeader: m[2] ? `${m[1]}:${port}` : m[1] };
++}
++
++const utf8Bytes = (s: string): string => unescape(encodeURIComponent(s)); // text -> one char per byte
++const fromUtf8Bytes = (b: string): string => { try { return decodeURIComponent(escape(b)); } catch { return b; } };
++
++/** The full request as text to write (UTF-8). */
++export function buildRequest(t: TcpTarget, method: string, headers: Record<string, string>, body?: string): string {
++  const h: Record<string, string> = { ...headers, host: t.hostHeader, connection: 'close' };
++  const lower = new Set(Object.keys(h).map(k => k.toLowerCase())); lower.delete('host'); lower.delete('connection');
++  const lines = [`${method} ${t.path} HTTP/1.1`, `Host: ${t.hostHeader}`, 'Connection: close'];
++  for (const [k, v] of Object.entries(headers)) if (!/^(host|connection|content-length)$/i.test(k)) lines.push(`${k}: ${v}`);
++  if (body !== undefined) lines.push(`Content-Length: ${utf8Bytes(body).length}`);
++  return `${lines.join('\r\n')}\r\n\r\n${body ?? ''}`;
++}
++
++/** Complete when the head and (for Content-Length or chunked) the whole body have arrived; otherwise null. A close ends anything else. */
++export function parseResponse(raw: string, closed: boolean): { status: number; text: string } | null {
++  const cut = raw.indexOf('\r\n\r\n'); if (cut < 0) return null;
++  const head = raw.slice(0, cut); const rest = raw.slice(cut + 4);
++  const sm = /^HTTP\/1\.[01] (\d{3})/.exec(head); if (!sm) return closed ? { status: 0, text: '' } : null;
++  const status = Number(sm[1]);
++  if (/^transfer-encoding:\s*chunked/im.test(head)) {
++    let pos = 0; let out = '';
++    for (;;) {
++      const eol = rest.indexOf('\r\n', pos); if (eol < 0) return closed ? { status, text: fromUtf8Bytes(out) } : null;
++      const size = parseInt(rest.slice(pos, eol).split(';')[0].trim(), 16); if (!Number.isFinite(size)) return { status, text: fromUtf8Bytes(out) };
++      if (size === 0) return { status, text: fromUtf8Bytes(out) };
++      if (rest.length < eol + 2 + size + 2) return closed ? { status, text: fromUtf8Bytes(out + rest.slice(eol + 2)) } : null;
++      out += rest.slice(eol + 2, eol + 2 + size); pos = eol + 2 + size + 2;
++    }
++  }
++  const lm = /^content-length:\s*(\d+)/im.exec(head);
++  if (lm) { const n = Number(lm[1]); if (rest.length >= n) return { status, text: fromUtf8Bytes(rest.slice(0, n)) }; return closed ? { status, text: fromUtf8Bytes(rest) } : null; }
++  return closed ? { status, text: fromUtf8Bytes(rest) } : null;
++}
+diff --git a/src/lib/tcpFetchIO.ts b/src/lib/tcpFetchIO.ts
+new file mode 100644
+index 0000000..4647414
+--- /dev/null
++++ b/src/lib/tcpFetchIO.ts
+@@ -0,0 +1,42 @@
++// Location: src/lib/tcpFetchIO.ts
++// The socket half of tcpFetch.ts, and `assistantFetch`: the system fetch first, and for a plain http:// address that the system refuses
++// ("Network request failed"), the same request over a raw socket. Only the assistant and its network check use it.
++import TcpSocket from 'react-native-tcp-socket';
++import type { FetchLike } from './assistantClient';
++import { buildRequest, parseHttpUrl, parseResponse } from './tcpFetch';
++
++const latin1 = (d: unknown): string => { if (typeof d === 'string') return d; const u = d as Uint8Array; let s = ''; for (let i = 0; i < u.length; i++) s += String.fromCharCode(u[i]); return s; };
++
++/** Opens a raw connection and closes it again. Resolves when connected; rejects with the socket's own error. */
++export function rawConnect(host: string, port: number, timeoutMs = 6000): Promise<void> {
++  return new Promise((ok, no) => {
++    let done = false; const fin = (e?: Error) => { if (done) return; done = true; clearTimeout(t); try { s.destroy(); } catch { /* closed */ } e ? no(e) : ok(); };
++    const t = setTimeout(() => fin(new Error(`no answer in ${Math.round(timeoutMs / 1000)}s`)), timeoutMs);
++    const s = TcpSocket.createConnection({ host, port }, () => fin());
++    s.on('error', (e: Error) => fin(e));
++  });
++}
++
++export const tcpFetch: FetchLike = (url, init) => new Promise((ok, no) => {
++  const t = parseHttpUrl(url); if (!t) { no(new TypeError('Network request failed')); return; }
++  let raw = ''; let done = false;
++  const fin = (e?: unknown, r?: { status: number; text: string }) => {
++    if (done) return; done = true; init.signal?.removeEventListener?.('abort', onAbort); try { s.destroy(); } catch { /* closed */ }
++    if (e) no(e); else ok({ ok: r!.status >= 200 && r!.status < 300, status: r!.status, text: async () => r!.text });
++  };
++  const onAbort = () => { const e: any = new Error('Aborted'); e.name = 'AbortError'; fin(e); };
++  init.signal?.addEventListener?.('abort', onAbort);
++  const s = TcpSocket.createConnection({ host: t.host, port: t.port }, () => { try { s.write(buildRequest(t, init.method, init.headers, init.body), 'utf8'); } catch (e) { fin(e); } });
++  s.on('data', (d: unknown) => { raw += latin1(d); const r = parseResponse(raw, false); if (r) fin(undefined, r); });
++  s.on('error', (e: Error) => fin(e));
++  s.on('close', () => { const r = parseResponse(raw, true); if (r && r.status) fin(undefined, r); else fin(new TypeError('Network request failed')); });
++});
++
++/** System fetch, then (plain http only) a raw socket if the system refused. */
++export const assistantFetch: FetchLike = async (url, init) => {
++  try { return await (fetch as unknown as FetchLike)(url, init); }
++  catch (e: any) {
++    if (e?.name === 'AbortError' || !/^http:\/\//i.test(url) || !parseHttpUrl(url)) throw e;
++    return tcpFetch(url, init);
++  }
++};
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index 97797b2..f0db2a1 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -6,6 +6,7 @@
+ // this iPad, one per staff member, and cleared only by hand.
+ // Since 0160, when the model cannot answer (or is not set up) the chat shows the error and still searches the screens and the help
+ // pages with no model, and lists the matches (plan 3.3). The next question tries the model first again.
++import { assistantFetch } from '../lib/tcpFetchIO';
+ import React, { useCallback, useEffect, useRef, useState } from 'react';
+ import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -158,7 +159,7 @@ export default function Assistant() {
+       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
+       apiKey = await getAssistantKey();
+       const shopData = await takeAssistantData(); const till = takeTillState(role);
+-      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
++      const out = await askLogged(assistantFetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+           tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), where }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+diff --git a/src/screens/AssistantSettings.tsx b/src/screens/AssistantSettings.tsx
+index eced195..1ff4af2 100644
+--- a/src/screens/AssistantSettings.tsx
++++ b/src/screens/AssistantSettings.tsx
+@@ -2,6 +2,7 @@
+ // Settings ▸ AI assistant: where the Help chatbot's model lives (any OpenAI-compatible server, Ollama included), plus a
+ // Test connection button. Only a person who may change staff permissions (owner, or a manager when there is no owner)
+ // sees this. There is no chat screen yet: this page only sets up and tests the connection.
++import { assistantFetch, rawConnect } from '../lib/tcpFetchIO';
+ import { runProbes, type ProbeResult } from '../lib/assistantProbe';
+ import React, { useEffect, useState } from 'react';
+ import { View } from 'react-native';
+@@ -60,9 +61,9 @@ export function AssistantSettings() {
+     if (!parsed.ok) { alertMsg('Check the address', parsed.error); return; }
+     setBusy(true); setReport(null); setProbes(null); setNote('');
+     try {
+-      const r = await testConnection(fetch as any, { baseUrl: parsed.base, apiKey: effectiveKey, model: cfg.model, timeoutSec: cfg.timeoutSec });
++      const r = await testConnection(assistantFetch as any, { baseUrl: parsed.base, apiKey: effectiveKey, model: cfg.model, timeoutSec: cfg.timeoutSec });
+       setReport(r);
+-      if (!r.ok && r.steps.some(x => x.kind === 'unreachable')) setProbes(await runProbes(fetch as any, parsed.base)); // find out why: server, VPN, plain http or no network
++      if (!r.ok && r.steps.some(x => x.kind === 'unreachable')) setProbes(await runProbes(fetch as any, parsed.base, 6000, rawConnect)); // find out why: server, VPN, plain http or no network
+       if (r.ok && r.contextSize && r.contextSize !== cfg.contextSize) { setD(x => ({ ...x, contextSize: String(r.contextSize) })); setNote(`The provider reports a context size of ${r.contextSize}, so that is filled in below. Save to keep it.`); }
+     } finally { setBusy(false); }
+   };
+diff --git a/tests/tcpfetch.test.ts b/tests/tcpfetch.test.ts
+new file mode 100644
+index 0000000..ae3f224
+--- /dev/null
++++ b/tests/tcpfetch.test.ts
+@@ -0,0 +1,20 @@
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildRequest, parseHttpUrl, parseResponse } from '../src/lib/tcpFetch';
++
++test('parseHttpUrl reads host, port and path; refuses https', () => {
++  assert.deepEqual(parseHttpUrl('http://100.122.167.39:11434/v1/models'), { host: '100.122.167.39', port: 11434, path: '/v1/models', hostHeader: '100.122.167.39:11434' });
++  assert.equal(parseHttpUrl('https://x.com/'), null);
++});
++test('buildRequest sets Host, Connection close and a byte Content-Length', () => {
++  const r = buildRequest(parseHttpUrl('http://h:1/p')!, 'POST', { 'content-type': 'application/json' }, '{"a":"é"}');
++  assert.ok(r.startsWith('POST /p HTTP/1.1\r\nHost: h:1\r\nConnection: close\r\n')); assert.ok(r.includes('Content-Length: 10\r\n')); assert.ok(r.endsWith('\r\n\r\n{"a":"é"}'));
++});
++test('parseResponse: content-length, waiting for more, chunked, and utf8', () => {
++  assert.deepEqual(parseResponse('HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi', false), { status: 200, text: 'hi' });
++  assert.equal(parseResponse('HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhi', false), null);
++  assert.deepEqual(parseResponse('HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n3\r\nabc\r\n2\r\nde\r\n0\r\n\r\n', false), { status: 200, text: 'abcde' });
++  const b = unescape(encodeURIComponent('é'));
++  assert.deepEqual(parseResponse(`HTTP/1.1 404 NF\r\nContent-Length: ${b.length}\r\n\r\n${b}`, false), { status: 404, text: 'é' });
++  assert.deepEqual(parseResponse('HTTP/1.1 200 OK\r\n\r\nrest', true), { status: 200, text: 'rest' });
++});
+-- 
+2.43.0
+

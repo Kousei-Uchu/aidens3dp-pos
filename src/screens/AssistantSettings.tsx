@@ -2,6 +2,8 @@
 // Settings ▸ AI assistant: where the Help chatbot's model lives (any OpenAI-compatible server, Ollama included), plus a
 // Test connection button. Only a person who may change staff permissions (owner, or a manager when there is no owner)
 // sees this. There is no chat screen yet: this page only sets up and tests the connection.
+import { assistantFetch, rawConnect } from '../lib/tcpFetchIO';
+import { runProbes, type ProbeResult } from '../lib/assistantProbe';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { Btn, Field, Section, Segmented, Txt, alertMsg } from '../ui/kit';
@@ -30,7 +32,7 @@ export function AssistantSettings() {
   const saved = useApp(s => s.settings.assistant); const patch = useApp(s => s.patchSettings);
   const [d, setD] = useState<Draft>(() => toDraft(saved));
   const [savedKey, setSavedKey] = useState(''); const [newKey, setNewKey] = useState(''); const [removeKey, setRemoveKey] = useState(false);
-  const [busy, setBusy] = useState(false); const [report, setReport] = useState<TestReport | null>(null); const [note, setNote] = useState('');
+  const [busy, setBusy] = useState(false); const [report, setReport] = useState<TestReport | null>(null); const [probes, setProbes] = useState<ProbeResult[] | null>(null); const [note, setNote] = useState('');
   const [showLog, setShowLog] = useState(false);
   useEffect(() => { let on = true; void getAssistantKey().then(k => { if (on) setSavedKey(k); }); return () => { on = false; }; }, []);
   if (!allowed) return null;
@@ -57,10 +59,11 @@ export function AssistantSettings() {
   const test = async () => {
     if (isTraining()) { alertMsg('Practice mode', 'Test connection is switched off in practice mode.'); return; }
     if (!parsed.ok) { alertMsg('Check the address', parsed.error); return; }
-    setBusy(true); setReport(null); setNote('');
+    setBusy(true); setReport(null); setProbes(null); setNote('');
     try {
-      const r = await testConnection(fetch as any, { baseUrl: parsed.base, apiKey: effectiveKey, model: cfg.model, timeoutSec: cfg.timeoutSec });
+      const r = await testConnection(assistantFetch as any, { baseUrl: parsed.base, apiKey: effectiveKey, model: cfg.model, timeoutSec: cfg.timeoutSec });
       setReport(r);
+      if (!r.ok && r.steps.some(x => x.kind === 'unreachable')) setProbes(await runProbes(fetch as any, parsed.base, 6000, rawConnect)); // find out why: server, VPN, plain http or no network
       if (r.ok && r.contextSize && r.contextSize !== cfg.contextSize) { setD(x => ({ ...x, contextSize: String(r.contextSize) })); setNote(`The provider reports a context size of ${r.contextSize}, so that is filled in below. Save to keep it.`); }
     } finally { setBusy(false); }
   };
@@ -128,6 +131,15 @@ export function AssistantSettings() {
           <View key={s.id} style={{ padding: 12, gap: 2 }}>
             <Txt weight="600">{s.status === 'ok' ? 'Passed' : s.status === 'failed' ? 'Failed' : 'Not checked'}: {s.label}</Txt>
             <Txt size={13} sub>{s.detail}</Txt>
+          </View>
+        ))}
+      </Section> : null}
+      {probes ? <Section title="Network check" footer="Each line is a plain request from this app. Compare them: if the public websites answer and your server does not, the problem is reaching that kind of address.">
+        {probes.map(p => (
+          <View key={p.url} style={{ padding: 12, gap: 2 }}>
+            <Txt weight="600">{p.ok ? 'Worked' : 'Failed'}: {p.label}</Txt>
+            <Txt size={13} sub>{p.detail} · {p.ms} ms</Txt>
+            <Txt size={12} sub>{p.url}</Txt>
           </View>
         ))}
       </Section> : null}

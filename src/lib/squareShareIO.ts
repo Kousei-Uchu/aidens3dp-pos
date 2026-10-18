@@ -7,7 +7,7 @@ import TcpSocket from 'react-native-tcp-socket';
 import DeviceInfo from 'react-native-device-info';
 import * as Crypto from 'expo-crypto';
 import * as Network from 'expo-network';
-import { AppState } from 'react-native';
+import { Alert, AppState } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { noteActivity } from './idle';
 import { readStoredFile, storedFileExists, storedManifest } from './squareHistoryIO';
@@ -47,12 +47,20 @@ async function lanIp(): Promise<{ ip: string; seen: string[] }> {
   return { ip: '', seen };
 }
 
+/** Asks the cashier to type the address when neither lookup found one (iOS can list several interfaces and the lookups may pick a self-assigned 169.254 one). */
+const askForIp = (seen: string[]): Promise<string> => new Promise(done => {
+  Alert.prompt('Wi-Fi address needed',
+    `The app could not work out this iPad's Wi-Fi address (it saw ${seen.map(x => x || 'nothing').join(', ')}).\n\nOpen Settings ▸ Wi-Fi, tap the (i) next to the network, and type the IP Address shown there (like 172.20.10.5).`,
+    [{ text: 'Cancel', style: 'cancel', onPress: () => done('') }, { text: 'Share', onPress: (v?: string) => done((v ?? '').trim()) }], 'plain-text', '', 'numbers-and-punctuation');
+});
+
 /** Starts sharing. Throws a plain-words Error when this register cannot share (no history, not on Wi-Fi, no free port). */
 export async function startShare(onUpdate: (line: string, s: ShareStatus) => void, onEnd: (why: ShareEnd, message?: string) => void): Promise<ShareHandle> {
   const manifest = await storedManifest();
   if (!manifest) throw new Error('This register has no Square history yet. Import it first, then share it.');
   for (const f of manifest.files) if (!(await storedFileExists(f.name))) throw new Error(`The file ${f.name} is missing on this register. Import the history again, then share it.`);
-  const { ip, seen } = await lanIp();
+  let { ip, seen } = await lanIp();
+  if (!usableLanIp(ip)) ip = await askForIp(seen);
   if (!usableLanIp(ip)) throw new Error(`Could not find this iPad's Wi-Fi address (got ${seen.map(x => x || 'nothing').join(', ')}). Check it is on the same Wi-Fi as the other register and try again.`);
 
   const key = newShareKey(Crypto.getRandomBytes(8)); const allowed = shareableNames(manifest); const log: ShareLog = new Map();

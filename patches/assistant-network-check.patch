@@ -1,0 +1,104 @@
+From c288a9cb3102123dcd04e1caeeaa2d64db0479f8 Mon Sep 17 00:00:00 2001
+From: Claude <c@x>
+Date: Sun, 18 Oct 2026 03:07:43 +0000
+Subject: [PATCH] Test connection: when the server is unreachable, run a
+ network check against several addresses
+
+---
+ src/lib/assistantProbe.ts         | 33 +++++++++++++++++++++++++++++++
+ src/screens/AssistantSettings.tsx | 15 ++++++++++++--
+ 2 files changed, 46 insertions(+), 2 deletions(-)
+ create mode 100644 src/lib/assistantProbe.ts
+
+diff --git a/src/lib/assistantProbe.ts b/src/lib/assistantProbe.ts
+new file mode 100644
+index 0000000..27062e1
+--- /dev/null
++++ b/src/lib/assistantProbe.ts
+@@ -0,0 +1,33 @@
++// Location: src/lib/assistantProbe.ts
++// A one-off network diagnostic for Settings ▸ AI assistant ▸ Test connection. When the test fails, it tries a handful of addresses
++// and reports what each one did and how fast, so "the app cannot reach my server" can be told apart from "the app has no network",
++// "plain http is blocked" and "this kind of address is blocked". It sends nothing from the shop: every request is a plain GET.
++import type { FetchLike } from './assistantClient';
++
++export type ProbeResult = { label: string; url: string; ok: boolean; ms: number; detail: string };
++
++export function probeTargets(baseUrl: string): { label: string; url: string }[] {
++  let origin = ''; try { const m = /^(https?:\/\/[^/]+)/i.exec(baseUrl.trim()); origin = m ? m[1] : ''; } catch { origin = ''; }
++  const base = baseUrl.trim().replace(/\/+$/, '');
++  return [
++    ...(origin ? [{ label: 'Your server (home page)', url: `${origin}/` }, { label: 'Your server (model list)', url: `${base}/models` }] : []),
++    { label: 'Tailscale address 100.100.100.100 (plain http)', url: 'http://100.100.100.100/' },
++    { label: 'Public website (https)', url: 'https://www.apple.com/library/test/success.html' },
++    { label: 'Public website (plain http)', url: 'http://captive.apple.com/hotspot-detect.html' },
++  ];
++}
++
++export async function runProbes(f: FetchLike, baseUrl: string, timeoutMs = 6000): Promise<ProbeResult[]> {
++  const out: ProbeResult[] = [];
++  for (const t of probeTargets(baseUrl)) {
++    const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), timeoutMs); const t0 = Date.now();
++    try {
++      const r = await f(t.url, { method: 'GET', headers: { accept: '*/*' }, signal: ctl.signal });
++      out.push({ ...t, ok: true, ms: Date.now() - t0, detail: `answered (HTTP ${r.status})` });
++    } catch (e: any) {
++      const ms = Date.now() - t0;
++      out.push({ ...t, ok: false, ms, detail: e?.name === 'AbortError' ? `no answer in ${Math.round(timeoutMs / 1000)}s` : `${e?.name ?? 'Error'}: ${e?.message ?? String(e)}` });
++    } finally { clearTimeout(timer); }
++  }
++  return out;
++}
+diff --git a/src/screens/AssistantSettings.tsx b/src/screens/AssistantSettings.tsx
+index 98b472b..eced195 100644
+--- a/src/screens/AssistantSettings.tsx
++++ b/src/screens/AssistantSettings.tsx
+@@ -2,6 +2,7 @@
+ // Settings ▸ AI assistant: where the Help chatbot's model lives (any OpenAI-compatible server, Ollama included), plus a
+ // Test connection button. Only a person who may change staff permissions (owner, or a manager when there is no owner)
+ // sees this. There is no chat screen yet: this page only sets up and tests the connection.
++import { runProbes, type ProbeResult } from '../lib/assistantProbe';
+ import React, { useEffect, useState } from 'react';
+ import { View } from 'react-native';
+ import { Btn, Field, Section, Segmented, Txt, alertMsg } from '../ui/kit';
+@@ -30,7 +31,7 @@ export function AssistantSettings() {
+   const saved = useApp(s => s.settings.assistant); const patch = useApp(s => s.patchSettings);
+   const [d, setD] = useState<Draft>(() => toDraft(saved));
+   const [savedKey, setSavedKey] = useState(''); const [newKey, setNewKey] = useState(''); const [removeKey, setRemoveKey] = useState(false);
+-  const [busy, setBusy] = useState(false); const [report, setReport] = useState<TestReport | null>(null); const [note, setNote] = useState('');
++  const [busy, setBusy] = useState(false); const [report, setReport] = useState<TestReport | null>(null); const [probes, setProbes] = useState<ProbeResult[] | null>(null); const [note, setNote] = useState('');
+   const [showLog, setShowLog] = useState(false);
+   useEffect(() => { let on = true; void getAssistantKey().then(k => { if (on) setSavedKey(k); }); return () => { on = false; }; }, []);
+   if (!allowed) return null;
+@@ -57,10 +58,11 @@ export function AssistantSettings() {
+   const test = async () => {
+     if (isTraining()) { alertMsg('Practice mode', 'Test connection is switched off in practice mode.'); return; }
+     if (!parsed.ok) { alertMsg('Check the address', parsed.error); return; }
+-    setBusy(true); setReport(null); setNote('');
++    setBusy(true); setReport(null); setProbes(null); setNote('');
+     try {
+       const r = await testConnection(fetch as any, { baseUrl: parsed.base, apiKey: effectiveKey, model: cfg.model, timeoutSec: cfg.timeoutSec });
+       setReport(r);
++      if (!r.ok && r.steps.some(x => x.kind === 'unreachable')) setProbes(await runProbes(fetch as any, parsed.base)); // find out why: server, VPN, plain http or no network
+       if (r.ok && r.contextSize && r.contextSize !== cfg.contextSize) { setD(x => ({ ...x, contextSize: String(r.contextSize) })); setNote(`The provider reports a context size of ${r.contextSize}, so that is filled in below. Save to keep it.`); }
+     } finally { setBusy(false); }
+   };
+@@ -131,6 +133,15 @@ export function AssistantSettings() {
+           </View>
+         ))}
+       </Section> : null}
++      {probes ? <Section title="Network check" footer="Each line is a plain request from this app. Compare them: if the public websites answer and your server does not, the problem is reaching that kind of address.">
++        {probes.map(p => (
++          <View key={p.url} style={{ padding: 12, gap: 2 }}>
++            <Txt weight="600">{p.ok ? 'Worked' : 'Failed'}: {p.label}</Txt>
++            <Txt size={13} sub>{p.detail} · {p.ms} ms</Txt>
++            <Txt size={12} sub>{p.url}</Txt>
++          </View>
++        ))}
++      </Section> : null}
+     </View>
+   );
+ }
+-- 
+2.43.0
+

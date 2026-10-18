@@ -6,6 +6,7 @@
 // this iPad, one per staff member, and cleared only by hand.
 // Since 0160, when the model cannot answer (or is not set up) the chat shows the error and still searches the screens and the help
 // pages with no model, and lists the matches (plan 3.3). The next question tries the model first again.
+import { assistantFetch } from '../lib/tcpFetchIO';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -158,7 +159,7 @@ export default function Assistant() {
       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
       apiKey = await getAssistantKey();
       const shopData = await takeAssistantData(); const till = takeTillState(role);
-      const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+      const out = await askLogged(assistantFetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
           tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), where }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
