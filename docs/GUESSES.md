@@ -116,3 +116,13 @@ F5 says "a licence decision" and I did not want to pick a licence for you, so: n
 Without one, the default applies and all rights are reserved, which is also what the README now says.
 If you want it open source, add an MIT file (`MIT License`, copyright you) or tell me and I'll do it.
 CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, README, an issue template and a PR template were all added.
+
+## F3 cleanup (2025-10-18)
+- Checked for Finder-duplicate pattern "* [0-9].*" and name variants " 2.", " 3.", " 4." - none found in tracked/untracked non-node_modules files (TO_DO mentioned potential docs copies; they are not present).
+- Verified patches/APPLIED.txt (138 entries) matches existing .patch files; all listed patches exist on disk.
+- Flagged (did not delete) patch files NOT in patches/APPLIED.txt (11 files): 0167-assistant-screen-context.patch, 0168-cash-drawer-sync-finish.patch, 0169-assistant-settings-status-tools.patch, TEMP-allow-http.patch, assistant-network-check.patch, assistant-raw-socket-fallback.patch, assistant-real-network-error.patch, drawer-pull-merge.patch, qr-ask-for-ip.patch, qr-wifi-fix.patch, shopify-receipt-fix.patch. These include protected assistant-* and qr-ask-for-ip per rules (left untouched). Others left alone as flagged.
+- Removed stray files: all .DS_Store files (not tracked), .expo/xcodebuild*.log build logs, and tools/square-history/out/ (exported data), tools/square-history/node_modules/, tools/square-history/.env (gitignored but present).
+- Checked for dead src/*.ts/*.tsx with no imports: only src/types/zeller.d.ts is unreferenced by name but is a type declaration file (ambient); kept it.
+- Orphaned scripts/tools: all scripts referenced (package.json/help/build scripts) or are repo utilities; kept.
+- No zip files or large artifacts found to remove. No tracked build artifacts.
+- Tests: 1248 pass, 4 known fails (unchanged baseline). help:build/help:check green; graph:check green (72 screens, 173 edges). Everything remains uncommitted.
