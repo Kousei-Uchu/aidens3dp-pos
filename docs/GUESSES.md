@@ -109,3 +109,10 @@ Everything in this file is a guess from me, not a decision from you.
   barcode or stock on a `train-v-` variant only and never touches the real catalogue. The fault is a barcode rather than
   a price because a goal must not start already finished: the fixture's price is the correct one, so a "put it back"
   price goal would be met before the fault was seeded.
+
+## F5: no licence file added (2026-10-18)
+
+F5 says "a licence decision" and I did not want to pick a licence for you, so: no `LICENSE` file was added.
+Without one, the default applies and all rights are reserved, which is also what the README now says.
+If you want it open source, add an MIT file (`MIT License`, copyright you) or tell me and I'll do it.
+CODE_OF_CONDUCT, CONTRIBUTING, SECURITY, README, an issue template and a PR template were all added.
