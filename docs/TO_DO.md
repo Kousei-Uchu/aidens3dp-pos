@@ -58,7 +58,6 @@ No owner input needed.
 
 | Id | What is left |
 | --- | --- |
-| E1 | Style the Gift-card and Receipt Workers to match the storefront and the Docs site (same Instrument Sans, logo, plum and peach colours, pill buttons). The domains are done. |
 | B7e | The Help experience: you want a more visual, interactive one. Screenshots are a proposal, not built. You do not have to take them; two ways are in `docs/PROGRESS.md` (draw them from the mock screens, or capture them in Demo mode once F8 exists). Needs your yes. |
 | B8 | Live Shopify verification of the gift-card changes from 0056 (putting value back when a part-paid sale is cancelled, reload or replace on a refund). Steps in `docs/DEVICE_TESTS.md` T10. Needs the `write_gift_card_transactions` scope on your Dev Dashboard app. |
 

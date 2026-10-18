@@ -10,14 +10,28 @@ const when = (iso: string, tz: string) => { try { return new Intl.DateTimeFormat
 
 export const titleFor = (d: ReceiptDoc) => (d.kind === 'refund' ? (d.seller.gstRegistered ? 'Adjustment note (refund)' : 'Refund receipt') : d.seller.gstRegistered ? 'Tax invoice' : 'Receipt');
 
-const CSS = `
-:root{color-scheme:light}*{box-sizing:border-box}
-body{margin:0;background:#f2f2f0;color:#161616;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
-.bar{position:sticky;top:0;z-index:2;background:#161616;display:flex;gap:8px;justify-content:center;flex-wrap:wrap;padding:10px 12px}
-.bar button{font:600 14px/1 inherit;border:0;border-radius:9px;padding:11px 16px;background:#fff;color:#161616;cursor:pointer}
-.bar button.p{background:#ffd84d}
+// Storefront styling (E1): the same logo and Instrument Sans as the storefront and the Docs site
+// (docs-server/src/index.ts holds the source of truth for these values). The paper itself stays white,
+// because this is a printable tax invoice and the PDF/PNG are drawn separately on white.
+const LOGO = 'https://www.aidens3dp.com/cdn/shop/files/Untitled_design_1.png?height=108&v=1745546152';
+
+// Fonts + palette shared by the receipt page and the message page, so both read the same as the Docs site.
+const TOKENS = `
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:400;font-display:swap;src:url("https://www.aidens3dp.com/cdn/fonts/instrument_sans/instrumentsans_n4.db86542ae5e1596dbdb28c279ae6c2086c4c5bfa.woff2") format("woff2")}
+@font-face{font-family:"Instrument Sans";font-style:normal;font-weight:700;font-display:swap;src:url("https://www.aidens3dp.com/cdn/fonts/instrument_sans/instrumentsans_n7.e4ad9032e203f9a0977786c356573ced65a7419a.woff2") format("woff2")}
+:root{color-scheme:dark;--bg:#13111c;--surface:#1b1924;--surface-raised:#211e29;--fg:#efd8c9;--muted:rgba(239,216,201,.68);--line:rgba(246,237,221,.16);--accent:#fae9dc;--accent-text:#13111c;--highlight:#fb873f;--soft:rgba(246,237,221,.08)}
+*{box-sizing:border-box}`;
+
+const CSS = `${TOKENS}
+body{margin:0;background:#13111c;color:#efd8c9;font:15px/1.45 "Instrument Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid rgba(246,237,221,.16)}
+header>img{width:30px;height:30px;object-fit:contain}header strong{font-size:16px;font-weight:500}header span{color:rgba(239,216,201,.68);font-size:12.5px}
+.bar{position:sticky;top:0;z-index:2;background:#1b1924;display:flex;gap:18px;justify-content:center;flex-wrap:wrap;padding:10px 12px;border-bottom:1px solid rgba(246,237,221,.16)}
+.bar button{font:600 14px/1 "Instrument Sans",inherit;border:0;border-radius:100px;padding:11px 16px;background:rgba(246,237,221,.08);color:#efd8c9;cursor:pointer;transition:filter .15s ease}
+.bar button:hover{filter:brightness(1.25)}
+.bar button.p{background:#fae9dc;color:#13111c}.bar button.p:hover{filter:brightness(.92)}
 .wrap{max-width:680px;margin:0 auto;padding:16px 16px 40px}
-.paper{background:#fff;border-radius:6px;padding:28px 26px;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.paper{background:#fff;color:#161616;border-radius:14px;padding:28px 26px;box-shadow:0 2px 10px rgba(0,0,0,.35)}
 h1{font-size:21px;margin:0 0 2px}h2{font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:20px 0 6px}
 .sub{color:#5b5b5b;font-size:13px}.kind{font-weight:700;font-size:17px;margin:16px 0 8px}
 dl{display:grid;grid-template-columns:110px 1fr;gap:3px 10px;margin:0;font-size:14px}dt{color:#5b5b5b}dd{margin:0}
@@ -26,11 +40,13 @@ td+td,th+th{padding-left:14px;white-space:nowrap}td{padding:7px 0;border-bottom:
 .tot{margin-top:8px;margin-left:auto;width:min(100%,300px)}.tot div{display:flex;justify-content:space-between;padding:2px 0;font-variant-numeric:tabular-nums}
 .tot .grand{font-weight:700;font-size:18px;border-top:1.5px solid #161616;margin-top:5px;padding-top:7px}
 .pay div.r{display:flex;justify-content:space-between}.pay .d{margin-bottom:6px}
-.who{background:#faf7e8;border:1px solid #efe6b8;border-radius:8px;padding:12px;margin:14px 0}
-.who label{display:block;font-size:12px;color:#5b5b5b;margin:0 0 3px}.who input{width:100%;font:inherit;padding:8px 9px;border:1px solid #cfcfcf;border-radius:7px;margin-bottom:8px}
-.who small{display:block;color:#6b6b6b;font-size:12px}#bto{font-size:14px;margin:0 0 8px}
+.who{background:#211e29;border:1px solid rgba(246,237,221,.16);border-radius:14px;padding:12px;margin:0 0 14px}
+.who label{display:block;font-size:12px;color:rgba(239,216,201,.68);margin:0 0 3px}
+.who input{width:100%;font:inherit;padding:8px 9px;border:1px solid rgba(246,237,221,.16);border-radius:10px;background:rgba(246,237,221,.08);color:#efd8c9;outline:none;margin-bottom:8px}
+.who input:focus{border-color:#fae9dc;box-shadow:0 0 0 3px rgba(250,233,220,.18)}
+.who small{display:block;color:rgba(239,216,201,.68);font-size:12px}#bto{font-size:14px;margin:0 0 8px}
 .foot{margin-top:18px;border-top:1px solid #e6e6e6;padding-top:10px;color:#5b5b5b;font-size:12.5px;word-break:break-word}.foot a{color:#161616}
-@media print{body{background:#fff}.bar,.who{display:none}.paper{box-shadow:none;padding:0}.wrap{padding:0}@page{margin:16mm}}
+@media print{body{background:#fff;color:#161616}.bar,.who,header{display:none}.paper{box-shadow:none;border-radius:0;padding:0}.wrap{padding:0}@page{margin:16mm}}
 `;
 
 export function renderReceipt(d: ReceiptDoc, nonce: string): string {
@@ -46,6 +62,7 @@ export function renderReceipt(d: ReceiptDoc, nonce: string): string {
   const json = JSON.stringify(d).replace(/</g, '\\u003c').split(String.fromCharCode(0x2028)).join('\\u2028').split(String.fromCharCode(0x2029)).join('\\u2029');
   return `<!doctype html><html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow">
 <title>${esc(titleFor(d))} ${esc(d.number)} · ${esc(S.name)}</title><style>${CSS}</style></head><body>
+<header><img class="brand-mark" src="${LOGO}" alt="Aiden’s 3D Printing"><strong>${esc(S.name)}</strong><span>Receipt</span></header>
 <div class="bar"><button class="p" id="pdf">Download PDF</button><button id="img">Save as image</button><button id="prt">Print</button></div>
 <div class="wrap"><div class="who"><label for="bn">Billed to (name)</label><input id="bn" value="${esc(d.billedTo ?? '')}" autocomplete="name"><label for="ba">Buyer ABN (optional)</label><input id="ba" inputmode="numeric" autocomplete="off">
 <small>${reg ? 'Tax invoices of $1,000 or more must show the buyer’s name or ABN. ' : ''}Add your details here before downloading. Nothing you type is sent or saved.</small></div>
@@ -62,6 +79,7 @@ ${d.lines.some(l => l.gift) ? '<p class="d">Gift cards are not taxed at sale; GS
 }
 
 export function messagePage(title: string, body: string): string {
-  return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><title>${esc(title)}</title>
-<style>body{margin:0;display:grid;place-items:center;min-height:100vh;background:#f2f2f0;font:16px/1.5 -apple-system,Helvetica,Arial,sans-serif;color:#161616}main{max-width:420px;padding:24px;text-align:center}h1{font-size:20px}p{color:#5b5b5b}</style></head><body><main><h1>${esc(title)}</h1><p>${esc(body)}</p></main></body></html>`;
+  return `<!doctype html><html lang="en-AU"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex"><meta name="theme-color" content="#13111c"><title>${esc(title)}</title>
+<style>${TOKENS}
+body{margin:0;display:grid;place-items:center;min-height:100vh;background:var(--bg);color:var(--fg);font:15px/1.5 "Instrument Sans",sans-serif}main{max-width:420px;padding:28px 24px;text-align:center;background:var(--surface);border:1px solid var(--line);border-radius:18px}h1{font-size:22px;font-weight:400;letter-spacing:-.02em;margin:0 0 8px}</style></head><body><main><h1>${esc(title)}</h1><p style="color:var(--muted);margin:0">${esc(body)}</p></main></body></html>`;
 }

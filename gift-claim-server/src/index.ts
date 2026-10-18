@@ -10,7 +10,8 @@ export interface Env { CLAIMS: KVNamespace; CLAIM_SECRET: string; SHOPIFY_DOMAIN
 const API = '2026-07';
 const html = (body: string, status = 200) => new Response(body, { status, headers: {
   'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex, nofollow', 'cache-control': 'no-store', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff',
-  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" } });
+  // img/font-src are the storefront CDN, for the logo and Instrument Sans (E1 styling). Nothing else may load.
+  'content-security-policy': "default-src 'none'; style-src 'unsafe-inline'; img-src https://www.aidens3dp.com; font-src https://www.aidens3dp.com; base-uri 'none'; form-action 'self'; frame-ancestors 'none'" } });
 
 async function shopifyToken(env: Env): Promise<string> {
   const cached = await env.CLAIMS.get('shopify-token'); if (cached) return cached;

@@ -14,7 +14,7 @@ async function safeEqual(a: string, b: string): Promise<boolean> {
 }
 const html = (body: string, status = 200, nonce?: string) => new Response(body, { status, headers: {
   'content-type': 'text/html; charset=utf-8', 'x-robots-tag': 'noindex, nofollow', 'cache-control': 'private, max-age=60', 'referrer-policy': 'no-referrer', 'x-content-type-options': 'nosniff',
-  'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; script-src ${nonce ? `'nonce-${nonce}'` : "'none'"}; img-src data:; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` } });
+  'content-security-policy': `default-src 'none'; style-src 'unsafe-inline'; script-src ${nonce ? `'nonce-${nonce}'` : "'none'"}; img-src data: https://www.aidens3dp.com; font-src https://www.aidens3dp.com; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` } });
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
