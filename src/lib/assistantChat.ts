@@ -5,7 +5,7 @@
 import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
 import { maskedNote, scrubText, type MaskKind } from './assistantScrub';
 import { CATEGORIES, FAIL_CLOSED_POLICY, restricted, type Category, type GatePolicy } from './assistantGate';
-import { MAX_LINKS, runToolCall, toolDefs, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
+import { MAX_LINKS, runToolCall, toolDefs, toolsFor, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
 
 // ---------- the small scrubber ----------
 // The scrubber moved to assistantScrub.ts in patch 0161 (the data gate uses it too). It is still re-exported here, so the chat code and its tests are unchanged.
@@ -23,7 +23,9 @@ export function stripDashes(text: string): string {
 // ---------- the prompt ----------
 export type Detail = 'short' | 'more';
 /** Built in code. It never names a screen, feature or role, so there is nothing in it to leak. Tools will add to it in later patches. */
-export function buildSystemPrompt(detail: Detail = 'short', withTools = false): string {
+const COUNT_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+/** `names` is the tools this person is offered (patch 0169), so the prompt never names or counts a tool their role does not have. Left out, it is the tools every role has. */
+export function buildSystemPrompt(detail: Detail = 'short', withTools = false, names: readonly string[] = toolsFor('cashier').map(t => t.def.function.name)): string {
   const lines = [
     'You are the help assistant inside a shop till app, used by shop staff.',
     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
@@ -33,7 +35,9 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false): 
       'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
     ]),
     ...(withTools ? [
-      'You have fourteen tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. show_guide puts a "Guide me" button under your reply that points at each tap, one at a time, to reach a screen. current_time gives today\'s date and the time on the till. Use it before any question about today, yesterday, this week or this month, and never guess the date. screen_context says which tab or page the person was on when they opened the chat, and which tabs their till shows. Use it when the answer depends on where they are, or when they say "this screen" or "here". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.',
+      `You have ${COUNT_WORD[names.length] ?? names.length} tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. show_guide puts a "Guide me" button under your reply that points at each tap, one at a time, to reach a screen. current_time gives today\'s date and the time on the till. Use it before any question about today, yesterday, this week or this month, and never guess the date. screen_context says which tab or page the person was on when they opened the chat, and which tabs their till shows. Use it when the answer depends on where they are, or when they say "this screen" or "here". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.`
+        + (names.includes('app_status') ? ' app_status says how the till is doing: whether it is syncing, how many sales are waiting to upload, whether the card reader is ready and the recent problems. Use it when someone says something is not working or not updating. Never explain a failure beyond what it returns.' : '')
+        + (names.includes('read_settings') ? ' read_settings gives the till\'s current settings, read only, such as whether cash rounding is on or which roles may not change prices. Use search_screens to say where a setting is changed. Never change one, and never show a web address, key or PIN.' : ''),
       'For the shop\'s own figures, use the data tools. find_products gives the price and stock of a product and its variations, by name, SKU, barcode or category. stock_levels says what is low, out of stock or oversold, and how much stock a category has. Never count stock yourself: use stock_levels. sales_report gives totals for a period, already added up, and how many of an item sold. find_orders finds sales and refunds. list_deals lists the deals and discounts. find_customers finds a customer. gift_card_activity shows gift cards sold and paid with. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
       'The data tools only know what is saved on this till. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.',
       'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
@@ -127,7 +131,7 @@ export type BuiltMessages = { messages: ChatMessage[]; /** The history entries b
  * Also says which entries went and what was hidden, for the audit log (patch 0152).
  */
 export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number, tools?: ToolSet): BuiltMessages {
-  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools) };
+  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools, tools?.tools.map(t => t.def.function.name)) };
   // The tool definitions are sent with every request and share the context, so they come off what is left for the chat.
   const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);

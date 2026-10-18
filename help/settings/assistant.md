@@ -51,7 +51,10 @@ Under each row, **Right now** says what the choice comes to for this address: *S
 
 These rules are applied by the app to every result before the model sees it, so the model cannot be talked into ignoring them. If something is hidden, the model is told that it was hidden and what kind it was (for example *customer details*), never what it said, so it will say it cannot show it. Order notes and other free text are checked too: an email address or phone number in a note is hidden unless that kind of data is allowed, and card numbers and keys are always hidden. If you later change the address to a remote one, or switch a row to Never allow, earlier answers in the chat that used that kind of data are no longer sent to the model. You can still read them.
 
-The assistant cannot look up shop data yet. The choices are saved now, and they decide what the lookups added later are allowed to return.
+These choices decide what every lookup the assistant makes, about products, sales, orders, customers, gift cards, the settings and how the till is doing, is allowed to return.
+
+### What the assistant can read about the settings
+You and the other owners and managers can ask the assistant how the register is set up: *Is cash rounding on?*, *Who has to use a PIN?*, *Which roles can't change prices?*, *Is the screensaver on?* or *What are the card fee rates?* It reads the settings as they are and says where to change one, but it never changes one. It sees yes or no and plain values: cash rounding, smart change, the fee rates, whether a receipt page, ABN, return policy, gift card claim page or pass server is set, how many owners, managers and cashiers there are, the price adjustment limits, cart warnings, display and screensaver choices, and the options on this page. It is never shown a web address, a key, a PIN, a badge code, a staff name, the business's contact details or a logo address, only whether one is set. Cashiers are not offered this tool at all, so to them a question about settings gets the same *I couldn't find anything on that* as a question about something that does not exist. The AI assistant options on this page are in the answer only for a person who can open this page.
 
 ### Options
 - **Temperature** is how adventurous the model's wording is. Low is steadier.
@@ -82,6 +85,9 @@ flowchart TD
 - iOS reaches a local address over plain http because the local networking exception (NSAllowsLocalNetworking) is set in `app.json`.
 
 Tests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/assistantsettings.test.ts`, `tests/assistantgate.test.ts`.
+
+### How the settings reader works
+`read_settings` is in `src/lib/assistantStatus.ts`. It lists `roles: ['manager', 'owner']` on the tool, and `toolsFor(role)` in `assistantTools.ts` leaves it out of the request for anyone else, with the prompt built from the same list (`buildSystemPrompt` takes the tool names), so a cashier's request does not name it. If it is called anyway the answer is the one for a tool that does not exist. `takeTillState(role)` (`src/lib/assistantStatusIO.ts`) only builds the settings view for a manager or an owner, and `buildSettingsView` copies plain values only: it never receives or copies an address, a token, a PIN hash, a badge hash or a staff name. The AI assistant group is built only when `canEditAdjustPerms` says this person may see these settings, the same rule as the row in Settings. The tool takes one optional group (`register`, `checkout`, `receipts`, `staff` or `display`); the AI assistant group is only in the full answer. Every field is *shop data* in the gate. Tests: `tests/assistantstatus.test.ts`.
 
 ### The data gate
 `src/lib/assistantGate.ts` is the one place the data rules live. `resolvePolicy(scope, toggles)` turns the endpoint class (`classifyEndpoint`) and the per category toggles (`settings.assistant.gate`) into a decision for each of nine categories: `allow`, `last4` or `deny`. Payment and secret are always `deny`, and Always allow on `gift_code` is `last4`. `applyGate(result, spec, policy)` walks a tool result.

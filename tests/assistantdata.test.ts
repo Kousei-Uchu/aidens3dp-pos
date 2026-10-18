@@ -318,12 +318,12 @@ test('the data tool definitions are short, take only plain arguments, and carry 
 });
 test('the prompt with tools names the data tools, says what cannot be looked up, and still names no restricted thing', () => {
   const p = buildSystemPrompt('short', true);
-  assert.match(p, /fourteen tools/); for (const n of ['find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
+  assert.match(p, /fifteen tools/); for (const n of ['find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
   assert.match(p, /cannot see what is left on a gift card/); assert.doesNotMatch(p, /cannot yet look up products/); assert.match(p, /never count stock yourself/i); assert.match(p, /never add up figures yourself/i); assert.match(p, /privacy rules/); assert.doesNotMatch(p, /have no access to the shop/);
   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page|settings page/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
   const none = buildSystemPrompt('short', false); assert.match(none, /no access to the shop's data/); assert.doesNotMatch(none, /sales_report/);
 });
 test('makeToolSet hands the snapshot to the tools, and leaving it out leaves the other tools as they were', () => {
-  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 14);
+  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 15, 'a cashier is not offered read_settings');
   assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.data, undefined);
 });

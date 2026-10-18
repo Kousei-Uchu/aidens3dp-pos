@@ -12,7 +12,10 @@ import { SPOT } from '../lib/trainingSpots';
 import { useTheme } from '../ui/theme';
 import { useApp } from '../state/store';
 import { useCatalogue } from '../state/selectors';
-import { matchCartWarnings, pendingCartWarnings, triggerNames, unacknowledged, warningKey, warningTitle, type MatchedCartWarning } from '../lib/cartWarnings';
+import { matchCartWarnings, pendingCartWarnings, triggerNames, unacknowledged, warningKey, warningTitle, warningVars, type MatchedCartWarning } from '../lib/cartWarnings';
+import { renderTemplate } from '../lib/textTemplates';
+import { currentStaff } from '../state/store';
+import { usePriced } from '../state/selectors';
 
 /**
  * Charge uses this to decide whether to stop at the warnings first. `pages` is what would be shown right now; `markSeen`
@@ -22,7 +25,7 @@ import { matchCartWarnings, pendingCartWarnings, triggerNames, unacknowledged, w
 export function useCartWarningGate() {
   const cart = useApp(s => s.pos.cart); const warnings = useApp(s => s.settings.cartWarnings); const cat = useCatalogue();
   const [open, setOpen] = useState(false); const [seen, setSeen] = useState<string[]>([]);
-  const pages = useMemo(() => pendingCartWarnings(matchCartWarnings(cart, warnings, cat), seen), [cart, warnings, cat, seen]);
+  const pages = useMemo(() => pendingCartWarnings(matchCartWarnings(cart, warnings, cat).filter(m => (m.warning.mode ?? 'charge') !== 'queue'), seen), [cart, warnings, cat, seen]);
   const markSeen = () => setSeen(s => Array.from(new Set([...s, ...pages.map(warningKey)])));
   const reset = () => { setOpen(false); setSeen([]); };
   // A new sale starts with nothing seen.
@@ -34,13 +37,19 @@ export function useCartWarningGate() {
 /** The header (with its icon), the message and the items that set the warning off. This is the whole face of one page. */
 function WarningFace({ m }: { m: MatchedCartWarning }) {
   const { c } = useTheme(); const k = useUi().textScale; const names = triggerNames(m);
+  const cat = useCatalogue();
+  const cart = useApp(s => s.pos.cart);
+  const staff = currentStaff()?.name;
+  const register = useApp(s => s.settings.registerName);
+  const priced = usePriced();
+  const text = renderTemplate(m.warning.body, warningVars(m, { cat, cart, staff, register, cartTotalCents: priced.netCents }));
   return (
     <View style={{ gap: 12 }}>
       <View accessible accessibilityRole="header" style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
         <Ionicons name="warning" size={Math.round(26 * k)} color={c.warn} />
         <Txt size={20} weight="700" style={{ flex: 1 }}>{warningTitle(m.warning)}</Txt>
       </View>
-      <Txt size={19} weight="600" style={{ lineHeight: Math.round(27 * k) }}>{m.warning.body}</Txt>
+      <Txt size={19} weight="600" style={{ lineHeight: Math.round(27 * k) }}>{text}</Txt>
       {names.length ? <Txt size={13} sub>For: {names.join(', ')}</Txt> : null}
     </View>
   );

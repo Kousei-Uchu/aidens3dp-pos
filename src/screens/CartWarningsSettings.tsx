@@ -9,11 +9,13 @@ import { useCatalogue } from '../state/selectors';
 import { pushSharedSettings } from '../lib/sync';
 import { uid } from '../lib/ids';
 import { DEFAULT_WARNING_TITLE, normaliseScope, warningTitle } from '../lib/cartWarnings';
-import type { CartWarning } from '../lib/types';
+import { TEMPLATE_HINTS } from '../lib/textTemplates';
+import type { CartWarning, CartWarningMode } from '../lib/types';
 
 type Scope = 'variant' | 'product' | 'collection';
 const SCOPES: { v: Scope; label: string }[] = [{ v: 'variant', label: 'Variation' }, { v: 'product', label: 'Product' }, { v: 'collection', label: 'Category' }];
 const SCOPE_NOUN: Record<Scope, string> = { variant: 'variation', product: 'product', collection: 'category' };
+const MODES: { v: CartWarningMode; label: string }[] = [{ v: 'charge', label: 'Show at Charge' }, { v: 'queue', label: 'Add to the list' }];
 const MAX_SHOWN = 30;
 
 /** What the warning is for, in words: the item, product or category's name, or "Every sale". */
@@ -44,6 +46,7 @@ export function CartWarningsSettings() {
           <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>
             {w.alwaysShow ? <Chip label="Always shows" active /> : null}
             {w.requireAcknowledgement ? <Chip label="Must be ticked" active /> : null}
+            {(w.mode ?? 'charge') === 'queue' ? <Chip label="Add to the list" active /> : <Chip label="Show at Charge" active />}
           </View>
           <View style={{ flexDirection: 'row', gap: 8 }}>
             <Btn title="Edit" small kind="secondary" onPress={() => setEditing(w)} style={{ flex: 1 }} />
@@ -61,8 +64,9 @@ export function CartWarningsSettings() {
 
 function WarningEditor({ initial, onSave, onCancel }: { initial?: CartWarning; onSave: (w: CartWarning) => void; onCancel: () => void }) {
   const cat = useCatalogue();
-  const [w, setW] = useState<CartWarning>(() => initial ? { ...initial, scope: normaliseScope(initial.scope) } : { id: uid(), enabled: true, title: DEFAULT_WARNING_TITLE, body: '', scope: 'product', targetId: '', alwaysShow: false, requireAcknowledgement: false });
+  const [w, setW] = useState<CartWarning>(() => initial ? { ...initial, scope: normaliseScope(initial.scope) } : { id: uid(), enabled: true, title: DEFAULT_WARNING_TITLE, body: '', scope: 'product', targetId: '', alwaysShow: false, requireAcknowledgement: false, mode: 'charge' });
   const [q, setQ] = useState('');
+  const [help, setHelp] = useState(false);
   const scope = normaliseScope(w.scope);
   const options = useMemo(() => {
     const t = q.trim().toLowerCase(); const hit = (...xs: (string | undefined)[]) => !t || xs.some(x => x?.toLowerCase().includes(t));
@@ -76,6 +80,22 @@ function WarningEditor({ initial, onSave, onCancel }: { initial?: CartWarning; o
     <View style={{ gap: 12 }}>
       <Field kind="name" label="Header" value={w.title} onChangeText={t => setW({ ...w, title: t })} placeholder={DEFAULT_WARNING_TITLE} />
       <Field kind="text" label="Message for the cashier" value={w.body} onChangeText={t => setW({ ...w, body: t })} multiline numberOfLines={4} style={{ minHeight: 90 }} placeholder="e.g. Joints are fragile, do not bend or apply pressure as it will snap." />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Txt size={13} sub>Use in the message</Txt>
+        <Btn title="What can I use?" small kind="ghost" onPress={() => setHelp(h => !h)} />
+      </View>
+      {help ? <Card style={{ padding: 10, gap: 4 }}>{TEMPLATE_HINTS.map(h => (
+        <View key={h.name} style={{ flexDirection: 'row', gap: 8 }}>
+          <Txt size={12} weight="700" style={{ width: 96 }}>{`{{ ${h.name} }}`}</Txt>
+          <Txt size={12} sub style={{ flex: 1 }}>{h.what}</Txt>
+        </View>))}</Card> : null}
+      <View style={{ gap: 4 }}>
+        <Txt size={13} sub>What happens when it applies</Txt>
+        <Segmented value={w.mode ?? 'charge'} onChange={v => setW({ ...w, mode: v })} options={MODES} />
+        <Txt size={12} sub>{(w.mode ?? 'charge') === 'queue'
+          ? 'The message is added to the warnings list instead of the Charge popup, so it can be read later from a tile or the cart menu.'
+          : 'The message pops up on Charge, before payment starts.'}</Txt>
+      </View>
       <Toggle label="Show on every sale" sub="Appears every time Charge is pressed, whatever is in the cart." value={w.alwaysShow} onChange={v => setW({ ...w, alwaysShow: v })} />
       <Toggle label="Cashier must tick it" sub="Payment cannot start until they tick that they have read it and dealt with it." value={w.requireAcknowledgement} onChange={v => setW({ ...w, requireAcknowledgement: v })} />
       {w.alwaysShow ? null : <Section title="Shows when the cart has">
@@ -91,7 +111,7 @@ function WarningEditor({ initial, onSave, onCancel }: { initial?: CartWarning; o
       {!ready ? <Txt size={13} sub>{w.body.trim() ? 'Choose what it is for, or turn on Show on every sale.' : 'Write the message first.'}</Txt> : null}
       <View style={{ flexDirection: 'row', gap: 8 }}>
         <Btn title="Cancel" kind="secondary" onPress={onCancel} style={{ flex: 1 }} />
-        <Btn title="Save" disabled={!ready} onPress={() => onSave({ ...w, title: w.title.trim(), body: w.body.trim(), targetId: w.alwaysShow ? '' : w.targetId })} style={{ flex: 1 }} />
+        <Btn title="Save" disabled={!ready} onPress={() => onSave({ ...w, title: w.title.trim(), body: w.body.trim(), targetId: w.alwaysShow ? '' : w.targetId, mode: w.mode ?? 'charge' })} style={{ flex: 1 }} />
       </View>
     </View>
   );

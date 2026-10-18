@@ -2,8 +2,8 @@
 id: settings/ask-assistant
 title: Ask the assistant
 parent: settings/assistant
-summary: Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers and gift cards, what is kept, and what is hidden before anything is sent.
-tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode, sales, orders, deals, customers, gift cards, report, products, stock, inventory, price]
+summary: Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers, gift cards and how the till is doing, what is kept, and what is hidden before anything is sent.
+tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode, sales, orders, deals, customers, gift cards, report, products, stock, inventory, price, status, sync, queue, card reader, not working]
 related: [settings/assistant, settings/backup]
 updated: 2026-10-18
 ---
@@ -34,6 +34,14 @@ Good to know:
 - A gift card's **remaining balance** is not something it can look up. Use the **Gift cards** screen for that. It can tell you which cards were sold and paid with on this till.
 - Products, prices and stock come from the catalogue saved on this iPad, so stock is as of the last sync. It is not a live look at Shopify. A product that is not tracked is listed as *Not tracked*, and a draft or archived product is only found when you ask for it.
 - What it is allowed to read depends on the shop's privacy rules (see **What the assistant may see** in [[settings/assistant]]). When something is hidden, it says it cannot show it. With a model that is not on the shop's own network, that means customer names, emails and phone numbers, staff names, gift card codes and how an order was paid. What was sold, the prices and the totals are still available.
+
+### Ask how the till is doing
+Ask things like *Is the till syncing?*, *Why is this not updating?*, *How many sales are waiting to upload?*, *When did the catalogue last import?* or *Is the card reader ready?* The assistant reads the same status the till already shows on **Support & diagnostics** and in **Notifications**: whether it is syncing and when it last did, how many sales are waiting to upload and whether any need a person, whether the card reader is ready, whether Shopify is connected, when the catalogue was last imported, and the latest problems in plain words. It cannot fix anything or sync for you. It can tell you which screen to open, and a **Guide me** button can point you to it.
+
+Good to know:
+- It describes the till as it was when you asked. Ask again after you tap **Sync now** to see what changed.
+- Card payments and receipts are not listed, and there is no printer connection in this app to report on.
+- Problems are shown as one short line each, with web addresses taken out. Emails, phone numbers, card numbers and keys in them are hidden the same way as everything else it reads.
 
 ### What it cannot do
 It never changes anything: no prices, refunds, carts, stock, customers or settings. It only answers.
@@ -68,6 +76,9 @@ Seven tools read the shop's data, all from what is saved on this iPad:
 
 Every answer from these goes through the privacy check before the model sees it, and the conversation log shows what the model was given and how many items were hidden.
 
+### What it can see about the till itself
+One more tool, **app status**, reads how the till is doing, from what is saved on this iPad and in the app right now: the app version and build, the sync state and when it last finished, how many sales are waiting to upload (and how many are stuck and need a person), the oldest one waiting and up to three different error messages, whether the card reader is ready and what it says, whether Shopify is connected, whether a receipt page is set up, how many variations the catalogue holds and when it was last imported, and the last five notices about syncing, the queue, stock, the reader and general information. Refund and pass notices are left out because they name customers and staff. It does not read any sale, any card attempt, or any notice's body. Every role can use it, because Support & diagnostics is open to every role.
+
 ### Practice mode
 The assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.
 
@@ -97,5 +108,8 @@ Each tool is a plain function over a snapshot taken when you ask the question (`
 ### How the screen context works
 The chat screen reads the navigation and your display mode once, at the moment you send a question (`registerContext` in `src/lib/assistantContext.ts`), and the `screen_context` tool hands that snapshot back. The tool never reads the app itself and has nothing that can write. The last pages on the navigation stack are Help and the chat, so they are skipped to find the page you were on (`standingOn`), and the app graph names it (`screenOfRoute` in `src/lib/appGraph.ts`, the same route table training uses). A page the graph does not know is reported as one it cannot name, and the tab under it is not used in its place, because that would say the wrong screen. The page is looked up among the screens your role may reach, so a page your role cannot reach gets exactly the answer a page it cannot name gets. No ids are returned. Every field is *shop data* in the gate and none is personal, so nothing is hidden on any address. Windows are not reported: the list of open windows is only filled in during practice mode, where the chat is switched off. The guides still always start from the Checkout tab. The tool tells the model where you are, but the walks are not yet planned from your current screen.
 
+### How the status tool works
+`app_status` is in `src/lib/assistantStatus.ts`. `takeTillState` (`src/lib/assistantStatusIO.ts`) reads the store once when a question is sent, and `buildStatusView` turns it into a short list of plain values: the app version and build from `react-native-device-info`, `sync` and `zeller` from the store, the outbox (count, blocked items, oldest, distinct errors), the notices of kind sync, queue, stock, reader and info, and the catalogue times. The tool only returns that view, so it cannot read or write anything else. `safeLine` makes each message one short line and replaces web addresses with `[address]`, and the data gate then scrubs emails, phone numbers, card numbers and keys. Every field is *shop data* in the gate. The reader's ready state and message count as the app's own state and not as terminal details; no terminal id, card attempt, amount or reference is ever in the view. On practice data `takeTillState` returns nothing and the tool says it could not read the till. Tests: `tests/assistantstatus.test.ts`.
+
 ### Limits of this version
-The offline list looks up products and stock, but not customers or sales yet. The tools are for the help pages, the screens, the button and guide tools, the seven shop data tools above, the date and time, and where you were. There is no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+The offline list looks up products and stock, but not customers or sales yet. The tools are for the help pages, the screens, the button and guide tools, the seven shop data tools above, the date and time, where you were, and how the till is doing. There is no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.

@@ -18,6 +18,7 @@ const ACTION_ICON: Record<ActionId, React.ComponentProps<typeof Ionicons>['name'
   custom_amount: 'calculator-outline', add_gift_card: 'gift-outline', clear_cart: 'trash-outline', create_item: 'add-circle-outline',
   customers: 'people-outline', discounts: 'pricetags-outline', discount: 'pricetag-outline', saved_carts: 'bookmarks-outline', switch_staff: 'person-circle-outline',
   lock_pos: 'lock-closed-outline', price_check: 'pricetag-outline', stock_check: 'layers-outline', check_change: 'cash-outline',
+  warning_list: 'list-outline',
 };
 
 export type TileHandlers = { onAction: (a: ActionId) => void; onVariants: (vs: Variant[]) => void; onDiscount: (t: Extract<Tile, { type: 'discount' }>) => void };

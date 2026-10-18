@@ -232,12 +232,15 @@ export type StaffMember = { id: string; name: string; role: Role; salt: string; 
 
 /** What a cart warning is attached to. `category` is the same as `collection` (kept so a warning saved with it still works). */
 export type CartWarningScope = 'variant' | 'product' | 'collection' | 'category';
+/** What a warning does when it applies. `charge` pops it before payment (the original behaviour); `queue` adds a line
+ *  to the warning list instead, so it can be read later from the Quick Menu or the cart menu. */
+export type CartWarningMode = 'charge' | 'queue';
 export type CartWarning = {
   id: string;
   enabled: boolean;
   /** The header of the prompt, e.g. "Customer Warning". */
   title: string;
-  /** The text shown to the cashier, e.g. "Joints are fragile, do not bend and apply pressure as it will snap". */
+  /** The text shown to the cashier, e.g. "Joints are fragile, do not bend and apply pressure as it will snap". May use {{ … }} templates. */
   body: string;
   scope: CartWarningScope;
   /** The variant, product or collection id the warning is for. Not needed when `alwaysShow` is on. */
@@ -246,7 +249,25 @@ export type CartWarning = {
   alwaysShow: boolean;
   /** The cashier must tick that they have read and handled it before payment can start. */
   requireAcknowledgement: boolean;
+  /** What happens when it applies. Missing on a warning saved before this existed, and read as `charge`. */
+  mode?: CartWarningMode;
   /** Lower comes first when several warnings show; ties keep the order they were added in. */
   order?: number;
 };
 export type CartWarnings = CartWarning[];
+
+/** One line on the warning list: what sold, and what to do about it. Added when the sale is paid, shared between registers. */
+export type WarningListEntry = {
+  id: string;
+  ts: string;
+  warningId: string;
+  /** The warning's header as it was at the time. */
+  title: string;
+  /** The message with its templates already filled in, so it reads the same later even if the warning is edited. */
+  message: string;
+  /** The items that set it off. */
+  items: string[];
+  staff?: string;
+  register?: string;
+};
+export type WarningList = WarningListEntry[];

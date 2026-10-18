@@ -9,7 +9,7 @@ import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder
 import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult, type RefundResult } from '../lib/zeller';
 import { getTerminal, checkReader } from '../zellerBridge';
 import { csv } from '../lib/csvStore';
-import { applyLocalStock, drawerChanged, recordSale, updateSaved } from '../lib/sync';
+import { applyLocalStock, drawerChanged, recordSale, recordWarningListEntries, updateSaved } from '../lib/sync';
 import { digitsToCents, fmt } from '../lib/money';
 import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
 import { uid } from '../lib/ids';
@@ -78,6 +78,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
     finalising.current = true;
     const sale = buildSale({ uuid: cart.saleUuid ?? uid(), cart, priced, variants: cat.variants, titles: cat.titles, tenders, registerId: settings.registerId, registerName: settings.registerName, staff: staffName });
     applyLocalStock(sale); void recordSale(sale); if (cart.savedFrom) updateSaved(cart.savedFrom, { status: 'void' });
+    recordWarningListEntries(cart, { cartTotalCents: priced.netCents }); // queue warnings for this sale, once it is paid
     const chg = tenders.reduce((s, t) => s + (t.changeCents ?? 0), 0);
     setChange(chg); setDone(sale);
   }, [remaining, tenders.length]);

@@ -20,6 +20,7 @@ import { adjustReviewKey, adjustmentRows, needsAdjustReview } from '../lib/adjus
 import { uid } from '../lib/ids';
 import AdjustmentReviewSheet from './AdjustmentReview';
 import CartWarningsSheet, { useCartWarningGate } from './CartWarningsSheet';
+import WarningListSheet from './WarningListSheet';
 import SwipeRow from '../ui/SwipeRow';
 import { gateAdjust } from '../ui/adjustGate';
 import { bundleReviewKey, bundleUnitName, needsBundleCheck, oddBundles } from '../lib/bundles';
@@ -44,6 +45,8 @@ export default function CartPane({ onClose, hid = true }: { onClose?: () => void
   const [adjReview, setAdjReview] = useState(false); const [adjAck, setAdjAck] = useState('');
   const warn = useCartWarningGate();
   const [menu, setMenu] = useState(false); const [edit, setEdit] = useState<CartLine | null>(null); const [sheet, setSheet] = useState<'none' | 'custom' | 'discount' | 'gift' | 'check' | 'save' | 'customer' | 'newcustomer' | 'change' | 'orderadj' | 'scan'>('none');
+  const [warnList, setWarnList] = useState(false); // the queued warnings list (cart menu: Warnings list)
+  const warnListEntries = useApp(s => s.settings.warningList);
   const [scanCam, setScanCam] = useState(false); const [scanCode, setScanCode] = useState(''); const [scanInfo, setScanInfo] = useState<GiftCardInfo | null | undefined>(undefined); const [scanBusy, setScanBusy] = useState(false);
   // A practice run starts with a clean cart pane: no open windows, and no leftover "I have seen this review" note, or a replayed Guide step that asks for Charge would find nothing to show.
   useEffect(() => registerCheckoutReset(() => { setMenu(false); setSheet('none'); setEdit(null); setAdjReview(false); setAdjAck(''); setBundleCheck(false); setAckKey(''); warn.reset(); }), []);
@@ -188,8 +191,10 @@ export default function CartPane({ onClose, hid = true }: { onClose?: () => void
         <Row spot={SPOT.cartMenuGift} icon="gift-outline" title="Sell gift card" onPress={() => open('gift')} />
         <Row icon="search-outline" title="Check gift card" onPress={() => open('check')} />
         <Row icon="qr-code-outline" title="Scan gift card / discount" onPress={() => { setScanCam(true); setScanCode(''); setScanInfo(undefined); open('scan'); }} />
+        <Row spot={SPOT.warningListOpen} icon="list-outline" title="Warnings list" sub={`${(warnListEntries ?? []).length} queued`} onPress={() => { setMenu(false); setWarnList(true); }} />
         <Row icon="cash-outline" title="Check change" sub="Can we make change for this cart?" last onPress={() => open('change')} />
       </Sheet>
+      <WarningListSheet visible={warnList} onClose={() => setWarnList(false)} />
       <Sheet visible={bundleCheck} onClose={() => setBundleCheck(false)} title="Check these bundles" screen="sheet_bundles">
         <Txt sub style={{ marginBottom: 10 }}>{oddBundles(priced.bundles).length === 1 ? 'This bundle deal is' : 'These bundle deals are'} applied, but the variations aren’t a recommended pair. The customer still gets the deal. Check it’s what they want.</Txt>
         <View style={{ gap: 10 }}>{oddBundles(priced.bundles).map((b, i) => <BundleRow key={i} b={b} />)}</View>

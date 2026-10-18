@@ -14,6 +14,7 @@ import { useCatalogue, usePriced, stockTone } from '../state/selectors';
 import * as ops from '../lib/cartOps';
 import { digitsToCents, fmt } from '../lib/money';
 import { CheckChangeSheet } from './CheckChange';
+import WarningListSheet from './WarningListSheet';
 import { ACTION_LABEL, type ActionId, type Tile } from '../lib/grid';
 import { AddTileSheet, TileGrid, VariantPicker, commitGrid, gridOps, useTileLabel, type TileHandlers } from './Tiles';
 import { LookupSheet } from './Lookup';
@@ -42,6 +43,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const [sheet, setSheet] = useState<'none' | 'custom' | 'gift' | 'discount' | 'customers' | 'add' | 'search' | 'pages' | 'staff' | 'price' | 'stock' | 'change'>('none'); const [cam, setCam] = useState(false);
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
   const [spotlightItem, setSpotlightItem] = useState<Variant | null>(null);
+  const [warnList, setWarnList] = useState(false); // the queued warnings list (tile: Warnings list)
   // Training (B6): let it see the tab, depth and typed text, point at one tab of the switch, and start a practice run from a clean Checkout.
   useEffect(() => { setProbe({ search: sheet === 'search' ? q : '', keypad: digits }, { tab, depth: path.length, sizes: !!variants }); }, [sheet, q, digits, tab, path, variants]);
   useEffect(() => () => clearProbe(), []);
@@ -100,6 +102,8 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
         case 'price_check': return setSheet('price');
         case 'stock_check': return setSheet('stock');
         case 'check_change': return setSheet('change');
+        case 'warning_list': return setWarnList(true);
+        default: return;
       }
     },
   };
@@ -232,6 +236,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
       <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
       <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />
       <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />
+      <WarningListSheet visible={warnList} onClose={() => setWarnList(false)} />
       <Sheet visible={sheet === 'pages'} onClose={() => setSheet('none')} title="Pages">
         {grid.pages.map((p, i) => <Row key={p.id} title={p.name} sub={`${p.tiles.length} tiles`} last={false}
           right={<View style={{ flexDirection: 'row' }}><IconBtn icon="arrow-up" label="Move earlier" onPress={() => edit(g => ({ ...g, pages: i > 0 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i - 1, 0, x); return a; })() : g.pages }))} /><IconBtn icon="arrow-down" label="Move later" onPress={() => edit(g => ({ ...g, pages: i < g.pages.length - 1 ? (() => { const a = [...g.pages]; const [x] = a.splice(i, 1); a.splice(i + 1, 0, x); return a; })() : g.pages }))} />

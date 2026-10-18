@@ -1,13 +1,14 @@
 // Location: src/lib/sync.ts
 // Outbox + polling. Cash and saved carts work offline; sales queue locally and upload later; card needs internet.
 // Every outbox step is idempotent, so a crash or retry never double-books.
-import { useApp, type OutboxItem, type SavedCart, type Shift } from '../state/store';
+import { useApp, currentStaff, type OutboxItem, type SavedCart, type Shift } from '../state/store';
 import { csv } from './csvStore';
 import { applyRecord, emptyTotals, rollupKey, type Totals } from './rollup';
 import { parseBundleConfig } from './bundles';
 import { parseGrid } from './grid';
 import { readLedger } from './cashLedger';
 import { mergeDrawer, missingEntries } from './drawerSync';
+import { buildWarningListEntries, mergeWarningList } from './warningList';
 import { isTraining } from './trainingGuard';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
@@ -138,6 +139,7 @@ export async function pollShared() {
     if (s.settings.sharedSettingsPending) await pushSharedSettings();
     if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
     if (s.settings.drawerPending) await pushDrawer().catch(() => {});
+    if (s.settings.warningListPending) await pushWarningList().catch(() => {});
     // stock
     if (s.settings.locationId && s.data.stockSince) {
       const since = new Date().toISOString();
@@ -150,7 +152,7 @@ export async function pollShared() {
       }
       s.patchData({ stockSince: since });
     }
-    await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration(); await pullDrawer();
+    await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration(); await pullDrawer(); await pullWarningList();
     st().set({ sync: { state: st().pos.outbox.length ? 'error' : 'idle', at: new Date().toISOString(), error: st().pos.outbox.length ? `${st().pos.outbox.length} queued` : undefined } });
   } catch (e: any) {
     st().set({ sync: { state: isNetworkError(e) ? 'offline' : 'error', at: st().sync.at, error: String(e?.message ?? e) } });
@@ -324,6 +326,79 @@ async function pullDrawer() {
   } catch { /* ignore a bad record */ }
 }
 export const bundleConfig = (): BundleConfig | null => { try { return st().settings.bundlesJson ? parseBundleConfig(st().settings.bundlesJson).cfg ?? null : null; } catch { return null; } };
+
+// ── the warning list (Settings ▸ Cart warnings, "Add to the list") ──────────────────────────────────
+// A warning set to the list is not shown on Charge; it is recorded here instead, and can be read later from a Quick
+// Menu tile or the cart menu ("someone bought an item from a fixed number display, put another out"). The list is
+// shared between registers through the same pos_settings metaobject as the shared settings (handle `warning_list`),
+// merged by entry id, so a sale recorded on two registers is never listed twice.
+const warningCatalog = () => {
+  const data = st().data; const collectionsOfProduct: Record<string, string[]> = {};
+  for (const c of data.collections) for (const p of c.productIds) (collectionsOfProduct[p] ??= []).push(c.id);
+  return { variants: data.variants, collectionsOfProduct };
+};
+
+/** A line was added to the list: remember it must be shared, and upload it now. */
+export function warningListChanged() {
+  st().patchSettings({ warningListPending: true });
+  void pushWarningList();
+}
+
+/**
+ * Adds the lines this sale queued to the list, then shares them. Call it once the sale is paid, so what the cart held
+ * and what the list says line up. Records nothing in practice mode.
+ */
+export function recordWarningListEntries(cart: Cart, o: { cartTotalCents?: number } = {}) {
+  if (isTraining()) return;
+  const s = st().settings;
+  const entries = buildWarningListEntries(cart, s.cartWarnings, warningCatalog(), { staff: currentStaff()?.name, register: s.registerName, cartTotalCents: o.cartTotalCents });
+  if (!entries.length) return;
+  st().patchSettings({ warningList: mergeWarningList(entries, s.warningList) });
+  warningListChanged();
+}
+
+/** Forgets the whole list, everywhere. */
+export async function clearWarningList() {
+  if (isTraining()) return;
+  st().patchSettings({ warningList: [] });
+  await pushWarningList().catch(() => {});
+}
+
+export async function pushWarningList() {
+  const s = st();
+  if (isTraining()) return; // practice data is never sent
+  s.patchSettings({ warningListPending: true });
+  if (!hasCreds()) return;
+  let list = st().settings.warningList ?? [];
+  let version = (st().settings.warningListVersion ?? 0) + 1;
+  try {
+    // Fold in lines another register added before we write, so a push never drops their history.
+    const remote = await meta.getByHandle(meta.TYPES.settings, 'warning_list');
+    version = Math.max(st().settings.warningListVersion ?? 0, Number(remote?.f.version) || 0) + 1;
+    if (remote?.f.settings_json) {
+      let r: { entries?: unknown } | null = null; try { r = JSON.parse(remote.f.settings_json); } catch { r = null; }
+      if (Array.isArray(r?.entries)) list = mergeWarningList(list, r.entries as Parameters<typeof mergeWarningList>[0]);
+    }
+  } catch { /* a read that fails leaves our own copy to upload */ }
+  try {
+    await meta.upsert(meta.TYPES.settings, 'warning_list', { settings_key: 'warning_list', version, settings_json: JSON.stringify({ entries: list }) });
+  } catch (error) {
+    st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Warning list not uploaded: ${String((error as Error)?.message ?? error)}` } });
+    throw error;
+  }
+  st().patchSettings({ warningList: list, warningListVersion: version, warningListPending: false });
+}
+
+async function pullWarningList() {
+  if (isTraining() || st().settings.warningListPending) return; // our unsent change wins until it is pushed
+  const row = await meta.getByHandle(meta.TYPES.settings, 'warning_list'); if (!row) return;
+  const v = Number(row.f.version) || 0;
+  if (v <= (st().settings.warningListVersion ?? 0)) return;
+  try {
+    const j = JSON.parse(row.f.settings_json) as { entries?: unknown };
+    st().patchSettings({ warningList: mergeWarningList(st().settings.warningList, Array.isArray(j.entries) ? j.entries as Parameters<typeof mergeWarningList>[0] : undefined), warningListVersion: v });
+  } catch { /* ignore a bad record */ }
+}
 
 /** Stock for sold lines (sales only): Shopify orderCreate with DECREMENT_IGNORING_POLICY already adjusts stock, so we only mirror locally. */
 export function applyLocalStock(sale: SaleRecord) {

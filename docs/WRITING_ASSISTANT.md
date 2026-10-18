@@ -60,6 +60,8 @@ never return a gift card balance, because that lives at Shopify. Every result pa
 
 Patch 0164 added the product and stock tools (find products, stock levels) and the model-free product and stock lookup in the offline mode. They read the catalogue saved on the till (the spec's "Shopify data search" for products and variants, local only as decided in question 12), and use the till's own stock words and Inventory filters.
 
+Patch 0169 added the last two read-only tools: a settings reader (`read_settings`, for an owner or a manager only) and an app and sync status tool (`app_status`, for every role). They read plain yes or no and number values taken from the till when the question is asked, never an address, key, PIN, staff name or contact detail, and never change anything. Tools can now be limited to some roles, and the prompt names only the tools the signed in role has.
+
 ## The model
 
 Updated 17 October 2026 (patch 0148). This replaces the earlier "local model only" decision.

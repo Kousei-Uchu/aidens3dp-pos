@@ -27,6 +27,7 @@ import { assistantLog, logSink } from '../lib/assistantLogIO';
 import { resolvePolicy } from '../lib/assistantGate';
 import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
 import { takeAssistantData, takeCatalogue } from '../lib/assistantDataIO';
+import { takeTillState } from '../lib/assistantStatusIO';
 import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
 import { registerContext } from '../lib/assistantContext';
 import { screenOfRoute } from '../lib/appGraph';
@@ -156,9 +157,9 @@ export default function Assistant() {
     try {
       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
       apiKey = await getAssistantKey();
-      const shopData = await takeAssistantData();
+      const shopData = await takeAssistantData(); const till = takeTillState(role);
       const out = await askLogged(fetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), where }) },
+          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), where }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;

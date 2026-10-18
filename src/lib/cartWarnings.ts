@@ -1,7 +1,10 @@
 // Location: src/lib/cartWarnings.ts
 // Cart warnings: prompts the cashier sees on Charge, before payment, when the cart holds a configured item or
-// category (or on every sale, for a warning set to always show). Pure, so it is testable.
+// category (or on every sale, for a warning set to always show), and the list of warnings that were queued instead.
+// Pure, so it is testable.
 import type { Cart, CartWarning, CartWarningScope, Variant } from './types';
+import { fmt } from './money';
+import { type TemplateVars } from './textTemplates';
 
 export type CartWarningMatch = { lineId: string; title: string; variantId?: string; productId?: string };
 export type MatchedCartWarning = { warning: CartWarning; matches: CartWarningMatch[] };
@@ -62,3 +65,32 @@ export const pendingCartWarnings = (matched: MatchedCartWarning[], seen: string[
 /** The pages (by key) that still need ticking before payment can start, given what the cashier has ticked. */
 export const unacknowledged = (pages: MatchedCartWarning[], ticked: string[]): MatchedCartWarning[] =>
   pages.filter(m => m.warning.requireAcknowledgement && !ticked.includes(warningKey(m)));
+
+// ── templates ───────────────────────────────────────────────────────────────
+/**
+ * The values a warning can put in `{{ … }}` (see `textTemplates.ts`): the first item that set it off, the sale it is
+ * about, and who is on the till. Names are lower case, which is how `renderTemplate` looks them up. When several items
+ * set one warning off, the templates use the first and the popup or list still shows all of their names.
+ */
+export function warningVars(m: MatchedCartWarning | undefined, o: {
+  cat: CartWarningCatalog; cart?: Cart; staff?: string; register?: string; cartTotalCents?: number; now?: Date;
+}): TemplateVars {
+  const first = m?.matches[0]; const v = first?.variantId ? o.cat.variants[first.variantId] : undefined;
+  const line = first ? o.cart?.lines.find(l => l.id === first.lineId) : undefined;
+  const qty = (m?.matches ?? []).reduce((n, x) => n + (o.cart?.lines.find(l => l.id === x.lineId)?.qty ?? 0), 0);
+  const now = o.now ?? new Date();
+  const time = (() => { try { return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); } catch { return ''; } })();
+  const date = (() => { try { return now.toLocaleDateString(); } catch { return ''; } })();
+  return {
+    'item.name': line ? [line.title].filter(Boolean).join(' · ') : (first?.title ?? ''),
+    'item.product': v?.productTitle ?? '',
+    'item.variant': v?.variantTitle ?? '',
+    'item.sku': v?.sku ?? '',
+    'item.price': fmt(line ? (line.overrideCents ?? line.unitCents) : (v?.priceCents ?? 0)),
+    qty: String(qty),
+    'cart.total': fmt(o.cartTotalCents ?? 0),
+    staff: o.staff ?? '',
+    register: o.register ?? '',
+    time, date,
+  };
+}

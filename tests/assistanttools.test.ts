@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import type { ChatMessage, Endpoint, FetchLike } from '../src/lib/assistantClient';
 import { DROPPED_RESULT, buildMessagesDetailed, buildSystemPrompt, fitToContext, runPrepared, prepare, type AskInput } from '../src/lib/assistantChat';
 import { askLogged, type LogContext, type LogEvent } from '../src/lib/assistantLog';
-import { ASSISTANT_TOOLS, DEFAULT_TOOL_LIMIT, MAX_RESULT_CHARS, docText, makeToolSet, resultCharsFor, runToolCall, searchDocPages, searchTerms, toolDefs, type AssistantTool } from '../src/lib/assistantTools';
+import { ASSISTANT_TOOLS, DEFAULT_TOOL_LIMIT, MAX_RESULT_CHARS, docText, makeToolSet, resultCharsFor, toolsFor, runToolCall, searchDocPages, searchTerms, toolDefs, type AssistantTool } from '../src/lib/assistantTools';
 import { PAGE_ROLES, pageVisibleTo, parsePage, readBundle, validatePages, makeBundle, type Page } from '../src/lib/helpDocs';
 import { builtinHelp } from '../src/lib/helpBuiltin';
 
@@ -115,7 +115,7 @@ test('the record keeps the arguments and result, with any key removed', () => {
 });
 test('every tool has a name, a description and object parameters, and none can write', () => {
   const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
-  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'current_time', 'screen_context', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
+  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'current_time', 'screen_context', 'app_status', 'read_settings', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
   for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
 });
 
@@ -141,7 +141,7 @@ test('the loop: the model searches, reads, then answers; results go back to it a
   ]);
   const a = ask(); const out = await runPrepared(f, a, prepare(a));
   assert.equal(out.reply.text, 'Open Refunds, pick the sale.');
-  assert.equal(sent.length, 3); assert.equal(sent[0].tools.length, ASSISTANT_TOOLS.length);
+  assert.equal(sent.length, 3); assert.equal(sent[0].tools.length, toolsFor('cashier').length);
   const last: ChatMessage[] = sent[2].messages; const tools = last.filter(m => m.role === 'tool');
   assert.equal(tools.length, 2); assert.match(tools[0].content ?? '', /orders\/refunds/); assert.match(tools[1].content ?? '', /Basic text for Refunds/);
   assert.equal(last.filter(m => m.role === 'assistant' && m.tool_calls).length, 2);

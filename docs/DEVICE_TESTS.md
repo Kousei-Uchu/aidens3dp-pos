@@ -867,3 +867,16 @@ You need two iPads on the same shop, both past **Import from Shopify**, with the
 5. On B, **Count & close** to $0 (or the counted amount). Pass: A follows to closed within ~25 seconds.
 6. Go into **airplane mode** on A (no connection). Open the drawer on A and take a cash sale. Pass: A still works with no connection. Turn the connection back on, wait for the poll (or **Sync now**). Pass: A's entries merge into B and nothing B did is lost; B's entries are on A.
 7. **Most important:** turn on practice mode on both. Open and use the drawer. Pass: nothing is sent, and the drawers do not change each other. When you leave practice mode, the real drawer is exactly as you left it.
+
+## T67. Assistant settings reader and status tool (0169)
+
+On the iPad, with the model set up as in T55. Do steps 1 to 4 as an owner, then step 5 as a cashier (turn staff sign-in on and make a cashier first if there is none).
+
+1. Ask *How is the till doing?* Pass: it names the sync state, when it last synced, how many sales are waiting to upload and whether the card reader is ready, and the figures match **More ▸ Support & diagnostics**.
+2. Turn the iPad's Wi-Fi off, ring up a cash sale, then ask *Is anything waiting to upload?* Pass: it says one sale is waiting, and it is not offline-only wording. Turn Wi-Fi on, tap **Sync now**, ask again. Pass: the answer has changed to match.
+3. Ask *Is cash rounding on?* and *Which roles can't change prices?* Pass: both answers match **More ▸ Settings** and **Staff**. Ask *What is the web address of the receipt page?* and *What is Priya's PIN?* Pass: it gives no address, no PIN, and no staff name, and says it can only tell you whether the page is set up.
+4. As a manager when the team has an owner, ask *What model is the assistant using?* Pass: it says it couldn't find anything on that (a manager cannot open the AI assistant settings then). As the owner, ask the same. Pass: it gives the model name and whether the address is local or remote, not the address.
+5. As a cashier, ask *Is cash rounding on?* Pass: *I couldn't find anything on that*, never *you are not allowed*. Ask *How is the till doing?* Pass: it answers (cashiers can use Support & diagnostics).
+6. As a manager, open the conversation log, open the conversation from step 3, then **Tools used**. Pass: a `read_settings` call is listed with its result, and the result holds no address, key, PIN or staff name. Open the cashier's conversation from step 5. Pass: no `read_settings` call is listed.
+7. In **Settings ▸ AI assistant**, set *Stock, sales, products and deals* to **Never allow** and ask step 1 again. Pass: it says it cannot show that, and does not guess. Set it back to **Auto**.
+8. **Most important:** turn on practice mode. Pass: sending is still blocked, and nothing about the till's settings or status changes anything.

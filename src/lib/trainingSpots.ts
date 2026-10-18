@@ -119,6 +119,7 @@ export const SPOT = {
   warningAcknowledge: 'warning.ack',   // I have read this, on a warning that must be acknowledged
   warningContinue: 'warning.continue', // Continue to payment, in the Customer warning window (the same button as Next, on the last warning)
   warningCancel: 'warning.cancel',     // Back to cart, in the Customer warning window
+  warningListOpen: 'warning.list.open', // Open the warnings list (tile or cart menu)
   lineDone: 'line.done',               // Done at the bottom of a line's window (it also saves the note)
   receiptQrBack: 'receipt.qr.back',     // Back, on the QR code page of the Receipt window
   moreOrders: 'more.orders',           // the Orders row on the More tab

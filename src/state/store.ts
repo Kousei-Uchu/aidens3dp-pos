@@ -15,7 +15,7 @@ import type { Depth } from '../lib/helpDocs';
 import { defaultInvPrefs, type InvPrefs } from '../lib/inventoryView';
 import { emptyLedger, readLedger, type CashLedger } from '../lib/cashLedger';
 import type { AdjustPerms } from '../lib/adjustPerms';
-import type { CartWarnings } from '../lib/types';
+import type { CartWarnings, WarningList } from '../lib/types';
 import type { ScannerCalibration } from '../lib/scanSpeed';
 import { isTraining } from '../lib/trainingGuard';
 
@@ -41,6 +41,9 @@ export type Settings = {
   // `drawerShiftPending` says that change included the shift (open/paid in/out/close), so a push must not be beaten by an older one.
   drawerVersion?: number; drawerPending?: boolean; drawerShiftPending?: boolean;
   cartWarnings?: CartWarnings; // Settings ▸ Cart warnings: prompts on Charge for chosen items or categories (shared to every register)
+  // The warning list (a warning set to "Add to the list"): shared between registers, so the list carries the same lines
+  // everywhere. `warningListVersion` is the shared record's version we last saw; `warningListPending` an unsent change.
+  warningList?: WarningList; warningListVersion?: number; warningListPending?: boolean;
   assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
 };
 export const defaultSettings = (): Settings => ({
