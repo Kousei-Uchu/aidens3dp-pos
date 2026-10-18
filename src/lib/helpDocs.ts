@@ -17,6 +17,9 @@
 //   ## Advanced  the code, flowcharts, how to trace a fault
 // Choosing a depth shows that section AND the ones above it (Deep shows Basic + Deep; Advanced shows all three).
 // Links between pages are written [[page-id]] or [[page-id|link text]].
+// A ```screen block is a picture of a screen, drawn by the app (src/ui/HelpFigure.tsx) and by the Docs site from
+// the HTML this file pre-renders into the bundle. See src/lib/helpFigures.ts for the lines it understands.
+import { figureToHTML, parseFigure } from './helpFigures';
 
 export const DEPTHS = ['basic', 'deep', 'advanced'] as const;
 export type Depth = (typeof DEPTHS)[number];
@@ -148,6 +151,17 @@ export function diagramBlocks(md: string): string[] {
   }
   return out;
 }
+/** The source of every ```screen block in some Markdown, in the order they appear (a picture of a screen, B7e). */
+export function screenBlocks(md: string): string[] {
+  const out: string[] = []; let open: { mark: string; screen: boolean; buf: string[] } | null = null;
+  for (const line of md.replace(/\r\n?/g, '\n').split('\n')) {
+    const f = FENCE.exec(line);
+    if (!open) { if (f) open = { mark: f[1][0], screen: /^\s{0,3}(`{3,}|~{3,})\s*screen\s*$/i.test(line), buf: [] }; continue; }
+    if (f && f[1][0] === open.mark) { if (open.screen) out.push(open.buf.join('\n').trim()); open = null; continue; }
+    open.buf.push(line);
+  }
+  return out;
+}
 /** `##` headings left in a page after the depth headings are taken out. Inside a section use `###`, or the depth headings get confused. */
 export function strayHeadings(md: string): string[] {
   const out: string[] = []; let fence: string | null = null;
@@ -224,6 +238,7 @@ export function validatePages(pages: Page[]): PageIssue[] {
     const all = allText(p);
     if (![p.lead, ...DEPTHS.map(d => p.sections[d])].every(fencesBalanced)) bad(p, 'A code fence is opened and never closed (checked inside each section).');
     for (const d of diagramBlocks(all)) if (!DIAGRAM_START.test(d)) bad(p, `A mermaid block does not start with a diagram type such as "flowchart TD" (it starts "${d.split('\n')[0].slice(0, 30)}").`);
+    for (const s of screenBlocks(all)) { const f = parseFigure(s); if ('error' in f) bad(p, `A screen picture is wrong: ${f.error}`); }
     for (const h of strayHeadings(all)) bad(p, `The heading "## ${h}" is not Basic, Deep or Advanced. Use "###" for headings inside a section.`);
     for (const r of p.related) if (!ids.has(r)) bad(p, `\`related\` points at "${r}", which does not exist.`);
     for (const l of extractLinks(all)) if (!ids.has(l.id)) bad(p, `The link [[${l.id}]] goes to a page that does not exist.`);
@@ -257,27 +272,36 @@ export function searchPages(pages: Page[], query: string, depth: Depth = 'advanc
 }
 
 // ── the bundle the app and the Worker both read ──────────────────────────────
-export type HelpBundle = { version: string; pages: Omit<Page, 'file'>[] };
+/** A page as it ships in the bundle: no source file, plus the screen pictures pre-drawn for the Docs site. */
+export type HelpBundlePage = Omit<Page, 'file'> & {
+  /** Each ```screen block on the page, as HTML, in the order they appear. The app draws its own from the text. */
+  figures?: string[];
+};
+export type HelpBundle = { version: string; pages: HelpBundlePage[] };
 /** A short fingerprint of the content, so a device can tell whether its copy is the latest. FNV-1a, not security. */
-export function contentVersion(pages: Omit<Page, 'file'>[]): string {
+export function contentVersion(pages: HelpBundlePage[]): string {
   let h = 0x811c9dc5; const s = JSON.stringify(pages);
   for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
   return h.toString(16).padStart(8, '0');
 }
 export function makeBundle(pages: Page[]): HelpBundle {
-  const list = [...pages].sort((a, b) => a.id.localeCompare(b.id)).map(({ file: _f, ...rest }) => rest);
+  const list: HelpBundlePage[] = [...pages].sort((a, b) => a.id.localeCompare(b.id)).map(({ file: _f, ...rest }) => {
+    const text = [rest.lead, ...DEPTHS.map(d => rest.sections[d])].join('\n\n');
+    const figs = screenBlocks(text).map(s => { const f = parseFigure(s); return figureToHTML('figure' in f ? f.figure : { els: [] }); });
+    return figs.length ? { ...rest, figures: figs } : rest;
+  });
   return { version: contentVersion(list), pages: list };
 }
 /** Read a bundle from untrusted JSON (a download, or an old saved copy). Returns null if it is not usable. */
 export function readBundle(raw: unknown): HelpBundle | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>; if (typeof r.version !== 'string' || !Array.isArray(r.pages)) return null;
-  const pages: Omit<Page, 'file'>[] = [];
+  const pages: HelpBundlePage[] = [];
   for (const x of r.pages) {
     if (!x || typeof x !== 'object') continue; const p = x as Record<string, unknown>; const sec = (p.sections ?? {}) as Record<string, unknown>;
     if (typeof p.id !== 'string' || !p.id || typeof p.title !== 'string') continue;
     const str = (v: unknown) => (typeof v === 'string' ? v : ''); const arr = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []);
-    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), ...(arr(p.roles).length ? { roles: arr(p.roles) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) } });
+    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), ...(arr(p.roles).length ? { roles: arr(p.roles) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) }, ...(arr(p.figures).length ? { figures: arr(p.figures) } : {}) });
   }
   return pages.length ? { version: r.version, pages } : null;
 }

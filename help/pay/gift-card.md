@@ -5,7 +5,7 @@ parent: pay
 summary: Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.
 tags: [gift card, gift, code, qr, scan, balance, redeem, shopify, disabled, expired, not found]
 related: [pay, pay/card, pay/cash, gift/check-redeem]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 A gift card pays part or all of a sale. The balance lives on the card in Shopify, so a card works on any register as long as the iPad is online.
 
@@ -17,6 +17,19 @@ A gift card pays part or all of a sale. The balance lives on the card in Shopify
 3. The sheet shows the card (**Card ••••** and its last four characters), its balance, and whether it is **Active** or **Disabled**. It may also say **code could not be verified** or **expires** with a date.
 4. Tap **Use as payment**. This button only appears when the card is **Active** and has a balance.
 5. The amount is taken from the card straight away and the payment is added to the list as **Gift card**.
+
+```screen
+title: Check gift card
+text: Scan or type the code on the card.
+input: Code | ABD2-4EF6
+button: Scan
+label: Result
+row: Card •••• 4EF6
+row: Balance | $15.00
+row: Status | Active
+primary: !1 Use as payment
+note: The amount is the balance or the next payment amount, whichever is less.
+```
 
 The amount taken is the card's balance or the next payment amount, whichever is **less**. If the balance is smaller than what is owed, the rest stays under **Remaining** and you take it another way.
 

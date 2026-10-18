@@ -5,7 +5,7 @@ parent: sales
 summary: Set up "buy these together, pay less" deals in Settings, and how they show up in the cart and at payment.
 tags: [bundle, deal, combo, discount, builder, recommended pair, percent, set price, dates]
 related: [sales, sales/cart-and-prices, sales/lookup-tiles, pay]
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 A bundle deal changes the price when a customer buys certain items together, for example *2 Highland Cows for $2 off*. You build them in Settings, and the cart applies them by itself.
 

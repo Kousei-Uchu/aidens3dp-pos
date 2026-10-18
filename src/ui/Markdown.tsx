@@ -6,6 +6,7 @@ import type { Align, Block, Inline, ListItem } from '../lib/mdBlocks';
 import { useTheme } from './theme';
 import { useUi } from './uiProfile';
 import Flowchart from './Flowchart';
+import HelpFigure from './HelpFigure';
 
 const MONO = Platform.select({ ios: 'Menlo', default: 'monospace' });
 const half = (n: number) => Math.round(n * 2) / 2;
@@ -73,6 +74,7 @@ export default function Markdown({ blocks, onPage }: { blocks: Block[]; onPage: 
           }
           case 'code': return <ScrollView key={bi} horizontal style={{ backgroundColor: c.fill, borderRadius: 10 }} contentContainerStyle={{ padding: 12 }}><Text selectable style={{ fontFamily: MONO, fontSize: half(12.5 * Math.min(k, 1.25)), color: c.text }}>{b.text}</Text></ScrollView>;
           case 'diagram': return <Flowchart key={bi} source={b.source} />;
+          case 'figure': return <HelpFigure key={bi} fig={b.fig} />;
         }
       })}
     </View>

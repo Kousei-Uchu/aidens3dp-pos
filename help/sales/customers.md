@@ -5,7 +5,7 @@ parent: sales
 summary: Adding a customer to a sale, finding or creating one, the Customers list, and how customers stay in step with Shopify.
 tags: [customer, customers, attach, create, search, email, receipt, shopify, import]
 related: [sales, sales/saved-carts, sales/cart-and-prices, sales/grid]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 A customer is optional. Adding one links the sale to them in Shopify and fills in their email or mobile for receipts.
 
@@ -20,6 +20,16 @@ Use any of these:
 - In the guided checkout, the **Customer** step.
 
 A sheet opens with a search box. Type part of a name, email or phone and tap the person. To take the customer off again, tap the **✕** beside their name on the cart.
+
+```screen
+title: Add customer
+input: Search name, email or phone | aiden
+row: Aiden | aiden@example.com · 0412 345 678
+row: Aiden's Sister | sister@example.com
+button: Search Shopify
+primary: Create customer
+note: Tap a person to attach them to the sale. Tap "Search Shopify" to find someone this register has not seen yet.
+```
 
 ### If they are not in the list
 Tap **Search Shopify** (or press Return) to look in your Shopify store, which finds people this register has not heard of yet. If they are really new, tap **Create customer**, fill in **First name**, **Last name**, **Email** and **Mobile**, then tap **Create & attach**. You need at least one of name, email or mobile ("Add at least a name, email or phone").

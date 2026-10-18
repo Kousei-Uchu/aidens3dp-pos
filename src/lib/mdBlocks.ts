@@ -1,9 +1,11 @@
 // Location: src/lib/mdBlocks.ts
 // The small slice of Markdown that help pages use, turned into plain data the Help screen can draw (B7b). Pure.
 // Supported: ### and #### headings, paragraphs, bullet and numbered lists (nested by 2-space indent), tables, fenced code,
-// ```mermaid blocks, and inline **bold**, *italic*, `code` and [text](href). Anything else is shown as ordinary text.
+// ```mermaid blocks, ```screen blocks (a picture of a screen, B7e), and inline **bold**, *italic*, `code` and [text](href).
+// Anything else is shown as ordinary text.
 // Links: `(#/page-id)` is a link to another help page (what resolveLinks produces); `http(s)://` is an outside link.
 // Anything else in a link's brackets is shown as text only, so a typo can never open something unexpected.
+import { parseFigure, type Figure } from './helpFigures';
 
 export type Inline =
   | { t: 'text'; s: string }
@@ -20,7 +22,8 @@ export type Block =
   | { k: 'list'; ordered: boolean; items: ListItem[] }
   | { k: 'table'; head: Inline[][]; align: Align[]; rows: Inline[][][] }
   | { k: 'code'; lang: string; text: string }
-  | { k: 'diagram'; source: string };
+  | { k: 'diagram'; source: string }
+  | { k: 'figure'; fig: Figure };
 
 /** Inline spans. Bold and italic hold plain text only (no nesting), which is all the pages need. */
 export function parseInline(src: string): Inline[] {
@@ -70,6 +73,7 @@ export function parseBlocks(md: string): Block[] {
       while (i < lines.length) { const c = FENCE.exec(lines[i]); if (c && c[1][0] === mark && !c[2]) break; buf.push(lines[i]); i++; }
       i++; // the closing fence (a missing one just ends the block at the end of the text)
       const text = buf.join('\n').replace(/\s+$/, '');
+      if (lang === 'screen') { const f = parseFigure(text); if ('figure' in f) { out.push({ k: 'figure', fig: f.figure }); continue; } }
       out.push(lang === 'mermaid' ? { k: 'diagram', source: text } : { k: 'code', lang, text });
       continue;
     }

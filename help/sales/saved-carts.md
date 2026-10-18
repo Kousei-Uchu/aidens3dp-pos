@@ -5,7 +5,7 @@ parent: sales
 summary: Park a sale to finish later, find it again on any register, merge it into another cart, and how saved carts are shared.
 tags: [saved cart, save cart, park, hold, open, merge, assign, delete, swipe, sync]
 related: [sales, sales/cart-and-prices, sales/customers, sales/grid]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 A saved cart is a sale put on hold: the items, the customer and a name, kept so you can come back to it. Every register sees the same saved carts.
 
@@ -21,6 +21,18 @@ You cannot save an empty cart ("Cart is empty"), or a cart that has had part of 
 
 ### Finding and opening one
 Open **More ▸ Saved carts**, or tap the **Saved carts** tile on the Quick Menu. Each row shows the name, how many items, the total, the customer, and any note. You can also type a name, note or customer in the Checkout search box and pick the **Saved carts** filter.
+
+```screen
+title: Saved carts
+input: Search | friday
+row: Sam, holding for Friday | 3 items · $28.50
+text: For Aiden · Note: call when ready
+row: Walk-in order | 1 item · $12.50
+button: Open
+button: Assign → Aiden
+primary: Delete
+note: Tap a saved cart to open, assign or delete it.
+```
 
 Tap a cart to see what is in it, then:
 - **Open**: if your cart is empty the saved cart goes straight in. If it already has items you are asked **Merge Carts?**, and choosing **Merge** adds the saved items to what is already there.

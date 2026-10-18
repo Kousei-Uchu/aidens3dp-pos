@@ -5,7 +5,7 @@ parent: orders
 summary: Choose what is coming back, select a refund method, restock items, and charge or refund the difference on an exchange.
 tags: [refund, return, exchange, restock, cash, gift card, Zeller, amount, reason]
 related: [orders, orders/reports, pay/cash, gift/check-redeem]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 Start a return from a Shopify order or a synced sale in Transactions. Choose the items or amount, decide whether to restock, then confirm the refund or exchange.
 
@@ -18,6 +18,19 @@ Start a return from a Shopify order or a synced sale in Transactions. Choose the
 4. Choose a **Reason** and whether to **Restock returned items**.
 5. Choose where money goes: **Original**, **Cash** or **Gift card**, then tap the button showing the refund, charge or even exchange. When the original sale used a gift card and you choose **Gift card**, choose whether to reload its original card(s) or issue a new gift card.
 6. Confirm. If the customer owes more for replacement items, the remaining amount goes to Payment. If cash is owed, the sheet tells you what to hand over.
+
+```screen
+title: Return or exchange
+label: Items
+row: Highland Cow · Cream | −1 +1
+row: Gemstone egg · Blue | −2 +0
+label: Reason
+button: Fragile
+row: Refund to | Original
+row: Restock returned items | on
+primary: !1 Refund $12.50
+note: The button says "Refund", "Charge" or "Even exchange" depending on what the customer is owed or owes.
+```
 
 For **Original**, the screen shows the amounts still refundable by card, cash and gift card. Card refunds need the Zeller terminal; the gift-card part goes back to the same original gift card(s). For **Gift card**, the cashier chooses the original card(s) or a new card when the original sale used gift cards; a sale without an original gift-card tender creates a new card.
 

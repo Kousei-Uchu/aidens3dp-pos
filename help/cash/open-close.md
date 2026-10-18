@@ -5,7 +5,7 @@ parent: cash
 summary: Opening the drawer with a float, recording money paid in and out, correcting the contents, and counting and closing at the end of the day (the Z-report).
 tags: [open drawer, float, paid in, paid out, count, close, z-report, over, short, correct contents, expected, shift, banking]
 related: [cash, pay/cash]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 This page covers the jobs on the **Cash drawer** screen (More ▸ Cash drawer): starting the day, recording money that goes in or out, fixing the record, and counting up at the end.
 
@@ -18,6 +18,22 @@ This page covers the jobs on the **Cash drawer** screen (More ▸ Cash drawer): 
 4. Tap **Confirm**.
 
 The screen now shows **Float**, **Cash sales**, **Paid in**, **Paid out** and **Expected in drawer**. Open the drawer at the start of the day: **Cash sales** only counts sales made after this point.
+
+```screen
+title: Opening float
+text: Carried over from last time: $200.00
+label: Notes
+tile: $50
+tile: $20 | × 1
+tile: $10
+label: Coins
+tile: $2
+tile: 50c
+tile: 20c
+text: Float $220.00
+primary: !1 Confirm
+note: Tap Add or Remove and the notes and coins until the pad matches what you are really putting in the drawer.
+```
 
 ### The tap pad
 The same pad is used everywhere on this screen. Tap a note or coin to add one. **Add / Remove** switches between putting money in and taking it off the entry. **×1**, **×5** and **×10** set how many one tap adds, which is handy for rolls of coins. **Undo** takes back your last tap and tells you what it removed and the new total. **Start over** clears the entry. Removing something you have not tapped says *None of that to remove.* The full description is in [[pay/cash]].

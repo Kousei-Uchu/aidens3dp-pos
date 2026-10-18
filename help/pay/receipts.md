@@ -5,7 +5,7 @@ parent: pay
 summary: The Receipt sheet after a sale, how a customer gets their receipt (QR, email, text, share), what the receipt page shows, tax invoices, and what to do when a receipt is not published yet.
 tags: [receipt, tax invoice, qr, email, text, share, link, pdf, abn, gst, refund receipt, receipt server, not published, new receipt]
 related: [pay, pay/card, pay/cash, pay/gift-card, sales/customers]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 When a sale is paid, the **Receipt** sheet opens so you can give the customer their receipt. In normal use that is a link to a web page, which the customer opens by scanning a QR code or from a message.
 
@@ -13,6 +13,19 @@ When a sale is paid, the **Receipt** sheet opens so you can give the customer th
 
 ### The Receipt sheet
 It opens by itself the moment the last payment is taken. At the top you see the total, **Sale complete**, and the Shopify order number when it is already known. If the customer paid cash and got change, **Change $…** shows in large type, so you can say it out loud.
+
+```screen
+title: Sale complete
+sub: Order #1001
+text: Total $28.50
+text: Change $1.50
+button: Show QR code
+button: Email link
+button: Text link
+button: Share…
+primary: No receipt
+note: "No receipt" clears the cart for the next customer, even after you have sent a link.
+```
 
 There is no close button and you cannot swipe the sheet away. You finish with **No receipt**, which clears the cart for the next customer. The button keeps that name even after you have sent a link, so tap it when you are done.
 

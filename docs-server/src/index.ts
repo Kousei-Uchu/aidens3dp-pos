@@ -51,6 +51,26 @@ function pageHTML(nonce: string): string {
     .content code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:.9em}.content :not(pre)>code{background:var(--soft);padding:2px 5px;border-radius:5px}
     .content table{border-collapse:collapse;width:100%;display:block;overflow:auto;border-radius:10px}.content th,.content td{border:1px solid var(--line);padding:9px 11px;text-align:left}.content th{background:var(--surface-raised);color:var(--fg)}
     .content blockquote{border-left:4px solid var(--highlight);margin:18px 0;padding:8px 16px;background:var(--surface-raised);color:var(--muted);border-radius:0 10px 10px 0}
+    /* screen figures (B7e): a small drawn picture of a screen, pre-rendered into help.json by scripts/build-help.ts */
+    .sf{margin:22px 0;border:1px solid var(--line);border-radius:18px;background:var(--surface-raised);padding:16px}
+    .sf-frame{max-width:420px;margin:auto;border:1px solid var(--line);border-radius:14px;background:var(--bg);overflow:hidden;font-size:13.5px;line-height:1.45}
+    .sf-bar{display:flex;align-items:baseline;gap:9px;padding:10px 12px;background:var(--surface);border-bottom:1px solid var(--line)}
+    .sf-title{font-weight:700}.sf-sub{color:var(--muted);font-size:12px}
+    .sf-body{padding:12px;display:grid;gap:7px}
+    .sf-label-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+    .sf-text{color:var(--muted)}
+    .sf-row{display:flex;align-items:center;gap:8px;padding:5px 0}
+    .sf-row .sf-label,.sf-input .sf-label{flex:1}.sf-value{font-weight:700}
+    .sf-input{display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+    .sf-grid{display:flex;gap:8px;flex-wrap:wrap}
+    .sf-tile{flex:0 1 calc(33.3% - 8px);min-height:62px;border-radius:12px;background:var(--surface);padding:8px;display:flex;flex-direction:column;justify-content:space-between;gap:4px}
+    .sf-tile-label{font-weight:700}.sf-tile-value{color:var(--muted);font-size:11.5px}
+    .sf-key{flex:0 1 calc(33.3% - 8px);min-height:42px;border-radius:10px;background:var(--surface);display:grid;place-items:center;font-weight:600;font-size:15px}
+    .sf-button{border-radius:100px;padding:9px 14px;text-align:center;background:var(--soft);font-weight:600}
+    .sf-primary{background:var(--accent);color:var(--accent-text)}
+    .sf-hi{box-shadow:0 0 0 1.5px var(--accent);border-radius:12px;padding:2px 7px}
+    .sf-badge{display:inline-grid;place-items:center;min-width:19px;height:19px;padding:0 5px;border-radius:99px;background:var(--accent);color:var(--accent-text);font-size:11.5px;font-weight:700;margin-right:3px}
+    .sf-note{max-width:420px;margin:10px auto 0;color:var(--muted);font-size:12.5px;text-align:center}
     .content ol{list-style:none;counter-reset:help-step;margin:16px 0;padding:0;display:grid;gap:10px}.content ol>li{counter-increment:help-step;position:relative;padding:14px 16px 14px 62px;border:1px solid var(--line);border-radius:14px;background:var(--surface-raised)}
     .content ol>li::before{content:counter(help-step);position:absolute;left:16px;top:14px;display:grid;place-items:center;width:32px;height:32px;border-radius:50%;background:var(--accent);color:var(--accent-text);font-weight:700;font-size:14px}
     .guide-toggle,.guide-nav button{border:0;border-radius:100px;background:var(--accent);color:var(--accent-text);font-weight:600;padding:11px 20px;cursor:pointer;transition:filter .15s ease}
@@ -239,6 +259,17 @@ function pageHTML(nonce: string): string {
         div.className = 'mermaid';
         div.textContent = code.textContent || '';
         code.parentElement.replaceWith(div);
+      }
+      // screen figures (B7e): the block's picture is drawn at build time and shipped in help.json, in the same order
+      const figs = Array.isArray(p.figures) ? p.figures : [];
+      let figAt = 0;
+      for (const code of content.querySelectorAll('pre code.language-screen')) {
+        const html = figs[figAt++];
+        const pre = code.parentElement;
+        if (!html || !pre) continue;
+        const div = document.createElement('div');
+        div.innerHTML = DOMPurify.sanitize(html);
+        pre.replaceWith(div);
       }
       await mermaid.run({ nodes: content.querySelectorAll('.mermaid') });
       addStepGuides();

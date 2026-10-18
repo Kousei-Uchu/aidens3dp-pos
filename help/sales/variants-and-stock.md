@@ -5,7 +5,7 @@ parent: sales
 summary: Choosing a variation, what the stock dots and words mean, why you can sell below zero, and how counts stay up to date.
 tags: [variant, variation, stock, inventory, negative, oversold, picker]
 related: [sales, sales/grid, sales/scanners]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 A product can come in several variations, such as colour or size. Each variation has its own price and its own stock count.
 
@@ -15,6 +15,15 @@ A product can come in several variations, such as colour or size. Each variation
 Tap a product that has more than one variation and the grid is replaced by one tile per variation. Each shows its photo, name, price and stock. Tap the one you want and it goes in the cart, and you are back where you were. The bar above shows the product as the last step, for example *Home > Dragons > Highland cow*, so tap an earlier name to leave without choosing.
 
 A product with only one variation skips this step and is added straight away.
+
+```screen
+title: Highland cow
+sub: Home > Dragons > Highland cow
+tile: Grey | $12.50
+tile: !1 Cream | $12.50
+tile: Ginger | $13.00
+note: Tapping a tile adds that variation to the cart and returns to the grid.
+```
 
 ### What the stock words mean
 | You see | It means |

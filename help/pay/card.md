@@ -5,7 +5,7 @@ parent: pay
 summary: Taking a card payment on the Zeller terminal, what the strip and the sheets mean, and what to do when it is declined, not ready, or the result is unknown.
 tags: [card, zeller, terminal, reader, declined, unknown, cancel, tap, insert, swipe, pair, setup, fee]
 related: [pay, sales/cart-and-prices]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 Card payments go through the Zeller terminal. The POS tells the terminal the amount, the customer pays on the terminal, and the result comes back to the Payment screen.
 
@@ -16,6 +16,19 @@ Card payments go through the Zeller terminal. The POS tells the terminal the amo
 2. A strip appears at the top: **Waiting on terminal · $…**, with a line saying what the terminal is doing. Zeller's own screen also appears on top while it works.
 3. The customer taps, inserts or swipes their card, and enters their PIN or signs if the terminal asks.
 4. When it is approved the payment is added to the list, and if nothing remains the sale finishes.
+
+```screen
+title: Payment
+label: Payment
+row: Card | $28.50
+row: Cash | $0.00
+row: Gift card | $0.00
+row: Split
+label: Due
+row: $28.50
+primary: Pay by card
+note: A strip at the top will show "Waiting on terminal…" while the Zeller reader works.
+```
 
 The line on the strip changes as it goes. You may see: *Tap, insert or swipe card on the terminal*, *Customer is choosing the card application* or *the account*, *Customer is entering their PIN*, *Waiting for signature*, *Signature cleared - sign again*, *Retrying - present the card again*, *Processing…*, and *Customer is choosing a tip*.
 

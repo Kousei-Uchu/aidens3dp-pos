@@ -5,7 +5,7 @@ parent: sales
 summary: Prompts that appear before payment when the cart holds a chosen item or category, such as "joints are fragile", and how to set them up.
 tags: [warning, customer warning, prompt, fragile, acknowledge, charge, category, always show, next, back]
 related: [sales, sales/cart-and-prices, sales/bundles, pay, settings]
-updated: 2026-10-17
+updated: 2026-10-18
 ---
 A customer warning is a message the till shows the cashier when they press **Charge**, before payment starts. Use it for things the customer should be told, for example *Joints are fragile, do not bend or apply pressure as it will snap* on a mini dragon.
 
@@ -13,6 +13,16 @@ A customer warning is a message the till shows the cashier when they press **Cha
 
 ### What the cashier sees
 Tap **Charge**. If anything in the cart has a warning, a popup opens before the price adjustments and bundle checks. The popup is the warning: its title is the header that was set (*Customer Warning* if left blank), with a warning icon, and the message is the big text in the middle. **For:** under the message names the items that set it off.
+
+```screen
+title: Customer Warning
+text: Fragile. Do not bend, drop or apply pressure to the item.
+label: For
+text: Mini dragon · Grey
+button: Back to cart
+primary: !1 I have read this and dealt with it
+note: The cashier must tick to continue if the warning asks for it.
+```
 - With one warning there is just the message, **Continue to payment** and **Back to cart**.
 - With several warnings it is still one popup, one warning per page. Dots at the bottom show which page you are on. Tap **Next** and **Back** to move between them.
 - On the last warning, **Next** becomes **Continue to payment**. **Back to cart** is on every page and closes the popup so you can change the cart.

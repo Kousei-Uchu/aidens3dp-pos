@@ -5,7 +5,7 @@ parent: sales
 summary: Tiles, categories, display groups and pages on the Quick Menu, how to change them, and how the layout is shared and moved.
 tags: [grid, quick menu, tile, category, group, page, edit, layout, import, export]
 related: [sales, sales/variants-and-stock]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.
 
@@ -22,6 +22,18 @@ A small dot on an item tile shows its stock: green is fine, amber is low (2 or f
 
 ### Moving around
 When you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.
+
+```screen
+title: Quick Menu
+sub: Home > Dragons
+tile: Highland Cow · Cream | $12.50
+tile: Tadling · Green | $8.00
+tile: Gemstone egg · Crushed Blue | $9.00
+tile: !1 Cows | 24 items
+tile: Sell gift card
+tile: 10% off
+note: A dot on an item tile shows its stock. Tapping a category tile takes you inside it.
+```
 
 ### Changing the grid
 1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.

@@ -5,7 +5,7 @@ parent: pay
 summary: Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.
 tags: [cash, change, notes, coins, drawer, ledger, rounding, short, part payment, denomination, tap pad]
 related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, fix/cant-make-change, sales/cart-and-prices]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 Cash is taken by tapping the notes and coins the customer hands over. The POS works out the change, shows which notes and coins to take from the drawer, and keeps a record of what is in the drawer as it goes.
 
@@ -20,6 +20,23 @@ Cash is taken by tapping the notes and coins the customer hands over. The POS wo
    - **Short by $…** (red): they have not given enough.
    - **Exact** (green): the right amount.
    - **Change to give: $…** (green): they gave too much and you owe change. It turns red if the drawer cannot make that change (see below).
+
+```screen
+title: Cash received
+text: Due $28.50
+text: Change to give: $1.50
+label: Notes
+tile: $50
+tile: !1 $20 | × 1
+tile: $10
+label: Coins
+tile: $2 | × 1
+tile: 50c
+tile: 20c
+button: Undo
+primary: Next: give $1.50 change
+note: Each tap adds one note or coin, and the count under it shows how many you have tapped.
+```
 
 ### The tap pad
 - **Add / Remove** switch: choose **Remove** to take notes or coins off what you have tapped. Removing something you have not tapped says *None of that to remove.*

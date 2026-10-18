@@ -5,7 +5,7 @@ parent: sales
 summary: What is in the cart, how to change a line, and how bundles, automatic deals and discounts turn into the final price.
 tags: [cart, discount, bundle, price, total, line, customer]
 related: [sales, concepts/money, concepts/roles]
-updated: 2026-10-11
+updated: 2026-10-18
 ---
 The cart is the list of what the customer is buying. The total at the bottom is always the final price after every deal.
 
@@ -39,6 +39,19 @@ Gift cards, custom amounts, and any item tagged `no-discount` in Shopify. Their 
 
 ### The total
 Above the **Charge** button you see **Items** (the full price), each deal in green with its saving, and the final amount on the button. The count underneath is the total number of items.
+
+```screen
+title: Cart
+sub: 3 items
+label: Items
+row: Highland Cow · Cream ×1 | $12.50
+row: Gemstone egg · Crushed Blue ×2 | $18.00
+label: Total
+row: Items | $30.50
+row: Cow pair | −$2.00
+primary: !1 Charge  $28.50
+note: The green line is a bundle deal, and the price on the button is what the customer pays.
+```
 
 ### Price adjustments and review
 - **Whole order price** sets a lower total for the order. The saving is shared across eligible items; gift cards are never reduced. A whole order price and line price adjustments cannot be used together.
