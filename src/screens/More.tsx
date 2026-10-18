@@ -1,10 +1,11 @@
 import React from 'react';
 import { ScrollView, View } from 'react-native';
-import { HelpButton, Row, Section, Txt, type IconName } from '../ui/kit';
+import { HelpButton, Row, Section, Txt, alertMsg, type IconName } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useUi } from '../ui/uiProfile';
 import { useApp, currentStaff } from '../state/store';
+import { useDemo } from '../state/demoSession';
 import { SPOT } from '../lib/trainingSpots';
 import { actingRole } from '../lib/adjustPerms';
 import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
@@ -30,6 +31,12 @@ export default function More() {
   const lockOn = s.requirePin && s.staff.length > 0;
   const role = actingRole(s.requirePin, s.staff, staff?.id);
   const groups = visibleMoreRows(ui, role, lockOn);
+  const demo = useDemo(st => st.active);
+  const openDemo = async () => {
+    const msg = await useDemo.getState().enter();
+    if (msg) { alertMsg('Demo cannot start yet', msg); return; }
+    nav.push('demoHome');
+  };
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', paddingTop: 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
@@ -37,6 +44,12 @@ export default function More() {
         <HelpButton id="concepts/roles" label="Role and access help" />
       </View>
       <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+        {/* Demo mode (F8) is always here, whatever display mode is on: it is how someone shows the till to a new person. */}
+        <Section>
+          {demo
+            ? <Row icon="flask-outline" title="Leave demo mode" sub="Back to your own till, exactly as you left it." last onPress={() => { useDemo.getState().leave(); nav.reset(); }} />
+            : <Row icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on made-up data. Nothing real is touched.' : 'Made-up data'} last onPress={() => { void openDemo(); }} />}
+        </Section>
         {groups.map((g, gi) => (
           <Section key={gi}>
             {g.map((id, i) => {

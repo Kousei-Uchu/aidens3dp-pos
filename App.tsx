@@ -32,7 +32,10 @@ import Assistant from './src/screens/Assistant';
 import Training from './src/screens/Training';
 import TrainingRun from './src/screens/TrainingRun';
 import TerminalPlay from './src/screens/TerminalPlay';
+import DemoHome from './src/screens/DemoHome';
+import DemoShow from './src/screens/DemoShow';
 import TrainingHost from './src/ui/TrainingHost';
+import DemoBanner from './src/ui/DemoBanner';
 import AssistantGuideOverlay from './src/ui/AssistantGuide';
 import AppStatusBar from './src/ui/AppStatusBar';
 import { Spot } from './src/ui/Spot';
@@ -77,6 +80,8 @@ function Routes({ route: top }: { route: Route }) {
     case 'training': return <Training />;
     case 'trainingRun': return <TrainingRun />;
     case 'terminalPlay': return <TerminalPlay />;
+    case 'demoHome': return <DemoHome />;
+    case 'demoShow': return <DemoShow />;
     default: return null;
   }
 }
@@ -102,6 +107,7 @@ function Shell() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <AppStatusBar />
+      <DemoBanner />
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
           <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane>

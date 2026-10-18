@@ -10,6 +10,7 @@ import { stagger } from '../lib/motion';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useTraining } from '../state/trainingSession';
+import { useDemo } from '../state/demoSession';
 import { MODULES } from '../training';
 import { STAGES, STAGE_LABEL, type Stage } from '../lib/trainingModule';
 import { completedCount, isComplete, staffKey, stagesDone } from '../lib/trainingProgress';
@@ -20,7 +21,8 @@ export const firstOpenStage = (done: readonly Stage[]): Stage => STAGES.find(s =
 export default function Training() {
   const { c } = useTheme(); const nav = useNav(); const progress = useTraining(s => s.progress); const staffId = useApp(s => s.staffId); const who = staffKey(staffId);
   useEffect(() => { void useTraining.getState().loadProgress(); }, []);
-  const open = (id: string, stage: Stage) => { useTraining.getState().setRun(startRun(id, stage)); nav.push('trainingRun'); };
+  // Starting a course while Demo mode is on leaves Demo mode first: a course does its own swap and its own guard.
+  const open = (id: string, stage: Stage) => { if (useDemo.getState().active) useDemo.getState().leave(); useTraining.getState().setRun(startRun(id, stage)); nav.push('trainingRun'); };
   const n = completedCount(progress, who);
   return (
     <Page title="Training" onBack={nav.pop}>

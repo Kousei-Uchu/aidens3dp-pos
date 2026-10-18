@@ -88,7 +88,7 @@ const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], n
 const timers: Record<string, any> = {};
 const pending: Record<string, () => unknown> = {};
 const persist = (key: string, get: () => unknown) => {
-  if (isTraining()) return; // practice data is never saved
+  if (isTraining()) return; // practice/demo data is never saved
   clearTimeout(timers[key]); pending[key] = get;
   timers[key] = setTimeout(() => { delete pending[key]; void kvSet(key, get()); }, 400);
 };

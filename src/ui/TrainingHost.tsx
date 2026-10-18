@@ -7,6 +7,7 @@ import { View, useWindowDimensions } from 'react-native';
 import { useNav, type Tab } from './nav';
 import { useApp } from '../state/store';
 import { useTraining, realStaffId, type DockView } from '../state/trainingSession';
+import { useDemo } from '../state/demoSession';
 import { isLockScreen } from '../lib/posLock';
 import { getModule } from '../training';
 import { measureSpot, onSpotPressed, mountedSpotIds } from './Spot';
@@ -44,6 +45,7 @@ const lastCash = (sales: { tenders: { kind: string; tenderedCents?: number; chan
 };
 export default function TrainingHost({ children }: { children: React.ReactNode }) {
   const nav = useNav(); const win = useWindowDimensions(); const sandbox = useTraining(s => s.sandbox);
+  const demo = useDemo(s => s.active); // Demo mode (F8) has no overlay or dock, but the card terminal is the practice one here too
   const navRef = useRef(nav); navRef.current = nav; const winRef = useRef(win); winRef.current = win;
   const ev = useRef(mutable()); const key = useRef(''); const busy = useRef(false); const nextTap = useRef(false); const sig = useRef(''); const leaving = useRef(false); const kickRef = useRef<(() => void) | null>(null);
   const base = useRef<TrainSnap | null>(null); const stray = useRef<StrayTracker>(freshStray());
@@ -168,7 +170,7 @@ export default function TrainingHost({ children }: { children: React.ReactNode }
 
   return (
     <View style={{ flex: 1 }}>
-      <View style={{ flex: 1 }}>{children}{sandbox ? <PracticeTerminal /> : null}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
+      <View style={{ flex: 1 }}>{children}{sandbox || demo ? <PracticeTerminal /> : null}{sandbox ? <Enter from="none" duration={420} pointerEvents="box-none" style={{ position: 'absolute', left: 0, top: 0, right: 0, bottom: 0 }}><TrainingOverlay layer={ROOT_LAYER} /></Enter> : null}</View>
       {sandbox ? <TrainingDock /> : null}
       <Veil />
     </View>
