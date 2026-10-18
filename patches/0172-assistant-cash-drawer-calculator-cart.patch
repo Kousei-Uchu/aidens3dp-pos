@@ -1,0 +1,1101 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index 0ca71a6..852faeb 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,8 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 25 (18 October 2026), patch 0172:** patch 8 is built: the cash drawer status, the calculators and the current cart, as `cash_drawer`, `cash_calculator` and `current_cart` (3.2 tools 8, 13 and 11), in `src/lib/assistantCash.ts` with `assistantCashIO.ts` taking the snapshot when the question is asked. Decided here, and the owner may want to change any of them: **(1) One calculator tool with three kinds** (change, split, float), to keep the definitions small. **(2) All three are for every role,** because the drawer and cart are open to every role in the app graph. **(3) Nothing personal is copied:** no staff names or ledger notes, no gift card code or recipient, no customer, cart note or tender. The cart gives a warning's title, not its text. **(4) A warning set to queue is counted, not listed as blocking,** because only warnings set to show at Charge pop up before payment. **(5) The tools need the snapshot,** which is null on practice data, so the calculators are off in practice mode as 3.7 says. **(6) The float suggestion uses today's ledger takings** (or an amount given) and the same `recommendFloat` as the Daily float report. **(7) Context cost:** the prompt and tool definitions now take about 5,300 tokens for a cashier at the default context of 8000, leaving about 700 for the chat. The owner may want a larger default or shorter older descriptions before patch 9. The prompt now says eighteen tools for a cashier and nineteen for a manager or an owner. Next: patch 9, the practice mode coach.
++
+ **Revision 24 (18 October 2026), patch 0169:** patch 10 is built: the settings reader and the app and sync status tool, the last two tools in 3.2 (tools 12 and 15), as `read_settings` and `app_status`, in `src/lib/assistantStatus.ts` (pure), with `src/lib/assistantStatusIO.ts` taking the snapshot from the store when the question is asked. `read_settings` returns the register's non-secret settings in groups (register and Shopify, checkout and card fees, receipts, staff and price adjustment limits, display and screensaver) and, for a person who may see them, the AI assistant options. `app_status` returns the app version and build, the sync state and how long ago it finished, the outbox (sales waiting, stuck ones, the oldest, up to three distinct errors), the card reader, whether Shopify is connected and a receipt page is set up, the catalogue's size and import time, and the last five notices of kinds sync, queue, stock, reader and info. Decided here, and the owner may want to change any of them: **(1) The settings reader is only for a role that can open Settings (manager or owner),** and is left out of the request for a cashier, as 3.4 says. This needed two small pieces of shared code: tools can carry `roles` (`toolsFor(role)`, which `makeToolSet` applies even to a tool list handed in), and the prompt is built from the names of the tools offered (`buildSystemPrompt` takes them), so a cashier's prompt never names or counts the settings tool. A cashier that somehow calls it gets exactly what an unknown tool gets. **(2) The AI assistant group of settings follows the Settings row:** it is only in the answer for an owner, or a manager when the team has no owner (`canEditAdjustPerms`), and it holds the model name, whether the address is local or remote, the numbers and the seven privacy choices in words, never the address or the key. **(3) No secret can get in, because it is never copied.** The builders receive the settings but copy only yes or no and plain values: web addresses (receipt server, pass server, gift claim page, model address, logo), PINs and badge hashes, staff names, the ABN, address, phone and email on receipts are reported as *set* or left out. Counts of owners, managers and cashiers are given, not names (staff names are customer details, Revision 19). The Shopify store's own domain is included when connected. **(4) The reader's ready state counts as the app's own state, not as a terminal detail.** The rules table in 3.1 never sends terminal details, but 3.2 tool 15 asks for whether the terminal is connected. The tool gives *ready or not* and the message the till already shows (for example *Reader offline - no internet*), and never a terminal id, card attempt, amount or reference. Both tools' fields are `shop` data in the gate, so the owner's *Shop data* toggle can still switch them off. **(5) There is no printer to report.** 3.2 tool 15 mentions the printer, but the app has no printer connection (receipts go by QR code and email), so the tool says that in its note and the receipt page being set up is reported instead. **(6) Errors are scrubbed twice.** Each message is cut to one line of 160 characters with web addresses replaced by [address], then the gate masks emails, phone numbers, card numbers and keys as for every other tool. Notice bodies are never read, and refund and pass notices are left out because they name customers and staff. **(7) Both are snapshots,** taken when the question is asked, like the time and the screen context, so a tool cannot read or write the app. On practice data the snapshot is empty and the tools say they could not read the till (a second lock behind the practice mode block). The prompt now says fifteen tools for a cashier and sixteen for a manager or an owner. Patch 10 finishes the tool list; what is left in 3.10 is patch 8 (cash drawer, calculators and current cart) and patch 9 (practice mode coach). Next: patch 8, or patch 9.
+ 
+ **Revision 23 (18 October 2026), patch 0167:** the screen and register context tool, `screen_context` (3.2 tool 10), the last tool of patch 4 in 3.10. It tells the model which tab or page the person was on when they opened the chat, their role, their display mode and the tabs that mode shows, whether checkout is the guided one, whether practice mode is on and the register's name. The chat screen reads these once, when the question is sent, and the tool only returns that snapshot (`src/lib/assistantContext.ts`, with the tool defined beside the others in `assistantTools.ts`). Decided here, and the owner may want to change any of them: **(1) Where the person is means the page under Help and the chat,** found by skipping those two on the navigation stack, because the chat is itself a page. **(2) A page the graph cannot name is reported as one the till cannot name,** never as the tab under it, and a page the role cannot reach gets exactly the same answer, through the same filter as `search_screens` (3.4). **(3) Windows are not reported.** The chat sits above any window, and the app only tracks open windows in practice mode, where the chat is off. **(4) No ids and nothing personal.** Every field is shop data, and the staff member's name is left out because staff names are customer details (Revision 19). **(5) The display mode is reported by name and by the tabs it shows,** not its text size or its plain-English lines, because the tabs are what change what to tap. **(6) The guides are unchanged and still start from the Checkout tab.** Planning a walk from the current screen, or from a mode that hides rows in More (Minimal), is not done and would be its own patch. **(7) Most people reach the chat through More ▸ Help, so it will usually say they were on the More tab.** A page is only named when Help was opened from that page, for example from a Help button on an error message. Saying which tab they were on before More would need the navigation to remember it, which this patch does not change. The prompt now says fourteen tools. Next: unchanged, patch 8 (cash drawer, calculators and current cart), patch 9 (practice mode coach), or patch 10 (settings reader and app and sync status).
+@@ -216,12 +218,12 @@ Built in 0163: the sales, order, deal, customer and gift card tools (patch 7), t
+ Built in 0164: the product and stock tools (patch 6, `find_products` and `stock_levels`), and the model-free product and stock lookup in the offline mode (3.3).
+ Built in 0166: the date and time tool (`current_time`). Built in 0167: the screen and register context tool (`screen_context`).
+ Built in 0169: the settings reader (`read_settings`, owner and manager only) and the app and sync status tool (`app_status`), with tools limited by role (patch 10).
++Built in 0172: the cash drawer, cash calculator and current cart tools (patch 8).
+ 
+ Still to do:
+ 
+ - Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
+   before anything reaches the model or the screen. Tools are now filtered by role too (0169, `toolsFor`).
+-- The read-only tools still to build (3.2): cash drawer, calculators and current cart (patch 8).
+ - The practice mode coach (3.7).
+ - Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 8 to 10). The gate exists (0161), so no tool may be added without a map.
+ - The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
+@@ -539,7 +541,7 @@ chat screen patch can add streaming.
+    tools yet.
+ 6. **Done (0164).** Product and inventory tools through the gate (`find_products`, `stock_levels`), then the model-free product and inventory lookup in offline mode.
+ 7. **Done (0163).** The remaining data tools: sales history and report summaries (`sales_report`), orders (`find_orders`), deals (`list_deals`), customers (`find_customers`) and gift cards (`gift_card_activity`, with no balance, see Revision 19).
+-8. Cash drawer status, calculators and current cart.
++8. **Done (0172).** Cash drawer status, calculators and current cart (as `cash_drawer`, `cash_calculator`, `current_cart`).
+ 9. Practice mode coach (3.7).
+ 10. **Done (0169).** Settings reader and app and sync status (as `read_settings`, owner and manager only, and `app_status`). (The "Guide me there" highlight arrows were built in 0162, as the guide tool.)
+ 
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 54bf917..6b941b9 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -895,3 +895,18 @@ Set up: the latest build, on a normal till (whatever you have open is fine). Bef
+ 8. **Most important:** leaving puts everything back. Leave with **Leave** on the top bar (or **More ▸ Leave demo mode**). Pass: the bar disappears and your real till returns exactly as at step 2: same cart, same drawer, same sales, with no demo sale added. Force-quit and reopen the app. Pass: no demo data appears; it is your normal till.
+ 
+ Tell me: whether the Demo mode home is easy to find and read, anything that looked too much like your real data, and whether any virtual part (card, scanner, drawer, receipt) still touched the real thing instead.
++
++## T69. Assistant cash drawer, calculator and cart tools (0172)
++
++On the iPad, with the model set up as in T55. Open the drawer with a float first (More, Cash drawer).
++
++1. Ask *What should be in the drawer?* Pass: the expected amount matches **More, Cash drawer**, and it lists the notes and coins that screen shows.
++2. Take a cash sale, then ask *What are today's cash takings?* Pass: the figure matches the Daily float report.
++3. Ask *What change do I give for $23.45 if they hand me $50?* Pass: $26.55, with notes and coins that add up. Turn cash rounding on and ask for $23.47. Pass: it rounds the amount due to $23.45 first.
++4. Ask *Split $100 three ways.* Pass: $33.34, $33.33 and $33.33, matching the split sheet in Pay.
++5. Ask *What should I bank today?* Pass: the answer is close to the Daily float report's suggestion.
++6. Put two items in the cart, add a cart warning that must be ticked, then ask *Why won't this sale go through?* Pass: it names the warning and says it must be ticked. Set the warning to queue and ask again. Pass: it no longer says the sale is blocked.
++7. Add a gift card line with a recipient email, then ask *What is in the cart?* Pass: the gift card shows only as a gift card with its amount, with no code or email.
++8. Ask *Open the drawer for me* and *Remove the first item from the cart.* Pass: it does neither and says it can only read.
++9. As a cashier, repeat steps 1 and 6. Pass: both answer.
++10. **Most important:** turn on practice mode. Pass: sending is still blocked, and the real drawer and cart are untouched.
+diff --git a/docs/DEVICE_TEST_GUIDE.html b/docs/DEVICE_TEST_GUIDE.html
+index 2635f0c..2236426 100644
+--- a/docs/DEVICE_TEST_GUIDE.html
++++ b/docs/DEVICE_TEST_GUIDE.html
+@@ -314,7 +314,7 @@
+     <div class="callout"><strong>Report back in one line per test: pass, fail or awkward</strong>, plus anything you saw. A screenshot is welcome but never required. Use the Pass / Fail / Awkward choice at the top of each test for that one line.</div>
+   </header>
+   <nav class="toolbar" aria-label="Guide controls">
+-    <div class="legend" id="progress" aria-live="polite">0 of 486 steps ticked</div>
++    <div class="legend" id="progress" aria-live="polite">0 of 496 steps ticked</div>
+     <div class="toolbar-actions">
+       <span class="save-status" id="saveStatus" aria-live="polite">Saved in this browser</span>
+       <button id="printBtn" type="button">Print</button>
+@@ -7132,6 +7132,137 @@
+         </div>
+         <div class="tellme"><strong>Tell me:</strong> whether the Demo mode home is easy to find and read, anything that looked too much like your real data, and whether any seam (card, scanner, drawer, receipt) still touched the real thing.</div>
+       </section>
++
++      <section class="test assistant" id="t69" aria-labelledby="t69-title">
++        <div class="test-head">
++          <span class="test-tag">T69</span>
++          <h2 id="t69-title">Assistant cash drawer, calculator and cart tools (0172)</h2>
++        </div>
++        <div class="intro-lines">
++          <p>On the iPad, with the model set up as in T55. Open the drawer with a float first (More, Cash drawer).</p>
++        </div>
++        <div class="result-row">
++          <span class="result-label">This test:</span>
++          <div class="options">
++            <label><input type="radio" name="result-t69" value="pass" data-key="t69-result"> Pass</label>
++            <label><input type="radio" name="result-t69" value="fail" data-key="t69-result"> Fail</label>
++            <label><input type="radio" name="result-t69" value="awkward" data-key="t69-result"> Awkward</label>
++            <label><input type="radio" name="result-t69" value="not tried" data-key="t69-result"> Not tried yet</label>
++          </div>
++        </div>
++        <div class="steps">
++          <article class="step" data-step="t69-step-1">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-1-done" aria-label="Step 1 done">
++              <span class="step-num">1.</span>
++              <span class="step-text">Ask <em>What should be in the drawer?</em> Pass: the expected amount matches <strong>More, Cash drawer</strong>, and it lists the notes and coins that screen shows.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-1-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-2">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-2-done" aria-label="Step 2 done">
++              <span class="step-num">2.</span>
++              <span class="step-text">Take a cash sale, then ask <em>What are today's cash takings?</em> Pass: the figure matches the Daily float report.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-2-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-3">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-3-done" aria-label="Step 3 done">
++              <span class="step-num">3.</span>
++              <span class="step-text">Ask <em>What change do I give for $23.45 if they hand me $50?</em> Pass: $26.55, with notes and coins that add up. Turn cash rounding on and ask for $23.47. Pass: it rounds the amount due to $23.45 first.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-3-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-4">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-4-done" aria-label="Step 4 done">
++              <span class="step-num">4.</span>
++              <span class="step-text">Ask <em>Split $100 three ways.</em> Pass: $33.34, $33.33 and $33.33, matching the split sheet in Pay.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-4-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-5">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-5-done" aria-label="Step 5 done">
++              <span class="step-num">5.</span>
++              <span class="step-text">Ask <em>What should I bank today?</em> Pass: the answer is close to the Daily float report's suggestion.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-5-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-6">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-6-done" aria-label="Step 6 done">
++              <span class="step-num">6.</span>
++              <span class="step-text">Put two items in the cart, add a cart warning that must be ticked, then ask <em>Why won't this sale go through?</em> Pass: it names the warning and says it must be ticked. Set the warning to queue and ask again. Pass: it no longer says the sale is blocked.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-6-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-7">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-7-done" aria-label="Step 7 done">
++              <span class="step-num">7.</span>
++              <span class="step-text">Add a gift card line with a recipient email, then ask <em>What is in the cart?</em> Pass: the gift card shows only as a gift card with its amount, with no code or email.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-7-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-8">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-8-done" aria-label="Step 8 done">
++              <span class="step-num">8.</span>
++              <span class="step-text">Ask <em>Open the drawer for me</em> and <em>Remove the first item from the cart.</em> Pass: it does neither and says it can only read.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-8-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-9">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-9-done" aria-label="Step 9 done">
++              <span class="step-num">9.</span>
++              <span class="step-text">As a cashier, repeat steps 1 and 6. Pass: both answer.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-9-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t69-step-10">
++            <label class="step-head">
++              <input type="checkbox" data-key="t69-step-10-done" aria-label="Step 10 done">
++              <span class="step-num">10.</span>
++              <span class="step-text"><strong>Most important:</strong> turn on practice mode. Pass: sending is still blocked, and the real drawer and cart are untouched.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t69-step-10-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++        </div>
++      </section>
+     </div>
+   </main>
+   <section class="global-notes" aria-labelledby="global-notes-title">
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 8c46d67..3eb1b4a 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -153,6 +153,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0151 | 2026-10-17 | AI assistant, patch 2 of 10 (your request): **Help ▸ sparkles button ▸ Ask the assistant**, a plain chat with the model set up in Settings ▸ AI assistant (new route `assistant`, `src/screens/Assistant.tsx`, logic in `src/lib/assistantChat.ts`). **No tools yet**, so the model knows nothing about the shop and says so. Short answers by default scaled to the question, a **More detail** button, reply in the language the cashier writes in, and em and en dashes taken out of replies in code. History is kept on the iPad **per staff member** (`assistant.history.v1.<staff id>` through `kv.ts`, never synced, not in backups), newest 200, cleared only by the bin button; only the newest messages that fit the **Context size** go to the model (a quarter kept free for the reply). A **small scrubber** hides email addresses, phone numbers (Australian and `+` numbers), Luhn valid card numbers and keys on everything typed and again on old history at send time, on every endpoint; the cashier's message is stored already scrubbed with a line saying what was hidden. A banner names each failure (not set up, cannot reach, took too long, key rejected, model not found, wrong address, server problem, odd reply) with **Retry** where it can help, **Open model settings** for people who may edit the settings and *ask the owner or a manager* for everyone else, plus a *still working* line after 5 seconds. **Sending is blocked in practice mode.** The Help button shows only to people who may edit the assistant settings (`ASSISTANT_OPEN_TO_ALL` in `assistantChat.ts`, to be flipped by the audit log patch) and never on the sign in screen. Settings can now open straight onto a page (`open`), the navgraph has `page_assistant` and the `help.assistant` spot. Help page `settings/ask-assistant` (new), `settings/assistant` updated, `help.json` and the graph rebuilt. Tests: new `tests/assistantchat.test.ts` (21). Device test T52. Not added: tools, offline search, audit log, role filtering, streaming (later patches in the plan) | your request |
+ | 0152 | 2026-10-17 | AI assistant, patch 3 of 10, first half (your request): the **conversation log**, recording only. Every exchange with the model is written on the iPad, never synced and not in backups: who asked (name and role then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log has them), a checksum of the exact request, what the scrubber hid by category, and failed requests as errors. One file a day in a **hidden app folder** (`Library/Application Support/assistant-log/`, not Documents, so Files.app cannot see it), finished months packed into gzip, a 200 MB cap that **removes the oldest files and writes a purge line** instead of blocking sending (`assistantLog.ts` logic, `assistantLogIO.ts` folder). The key never reaches a line. A log that cannot be written never stops the answer: a red line tells the cashier to tell a manager. Nothing is logged in practice mode. The chat says conversations are logged for the manager. `ask` was split into `prepare` and `runPrepared` so a failed request can be logged. **The viewer, export, clear, the cap setting and opening the chat to everyone are 0153.** Tests: `tests/assistantlog.test.ts`. Device check: `docs/DEVICE_TESTS.md` T53. |
+ | 0170 | 2026-10-18 | **E1 done: the Gift-card and Receipt Workers are styled like the storefront and the Docs site.** Both pages now load the same Instrument Sans from your CDN, show the same logo above the content, sit on the same dark plum background (`#13111c`) with peach text (`#efd8c9`) and the same card, line and soft-fill colours, and their buttons are pills (`border-radius:100px`), with the accent cream `#fae9dc` for the main button and the orange `#fb873f` for errors, exactly as the Docs site (patch 0059) has them. The claim form (`gift-claim-server/src/claim.ts`) is a plum page with a card holding the form and a plum-on-cream submit pill. The receipt page (`receipt-server/src/render.ts`) brands the chrome around the invoice: the plum page, the logo header, and the Download PDF / Save as image / Print bar with pill buttons. **The invoice itself stays white and printable**, because it is a tax invoice and the PDF and PNG are drawn separately on white; the print rule hides the header and the bar, so nothing branded reaches paper. The receipt's error pages use the same tokens. Both Workers' Content-Security-Policies now allow the logo image and the font from `www.aidens3dp.com` and nothing else. Tests: `tests/receipt.test.ts` (7) and `tests/giftclaim.test.ts` (7) pass. **Decided without you, change any you disagree with:** the paper stays white for printing rather than going plum; only the page around it is branded. Not tried on a real iPad. | E1 |
++| 0172 | 2026-10-18 | AI assistant, patch 8 (your request, "work on the next task"): **the cash drawer, calculator and current cart tools**, from the plan's tool list (3.2 tools 8, 11 and 13). `cash_drawer` says whether the shared drawer is open, the float, cash sales since opening, paid in and out, what it should hold, the notes and coins the ledger says are in it, today's takings and the last five movements. `cash_calculator` does change (with cash rounding, and from the drawer where it can), split payments and a float suggestion, using the app's own rules. `current_cart` gives the priced lines, discounts, total, price checks and the warnings set to show at Charge, so it can answer why a sale will not go through. All three are read only and every role has them. They read a snapshot taken when the question is asked (`assistantCashIO.ts`), empty on practice data. No staff name, ledger note, gift card code or recipient, customer, note or payment detail is copied into a result. Files: `src/lib/assistantCash.ts`, `src/lib/assistantCashIO.ts`; `assistantTools.ts` (`cash` in the context), `assistantChat.ts` (prompt), `Assistant.tsx`. Help page `settings/ask-assistant` updated, `help.json` rebuilt, plan revision 25. Tests: `tests/assistantcash.test.ts` (31), pinned tool counts now eighteen for a cashier and nineteen for a manager or owner. Device test T69. **Decided without you, change any you disagree with:** one calculator tool with three kinds, not three tools; a warning set to queue is counted, not listed as blocking; the cart answer gives a warning's title and not its text; all three tools need the snapshot, so they are off on practice data (plan 3.7). **Worth knowing:** the tool definitions and prompt now take about 5,300 of the default 8000 context for a cashier, leaving about 700 for the chat, so raise the context size or shorten older tool descriptions before patch 9. Not tried on a real iPad. Not in this patch: the practice mode coach (patch 9) |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `docs/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/docs/WRITING_ASSISTANT.md b/docs/WRITING_ASSISTANT.md
+index 5409888..6a08579 100644
+--- a/docs/WRITING_ASSISTANT.md
++++ b/docs/WRITING_ASSISTANT.md
+@@ -54,6 +54,10 @@ The assistant must follow the same style rules as the rest of the app (Australia
+ The tool list has since grown, and the plan, decisions and patch order are in `docs/AI_ASSISTANT_PLAN.md`. The read-only
+ rule and the style rules above are unchanged.
+ 
++Patch 0172 added the cash drawer, cash calculator and current cart tools. They only read a snapshot taken when the question is
++asked, never open, count or change the drawer, never edit the cart, and copy no staff name, ledger note, gift card code,
++customer or payment detail. The calculators do the sums so the model never does.
++
+ Patch 0163 added the shop data tools (sales report, find orders, deals, customers, gift card activity). They read only what is
+ saved on the till (the spec's "local CSV export" is the same data as the till's own sales records), never ask Shopify live, and
+ never return a gift card balance, because that lives at Shopify. Every result passes through the data gate first.
+diff --git a/help/help.json b/help/help.json
+index 052f977..e0a2f60 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "0b526269",
++ "version": "35102ad6",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1449,10 +1449,16 @@
+    "id": "settings/ask-assistant",
+    "title": "Ask the assistant",
+    "parent": "settings/assistant",
+-   "summary": "Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers, gift cards and how the till is doing, what is kept, and what is hidden before anything is sent.",
++   "summary": "Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers, gift cards how the till is doing, the cash drawer, the sale in progress and cash sums, what is kept, and what is hidden before anything is sent.",
+    "tags": [
+     "AI",
+     "assistant",
++    "cash drawer",
++    "change",
++    "split payment",
++    "float",
++    "cart",
++    "charge",
+     "chatbot",
+     "chat",
+     "ask",
+@@ -1484,9 +1490,9 @@
+    "updated": "2026-10-18",
+    "lead": "Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].",
+    "sections": {
+-    "basic": "### What it can do\nType a question and tap the round **Send** arrow beside the box. While the chat is empty it also offers a few questions to start with: tap one to ask it. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### How replies look\nThe assistant's replies are laid out the way it writes them: headings, **bold** and *slanted* words, bullet and numbered lists, tables and boxes of code. A small round badge marks each of its messages, and the time is shown under each message. Press and hold on a reply to select and copy its words. Links are never tappable in a reply: if it names a page or a screen, use the button under the reply instead.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### Guide me to a screen\nAsk to be shown or walked to a screen (*Show me how to get to Reports*) and the reply can have a **Guide me to Reports** button. Tap it and the till goes to the Checkout tab and points at each button to tap, one at a time: a glowing ring on the button, and a small card that says what to do and which step you are on. Tap the button it points at, and it moves on to the next. When you arrive the card says *You are there*. It never dims the screen and never stops you tapping anything else. If you are already part of the way there, it picks up from where you are. Tap **Stop** on the card at any time. If it cannot see the next button (you went somewhere else), the card says so and you can go back to the Checkout tab or tap **Stop**. Only one guide runs at a time, it ends by itself after ten minutes, and it ends if someone else signs in. It only offers a guide to screens your role can reach, and to the others it says it could not find anything, just as it does for a screen that does not exist. A window that opens on top of something else, such as the refund window, has no guide, because the ring cannot be drawn above a window. The reply gives you the taps in words instead. A few pages have no guide either, because the button on the way to them cannot be pointed at (an item in the Items list, or Start on a training lesson). The Checkout tab has none, because that is where every guide starts.\n\n### It knows where you were\nWhen you open the chat from a page, it knows which tab or page that was, and how your till is set up: your role, your display mode and which tabs that mode shows. So *What is this screen for?* is answered about the page you came from, and it will not tell you to tap a tab your mode hides. It cannot see what is on the page, such as the items in the cart, or which window was open on top of it. If it cannot tell which page you were on, it says so.\n\n### Ask about the shop's figures\nAsk things like *How much is the red Highland Cow, and how many do we have?*, *What is low on stock?*, *How much did we sell today?*, *How many Tadlings did we sell this month?*, *Find order 1042*, *What deals are on right now?*, *Find the customer Priya* or *Which gift cards did we sell this week?* The assistant looks at what is saved on **this till** and answers from that. It does not add anything up itself: sales totals come already added up, the same way the **Reports** page adds them. It tells you plainly when nothing matched. It also knows today's date and the time from the iPad's clock, so *yesterday*, *this week* and *this month* mean the right days.\n\nGood to know:\n- It only knows this till. The sales and refunds it can find are the latest 2000 saved here, and the totals it reports are this till's plus any imported Square history. Other tills are not included, so a total here can be lower than Reports when other tills are selling.\n- A gift card's **remaining balance** is not something it can look up. Use the **Gift cards** screen for that. It can tell you which cards were sold and paid with on this till.\n- Products, prices and stock come from the catalogue saved on this iPad, so stock is as of the last sync. It is not a live look at Shopify. A product that is not tracked is listed as *Not tracked*, and a draft or archived product is only found when you ask for it.\n- What it is allowed to read depends on the shop's privacy rules (see **What the assistant may see** in [[settings/assistant]]). When something is hidden, it says it cannot show it. With a model that is not on the shop's own network, that means customer names, emails and phone numbers, staff names, gift card codes and how an order was paid. What was sold, the prices and the totals are still available.\n\n### Ask how the till is doing\nAsk things like *Is the till syncing?*, *Why is this not updating?*, *How many sales are waiting to upload?*, *When did the catalogue last import?* or *Is the card reader ready?* The assistant reads the same status the till already shows on **Support & diagnostics** and in **Notifications**: whether it is syncing and when it last did, how many sales are waiting to upload and whether any need a person, whether the card reader is ready, whether Shopify is connected, when the catalogue was last imported, and the latest problems in plain words. It cannot fix anything or sync for you. It can tell you which screen to open, and a **Guide me** button can point you to it.\n\nGood to know:\n- It describes the till as it was when you asked. Ask again after you tap **Sync now** to see what changed.\n- Card payments and receipts are not listed, and there is no printer connection in this app to report on.\n- Problems are shown as one short line each, with web addresses taken out. Emails, phone numbers, card numbers and keys in them are hidden the same way as everything else it reads.\n\n### What it cannot do\nIt never changes anything: no prices, refunds, carts, stock, customers or settings. It only answers.\n\n### If it does not answer\nA red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.\n\nBelow your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.",
+-    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### What shop data it can see\nSeven tools read the shop's data, all from what is saved on this iPad:\n- **Find products**: a product or variation by name, SKU, barcode or category, with its price and stock in the same words as the Stock check tile (*In stock*, *Out of stock*, *Not tracked*, *oversold*). Ask for detail and it adds SKU, barcode, the usual price, cost, tags, categories and the deals that could apply, for up to three products.\n- **Stock levels**: what is low, out of stock, oversold or not tracked, for the whole catalogue or one category, with the counts already added up. *Low* is the same as the low filter on the Inventory tab: 2 or fewer, which includes out of stock.\n- **Sales report** for a period (today, yesterday, this week, last month, or two dates): orders, discounts, refunds, net sales, takings by payment method, top items and categories, cost and profit, and the sales by each staff member where names may be sent. It can also count how many of one item were sold.\n- **Find orders**: the newest ten sales and refunds that match an order number, an item, a customer or some dates. Ask for detail and it gives the items, prices, deals, price adjustments and notes of up to three.\n- **Deals**: the bundle deals, automatic discounts and manual discounts, what each does and whether it is running now.\n- **Find customers**: by name, email or phone, with their order count and spending as last synced.\n- **Gift card activity**: cards sold and payments made with a card, filtered by the last four or more characters of a code.\n\nEvery answer from these goes through the privacy check before the model sees it, and the conversation log shows what the model was given and how many items were hidden.\n\n### What it can see about the till itself\nOne more tool, **app status**, reads how the till is doing, from what is saved on this iPad and in the app right now: the app version and build, the sync state and when it last finished, how many sales are waiting to upload (and how many are stuck and need a person), the oldest one waiting and up to three different error messages, whether the card reader is ready and what it says, whether Shopify is connected, whether a receipt page is set up, how many variations the catalogue holds and when it was last imported, and the last five notices about syncing, the queue, stock, the reader and general information. Refund and pass notices are left out because they name customers and staff. It does not read any sale, any card attempt, or any notice's body. Every role can use it, because Support & diagnostics is open to every role.\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
+-    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the guide works\nThe model asks for the button with the `show_guide` tool, giving a screen id from `search_screens` (which marks the screens that can be guided with `can_guide`). The app checks it for your role exactly as it does for `show_link`, so a screen you cannot reach gets the same answer as one that does not exist. Each screen carries its walk: the controls to tap from the Checkout tab, read from the same graph that gives the plain words, with the words said at each tap. A screen gets no walk if any tap has no control or no words, if the control is not a real spot in the till, or if the walk goes into a window. The ring does not remember where you are: several times a second it looks at which controls of the walk are on screen and points at the last one, so tapping something else or starting part of the way along both work. A guide to a tab or a page ends when you arrive there. A guide to a view of Checkout (such as Keypad) ends when one of that view's own controls is on screen, or when you tap the last control. The ring and card are drawn on the main screen only, never inside a window. The guide changes nothing: it only points. Code: `src/lib/assistantGuide.ts` (the rules and the one active guide, tested), `src/ui/AssistantGuide.tsx` (the ring and card), `walk` of each screen in `src/lib/assistantScreens.ts`, `resolveLink` and `show_guide` in `src/lib/assistantTools.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### The offline list\nSince 0164 the list also shows **products** (price, stock, and a line for each variation) and a **low, out of stock or oversold** list when your question asks for one, for example *what is low on stock* or *red highland cows*. These use the same lookups as the model's product tools, from the catalogue on this iPad, so they work with no connection at all. The words of a question that are not part of a product name (*how many*, *do we have*, *price*, *stock*) are left out of the search; with one or two words all of them must match, and with three or more half is enough. Only active and unlisted products are listed, and nothing is shown in practice mode. The list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens, help pages and products it found and why the model was not used.\n\n### How the product and stock tools work\nThey are in `src/lib/assistantProducts.ts` and use the till's own rules, so the assistant cannot say *low* or *out* differently from the screen: `stockText` from `src/lib/lookup.ts` for the words, and `filterVariants`, `matchesStock` and `sortVariants` from `src/lib/inventoryView.ts` for the filters. `dealsFor` from `lookup.ts` gives the deals that could apply. A search needs every word to match the name, variation, SKU or barcode, as the Inventory search box does. When only some variations of a product match, only those are shown and there is no total for the product, so a total never covers more than it says. Product, price, stock, SKU, barcode and deal fields are *shop data* in the gate; the cost price is *costs and profit*, so it goes out only where that is allowed and is never in the summary form. Not tracked is stock `null` in the catalogue, and stock can be negative (oversold) by design.\n\n### How the shop data tools work\nEach tool is a plain function over a snapshot taken when you ask the question (`takeAssistantData` in `src/lib/assistantDataIO.ts`): this till's sales (the latest 2000), the daily totals saved here (this till's, any sales in the outbox not yet counted, and imported Square history), the customers, the deals and the catalogue names. They are handed nothing that can write, and a test freezes the snapshot to prove they do not change it. Money is returned as text such as $12.50 so a small model never reads cents. Each tool declares a field map that puts every field it can return into a privacy category, and the data gate removes or masks what the endpoint may not receive. A tool also never matches on something the model may not read: a customer is not found by name when names are hidden, and a gift card is not found by code when codes are hidden, because a match would tell the model who bought what. When names and emails are both hidden, a customer search returns an empty list and the privacy note, exactly as it does for a customer who does not exist. How an order was paid is treated as a payment detail and is never sent. Card details are never put in a result at all. On practice data the snapshot is empty, which is a second lock behind the practice mode block. Code: `src/lib/assistantData.ts` (the queries, tested), `src/lib/assistantDataTools.ts` (the tool definitions and field maps), `src/lib/assistantDataIO.ts` (the snapshot).\n\n### How the screen context works\nThe chat screen reads the navigation and your display mode once, at the moment you send a question (`registerContext` in `src/lib/assistantContext.ts`), and the `screen_context` tool hands that snapshot back. The tool never reads the app itself and has nothing that can write. The last pages on the navigation stack are Help and the chat, so they are skipped to find the page you were on (`standingOn`), and the app graph names it (`screenOfRoute` in `src/lib/appGraph.ts`, the same route table training uses). A page the graph does not know is reported as one it cannot name, and the tab under it is not used in its place, because that would say the wrong screen. The page is looked up among the screens your role may reach, so a page your role cannot reach gets exactly the answer a page it cannot name gets. No ids are returned. Every field is *shop data* in the gate and none is personal, so nothing is hidden on any address. Windows are not reported: the list of open windows is only filled in during practice mode, where the chat is switched off. The guides still always start from the Checkout tab. The tool tells the model where you are, but the walks are not yet planned from your current screen.\n\n### How the status tool works\n`app_status` is in `src/lib/assistantStatus.ts`. `takeTillState` (`src/lib/assistantStatusIO.ts`) reads the store once when a question is sent, and `buildStatusView` turns it into a short list of plain values: the app version and build from `react-native-device-info`, `sync` and `zeller` from the store, the outbox (count, blocked items, oldest, distinct errors), the notices of kind sync, queue, stock, reader and info, and the catalogue times. The tool only returns that view, so it cannot read or write anything else. `safeLine` makes each message one short line and replaces web addresses with `[address]`, and the data gate then scrubs emails, phone numbers, card numbers and keys. Every field is *shop data* in the gate. The reader's ready state and message count as the app's own state and not as terminal details; no terminal id, card attempt, amount or reference is ever in the view. On practice data `takeTillState` returns nothing and the tool says it could not read the till. Tests: `tests/assistantstatus.test.ts`.\n\n### Limits of this version\nThe offline list looks up products and stock, but not customers or sales yet. The tools are for the help pages, the screens, the button and guide tools, the seven shop data tools above, the date and time, where you were, and how the till is doing. There is no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
++    "basic": "### What it can do\nType a question and tap the round **Send** arrow beside the box. While the chat is empty it also offers a few questions to start with: tap one to ask it. It answers in plain words, in the language you write in. For how-to questions it looks through the till's help pages first (search, then read the best page), and answers from what it finds. For where-is-it questions it also looks through the till's screens and tells you the taps to get there, starting from the Checkout tab. If it finds nothing, it says so. It only looks at help pages and screens for things your role can use.\n\n### How replies look\nThe assistant's replies are laid out the way it writes them: headings, **bold** and *slanted* words, bullet and numbered lists, tables and boxes of code. A small round badge marks each of its messages, and the time is shown under each message. Press and hold on a reply to select and copy its words. Links are never tappable in a reply: if it names a page or a screen, use the button under the reply instead.\n\n### Buttons under a reply\nWhen it points you at a help page or a screen, it can put a button under its reply. Tap **Open Reports**, for example, and you go straight there. A help page button opens that page in Help. Back returns you to the chat. Only tabs and ordinary pages get a button. A window that opens on top of something else, such as the refund window, has no button, so the reply gives you the taps instead. Short questions get short answers. Tap **More detail** under a reply for a fuller one.\n\n### Guide me to a screen\nAsk to be shown or walked to a screen (*Show me how to get to Reports*) and the reply can have a **Guide me to Reports** button. Tap it and the till goes to the Checkout tab and points at each button to tap, one at a time: a glowing ring on the button, and a small card that says what to do and which step you are on. Tap the button it points at, and it moves on to the next. When you arrive the card says *You are there*. It never dims the screen and never stops you tapping anything else. If you are already part of the way there, it picks up from where you are. Tap **Stop** on the card at any time. If it cannot see the next button (you went somewhere else), the card says so and you can go back to the Checkout tab or tap **Stop**. Only one guide runs at a time, it ends by itself after ten minutes, and it ends if someone else signs in. It only offers a guide to screens your role can reach, and to the others it says it could not find anything, just as it does for a screen that does not exist. A window that opens on top of something else, such as the refund window, has no guide, because the ring cannot be drawn above a window. The reply gives you the taps in words instead. A few pages have no guide either, because the button on the way to them cannot be pointed at (an item in the Items list, or Start on a training lesson). The Checkout tab has none, because that is where every guide starts.\n\n### It knows where you were\nWhen you open the chat from a page, it knows which tab or page that was, and how your till is set up: your role, your display mode and which tabs that mode shows. So *What is this screen for?* is answered about the page you came from, and it will not tell you to tap a tab your mode hides. It cannot see which window was open on top of the page. For the sale in progress it uses the cart tool described below. If it cannot tell which page you were on, it says so.\n\n### Ask about the shop's figures\nAsk things like *How much is the red Highland Cow, and how many do we have?*, *What is low on stock?*, *How much did we sell today?*, *How many Tadlings did we sell this month?*, *Find order 1042*, *What deals are on right now?*, *Find the customer Priya* or *Which gift cards did we sell this week?* The assistant looks at what is saved on **this till** and answers from that. It does not add anything up itself: sales totals come already added up, the same way the **Reports** page adds them. It tells you plainly when nothing matched. It also knows today's date and the time from the iPad's clock, so *yesterday*, *this week* and *this month* mean the right days.\n\nGood to know:\n- It only knows this till. The sales and refunds it can find are the latest 2000 saved here, and the totals it reports are this till's plus any imported Square history. Other tills are not included, so a total here can be lower than Reports when other tills are selling.\n- A gift card's **remaining balance** is not something it can look up. Use the **Gift cards** screen for that. It can tell you which cards were sold and paid with on this till.\n- Products, prices and stock come from the catalogue saved on this iPad, so stock is as of the last sync. It is not a live look at Shopify. A product that is not tracked is listed as *Not tracked*, and a draft or archived product is only found when you ask for it.\n- What it is allowed to read depends on the shop's privacy rules (see **What the assistant may see** in [[settings/assistant]]). When something is hidden, it says it cannot show it. With a model that is not on the shop's own network, that means customer names, emails and phone numbers, staff names, gift card codes and how an order was paid. What was sold, the prices and the totals are still available.\n\n### Ask how the till is doing\nAsk things like *Is the till syncing?*, *Why is this not updating?*, *How many sales are waiting to upload?*, *When did the catalogue last import?* or *Is the card reader ready?* The assistant reads the same status the till already shows on **Support & diagnostics** and in **Notifications**: whether it is syncing and when it last did, how many sales are waiting to upload and whether any need a person, whether the card reader is ready, whether Shopify is connected, when the catalogue was last imported, and the latest problems in plain words. It cannot fix anything or sync for you. It can tell you which screen to open, and a **Guide me** button can point you to it.\n\nGood to know:\n- It describes the till as it was when you asked. Ask again after you tap **Sync now** to see what changed.\n- Card payments and receipts are not listed, and there is no printer connection in this app to report on.\n- Problems are shown as one short line each, with web addresses taken out. Emails, phone numbers, card numbers and keys in them are hidden the same way as everything else it reads.\n\n### Ask about the drawer, the cart and cash sums\nAsk things like *What should be in the drawer?*, *Which notes do we have?*, *Why won't this sale go through?*, *What change do I give for $23.45 if they hand me $50?*, *Split $100 three ways* or *What should I bank today?* The assistant reads the shared cash drawer and the cart on the till as they were when you asked, and does the sums with the till's own rules, so it never works out cash itself. It can say what the drawer should hold, which notes and coins the ledger says are in it, the change to give (from the drawer where it can), the payments of a split, and a float suggestion like the Daily float report. For the cart it lists the lines, discounts and total, any price adjustments waiting for a check, and any cart warning that must be ticked before payment.\n\nGood to know:\n- It only reads. It never opens, counts or changes the drawer, and never edits the cart.\n- The ledger only knows the notes and coins that were entered, so a physical count can differ. It says so when the ledger and the expected amount disagree.\n- With cash rounding on, change is worked out from the amount due rounded to the nearest 5c.\n- It never shows a gift card code or who a card is for, and the cart answer holds no customer, note or payment detail.\n\n### What it cannot do\nIt never changes anything: no prices, refunds, carts, stock, customers or settings. It only answers.\n\n### If it does not answer\nA red bar says what went wrong in plain words: not set up, cannot reach the model, took too long, key rejected, model not found. **Retry** appears when trying again could help. An owner also gets **Open model settings**. Everyone else is told to ask the owner or a manager.\n\nBelow your question it still gives you a list, headed *Model offline, showing search results.* The list is a plain search of the till's **screens** and **help pages** for the words you typed, with no model, so it is a list of matches and not an answer. For each screen it says what the screen is for and the taps to open it from the Checkout tab, with an **Open** button when the screen is a tab or a page that can be opened that way (a window cannot, so its taps are listed). Tap a help page to read it. It only lists things your role can use, and if nothing matches it says it could not find anything. This also works before the model is set up. Your next question tries the model first again, and the red bar goes when it answers. **Retry** replaces the list with the model's answer.",
++    "deep": "### What is kept\nYour messages and its replies are kept on this iPad, for you only. Each person who signs in has their own. They are not shared with other registers and are not in Backup & transfer. The newest 200 messages are kept. Tap the bin at the top to clear your own history. Nothing clears it by itself.\n\n### What is hidden before sending\nBefore anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].\n\n### The conversation log\nEvery question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.\n\nIf a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*\n\n### What shop data it can see\nSeven tools read the shop's data, all from what is saved on this iPad:\n- **Find products**: a product or variation by name, SKU, barcode or category, with its price and stock in the same words as the Stock check tile (*In stock*, *Out of stock*, *Not tracked*, *oversold*). Ask for detail and it adds SKU, barcode, the usual price, cost, tags, categories and the deals that could apply, for up to three products.\n- **Stock levels**: what is low, out of stock, oversold or not tracked, for the whole catalogue or one category, with the counts already added up. *Low* is the same as the low filter on the Inventory tab: 2 or fewer, which includes out of stock.\n- **Sales report** for a period (today, yesterday, this week, last month, or two dates): orders, discounts, refunds, net sales, takings by payment method, top items and categories, cost and profit, and the sales by each staff member where names may be sent. It can also count how many of one item were sold.\n- **Find orders**: the newest ten sales and refunds that match an order number, an item, a customer or some dates. Ask for detail and it gives the items, prices, deals, price adjustments and notes of up to three.\n- **Deals**: the bundle deals, automatic discounts and manual discounts, what each does and whether it is running now.\n- **Find customers**: by name, email or phone, with their order count and spending as last synced.\n- **Gift card activity**: cards sold and payments made with a card, filtered by the last four or more characters of a code.\n\nEvery answer from these goes through the privacy check before the model sees it, and the conversation log shows what the model was given and how many items were hidden.\n\n### What it can see about the till itself\nOne more tool, **app status**, reads how the till is doing, from what is saved on this iPad and in the app right now: the app version and build, the sync state and when it last finished, how many sales are waiting to upload (and how many are stuck and need a person), the oldest one waiting and up to three different error messages, whether the card reader is ready and what it says, whether Shopify is connected, whether a receipt page is set up, how many variations the catalogue holds and when it was last imported, and the last five notices about syncing, the queue, stock, the reader and general information. Refund and pass notices are left out because they name customers and staff. It does not read any sale, any card attempt, or any notice's body. Every role can use it, because Support & diagnostics is open to every role.\n\n### What it can see about the drawer and the cart\nThree tools read the cash drawer and the sale in progress from a snapshot taken when you ask (`takeCashState` in `src/lib/assistantCashIO.ts`). **Cash drawer** gives the shift, what it should hold, the ledger's notes and coins, today's takings and the last five movements, without staff names or notes. **Cash calculator** does change, split payments and a float suggestion, using `planChange`, `equalPlan`, `firstPlan` and `recommendFloat`. **Current cart** gives the priced lines, totals, price checks and the warnings set to show at Charge. A warning set to queue is only counted, because it goes on the warning list and never stops Charge. Every role can use all three, because the drawer and the cart are open to every role. On practice data the snapshot is empty and the tools say they could not read the till.\n\n### Practice mode\nThe assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.",
++    "advanced": "### What goes to the model\nOnly the short rules the app gives it, then as many of the newest messages as fit in the **Context size** from the AI assistant settings (a quarter is kept free for the reply). Older messages stay on the iPad for you to scroll, but are not sent. Replies have em and en dashes replaced before they are shown.\n\n### How the buttons work\nThe model asks for a button with the `show_link` tool, giving a kind (help page or screen) and an id it got from a search. The app checks the id against what your role may see, the same check the searches use, so a page or screen you cannot use gets the same answer as one that does not exist. The button is not part of the reply text: it is saved next to the reply, at most three, and it is checked again each time the chat is drawn, so if your role loses access later, the button is gone. Buttons are never sent back to the model. A button can only open a help page, a tab or a page that needs nothing else; it never opens an address on the web and never changes anything. Code: `resolveLink` and `liveLinks` in `src/lib/assistantTools.ts`, the `target` of each screen in `src/lib/assistantScreens.ts`.\n\n### How the guide works\nThe model asks for the button with the `show_guide` tool, giving a screen id from `search_screens` (which marks the screens that can be guided with `can_guide`). The app checks it for your role exactly as it does for `show_link`, so a screen you cannot reach gets the same answer as one that does not exist. Each screen carries its walk: the controls to tap from the Checkout tab, read from the same graph that gives the plain words, with the words said at each tap. A screen gets no walk if any tap has no control or no words, if the control is not a real spot in the till, or if the walk goes into a window. The ring does not remember where you are: several times a second it looks at which controls of the walk are on screen and points at the last one, so tapping something else or starting part of the way along both work. A guide to a tab or a page ends when you arrive there. A guide to a view of Checkout (such as Keypad) ends when one of that view's own controls is on screen, or when you tap the last control. The ring and card are drawn on the main screen only, never inside a window. The guide changes nothing: it only points. Code: `src/lib/assistantGuide.ts` (the rules and the one active guide, tested), `src/ui/AssistantGuide.tsx` (the ring and card), `walk` of each screen in `src/lib/assistantScreens.ts`, `resolveLink` and `show_guide` in `src/lib/assistantTools.ts`.\n\n### How the log is kept\nOne file for each day, in a folder inside the app that Files.app cannot see (`Library/Application Support/assistant-log/`, next to Documents and not inside it). A finished month is packed into one compressed file. The log has a size cap, 200 MB for now. When it is full the oldest files are removed to make room, a *purge* line is written saying how many events went and through which day, and sending is never blocked. Each line records who asked (name and role as they were then), the model and whether the address counted as local or remote, the scrubbed question, the reply, the messages sent (by id once the log already holds them, to keep it small), a checksum of the exact request, and how many items the scrubber hid in each category. The system prompt is kept once in `meta.json`. Code: `src/lib/assistantLog.ts` (logic, tested) and `src/lib/assistantLogIO.ts` (the folder). A failed request is logged too, as an error with the question that was about to be sent.\n\n### The offline list\nSince 0164 the list also shows **products** (price, stock, and a line for each variation) and a **low, out of stock or oversold** list when your question asks for one, for example *what is low on stock* or *red highland cows*. These use the same lookups as the model's product tools, from the catalogue on this iPad, so they work with no connection at all. The words of a question that are not part of a product name (*how many*, *do we have*, *price*, *stock*) are left out of the search; with one or two words all of them must match, and with three or more half is enough. Only active and unlisted products are listed, and nothing is shown in practice mode. The list is not stored. Only your question is, with a marker where a reply would be. Each time the chat is shown the list is searched again, for whoever is signed in then, so someone whose role has less access is never shown something they cannot use, even in an old chat. The model is never shown a question that only got a list, so it does not try to answer it later. A manager sees these in the conversation log as an *Offline search*, with the screens, help pages and products it found and why the model was not used.\n\n### How the product and stock tools work\nThey are in `src/lib/assistantProducts.ts` and use the till's own rules, so the assistant cannot say *low* or *out* differently from the screen: `stockText` from `src/lib/lookup.ts` for the words, and `filterVariants`, `matchesStock` and `sortVariants` from `src/lib/inventoryView.ts` for the filters. `dealsFor` from `lookup.ts` gives the deals that could apply. A search needs every word to match the name, variation, SKU or barcode, as the Inventory search box does. When only some variations of a product match, only those are shown and there is no total for the product, so a total never covers more than it says. Product, price, stock, SKU, barcode and deal fields are *shop data* in the gate; the cost price is *costs and profit*, so it goes out only where that is allowed and is never in the summary form. Not tracked is stock `null` in the catalogue, and stock can be negative (oversold) by design.\n\n### How the shop data tools work\nEach tool is a plain function over a snapshot taken when you ask the question (`takeAssistantData` in `src/lib/assistantDataIO.ts`): this till's sales (the latest 2000), the daily totals saved here (this till's, any sales in the outbox not yet counted, and imported Square history), the customers, the deals and the catalogue names. They are handed nothing that can write, and a test freezes the snapshot to prove they do not change it. Money is returned as text such as $12.50 so a small model never reads cents. Each tool declares a field map that puts every field it can return into a privacy category, and the data gate removes or masks what the endpoint may not receive. A tool also never matches on something the model may not read: a customer is not found by name when names are hidden, and a gift card is not found by code when codes are hidden, because a match would tell the model who bought what. When names and emails are both hidden, a customer search returns an empty list and the privacy note, exactly as it does for a customer who does not exist. How an order was paid is treated as a payment detail and is never sent. Card details are never put in a result at all. On practice data the snapshot is empty, which is a second lock behind the practice mode block. Code: `src/lib/assistantData.ts` (the queries, tested), `src/lib/assistantDataTools.ts` (the tool definitions and field maps), `src/lib/assistantDataIO.ts` (the snapshot).\n\n### How the screen context works\nThe chat screen reads the navigation and your display mode once, at the moment you send a question (`registerContext` in `src/lib/assistantContext.ts`), and the `screen_context` tool hands that snapshot back. The tool never reads the app itself and has nothing that can write. The last pages on the navigation stack are Help and the chat, so they are skipped to find the page you were on (`standingOn`), and the app graph names it (`screenOfRoute` in `src/lib/appGraph.ts`, the same route table training uses). A page the graph does not know is reported as one it cannot name, and the tab under it is not used in its place, because that would say the wrong screen. The page is looked up among the screens your role may reach, so a page your role cannot reach gets exactly the answer a page it cannot name gets. No ids are returned. Every field is *shop data* in the gate and none is personal, so nothing is hidden on any address. Windows are not reported: the list of open windows is only filled in during practice mode, where the chat is switched off. The guides still always start from the Checkout tab. The tool tells the model where you are, but the walks are not yet planned from your current screen.\n\n### How the status tool works\n`app_status` is in `src/lib/assistantStatus.ts`. `takeTillState` (`src/lib/assistantStatusIO.ts`) reads the store once when a question is sent, and `buildStatusView` turns it into a short list of plain values: the app version and build from `react-native-device-info`, `sync` and `zeller` from the store, the outbox (count, blocked items, oldest, distinct errors), the notices of kind sync, queue, stock, reader and info, and the catalogue times. The tool only returns that view, so it cannot read or write anything else. `safeLine` makes each message one short line and replaces web addresses with `[address]`, and the data gate then scrubs emails, phone numbers, card numbers and keys. Every field is *shop data* in the gate. The reader's ready state and message count as the app's own state and not as terminal details; no terminal id, card attempt, amount or reference is ever in the view. On practice data `takeTillState` returns nothing and the tool says it could not read the till. Tests: `tests/assistantstatus.test.ts`.\n\n### Limits of this version\nThe offline list looks up products and stock, but not customers or sales yet. The tools are for the help pages, the screens, the button and guide tools, the seven shop data tools above, the date and time, where you were, how the till is doing, and the cash drawer, cash sums and cart. There is no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent."
+    }
+   },
+   {
+diff --git a/help/settings/ask-assistant.md b/help/settings/ask-assistant.md
+index 30eb98e..9119434 100644
+--- a/help/settings/ask-assistant.md
++++ b/help/settings/ask-assistant.md
+@@ -2,8 +2,8 @@
+ id: settings/ask-assistant
+ title: Ask the assistant
+ parent: settings/assistant
+-summary: Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers, gift cards and how the till is doing, what is kept, and what is hidden before anything is sent.
+-tags: [AI, assistant, chatbot, chat, ask, history, log, audit, privacy, practice mode, sales, orders, deals, customers, gift cards, report, products, stock, inventory, price, status, sync, queue, card reader, not working]
++summary: Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers, gift cards how the till is doing, the cash drawer, the sale in progress and cash sums, what is kept, and what is hidden before anything is sent.
++tags: [AI, assistant, cash drawer, change, split payment, float, cart, charge, chatbot, chat, ask, history, log, audit, privacy, practice mode, sales, orders, deals, customers, gift cards, report, products, stock, inventory, price, status, sync, queue, card reader, not working]
+ related: [settings/assistant, settings/backup]
+ updated: 2026-10-18
+ ---
+@@ -24,7 +24,7 @@ When it points you at a help page or a screen, it can put a button under its rep
+ Ask to be shown or walked to a screen (*Show me how to get to Reports*) and the reply can have a **Guide me to Reports** button. Tap it and the till goes to the Checkout tab and points at each button to tap, one at a time: a glowing ring on the button, and a small card that says what to do and which step you are on. Tap the button it points at, and it moves on to the next. When you arrive the card says *You are there*. It never dims the screen and never stops you tapping anything else. If you are already part of the way there, it picks up from where you are. Tap **Stop** on the card at any time. If it cannot see the next button (you went somewhere else), the card says so and you can go back to the Checkout tab or tap **Stop**. Only one guide runs at a time, it ends by itself after ten minutes, and it ends if someone else signs in. It only offers a guide to screens your role can reach, and to the others it says it could not find anything, just as it does for a screen that does not exist. A window that opens on top of something else, such as the refund window, has no guide, because the ring cannot be drawn above a window. The reply gives you the taps in words instead. A few pages have no guide either, because the button on the way to them cannot be pointed at (an item in the Items list, or Start on a training lesson). The Checkout tab has none, because that is where every guide starts.
+ 
+ ### It knows where you were
+-When you open the chat from a page, it knows which tab or page that was, and how your till is set up: your role, your display mode and which tabs that mode shows. So *What is this screen for?* is answered about the page you came from, and it will not tell you to tap a tab your mode hides. It cannot see what is on the page, such as the items in the cart, or which window was open on top of it. If it cannot tell which page you were on, it says so.
++When you open the chat from a page, it knows which tab or page that was, and how your till is set up: your role, your display mode and which tabs that mode shows. So *What is this screen for?* is answered about the page you came from, and it will not tell you to tap a tab your mode hides. It cannot see which window was open on top of the page. For the sale in progress it uses the cart tool described below. If it cannot tell which page you were on, it says so.
+ 
+ ### Ask about the shop's figures
+ Ask things like *How much is the red Highland Cow, and how many do we have?*, *What is low on stock?*, *How much did we sell today?*, *How many Tadlings did we sell this month?*, *Find order 1042*, *What deals are on right now?*, *Find the customer Priya* or *Which gift cards did we sell this week?* The assistant looks at what is saved on **this till** and answers from that. It does not add anything up itself: sales totals come already added up, the same way the **Reports** page adds them. It tells you plainly when nothing matched. It also knows today's date and the time from the iPad's clock, so *yesterday*, *this week* and *this month* mean the right days.
+@@ -43,6 +43,15 @@ Good to know:
+ - Card payments and receipts are not listed, and there is no printer connection in this app to report on.
+ - Problems are shown as one short line each, with web addresses taken out. Emails, phone numbers, card numbers and keys in them are hidden the same way as everything else it reads.
+ 
++### Ask about the drawer, the cart and cash sums
++Ask things like *What should be in the drawer?*, *Which notes do we have?*, *Why won't this sale go through?*, *What change do I give for $23.45 if they hand me $50?*, *Split $100 three ways* or *What should I bank today?* The assistant reads the shared cash drawer and the cart on the till as they were when you asked, and does the sums with the till's own rules, so it never works out cash itself. It can say what the drawer should hold, which notes and coins the ledger says are in it, the change to give (from the drawer where it can), the payments of a split, and a float suggestion like the Daily float report. For the cart it lists the lines, discounts and total, any price adjustments waiting for a check, and any cart warning that must be ticked before payment.
++
++Good to know:
++- It only reads. It never opens, counts or changes the drawer, and never edits the cart.
++- The ledger only knows the notes and coins that were entered, so a physical count can differ. It says so when the ledger and the expected amount disagree.
++- With cash rounding on, change is worked out from the amount due rounded to the nearest 5c.
++- It never shows a gift card code or who a card is for, and the cart answer holds no customer, note or payment detail.
++
+ ### What it cannot do
+ It never changes anything: no prices, refunds, carts, stock, customers or settings. It only answers.
+ 
+@@ -79,6 +88,9 @@ Every answer from these goes through the privacy check before the model sees it,
+ ### What it can see about the till itself
+ One more tool, **app status**, reads how the till is doing, from what is saved on this iPad and in the app right now: the app version and build, the sync state and when it last finished, how many sales are waiting to upload (and how many are stuck and need a person), the oldest one waiting and up to three different error messages, whether the card reader is ready and what it says, whether Shopify is connected, whether a receipt page is set up, how many variations the catalogue holds and when it was last imported, and the last five notices about syncing, the queue, stock, the reader and general information. Refund and pass notices are left out because they name customers and staff. It does not read any sale, any card attempt, or any notice's body. Every role can use it, because Support & diagnostics is open to every role.
+ 
++### What it can see about the drawer and the cart
++Three tools read the cash drawer and the sale in progress from a snapshot taken when you ask (`takeCashState` in `src/lib/assistantCashIO.ts`). **Cash drawer** gives the shift, what it should hold, the ledger's notes and coins, today's takings and the last five movements, without staff names or notes. **Cash calculator** does change, split payments and a float suggestion, using `planChange`, `equalPlan`, `firstPlan` and `recommendFloat`. **Current cart** gives the priced lines, totals, price checks and the warnings set to show at Charge. A warning set to queue is only counted, because it goes on the warning list and never stops Charge. Every role can use all three, because the drawer and the cart are open to every role. On practice data the snapshot is empty and the tools say they could not read the till.
++
+ ### Practice mode
+ The assistant is switched off in practice mode, and that includes the search list. Practice mode never sends anything out, and nothing is logged.
+ 
+@@ -112,4 +124,4 @@ The chat screen reads the navigation and your display mode once, at the moment y
+ `app_status` is in `src/lib/assistantStatus.ts`. `takeTillState` (`src/lib/assistantStatusIO.ts`) reads the store once when a question is sent, and `buildStatusView` turns it into a short list of plain values: the app version and build from `react-native-device-info`, `sync` and `zeller` from the store, the outbox (count, blocked items, oldest, distinct errors), the notices of kind sync, queue, stock, reader and info, and the catalogue times. The tool only returns that view, so it cannot read or write anything else. `safeLine` makes each message one short line and replaces web addresses with `[address]`, and the data gate then scrubs emails, phone numbers, card numbers and keys. Every field is *shop data* in the gate. The reader's ready state and message count as the app's own state and not as terminal details; no terminal id, card attempt, amount or reference is ever in the view. On practice data `takeTillState` returns nothing and the tool says it could not read the till. Tests: `tests/assistantstatus.test.ts`.
+ 
+ ### Limits of this version
+-The offline list looks up products and stock, but not customers or sales yet. The tools are for the help pages, the screens, the button and guide tools, the seven shop data tools above, the date and time, where you were, and how the till is doing. There is no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
++The offline list looks up products and stock, but not customers or sales yet. The tools are for the help pages, the screens, the button and guide tools, the seven shop data tools above, the date and time, where you were, how the till is doing, and the cash drawer, cash sums and cart. There is no live look at Shopify, so a gift card balance and other tills' sales are out of reach. A request is written to the log after the model answers or fails, so if the app is closed in the middle of a request, that request leaves no line. Phone number hiding covers Australian numbers and numbers that start with a plus sign, so a number typed another way may not be caught. Do not type customer details you would not want sent.
+diff --git a/src/lib/assistantCash.ts b/src/lib/assistantCash.ts
+new file mode 100644
+index 0000000..02df3ab
+--- /dev/null
++++ b/src/lib/assistantCash.ts
+@@ -0,0 +1,258 @@
++// Location: src/lib/assistantCash.ts
++// The assistant's cash and cart tools (patch 0172, plan 3.2 tools 8, 11 and 13): `cash_drawer`, `cash_calculator` and `current_cart`.
++//
++//   cash_drawer      what the drawer should hold, what the ledger says it holds, and the last few movements. Status only.
++//   cash_calculator  change to give, a split payment, and a float suggestion, using the app's own rules. Numbers only, because a
++//                    small model does arithmetic badly. Nothing it works out is ever written anywhere.
++//   current_cart     what is in the cart on the till when the question was asked, its totals and the warnings that stand in the
++//                    way of Charge, so it can answer "why won't this sale go through".
++//
++// Nothing here reads the app. `assistantCashIO.ts` reads the store once, when the question is asked, and hands over a `CashState`
++// of plain values. The tools only read that snapshot and return numbers and words, so none of them can write: the drawer ledger, the
++// shift and the cart are never given to anything that could change them (the tests freeze the snapshot and check nothing moves).
++// No staff name, ledger note, gift card code, recipient, customer, tender or card detail is ever copied into a result.
++// Pure, so it runs in the node tests. All amounts inside are integer cents; results give money as the app writes it, like $12.50.
++import type { Cart, PricedCart } from './types';
++import { DENOMS, LEDGER_LABEL, cleanCounts, entryTotal, totalOf, type CashLedger, type Counts } from './cashLedger';
++import { greedyChange, piecesOf, planChange } from './cashSale';
++import { ledgerCashSince } from './drawerSync';
++import { equalPlan, firstPlan } from './splitPlan';
++import { recommendFloat } from './floatReport';
++import { buildProfile } from './changeScore';
++import { fmt, roundCash, toCents } from './money';
++import { flaggedLines } from './lineAdjust';
++import { orderReviewReasons } from './orderAdjust';
++import { triggerNames, warningTitle, type MatchedCartWarning } from './cartWarnings';
++import { safeLine, whenText } from './assistantStatus';
++import type { AssistantTool } from './assistantTools';
++
++// ---------- what the tools are given ----------
++/** What the drawer tools read. The real shift and ledger fit these, and a test can build them by hand. */
++export type DrawerIn = {
++  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number };
++  ledger: CashLedger;
++  /** Sales and refunds on this till, for how long a "typical day" is when the float is judged. */
++  sales: readonly { ts: string; type: string; tenders?: readonly { kind: string }[] }[];
++  /** Every item price in the catalogue, in cents, for the same reason. */
++  prices: readonly number[];
++};
++/** The cart as the till saw it, already priced, with the warnings that apply to it. */
++export type CartIn = { cart: Cart; priced: PricedCart; warnings: readonly MatchedCartWarning[] };
++/** The snapshot taken when the question is asked. `cart` is the cart on the till, which may be empty. */
++export type CashState = { now: number; /** Settings: cash rounding to the nearest 5c. */ rounding: boolean; drawer: DrawerIn; cart: CartIn };
++
++const NO_STATE = { error: 'The till\'s cash drawer and cart could not be read just now.' };
++const MAX_CENTS = 100_000_000; // $1,000,000, far above any sale and well inside a safe integer
++
++// ---------- small helpers ----------
++/** A money amount the model wrote ("12.50", 12.5 or "$1,200") as cents, or null when it is not a plain amount of zero or more. */
++export function parseMoney(v: unknown): number | null {
++  if (typeof v === 'number') return Number.isFinite(v) && v >= 0 && v <= MAX_CENTS / 100 ? toCents(v) : null;
++  if (typeof v !== 'string') return null;
++  const s = v.replace(/[$,\s]/g, '');
++  if (!/^\d+(\.\d{1,2})?$/.test(s)) return null;
++  const c = toCents(s);
++  return c <= MAX_CENTS ? c : null;
++}
++const startOfDay = (now: number): string => { const d = new Date(now); d.setHours(0, 0, 0, 0); return d.toISOString(); };
++const pct = (x: number | null): string | null => (x === null ? null : `${Math.round(x * 100)}%`);
++const positive = (c: Counts): Counts => cleanCounts(Object.fromEntries(Object.entries(c).filter(([, n]) => n > 0)));
++
++/** Notes and coins as a short list the model can read, largest first, with the total. Kept small: it shares a small context with everything else. */
++export function countsView(c: Counts): { amount: string; pieces: number; notes_and_coins: { denomination: string; count: number }[] } {
++  const p = positive(c);
++  return { amount: fmt(totalOf(p)), pieces: piecesOf(p), notes_and_coins: DENOMS.filter(d => (p[String(d.cents)] ?? 0) > 0).map(d => ({ denomination: d.label, count: p[String(d.cents)] })) };
++}
++
++// ---------- cash_drawer ----------
++const MAX_MOVES = 5;
++/** What the drawer status tool may say. Every value is a plain word, number or amount. No staff name and no ledger note is copied. */
++export function buildDrawerView(d: DrawerIn, now: number): Record<string, unknown> {
++  const sh = d.shift; const held = positive(d.ledger.counts); const heldTotal = totalOf(held);
++  const view: Record<string, unknown> = {};
++  if (sh.open) {
++    const cash = sh.openedAt ? ledgerCashSince(d.ledger, sh.openedAt) : 0;
++    const expected = sh.floatCents + cash + sh.paidInCents - sh.paidOutCents;
++    view.shift = { open: true, ...(sh.openedAt ? { opened_at: whenText(sh.openedAt) ?? 'unknown' } : {}), float: fmt(sh.floatCents), cash_sales_since_open: fmt(cash), paid_in: fmt(sh.paidInCents), paid_out: fmt(sh.paidOutCents), expected_in_drawer: fmt(expected) };
++    const gap = heldTotal - expected;
++    view.ledger_compared_with_expected = gap === 0 ? 'The ledger matches the expected amount.' : `The ledger holds ${fmt(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the expected amount. Counting the drawer will settle it.`;
++  } else view.shift = { open: false };
++  view.ledger_holds = countsView(held);
++  view.cash_takings_today = fmt(ledgerCashSince(d.ledger, startOfDay(now)));
++  view.recent_movements = d.ledger.entries.slice(0, MAX_MOVES).map(e => ({ when: whenText(e.ts) ?? 'unknown', what: LEDGER_LABEL[e.kind] ?? 'Other', amount: fmt(entryTotal(e)) }));
++  view.note = 'This is the shared drawer as it was when the question was asked. The ledger only knows the notes and coins that were entered, so a physical count can differ. You can only read it. Never open, count or change the drawer.';
++  return view;
++}
++
++const flat = (...keys: string[]) => Object.fromEntries(keys.map(k => [k, 'shop'] as const));
++const COUNTS_GATE = { amount: 'shop', pieces: 'shop', notes_and_coins: flat('denomination', 'count') } as const;
++
++export const cashDrawerTool: AssistantTool = {
++  gate: {
++    shift: flat('open', 'opened_at', 'float', 'cash_sales_since_open', 'paid_in', 'paid_out', 'expected_in_drawer'),
++    ledger_compared_with_expected: 'shop', ledger_holds: COUNTS_GATE, cash_takings_today: 'shop', recent_movements: flat('when', 'what', 'amount'),
++  },
++  def: { type: 'function', function: {
++    name: 'cash_drawer',
++    description: 'The cash drawer, read only: whether it is open, the float, what it should hold, which notes and coins the ledger says are in it, today\'s cash takings and the last few movements.',
++    parameters: { type: 'object', properties: {}, additionalProperties: false },
++  } },
++  run: (_args, ctx) => (ctx.cash ? buildDrawerView(ctx.cash.drawer, ctx.cash.now) : NO_STATE),
++};
++
++// ---------- cash_calculator ----------
++const CALC_KINDS = ['change', 'split', 'float'] as const;
++const BAD = (what: string) => ({ error: what });
++/** Plenty of every note and coin, for the change a till with a full drawer could give. */
++const UNLIMITED: Counts = Object.fromEntries(DENOMS.map(d => [String(d.cents), 1000]));
++
++/** The change for a cash payment: what is owed back, and which notes and coins make it. */
++export function changeInfo(a: { due: number; given: number; rounding: boolean; drawer: Counts }): Record<string, unknown> {
++  const cashDue = a.rounding ? roundCash(a.due) : a.due;
++  const out: Record<string, unknown> = { amount_due: fmt(a.due), ...(a.rounding && cashDue !== a.due ? { cash_due_after_rounding: fmt(cashDue) } : {}), amount_given: fmt(a.given) };
++  if (a.given < cashDue) return { ...out, short_by: fmt(cashDue - a.given), note: 'The customer has not given enough to cover this.' };
++  const change = a.given - cashDue;
++  out.change_to_give = fmt(change);
++  if (change === 0) return { ...out, note: 'Exact amount, so there is no change.' };
++  const plain = greedyChange(UNLIMITED, change);
++  if (plain) out.largest_notes_first = countsView(plain);
++  else out.note = 'There is no 1c or 2c coin, so this amount cannot be given back exactly in cash. With cash rounding on, the amount due is rounded to the nearest 5c.';
++  const held = positive(a.drawer);
++  if (totalOf(held) > 0 && plain) {
++    const plan = planChange(held, change);
++    out.from_this_drawer = plan.kind === 'exact' ? { possible: true, ...countsView(plan.counts), fewest_pieces: true } : { possible: false, note: 'The drawer, as the ledger knows it, cannot make this exactly. Notes the customer hands over can also go back as change, which this does not count.' };
++  } else if (plain) out.from_this_drawer = { possible: false, note: 'The ledger holds no cash, so it cannot say which notes and coins the drawer can give.' };
++  return out;
++}
++
++/** A split payment: the payments in order. Rounding only touches the last payment, and only when it is paid in cash. */
++export function splitInfo(a: { total: number; parts?: number; first?: number; rounding: boolean }): Record<string, unknown> {
++  if (a.total <= 0) return BAD('The total must be more than $0.00.');
++  let plan: number[]; let how: string;
++  if (a.first !== undefined) { plan = firstPlan(a.total, a.first); how = `first payment of ${fmt(a.first)}, then the rest`; if (!plan.length) return BAD(`The first payment must be more than $0.00 and less than the total of ${fmt(a.total)}.`); }
++  else if (a.parts !== undefined) { plan = equalPlan(a.total, a.parts); how = `${a.parts} equal payments`; if (!plan.length) return BAD('Split into 2 to 20 payments.'); }
++  else return BAD('Give either parts (how many equal payments) or first_payment (an amount for the first payment).');
++  const last = plan[plan.length - 1]; const lastCash = roundCash(last);
++  return {
++    total: fmt(a.total), split: how, payments: plan.map((c, i) => ({ number: i + 1, amount: fmt(c) })),
++    ...(a.rounding && lastCash !== last ? { last_payment_if_paid_in_cash: fmt(lastCash) } : {}),
++    ...(a.parts !== undefined ? { note: plan.some(c => c !== plan[0]) ? 'Cents that do not divide evenly go to the first payments.' : 'Each payment is the same.' } : {}),
++  };
++}
++
++/** What to bank and what to leave as the float, worked out the same way as More, Cash drawer, Daily float report. */
++export function floatInfo(d: DrawerIn, now: number, takingsOverride?: number): Record<string, unknown> {
++  const held = positive(d.ledger.counts);
++  if (totalOf(held) === 0) return { error: 'The ledger holds no cash, so there is nothing to base a float on. The drawer needs opening or counting first.' };
++  const takings = takingsOverride ?? ledgerCashSince(d.ledger, startOfDay(now));
++  const profile = buildProfile({ entries: d.ledger.entries as CashLedger['entries'], sales: d.sales as { ts: string; type: string; tenders?: { kind: string }[] }[], prices: d.prices as number[], now });
++  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500 });
++  return {
++    cash_takings: fmt(rep.takings), drawer_holds: fmt(rep.drawerTotal),
++    take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
++    ...(totalOf(rep.topUp) > 0 ? { top_up_from_bank: countsView(rep.topUp) } : {}), suggested_float: fmt(rep.suggestedFloat),
++    ...(totalOf(rep.bankable) > 0 ? { big_notes_better_banked: countsView(rep.bankable) } : {}),
++    ...(rep.failNow !== null ? { sales_without_exact_change: { drawer_now: pct(rep.failNow), after_banking: pct(rep.failKeep), after_top_up: pct(rep.failTopUp) } } : {}),
++    notes: rep.notes.map(n => safeLine(n, 200)),
++    ...(rep.truncated ? { search_cut_short: true } : {}),
++  };
++}
++
++export const cashCalculatorTool: AssistantTool = {
++  gate: {
++    amount_due: 'shop', cash_due_after_rounding: 'shop', amount_given: 'shop', short_by: 'shop', change_to_give: 'shop', largest_notes_first: COUNTS_GATE,
++    from_this_drawer: { possible: 'shop', fewest_pieces: 'shop', note: 'shop', ...COUNTS_GATE },
++    total: 'shop', split: 'shop', payments: flat('number', 'amount'), last_payment_if_paid_in_cash: 'shop',
++    cash_takings: 'shop', drawer_holds: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
++    big_notes_better_banked: COUNTS_GATE, sales_without_exact_change: flat('drawer_now', 'after_banking', 'after_top_up'), notes: 'shop', search_cut_short: 'shop',
++  },
++  def: { type: 'function', function: {
++    name: 'cash_calculator',
++    description: 'Cash sums using the till\'s own rules, so you never work them out. kind "change" needs amount_due and amount_given in dollars. "split" needs total and either parts or first_payment. "float" suggests what to bank and what to leave in the drawer, from today\'s cash takings or a cash_takings amount.',
++    parameters: { type: 'object', properties: {
++      kind: { type: 'string', enum: [...CALC_KINDS] }, amount_due: { type: 'string' }, amount_given: { type: 'string' }, total: { type: 'string' },
++      parts: { type: 'integer' }, first_payment: { type: 'string' }, cash_takings: { type: 'string' },
++    }, required: ['kind'], additionalProperties: false },
++  } },
++  run: (args, ctx) => {
++    const s = ctx.cash; if (!s) return NO_STATE;
++    const kind = typeof args.kind === 'string' ? args.kind : '';
++    if (kind === 'change') {
++      const due = parseMoney(args.amount_due); const given = parseMoney(args.amount_given);
++      if (due === null || given === null) return BAD('Give amount_due and amount_given as dollar amounts, for example "23.45".');
++      return changeInfo({ due, given, rounding: s.rounding, drawer: s.drawer.ledger.counts });
++    }
++    if (kind === 'split') {
++      const total = parseMoney(args.total); if (total === null) return BAD('Give total as a dollar amount, for example "100.00".');
++      const parts = args.parts === undefined ? undefined : Number(args.parts); const first = args.first_payment === undefined ? undefined : parseMoney(args.first_payment);
++      if (parts !== undefined && (!Number.isInteger(parts) || parts < 2 || parts > 20)) return BAD('Split into 2 to 20 payments.');
++      if (first === null) return BAD('Give first_payment as a dollar amount, for example "20.00".');
++      return splitInfo({ total, ...(parts !== undefined ? { parts } : {}), ...(first !== undefined ? { first } : {}), rounding: s.rounding });
++    }
++    if (kind === 'float') {
++      const t = args.cash_takings === undefined ? undefined : parseMoney(args.cash_takings);
++      if (t === null) return BAD('Give cash_takings as a dollar amount, for example "450.00".');
++      return floatInfo(s.drawer, s.now, t);
++    }
++    return BAD(`Say which sum to do: ${CALC_KINDS.join(', ')}.`);
++  },
++};
++
++// ---------- current_cart ----------
++const MAX_LINES = 25; const MAX_WARNINGS = 5;
++/** What the cart tool may say. Gift card codes and recipients, customers, notes and payment details are never copied: only what was sold, for how much, and what stands in the way of Charge. */
++export function buildCartView(c: CartIn, rounding: boolean): Record<string, unknown> {
++  const { cart, priced } = c;
++  if (!cart.lines.length) return { empty: true, note: 'The cart on the till is empty, so Charge has nothing to take. Add an item first.' };
++  const flags = new Map(flaggedLines(priced).map(f => [f.lineId, f.reasons] as const));
++  const lines = priced.lines.slice(0, MAX_LINES).map(pl => {
++    const l = pl.line; const names = Array.from(new Set(pl.discounts.map(d => safeLine(d.label, 60))));
++    return {
++      name: l.kind === 'gift_card' ? 'Gift card' : safeLine(l.title, 80), ...(l.variantTitle && l.kind === 'item' ? { variant: safeLine(l.variantTitle, 60) } : {}),
++      quantity: l.qty, unit_price: fmt(pl.baseUnitCents), line_total: fmt(pl.netCents),
++      ...(pl.discountCents > 0 ? { discount: fmt(pl.discountCents), discount_names: names } : {}),
++      ...(l.kind === 'custom' ? { custom_amount: true } : {}), ...(pl.adjustment ? { price_adjusted: true } : {}),
++      ...(flags.has(l.id) ? { needs_price_check: true, price_check_reasons: flags.get(l.id)!.slice(0, 2).map(r => safeLine(r, 120)) } : {}),
++    };
++  });
++  const paid = (cart.tenders ?? []).reduce((s, t) => s + t.amountCents, 0);
++  // Only a warning set to show at Charge pops up before payment. One set to "queue" goes on the warning list instead and never stands in the way.
++  const atCharge = c.warnings.filter(m => (m.warning.mode ?? 'charge') !== 'queue'); const queued = c.warnings.length - atCharge.length;
++  const matched = atCharge.slice(0, MAX_WARNINGS).map(m => ({ title: safeLine(warningTitle(m.warning), 80), must_tick_before_payment: !!m.warning.requireAcknowledgement, triggered_by: triggerNames(m).slice(0, 5).map(n => safeLine(n, 80)) }));
++  const orderChecks = orderReviewReasons(cart, priced).slice(0, 2).map(r => safeLine(r, 120));
++  const view: Record<string, unknown> = {
++    empty: false, lines, ...(priced.lines.length > MAX_LINES ? { more_lines_not_shown: priced.lines.length - MAX_LINES } : {}),
++    items_before_discounts: fmt(priced.itemsCents), discounts: fmt(priced.discountCents), total: fmt(priced.netCents),
++    ...(priced.adjustment ? { whole_order_price_set: fmt(priced.adjustment.finalCents) } : {}),
++    ...(priced.deals.length ? { discounts_applied: priced.deals.slice(0, 6).map(d => ({ name: safeLine(d.label, 60), saved: fmt(d.cents) })) } : {}),
++    lines_needing_price_check: flags.size, ...(orderChecks.length ? { order_price_check: orderChecks } : {}),
++    warnings: matched, ...(queued > 0 ? { warnings_on_the_warning_list_instead: queued } : {}),
++    payment_started: paid > 0 || !!cart.tenders?.length,
++    ...(paid > 0 ? { still_to_pay: fmt(Math.max(0, priced.netCents - paid)) } : {}),
++    ...(rounding && priced.netCents > 0 && !paid && roundCash(priced.netCents) !== priced.netCents ? { cash_due_if_paid_in_cash: fmt(roundCash(priced.netCents)) } : {}),
++  };
++  const stops: string[] = [];
++  if (flags.size || orderChecks.length) stops.push('price adjustments are listed for a check before payment');
++  if (matched.some(m => m.must_tick_before_payment)) stops.push('a cart warning needs ticking before payment');
++  view.note = `This is the cart as it was when the question was asked. It only reads the cart and never edits it.${stops.length ? ` Before payment starts: ${stops.join(', and ')}.` : ''} Nothing else here stops Charge.`;
++  return view;
++}
++
++export const currentCartTool: AssistantTool = {
++  gate: {
++    empty: 'order', more_lines_not_shown: 'order', items_before_discounts: 'order', discounts: 'order', total: 'order', whole_order_price_set: 'order',
++    lines: { name: 'order', variant: 'order', quantity: 'order', unit_price: 'order', line_total: 'order', discount: 'order', discount_names: 'order', custom_amount: 'order', price_adjusted: 'order', needs_price_check: 'order', price_check_reasons: 'order' },
++    discounts_applied: { name: 'order', saved: 'order' }, lines_needing_price_check: 'order', order_price_check: 'order',
++    warnings: { title: 'shop', must_tick_before_payment: 'shop', triggered_by: 'shop' }, warnings_on_the_warning_list_instead: 'shop',
++    payment_started: 'order', still_to_pay: 'order', cash_due_if_paid_in_cash: 'order',
++  },
++  def: { type: 'function', function: {
++    name: 'current_cart',
++    description: 'The cart on the till now, read only: lines, discounts, total, price checks and the cart warnings that stand in the way of payment. Use it for "why won\'t this sale go through".',
++    parameters: { type: 'object', properties: {}, additionalProperties: false },
++  } },
++  run: (_args, ctx) => (ctx.cash ? buildCartView(ctx.cash.cart, ctx.cash.rounding) : NO_STATE),
++};
++
++/** The three tools, in the order they are offered. */
++export const CASH_TOOLS: AssistantTool[] = [cashDrawerTool, cashCalculatorTool, currentCartTool];
+diff --git a/src/lib/assistantCashIO.ts b/src/lib/assistantCashIO.ts
+new file mode 100644
+index 0000000..53b4fb2
+--- /dev/null
++++ b/src/lib/assistantCashIO.ts
+@@ -0,0 +1,33 @@
++// Location: src/lib/assistantCashIO.ts
++// Takes the snapshot the assistant's cash and cart tools read (patch 0172). The only file that connects them to the store; everything
++// the tools do with it is in assistantCash.ts. It only reads: the drawer ledger, the shift and the cart are copied by reference into a
++// plain `CashState` and the tools never get anything they could call to change them. Nothing here goes to Shopify or the card reader.
++import { useApp } from '../state/store';
++import { isTraining } from './trainingGuard';
++import { priceCart } from './pricing';
++import { bundleConfig } from './sync';
++import { matchCartWarnings } from './cartWarnings';
++import type { Variant } from './types';
++import type { CashState } from './assistantCash';
++
++/**
++ * The drawer and the cart as they are now, or null while the till is on practice data (the assistant is switched off in practice
++ * mode, and this is a second lock: the practice drawer and cart must never be described as the shop's, and the calculators are off in
++ * practice mode, plan 3.7). Called when a question is asked. A fault while pricing the cart gives null, so the tools say they could
++ * not read the till and never guess.
++ */
++export function takeCashState(now: number = Date.now()): CashState | null {
++  if (isTraining()) return null;
++  try {
++    const s = useApp.getState(); const st = s.settings; const cart = s.pos.cart;
++    const variants = s.data.variants; const collectionsOfProduct: Record<string, string[]> = {};
++    for (const c of s.data.collections) for (const p of c.productIds) (collectionsOfProduct[p] ??= []).push(c.id);
++    const priced = priceCart(cart, { variants, collectionsOfProduct, autoDiscounts: s.data.autos, bundles: bundleConfig() });
++    const warnings = matchCartWarnings(cart, st.cartWarnings, { variants, collectionsOfProduct });
++    return {
++      now, rounding: !!st.cashRounding,
++      drawer: { shift: s.pos.shift, ledger: s.pos.ledger, sales: s.pos.sales, prices: Object.values(variants).map((v: Variant) => v.priceCents) },
++      cart: { cart, priced, warnings },
++    };
++  } catch { return null; }
++}
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index 67d8739..ec318fa 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -39,6 +39,7 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false, n
+         + (names.includes('app_status') ? ' app_status says how the till is doing: whether it is syncing, how many sales are waiting to upload, whether the card reader is ready and the recent problems. Use it when someone says something is not working or not updating. Never explain a failure beyond what it returns.' : '')
+         + (names.includes('read_settings') ? ' read_settings gives the till\'s current settings, read only, such as whether cash rounding is on or which roles may not change prices. Use search_screens to say where a setting is changed. Never change one, and never show a web address, key or PIN.' : ''),
+       'For the shop\'s own figures, use the data tools. find_products gives the price and stock of a product and its variations, by name, SKU, barcode or category. stock_levels says what is low, out of stock or oversold, and how much stock a category has. Never count stock yourself: use stock_levels. sales_report gives totals for a period, already added up, and how many of an item sold. find_orders finds sales and refunds. list_deals lists the deals and discounts. find_customers finds a customer. gift_card_activity shows gift cards sold and paid with. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
++      'cash_drawer says what the drawer should hold and which notes and coins the ledger says are in it. cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart says what is in the cart now and what stands in the way of Charge, and is the only source for why a sale will not go through. You can only read the drawer and the cart. Never open, count or edit them.',
+       'The data tools only know what is saved on this till. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.',
+       'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
+       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index a33f755..028da0e 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -1,5 +1,5 @@
+ // Location: src/lib/assistantTools.ts
+-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts, patch 0166 current_time, patch 0167 screen_context, patch 0169 app_status and read_settings). Plain functions that read what they are
++// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts, patch 0166 current_time, patch 0167 screen_context, patch 0169 app_status and read_settings, patch 0172 cash_drawer, cash_calculator and current_cart). Plain functions that read what they are
+ // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
+ // runs in the node tests.
+ //
+@@ -16,6 +16,7 @@ import { DATA_TOOLS } from './assistantDataTools';
+ import { currentTimeTool } from './assistantTime';
+ import { contextInfo, type RegisterContext } from './assistantContext';
+ import { appStatusTool, readSettingsTool, type TillState } from './assistantStatus';
++import { CASH_TOOLS, type CashState } from './assistantCash';
+ 
+ export type ToolContext = {
+   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
+@@ -35,6 +36,8 @@ export type ToolContext = {
+   where?: RegisterContext;
+   /** How the till is set up and how it is doing, taken when the question was asked (patch 0169). Left out (practice data), `app_status` and `read_settings` say it could not be read. */
+   till?: TillState;
++  /** The cash drawer and the cart on the till, taken when the question was asked (patch 0172). Left out (practice data), the cash and cart tools say they could not read the till. */
++  cash?: CashState;
+ };
+ export type AssistantTool = {
+   /** Only these roles are offered the tool (patch 0169). Left out, every role is. A role not listed never sees it in the request, and calling it gets the answer an unknown tool gets (plan 3.4). */
+@@ -261,7 +264,7 @@ const screenContext: AssistantTool = {
+ };
+ 
+ /** The tools in this build. Later patches add to the end. */
+-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, screenContext, appStatusTool, readSettingsTool, ...DATA_TOOLS];
++export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, screenContext, appStatusTool, readSettingsTool, ...CASH_TOOLS, ...DATA_TOOLS];
+ /** The tools this role is offered. The one place tools are filtered by role, so a request cannot forget to. */
+ export const toolsFor = (role: string, tools: AssistantTool[] = ASSISTANT_TOOLS): AssistantTool[] => tools.filter(t => !t.roles || t.roles.includes(role));
+ export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
+@@ -308,5 +311,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
+ }
+ 
+ /** A new tool set for one question. */
+-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState }): ToolSet =>
+-  ({ tools: toolsFor(o.role, o.tools), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
++export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet =>
++  ({ tools: toolsFor(o.role, o.tools), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index f0db2a1..bff20f7 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -29,6 +29,7 @@ import { resolvePolicy } from '../lib/assistantGate';
+ import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
+ import { takeAssistantData, takeCatalogue } from '../lib/assistantDataIO';
+ import { takeTillState } from '../lib/assistantStatusIO';
++import { takeCashState } from '../lib/assistantCashIO';
+ import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+ import { registerContext } from '../lib/assistantContext';
+ import { screenOfRoute } from '../lib/appGraph';
+@@ -158,9 +159,9 @@ export default function Assistant() {
+     try {
+       if (!isConfigured(cfg)) { await goOffline(new AssistantError('not_set_up', 'Set up the address and model first.')); return; }
+       apiKey = await getAssistantKey();
+-      const shopData = await takeAssistantData(); const till = takeTillState(role);
++      const shopData = await takeAssistantData(); const till = takeTillState(role); const cash = takeCashState();
+       const out = await askLogged(assistantFetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), where }) },
++          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), ...(cash ? { cash } : {}), where }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+       if (!out.ok) throw out.error;
+@@ -225,7 +226,7 @@ export default function Assistant() {
+             <View style={{ alignItems: 'center', gap: 10, paddingTop: 24, paddingBottom: 8 }}>
+               <Avatar size={52} />
+               <Txt size={19} weight="700">Ask the assistant</Txt>
+-              <Txt size={14} sub style={{ textAlign: 'center', maxWidth: 420 }}>Ask how something works or where to find it. It can also look up this till's sales, orders, deals, customers, gift card activity, products and stock. It never changes anything.</Txt>
++              <Txt size={14} sub style={{ textAlign: 'center', maxWidth: 420 }}>Ask how something works or where to find it. It can also look up this till's sales, orders, deals, customers, gift card activity, products and stock, the cash drawer, and the sale in progress. It never changes anything.</Txt>
+               {!blocked ? (
+                 <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, justifyContent: 'center', paddingTop: 6 }}>
+                   {STARTERS.map(q => <Chip key={q} label={q} icon="chatbubble-ellipses-outline" onPress={() => void send(q, 'short')} />)}
+diff --git a/tests/assistantcash.test.ts b/tests/assistantcash.test.ts
+new file mode 100644
+index 0000000..00cf075
+--- /dev/null
++++ b/tests/assistantcash.test.ts
+@@ -0,0 +1,260 @@
++// Location: tests/assistantcash.test.ts
++// The assistant's cash and cart tools (patch 0172): what the drawer tool says, the change, split and float sums, what the cart tool says,
++// that no name, gift card code, customer or payment detail can get into a result, that every field is in a field map, that all three
++// are read only, and that nothing is offered or answered when the till could not be read (practice data).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { applyGate, resolvePolicy } from '../src/lib/assistantGate';
++import { ASSISTANT_TOOLS, makeToolSet, runToolCall, toolDefs, toolsFor } from '../src/lib/assistantTools';
++import { buildSystemPrompt } from '../src/lib/assistantChat';
++import { CASH_TOOLS, buildCartView, buildDrawerView, cashCalculatorTool, cashDrawerTool, changeInfo, countsView, currentCartTool, floatInfo, parseMoney, splitInfo, type CashState, type DrawerIn } from '../src/lib/assistantCash';
++import { applyEntry, emptyLedger, newEntry } from '../src/lib/cashLedger';
++import { priceCart } from '../src/lib/pricing';
++import { addVariant, setLineAdjust, setQty } from '../src/lib/cartOps';
++import { makeAdjust } from '../src/lib/lineAdjust';
++import type { Cart, CartLine, CartWarning, Variant } from '../src/lib/types';
++import { matchCartWarnings } from '../src/lib/cartWarnings';
++
++const at = (h: number, m = 0) => new Date(2026, 9, 18, h, m);
++const NOW = at(15).getTime();
++const P = (n: number) => `gid://shopify/Product/${n}`;
++const V = (n: number) => `gid://shopify/ProductVariant/${n}`;
++const variant = (id: number, prod: number, cents: number, title = ''): Variant => ({ id: V(id), productId: P(prod), productTitle: `Print ${prod}`, variantTitle: title, priceCents: cents, tracked: true, stock: 9, tags: [], active: true });
++const cow = variant(1, 1, 1500, 'Large'), tad = variant(2, 2, 400);
++const variants = { [cow.id]: cow, [tad.id]: tad };
++const price = (c: Cart) => priceCart(c, { variants, collectionsOfProduct: {}, autoDiscounts: [], bundles: null, now: NOW });
++
++// ---- a drawer: opened at 8 with $110, then a $15 sale paid with a $20 note and $5 given back ----
++const ledger = () => {
++  let l = emptyLedger();
++  l = applyEntry(l, newEntry('open', { '2000': 3, '1000': 4, '500': 2 }, { ts: at(8).toISOString(), staff: 'Maya Chen', note: 'call jane@example.com' }));
++  l = applyEntry(l, newEntry('sale_in', { '2000': 1 }, { saleUuid: 's1', ts: at(9).toISOString(), staff: 'Maya Chen' }));
++  l = applyEntry(l, newEntry('sale_change', { '500': -1 }, { saleUuid: 's1', ts: at(9, 1).toISOString(), staff: 'Maya Chen' }));
++  return l;
++};
++const drawer = (over: Partial<DrawerIn> = {}, shift: Partial<DrawerIn['shift']> = {}): DrawerIn => ({
++  shift: { open: true, openedAt: at(8).toISOString(), floatCents: 11000, paidInCents: 0, paidOutCents: 0, ...shift },
++  ledger: ledger(), sales: [], prices: [500, 1250, 1999, 2500], ...over,
++});
++
++// ---- a cart ----
++const base = (): Cart => addVariant(addVariant({ id: 'c', lines: [] }, tad, 5), cow, 1); // 5 x $4.00 + $15.00 = $35.00
++const gift: CartLine = { id: 'gift', kind: 'gift_card', title: 'Gift card', qty: 1, unitCents: 5000, noDiscount: true, giftCardCode: 'GIFT-SECRET-123456', giftRecipient: { email: 'jane@example.com', name: 'Jane Citizen' } };
++const warning = (over: Partial<CartWarning> = {}): CartWarning => ({ id: 'w1', enabled: true, title: 'Fragile print', body: 'Joints snap, do not bend.', scope: 'variant', targetId: cow.id, alwaysShow: false, requireAcknowledgement: true, ...over });
++const cartIn = (cart: Cart, warnings: CartWarning[] = []) => ({ cart, priced: price(cart), warnings: matchCartWarnings(cart, warnings, { variants, collectionsOfProduct: {} }) });
++const state = (over: Partial<CashState> = {}): CashState => ({ now: NOW, rounding: true, drawer: drawer(), cart: cartIn(base()), ...over });
++
++const call = (name: string, args: unknown = {}) => ({ id: 'c1', type: 'function' as const, function: { name, arguments: JSON.stringify(args) } });
++const run = (name: string, args: unknown, s: CashState | null = state(), policy = resolvePolicy('local'), role = 'cashier') =>
++  runToolCall(call(name, args), { tools: ASSISTANT_TOOLS, ctx: { pages: [], role, maxChars: 6000, policy, ...(s ? { cash: s } : {}) } });
++const out = (r: ReturnType<typeof run>): any => JSON.parse(r.message.content ?? '{}');
++const NEVER = ['Maya', 'Chen', 'jane@example.com', 'Jane', 'Citizen', 'GIFT-SECRET', '123456', '4242', 'A1B2C3', 'visa'];
++
++// ---- parsing money ----
++test('money the model writes is read as dollars, and anything that is not a plain amount is refused', () => {
++  assert.equal(parseMoney('12.50'), 1250); assert.equal(parseMoney('$1,200'), 120000); assert.equal(parseMoney(12.5), 1250); assert.equal(parseMoney(' 5 '), 500); assert.equal(parseMoney('0'), 0); assert.equal(parseMoney('7.5'), 750);
++  for (const bad of ['12.345', '-1', 'abc', '', '1e3', '$', '12.', null, undefined, NaN, Infinity, -5, {}, [], true, '99999999']) assert.equal(parseMoney(bad as any), null, String(bad));
++});
++
++// ---- the drawer ----
++test('the drawer view gives the shift, what it should hold and what the ledger holds', () => {
++  const v: any = buildDrawerView(drawer(), NOW);
++  assert.deepEqual(v.shift, { open: true, opened_at: '2026-10-18 8:00 am', float: '$110.00', cash_sales_since_open: '$15.00', paid_in: '$0.00', paid_out: '$0.00', expected_in_drawer: '$125.00' });
++  assert.equal(v.ledger_holds.amount, '$125.00'); assert.equal(v.ledger_holds.pieces, 9);
++  assert.deepEqual(v.ledger_holds.notes_and_coins, [{ denomination: '$20', count: 4 }, { denomination: '$10', count: 4 }, { denomination: '$5', count: 1 }]);
++  assert.equal(v.ledger_compared_with_expected, 'The ledger matches the expected amount.'); assert.equal(v.cash_takings_today, '$15.00');
++});
++test('paid in and out move what the drawer should hold, and a gap to the ledger is said in words', () => {
++  const v: any = buildDrawerView(drawer({}, { paidInCents: 2000, paidOutCents: 500 }), NOW);
++  assert.equal(v.shift.expected_in_drawer, '$140.00'); assert.equal(v.ledger_compared_with_expected, 'The ledger holds $15.00 less than the expected amount. Counting the drawer will settle it.');
++  const over: any = buildDrawerView(drawer({}, { floatCents: 10000 }), NOW); assert.match(over.ledger_compared_with_expected, /holds \$10\.00 more/);
++});
++test('a closed drawer says so, still lists what the ledger holds, and gives no expected amount', () => {
++  const v: any = buildDrawerView(drawer({}, { open: false }), NOW);
++  assert.deepEqual(v.shift, { open: false }); assert.equal(v.ledger_compared_with_expected, undefined); assert.equal(v.ledger_holds.amount, '$125.00');
++  const none: any = buildDrawerView({ ...drawer(), ledger: emptyLedger() }, NOW); assert.equal(none.ledger_holds.amount, '$0.00'); assert.deepEqual(none.ledger_holds.notes_and_coins, []); assert.deepEqual(none.recent_movements, []);
++});
++test('the last five movements are listed newest first with plain labels, and no staff name or ledger note comes with them', () => {
++  let l = ledger(); for (let i = 0; i < 6; i++) l = applyEntry(l, newEntry('paid_in', { '100': 1 }, { ts: at(10, i).toISOString(), staff: 'Maya Chen', note: 'float top up' }));
++  const v: any = buildDrawerView(drawer({ ledger: l }), NOW);
++  assert.equal(v.recent_movements.length, 5); assert.deepEqual(v.recent_movements[0], { when: '2026-10-18 10:05 am', what: 'Paid in', amount: '$1.00' });
++  const all = JSON.stringify(v); for (const bad of ['Maya', 'Chen', 'float top up', 'jane@']) assert.ok(!all.includes(bad), bad);
++});
++test('notes and coins are listed largest first, and zero or negative counts are left out', () => {
++  assert.deepEqual(countsView({ '5': 3, '2000': 1, '100': 0, '500': -2 }), { amount: '$20.15', pieces: 4, notes_and_coins: [{ denomination: '$20', count: 1 }, { denomination: '5c', count: 3 }] });
++});
++
++// ---- change ----
++test('change: the amount owed back, and which notes and coins make it from the drawer', () => {
++  const r: any = changeInfo({ due: 2345, given: 5000, rounding: true, drawer: { '2000': 4, '500': 1, '100': 10, '50': 8, '5': 10 } });
++  assert.equal(r.change_to_give, '$26.55'); assert.equal(r.cash_due_after_rounding, undefined);
++  assert.deepEqual(r.largest_notes_first.notes_and_coins, [{ denomination: '$20', count: 1 }, { denomination: '$5', count: 1 }, { denomination: '$1', count: 1 }, { denomination: '50c', count: 1 }, { denomination: '5c', count: 1 }]);
++  assert.equal(r.from_this_drawer.possible, true); assert.equal(r.from_this_drawer.amount, '$26.55'); assert.equal(r.from_this_drawer.fewest_pieces, true);
++});
++test('change: with cash rounding on the amount due is rounded to 5c first, and with it off it is not', () => {
++  const on: any = changeInfo({ due: 2347, given: 5000, rounding: true, drawer: {} }); assert.equal(on.cash_due_after_rounding, '$23.45'); assert.equal(on.change_to_give, '$26.55');
++  const off: any = changeInfo({ due: 2347, given: 5000, rounding: false, drawer: {} }); assert.equal(off.cash_due_after_rounding, undefined); assert.equal(off.change_to_give, '$26.53');
++  assert.equal(off.largest_notes_first, undefined); assert.match(off.note, /no 1c or 2c coin/);
++});
++test('change: not enough given, an exact amount, and a drawer that cannot make it', () => {
++  assert.equal((changeInfo({ due: 5000, given: 2000, rounding: false, drawer: {} }) as any).short_by, '$30.00');
++  const exact: any = changeInfo({ due: 2000, given: 2000, rounding: false, drawer: {} }); assert.match(exact.note, /Exact/); assert.equal(exact.largest_notes_first, undefined);
++  const no: any = changeInfo({ due: 1500, given: 2000, rounding: false, drawer: { '2000': 1 } }); assert.equal(no.change_to_give, '$5.00'); assert.equal(no.from_this_drawer.possible, false); assert.match(no.from_this_drawer.note, /cannot make this exactly/);
++  const empty: any = changeInfo({ due: 1500, given: 2000, rounding: false, drawer: {} }); assert.equal(empty.from_this_drawer.possible, false); assert.match(empty.from_this_drawer.note, /holds no cash/);
++});
++
++// ---- split ----
++test('split: equal parts put the odd cents on the first payments, and rounding only touches the last when paid in cash', () => {
++  const r: any = splitInfo({ total: 10000, parts: 3, rounding: true });
++  assert.deepEqual(r.payments, [{ number: 1, amount: '$33.34' }, { number: 2, amount: '$33.33' }, { number: 3, amount: '$33.33' }]); assert.equal(r.last_payment_if_paid_in_cash, '$33.35'); assert.match(r.note, /first payments/);
++  const off: any = splitInfo({ total: 10000, parts: 3, rounding: false }); assert.equal(off.last_payment_if_paid_in_cash, undefined);
++  const even: any = splitInfo({ total: 10000, parts: 4, rounding: true }); assert.equal(even.last_payment_if_paid_in_cash, undefined); assert.equal(even.note, 'Each payment is the same.');
++});
++test('split: a first payment then the rest, and the ways it is refused', () => {
++  const r: any = splitInfo({ total: 10000, first: 2000, rounding: false }); assert.deepEqual(r.payments, [{ number: 1, amount: '$20.00' }, { number: 2, amount: '$80.00' }]); assert.equal(r.note, undefined);
++  for (const bad of [{ total: 10000, first: 10000 }, { total: 10000, first: 0 }, { total: 10000, first: 20000 }, { total: 0, parts: 2 }, { total: 10000 }, { total: 10000, parts: 1 }]) assert.ok((splitInfo({ ...bad, rounding: false }) as any).error, JSON.stringify(bad));
++});
++
++// ---- float ----
++test('float: says what to bank and what to leave, from the drawer and the takings', () => {
++  const r: any = floatInfo(drawer(), NOW);
++  assert.equal(r.cash_takings, '$15.00'); assert.equal(r.drawer_holds, '$125.00'); assert.ok(r.take_out_to_bank.amount.startsWith('$')); assert.ok(r.leave_as_float.amount.startsWith('$')); assert.ok(r.suggested_float.startsWith('$'));
++  assert.ok(Array.isArray(r.notes)); assert.ok(Array.isArray(r.leave_as_float.notes_and_coins));
++  const big: any = floatInfo(drawer(), NOW, 5000); assert.equal(big.cash_takings, '$50.00');
++});
++test('float: an empty ledger has nothing to base it on, and takings above the drawer are capped and said so', () => {
++  assert.match((floatInfo({ ...drawer(), ledger: emptyLedger() }, NOW) as any).error, /holds no cash/);
++  const r: any = floatInfo(drawer(), NOW, 90000); assert.equal(r.cash_takings, '$125.00'); assert.match(r.notes.join(' '), /out of date/);
++});
++
++// ---- the cart ----
++test('an empty cart says so and says Charge has nothing to take', () => {
++  const v: any = buildCartView(cartIn({ id: 'e', lines: [] }), true); assert.equal(v.empty, true); assert.match(v.note, /empty/); assert.equal(v.lines, undefined);
++});
++test('the cart view gives each line, the discounts and the total, in the app\'s own prices', () => {
++  const v: any = buildCartView(cartIn(base()), true);
++  assert.equal(v.empty, false); assert.equal(v.items_before_discounts, '$35.00'); assert.equal(v.discounts, '$0.00'); assert.equal(v.total, '$35.00'); assert.equal(v.lines_needing_price_check, 0); assert.deepEqual(v.warnings, []); assert.equal(v.payment_started, false);
++  assert.deepEqual(v.lines[0], { name: 'Print 2', quantity: 5, unit_price: '$4.00', line_total: '$20.00' });
++  assert.deepEqual(v.lines[1], { name: 'Print 1', variant: 'Large', quantity: 1, unit_price: '$15.00', line_total: '$15.00' });
++  assert.equal(v.cash_due_if_paid_in_cash, undefined, '$35.00 needs no rounding');
++  const odd: any = buildCartView(cartIn(addVariant({ id: 'o', lines: [] }, variant(3, 3, 1999), 1)), true); assert.equal(odd.total, '$19.99'); assert.equal(odd.cash_due_if_paid_in_cash, '$20.00');
++  assert.equal((buildCartView(cartIn(addVariant({ id: 'o', lines: [] }, variant(3, 3, 1999), 1)), false) as any).cash_due_if_paid_in_cash, undefined, 'only with cash rounding on');
++});
++test('a gift card line shows only that it is a gift card and its amount, never the code or who it goes to', () => {
++  const c: Cart = { ...base(), lines: [...base().lines, gift] };
++  const v: any = buildCartView(cartIn(c), true); const l = v.lines.find((x: any) => x.name === 'Gift card');
++  assert.deepEqual(l, { name: 'Gift card', quantity: 1, unit_price: '$50.00', line_total: '$50.00' }); assert.equal(v.total, '$85.00');
++  const all = JSON.stringify(v); for (const bad of ['GIFT-SECRET', '123456', 'jane@', 'Jane', 'Citizen']) assert.ok(!all.includes(bad), bad);
++});
++test('no customer, note, saved cart id or payment detail is copied, and a payment in progress shows what is left', () => {
++  const c: Cart = { ...base(), customer: { id: 'c1', name: 'Jane Citizen', email: 'jane@example.com' } as any, name: 'Jane\'s order', note: 'Call jane@example.com', saleUuid: 'uuid-1', savedFrom: 'saved-9',
++    tenders: [{ id: 't1', kind: 'card', amountCents: 1000, card: { last4: '4242', scheme: 'visa', approvalCode: 'A1B2C3' } } as any] };
++  const v: any = buildCartView(cartIn(c), true); assert.equal(v.payment_started, true); assert.equal(v.still_to_pay, '$25.00'); assert.equal(v.cash_due_if_paid_in_cash, undefined);
++  const all = JSON.stringify(v); for (const bad of [...NEVER, 'uuid-1', 'saved-9', 'order']) assert.ok(!all.includes(bad) || bad === 'order', bad);
++});
++test('a line price that needs a second look is flagged, and counted', () => {
++  let c = base(); c = setLineAdjust(c, c.lines[0].id, makeAdjust(1500, price(c).lines[0])); c = setQty(c, c.lines[0].id, 8);
++  const v: any = buildCartView(cartIn(c), true);
++  assert.equal(v.lines_needing_price_check, 1); assert.equal(v.lines[0].needs_price_check, true); assert.equal(v.lines[0].price_adjusted, true); assert.ok(v.lines[0].price_check_reasons.length >= 1);
++  assert.match(v.note, /price adjustments are listed for a check before payment/);
++});
++test('a warning set to show at Charge is listed, one that must be ticked is said so, and one set to queue is only counted', () => {
++  const v: any = buildCartView(cartIn(base(), [warning(), warning({ id: 'w2', title: 'Queued one', mode: 'queue' }), warning({ id: 'w3', targetId: V(99) })]), true);
++  assert.deepEqual(v.warnings, [{ title: 'Fragile print', must_tick_before_payment: true, triggered_by: ['Print 1'] }]); assert.equal(v.warnings_on_the_warning_list_instead, 1);
++  assert.match(v.note, /a cart warning needs ticking before payment/);
++  const soft: any = buildCartView(cartIn(base(), [warning({ requireAcknowledgement: false })]), true); assert.equal(soft.warnings[0].must_tick_before_payment, false); assert.doesNotMatch(soft.note, /needs ticking/);
++  const none: any = buildCartView(cartIn(base()), true); assert.match(none.note, /Nothing else here stops Charge/); assert.equal(none.warnings_on_the_warning_list_instead, undefined);
++  assert.ok(!JSON.stringify(v).includes('Joints snap'), 'the warning text is not copied, only its title');
++});
++test('a long cart is cut to 25 lines and says how many were left out', () => {
++  let c: Cart = { id: 'big', lines: [] }; for (let i = 0; i < 30; i++) c = addVariant(c, variant(100 + i, 100 + i, 100 + i), 1);
++  const v: any = buildCartView(cartIn(c), true); assert.equal(v.lines.length, 25); assert.equal(v.more_lines_not_shown, 5);
++});
++
++// ---- the tools ----
++test('all three tools work for every role and give the numbers above', () => {
++  for (const role of ['cashier', 'manager', 'owner']) {
++    assert.equal(out(run('cash_drawer', {}, state(), resolvePolicy('local'), role)).shift.expected_in_drawer, '$125.00');
++    assert.equal(out(run('current_cart', {}, state(), resolvePolicy('local'), role)).total, '$35.00');
++    assert.equal(out(run('cash_calculator', { kind: 'change', amount_due: '23.45', amount_given: '50' }, state(), resolvePolicy('local'), role)).change_to_give, '$26.55');
++  }
++  for (const n of ['cash_drawer', 'cash_calculator', 'current_cart']) assert.ok(toolsFor('cashier').some(t => t.def.function.name === n), n);
++});
++test('the calculator takes the cash rounding setting from the till, and answers bad input with a plain message', () => {
++  const on = out(run('cash_calculator', { kind: 'change', amount_due: '23.47', amount_given: '50.00' })); assert.equal(on.cash_due_after_rounding, '$23.45');
++  const off = out(run('cash_calculator', { kind: 'change', amount_due: '23.47', amount_given: '50.00' }, state({ rounding: false }))); assert.equal(off.cash_due_after_rounding, undefined);
++  for (const bad of [{}, { kind: 'nope' }, { kind: 'change' }, { kind: 'change', amount_due: 'x', amount_given: '5' }, { kind: 'split' }, { kind: 'split', total: '100', parts: 1 }, { kind: 'split', total: '100', parts: 21 }, { kind: 'split', total: '100', parts: 2.5 }, { kind: 'split', total: '100', first_payment: 'x' }, { kind: 'float', cash_takings: 'x' }]) {
++    const r = run('cash_calculator', bad); assert.equal(r.record.ok, false, JSON.stringify(bad)); assert.ok(out(r).error.length > 10);
++  }
++  assert.equal(out(run('cash_calculator', { kind: 'split', total: '100.00', parts: 3 })).payments.length, 3);
++  assert.equal(out(run('cash_calculator', { kind: 'split', total: '100.00', first_payment: '20' })).payments[1].amount, '$80.00');
++  assert.equal(out(run('cash_calculator', { kind: 'float', cash_takings: '15' })).cash_takings, '$15.00');
++});
++test('with no snapshot (practice data) all three say they could not read the till, and give nothing else', () => {
++  for (const [n, a] of [['cash_drawer', {}], ['current_cart', {}], ['cash_calculator', { kind: 'change', amount_due: '1', amount_given: '2' }], ['cash_calculator', { kind: 'split', total: '10', parts: 2 }], ['cash_calculator', { kind: 'float' }]] as const) {
++    const r = run(n, a, null); assert.equal(r.record.ok, false); assert.match(out(r).error, /could not be read/); assert.deepEqual(Object.keys(out(r)), ['error']);
++  }
++});
++test('every field any of the tools can return is in its field map, so the gate drops nothing and reports nothing unknown', () => {
++  const cashier = state({ cart: cartIn({ ...base(), lines: [...base().lines, gift] }, [warning(), warning({ id: 'q', mode: 'queue' })]) });
++  const results: [typeof cashDrawerTool, unknown][] = [
++    [cashDrawerTool, buildDrawerView(cashier.drawer, NOW)], [cashDrawerTool, buildDrawerView({ ...cashier.drawer, ledger: emptyLedger() }, NOW)], [cashDrawerTool, buildDrawerView(drawer({}, { open: false }), NOW)],
++    [currentCartTool, buildCartView(cashier.cart, true)], [currentCartTool, buildCartView(cartIn({ id: 'e', lines: [] }), true)], [currentCartTool, buildCartView(cartIn({ ...base(), tenders: [{ id: 't', kind: 'cash', amountCents: 500 } as any] }), true)],
++    [cashCalculatorTool, changeInfo({ due: 2345, given: 5000, rounding: true, drawer: { '2000': 4, '500': 1, '100': 10, '50': 8, '5': 10 } })], [cashCalculatorTool, changeInfo({ due: 2347, given: 5000, rounding: false, drawer: {} })],
++    [cashCalculatorTool, changeInfo({ due: 5000, given: 2000, rounding: false, drawer: {} })], [cashCalculatorTool, changeInfo({ due: 1500, given: 2000, rounding: false, drawer: { '2000': 1 } })],
++    [cashCalculatorTool, splitInfo({ total: 10000, parts: 3, rounding: true })], [cashCalculatorTool, splitInfo({ total: 10000, first: 2000, rounding: false })], [cashCalculatorTool, floatInfo(drawer(), NOW)], [cashCalculatorTool, floatInfo(drawer(), NOW, 90000)],
++  ];
++  let withUnknown = 0;
++  for (const policy of [resolvePolicy('local'), resolvePolicy('remote')]) for (const [tool, result] of results) { const g = applyGate(result, tool.gate, policy); assert.deepEqual(g.unknown, [], JSON.stringify(result).slice(0, 80)); withUnknown += g.unknown.length; }
++  assert.equal(withUnknown, 0);
++});
++test('on a remote endpoint nothing is hidden from these tools, because none of it is customer, payment or key data', () => {
++  const remote = resolvePolicy('remote');
++  for (const [n, a] of [['cash_drawer', {}], ['current_cart', {}], ['cash_calculator', { kind: 'float' }]] as const) { const r = run(n, a, state(), remote); assert.equal(r.record.ok, true, n); assert.deepEqual(r.record.withheld ?? {}, {}, n); }
++});
++test('the privacy toggles reach the tools: drawer data is shop data, and cart lines are order data', () => {
++  const noShop = resolvePolicy('local', { shop: 'never' });
++  const d = out(run('cash_drawer', {}, state(), noShop)); assert.match(d.privacy_note, /shop data/); assert.equal(d.shift, undefined); assert.equal(d.ledger_holds?.amount, undefined); assert.equal(d.cash_takings_today, undefined); assert.equal(d.recent_movements?.length ?? 0, 0);
++  const c = out(run('cash_calculator', { kind: 'split', total: '10', parts: 2 }, state(), noShop)); assert.match(c.privacy_note, /shop data/); assert.equal(c.payments?.length ?? 0, 0); assert.equal(c.total, undefined);
++  const noOrder = resolvePolicy('local', { order: 'never' });
++  const cart = out(run('current_cart', {}, state({ cart: cartIn(base(), [warning()]) }), noOrder)); assert.match(cart.privacy_note, /order details/); assert.equal(cart.lines?.length ?? 0, 0); assert.equal(cart.total, undefined);
++  assert.equal(cart.warnings.length, 1, 'a cart warning is the shop\'s own text, shop data, so it stays when order details are hidden');
++  assert.ok(run('current_cart', {}, state(), noOrder).record.withheld?.order! > 0);
++});
++test('no name, code, customer or payment detail can be in any result, whatever the cart and drawer hold', () => {
++  const dirty: CashState = state({
++    drawer: drawer(),
++    cart: cartIn({ ...base(), lines: [...base().lines, gift], customer: { id: 'c1', name: 'Jane Citizen', email: 'jane@example.com' } as any, note: 'Call jane@example.com', tenders: [{ id: 't1', kind: 'card', amountCents: 500, card: { last4: '4242', scheme: 'visa', approvalCode: 'A1B2C3' } } as any] }),
++  });
++  for (const [n, a] of [['cash_drawer', {}], ['current_cart', {}], ['cash_calculator', { kind: 'float' }]] as const) {
++    const all = run(n, a, dirty).message.content ?? ''; for (const bad of NEVER) assert.ok(!all.includes(bad), `${n} must not contain ${bad}`);
++  }
++});
++test('all three are read only: a frozen snapshot is unchanged by every call, and nothing the tools are given can write', () => {
++  const deepFreeze = (o: any): any => { if (o && typeof o === 'object' && !Object.isFrozen(o)) { Object.freeze(o); Object.values(o).forEach(deepFreeze); } return o; };
++  const s = deepFreeze(state({ cart: cartIn({ ...base(), lines: [...base().lines, gift] }, [warning()]) })); const before = JSON.stringify(s);
++  for (const [n, a] of [['cash_drawer', {}], ['current_cart', {}], ['cash_calculator', { kind: 'change', amount_due: '23.45', amount_given: '50' }], ['cash_calculator', { kind: 'split', total: '100', parts: 3 }], ['cash_calculator', { kind: 'float' }]] as const) assert.doesNotThrow(() => run(n, a, s), n);
++  assert.equal(JSON.stringify(s), before);
++  for (const tool of CASH_TOOLS) { assert.equal(tool.roles, undefined); assert.doesNotMatch(JSON.stringify(tool.def), /[\u2013\u2014]/); assert.ok(tool.def.function.description.length > 20); assert.equal((tool.def.function.parameters as any).type, 'object'); assert.equal((tool.def.function.parameters as any).additionalProperties, false); }
++  assert.deepEqual(cashDrawerTool.def.function.parameters, { type: 'object', properties: {}, additionalProperties: false }); assert.deepEqual(currentCartTool.def.function.parameters, { type: 'object', properties: {}, additionalProperties: false });
++  assert.deepEqual((cashCalculatorTool.def.function.parameters as any).required, ['kind']);
++});
++test('makeToolSet hands the snapshot to the tools, and leaving it out leaves the other tools as they were', () => {
++  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, cash: state() }); assert.ok(set.ctx.cash); assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.cash, undefined);
++  const order = ASSISTANT_TOOLS.map(t => t.def.function.name); assert.deepEqual(order.slice(order.indexOf('cash_drawer'), order.indexOf('cash_drawer') + 3), ['cash_drawer', 'cash_calculator', 'current_cart']);
++  assert.ok(order.indexOf('read_settings') < order.indexOf('cash_drawer') && order.indexOf('current_cart') < order.indexOf('find_products'));
++  assert.equal(new Set(order).size, order.length, 'no two tools share a name');
++});
++
++// ---- the prompt ----
++test('the prompt names the three tools, says never to do cash sums, and still names no restricted thing', () => {
++  const p = buildSystemPrompt('short', true);
++  for (const n of ['cash_drawer', 'cash_calculator', 'current_cart']) assert.match(p, new RegExp(n));
++  assert.match(p, /eighteen tools/); assert.match(p, /never do them yourself/); assert.match(p, /only source for why a sale will not go through/); assert.match(p, /Never open, count or edit them/);
++  assert.doesNotMatch(p, /[\u2013\u2014]/); assert.doesNotMatch(p, /read_settings|\bmanager\b|\bowner\b|printer/i);
++  assert.doesNotMatch(buildSystemPrompt('short', false), /cash_drawer|cash_calculator|current_cart/);
++});
++test('the three definitions stay small, because they share a small context with everything else', () => {
++  const size = JSON.stringify(toolDefs(CASH_TOOLS)).length;
++  assert.ok(size < 2600, `three definitions are ${size} characters`);
++});
+diff --git a/tests/assistantcontext.test.ts b/tests/assistantcontext.test.ts
+index 7cf27df..e621b1f 100644
+--- a/tests/assistantcontext.test.ts
++++ b/tests/assistantcontext.test.ts
+@@ -103,7 +103,7 @@ test('the tab names are the ones in the app graph, so they cannot drift', () =>
+ test('it is offered with the other tools, takes no arguments and cannot write', () => {
+   const tool = ASSISTANT_TOOLS.find(t => t.def.function.name === 'screen_context')!;
+   assert.deepEqual(tool.def.function.parameters, { type: 'object', properties: {}, additionalProperties: false }); assert.ok(tool.def.function.description.length > 20); assert.doesNotMatch(JSON.stringify(tool.def), /[–—]/); assert.equal(tool.link, undefined);
+-  assert.equal(ASSISTANT_TOOLS.length, 16);
++  assert.equal(ASSISTANT_TOOLS.length, 19);
+ });
+ test('makeToolSet hands the context to the tool, and leaving it out leaves the tool saying it does not know', () => {
+   const w = where({ screen: 'page_reports' }); const set = makeToolSet({ pages: [], screens: index, role: 'owner', contextSize: 8000, where: w }); assert.equal(set.ctx.where, w);
+@@ -112,7 +112,7 @@ test('makeToolSet hands the context to the tool, and leaving it out leaves the t
+   assert.match(runToolCall(call(), makeToolSet({ pages: [], role: 'owner', contextSize: 8000 })).message.content ?? '', /not known/);
+ });
+ test('the prompt names it and still names no restricted thing', () => {
+-  const p = buildSystemPrompt('short', true); assert.match(p, /screen_context/); assert.match(p, /fifteen tools/); assert.match(p, /never tell them to tap a tab that it does not list/i);
++  const p = buildSystemPrompt('short', true); assert.match(p, /screen_context/); assert.match(p, /eighteen tools/); assert.match(p, /never tell them to tap a tab that it does not list/i);
+   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page|settings page/i); assert.doesNotMatch(p, /[–—]/);
+   assert.doesNotMatch(buildSystemPrompt('short', false), /screen_context/);
+ });
+diff --git a/tests/assistantdata.test.ts b/tests/assistantdata.test.ts
+index 3961f5f..09ffe68 100644
+--- a/tests/assistantdata.test.ts
++++ b/tests/assistantdata.test.ts
+@@ -318,12 +318,12 @@ test('the data tool definitions are short, take only plain arguments, and carry
+ });
+ test('the prompt with tools names the data tools, says what cannot be looked up, and still names no restricted thing', () => {
+   const p = buildSystemPrompt('short', true);
+-  assert.match(p, /fifteen tools/); for (const n of ['find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
++  assert.match(p, /eighteen tools/); for (const n of ['find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']) assert.match(p, new RegExp(n));
+   assert.match(p, /cannot see what is left on a gift card/); assert.doesNotMatch(p, /cannot yet look up products/); assert.match(p, /never count stock yourself/i); assert.match(p, /never add up figures yourself/i); assert.match(p, /privacy rules/); assert.doesNotMatch(p, /have no access to the shop/);
+   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page|settings page/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
+   const none = buildSystemPrompt('short', false); assert.match(none, /no access to the shop's data/); assert.doesNotMatch(none, /sales_report/);
+ });
+ test('makeToolSet hands the snapshot to the tools, and leaving it out leaves the other tools as they were', () => {
+-  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 15, 'a cashier is not offered read_settings');
++  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, data: data() }); assert.ok(set.ctx.data); assert.equal(set.tools.length, 18, 'a cashier is not offered read_settings');
+   assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.data, undefined);
+ });
+diff --git a/tests/assistantlinks.test.ts b/tests/assistantlinks.test.ts
+index 36425da..468fe23 100644
+--- a/tests/assistantlinks.test.ts
++++ b/tests/assistantlinks.test.ts
+@@ -130,7 +130,7 @@ test('the loop: the audit log still sees the show_link call and what the model w
+ // ---- the prompt ----
+ test('the prompt names the link tool and tells the model not to write links or ids, and still names nothing restricted', () => {
+   const p = buildSystemPrompt('short', true);
+-  assert.match(p, /fifteen tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
++  assert.match(p, /eighteen tools/); assert.match(p, /show_link/); assert.match(p, /never write a link, an id or a page id/);
+   assert.doesNotMatch(p, /manager|owner|printer|hardware|reports page|staff page/i);
+   assert.doesNotMatch(buildSystemPrompt('short', false), /show_link/);
+ });
+diff --git a/tests/assistantstatus.test.ts b/tests/assistantstatus.test.ts
+index d05c217..c544e59 100644
+--- a/tests/assistantstatus.test.ts
++++ b/tests/assistantstatus.test.ts
+@@ -162,8 +162,8 @@ test('with no snapshot (practice data) both tools say they could not read the ti
+ });
+ test('the request leaves read_settings out for a cashier and keeps it for a manager and an owner', () => {
+   const names = (role: string) => makeToolSet({ pages: [], role, contextSize: 8000 }).tools.map(t => t.def.function.name);
+-  assert.ok(!names('cashier').includes('read_settings')); assert.ok(names('cashier').includes('app_status')); assert.equal(names('cashier').length, 15);
+-  for (const r of ['manager', 'owner']) { assert.ok(names(r).includes('read_settings')); assert.equal(names(r).length, 16); }
++  assert.ok(!names('cashier').includes('read_settings')); assert.ok(names('cashier').includes('app_status')); assert.equal(names('cashier').length, 18);
++  for (const r of ['manager', 'owner']) { assert.ok(names(r).includes('read_settings')); assert.equal(names(r).length, 19); }
+   assert.ok(!names('anything else').includes('read_settings'), 'an unknown role is treated as the least access');
+   assert.deepEqual(toolsFor('cashier').map(t => t.def.function.name), names('cashier'));
+   const custom = makeToolSet({ pages: [], role: 'cashier', contextSize: 8000, tools: [readSettingsTool, appStatusTool] }); assert.deepEqual(custom.tools.map(t => t.def.function.name), ['app_status'], 'a tool list handed in is filtered by role too');
+@@ -209,11 +209,11 @@ test('the status tool is offered with the other tools and keeps every role', ()
+ // ---- the prompt ----
+ test('the prompt for a cashier names app_status and never read_settings, and counts the tools it offers', () => {
+   const p = buildSystemPrompt('short', true);
+-  assert.match(p, /fifteen tools/); assert.match(p, /app_status/); assert.doesNotMatch(p, /read_settings/); assert.doesNotMatch(p, /manager|owner|printer|hardware|settings page|web address/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
++  assert.match(p, /eighteen tools/); assert.match(p, /app_status/); assert.doesNotMatch(p, /read_settings/); assert.doesNotMatch(p, /manager|owner|printer|hardware|settings page|web address/i); assert.doesNotMatch(p, /[\u2013\u2014]/);
+   const cashier = buildSystemPrompt('short', true, toolsFor('cashier').map(t => t.def.function.name)); assert.equal(cashier, p, 'the default is the tools every role has');
+   assert.doesNotMatch(buildSystemPrompt('short', false), /app_status/);
+ });
+ test('the prompt for a manager or an owner also names read_settings and says to point at the screen, never change it', () => {
+   const p = buildSystemPrompt('short', true, toolsFor('manager').map(t => t.def.function.name));
+-  assert.match(p, /sixteen tools/); assert.match(p, /read_settings/); assert.match(p, /Never change one/); assert.match(p, /never show a web address, key or PIN/); assert.doesNotMatch(p, /[\u2013\u2014]/); assert.doesNotMatch(p, /\bmanager\b|\bowner\b|printer/i);
++  assert.match(p, /nineteen tools/); assert.match(p, /read_settings/); assert.match(p, /Never change one/); assert.match(p, /never show a web address, key or PIN/); assert.doesNotMatch(p, /[\u2013\u2014]/); assert.doesNotMatch(p, /\bmanager\b|\bowner\b|printer/i);
+ });
+diff --git a/tests/assistanttime.test.ts b/tests/assistanttime.test.ts
+index d7dacec..64dce40 100644
+--- a/tests/assistanttime.test.ts
++++ b/tests/assistanttime.test.ts
+@@ -37,5 +37,5 @@ test('it is offered with the other tools, takes no arguments, and the time reach
+   assert.equal(makeToolSet({ pages: [], role: 'cashier', contextSize: 8000 }).ctx.now, undefined);
+ });
+ test('the prompt names it, and it still names no restricted thing', () => {
+-  const p = buildSystemPrompt('short', true); assert.match(p, /current_time/); assert.match(p, /never guess the date/i); assert.match(p, /fifteen tools/); assert.doesNotMatch(p, /[\u2013\u2014]/);
++  const p = buildSystemPrompt('short', true); assert.match(p, /current_time/); assert.match(p, /never guess the date/i); assert.match(p, /eighteen tools/); assert.doesNotMatch(p, /[\u2013\u2014]/);
+ });
+diff --git a/tests/assistanttools.test.ts b/tests/assistanttools.test.ts
+index 2c05f24..d059907 100644
+--- a/tests/assistanttools.test.ts
++++ b/tests/assistanttools.test.ts
+@@ -115,7 +115,7 @@ test('the record keeps the arguments and result, with any key removed', () => {
+ });
+ test('every tool has a name, a description and object parameters, and none can write', () => {
+   const names = toolDefs(ASSISTANT_TOOLS).map(d => d.function.name);
+-  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'current_time', 'screen_context', 'app_status', 'read_settings', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
++  assert.deepEqual(names, ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'current_time', 'screen_context', 'app_status', 'read_settings', 'cash_drawer', 'cash_calculator', 'current_cart', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity']);
+   for (const d of toolDefs(ASSISTANT_TOOLS)) { assert.ok(d.function.description.length > 20); assert.equal((d.function.parameters as any).type, 'object'); }
+ });
+ 

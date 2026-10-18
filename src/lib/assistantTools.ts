@@ -1,5 +1,5 @@
 // Location: src/lib/assistantTools.ts
-// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts, patch 0166 current_time, patch 0167 screen_context, patch 0169 app_status and read_settings). Plain functions that read what they are
+// The assistant's tools (patch 0157 added search_docs and read_doc, patch 0158 search_screens, patch 0159 show_link, patch 0162 show_guide, patch 0163 the shop data tools in assistantDataTools.ts, patch 0166 current_time, patch 0167 screen_context, patch 0169 app_status and read_settings, patch 0172 cash_drawer, cash_calculator and current_cart). Plain functions that read what they are
 // given and return data. None is handed anything that can write, which is how the assistant stays read-only. Pure, so it
 // runs in the node tests.
 //
@@ -16,6 +16,7 @@ import { DATA_TOOLS } from './assistantDataTools';
 import { currentTimeTool } from './assistantTime';
 import { contextInfo, type RegisterContext } from './assistantContext';
 import { appStatusTool, readSettingsTool, type TillState } from './assistantStatus';
+import { CASH_TOOLS, type CashState } from './assistantCash';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -35,6 +36,8 @@ export type ToolContext = {
   where?: RegisterContext;
   /** How the till is set up and how it is doing, taken when the question was asked (patch 0169). Left out (practice data), `app_status` and `read_settings` say it could not be read. */
   till?: TillState;
+  /** The cash drawer and the cart on the till, taken when the question was asked (patch 0172). Left out (practice data), the cash and cart tools say they could not read the till. */
+  cash?: CashState;
 };
 export type AssistantTool = {
   /** Only these roles are offered the tool (patch 0169). Left out, every role is. A role not listed never sees it in the request, and calling it gets the answer an unknown tool gets (plan 3.4). */
@@ -261,7 +264,7 @@ const screenContext: AssistantTool = {
 };
 
 /** The tools in this build. Later patches add to the end. */
-export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, screenContext, appStatusTool, readSettingsTool, ...DATA_TOOLS];
+export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScreens, showLink, showGuide, currentTimeTool, screenContext, appStatusTool, readSettingsTool, ...CASH_TOOLS, ...DATA_TOOLS];
 /** The tools this role is offered. The one place tools are filtered by role, so a request cannot forget to. */
 export const toolsFor = (role: string, tools: AssistantTool[] = ASSISTANT_TOOLS): AssistantTool[] => tools.filter(t => !t.roles || t.roles.includes(role));
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
@@ -308,5 +311,5 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState }): ToolSet =>
-  ({ tools: toolsFor(o.role, o.tools), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet =>
+  ({ tools: toolsFor(o.role, o.tools), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
