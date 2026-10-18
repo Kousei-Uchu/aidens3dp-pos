@@ -6,6 +6,7 @@
 import TcpSocket from 'react-native-tcp-socket';
 import DeviceInfo from 'react-native-device-info';
 import * as Crypto from 'expo-crypto';
+import * as Network from 'expo-network';
 import { AppState } from 'react-native';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { noteActivity } from './idle';
@@ -32,13 +33,27 @@ const write = (s: Sock, data: string | Uint8Array): Promise<void> => new Promise
   try { s.write(data, typeof data === 'string' ? 'utf8' : undefined, (err?: Error) => { clearTimeout(t); err ? no(err) : ok(); }); } catch (e) { clearTimeout(t); no(e); }
 });
 
+/**
+ * This iPad's Wi-Fi IPv4 address. react-native-device-info's iOS getIpAddress walks every address on en0 (IPv4 and IPv6) and keeps
+ * the LAST one, reading an IPv6 entry as if it were IPv4, so on most iPads it returns garbage and sharing always said "not on
+ * Wi-Fi". expo-network asks for IPv4 only, so it goes first; device-info stays as a fallback. Returns the first usable address.
+ */
+async function lanIp(): Promise<{ ip: string; seen: string[] }> {
+  const seen: string[] = [];
+  const sources: (() => Promise<string>)[] = [() => Network.getIpAddressAsync(), () => DeviceInfo.getIpAddress()];
+  for (const get of sources) {
+    try { const v = String((await get()) ?? ''); seen.push(v); if (usableLanIp(v)) return { ip: v.trim(), seen }; } catch (e: any) { seen.push(`error: ${e?.message ?? e}`); }
+  }
+  return { ip: '', seen };
+}
+
 /** Starts sharing. Throws a plain-words Error when this register cannot share (no history, not on Wi-Fi, no free port). */
 export async function startShare(onUpdate: (line: string, s: ShareStatus) => void, onEnd: (why: ShareEnd, message?: string) => void): Promise<ShareHandle> {
   const manifest = await storedManifest();
   if (!manifest) throw new Error('This register has no Square history yet. Import it first, then share it.');
   for (const f of manifest.files) if (!(await storedFileExists(f.name))) throw new Error(`The file ${f.name} is missing on this register. Import the history again, then share it.`);
-  const ip = await DeviceInfo.getIpAddress().catch(() => '');
-  if (!usableLanIp(ip)) throw new Error('This iPad is not connected to Wi-Fi. Join the same Wi-Fi as the other register and try again.');
+  const { ip, seen } = await lanIp();
+  if (!usableLanIp(ip)) throw new Error(`Could not find this iPad's Wi-Fi address (got ${seen.map(x => x || 'nothing').join(', ')}). Check it is on the same Wi-Fi as the other register and try again.`);
 
   const key = newShareKey(Crypto.getRandomBytes(8)); const allowed = shareableNames(manifest); const log: ShareLog = new Map();
   const sockets = new Set<Sock>(); let stopped = false;

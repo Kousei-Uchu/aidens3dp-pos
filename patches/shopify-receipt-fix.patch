@@ -1,0 +1,72 @@
+From 9fe84ddac6a9b2a6de05c070ddc428b38718b256 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sun, 18 Oct 2026 00:17:45 +0000
+Subject: [PATCH] Fix Shopify receiptJson (object, not string); hide Zeller
+ eReceipt button on terminal
+
+---
+ src/lib/shopify/orderModel.ts | 2 +-
+ src/lib/zeller.ts             | 6 +++---
+ tests/sale.test.ts            | 2 +-
+ 3 files changed, 5 insertions(+), 5 deletions(-)
+
+diff --git a/src/lib/shopify/orderModel.ts b/src/lib/shopify/orderModel.ts
+index a2dd6c3..2cde08b 100644
+--- a/src/lib/shopify/orderModel.ts
++++ b/src/lib/shopify/orderModel.ts
+@@ -33,7 +33,7 @@ export function buildOrderInput(sale: SaleRecord, ctx: OrderCtx) {
+   const transactions = sale.tenders.map(t => ({
+     kind: 'SALE', status: 'SUCCESS', gateway: GATEWAY[t.kind], amountSet: money(t.amountCents), processedAt: t.card?.timestampLocal ?? t.at ?? sale.ts,
+     ...(t.card?.approvalCode ? { authorizationCode: t.card.approvalCode } : {}),
+-    ...(t.card ? { receiptJson: JSON.stringify({ transactionUuid: t.card.transactionUuid, externalReference: t.card.externalReference, rrn: t.card.rrn, scheme: t.card.scheme, panMasked: t.card.panMasked, cardMedia: t.card.cardMedia, receiptLink: t.card.receiptLink }) } : {}),
++    ...(t.card ? { receiptJson: { transactionUuid: t.card.transactionUuid, externalReference: t.card.externalReference, rrn: t.card.rrn, scheme: t.card.scheme, panMasked: t.card.panMasked, cardMedia: t.card.cardMedia, receiptLink: t.card.receiptLink } } : {}),
+   }));
+   const attrs: { key: string; value: string }[] = [
+     { key: 'pos_sale_uuid', value: sale.uuid }, { key: 'pos_register', value: sale.registerName }, { key: 'pos_staff', value: sale.staff ?? '' },
+diff --git a/src/lib/zeller.ts b/src/lib/zeller.ts
+index 74dc988..5b61ee9 100644
+--- a/src/lib/zeller.ts
++++ b/src/lib/zeller.ts
+@@ -25,7 +25,7 @@ export interface TerminalLike {
+     terminalReceiptPrint?: boolean; terminalContact?: boolean; terminalNote?: boolean; fullscreen?: boolean;
+     virtualTerminal?: boolean; theme?: string;
+   }): Op<ZellerTxn>;
+-  refund(o: { purchase: string; amount: number; reference?: string; sessionUuid?: string; amountAdjustable?: boolean }): Op<ZellerTxn>;
++  refund(o: { purchase: string; amount: number; reference?: string; sessionUuid?: string; amountAdjustable?: boolean; terminalReceipt?: boolean; terminalReceiptPrint?: boolean }): Op<ZellerTxn>;
+   getTransactions(o?: { reference?: string }): Op<ZellerTxn[]>;
+ }
+ 
+@@ -123,7 +123,7 @@ export function startCharge(terminal: TerminalLike, o: ChargeOpts, hooks: Charge
+     const seen: Seen = { any: false, processing: false };
+     op = terminal.purchase({
+       amount: o.amountCents, reference: o.reference, sessionUuid: o.sessionUuid,
+-      terminalReceipt: o.terminalReceipt ?? true,
++      terminalReceipt: o.terminalReceipt ?? false, terminalReceiptPrint: false, // no Zeller eReceipt or print button on the terminal; our own receipts are used
+     });
+     op.onEvent?.(e => {
+       seen.any = true;
+@@ -156,7 +156,7 @@ export function startRefund(terminal: TerminalLike, o: { purchaseRef: string; am
+   const promise = (async (): Promise<RefundResult> => {
+     await hooks.onStarted?.();
+     const seen: Seen = { any: false, processing: false };
+-    op = terminal.refund({ purchase: o.purchaseRef, amount: o.amountCents, reference: o.reference });
++    op = terminal.refund({ purchase: o.purchaseRef, amount: o.amountCents, reference: o.reference, terminalReceipt: false, terminalReceiptPrint: false });
+     op.onEvent?.(e => { seen.any = true; if (e.type === 'PROCESSING') seen.processing = true; hooks.onEvent?.(e); });
+     const r = await op;
+     if (isErr(r)) {
+diff --git a/tests/sale.test.ts b/tests/sale.test.ts
+index 6c84f08..56ff0b2 100644
+--- a/tests/sale.test.ts
++++ b/tests/sale.test.ts
+@@ -135,7 +135,7 @@ test('orderCreate input: totals reconcile, discounts baked in, tags/attrs/tender
+   assert.equal(lineTotal, sale.netCents); assert.equal(txTotal, sale.netCents);
+   assert.deepEqual(order.transactions.map((t: any) => t.gateway), ['Zeller', 'Cash']);
+   assert.equal(order.transactions[0].authorizationCode, 'AP1');
+-  assert.ok(JSON.parse(order.transactions[0].receiptJson).receiptLink);
++  assert.ok(order.transactions[0].receiptJson.receiptLink);
+   assert.ok(order.tags.includes('pos-S1') && order.tags.every((t: string) => t.length <= 40)); assert.equal(order.sourceName, 'custom-pos'); assert.equal(order.financialStatus, 'PAID');
+   assert.equal(order.fulfillment.locationId, 'gid://shopify/Location/1');
+   assert.equal(options.inventoryBehaviour, 'DECREMENT_IGNORING_POLICY'); assert.equal(options.sendReceipt, false);
+-- 
+2.43.0
+

@@ -1,0 +1,138 @@
+From 6315696adc385dde68a35ba3436b3801a3a6ca76 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sun, 18 Oct 2026 00:20:22 +0000
+Subject: [PATCH] Fix 'not connected to Wi-Fi' on Show QR: use expo-network for
+ the IPv4 address
+
+---
+ package-lock.json        | 23 +++++++++++------------
+ package.json             |  1 +
+ src/lib/squareShareIO.ts | 19 +++++++++++++++++--
+ 3 files changed, 29 insertions(+), 14 deletions(-)
+
+diff --git a/package-lock.json b/package-lock.json
+index 9f81442..e21cc50 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -26,6 +26,7 @@
+         "expo-font": "~14.0.12",
+         "expo-haptics": "~15.0.8",
+         "expo-keep-awake": "~15.0.8",
++        "expo-network": "~8.0.8",
+         "expo-print": "~15.0.8",
+         "expo-secure-store": "~15.0.8",
+         "expo-sharing": "~14.0.8",
+@@ -4626,6 +4627,16 @@
+         "react-native": "*"
+       }
+     },
++    "node_modules/expo-network": {
++      "version": "8.0.8",
++      "resolved": "https://registry.npmjs.org/expo-network/-/expo-network-8.0.8.tgz",
++      "integrity": "sha512-dgrL8UHAmWofqeY4UEjWskCl/RoQAM0DG6PZR8xz2WZt+6aQEboQgFRXowCfhbKZ71d16sNuKXtwBEsp2DtdNw==",
++      "license": "MIT",
++      "peerDependencies": {
++        "expo": "*",
++        "react": "*"
++      }
++    },
+     "node_modules/expo-print": {
+       "version": "15.0.8",
+       "resolved": "https://registry.npmjs.org/expo-print/-/expo-print-15.0.8.tgz",
+@@ -5896,9 +5907,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -5919,9 +5927,6 @@
+       "cpu": [
+         "arm64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -5942,9 +5947,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "glibc"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+@@ -5965,9 +5967,6 @@
+       "cpu": [
+         "x64"
+       ],
+-      "libc": [
+-        "musl"
+-      ],
+       "license": "MPL-2.0",
+       "optional": true,
+       "os": [
+diff --git a/package.json b/package.json
+index 265e0c3..7d6000e 100644
+--- a/package.json
++++ b/package.json
+@@ -39,6 +39,7 @@
+     "expo-font": "~14.0.12",
+     "expo-haptics": "~15.0.8",
+     "expo-keep-awake": "~15.0.8",
++    "expo-network": "~8.0.8",
+     "expo-print": "~15.0.8",
+     "expo-secure-store": "~15.0.8",
+     "expo-sharing": "~14.0.8",
+diff --git a/src/lib/squareShareIO.ts b/src/lib/squareShareIO.ts
+index cfe30f6..e6bd560 100644
+--- a/src/lib/squareShareIO.ts
++++ b/src/lib/squareShareIO.ts
+@@ -6,6 +6,7 @@
+ import TcpSocket from 'react-native-tcp-socket';
+ import DeviceInfo from 'react-native-device-info';
+ import * as Crypto from 'expo-crypto';
++import * as Network from 'expo-network';
+ import { AppState } from 'react-native';
+ import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
+ import { noteActivity } from './idle';
+@@ -32,13 +33,27 @@ const write = (s: Sock, data: string | Uint8Array): Promise<void> => new Promise
+   try { s.write(data, typeof data === 'string' ? 'utf8' : undefined, (err?: Error) => { clearTimeout(t); err ? no(err) : ok(); }); } catch (e) { clearTimeout(t); no(e); }
+ });
+ 
++/**
++ * This iPad's Wi-Fi IPv4 address. react-native-device-info's iOS getIpAddress walks every address on en0 (IPv4 and IPv6) and keeps
++ * the LAST one, reading an IPv6 entry as if it were IPv4, so on most iPads it returns garbage and sharing always said "not on
++ * Wi-Fi". expo-network asks for IPv4 only, so it goes first; device-info stays as a fallback. Returns the first usable address.
++ */
++async function lanIp(): Promise<{ ip: string; seen: string[] }> {
++  const seen: string[] = [];
++  const sources: (() => Promise<string>)[] = [() => Network.getIpAddressAsync(), () => DeviceInfo.getIpAddress()];
++  for (const get of sources) {
++    try { const v = String((await get()) ?? ''); seen.push(v); if (usableLanIp(v)) return { ip: v.trim(), seen }; } catch (e: any) { seen.push(`error: ${e?.message ?? e}`); }
++  }
++  return { ip: '', seen };
++}
++
+ /** Starts sharing. Throws a plain-words Error when this register cannot share (no history, not on Wi-Fi, no free port). */
+ export async function startShare(onUpdate: (line: string, s: ShareStatus) => void, onEnd: (why: ShareEnd, message?: string) => void): Promise<ShareHandle> {
+   const manifest = await storedManifest();
+   if (!manifest) throw new Error('This register has no Square history yet. Import it first, then share it.');
+   for (const f of manifest.files) if (!(await storedFileExists(f.name))) throw new Error(`The file ${f.name} is missing on this register. Import the history again, then share it.`);
+-  const ip = await DeviceInfo.getIpAddress().catch(() => '');
+-  if (!usableLanIp(ip)) throw new Error('This iPad is not connected to Wi-Fi. Join the same Wi-Fi as the other register and try again.');
++  const { ip, seen } = await lanIp();
++  if (!usableLanIp(ip)) throw new Error(`Could not find this iPad's Wi-Fi address (got ${seen.map(x => x || 'nothing').join(', ')}). Check it is on the same Wi-Fi as the other register and try again.`);
+ 
+   const key = newShareKey(Crypto.getRandomBytes(8)); const allowed = shareableNames(manifest); const log: ShareLog = new Map();
+   const sockets = new Set<Sock>(); let stopped = false;
+-- 
+2.43.0
+

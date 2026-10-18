@@ -25,7 +25,7 @@ export interface TerminalLike {
     terminalReceiptPrint?: boolean; terminalContact?: boolean; terminalNote?: boolean; fullscreen?: boolean;
     virtualTerminal?: boolean; theme?: string;
   }): Op<ZellerTxn>;
-  refund(o: { purchase: string; amount: number; reference?: string; sessionUuid?: string; amountAdjustable?: boolean }): Op<ZellerTxn>;
+  refund(o: { purchase: string; amount: number; reference?: string; sessionUuid?: string; amountAdjustable?: boolean; terminalReceipt?: boolean; terminalReceiptPrint?: boolean }): Op<ZellerTxn>;
   getTransactions(o?: { reference?: string }): Op<ZellerTxn[]>;
 }
 
@@ -123,7 +123,7 @@ export function startCharge(terminal: TerminalLike, o: ChargeOpts, hooks: Charge
     const seen: Seen = { any: false, processing: false };
     op = terminal.purchase({
       amount: o.amountCents, reference: o.reference, sessionUuid: o.sessionUuid,
-      terminalReceipt: o.terminalReceipt ?? true,
+      terminalReceipt: o.terminalReceipt ?? false, terminalReceiptPrint: false, // no Zeller eReceipt or print button on the terminal; our own receipts are used
     });
     op.onEvent?.(e => {
       seen.any = true;
@@ -156,7 +156,7 @@ export function startRefund(terminal: TerminalLike, o: { purchaseRef: string; am
   const promise = (async (): Promise<RefundResult> => {
     await hooks.onStarted?.();
     const seen: Seen = { any: false, processing: false };
-    op = terminal.refund({ purchase: o.purchaseRef, amount: o.amountCents, reference: o.reference });
+    op = terminal.refund({ purchase: o.purchaseRef, amount: o.amountCents, reference: o.reference, terminalReceipt: false, terminalReceiptPrint: false });
     op.onEvent?.(e => { seen.any = true; if (e.type === 'PROCESSING') seen.processing = true; hooks.onEvent?.(e); });
     const r = await op;
     if (isErr(r)) {

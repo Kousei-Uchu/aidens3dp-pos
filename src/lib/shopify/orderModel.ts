@@ -33,7 +33,7 @@ export function buildOrderInput(sale: SaleRecord, ctx: OrderCtx) {
   const transactions = sale.tenders.map(t => ({
     kind: 'SALE', status: 'SUCCESS', gateway: GATEWAY[t.kind], amountSet: money(t.amountCents), processedAt: t.card?.timestampLocal ?? t.at ?? sale.ts,
     ...(t.card?.approvalCode ? { authorizationCode: t.card.approvalCode } : {}),
-    ...(t.card ? { receiptJson: JSON.stringify({ transactionUuid: t.card.transactionUuid, externalReference: t.card.externalReference, rrn: t.card.rrn, scheme: t.card.scheme, panMasked: t.card.panMasked, cardMedia: t.card.cardMedia, receiptLink: t.card.receiptLink }) } : {}),
+    ...(t.card ? { receiptJson: { transactionUuid: t.card.transactionUuid, externalReference: t.card.externalReference, rrn: t.card.rrn, scheme: t.card.scheme, panMasked: t.card.panMasked, cardMedia: t.card.cardMedia, receiptLink: t.card.receiptLink } } : {}),
   }));
   const attrs: { key: string; value: string }[] = [
     { key: 'pos_sale_uuid', value: sale.uuid }, { key: 'pos_register', value: sale.registerName }, { key: 'pos_staff', value: sale.staff ?? '' },

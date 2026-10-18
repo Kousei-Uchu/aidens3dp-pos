@@ -1,0 +1,45 @@
+From 65536a565a092f828235f17c8b0032a32765716c Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sun, 18 Oct 2026 00:38:41 +0000
+Subject: [PATCH] Drawer pull merges instead of replacing: keep our entries,
+ open drawer stays open, share the result
+
+---
+ src/lib/sync.ts | 14 +++++++++++---
+ 1 file changed, 11 insertions(+), 3 deletions(-)
+
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index f9c86c6..e893fd6 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -7,7 +7,7 @@ import { applyRecord, emptyTotals, rollupKey, type Totals } from './rollup';
+ import { parseBundleConfig } from './bundles';
+ import { parseGrid } from './grid';
+ import { readLedger } from './cashLedger';
+-import { mergeDrawer } from './drawerSync';
++import { mergeDrawer, missingEntries } from './drawerSync';
+ import { isTraining } from './trainingGuard';
+ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+@@ -311,8 +311,16 @@ async function pullDrawer() {
+   if (v <= (st().settings.drawerVersion ?? 0)) return;
+   try {
+     const j = JSON.parse(row.f.settings_json) as { shift?: Shift; ledger?: unknown };
+-    st().patchPos({ shift: j.shift ?? st().pos.shift, ledger: readLedger(j.ledger) });
+-    st().patchSettings({ drawerVersion: v });
++    const local = st().pos; const remoteLedger = readLedger(j.ledger);
++    // Merge, never replace: our own entries the shared copy has not seen are kept and applied onto the shared counts' history.
++    const ledger = mergeDrawer(local.ledger, remoteLedger);
++    const ours = missingEntries(remoteLedger.entries, local.ledger.entries).length > 0;
++    // First look at the shared drawer: whichever register has an open drawer keeps it open. After that the newer shared shift wins.
++    const first = !(st().settings.drawerVersion ?? 0);
++    const shift = first && local.shift.open && !j.shift?.open ? local.shift : (j.shift ?? local.shift);
++    st().patchPos({ shift, ledger });
++    st().patchSettings({ drawerVersion: v, ...(ours || shift !== j.shift ? { drawerPending: true, drawerShiftPending: shift !== j.shift } : {}) });
++    if (ours || shift !== j.shift) void pushDrawer().catch(() => {}); // share what only we had
+   } catch { /* ignore a bad record */ }
+ }
+ export const bundleConfig = (): BundleConfig | null => { try { return st().settings.bundlesJson ? parseBundleConfig(st().settings.bundlesJson).cfg ?? null : null; } catch { return null; } };
+-- 
+2.43.0
+

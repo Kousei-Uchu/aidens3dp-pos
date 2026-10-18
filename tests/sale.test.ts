@@ -135,7 +135,7 @@ test('orderCreate input: totals reconcile, discounts baked in, tags/attrs/tender
   assert.equal(lineTotal, sale.netCents); assert.equal(txTotal, sale.netCents);
   assert.deepEqual(order.transactions.map((t: any) => t.gateway), ['Zeller', 'Cash']);
   assert.equal(order.transactions[0].authorizationCode, 'AP1');
-  assert.ok(JSON.parse(order.transactions[0].receiptJson).receiptLink);
+  assert.ok(order.transactions[0].receiptJson.receiptLink);
   assert.ok(order.tags.includes('pos-S1') && order.tags.every((t: string) => t.length <= 40)); assert.equal(order.sourceName, 'custom-pos'); assert.equal(order.financialStatus, 'PAID');
   assert.equal(order.fulfillment.locationId, 'gid://shopify/Location/1');
   assert.equal(options.inventoryBehaviour, 'DECREMENT_IGNORING_POLICY'); assert.equal(options.sendReceipt, false);

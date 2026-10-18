@@ -7,7 +7,7 @@ import { applyRecord, emptyTotals, rollupKey, type Totals } from './rollup';
 import { parseBundleConfig } from './bundles';
 import { parseGrid } from './grid';
 import { readLedger } from './cashLedger';
-import { mergeDrawer } from './drawerSync';
+import { mergeDrawer, missingEntries } from './drawerSync';
 import { isTraining } from './trainingGuard';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
@@ -311,8 +311,16 @@ async function pullDrawer() {
   if (v <= (st().settings.drawerVersion ?? 0)) return;
   try {
     const j = JSON.parse(row.f.settings_json) as { shift?: Shift; ledger?: unknown };
-    st().patchPos({ shift: j.shift ?? st().pos.shift, ledger: readLedger(j.ledger) });
-    st().patchSettings({ drawerVersion: v });
+    const local = st().pos; const remoteLedger = readLedger(j.ledger);
+    // Merge, never replace: our own entries the shared copy has not seen are kept and applied onto the shared counts' history.
+    const ledger = mergeDrawer(local.ledger, remoteLedger);
+    const ours = missingEntries(remoteLedger.entries, local.ledger.entries).length > 0;
+    // First look at the shared drawer: whichever register has an open drawer keeps it open. After that the newer shared shift wins.
+    const first = !(st().settings.drawerVersion ?? 0);
+    const shift = first && local.shift.open && !j.shift?.open ? local.shift : (j.shift ?? local.shift);
+    st().patchPos({ shift, ledger });
+    st().patchSettings({ drawerVersion: v, ...(ours || shift !== j.shift ? { drawerPending: true, drawerShiftPending: shift !== j.shift } : {}) });
+    if (ours || shift !== j.shift) void pushDrawer().catch(() => {}); // share what only we had
   } catch { /* ignore a bad record */ }
 }
 export const bundleConfig = (): BundleConfig | null => { try { return st().settings.bundlesJson ? parseBundleConfig(st().settings.bundlesJson).cfg ?? null : null; } catch { return null; } };
