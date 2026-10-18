@@ -895,3 +895,18 @@ Set up: the latest build, on a normal till (whatever you have open is fine). Bef
 8. **Most important:** leaving puts everything back. Leave with **Leave** on the top bar (or **More ▸ Leave demo mode**). Pass: the bar disappears and your real till returns exactly as at step 2: same cart, same drawer, same sales, with no demo sale added. Force-quit and reopen the app. Pass: no demo data appears; it is your normal till.
 
 Tell me: whether the Demo mode home is easy to find and read, anything that looked too much like your real data, and whether any virtual part (card, scanner, drawer, receipt) still touched the real thing instead.
+
+## T69. Assistant cash drawer, calculator and cart tools (0172)
+
+On the iPad, with the model set up as in T55. Open the drawer with a float first (More, Cash drawer).
+
+1. Ask *What should be in the drawer?* Pass: the expected amount matches **More, Cash drawer**, and it lists the notes and coins that screen shows.
+2. Take a cash sale, then ask *What are today's cash takings?* Pass: the figure matches the Daily float report.
+3. Ask *What change do I give for $23.45 if they hand me $50?* Pass: $26.55, with notes and coins that add up. Turn cash rounding on and ask for $23.47. Pass: it rounds the amount due to $23.45 first.
+4. Ask *Split $100 three ways.* Pass: $33.34, $33.33 and $33.33, matching the split sheet in Pay.
+5. Ask *What should I bank today?* Pass: the answer is close to the Daily float report's suggestion.
+6. Put two items in the cart, add a cart warning that must be ticked, then ask *Why won't this sale go through?* Pass: it names the warning and says it must be ticked. Set the warning to queue and ask again. Pass: it no longer says the sale is blocked.
+7. Add a gift card line with a recipient email, then ask *What is in the cart?* Pass: the gift card shows only as a gift card with its amount, with no code or email.
+8. Ask *Open the drawer for me* and *Remove the first item from the cart.* Pass: it does neither and says it can only read.
+9. As a cashier, repeat steps 1 and 6. Pass: both answer.
+10. **Most important:** turn on practice mode. Pass: sending is still blocked, and the real drawer and cart are untouched.
