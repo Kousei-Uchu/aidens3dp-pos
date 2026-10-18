@@ -24,18 +24,18 @@ guidance and sandbox are only there to *place* it in the run. A module never cha
 > The course must not cover admin screens (Settings, staff, registers). Those are `refund`/`customer` territory,
 > not a checkout course.
 
-## 1. Practice data — only if the course needs records
+## 1. Practice data: only if the course needs records
 
 - [ ] Add any items, variants, collections, customers, bundle deals or orders the course assumes to
       `src/lib/trainingSandbox.ts` (and `trainingOrders.ts` for orders). **Prefix every id with `train-`** so it
       can never collide with a real record.
 - [ ] Reuse before you add: the welcome course's practice cart is the base; add only what this course needs.
 - [ ] If a runtime record must exist **only in this course** (not in the everyday till), give it a `modules` tag
-      when it is registered — see the per-instance scope in `docs/ROUTEGRAPH_GUIDANCE.md` (0115). A record with
+      when it is registered; see the per-instance scope in `docs/ROUTEGRAPH_GUIDANCE.md` (0115). A record with
       `modules: ['<id>', 'real']` shows in both; `modules: ['<id>']` shows in practice only.
 - [ ] Check nothing you added leaks into the real app: practice ids carry `train-`, and generated data is tagged.
 
-## 2. Spots — only the ones that don't exist yet
+## 2. Spots: only the ones that don't exist yet
 
 - [ ] Add a new **static** id to `SPOT` in `src/lib/trainingSpots.ts` (or a **dynamic** prefix + helper if the
       control is per record, e.g. `cashDenomSpot`). Comment it the way the neighbours are commented.
@@ -53,16 +53,16 @@ guidance and sandbox are only there to *place* it in the run. A module never cha
 
 - [ ] Create `src/training/modules/<id>.ts` with the six parts in order: `info`, `show`, `guide`, `check1`,
       `check2` (and `recap` if the neighbours have it).
-  - **Info** — animated explanation, **at least 3 demo steps** (most courses use 5–7). Explains the job; it does
+  - **Info**: animated explanation, **at least 3 demo steps** (most courses use 5–7). Explains the job; it does
     not walk the real screens.
-  - **Show** — a watched demonstration on mock screens, **at least 3 steps**, never self-advancing.
-  - **Guide** — steps on the real till. Each step has `target` (a spot), a sentence, and `until`
+  - **Show**: a watched demonstration on mock screens, **at least 3 steps**, never self-advancing.
+  - **Guide**: steps on the real till. Each step has `target` (a spot), a sentence, and `until`
     (`next` | `press` | `visible` | …), plus `allow`/`at`/`watch` as needed. Give the person room; don't narrate
     every tap.
-  - **Check 1** — goals the person hits on their own.
-  - **Check 2** — goals that need recovery. **Every Check 2 goal needs `taughtBy`** pointing at a guide step, and
+  - **Check 1**: goals the person hits on their own.
+  - **Check 2**: goals that need recovery. **Every Check 2 goal needs `taughtBy`** pointing at a guide step, and
     at least one **`inject`** that causes the mistake. Check 2 never covers admin.
-  - **`allow`** — the tabs/routes the course may use. Most checkout courses are `tabs: ['checkout']`; `refund`
+  - **`allow`**: the tabs/routes the course may use. Most checkout courses are `tabs: ['checkout']`; `refund`
     also allows `more`.
 - [ ] Follow the wording rules: plain, short, no jargon, no blame, one idea per sentence. Match a built module's
       voice rather than inventing one.
@@ -89,10 +89,10 @@ guidance and sandbox are only there to *place* it in the run. A module never cha
 
 - [ ] Add `tests/training<id>.test.ts` modelled on the nearest module test: it walks the golden path through the
       pure run/cond helpers, and checks the Check 2 injections produce the taught failure.
-- [ ] `npm run typecheck` — clean.
-- [ ] `npm test` — all green. This also runs `validateModule` over every module (it refuses a broken one before a
+- [ ] `npm run typecheck`: clean.
+- [ ] `npm test`: all green. This also runs `validateModule` over every module (it refuses a broken one before a
       person ever sees it).
-- [ ] `npm run graph:check` — clean.
+- [ ] `npm run graph:check`: clean.
 - [ ] If help text changed: `npm run help:check` (and `npm run help:build` if you edited help source).
 
 ## 7. Docs and delivery
@@ -113,7 +113,7 @@ guidance and sandbox are only there to *place* it in the run. A module never cha
       run**, not into a real-only screen.
 - [ ] Every Check 2 failure can actually be caused by the sandbox, and the fix the course shows is the fix that
       works.
-- [ ] Nothing about the real screens changed: no new labels, colours, spacing or behaviour — only the spots.
+- [ ] Nothing about the real screens changed: no new labels, colours, spacing or behaviour; only the spots.
 - [ ] Real app (Demo / Help) still reaches its own screens: the practice-only places did not close a door there.
 
 ---
@@ -129,4 +129,4 @@ person does:
 - Check 2 goals carry `taughtBy`, and every `inject` names a real course failure;
 - ids are unique where they must be; `allow` names real tabs/routes.
 
-If it refuses, the message names the rule — fix the module, never the checker.
+If it refuses, the message names the rule; fix the module, never the checker.

@@ -95,7 +95,7 @@ export function CancelCashSheet({ visible, tenders, onDone }: { visible: boolean
         </> : null}
         {stage === 'return' || cashOutTarget === 0 ? <>
           {returnManually ? <>
-            <Txt weight="600">These notes were not recorded. Enter the exact notes and coins now being returned (target {fmt(expected)}); this is a manual count, not an optimized suggestion.</Txt>
+            <Txt weight="600">These notes were not recorded. Enter the exact notes and coins now being returned (target {fmt(expected)}); this is a manual count, not an optimised suggestion.</Txt>
             <DenomPad draft={returnDraft} onChange={draft => setDrafts(s => ({ ...s, [`${current.id}:return`]: draft }))} totalLabel="Cash returned" />
           </> : <><Txt weight="600">Return exactly what the customer handed over ({fmt(totalOf(returned))}).</Txt><CountSquares counts={returned} /></>}
           <Btn title={index === tenders.length - 1 ? 'Cash returned and change collected' : 'Next cash payment'} disabled={!canConfirmReturn} onPress={() => {

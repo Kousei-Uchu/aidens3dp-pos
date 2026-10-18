@@ -268,7 +268,7 @@ async function pullScannerCalibration() {
 // ── shared cash drawer (0168) ─────────────────────────────────────────────────────────────────────
 // One physical drawer for the shop, so its state is shared between registers the same way settings are: a versioned
 // record in the pos_settings metaobject (handle `drawer`, like `shared` and `scanner`, so no new definition is needed).
-// A change is written locally first — the drawer keeps working offline, exactly as before — and uploaded here. Another
+// A change is written locally first (the drawer keeps working offline, exactly as before) and uploaded here. Another
 // register's entries are folded in before we write, so a push never drops their history.
 /** A drawer change on this register. `shift` marks a change to open/paid in/out/close, which a push must keep over an older copy. */
 export function drawerChanged(shift = false) {

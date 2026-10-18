@@ -1,7 +1,7 @@
 // Location: src/ui/HelpFigure.tsx
 // A help page's ```screen block, drawn as a small picture of the screen it is talking about (B7e). It is a picture,
 // not a control: nothing in it can be tapped, and its words are written by hand in the help page, so it can never
-// drift out of date with the app by itself — when a screen changes, the page's picture is edited with the words.
+// drift out of date with the app by itself; when a screen changes, the page's picture is edited with the words.
 // The same block is pre-drawn as HTML in help.json for the Docs site (figureToHTML in src/lib/helpFigures.ts).
 import React from 'react';
 import { View } from 'react-native';
