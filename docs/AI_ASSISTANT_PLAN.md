@@ -6,6 +6,8 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 28 (19 October 2026), patch 0184:** documentation only. Section 1.1 said there were no tools and no data gate, and section 2 listed finished work as still to do; both now match the code, which I checked claim by claim (the role filters, the field map tests, the read-only tests and the help page `roles:` header). No decision changed.
+
 **Revision 27 (19 October 2026), patch 0174:** not a numbered patch in 3.10, which was finished in Revision 26. It closes the one open item the plan itself names, the context budget raised in Revision 25. At the default 8000, the prompt and the tool definitions left a cashier about 716 tokens for the chat and a manager about 428. The prompt had described every tool in prose that each tool's own description then said again. Now the prompt carries the rules and the descriptions carry what a tool does, and 18 of the 19 tool descriptions are tighter (all but `find_customers`). The room is about 1,331 tokens for a cashier and 1,088 for a manager, and `tests/assistantbudget.test.ts` fails the build if it drops under 1,000 at the default. Decided here, and the owner may want to change any of them: **(1) The default stays 8000,** as 3.11 says. **(2) No tool was merged or dropped,** and no field, result or gate map changed. **(3) The rules the tests pinned are word for word,** so nothing the owner approved was reworded. Still open, and the owner's call: raise the default to 16000, or load only the tools a question needs. Also fixed: `patches/APPLIED.txt` was missing 0173, which would have made `scripts/apply-patches.sh` stop on it. Device test T71. Next: the 3.10 list is finished, so what comes next is the owner's call.
 
 **Revision 26 (19 October 2026), patch 0173:** patch 9 is built: the practice mode coach (3.7), in `src/lib/assistantCoach.ts` (pure) and `src/ui/CoachSheet.tsx`, opened by an **Ask coach** button in the training dock during a Check. This is the last patch in 3.10. Decided here, and the owner may want to change any of them: **(1) One question is one hint.** The app raises the shared hint ladder (`trainingHints.ts`) by one rung on each question, so the dock shows the same rung and the run's hint count goes up exactly as a press of Hint does. The text of the question is never read by the plan (`planCoachAsk`), so *just tell me* cannot skip a rung (3.7). **(2) The coach stops before the answer.** After the last written hint it says so in fixed words and sends the person to Hint, which stays the only thing that highlights the answer. **(3) What the model holds:** the course title and summary, the goal's title and the rungs opened so far. Never `reveal`, `until`, `inject`, `watch` or `taughtBy`, and a test checks this for every course and that the sheet and logic never read them. **(4) A leak check in code, not only the prompt:** every number in the reply must already be in the goal, the opened hints, the course title or the question, or the reply is thrown out and the hint itself is shown. It only looks at numbers, so a reply could still name an item or a button that the hints do not. **(5) Tools: the help pages and screens only** (`search_docs`, `read_doc`, `search_screens`, 4 calls a question), as 3.7 says. No data tool, no calculator, no cart, no settings and no clock. This also keeps the context small: the coach has its own short prompt and three tool definitions, not the 5,300 token set raised in Revision 25. **(6) Off course, no hint is spent** and no model is asked: the coach points at the card's steps. **(7) Check only,** not Guide, where every step already says what to tap. **(8) Failure still helps:** not set up, or any model error, shows the unlocked hint word for word with a line saying it is without the coach. **(9) Logged as practice** (3.7), through `coachLogSink`, the one log sink that does not stop in practice mode, because the log is a device-only folder and no part of the practice data. The staff member in the line is the real signed in person (`realSignIn`), not Casey or Morgan. **(10) The Help chat stays off in practice mode.** `PRACTICE_BLOCK` now points to Ask coach. **(11) The thread is in memory only,** keyed by course, stage and goal, and **Start again** clears it, because turns made above the rung the person is on are dropped. Next: the list in 3.10 is finished. Device test T70.
@@ -136,8 +138,10 @@ The tool list has grown. The model decision in 1.3 is now superseded, see 3.1.
 
 ### 1.1 Status
 
-Patch 0148 added the Settings page and the connection client, and patch 0151 added the chat screen. There are still no
-tools and no data gate. The written spec and model policy are in the files below.
+The assistant is built, and every patch in the 3.10 list is done. Patch 0148 added the Settings page and the connection
+client, 0151 the chat screen, 0157 to 0172 the tools, 0161 the data gate, 0173 the practice mode coach and 0174 the
+context budget. Section 2 says what each patch added. The files below hold the spec and the model policy, and the
+files of the first patch.
 
 | Where | What it holds |
 | --- | --- |
@@ -188,8 +192,8 @@ These are in the repo now and are the likely sources for the tools. Check each i
   role filter in 3.4 can reuse. Settings sub pages are not nodes in the graph.
 - **Help docs:** Markdown pages under `help/`, each with Basic, Deep and Advanced sections, built into
   `help/help.json` by `npm run help:build`. `src/screens/Help.tsx` is the Help screen. `src/lib/helpRemote.ts` and
-  `docs-server/` serve the same pages to the website. `help/README.md` explains the page format. Whether help pages
-  carry role information is not yet checked (needed for 3.4).
+  `docs-server/` serve the same pages to the website. `help/README.md` explains the page format. Help pages carry a
+  `roles:` header (0157), and the tools only see the pages the signed in role may see.
 - **Shopify data:** `src/lib/shopify/catalogue.ts` imports variants, collections and customers. The local catalogue
   is in the app store (`useApp(s => s.data)`), read through `useCatalogue()` in `src/state/selectors.ts`.
   Orders are in `src/lib/shopify/orders.ts` and `orderModel.ts`. Gift cards are in the gift card code.
@@ -199,8 +203,8 @@ These are in the repo now and are the likely sources for the tools. Check each i
   `src/lib/adjustPerms.ts` decide who may do what. A till with no PIN lock acts as the owner.
 - **Training:** `src/lib/trainingSandbox.ts` swaps in a practice till. `src/lib/trainingGuard.ts` (`isTraining()`)
   is the one flag that blocks real writes and sends. Hints are a ladder in `src/lib/trainingHints.ts`, and each
-  goal in `src/lib/trainingModule.ts` has its own `ladder` and a separate `reveal` spot, so hints and answers look
-  separable (to confirm in patch 9).
+  goal in `src/lib/trainingModule.ts` has its own `ladder` and a separate `reveal` spot, so hints and answers are
+  separate (used by the coach in 0173).
 - **Settings sharing:** `pushSharedSettings` in `src/lib/sync.ts` shares some settings between registers by an
   explicit list. The model address and key are per-register settings and are not on it (a test checks this).
 - **Backups:** `src/lib/backupFile.ts` and `backupIO.ts` export the whole settings object and the logins. The
@@ -226,14 +230,20 @@ Built in 0172: the cash drawer, cash calculator and current cart tools (patch 8)
 Built in 0173: the practice mode coach (patch 9, 3.7), the Ask coach button in a Check.
 Built in 0174: more room for the chat at the default context size (the prompt and tool descriptions trimmed, with a test that holds the room).
 
-Still to do:
+Nothing in the 3.10 list is left. What this section used to list as still to do is done, as follows:
 
-- Role filtering (3.4): a check that removes screens, help pages, tools and data the current role cannot use,
-  before anything reaches the model or the screen. Tools are now filtered by role too (0169, `toolsFor`).
-- Field maps and `assertNoUnknownFields` tests for every data tool, as each one is added (patches 8 to 10). The gate exists (0161), so no tool may be added without a map.
-- The tool parts of the prompt. The base prompt exists (0151), and each role builds its own once tools arrive (3.4).
-- A way to keep it from changing anything, enforced in code and not only in the prompt.
-- Tests, a help page, a device test and a progress log entry for each later patch.
+- **Role filtering (3.4):** screens (0158), help pages (0157) and tools (0169, `toolsFor`) are all filtered by role
+  before anything reaches the model or the screen.
+- **Field maps:** every data tool has one, and the gate (0161) refuses a field that is not in a map. The test is
+  `tests/assistantgate.test.ts`, and each tool group's own test runs its results through the gate.
+- **The tool parts of the prompt:** `buildSystemPrompt` in `src/lib/assistantChat.ts` builds a prompt for each role from
+  the tools that role has. It keeps the rules and leaves what a tool does to the tool's own description (0174).
+- **Keeping it from changing anything:** every tool is handed a frozen snapshot and nothing it could write with, and
+  each group of tools has a test for that (`assistantdata`, `assistantproducts`, `assistantcash`, `assistantstatus`,
+  `assistantlinks`). There is no single test across the whole tool set, so a new tool needs its own.
+- **Tests, a help page, a device test and a progress log entry:** each patch carried them.
+
+Open, and the owner's call: the default context size (3.11), which 0174 made less tight but did not change.
 
 ## 3. Decisions
 

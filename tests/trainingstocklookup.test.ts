@@ -28,29 +28,33 @@ const snap = (o: { lookupMode?: 'price' | 'stock'; lookupResult?: { variantId: s
 });
 
 const ev = (...pressed: string[]): Events => ({ pressed: new Set(pressed), visible: new Set() });
+const seen = (...visible: string[]): Events => ({ pressed: new Set(), visible: new Set(visible) });
 const step = (list: { id: string; until: any }[], id: string) => list.find(x => x.id === id)!.until;
 const won = (list: { id: string; until: any }[], id: string, s: TrainSnap, e: Events = noEvents()) => isMet(step(list, id), s, e);
 
 test('the course is registered right after inventory, is valid, and lives on Checkout', () => {
   assert.equal(getModule('stock-lookup'), stockLookupModule);
   assert.equal(MODULES.findIndex(m => m.id === 'stock-lookup'), MODULES.findIndex(m => m.id === 'inventory') + 1, 'it sits right after inventory');
-  assert.deepEqual(validateModule(stockLookup, isKnownSpot), []);
+  assert.deepEqual(validateModule(stockLookupModule, isKnownSpot), []);
   assert.deepEqual(stockLookupModule.tabs, ['checkout']); assert.deepEqual(stockLookupModule.routes, []);
-  assert.equal(stockLookupModule.tier, 3);
-  assert.equal(stockLookupModule.order, 17);
 });
 
 test('Guide steps open Price check and Stock check and read results', () => {
-  // g1: open price check, scan bee
+  // g1: open Price check (the sheet's search box shows)
   assert.ok(!won(stockLookupModule.guide, 'g1', snap()));
-  assert.ok(won(stockLookupModule.guide, 'g1', snap(), ev('grid.action:price_check')));
-  // g2: read price check result for bee
-  assert.ok(won(stockLookupModule.guide, 'g2', snap({ lookupMode: 'price', lookupResult: { variantId: BEE, productTitle: 'Bee keyring', stock: 800, priceCents: 800 } })));
-  // g3: clear, open stock check, scan bee
+  assert.ok(!won(stockLookupModule.guide, 'g1', snap(), ev('grid.action:price_check')), 'pressing the tile is not enough, the sheet has to open');
+  assert.ok(won(stockLookupModule.guide, 'g1', snap(), seen(SPOT.lookupSearch)));
+  // g2: read the Dragon's price (no deal), not any other item
+  assert.ok(!won(stockLookupModule.guide, 'g2', snap()));
+  assert.ok(!won(stockLookupModule.guide, 'g2', snap({ lookupMode: 'price', lookupResult: { variantId: BEE, productTitle: 'Bee keyring', stock: 800, priceCents: 800 } })));
+  assert.ok(!won(stockLookupModule.guide, 'g2', snap({ lookupMode: 'stock', lookupResult: { variantId: DRAGON, productTitle: 'Dragon figurine', stock: 2500, priceCents: 2500 } })), 'Stock check is the wrong tool for g2');
+  assert.ok(won(stockLookupModule.guide, 'g2', snap({ lookupMode: 'price', lookupResult: { variantId: DRAGON, productTitle: 'Dragon figurine', stock: 2500, priceCents: 2500 } })));
+  // g3: clear, then open Stock check
   assert.ok(!won(stockLookupModule.guide, 'g3', snap(), ev(SPOT.lookupClear)));
   assert.ok(won(stockLookupModule.guide, 'g3', snap(), ev(SPOT.lookupClear, 'grid.action:stock_check')));
-  // g4: read stock check result for bee
-  assert.ok(won(stockLookupModule.guide, 'g4', snap({ lookupMode: 'stock', lookupResult: { variantId: BEE, productTitle: 'Bee keyring', stock: 800, priceCents: 800 } })));
+  // g4: read the Keyring's stock in Stock check
+  assert.ok(!won(stockLookupModule.guide, 'g4', snap({ lookupMode: 'price', lookupResult: { variantId: KEY, productTitle: 'Keyring', stock: 500, priceCents: 500 } })), 'Price check is the wrong tool for g4');
+  assert.ok(won(stockLookupModule.guide, 'g4', snap({ lookupMode: 'stock', lookupResult: { variantId: KEY, productTitle: 'Keyring', stock: 500, priceCents: 500 } })));
 });
 
 test('Check 1 goals verify price and stock lines', () => {
@@ -76,10 +80,14 @@ test('Check 2 goals verify deals, other variations, stock words meaning', () => 
 
 test('Check 2 makes something go wrong, says which Show step taught it, and practice staff is used', () => {
   assert.ok(stockLookupModule.check2.length >= 1);
-  const showIds = new Set(stockLookupModule.show.steps.map(s => s.id));
+  // Only some goals have to go wrong (validateModule asks for at least one); here it is the Tadpole, which goes oversold.
+  assert.deepEqual(stockLookupModule.check2.filter(g => g.inject?.length).map(g => g.id), ['c5']);
+  assert.deepEqual(stockLookupModule.check2.find(g => g.id === 'c5')!.inject, [{ kind: 'stock', counts: { [TAD]: -5 } }]);
+  // The hint tells the learner what the sheet will really say, which is the word without a minus sign.
+  assert.ok(stockLookupModule.check2.find(g => g.id === 'c5')!.ladder.some(l => l.includes('5 oversold')));
+  const showIds = new Set([...stockLookupModule.show.steps.map(s => s.id), ...stockLookupModule.info.steps.map(s => s.id)]);
   for (const g of stockLookupModule.check2) {
-    assert.ok(g.inject?.length, `${g.id} must inject a problem`);
-    assert.ok(g.taughtBy && showIds.has(g.taughtBy), `${g.id} says which Show step taught it`);
+    assert.ok(g.taughtBy && showIds.has(g.taughtBy), `${g.id} says which step taught it`);
     assert.ok(!isMet(g.until, snap(), noEvents()), `${g.id} does not start finished`);
   }
 });

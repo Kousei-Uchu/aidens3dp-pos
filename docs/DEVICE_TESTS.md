@@ -455,7 +455,7 @@ On the iPad and on a phone. Use More ▸ Training ▸ Price check and Stock chec
 1. The Guide rings the **Price check** tile, opens the Lookup sheet, scans the Dragon figurine. Pass: the price shows $25.00, "2500 in stock", and no deal badge (the 20% off deal is Keyrings only).
 2. The Guide rings the **Stock check** tile, scans the Keyring. Pass: "500 in stock" for this variation, lists the other variations, and the total at the bottom.
 3. The Guide rings Stock check on the Large cow plush. Pass: "1800 in stock" for this variation, lists the Small cow, and "3000 in stock across all 2 variations" at the bottom.
-4. The Guide rings Price check on the Tadpole toy. Pass: the four stock words are shown in Info: In stock (positive number), Out of stock (zero), Not tracked (null), and Oversold (negative like "-5 oversold").
+4. The Guide rings Price check on the Tadpole toy. Pass: the four stock words are shown in Info: In stock (positive number), Out of stock (zero), Not tracked (null), and Oversold (negative, shown like "5 oversold").
 5. Check 1: Price check Egg timer shows $6.00 and "600 in stock". Stock check Sticker pack shows "300 in stock".
 6. Check 2: Price check Cow small shows no deal badge; Stock check Cow large shows two variations and 3000 total; stock words meaning verified.
 7. **Most important:** with the Lookup sheet open, scan or search items. Confirm the cart is never touched, no real data is read or written, and leaving the course restores the real till exactly as it was.

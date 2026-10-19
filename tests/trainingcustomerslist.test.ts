@@ -29,7 +29,7 @@ const ev = (visible: string[] = [], pressed: string[] = []): Events => ({ presse
 const step = (list: { id: string; until: any }[], id: string) => list.find(x => x.id === id)!.until;
 const won = (list: { id: string; until: any }[], id: string, s: TrainSnap, e: Events = noEvents()) => isMet(step(list, id), s, e);
 
-test('the course is registered last, is valid, and lives on Checkout and the Customers page', () => {
+test('the course is in the hub, is valid, and lives on Checkout and the Customers page', () => {
   assert.equal(getModule('customers-list'), customersList);
   assert.ok(MODULES.some(m => m.id === 'customers-list'), 'it is still in the hub');
   assert.deepEqual(validateModule(customersList, isKnownSpot), []);
