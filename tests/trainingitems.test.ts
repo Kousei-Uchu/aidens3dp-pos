@@ -31,9 +31,9 @@ const snap = (o: { items?: ItemSnap[]; itemDraft?: TrainSnap['itemDraft']; tab?:
 const won = (list: { id: string; until: any }[], id: string, s: TrainSnap, e: Events = noEvents()) => isMet(list.find(x => x.id === id)!.until, s, e);
 const ready = (id: string, s: TrainSnap): boolean => !!items.guide.find(x => x.id === id)!.ready?.(s);
 
-test('the course is registered last, is valid, and lives on Checkout and the Items page', () => {
+test('the course is registered after the customers course, is valid, and lives on Checkout and the Items page', () => {
   assert.equal(getModule('items'), items);
-  assert.equal(MODULES[MODULES.length - 1].id, 'items', 'it is the newest course in the hub');
+  assert.equal(MODULES.findIndex(m => m.id === 'items'), MODULES.findIndex(m => m.id === 'customers-list') + 1, 'it sits right after the customers course');
   assert.deepEqual(validateModule(items, isKnownSpot), []);
   assert.deepEqual(items.tabs, ['checkout', 'more']);
   assert.deepEqual(items.routes, ['items', 'createItem', 'editItem']);

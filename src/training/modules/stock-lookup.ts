@@ -57,7 +57,7 @@ export const stockLookupModule: TrainingModule = {
           { id: 'i-stock', kind: 'icon', x: 342, y: 148, w: 44, h: 44, icon: 'layers-outline', tone: 'accent', size: 34, hidden: true },
           { id: 't-stock', kind: 'text', x: 394, y: 140, w: 198, h: 78, label: 'Tap Stock check', sub: 'Scan or search. See stock for this variation, other variations, and the total.', size: 13, hidden: true },
           { id: 'c-words', kind: 'panel', x: 40, y: 250, w: 560, h: 110, label: 'THE STOCK WORDS', hidden: true },
-          { id: 't-words', kind: 'text', x: 60, y: 278, w: 520, h: 66, label: 'In stock (positive number) | Out of stock (zero) | Not tracked (no number) | Oversold (negative like -5 oversold)', size: 13, align: 'center', hidden: true },
+          { id: 't-words', kind: 'text', x: 60, y: 278, w: 520, h: 66, label: 'In stock (positive number) | Out of stock (zero) | Not tracked (no number) | Oversold (negative, shown like 5 oversold)', size: 13, align: 'center', hidden: true },
         ],
       },
     ],
@@ -65,7 +65,7 @@ export const stockLookupModule: TrainingModule = {
       { id: 'what', say: 'Two tiles on the grid let you look up items without adding them to the cart.', set: { 'in-sub': { hidden: false } }, focus: 'in-sub' },
       { id: 'price', say: 'Price check: scan or search an item. The result shows the price, any deals that apply, and the stock line like "800 in stock".', set: { 'c-price': { hidden: false }, 'i-price': { hidden: false }, 't-price': { hidden: false } }, focus: 't-price' },
       { id: 'stock', say: 'Stock check: scan or search an item. The result shows stock for this variation, lists the other variations of the same product, and the total at the bottom.', set: { 'c-stock': { hidden: false }, 'i-stock': { hidden: false }, 't-stock': { hidden: false } }, focus: 't-stock' },
-      { id: 'words', say: 'The stock line uses four words: "In stock" for a positive number, "Out of stock" for zero, "Not tracked" when stock is not tracked, and "Oversold" for a negative number like "-5 oversold".', set: { 'c-words': { hidden: false }, 't-words': { hidden: false } }, focus: 't-words' },
+      { id: 'words', say: 'The stock line uses four words: "In stock" for a positive number, "Out of stock" for zero, "Not tracked" when stock is not tracked, and "Oversold" for a negative number, shown without the minus sign, so -5 reads "5 oversold".', set: { 'c-words': { hidden: false }, 't-words': { hidden: false } }, focus: 't-words' },
     ],
   },
   show: {
@@ -219,7 +219,7 @@ export const stockLookupModule: TrainingModule = {
       ladder: [
         'Open Price check from the grid.',
         'Scan the Tadpole toy or search for "tad".',
-        'Read the stock line - it says "400 in stock".',
+        'Read the stock line. This one has gone negative, so it says "5 oversold".',
         'Remember the four stock words and their meanings.',
       ],
       reveal: SPOT.lookupSearch,
