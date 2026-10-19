@@ -6,6 +6,7 @@ import type { Variant, Collection, Customer, ManualPreset, Cart, AutoDiscount } 
 import type { Grid, Tile } from './grid';
 import { addVariant, emptyCart, setItemPrice, setLineAdjust } from './cartOps';
 import { emptyLedger, type CashLedger } from './cashLedger';
+import { emptySharedHistory } from './salesHistory';
 import { defaultInvPrefs } from './inventoryView';
 import { hashPinSync } from './pin';
 import { hashBadge } from './badge';
@@ -121,7 +122,7 @@ export function buildSandbox(real: Swap, opts: { practiceStaff?: boolean; stock?
     settings: opts.practiceStaff ? { ...sandboxSettings(real.settings, opts.perms), staff: practiceStaff(), requirePin: true } : sandboxSettings(real.settings, opts.perms),
     data: { variants, collections: FIXTURE_COLLECTIONS, customers: FIXTURE_CUSTOMERS, autos: FIXTURE_AUTOS, presets: FIXTURE_PRESETS },
     grid: fixtureGrid(), gridVersion: 0,
-    pos: { saved: fixtureSavedCarts(), outbox: opts.outbox ? fixtureOutbox(opts.outbox) : [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger() },
+    pos: { saved: fixtureSavedCarts(), outbox: opts.outbox ? fixtureOutbox(opts.outbox) : [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: true, openedAt: new Date().toISOString(), floatCents: 10000, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: fixtureLedger(), shared: emptySharedHistory() },
     sync: { state: opts.sync ?? 'idle' }, zeller: { ready: true }, staffId: opts.practiceStaff ? PRACTICE_CASEY : real.staffId, unlocked: true,
   };
 }

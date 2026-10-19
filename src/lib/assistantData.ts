@@ -1,8 +1,9 @@
 // Location: src/lib/assistantData.ts
 // The shop data the assistant's data tools read (patch 0163, plan 3.2 tools 3, 4, 7 and 14, patch 7 in 3.10).
 // Pure functions over a plain snapshot of what is saved on this iPad: no network, no store, no React Native imports, so they run in
-// the node tests. The snapshot is built in assistantDataIO.ts. Local data only (plan question 12): this till's recent sales and
-// refunds, the daily totals saved here (including imported Square history), the customers, the deals and the gift cards seen in sales.
+// the node tests. The snapshot is built in assistantDataIO.ts. What this till knows (plan question 12): its recent sales and
+// refunds, the sales and daily totals other tills shared through Shopify, the daily totals saved here (including imported Square
+// history), the customers, the deals and the gift cards seen in sales.
 //
 // Nothing here decides what may be sent to the model. Every field these functions return is sorted into a category by the field
 // maps in assistantDataTools.ts, and the data gate (assistantGate.ts) applies the endpoint rules to it. Money is returned as text
@@ -16,9 +17,9 @@ import type { AutoDiscount, BundleConfig, BundleDeal, Collection, Customer, Manu
 export type AssistantData = {
   /** The time the question was asked, in milliseconds. */
   now: number;
-  /** This till's recent sales and refunds, newest first. The till keeps the latest 2000. */
+  /** Recent sales and refunds, newest first: this till's (the latest 2000 it keeps) and the others' shared ones. */
   sales: SaleRecord[];
-  /** Daily totals saved on this iPad: this till, plus imported Square history. */
+  /** Daily totals: this till, the totals other tills shared, and imported Square history. */
   rollups: RollupRow[];
   customers: Customer[];
   autos: AutoDiscount[];
@@ -30,8 +31,9 @@ export type AssistantData = {
 };
 
 /**
- * The daily totals saved on this iPad, the way the Reports screen merges them but without the live fetch from Shopify: imported
- * Square history, this till's saved totals, and sales still waiting in the outbox that are not in a total yet.
+ * The daily totals, the way the Reports screen merges them but without the live fetch from Shopify: imported Square history, the
+ * totals shared by other tills (in `local`), this till's saved totals, and sales still waiting in the outbox. Square wins a clash
+ * with a till total; this till's own total wins over a shared copy of the same key.
  */
 export function localRollupRows(local: Record<string, Totals>, outbox: { done: { rollup?: boolean }; sale: SaleRecord }[], square: RollupRow[]): RollupRow[] {
   const m = new Map<string, RollupRow>(square.map(r => [`${r.registerId}|${r.date}`, r] as const));
@@ -43,7 +45,7 @@ export function localRollupRows(local: Record<string, Totals>, outbox: { done: {
   return [...m.values()];
 }
 
-export const SALES_SCOPE_NOTE = 'These figures come from this till and any imported Square history. Other tills are not included.';
+export const SALES_SCOPE_NOTE = 'These figures come from every till that shares into this shop, plus any imported Square history. A till only shares the sales it makes after the sharing is set up.';
 export const MAX_ROWS = 10;
 export const MAX_DETAIL = 3;
 export const MAX_DAYS = 31;
@@ -111,8 +113,9 @@ const TENDER: Record<string, string> = { card: 'Card', cash: 'Cash', gift_card: 
 // ---------- sales report ----------
 export type ReportArgs = { period?: unknown; from?: unknown; to?: unknown; item?: unknown };
 /**
- * Totals for a period, already added up, from the daily totals saved on this iPad. With `item`, the units and sales of the
- * items whose name has those words in it. `includeStaff` is whether staff names and their sales may be listed at all.
+ * Totals for a period, already added up, from the daily totals this till keeps (its own, the shared ones and imported Square
+ * history). With `item`, the units and sales of the items whose name has those words in it. `includeStaff` is whether staff names
+ * and their sales may be listed at all.
  */
 export function salesReport(data: AssistantData, args: ReportArgs, includeStaff: boolean): Record<string, unknown> {
   const r = resolveRange(args as Record<string, unknown>, data.now, 'today'); if ('error' in r) return r;
@@ -182,8 +185,8 @@ function lineOut(l: SaleRecord['lines'][number], detail: boolean): Record<string
   };
 }
 /**
- * Finds sales and refunds saved on this till, newest first. The words in `query` have to be in the order name, an item name or,
- * where customer details may be sent, the customer. A customer is never searched when their details are hidden, because a match
+ * Finds sales and refunds from every till that syncs, newest first. The words in `query` have to be in the order name, an item name
+ * or, where customer details may be sent, the customer. A customer is never searched when their details are hidden, because a match
  * would tell the model who bought something.
  */
 export function findOrders(data: AssistantData, args: OrderArgs, access: OrderAccess): Record<string, unknown> {
@@ -199,7 +202,7 @@ export function findOrders(data: AssistantData, args: OrderArgs, access: OrderAc
     return hasAll(hay, terms);
   }).sort((a, b) => Date.parse(b.ts) - Date.parse(a.ts));
   const limit = detail ? MAX_DETAIL : MAX_ROWS;
-  const notes: string[] = ['These are the sales and refunds saved on this till, the latest 2000. Older ones and other tills are not here.'];
+  const notes: string[] = ['These are the sales and refunds from every till that syncs, the newest 2000 this till keeps and the newest 2000 the others shared. Very old sales, and sales made before sharing was on, are not here.'];
   if (hits.length > limit) notes.push(`Showing the newest ${limit} of ${hits.length}. Narrow it with dates or more words.`);
   if (!hits.length) notes.push('No order matched.');
   const byUuid = new Map(data.sales.map(s => [s.uuid, s] as const));
@@ -337,8 +340,8 @@ export type GiftArgs = { code?: unknown; kind?: unknown; period?: unknown; from?
 const normCode = (raw: string): string => raw.replace(/^shopify-giftcard-v\d+-/i, '').replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
 export type GiftAccess = { code: boolean; personal: boolean; email: boolean };
 /**
- * Gift cards sold and gift card payments in the sales saved on this till. A card's balance is not here: it is kept by Shopify and
- * the assistant does not look at Shopify live, so the balance is read on the Gift cards screen.
+ * Gift cards sold and gift card payments across every till that syncs. A card's balance is not here: it is kept by Shopify and the
+ * assistant does not look at Shopify live, so the balance is read on the Gift cards screen.
  */
 export function giftCardActivity(data: AssistantData, args: GiftArgs, access: GiftAccess): Record<string, unknown> {
   const r = resolveRange(args as Record<string, unknown>, data.now); if ('error' in r) return r;
@@ -366,7 +369,7 @@ export function giftCardActivity(data: AssistantData, args: GiftArgs, access: Gi
     }
   }
   events.sort((a, b) => b.ts - a.ts);
-  const notes: string[] = ['From the sales saved on this till, the latest 2000. A card\'s remaining balance is not shown here: it is held by Shopify. Use the Gift cards screen to check a balance.'];
+  const notes: string[] = ['From the sales of every till that syncs, the newest 2000 each. A card\'s remaining balance is not shown here: it is held by Shopify. Use the Gift cards screen to check a balance.'];
   if (events.length > MAX_ROWS) notes.push(`Showing the newest ${MAX_ROWS} of ${events.length}.`);
   if (!events.length) notes.push('No gift card activity matched.');
   return {

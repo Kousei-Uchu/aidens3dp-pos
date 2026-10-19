@@ -14,7 +14,7 @@ const DEFS: { type: string; name: string; display?: string; fields: F[] }[] = [
   { type: TYPES.sale, name: 'POS sale', display: 'sale_uuid', fields: [['sale_uuid', 'Sale UUID', S], ['order_gid', 'Order', S], ['register_id', 'Register', S], ['employee', 'Employee', S],
     ['ts', 'Time', T], ['entry_type', 'Type', S], ['items_cents', 'Items', I], ['discounts_cents', 'Discounts', I], ['total_cents', 'Total', I], ['cogs_cents', 'COGS', I],
     ['fees_cents', 'Fees', I], ['rounding_cents', 'Rounding', I], ['refund_of', 'Refund of', S], ['status', 'Status', S], ['tenders_json', 'Tenders', J], ['lines_json', 'Lines', J],
-    ['customer_gid', 'Customer', S], ['receipt_link', 'Receipt link', S]] },
+    ['customer_gid', 'Customer', S], ['receipt_link', 'Receipt link', S], ['sale_json', 'Sale data', J]] },
   { type: TYPES.rollup, name: 'POS daily rollup', display: 'rollup_key', fields: [['rollup_key', 'Key', S], ['register_id', 'Register', S], ['date', 'Date', S], ['totals_json', 'Totals', J]] },
   { type: TYPES.settings, name: 'POS settings', display: 'settings_key', fields: [['settings_key', 'Key', S], ['settings_json', 'Settings', J], ['version', 'Version', I]] },
 ];
@@ -27,6 +27,29 @@ export async function ensureDefinitions(): Promise<void> {
     const real = errs.filter(e => !/taken|already/i.test(`${e.code} ${e.message}`));
     if (real.length) throw new ShopifyUserError(`Metaobject setup (${d.type}): ${real[0].message}`, real);
   }
+  await ensureSaleDetailField(); // an older shop's sale definition gets the field the shop-wide sales view needs
+}
+
+/**
+ * Makes sure the sale definition carries the `sale_json` field another till reads to see this till's sales in full (the shop-wide
+ * assistant view). A definition made before that field existed is updated once; one that already has it does nothing. The answer
+ * is remembered for the rest of the app session, and a failure returns false without throwing, so a sale still uploads (without
+ * the detail) when the field cannot be added.
+ */
+let saleDetailReady: boolean | null = null;
+export async function ensureSaleDetailField(): Promise<boolean> {
+  if (saleDetailReady !== null) return saleDetailReady;
+  try {
+    const d = await gql(`query($t:String!){ metaobjectDefinitionByType(type:$t){ id fieldDefinitions { key } } }`, { t: TYPES.sale });
+    const def = d.metaobjectDefinitionByType as { id: string; fieldDefinitions: { key: string }[] } | null;
+    if (!def) { saleDetailReady = false; return false; }
+    if ((def.fieldDefinitions ?? []).some(f => f.key === 'sale_json')) { saleDetailReady = true; return true; }
+    const res = await gql(`mutation($id:ID!,$d:MetaobjectDefinitionUpdateInput!){ metaobjectDefinitionUpdate(id:$id, definition:$d) { userErrors { field message code } } }`,
+      { id: def.id, d: { fieldDefinitions: [{ create: { key: 'sale_json', name: 'Sale data', type: 'json' } }] } });
+    const errs = (res.metaobjectDefinitionUpdate.userErrors as any[]) ?? [];
+    saleDetailReady = !errs.some(e => !/taken|already/i.test(`${e.code} ${e.message}`));
+  } catch { saleDetailReady = false; }
+  return saleDetailReady;
 }
 
 export type MetaRow = { id: string; handle: string; updatedAt: string; f: Record<string, string> };

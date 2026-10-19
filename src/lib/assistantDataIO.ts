@@ -1,12 +1,14 @@
 // Location: src/lib/assistantDataIO.ts
 // Takes the snapshot the assistant's data tools read (patch 0163). The only file that connects them to the store and to the imported
 // Square history on disk; everything the tools do with it is in assistantData.ts. It only reads, so the tools are handed a copy of the
-// references they need and nothing that can write. Local data only: nothing here goes to Shopify.
+// references they need and nothing that can write. It reads this till, plus the sales and totals other tills shared through
+// Shopify (pos.shared, filled by pullSalesHistory); nothing here goes to Shopify.
 import { useApp } from '../state/store';
 import { isTraining } from './trainingGuard';
 import { loadSquareRollups } from './squareHistoryIO';
 import { parseBundleConfig } from './bundles';
 import { localRollupRows, type AssistantData } from './assistantData';
+import { allSales } from './salesHistory';
 import type { CatalogueView } from './assistantProducts';
 
 /**
@@ -21,9 +23,11 @@ export async function takeAssistantData(now: number = Date.now()): Promise<Assis
   if (isTraining()) return null; // the till can move into practice while the files are read
   let bundles: AssistantData['bundles'] = null;
   try { bundles = s.settings.bundlesJson ? parseBundleConfig(s.settings.bundlesJson).cfg ?? null : null; } catch { bundles = null; }
+  const shared = s.pos.shared ?? { sales: [], rollups: {} };
   return {
     now,
-    sales: s.pos.sales, rollups: localRollupRows(s.pos.rollups, s.pos.outbox, square),
+    sales: allSales(s.pos.sales, shared.sales),
+    rollups: localRollupRows({ ...shared.rollups, ...s.pos.rollups }, s.pos.outbox, square),
     customers: s.data.customers, autos: s.data.autos, presets: s.data.presets, bundles, variants: s.data.variants, collections: s.data.collections,
   };
 }

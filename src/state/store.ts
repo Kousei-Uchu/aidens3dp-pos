@@ -8,6 +8,7 @@ import { defaultGrid, type Grid } from '../lib/grid';
 import { emptyCart } from '../lib/cartOps';
 import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPreset, Notice, SaleRecord, StaffMember, Variant } from '../lib/types';
 import type { Totals } from '../lib/rollup';
+import { emptySharedHistory, type SharedHistory } from '../lib/salesHistory';
 import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
 import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
 import { defaultAssistant, normaliseAssistant, type AssistantSettings } from '../lib/assistantConfig';
@@ -67,7 +68,10 @@ type Data = {
   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
   catalogueAt?: string; stockSince?: string;
 };
-type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger };
+type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger;
+  /** Other tills' recent sales and daily totals, pulled from Shopify (see pullSalesHistory). Kept apart from `sales`, which is this
+   *  till's own live copy and what the cash tools read: a drawer figure must stay this till's. */
+  shared: SharedHistory };
 
 export type App = {
   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
@@ -83,7 +87,7 @@ export type App = {
 };
 
 const emptyData = (): Data => ({ variants: {}, collections: [], customers: [], autos: [], presets: [] });
-const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: emptyLedger() });
+const emptyPos = (): Pos => ({ saved: [], outbox: [], sales: [], attempts: [], notices: [], rollups: {}, shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, cart: emptyCart(), ledger: emptyLedger(), shared: emptySharedHistory() });
 
 const timers: Record<string, any> = {};
 const pending: Record<string, () => unknown> = {};
@@ -119,7 +123,7 @@ export const useApp = create<App>((set, get) => ({
     const migrateTheme = !!settings && settings.themeSetupVersion !== 1;
     set({
       settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant) }, data: { ...emptyData(), ...(data ?? {}) },
-      grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger) }, ready: true,
+      grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger), shared: { ...emptySharedHistory(), ...(pos?.shared ?? {}) } }, ready: true,
     });
     if (!settings || migrateTheme) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme migration
   },

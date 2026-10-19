@@ -3,7 +3,8 @@
 // Every outbox step is idempotent, so a crash or retry never double-books.
 import { useApp, currentStaff, type OutboxItem, type SavedCart, type Shift } from '../state/store';
 import { csv } from './csvStore';
-import { applyRecord, emptyTotals, rollupKey, type Totals } from './rollup';
+import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
+import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
 import { parseBundleConfig } from './bundles';
 import { parseGrid } from './grid';
 import { readLedger } from './cashLedger';
@@ -76,11 +77,15 @@ async function runItem(o: OutboxItem) {
     mark('giftCards');
   }
   if (!o.done.entry) {
+    // The whole sale in `sale_json`, so another till can show this one's orders in full (the shop-wide view). The definition's
+    // field is added on demand; a till that cannot add it still sends the row, the same way it did before.
+    const detailed = await meta.ensureSaleDetailField();
     await meta.upsert(meta.TYPES.sale, cur.uuid, {
       sale_uuid: cur.uuid, order_gid: cur.orderGid, register_id: cur.registerId, employee: cur.staff, ts: cur.ts, entry_type: cur.type, items_cents: cur.itemsCents,
       discounts_cents: cur.discountCents, total_cents: cur.totalCents, cogs_cents: cur.cogsCents, fees_cents: cur.feesCents, rounding_cents: cur.roundingCents,
       refund_of: cur.refundOf, status: 'complete', tenders_json: JSON.stringify(cur.tenders.map(t => ({ k: t.kind, a: t.amountCents, r: t.card?.externalReference }))),
       lines_json: JSON.stringify(cur.lines.map(l => ({ v: l.variantId, q: l.qty, n: l.netCents }))), customer_gid: cur.customer?.id, receipt_link: cur.receiptLink,
+      ...(detailed ? { sale_json: JSON.stringify(cur) } : {}),
     });
     mark('entry');
   }
@@ -153,10 +158,59 @@ export async function pollShared() {
       s.patchData({ stockSince: since });
     }
     await pullSaved(); await pullLayout(); await pullSettings(); await pullScannerCalibration(); await pullDrawer(); await pullWarningList();
+    await pullSalesHistory().catch(() => {}); // the shop-wide sales view: an enrichment, so a failure never marks the sync bad
     st().set({ sync: { state: st().pos.outbox.length ? 'error' : 'idle', at: new Date().toISOString(), error: st().pos.outbox.length ? `${st().pos.outbox.length} queued` : undefined } });
   } catch (e: any) {
     st().set({ sync: { state: isNetworkError(e) ? 'offline' : 'error', at: st().sync.at, error: String(e?.message ?? e) } });
   }
+}
+
+// ── the shop-wide sales view (the assistant across every till) ─────────────────────────────────────
+// Every sale already uploads to pos_sale, but nothing pulled it back, so the assistant's data tools only saw this till. This
+// fills pos.shared with the other tills' recent sales (the whole record, from `sale_json`) and their daily totals. It is the
+// same rows the Reports screen reads; keeping them here lets the assistant answer without a live fetch per question. This till's
+// own sales are never copied in, because its own live copy is the one the cash tools read.
+const SALES_PAGES = 8;
+const ROLLUP_PAGES = 8;
+let salesPulledAt = 0;
+/** Pull the other tills' sales and daily totals. Throttled (SALES_PULL_MS) so the 25 s poll does not fetch every time. */
+export async function pullSalesHistory(force = false): Promise<void> {
+  const s = st();
+  if (isTraining() || !hasCreds()) return;
+  if (!force && Date.now() - salesPulledAt < SALES_PULL_MS) return;
+  salesPulledAt = Date.now();
+  const own = s.settings.registerId;
+  const cached = s.pos.shared?.sales ?? [];
+  const known = new Set<string>([...s.pos.sales.map(x => x.uuid), ...cached.map(x => x.uuid)]);
+  const fresh: SaleRecord[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < SALES_PAGES; page++) {
+    const r = await meta.list(meta.TYPES.sale, { first: 100, after });
+    let added = 0;
+    for (const row of r.rows) {
+      const rec = decodeSaleRow(row.f);
+      if (!rec || rec.registerId === own || known.has(rec.uuid)) continue;
+      known.add(rec.uuid); fresh.push(rec); added++;
+    }
+    // Rows are newest first. Once this till holds other tills' sales, a page with nothing new means the older pages are already
+    // held, so stop. The first pull never stops early: a page of this till's own sales would hide the others just behind them.
+    if (!r.next || (cached.length > 0 && added === 0)) break;
+    after = r.next;
+  }
+  const rollups: RollupRow[] = [];
+  after = null;
+  for (let page = 0; page < ROLLUP_PAGES; page++) {
+    const r = await meta.list(meta.TYPES.rollup, { first: 100, after });
+    for (const row of r.rows) {
+      const registerId = row.f.register_id, date = row.f.date;
+      if (!registerId || !date) continue;
+      try { rollups.push({ registerId, date, totals: { ...emptyTotals(), ...JSON.parse(row.f.totals_json || '{}') } }); } catch { /* ignore a bad total */ }
+    }
+    if (!r.next) break;
+    after = r.next;
+  }
+  const cur = st();
+  cur.patchPos({ shared: afterPull(cur.pos.shared ?? emptySharedHistory(), fresh, rollups, own, new Date().toISOString()) });
 }
 
 // ── saved carts ──────────────────────────────────────────────────────────────────────────────────

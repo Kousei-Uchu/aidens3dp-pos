@@ -150,3 +150,27 @@ The request was an export wizard (a tree of questions) that picks what to write 
 - **Two ways in, no new More row.** The wizard opens from the Reports top bar and from Settings ▸ Data (the old raw-file row is kept and relabelled "Export raw CSV files"). A More row would have meant editing every display mode's row set, which is not worth it for a settings screen.
 - **No date filter on the wizard.** It exports everything the till holds; the period is chosen in the spreadsheet. Daily totals still merge the saved rollups, so imported Square history and other registers are included. A date range in the wizard is a possible follow-up.
 - **Where it lives.** `src/screens/Export.tsx` (the questions and the share), `src/lib/exportSheets.ts` (the pure tables), `src/lib/exportCollect.ts` (read the store, write the file), `src/lib/xlsx.ts` (the workbook writer). Tests in `tests/export.test.ts`; help page `help/orders/export.md`.
+
+## Shop-wide sales view for the assistant: what I decided (2026-10-19)
+
+The owner noticed the assistant only knew this till's sales and asked for sales history to reach every till, with iCloud
+(`docs/CLOUDKIT_SYNC_PLAN.md`) as the eventual home. The owner chose to pull now and do CloudKit next, and to feed every data
+tool, not just the totals. Decisions I made without asking:
+
+- **Sales already went up, nothing came down.** The outbox writes a `pos_sale` metaobject row and a per-register, per-day
+  `pos_rollup` row for every sale; the Reports page already reads the rollups live, but the assistant did not, so it only saw this
+  till. The fix pulls those same rows and keeps them, so the assistant needs no live fetch per question.
+- **The whole sale rides in a new `sale_json` field.** The old columns (compacted lines and tenders) do not carry the deals,
+  adjustments, tips, notes or gift card details the tools show. The field is added on demand to an older shop's definition
+  (`ensureSaleDetailField`), so a till that cannot add it still uploads its sale without the detail rather than blocking.
+- **Detail is forward only.** A sale made before the field existed has no line detail and is left out of the order and gift card
+  tools; its money still counts in the daily totals. The notes and the help page say so.
+- **Kept apart from `pos.sales`.** The other tills' sales live in `pos.shared` (their sales and daily totals), because `pos.sales`
+  is this till's live copy and what the cash tools read: a drawer figure must stay this till's.
+- **Throttled and incremental.** The pull runs at most every five minutes from the 25 s poll, pages newest first, and stops at
+  sales already held. The first pull after install pages up to 800 sales and 800 daily totals.
+- **iCloud is still the plan.** This is the metaobject path until `docs/CLOUDKIT_SYNC_PLAN.md` lands; that plan replaces this
+  transport, not the shape of what the tools read.
+- **Where it lives.** `src/lib/salesHistory.ts` (pure decode and merge), the pull in `src/lib/sync.ts` (`pullSalesHistory`), the
+  cache in `src/state/store.ts` (`pos.shared`), and the merge into the snapshot in `src/lib/assistantDataIO.ts`. Tests in
+  `tests/saleshistory.test.ts`; device test T73.

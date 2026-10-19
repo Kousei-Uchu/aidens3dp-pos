@@ -90,7 +90,7 @@ const findOrdersTool: AssistantTool = {
   gate: ORDERS_MAP,
   def: { type: 'function', function: {
     name: 'find_orders',
-    description: 'Find sales and refunds saved on this till, newest first. query is an order number such as 1042, or words from an item or customer name. Can limit by dates and type. detail true also gives the items, prices, deals, adjustments and notes of up to 3 orders.',
+    description: 'Find sales and refunds from every till that syncs, newest first. query is an order number such as 1042, or words from an item or customer name. Can limit by dates and type. detail true also gives the items, prices, deals, adjustments and notes of up to 3 orders.',
     parameters: { type: 'object', properties: {
       query: { type: 'string', description: 'An order number, or words from an item or customer name.' },
       from: { type: 'string', description: `First day. ${DATE_HELP}` },
@@ -135,7 +135,7 @@ const giftCardTool: AssistantTool = {
   gate: GIFT_MAP,
   def: { type: 'function', function: {
     name: 'gift_card_activity',
-    description: 'Gift cards sold and paid with in the sales saved on this till. Can filter by code (at least the last 4 characters), by sold or redeemed, and by dates. It cannot give a remaining balance: that is only on the Gift cards screen.',
+    description: 'Gift cards sold and paid with on every till that syncs. Can filter by code (at least the last 4 characters), by sold or redeemed, and by dates. It cannot give a remaining balance: that is only on the Gift cards screen.',
     parameters: { type: 'object', properties: {
       code: { type: 'string', description: 'The gift card code, or at least its last 4 characters.' },
       kind: { type: 'string', enum: ['sold', 'redeemed'], description: 'Only cards sold, or only payments with a card.' },
