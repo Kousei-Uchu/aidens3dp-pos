@@ -1,0 +1,222 @@
+From 09d48d64b9ccea4133292ebc5fd00bac2f82e795 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Mon, 19 Oct 2026 08:25:43 +0000
+Subject: [PATCH] Companion mode plan: docs/COMPANION_PLAN.md with decisions
+ and tracker (0175)
+
+---
+ docs/COMPANION_PLAN.md | 169 +++++++++++++++++++++++++++++++++++++++++
+ docs/PROGRESS.md       |   7 ++
+ 2 files changed, 176 insertions(+)
+ create mode 100644 docs/COMPANION_PLAN.md
+
+diff --git a/docs/COMPANION_PLAN.md b/docs/COMPANION_PLAN.md
+new file mode 100644
+index 0000000..285589b
+--- /dev/null
++++ b/docs/COMPANION_PLAN.md
+@@ -0,0 +1,169 @@
++# Companion mode: plan, decisions and progress
++
++All twelve questions from the first draft are answered and the plan below matches the answers. It is written against `aidens3dp-pos` `main` at `7dadbfd` (last patch 0174). Patch 0175 (this one) only saves the plan and its tracker. Nothing else is built yet.
++
++This file is the single source for Companion mode. Each patch ticks its own items in the tracker below, and `docs/PROGRESS.md` carries the one-line patch log and the questions waiting on you.
++
++## Your answers and my take
++
++| # | Your answer | My take |
++| --- | --- | --- |
++| 1 | Per device, agreed | Locked in. The mode is never shared between registers and is kept on backup restore. |
++| 2 | Grouping unsure, fine for now | Kept as proposed. Groups live in one list in code, so moving an item later is a one-line change. |
++| 3 | Everything: the default selling screen is a quick sale that expands into the full POS | Good fit. The quick sale and the full POS share one cart, so expanding never loses anything. I read "everything" as every payment method too, but card and cash still depend on their own groups. See open question 1. |
++| 4 | Yes to sending a cart to the register | Lightest possible selling feature, and it works with Selling off. It reuses saved carts, which already sync through Shopify. |
++| 5 | Anyone may turn register features on, but must be logged in | Fine, with one catch: cashiers never see Settings today, so the switches get their own screen in More that every signed-in person can open. |
++| 6 | A sign-in PIN before anything that matters (Shopify, items, payments, sales and so on) | Becomes a "step-up" PIN check on a fixed list of actions (see Sign-in and the PIN). |
++| 7 | A setup screen for Register vs Companion, extensible for a future public POS | Built as a small step registry, so a new profile later adds steps and does not edit the shell. I won't design the public app now. |
++| 8 | Today is the home tab, login based. Lock the whole app behind the PIN either way | This reverses my earlier idea of skipping the lock on a phone. The whole app locks, and Today follows role rules. |
++| 9 | Stock actions, towards the end | Moved to the last patch (0182). |
++| 10 | Short series | Eight small patches, 0175 to 0182. Each one is useful on its own. |
++| 11 | Hide register courses and pages | Hidden outright, not greyed out. Demo mode stays. |
++| 12 | iPad too, phone first | Phone layout is designed first. The iPad reuses it with the wider layout it already has. |
++
++## The core idea
++
++A device is either in **Register** mode (today's app, and the default for every existing install) or **Companion** mode (new). In Companion, register-only features are off until someone turns them on from one screen. The device mode decides what exists on this device. A person's display mode (Standard, Simple, Minimal, Custom) can then narrow it further. Neither can widen the other, the same rule `docs/MODES.md` already applies to roles.
++
++## What counts as a register feature
++
++Each group is one switch.
++
++| Group | What is in it | Companion default |
++| --- | --- | --- |
++| Selling | Quick sale, full POS (grid, cart, split payments, guided checkout, scanner to cart), cart warnings, price adjustments, custom amounts, gift card selling, bundle checks | Off |
++| Card reader | Zeller provider, reader pairing, reader tools in Support and diagnostics, reader notices, terminal practice | Off |
++| Cash drawer | Drawer screen, ledger, swap cash, float report, Check Change, smart change, tender machine slot | Off |
++| Till staff tools | Lock register, staff pass scanning, switch staff, cashier passes | Off |
++| Till display | Screensaver, keep awake, item spotlight, grid editor | Off |
++| Till training | Register courses in Training | Off |
++
++Always on in Companion: Help, Demo mode, Notifications, the AI assistant, Settings for owners and managers, and sync and Shopify diagnostics. The PIN lock is not a group (see below).
++
++## Sign-in and the PIN
++
++The whole app locks behind a PIN in Companion, using the lock screen that already exists, and it stays locked after the phone is idle or backgrounded. Browsing after sign-in is free. Anything that changes something that matters asks for the PIN again when the last PIN entry is too old.
++
++Proposed list of actions that need the step-up PIN:
++
++- Taking any payment or finishing a sale, including refunds.
++- Anything written to Shopify: creating or editing items, stock changes, discounts and bundles, gift card creation.
++- Cash drawer changes.
++- Staff, Settings and assistant settings changes.
++- Turning register features on or off, or changing the app mode.
++- Backup export and import.
++
++Defaults to start with, both changeable: auto-lock after 2 minutes idle, and step-up PIN needed if the last PIN entry was more than 5 minutes ago. See open question 2. Because a lock needs a PIN to come back from, the setup flow creates the first owner PIN before anything else. Face ID is a possible later extra, but it needs a new native package, so it is not in this series.
++
++## Setup flow
++
++A first-run screen asks **Register** or **Companion**, then runs the steps for that choice: connect Shopify, create the owner PIN, and either name this register or pick the register features to start with. Steps live in a registry (`id`, which profiles it applies to, whether it is done, its screen). A later public-use profile adds steps there without touching the shell. Existing installs are marked as set up in Register mode on upgrade, so nobody sees the screen or loses anything. The mode can be changed later from the same place, behind the step-up PIN.
++
++## Selling on the phone
++
++With Selling on, the sell tab opens a **quick sale**: an amount keypad, item search and scan, and one Pay button. An **Expand** button turns the same screen into the full POS as it is today (grid, cart, split payments). The cart is one shared cart, so it carries across, and the person's display mode still applies (Minimal's guided checkout wins if it is on). Payment methods follow their own groups: card needs Card reader, cash needs Cash drawer. See open question 1.
++
++## Send to register
++
++With Selling off, the phone can still build a cart (search or scan, quantities, a note) and **send it to the register** as a saved cart assigned to a register or a person. Saved carts already sync through Shopify, so this needs no new server. The register opens it from Saved carts as it does now.
++
++## What the companion keeps and adds
++
++- **Kept, with a phone layout:** Inventory, Orders and Transactions, Reports and the Square history, Items, Customers, the Bundles builder, gift card balance checks, Notifications, Price check and Stock check.
++- **Today (new home tab).** Sales and order count today, low-stock items and anything stuck in the outbox, each tappable into its full screen. Money figures follow the current role rules, so a cashier sees the non-money cards only.
++- **Scan (new tab).** One big scan button (camera or Bluetooth scanner) that shows price, deals, stock and the other variations. No cart is touched.
++- **Stock actions (last).** Receive, count and adjust from a Scan result, using the existing adjustment screens, reasons and permissions.
++
++## UI changes
++
++- Default tabs: Today, Scan, Inventory, Orders, More. With Selling on, a Sell tab joins them and Orders moves into More.
++- Wording on screens that stay drops "register" and "till" phrasing in Companion. Standard wording is untouched.
++- Single column, search first on lists, pull to refresh, large tap targets. The iPad uses its wider layout.
++- A **Companion features** screen in More, open to every signed-in person, with the six switches and a button to switch the device to Register mode.
++
++## How it fits the architecture
++
++1. **`src/lib/appMode.ts`** (pure, tested): the profile type (open to new values), the feature group list, `resolveFeatures`, `tabAllowed`, `routeAllowed`, `rowAllowed`. Unknown stored values fall back to Register.
++2. **Settings, per device:** `appMode` and `registerFeatures`. Left out of the shared settings push, kept on backup import like the register name, defaulted to Register on upgrade.
++3. **`src/lib/setupFlow.ts`** and a setup screen, plus the Companion features screen.
++4. **`src/lib/stepUp.ts`** (pure, tested): which actions need the PIN, and whether the last PIN entry is recent enough. Each listed action calls it before it runs.
++5. **Display modes:** `resolveUi()` takes the device features and only intersects. The sole-manager rule stays, and Settings always keeps a way to the features screen.
++6. **Shell:** `App.tsx` builds the tabs from the gate. The home tab, the hidden-tab fallback and `nav.go()` deep links use it, and `Routes` sends a hidden route to the home tab.
++7. **Hardware and background work:** the Zeller provider stays mounted (it must never unmount mid-payment) but idles with Card reader off, with no reader checks or notices. Outbox, drawer sync, saved-cart push, screensaver and keep awake follow their groups.
++8. **Help, Training and the assistant:** pages and modules get a `needs` tag, hidden ones are removed and unsearchable, and the nav graph and assistant answer as they do for a missing role, with no hint the screen exists.
++9. **Docs and checks:** `docs/COMPANION.md`, a Help page, `MODES.md`, `docs/PROGRESS.md` and `DEVICE_TESTS.md` updated. Checks run in the sandbox: `npm test`, typecheck, the help and nav graph checks and the style check (Australian English, no dashes). Nothing runs on a device from my side.
++
++## Risks to watch
++
++- **Zeller on a phone is unverified.** The code does not say whether the reader SDK works on an iPhone. Open question 3.
++- **Cash with the drawer off.** A phone that takes cash must not write the shared drawer record from stale data. See open question 1.
++- **Lock-out.** A PIN lock plus step-up on every change could trap someone. The setup flow creates the first PIN, and the sole-manager rule stays.
++- **Friction.** Too many PIN prompts makes people hate it, so the step-up window is a setting.
++- **Hidden links.** Notices for hidden groups are never raised, and old ones fall back to Today.
++- **Older app versions** ignore the mode and show everything, so the mode is never trusted from another register.
++
++## Patch series
++
++| Patch | What | Status |
++| --- | --- | --- |
++| 0175 | This plan as `docs/COMPANION_PLAN.md`, tracker, `PROGRESS.md` entry | Done |
++| 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Planned |
++| 0177 | App-wide PIN lock and step-up PIN | Planned |
++| 0178 | Tabs from the gate, Today, Scan, More menu, wording, phone layout | Planned |
++| 0179 | Hardware and sync gating | Planned |
++| 0180 | Quick sale, expand to full POS, send to register | Planned |
++| 0181 | Help, Training and assistant gating, docs | Planned |
++| 0182 | Stock actions from Scan | Planned |
++
++## Progress tracker
++
++Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started, `[?]` needs your answer.
++
++- [x] P1 All twelve questions answered
++- [x] P2 Plan updated to match the answers
++- [x] P3 Plan saved as `docs/COMPANION_PLAN.md` with this tracker (0175)
++- [ ] C1 `appMode.ts` with tests (0176)
++- [ ] C2 Per-device settings: not shared, kept on restore, Register by default (0176)
++- [ ] C3 Setup flow registry, Register and Companion setup, existing installs marked set up (0176)
++- [ ] C4 Companion features screen for every signed-in person (0176)
++- [ ] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177)
++- [ ] C6 `stepUp.ts` with tests, wired to every listed action (0177)
++- [ ] C7 Tabs, home tab, route guard and deep links from the gate (0178)
++- [ ] C8 Today tab (0178)
++- [ ] C9 Scan tab (0178)
++- [ ] C10 More menu and Companion wording (0178)
++- [ ] C11 Phone-first layout pass, iPad wider layout (0178)
++- [ ] C12 Zeller bridge idle without Card reader, no reader notices (0179)
++- [ ] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179)
++- [ ] C14 Notices for hidden groups not raised, old ones fall back to Today (0179)
++- [ ] C15 Quick sale screen (0180)
++- [ ] C16 Expand quick sale into the full POS on the same cart (0180)
++- [?] C17 Payment methods follow their groups (0180, open question 1)
++- [ ] C18 Send a cart to the register as a saved cart with Selling off (0180)
++- [ ] C19 `needs` tag on Help pages and Training modules, hidden ones unsearchable (0181)
++- [ ] C20 Nav graph and assistant gating (0181)
++- [ ] C21 `COMPANION.md`, `MODES.md`, Help page, `DEVICE_TESTS.md` steps (0181)
++- [ ] C22 Receive, count and adjust from a Scan result (0182)
++- [ ] C23 Device tests on iPhone and iPad, by you (end)
++
++## What I found in the code
++
++- **Tabs are fixed.** `App.tsx` hard-codes five tabs. `uiMode.ts` can hide three, but Checkout and More are always present, so that rule moves into the new gate.
++- **Checkout is home.** The nav starts there and hidden tabs fall back to it.
++- **The lock screen assumes a till.** With staff set up and nobody signed in, `isLockScreen` shows the PIN pad. Companion reuses it app-wide.
++- **The Zeller provider sits at the root** and must never unmount mid-payment (a comment in `zellerBridge.tsx` says so). I will confirm what `Bridge` does on mount before touching it.
++- **Background work is till-shaped.** A 25 second tick runs the outbox, shared poll and saved-cart push, and the drawer is a shared record (patch 0168).
++- **Settings mix per-device and shared keys.** Screensaver, assistant and inventory prefs are per device. Staff, adjustment limits and cart warnings are shared.
++- **Backup restore keeps the register's name and ID.** The mode is treated the same way.
++- **Training, Help and the assistant know about screens.** All three need to learn that a screen can be absent.
++- **A phone layout already exists** (the cart is a page on a phone), so this is new screens and fewer of them, not a new layout system.
++
++## Open questions
++
++1. **Cash on the phone.** A cash sale puts money in the till drawer, which the app tracks in a ledger shared by every register. A phone with the Cash drawer switch off has no drawer to put it in. Suggested: the phone cannot take cash until Cash drawer is switched on, while card, gift card and hand-off carts all still work. The other option is to allow cash and flag it for the next drawer count. Gates patch 0180 (C17).
++
++## Settled questions
++
++- **Card on the phone.** Your Zeller reader works from an iPhone, so phone card payments are in scope. It cannot be tested from the sandbox, so it stays a device test for you.
++- **PIN timing.** 2 minutes idle for auto-lock, 5 minutes for the step-up window, and the PIN-gated list as written.
++- **Patch numbers.** `dev` was merged into `main`, where 0173 and 0174 are the assistant patches, so this series starts at 0175.
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 6f82cc4..775a390 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -156,6 +156,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0172 | 2026-10-18 | AI assistant, patch 8 (your request, "work on the next task"): **the cash drawer, calculator and current cart tools**, from the plan's tool list (3.2 tools 8, 11 and 13). `cash_drawer` says whether the shared drawer is open, the float, cash sales since opening, paid in and out, what it should hold, the notes and coins the ledger says are in it, today's takings and the last five movements. `cash_calculator` does change (with cash rounding, and from the drawer where it can), split payments and a float suggestion, using the app's own rules. `current_cart` gives the priced lines, discounts, total, price checks and the warnings set to show at Charge, so it can answer why a sale will not go through. All three are read only and every role has them. They read a snapshot taken when the question is asked (`assistantCashIO.ts`), empty on practice data. No staff name, ledger note, gift card code or recipient, customer, note or payment detail is copied into a result. Files: `src/lib/assistantCash.ts`, `src/lib/assistantCashIO.ts`; `assistantTools.ts` (`cash` in the context), `assistantChat.ts` (prompt), `Assistant.tsx`. Help page `settings/ask-assistant` updated, `help.json` rebuilt, plan revision 25. Tests: `tests/assistantcash.test.ts` (31), pinned tool counts now eighteen for a cashier and nineteen for a manager or owner. Device test T69. **Decided without you, change any you disagree with:** one calculator tool with three kinds, not three tools; a warning set to queue is counted, not listed as blocking; the cart answer gives a warning's title and not its text; all three tools need the snapshot, so they are off on practice data (plan 3.7). **Worth knowing:** the tool definitions and prompt now take about 5,300 of the default 8000 context for a cashier, leaving about 700 for the chat, so raise the context size or shorten older tool descriptions before patch 9. Not tried on a real iPad. Not in this patch: the practice mode coach (patch 9) |
+ | 0173 | 2026-10-19 | AI assistant, patch 9 (your request, "work on the next task"): **the practice mode coach**, from plan 3.7. In a training **Check** the practice bar has an **Ask coach** button beside Hint. It opens a small window where you type what you are stuck on. **The app raises the shared hint ladder one rung per question**, exactly as Hint does (so the bar shows the same hint and the run's hint count goes up), and the model is given only the course title and summary, the goal's title and the rungs opened so far. It is never given the highlight spot, the test for done, the injected problem or the watches, so it cannot give the answer away, and a test checks that for every course. **The coach never raises the ladder to the answer**: when every written hint is used it says so and sends you to Hint, which stays the only thing that highlights it. Asking *just tell me* cannot skip a rung because the plan ignores the text. Off course, it points at the card's steps and spends no hint. A reply with a number that the goal, the opened hints or the question do not already hold is thrown out in code and the hint itself is shown. The model has `search_docs`, `read_doc` and `search_screens` only (4 calls a question), so no shop data, drawer, cart or settings. If the model is not set up or fails you still get the hint, with a line saying so. The question is scrubbed like every other, the thread is in memory only, and each question is logged with `practice: true` under the real signed in person, not Casey or Morgan (`coachLogSink`, `realSignIn`). Files: `src/lib/assistantCoach.ts`, `src/ui/CoachSheet.tsx`; `TrainingDock.tsx` (button), `trainingSession.ts` (`realSignIn`), `assistantLogIO.ts` (`coachLogSink`), `assistantChat.ts` (practice block wording). Help page `settings/ask-assistant` updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 26. Tests: `tests/assistantcoach.test.ts` (27). Device test T70. **Decided without you, change any you disagree with:** one question is one hint (the first question opens hint 1); the coach only runs in Check, not Guide; it keeps the docs and screen search tools as plan 3.7 says; a number from nowhere in a reply is the leak test, so a reply with an unexpected number falls back to the hint; **Start again** clears the thread; the Help chat itself stays off in practice and only the coach talks to the model there. **Worth knowing:** the leak check is about numbers only, so a reply could still name an item or a button the hints do not, and the first rung is written by the course author, so a course whose early hints already say the answer is not made safer by the coach. Not tried on a real iPad. Not in this patch: the plan's patch list is finished, apart from the checks in T70 | your request |
+ | 0174 | 2026-10-19 | AI assistant, loose end from patch 8 (your request, "work on the next task"; the plan's patch list in 3.10 was already finished, so this is the one open item the plan itself names): **more room for the chat at the default context size.** At the default 8000 the system prompt and the 18 tool definitions took about 5,300 tokens, so after the 25 percent kept for the reply a cashier had about 716 tokens left for the chat and a manager about 428, and a tool result then had almost nowhere to go. The prompt said everything about each tool twice, once in prose and once in the tool's own description. Now the prompt keeps the rules (when to use a tool and what never to do) and leaves what a tool does to its description, and 18 of the 19 tool descriptions are tighter (all but `find_customers`). A cashier now has about 1,331 tokens left and a manager about 1,088, with no change to any tool's fields, results or gate map. Every rule a test pinned is kept word for word. Files: `src/lib/assistantChat.ts` (prompt), `assistantTools.ts`, `assistantStatus.ts`, `assistantTime.ts`, `assistantCash.ts`, `assistantDataTools.ts` (descriptions only). Tests: `tests/assistantbudget.test.ts` (3: the room left per role at 8000 must stay at 1,000 tokens or more, the chat code cuts to the same room, and the approved rules are still in the prompt). `patches/APPLIED.txt` now lists 0173, which was in the tree but missing from the ledger, so `scripts/apply-patches.sh` would have tried to apply it again and stopped. Device test T71. **Decided without you, change any you disagree with:** the default stays 8000 (plan 3.11), because you confirmed it; the descriptions were shortened and not removed, and no tool was merged or dropped. **Worth knowing:** 1,331 tokens is still not much once a tool result (up to 4,800 characters at this size) comes back, so a longer chat will drop its oldest turns sooner than you might expect. Raising the default to 16000, or telling the model to use a bigger context, is the real fix and is your call. Not tried on a real iPad. Not in this patch: a larger default, loading only the tools a question needs, or any new tool | your request |
++| 0175 | 2026-10-19 | Companion mode, plan only (your request: a mode that cuts the Register features until requested and fits a phone companion app). **Saves the plan as `docs/COMPANION_PLAN.md`** with your twelve answers and my take on each, the updated plan, the eight-patch series (0175 to 0182) and its own progress tracker. No app code changes. | G1 |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `docs/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+@@ -436,6 +437,11 @@ Added in 0072. These are the last jobs, done after E1 and B8. Order matters a li
+ - [ ] F8 Demo mode: the app locks down (until unlocked) into a mode with full demo data pre-loaded and virtual terminals (card terminal, cash drawer, scanner, receipts) so nothing real is touched. Its home screen offers a demo of every single feature in the app, in the same animated style as the Training Show. Built on the isolated fixture state that Training mode (B6) already uses.
+ - [ ] F9 Create a new GitHub template repo from the app, with everything specific to you removed (your store, domains, keys, branding, staff, passes, certificates, history), to be published as an open source POS app. Done last, after F3 to F6.
+ 
++
++## G. Companion mode (added by you)
++The full plan, decisions, patch series and tracker live in `docs/COMPANION_PLAN.md`. Each Companion patch ticks its own items there; this section only records the headline.
++- [~] G1 **Plan saved (0175).** A per-device Register or Companion mode: register features off until requested, a phone-first home (Today, Scan), a quick sale that expands into the full POS, send a cart to the register, an app-wide PIN lock with a step-up PIN for anything that matters, and a setup screen that can take new profiles later. Items C1 to C23 in the plan. Next: 0176.
++
+ ---
+ 
+ ## Notes
+@@ -528,6 +534,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N62 **Non-blocking (AI assistant, 0152):** device check for the conversation log, steps in `docs/DEVICE_TESTS.md` T53. Most important: no assistant-log folder in the Files app, a full or unwritable log still lets the answer through with the red *tell a manager* line, and nothing is logged in practice mode. The viewer comes in 0153, so recording cannot be read back on the iPad yet.
+ - [ ] N63 **Non-blocking (AI assistant, 0173):** device check for the practice mode coach, steps in `docs/DEVICE_TESTS.md` T70. Most important: Ask coach is only in a Check, each question opens exactly one more hint and never the answer, asking *just tell me* does not skip a hint, the answer is only highlighted by the Hint button, a coach question appears in the conversation log marked as practice under your own name, and nothing real changes after you leave practice.
+ - [ ] N64 **Non-blocking (AI assistant, 0174):** device check for the chat's room at the default context size, steps in `docs/DEVICE_TESTS.md` T71. Most important: your best questions from before still use the right tool, and the chat remembers the first question after four more.
++- [ ] N65 **Non-blocking (G1, 0175):** one question on `docs/COMPANION_PLAN.md` (Open question 1). If the phone takes cash while the Cash drawer group is off, should it be blocked (my suggestion) or allowed and flagged for the next drawer count? It gates 0180, and I carry on with "blocked" if you have no view.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+-- 
+2.43.0
+
