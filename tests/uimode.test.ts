@@ -18,7 +18,9 @@ test('Simple keeps every tab and every row, with restrained text sizing and expl
 test('Minimal: three tabs, essentials only, standard-sized text', () => {
   const p = resolveUi({ mode: 'minimal' });
   assert.deepEqual(p.tabs, ['checkout', 'transactions', 'more']);
-  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['diagnostics', 'drawer', 'giftcards', 'help', 'lock', 'orders', 'saved', 'training']);
+  // deviceMode is essential too: a companion must be able to reach the page that says what the device is and switch it
+  // back, whatever display mode the person is using (Companion plan, patch 0176).
+  assert.deepEqual(flat(visibleMoreRows(p, 'cashier', true)).sort(), ['deviceMode', 'diagnostics', 'drawer', 'giftcards', 'help', 'lock', 'orders', 'saved', 'training']);
   assert.equal(p.textScale, resolveUi({ mode: 'simple' }).textScale);
 });
 test('a mode never widens what a role allows', () => {

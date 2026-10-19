@@ -15,13 +15,13 @@ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }>
   customers: { icon: 'people-outline', title: 'Customers', route: 'customers' }, saved: { icon: 'bookmarks-outline', title: 'Saved carts', route: 'saved' },
   giftcards: { icon: 'gift-outline', title: 'Gift cards', route: 'giftcards' }, reports: { icon: 'stats-chart-outline', title: 'Reports', route: 'reports' },
   drawer: { icon: 'cash-outline', title: 'Cash drawer', route: 'drawer' }, staff: { icon: 'id-card-outline', title: 'Staff', route: 'staff' },
-  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' }, training: { icon: 'school-outline', title: 'Training', route: 'training' },
+  settings: { icon: 'settings-outline', title: 'Settings', route: 'settings' }, deviceMode: { icon: 'phone-portrait-outline', title: 'Device mode', route: 'deviceMode' }, diagnostics: { icon: 'medkit-outline', title: 'Support & diagnostics', route: 'diagnostics' }, help: { icon: 'help-circle-outline', title: 'Help', route: 'help' }, training: { icon: 'school-outline', title: 'Training', route: 'training' },
   lock: { icon: 'lock-closed-outline', title: 'Lock register' },
 };
 /** The spot each row carries, so training and the assistant's guide can point at it. The lock row has none. */
 const MORE_SPOT: Partial<Record<MoreRowId, string>> = {
   orders: SPOT.moreOrders, items: SPOT.moreItems, customers: SPOT.moreCustomers, saved: SPOT.moreSaved, giftcards: SPOT.moreGiftcards, reports: SPOT.moreReports,
-  drawer: SPOT.moreDrawer, staff: SPOT.moreStaff, settings: SPOT.moreSettings, diagnostics: SPOT.moreDiagnostics, help: SPOT.moreHelp, training: SPOT.moreTraining,
+  drawer: SPOT.moreDrawer, staff: SPOT.moreStaff, settings: SPOT.moreSettings, deviceMode: SPOT.moreDeviceMode, diagnostics: SPOT.moreDiagnostics, help: SPOT.moreHelp, training: SPOT.moreTraining,
 };
 /** What the row says underneath when explanations are off. */
 const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller reader, sync' };

@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
 export const BACKUP_VERSION = 1;
 export const MIN_PASSPHRASE = 8;
 /** Settings that identify this particular device and must never be copied to another one. */
-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending'] as const;
+export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone'] as const;
 
 export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
 export type BackupV1 = {

@@ -4,7 +4,7 @@ title: Settings
 parent: start
 summary: Find Shopify, payment, hardware, data, receipt, backup, display and other register settings.
 tags: [settings, Shopify, payments, fees, rounding, hardware, scanner, receipts, backup, theme]
-related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, settings/cloud-sync, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
+related: [settings/shopify, settings/payments, settings/hardware, settings/scanner-codes, settings/receipts, settings/backup, settings/theme, settings/cloud-sync, start/setup, device-mode, staff/screensaver, staff, sales/bundles, sales/cart-warnings, settings/assistant]
 updated: 2026-10-11
 roles: [manager, owner]
 ---
@@ -27,6 +27,8 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
 - **Backup & transfer** moves settings and logins to another device; **Data** exports or deletes local CSV history. See [[settings/backup]].
 - **Screensaver & display** controls this iPad's idle screen and Keep iPad awake; see [[staff/screensaver]].
 - **Theme** changes the app's appearance; see [[settings/theme]]. **About** shows app information.
+
+**Device mode** is in More, not in Settings: it says whether this device is a register or a companion, and holds the six register feature switches. See [[device-mode]].
 
 The Settings list also has Checkout options for consolidating identical items and the tax display. Managers and Owners can access Settings when staff sign-in is required; cashiers cannot.
 
