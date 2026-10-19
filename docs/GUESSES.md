@@ -171,6 +171,10 @@ tool, not just the totals. Decisions I made without asking:
   sales already held. The first pull after install pages up to 800 sales and 800 daily totals.
 - **iCloud is still the plan.** This is the metaobject path until `docs/CLOUDKIT_SYNC_PLAN.md` lands; that plan replaces this
   transport, not the shape of what the tools read.
+- **The report export reads the same cache.** After the owner asked, the export was widened to the whole shop as well: it takes
+  sales from `allSales` and day totals from `pos.shared.rollups` merged under this till's own, so Transactions, Item sales,
+  Discounts, Gift cards, Inventory movements, Team member sales and Daily totals all cover every till. Cash did not change: the
+  drawer and its ledger are still this device's, and the help page's old claim that other registers were already included is gone.
 - **Where it lives.** `src/lib/salesHistory.ts` (pure decode and merge), the pull in `src/lib/sync.ts` (`pullSalesHistory`), the
   cache in `src/state/store.ts` (`pos.shared`), and the merge into the snapshot in `src/lib/assistantDataIO.ts`. Tests in
   `tests/saleshistory.test.ts`; device test T73.

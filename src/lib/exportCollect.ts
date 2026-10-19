@@ -9,6 +9,7 @@ import { useApp } from '../state/store';
 import { emptyTotals, merge } from './rollup';
 import { parseBundleConfig } from './bundles';
 import { bytesToB64, loadSquareRollups } from './squareHistoryIO';
+import { allSales } from './salesHistory';
 import { csv } from './csvStore';
 import { buildIndexSheet, sheetToCsv, type ExportInput, type RawHistoryFile, type Sheet } from './exportSheets';
 import { buildXlsx, uniqueSheetName } from './xlsx';
@@ -28,7 +29,10 @@ async function readRawFiles(): Promise<RawHistoryFile[]> {
 /** Everything the tables are built from, as it stands now. Square history is folded into the local rollups. */
 export async function collectExportInput(): Promise<ExportInput> {
   const s = useApp.getState();
-  const rollups: ExportInput['rollups'] = { ...s.pos.rollups };
+  // The sales and day totals other tills shared (pos.shared, filled by pullSalesHistory), so an export covers the whole shop.
+  // This till's own copy wins a clash. Cash stays this till's: it reads the shift and ledger below, not sales.
+  const shared = s.pos.shared ?? { sales: [], rollups: {} };
+  const rollups: ExportInput['rollups'] = { ...shared.rollups, ...s.pos.rollups };
   try {
     for (const r of await loadSquareRollups()) {
       const key = `${r.registerId}|${r.date}`;
@@ -41,7 +45,7 @@ export async function collectExportInput(): Promise<ExportInput> {
     shopName: s.settings.shopName || s.settings.locationName || '',
     registerName: s.settings.registerName,
     registerId: s.settings.registerId,
-    sales: s.pos.sales,
+    sales: allSales(s.pos.sales, shared.sales),
     variants: s.data.variants,
     collections: s.data.collections,
     customers: s.data.customers,
