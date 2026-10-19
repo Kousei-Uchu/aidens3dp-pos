@@ -118,19 +118,22 @@ Imports use create-if-absent so an old import never overwrites a newer edit.
 - Simulator is unreliable for CloudKit push. Testing needs two physical devices on two Apple IDs.
 - `npm run ios` builds use the **Development** CloudKit environment. TestFlight and App Store builds use **Production**, a separate and empty database. The schema must be deployed to Production, and the migration would run again there.
 
-### Unknown / to check
+### Unknown resolved from the repo (19 October 2026)
 
-- [ ] Structure and size of Square history (`squareHistory.ts`, `squareHistoryIO.ts`), and so the right shard size.
-- [ ] Full behaviour of `sync.ts` (lock handling, retry, rollup writes) before the interface is designed.
-- [ ] Whether any of the four servers depends on the metaobjects indirectly.
-- [ ] Any other persisted keys with computed names (the grep only found `settings`, `pos`, `grid`, `data` as literals).
-- [ ] iOS deployment target. `CKSyncEngine` needs iOS 17, and the current Expo default may be lower.
+- **Square history structure and size.** One gzip file per month (`sales-<YYYY-MM>.json.gz`) plus a small `manifest.json`. `squareHistory.ts` does the packing (`packMonths`, `buildManifest`, `packJson`); `squareHistoryIO.ts` writes them to `Documents/square-history/` and records the summary under the AsyncStorage key `squareHistoryMeta`. `squareShareIO.ts` already copies those same files to another register. So the shard is the existing month file, one `CKAsset` per month, with the manifest as one record, and no new packing is needed.
+- **`sync.ts` behaviour.** Two directions behind one shape: an idempotent outbox (`processOutbox`, each step marked done) and a 25 s poll (`pollShared`) of saved carts, layout, shared settings, scanner calibration, shared drawer, warning list, and now other tills' sales and rollups. Conflicts use `version` counters; saved carts add `dirty`, `remoteId` and an advisory `locked_by`/`locked_at` lock; the drawer merges entry lists rather than replacing.
+- **The four servers do not touch the metaobjects.** A content grep for the type names and the metaobject helpers across all four found nothing, so nothing there needs changing at cut-over.
+- **Persisted keys.** Only the four slices (`settings`, `pos`, `grid`, `data`) and the literal `squareHistoryMeta`, plus a per-conversation assistant history key written from `src/screens/Assistant.tsx` (a local-only UI cache that should not sync). No other computed key exists.
+- **iOS deployment target.** `app.json` sets no deployment target and installs no `expo-build-properties`, so Expo SDK 54's default applies, which is below iOS 17. `CKSyncEngine` needs iOS 17, so a config plugin must raise `ios.deploymentTarget` to `17.0`.
+- **Which settings are per-device.** The shared set is exactly the seven keys in `pushSharedSettings` (`staff`, `bundlesJson`, `fees`, `cashRounding`, `requirePin`, `adjustPerms`, `cartWarnings`). Everything else is per-device, including the theme, tile size, screensaver, inventory prefs, help depth, assistant setup, receipt profile and location, plus `DEVICE_KEYS`. So the plan's "theme, tile size, pairing are probably per-device" is confirmed: they stay local and must not sync.
+
+### Unknown, needing the owner
+
 - [ ] Which Apple ID is the owner (a shop-owned account is recommended).
-- [ ] Whether Android matters. CloudKit would be iOS-only.
+- [ ] Whether Android matters. CloudKit would be iOS-only, and there is no `android` block in `app.json` today, so the app is iOS-only now.
 - [ ] Whether the customer data held in sales records raises privacy-policy questions once stored in iCloud.
 - [ ] Owner iCloud storage headroom for sales and Square history.
 - [ ] Whether to use `encryptedValues` for sales and customer fields from the start.
-- [ ] Which settings are per-device (theme, tile size, pairing).
 - [ ] Dual-write or cut over in one go.
 
 ## 8. Risks
