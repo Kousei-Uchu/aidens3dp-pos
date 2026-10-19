@@ -185,6 +185,18 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.cloudSyncSetup]: 'page_cloud_sync',
   [SPOT.cloudSyncShare]: 'page_cloud_sync',
   [SPOT.cloudSyncJoin]: 'page_cloud_sync',
+  // Setup and the device mode (Companion plan, patch 0176)
+  [SPOT.setupModeRegister]: 'page_setup',
+  [SPOT.setupModeCompanion]: 'page_setup',
+  [SPOT.setupStepShopify]: 'page_setup',
+  [SPOT.setupStepPin]: 'page_setup',
+  [SPOT.setupStepName]: 'page_setup',
+  [SPOT.setupStepFeatures]: 'page_setup',
+  [SPOT.setupFinish]: 'page_setup',
+  [SPOT.moreDeviceMode]: 'tab_more',
+  [SPOT.deviceModeRegister]: 'page_device_mode',
+  [SPOT.deviceModeCompanion]: 'page_device_mode',
+  [SPOT.deviceModeSetup]: 'page_device_mode',
   [SPOT.checkChangeAmount]: 'sheet_check_change',
   [SPOT.checkChangeUseCart]: 'sheet_check_change',
   [SPOT.checkChangeContinue]: 'sheet_check_change',
@@ -248,6 +260,7 @@ export const PREFIX_SCREEN: { prefix: string; screen: string }[] = [
   { prefix: 'saved.row:', screen: 'page_saved' },
   { prefix: 'saved.assign:', screen: 'page_saved' },
   { prefix: 'drawer.denom:', screen: 'page_drawer' },
+  { prefix: 'devicemode.feature:', screen: 'page_device_mode' },
   { prefix: 'outbox.retry:', screen: 'tab_notifications' },
 ];
 

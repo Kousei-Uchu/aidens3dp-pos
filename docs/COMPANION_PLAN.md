@@ -107,7 +107,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | Patch | What | Status |
 | --- | --- | --- |
 | 0175 | This plan as `docs/COMPANION_PLAN.md`, tracker, `PROGRESS.md` entry | Done |
-| 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Planned |
+| 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Done, needs your device (T75) |
 | 0177 | App-wide PIN lock and step-up PIN | Planned |
 | 0178 | Tabs from the gate, Today, Scan, More menu, wording, phone layout | Planned |
 | 0179 | Hardware and sync gating | Planned |
@@ -122,10 +122,10 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [x] P1 All twelve questions answered
 - [x] P2 Plan updated to match the answers
 - [x] P3 Plan saved as `docs/COMPANION_PLAN.md` with this tracker (0175)
-- [ ] C1 `appMode.ts` with tests (0176)
-- [ ] C2 Per-device settings: not shared, kept on restore, Register by default (0176)
-- [ ] C3 Setup flow registry, Register and Companion setup, existing installs marked set up (0176)
-- [ ] C4 Companion features screen for every signed-in person (0176)
+- [~] C1 `appMode.ts` with tests (0176)
+- [~] C2 Per-device settings: not shared, kept on restore, Register by default (0176)
+- [~] C3 Setup flow registry, Register and Companion setup, existing installs marked set up (0176)
+- [~] C4 Companion features screen for every signed-in person (0176)
 - [ ] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177)
 - [ ] C6 `stepUp.ts` with tests, wired to every listed action (0177)
 - [ ] C7 Tabs, home tab, route guard and deep links from the gate (0178)

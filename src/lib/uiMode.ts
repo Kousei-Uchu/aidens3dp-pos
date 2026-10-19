@@ -8,7 +8,7 @@ export type TextSize = 'normal' | 'large' | 'xlarge';
 export type TabLevel = 'all' | 'core' | 'basic';
 export type MoreLevel = 'all' | 'everyday' | 'essential';
 export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
-export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'diagnostics' | 'help' | 'training' | 'lock';
+export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'deviceMode' | 'diagnostics' | 'help' | 'training' | 'lock';
 
 /** The four dials a Custom mode exposes. */
 export type CustomUi = {
@@ -31,10 +31,10 @@ export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
 /** Rows in the More screen, in three groups (the screen draws a card per group). */
 export const MORE_GROUPS: MoreRowId[][] = [
   ['orders', 'items', 'customers', 'saved', 'giftcards'],
-  ['reports', 'drawer', 'staff', 'settings', 'diagnostics', 'help', 'training'],
+  ['reports', 'drawer', 'staff', 'settings', 'deviceMode', 'diagnostics', 'help', 'training'],
   ['lock'],
 ];
-const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'help', 'training', 'lock'];
+const ESSENTIAL: MoreRowId[] = ['orders', 'saved', 'giftcards', 'drawer', 'diagnostics', 'help', 'training', 'deviceMode', 'lock'];
 const EVERYDAY: MoreRowId[] = [...ESSENTIAL, 'items', 'customers'];
 export const ROWS_BY_LEVEL: Record<MoreLevel, MoreRowId[] | 'all'> = { all: 'all', everyday: EVERYDAY, essential: ESSENTIAL };
 const MANAGER_ROWS: MoreRowId[] = ['reports', 'staff', 'settings'];
@@ -130,6 +130,7 @@ export const MORE_EXPLAIN: Record<MoreRowId, string> = {
   drawer: 'Open and close the cash drawer and see what is in it.',
   staff: 'Who can use the till, their PINs and passes.',
   settings: 'Payments, receipts and everything else.',
+  deviceMode: 'What this device is: a register at the counter, or a companion beside it.',
   diagnostics: 'Check the card reader and fix problems.',
   help: 'How every part of the till works, in as much detail as you like.',
   training: 'Short courses that show you each job at the till, with practice data.',

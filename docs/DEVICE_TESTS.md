@@ -979,4 +979,21 @@ Two iPads, each signed in to iCloud under its own Apple ID (that is the point: t
 8. Turn training on (**More ▸ Training**, start any course) and open Cloud sync. Pass: the buttons are greyed out and the page says Cloud sync cannot be changed while training is on.
 9. Sign in as a cashier. Pass: there is no way to reach Cloud sync (the Settings row itself is hidden), so a cashier can neither set up nor join.
 10. **Most important:** on a register that was never set up, sell, report and export as usual. Pass: nothing about the till changes until someone sets Cloud sync up, and no records are sent anywhere by this page.
-10. **Most important (what this patch does not do):** make a sale on iPad A and look for it on iPad B. Pass: this patch only links the registers; the sales themselves still travel through the existing metaobject polling (T73), and full sync arrives in the next patch.
+11. **Most important (what this patch does not do):** make a sale on iPad A and look for it on iPad B. Pass: this patch only links the registers; the sales themselves still travel through the existing metaobject polling (T73), and full sync arrives in the next patch.
+
+## T75. Register or companion, and the setup checklist (Companion mode, patch 0176)
+
+One device is enough for most of this; a second register is only needed for step 8. Nothing here touches Shopify or any real sale.
+
+1. **A fresh install.** If the app has been used on this device before, it is already marked set up (see step 7); to see the checklist, open **More ▸ Device mode** and tap **Open the setup checklist**. On a genuinely new install, pass: the app opens on **Set up this device** by itself, once.
+2. On that screen, pass: there are two choices, **A register** and **A companion**, with a tick on one of them, and a list of steps under it with **Done**, **Next** or **Not yet**, and a line counting them (a register has 3 steps, a companion 3).
+3. Choose **A companion**. Pass: the list changes to **Connect Shopify**, **Create the owner PIN** and **Choose its features**.
+4. Tap **Choose its features**. Pass: the **Device mode** page opens with six switches (Selling, Card reader, Cash drawer, Till staff tools, Till display, Till training), all off, and a line under each one listing what it holds.
+5. Switch **Selling** on and go back. Pass: the checklist now shows 1 of 3 done for that step and **Next** has moved on. Nothing on the till has changed yet: the tabs still show everything until patch 0178 wires the gate. Pass criteria for this patch is only that the switch is remembered after closing and reopening the app.
+6. Tap **Finish setup**. Pass: the checklist closes onto the tabs and does not open again by itself, on this launch or the next.
+7. **An install that was already in use.** On a device that had the app before this update, pass: no checklist appears on the first launch after updating, the app opens on the tabs as usual, and **More ▸ Device mode** says **This device is a register** with every switch on and greyed out.
+8. **Backup and restore.** On the companion, open Settings ▸ Backup & transfer and export a backup. Restore it on the other register. Pass: the other register is still a register (the mode and the switches belong to the device and do not travel in a file), and the companion is still a companion.
+9. **Switching the mode.** On the companion, tap **Switch this device to Register mode** and confirm. Pass: the page says this device is a register and the switches are on and greyed out. Switch back to **Companion mode**. Pass: **Selling** is still on from step 5, so a mode change does not lose the switches.
+10. **Training.** Start any course, then open **More ▸ Device mode**. Pass: the mode buttons and every switch are greyed out, and the page says training is on.
+11. **Most important:** on a register, do a day's work (sell, take cash, check a gift card, refund something). Pass: nothing about the till behaves differently from before this update, and nothing on the Device mode page changed any of it.
+

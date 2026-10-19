@@ -259,3 +259,42 @@ join the others. Decisions I made without asking:
   or `CloudKitSync.podspec`, so a fresh clone would have had no native module at all. The line is anchored now (`/ios` and
   `/android`, the repo root only) and both files are tracked. No other folder in the repo is named `ios` or `android`
   outside node_modules, so the change catches nothing else.
+
+## Companion mode, patch 0176: the device mode and the setup checklist (2026-10-20)
+
+The first patch of `docs/COMPANION_PLAN.md`. It adds the gate, the two stored keys and the two screens; nothing is hidden yet.
+Decisions I made without asking:
+
+- **The More row is called "Device mode", not "Companion features".** A register has to reach this page too, and a row called
+  "Companion features" on a register reads as something that is not for them. The screen keeps the plan's wording for the six
+  switches (the **Companion features** section), so the two names both appear where each one is true. Patch 0178 does the
+  wording pass and can rename it cheaply.
+- **The row is in every display mode's list.** It is in More's second group and in the Essential level, so a person in Minimal
+  display mode can still reach the page that says what the device is and switch it back. A companion that could not reach it
+  would be a trap.
+- **Everyone signed in can open it, as the plan says.** The mode can therefore be changed by a cashier until the step-up PIN
+  arrives with patch 0177. The confirm dialog states what a change does, and the device test covers it.
+- **A register keeps every feature whatever is stored.** `resolveFeatures` answers all six for a register, so a leftover
+  companion switch can never quietly hollow out a till, and an unknown stored mode reads as a register. This is the same
+  rule `uiMode.ts` already applies: a narrowing layer never widens, and a device never takes a mode from anywhere but its own
+  settings.
+- **Switching to companion keeps the switches as they are.** Going back and forth must not lose them, and the plan's default
+  (everything off) is what a device that has never had them reads as.
+- **The gate maps whole pages, not parts of them.** `routeAllowed` names the pages a group owns (cart, pay, saved, drawer,
+  staff, terminalPlay, training, trainingRun) and nothing else is blocked: Help, Settings, Orders, Items, Customers, Reports,
+  Export, Cloud sync, Diagnostics and the assistant stay open, which is what the plan says a companion keeps. The finer work
+  (a reader tool inside Diagnostics, the drawer sheet inside a sale) belongs to patch 0179.
+- **Today and Scan are not in the gate yet.** They do not exist until 0178, and adding names for screens that are not there
+  would be dead code. `tabAllowed` covers the five tabs that exist.
+- **An install that already had settings is marked set up**, as a register. The test is "settings exist but there is no
+  `setupDone` key", which only an install from before this patch can be. A fresh install has no settings record at all, and
+  it writes `setupDone` on its first launch, so a half-finished checklist is not mistaken for an upgraded install.
+- **The checklist never blocks.** Every step is a row that opens the screen that does the job, and **Finish setup** works at
+  any point. A shop can look around first. The register's "Name this register" step treats the default name as not done,
+  because a name nobody chose is not a name, and the lock's step needs a PIN that is actually required on an owner, not just
+  a PIN stored somewhere.
+- **The step-up PIN is not in this patch.** The plan lists it with the lock (0177). Until then the mode change is guarded by
+  a confirmation dialog only, and both help pages say so plainly rather than implying the PIN is already there.
+- **Nothing is hidden yet.** The mode, the switches and the page are real and stored, but the tabs still show everything,
+  because wiring the tabs, the route guard and the deep links to the gate is patch 0178. The device test says the same, so a
+  reader is not left thinking a switch did nothing.

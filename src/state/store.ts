@@ -19,6 +19,7 @@ import type { AdjustPerms } from '../lib/adjustPerms';
 import type { CartWarnings, WarningList } from '../lib/types';
 import type { ScannerCalibration } from '../lib/scanSpeed';
 import { isTraining } from '../lib/trainingGuard';
+import { DEFAULT_FEATURES, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
@@ -46,10 +47,14 @@ export type Settings = {
   // everywhere. `warningListVersion` is the shared record's version we last saw; `warningListPending` an unsent change.
   warningList?: WarningList; warningListVersion?: number; warningListPending?: boolean;
   assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
+  // Companion plan (0176): what this device is. Per device, like the register name, so a backup never moves a mode to
+  // another till. A register has every feature; `registerFeatures` is what a companion is allowed to keep.
+  appMode: DeviceMode; registerFeatures: RegisterFeatures; setupDone: boolean;
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
-  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: [], assistant: defaultAssistant()
+  theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: [], assistant: defaultAssistant(),
+  appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
@@ -121,11 +126,14 @@ export const useApp = create<App>((set, get) => ({
       kvGet<Settings | null>('settings', null), kvGet<Data | null>('data', null), kvGet<{ grid: Grid; version: number } | null>('grid', null), kvGet<Pos | null>('pos', null),
     ]);
     const migrateTheme = !!settings && settings.themeSetupVersion !== 1;
+    // 0176: an install that has settings but no `setupDone` predates the setup checklist, so it is marked set up (as a
+    // register) and nobody is sent through setup after updating. A fresh install has no settings record and starts on it.
+    const setUp = !!settings && (settings as any).setupDone === undefined;
     set({
-      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant) }, data: { ...emptyData(), ...(data ?? {}) },
+      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant), appMode: readMode(settings?.appMode), registerFeatures: readFeatures(settings?.registerFeatures), setupDone: setUp ? true : settings?.setupDone === true }, data: { ...emptyData(), ...(data ?? {}) },
       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger), shared: { ...emptySharedHistory(), ...(pos?.shared ?? {}) } }, ready: true,
     });
-    if (!settings || migrateTheme) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme migration
+    if (!settings || migrateTheme || setUp) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme and setup migrations
   },
 }));
 

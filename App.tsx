@@ -36,6 +36,8 @@ import DemoHome from './src/screens/DemoHome';
 import DemoShow from './src/screens/DemoShow';
 import Export from './src/screens/Export';
 import CloudSync from './src/screens/CloudSync';
+import Setup from './src/screens/Setup';
+import DeviceMode from './src/screens/DeviceMode';
 import TrainingHost from './src/ui/TrainingHost';
 import DemoBanner from './src/ui/DemoBanner';
 import AssistantGuideOverlay from './src/ui/AssistantGuide';
@@ -74,6 +76,8 @@ function Routes({ route: top }: { route: Route }) {
     case 'reports': return <Reports />;
     case 'export': return <Export />;
     case 'cloudSync': return <CloudSync />;
+    case 'setup': return <Setup />;
+    case 'deviceMode': return <DeviceMode />;
     case 'giftcards': return <GiftCards />;
     case 'drawer': return <Drawer />;
     case 'settings': return <Settings open={p.sub} />;
@@ -92,6 +96,7 @@ function Routes({ route: top }: { route: Route }) {
 
 function Shell() {
   const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
+  const setupDone = useApp(s => s.settings.setupDone);
   const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
   const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined));
   const practiceRoutes = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.routes : undefined));
@@ -99,6 +104,9 @@ function Shell() {
   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
   useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+  // Companion plan, patch 0176: a device that has never been set up opens the setup checklist once. Installs from before
+  // this patch were marked set up by hydrate, and practice never runs it.
+  useEffect(() => { if (ready && !setupDone && !isTraining() && nav.stack.length === 0) nav.push('setup'); }, [ready, setupDone, nav.stack.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ready) return;
     const tick = () => { if (isTraining()) return; void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
