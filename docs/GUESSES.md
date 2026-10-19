@@ -178,3 +178,24 @@ tool, not just the totals. Decisions I made without asking:
 - **Where it lives.** `src/lib/salesHistory.ts` (pure decode and merge), the pull in `src/lib/sync.ts` (`pullSalesHistory`), the
   cache in `src/state/store.ts` (`pos.shared`), and the merge into the snapshot in `src/lib/assistantDataIO.ts`. Tests in
   `tests/saleshistory.test.ts`; device test T73.
+
+## CloudKit, patch 1 config: what I decided (2026-10-19)
+
+The owner answered the two gating questions: their **personal** Apple ID owns the zone (not a shop account, so the Shopify
+metaobjects stay as the backup), and the app is **iOS only**. With those settled, the first patch's native config half is in
+`plugins/withCloudKit.js`, wired into `app.json` as `./plugins/withCloudKit`. Decisions I made without asking:
+
+- **A config plugin, not edits to `ios/`.** `ios/` is gitignored and rebuilt by `npm run ios:reset`, so anything written there
+  is lost. The plugin is the source of truth, and remains the only place native settings live.
+- **No new dependency.** The plugin uses `@expo/config-plugins`, which Expo already installs, rather than adding
+  `expo-build-properties` for one deployment-target line.
+- **Deployment target in two places.** iOS 17 is required for `CKSyncEngine`. Setting only `ios.deploymentTarget` in
+  `Podfile.properties.json` fixes CocoaPods but leaves the Xcode project's `IPHONEOS_DEPLOYMENT_TARGET` below 17, so the plugin
+  also rewrites the four build configurations through `withXcodeProject`.
+- **No `aps-environment` yet.** CloudKit push needs it, but an app that carries it must also be signed with a push-enabled
+  profile. It arrives with the push subscriptions, in a later patch, not here.
+- **Verified by prebuild, not assumed.** A throwaway copy (with `node_modules` symlinked) ran `npx expo prebuild --platform ios
+  --no-install`; the generated entitlements, `Info.plist` and project all came out right. The repo's own `ios/` was left alone.
+- **Still the owner's.** The `iCloud.com.aidens3dp.pos` container must exist in their developer account with iCloud enabled on
+  the App ID before a device build signs, and the Swift `CKSyncEngine` module needs the Xcode toolchain, so it is generated
+  rather than hand-written.

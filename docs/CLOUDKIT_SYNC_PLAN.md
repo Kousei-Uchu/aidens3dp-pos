@@ -127,10 +127,13 @@ Imports use create-if-absent so an old import never overwrites a newer edit.
 - **iOS deployment target.** `app.json` sets no deployment target and installs no `expo-build-properties`, so Expo SDK 54's default applies, which is below iOS 17. `CKSyncEngine` needs iOS 17, so a config plugin must raise `ios.deploymentTarget` to `17.0`.
 - **Which settings are per-device.** The shared set is exactly the seven keys in `pushSharedSettings` (`staff`, `bundlesJson`, `fees`, `cashRounding`, `requirePin`, `adjustPerms`, `cartWarnings`). Everything else is per-device, including the theme, tile size, screensaver, inventory prefs, help depth, assistant setup, receipt profile and location, plus `DEVICE_KEYS`. So the plan's "theme, tile size, pairing are probably per-device" is confirmed: they stay local and must not sync.
 
+### Decided by the owner (19 October 2026)
+
+- **Owner Apple ID:** the owner's personal Apple ID, not a shop-owned account. Section 8's single-point-of-failure risk stands, so the Shopify metaobjects stay in place as the backup and rollback path.
+- **Platform:** iOS only. CloudKit stays the right transport, and no Android work is planned.
+
 ### Unknown, needing the owner
 
-- [ ] Which Apple ID is the owner (a shop-owned account is recommended).
-- [ ] Whether Android matters. CloudKit would be iOS-only, and there is no `android` block in `app.json` today, so the app is iOS-only now.
 - [ ] Whether the customer data held in sales records raises privacy-policy questions once stored in iCloud.
 - [ ] Owner iCloud storage headroom for sales and Square history.
 - [ ] Whether to use `encryptedValues` for sales and customer fields from the start.
@@ -146,7 +149,7 @@ Imports use create-if-absent so an old import never overwrites a newer edit.
 
 ## 9. Patch plan (small, one concern each)
 
-1. Entitlements, config plugin and Swift module skeleton
+1. Entitlements, config plugin and Swift module skeleton. **The config half is done** (`plugins/withCloudKit.js`, wired into `app.json`): the iCloud container `iCloud.com.aidens3dp.pos` and the CloudKit service entitlement, `CKSharingSupported`, `UIBackgroundModes: [remote-notification]`, and the iOS deployment target raised to 17.0 in both the Podfile and the Xcode project. Verified with a real `expo prebuild` in a throwaway copy: the entitlements file, `Info.plist` and all four build configurations come out right. Still to do: register the container and turn on iCloud for the App ID in the developer account, and add the Swift `CKSyncEngine` module (best generated with `npx create-expo-module --local`, which needs the Xcode toolchain, then wired to the JS side).
 2. Zone, share creation and acceptance, plus an account-status UI
 3. A backend interface wrapped around the current metaobjects code
 4. The CloudKit backend for sales and rollups
@@ -155,4 +158,4 @@ Imports use create-if-absent so an old import never overwrites a newer edit.
 7. Migration lease, checkpoints and verification
 8. Retire polling and add the rollback flag
 
-Before patch 3, resolve the first four unknowns in section 7.
+Before patch 3, resolve the remaining unknowns in section 7.
