@@ -47,3 +47,5 @@ const fs: LogFs = {
 export const assistantLog = createLogStore(fs, { capBytes: () => { const s = useApp.getState().settings.assistant; return (s.logCapMB || 200) * 1024 * 1024; } });
 /** Practice mode never writes anything real, so nothing is logged there (sending is blocked in practice mode anyway). */
 export const logSink: LogSink = async (e, prompt) => { if (isTraining()) return; await assistantLog.append(e, prompt); };
+/** The practice coach (patch 0173, plan 3.7) is logged too, marked as practice, so the manager can see where trainees needed help. The log is a device-only folder and is no part of the practice data, so this is the one sink that does not stop in practice mode. */
+export const coachLogSink: LogSink = async (e, prompt) => { await assistantLog.append(e, prompt); };

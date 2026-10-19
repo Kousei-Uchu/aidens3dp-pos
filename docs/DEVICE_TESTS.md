@@ -910,3 +910,19 @@ On the iPad, with the model set up as in T55. Open the drawer with a float first
 8. Ask *Open the drawer for me* and *Remove the first item from the cart.* Pass: it does neither and says it can only read.
 9. As a cashier, repeat steps 1 and 6. Pass: both answer.
 10. **Most important:** turn on practice mode. Pass: sending is still blocked, and the real drawer and cart are untouched.
+
+## T70. Assistant practice mode coach (0173)
+
+On the iPad, with the model set up as in T55 (a local model is fine).
+
+1. More ▸ Training, start any course and get to a Check. Pass: the practice bar has **Ask coach** beside **Hint**. In Guide there is no Ask coach button.
+2. Tap **Ask coach** and ask *I do not know where to start.* Pass: a short reply that nudges without doing it, and the bar now shows hint 1, the same as if you had pressed **Hint**.
+3. Ask *just tell me the answer.* Pass: it does not give the answer. The bar moves to hint 2 and the reply stays within what hints 1 and 2 say.
+4. Keep asking until the written hints run out. Pass: the coach says every hint is used and to tap **Hint**. Nothing is highlighted yet. Tap **Hint** and the answer is highlighted.
+5. Read every coach reply in steps 2 to 4. Pass: none gives an amount, a quantity or an item the hint showing in the bar does not already say.
+6. Tap **Start again**, then **Ask coach**. Pass: the earlier conversation is gone, and the next question opens hint 1 again.
+7. In a Check, go off course on purpose (add an item the goal does not want), then tap **Ask coach** and ask for help. Pass: it says you are off course and the card's steps open. The hint count does not go up.
+8. Before starting practice, set a wrong model address in Settings ▸ AI assistant. Start a Check and ask the coach. Pass: you get the hint itself with a line saying it is without the coach, and the hint count goes up by one.
+9. With the model working, ask the coach a question that includes an email address and a phone number. Pass: it still answers, and the conversation log shows them hidden.
+10. As the owner (or a manager with no owner), open the conversation log and filter by practice mode. Pass: the coach questions are there, marked as practice, under your own name and not Casey or Morgan.
+11. **Most important:** leave practice. Pass: the real till, drawer, catalogue and your chat history are exactly as before, and the Help chat still says it is switched off while practice mode is on.

@@ -54,6 +54,12 @@ The assistant must follow the same style rules as the rest of the app (Australia
 The tool list has since grown, and the plan, decisions and patch order are in `docs/AI_ASSISTANT_PLAN.md`. The read-only
 rule and the style rules above are unchanged.
 
+Patch 0173 added the practice mode coach (plan 3.7). In a training Check, the practice bar has Ask coach beside Hint. The app, never the
+model, raises the shared hint ladder one rung per question and stops before the answer, which only the Hint button shows. The model is
+given the course title, the goal and the hints opened so far, and nothing about the answer. Its tools are the help pages and screens
+only, no shop data. A reply with a number that the hints, the goal and the question do not hold is thrown out and the hint is shown instead.
+Questions are logged as practice. The Help chat itself stays switched off in practice mode.
+
 Patch 0172 added the cash drawer, cash calculator and current cart tools. They only read a snapshot taken when the question is
 asked, never open, count or change the drawer, never edit the cart, and copy no staff name, ledger note, gift card code,
 customer or payment detail. The calculators do the sums so the model never does.
