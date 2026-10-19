@@ -950,3 +950,15 @@ On the iPad, with some sales and a cash sale already recorded. Make sure at leas
 7. Open that file in Google Sheets (Drive ▸ Open with ▸ Google Sheets) and in Excel if you have it. Pass: it opens with a tab per table, an **Index** tab first that lists them, and every topic the questions offered is present.
 8. Open **Settings ▸ Data**. Pass: **Export data** is the first row; the raw CSV row now says **Export raw CSV files**; both still work.
 9. **Most important:** make no new sales, then run the **Everything** workbook a second time. Pass: the figures match the first run and the Reports page for the same period, and nothing is sent anywhere except the share sheet.
+
+## T73. The assistant sees every till's sales (shop-wide sales view)
+
+Two tills sharing one Shopify store through metaobjects. Do this after updating both. On **each** till: Settings ▸ Shopify ▸ **Set up shared storage (metaobjects)**. Pass on the first run: it says **Shared storage is ready.** (on an older shop this also adds the `sale_json` field to the sales definition; a failing add leaves sales uploading as before). Both tills must be named differently in Settings ▸ Register (for example Front and Back).
+
+1. On till B, make a sale with an item and, if you like, a gift card. Let it upload (Notifications shows it is gone, or Reports shows it).
+2. On till A, wait up to five minutes, or close and reopen the app, then ask the assistant *Find order* followed by till B's order number. Pass: it finds the sale, with the item, the price and the person who sold it, even though it was never made on till A.
+3. On till A, ask *How much did we sell today?* Pass: the total adds till A and till B together, and the reply says the figures come from every till that syncs. Compare it with Reports for the same day: they match.
+4. On till A, ask *Which gift cards did we sell this week?* Pass: a card sold on till B is listed, when its details are not hidden by the shop's privacy rules.
+5. On till A, open **More ▸ Cash drawer**. Pass: the shift's cash sales and the drawer's notes are still only till A's, not both tills added (a drawer figure must stay this till's).
+6. **Most important:** on till A, ask for an order made on till A. Pass: it is still found, and nothing about till A's own sales history changed from before this update.
+7. Optional, to see the older-sales limit: ask about a sale made before you updated both tills. Pass: if it is old enough to have fallen out of the newest 2000, or was made before the update, it may be missing from the order search, and the reply says very old sales and sales made before sharing are not there. Its money still counts in the daily totals.

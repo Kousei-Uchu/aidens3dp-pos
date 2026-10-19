@@ -109,7 +109,7 @@ test('sales_report: today is added up the way Reports adds it up, and money is t
   assert.deepEqual([...r.takings].sort((a: any, b: any) => a.method.localeCompare(b.method)), [{ method: 'Card', amount: '$31.00' }, { method: 'Cash', amount: '$50.00' }]);
   assert.deepEqual(r.top_items[0], { name: 'Tadling', sold: 3, sales: '$9.00' }); assert.equal(r.top_items[1].name, 'Highland Cow - Red'); assert.equal(r.top_items[1].sold, 1);
   assert.deepEqual(r.days, [{ date: '2026-10-18', orders: 2, net: '$20.00' }]);
-  assert.match(r.note, /this till and any imported Square history/); assert.match(r.note, /not taken off net sales/);
+  assert.match(r.note, /every till that shares into this shop/); assert.match(r.note, /not taken off net sales/);
   for (const k of ['gross_sales', 'discounts', 'refunded', 'net_sales', 'average_sale', 'total_collected', 'cost_of_goods', 'gross_profit']) assert.match(r[k], /^-?\$\d+\.\d{2}$/, `${k} is dollars as text`);
 });
 test('sales_report: a week adds the days, with a line for each day that had sales, and staff when they may be listed', () => {
