@@ -1,5 +1,6 @@
 // Location: src/lib/exportSheets.ts
-// The report export: it turns what this till knows into plain tables (a name, a header row and rows of text), which the
+// The report export: it turns the sales, totals and setup the till holds, including what the other tills have shared, into plain
+// tables (a name, a header row and rows of text), which the
 // Export screen writes as CSV files or as one multi-sheet workbook that Google Sheets or Excel opens.
 //
 // Pure: no React, no store, no file access, so the node tests can build every table from a fixed snapshot. The snapshot
@@ -54,7 +55,7 @@ export const EXPORT_TOPICS: ExportTopic[] = [
     summaryNote: 'Totals per item.', fullNote: 'One row per line, with its category and SKU.' },
   { id: 'discounts', group: 'sales', label: 'Discounts and price adjustments', blurb: 'What was discounted, and by how much.', depths: ['summary', 'full'],
     summaryNote: 'Totals per discount.', fullNote: 'Every discount and price adjustment on every sale.' },
-  { id: 'giftcards', group: 'sales', label: 'Gift cards', blurb: 'Gift cards sold and redeemed at this till.', depths: ['summary', 'full'],
+  { id: 'giftcards', group: 'sales', label: 'Gift cards', blurb: 'Gift cards sold and redeemed on every till that syncs.', depths: ['summary', 'full'],
     summaryNote: 'Totals per day.', fullNote: 'One row per gift card sold or redeemed.' },
   { id: 'cash', group: 'cash', label: 'Cash ledger and drawer', blurb: 'The shift, the float, what the drawer holds and every movement.', depths: ['summary', 'full'],
     summaryNote: 'The shift, what the drawer holds and its contents.', fullNote: 'Every ledger entry, newest first.' },
@@ -66,7 +67,7 @@ export const EXPORT_TOPICS: ExportTopic[] = [
     summaryNote: 'Counts and totals.', fullNote: 'One row per customer.' },
   { id: 'staff', group: 'people', label: 'Sales by team member', blurb: 'Who sold what.', depths: ['summary', 'full'],
     summaryNote: 'Totals per person.', fullNote: 'One row per team member per day.' },
-  { id: 'rollups', group: 'system', label: 'Daily totals', blurb: 'The saved day totals, including imported Square history.', depths: ['summary', 'full'],
+  { id: 'rollups', group: 'system', label: 'Daily totals', blurb: 'The day totals of every till that syncs, including imported Square history.', depths: ['summary', 'full'],
     summaryNote: 'One row per day, all registers added up.', fullNote: 'One row per register per day.' },
   { id: 'saved', group: 'system', label: 'Saved carts', blurb: 'Sales parked to finish later.', depths: ['summary', 'full'],
     summaryNote: 'How many are open or void, and their value.', fullNote: 'One row per saved cart.' },

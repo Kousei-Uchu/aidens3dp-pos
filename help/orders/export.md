@@ -39,14 +39,14 @@ Tap **Export** on the last screen. The share sheet opens so you can save the fil
 - **Catalogue**: every product and variant with prices, stock and collections.
 - **Customers**: the customer list and what they have spent.
 - **Sales by team member**: net sales per person, or per person per day.
-- **Daily totals**: the saved day totals, including imported Square history.
+- **Daily totals**: the day totals of every till that syncs, including imported Square history.
 - **Saved carts**: how many are open or void and their value, or one row per cart.
 - **Cart warnings**, **Notifications**, **Outbox and card attempts** and the **raw history files** are full detail only.
 
 Money is written as a plain number such as `12.50`, with no currency symbol, so a spreadsheet adds it up straight away.
 
 ### What the dates cover
-Sales and cash figures come from what this till holds, including sales still waiting to upload. Daily totals also add the saved rollups, so imported Square history and other registers are included. There is no date filter here: the export covers everything the till has, and you narrow it in the spreadsheet.
+Sales, item, discount, gift card, stock-movement, team and daily-total figures come from every till that syncs to this shop: this till's own records plus the sales and day totals the other tills have shared. Sales still waiting to upload are included. Cash is the one exception: the drawer, its contents and its ledger are this device's only. A very old sale, or one made before a till started sharing, may be missing from the line-level topics even though its money still counts in the daily totals. There is no date filter here: the export covers everything the till holds, and you narrow it in the spreadsheet.
 
 ## Advanced
 
