@@ -33,7 +33,7 @@ export const currentTimeTool: AssistantTool = {
   gate: { date: 'shop', weekday: 'shop', time: 'shop', time_zone: 'shop', yesterday: 'shop', this_week_from: 'shop', this_month_from: 'shop', last_month_from: 'shop', last_month_to: 'shop' },
   def: { type: 'function', function: {
     name: 'current_time',
-    description: 'Today\'s date, the weekday and the time on this till, with the dates a week or month started. Use it for any question that depends on today, such as yesterday, this week, this month or how long ago, before asking for sales or orders.',
+    description: 'Today\'s date, the weekday and the time on this till, and when this week and month started. Use it before asking for sales or orders, for any question that depends on today, such as yesterday, this week or how long ago.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   } },
   run: (_args, ctx) => timeInfo(ctx.now ?? ctx.data?.now ?? Date.now()),

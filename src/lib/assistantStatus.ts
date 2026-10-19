@@ -162,7 +162,7 @@ export const appStatusTool: AssistantTool = {
   },
   def: { type: 'function', function: {
     name: 'app_status',
-    description: 'How the till is doing right now: the app version, whether it is syncing and when it last did, how many sales are waiting to upload, whether the card reader is ready, when the catalogue was last imported, and the recent problems. Use it when someone says something is not working, is not updating, or asks whether the till is up to date.',
+    description: 'How the till is doing now: the app version, sync state and when it last ran, sales waiting to upload, whether the card reader is ready, when the catalogue was last imported and the recent problems. Use it when something is not working or not updating, or to check the till is up to date.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   } },
   run: (_args, ctx) => ctx.till?.status ?? { error: NO_STATE },
@@ -186,7 +186,7 @@ export const readSettingsTool: AssistantTool = {
   },
   def: { type: 'function', function: {
     name: 'read_settings',
-    description: 'The till\'s current settings, read only: whether cash rounding is on, receipts, who must use a PIN, which roles may not change prices, the display and the screensaver. Web addresses, keys, PINs and staff names are never included, only whether something is set. Ask for one group, or leave it out for everything.',
+    description: 'The till\'s current settings, read only: cash rounding, receipts, who must use a PIN, which roles may not change prices, the display and the screensaver. Web addresses, keys, PINs and staff names are never included, only whether one is set. Ask for one group, or leave it out for all.',
     parameters: { type: 'object', properties: { section: { type: 'string', enum: [...SETTINGS_SECTIONS], description: 'One group of settings. Leave it out for all of them.' } }, additionalProperties: false },
   } },
   run: (args, ctx) => {

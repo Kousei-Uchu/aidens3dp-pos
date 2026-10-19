@@ -75,7 +75,7 @@ const salesReportTool: AssistantTool = {
   gate: SALES_REPORT_MAP,
   def: { type: 'function', function: {
     name: 'sales_report',
-    description: 'Sales totals already added up for a period: orders, net sales, discounts, refunds, takings by payment method, top items and categories, cost and profit. Also answers how many of an item were sold, with item. Always use this instead of adding up orders yourself. Give a period, or from and to dates. Today if neither is given.',
+    description: 'Sales totals already added up for a period: orders, net sales, discounts, refunds, takings by payment method, top items and categories, cost and profit. With item, counts how many of it sold. Give a period, or from and to dates. Today if neither.',
     parameters: { type: 'object', properties: {
       period: { type: 'string', enum: [...PERIODS], description: 'A named period. Weeks start on Monday.' },
       from: { type: 'string', description: `First day. ${DATE_HELP}` },
@@ -90,7 +90,7 @@ const findOrdersTool: AssistantTool = {
   gate: ORDERS_MAP,
   def: { type: 'function', function: {
     name: 'find_orders',
-    description: 'Find sales and refunds saved on this till, newest first. query is an order number such as 1042, or words from an item name or a customer name. Can limit by dates and by type. Set detail to true to also get the items, prices, deals, price adjustments and notes of up to 3 orders.',
+    description: 'Find sales and refunds saved on this till, newest first. query is an order number such as 1042, or words from an item or customer name. Can limit by dates and type. detail true also gives the items, prices, deals, adjustments and notes of up to 3 orders.',
     parameters: { type: 'object', properties: {
       query: { type: 'string', description: 'An order number, or words from an item or customer name.' },
       from: { type: 'string', description: `First day. ${DATE_HELP}` },
@@ -107,7 +107,7 @@ const listDealsTool: AssistantTool = {
   gate: DEALS_MAP,
   def: { type: 'function', function: {
     name: 'list_deals',
-    description: 'List the deals the till applies: bundle deals, automatic discounts and the manual discounts staff can choose. Says what each does, what it applies to, and whether it is running now. Use it for questions about what deals or discounts exist.',
+    description: 'List the deals the till applies: bundle deals, automatic discounts and the manual discounts staff can choose, with what each does, what it applies to and whether it is running now.',
     parameters: { type: 'object', properties: {
       query: { type: 'string', description: 'Words from a deal name or an item it applies to.' },
       only_live: { type: 'boolean', description: 'True to list only deals running now.' },
@@ -135,7 +135,7 @@ const giftCardTool: AssistantTool = {
   gate: GIFT_MAP,
   def: { type: 'function', function: {
     name: 'gift_card_activity',
-    description: 'Gift cards sold and gift card payments in the sales saved on this till. Can filter by the card code (at least the last 4 characters), by sold or redeemed, and by dates. It does not know a card\'s remaining balance: that is only on the Gift cards screen.',
+    description: 'Gift cards sold and paid with in the sales saved on this till. Can filter by code (at least the last 4 characters), by sold or redeemed, and by dates. It cannot give a remaining balance: that is only on the Gift cards screen.',
     parameters: { type: 'object', properties: {
       code: { type: 'string', description: 'The gift card code, or at least its last 4 characters.' },
       kind: { type: 'string', enum: ['sold', 'redeemed'], description: 'Only cards sold, or only payments with a card.' },
@@ -151,7 +151,7 @@ const findProductsTool: AssistantTool = {
   gate: PRODUCTS_MAP,
   def: { type: 'function', function: {
     name: 'find_products',
-    description: 'Look up products and variations: price, stock and status. query is words from a product or variation name, a SKU or a barcode (every word must match). category limits it to a category. Set detail to true to also get SKU, barcode, usual price, cost, tags, categories and deals of up to 3 products. Active and unlisted products are searched unless status says otherwise.',
+    description: 'Look up products and variations: price, stock and status. query is words from a name (every word must match), a SKU or a barcode. category limits it. detail true also gives SKU, barcode, usual price, cost, tags, categories and deals of up to 3 products. Active and unlisted products unless status says otherwise.',
     parameters: { type: 'object', properties: {
       query: { type: 'string', description: 'Words from a name, or a SKU or barcode. Key words only, such as \"highland cow red\".' },
       category: { type: 'string', description: 'A category name, or a word from it.' },
@@ -166,7 +166,7 @@ const stockLevelsTool: AssistantTool = {
   gate: STOCK_MAP,
   def: { type: 'function', function: {
     name: 'stock_levels',
-    description: 'Stock levels across the catalogue: how many variations are tracked, out of stock, low, oversold and not tracked, units in stock, and the lowest ones that match a filter. Use it for what is low or out of stock, or the stock of a whole category. For one named product use find_products.',
+    description: 'Stock across the catalogue: how many variations are tracked, out of stock, low, oversold or not tracked, units in stock, and the lowest ones matching a filter. Use it for what is low or out of stock, or the stock of a whole category. For one named product use find_products.',
     parameters: { type: 'object', properties: {
       filter: { type: 'string', enum: [...STOCK_FILTERS], description: 'Which variations to list. low means 2 or fewer and includes out of stock. Defaults to low.' },
       category: { type: 'string', description: 'A category name, or a word from it.' },
