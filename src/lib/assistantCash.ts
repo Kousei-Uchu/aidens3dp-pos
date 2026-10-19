@@ -94,7 +94,7 @@ export const cashDrawerTool: AssistantTool = {
   },
   def: { type: 'function', function: {
     name: 'cash_drawer',
-    description: 'The cash drawer, read only: whether it is open, the float, what it should hold, which notes and coins the ledger says are in it, today\'s cash takings and the last few movements.',
+    description: 'The cash drawer, read only: open or not, the float, what it should hold, the notes and coins the ledger says are in it, today\'s cash takings and the last few movements.',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   } },
   run: (_args, ctx) => (ctx.cash ? buildDrawerView(ctx.cash.drawer, ctx.cash.now) : NO_STATE),
@@ -168,7 +168,7 @@ export const cashCalculatorTool: AssistantTool = {
   },
   def: { type: 'function', function: {
     name: 'cash_calculator',
-    description: 'Cash sums using the till\'s own rules, so you never work them out. kind "change" needs amount_due and amount_given in dollars. "split" needs total and either parts or first_payment. "float" suggests what to bank and what to leave in the drawer, from today\'s cash takings or a cash_takings amount.',
+    description: 'Cash sums using the till\'s own rules. kind "change" needs amount_due and amount_given in dollars. "split" needs total and either parts or first_payment. "float" suggests what to bank and what to leave, from today\'s cash takings or a cash_takings amount.',
     parameters: { type: 'object', properties: {
       kind: { type: 'string', enum: [...CALC_KINDS] }, amount_due: { type: 'string' }, amount_given: { type: 'string' }, total: { type: 'string' },
       parts: { type: 'integer' }, first_payment: { type: 'string' }, cash_takings: { type: 'string' },
@@ -248,7 +248,7 @@ export const currentCartTool: AssistantTool = {
   },
   def: { type: 'function', function: {
     name: 'current_cart',
-    description: 'The cart on the till now, read only: lines, discounts, total, price checks and the cart warnings that stand in the way of payment. Use it for "why won\'t this sale go through".',
+    description: 'The cart on the till now, read only: lines, discounts, total, price checks and the warnings that stand in the way of payment. Use it for "why won\'t this sale go through".',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   } },
   run: (_args, ctx) => (ctx.cash ? buildCartView(ctx.cash.cart, ctx.cash.rounding) : NO_STATE),

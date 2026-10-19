@@ -1,0 +1,407 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index c9c1944..a3d09df 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,8 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 27 (19 October 2026), patch 0174:** not a numbered patch in 3.10, which was finished in Revision 26. It closes the one open item the plan itself names, the context budget raised in Revision 25. At the default 8000, the prompt and the tool definitions left a cashier about 716 tokens for the chat and a manager about 428. The prompt had described every tool in prose that each tool's own description then said again. Now the prompt carries the rules and the descriptions carry what a tool does, and 18 of the 19 tool descriptions are tighter (all but `find_customers`). The room is about 1,331 tokens for a cashier and 1,088 for a manager, and `tests/assistantbudget.test.ts` fails the build if it drops under 1,000 at the default. Decided here, and the owner may want to change any of them: **(1) The default stays 8000,** as 3.11 says. **(2) No tool was merged or dropped,** and no field, result or gate map changed. **(3) The rules the tests pinned are word for word,** so nothing the owner approved was reworded. Still open, and the owner's call: raise the default to 16000, or load only the tools a question needs. Also fixed: `patches/APPLIED.txt` was missing 0173, which would have made `scripts/apply-patches.sh` stop on it. Device test T71. Next: the 3.10 list is finished, so what comes next is the owner's call.
++
+ **Revision 26 (19 October 2026), patch 0173:** patch 9 is built: the practice mode coach (3.7), in `src/lib/assistantCoach.ts` (pure) and `src/ui/CoachSheet.tsx`, opened by an **Ask coach** button in the training dock during a Check. This is the last patch in 3.10. Decided here, and the owner may want to change any of them: **(1) One question is one hint.** The app raises the shared hint ladder (`trainingHints.ts`) by one rung on each question, so the dock shows the same rung and the run's hint count goes up exactly as a press of Hint does. The text of the question is never read by the plan (`planCoachAsk`), so *just tell me* cannot skip a rung (3.7). **(2) The coach stops before the answer.** After the last written hint it says so in fixed words and sends the person to Hint, which stays the only thing that highlights the answer. **(3) What the model holds:** the course title and summary, the goal's title and the rungs opened so far. Never `reveal`, `until`, `inject`, `watch` or `taughtBy`, and a test checks this for every course and that the sheet and logic never read them. **(4) A leak check in code, not only the prompt:** every number in the reply must already be in the goal, the opened hints, the course title or the question, or the reply is thrown out and the hint itself is shown. It only looks at numbers, so a reply could still name an item or a button that the hints do not. **(5) Tools: the help pages and screens only** (`search_docs`, `read_doc`, `search_screens`, 4 calls a question), as 3.7 says. No data tool, no calculator, no cart, no settings and no clock. This also keeps the context small: the coach has its own short prompt and three tool definitions, not the 5,300 token set raised in Revision 25. **(6) Off course, no hint is spent** and no model is asked: the coach points at the card's steps. **(7) Check only,** not Guide, where every step already says what to tap. **(8) Failure still helps:** not set up, or any model error, shows the unlocked hint word for word with a line saying it is without the coach. **(9) Logged as practice** (3.7), through `coachLogSink`, the one log sink that does not stop in practice mode, because the log is a device-only folder and no part of the practice data. The staff member in the line is the real signed in person (`realSignIn`), not Casey or Morgan. **(10) The Help chat stays off in practice mode.** `PRACTICE_BLOCK` now points to Ask coach. **(11) The thread is in memory only,** keyed by course, stage and goal, and **Start again** clears it, because turns made above the rung the person is on are dropped. Next: the list in 3.10 is finished. Device test T70.
+ 
+ **Revision 25 (18 October 2026), patch 0172:** patch 8 is built: the cash drawer status, the calculators and the current cart, as `cash_drawer`, `cash_calculator` and `current_cart` (3.2 tools 8, 13 and 11), in `src/lib/assistantCash.ts` with `assistantCashIO.ts` taking the snapshot when the question is asked. Decided here, and the owner may want to change any of them: **(1) One calculator tool with three kinds** (change, split, float), to keep the definitions small. **(2) All three are for every role,** because the drawer and cart are open to every role in the app graph. **(3) Nothing personal is copied:** no staff names or ledger notes, no gift card code or recipient, no customer, cart note or tender. The cart gives a warning's title, not its text. **(4) A warning set to queue is counted, not listed as blocking,** because only warnings set to show at Charge pop up before payment. **(5) The tools need the snapshot,** which is null on practice data, so the calculators are off in practice mode as 3.7 says. **(6) The float suggestion uses today's ledger takings** (or an amount given) and the same `recommendFloat` as the Daily float report. **(7) Context cost:** the prompt and tool definitions now take about 5,300 tokens for a cashier at the default context of 8000, leaving about 700 for the chat. The owner may want a larger default or shorter older descriptions before patch 9. The prompt now says eighteen tools for a cashier and nineteen for a manager or an owner. Next: patch 9, the practice mode coach.
+@@ -222,6 +224,7 @@ Built in 0166: the date and time tool (`current_time`). Built in 0167: the scree
+ Built in 0169: the settings reader (`read_settings`, owner and manager only) and the app and sync status tool (`app_status`), with tools limited by role (patch 10).
+ Built in 0172: the cash drawer, cash calculator and current cart tools (patch 8).
+ Built in 0173: the practice mode coach (patch 9, 3.7), the Ask coach button in a Check.
++Built in 0174: more room for the chat at the default context size (the prompt and tool descriptions trimmed, with a test that holds the room).
+ 
+ Still to do:
+ 
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index dd3f134..71e83ee 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -926,3 +926,13 @@ On the iPad, with the model set up as in T55 (a local model is fine).
+ 9. With the model working, ask the coach a question that includes an email address and a phone number. Pass: it still answers, and the conversation log shows them hidden.
+ 10. As the owner (or a manager with no owner), open the conversation log and filter by practice mode. Pass: the coach questions are there, marked as practice, under your own name and not Casey or Morgan.
+ 11. **Most important:** leave practice. Pass: the real till, drawer, catalogue and your chat history are exactly as before, and the Help chat still says it is switched off while practice mode is on.
++
++## T71. Assistant room for the chat at the default context size (0174)
++
++On the iPad, with the model set up as in T55 and the context size in Settings ▸ AI assistant left at the default, 8000. The model itself must be loaded with at least that much context (for Ollama, set it on the Ollama side, see the plan 3.8).
++
++1. As a cashier, ask *What is low on stock?* Then, in the same chat, ask *And how many Bumble Bees do we have?* Pass: both answer from the till's own data, and the second does not forget the first.
++2. Ask four short questions in a row: one about where a screen is, one about today's sales, one about the cart and one about the drawer. Pass: each is answered with its tool, and by the fourth the chat still remembers the first.
++3. Ask *How do I refund a card payment?* Pass: it searches, reads a help page and names it, as before.
++4. As a manager or an owner, ask *What is low on stock?* and then *Is the till syncing?* Pass: both answer, and the second still remembers the first.
++5. **Most important:** ask the questions that gave you the best answers before this patch. Pass: they still use the right tool, and it still does not work out the date, the stock count, a total or the change itself. If any is worse than before, tell me which one.
+diff --git a/docs/DEVICE_TEST_GUIDE.html b/docs/DEVICE_TEST_GUIDE.html
+index 041013c..14b8126 100644
+--- a/docs/DEVICE_TEST_GUIDE.html
++++ b/docs/DEVICE_TEST_GUIDE.html
+@@ -7405,6 +7405,82 @@
+           </article>
+         </div>
+       </section>
++
++      <section class="test assistant" id="t71" aria-labelledby="t71-title">
++        <div class="test-head">
++          <span class="test-tag">T71</span>
++          <h2 id="t71-title">Assistant room for the chat at the default context size (0174)</h2>
++        </div>
++        <div class="intro-lines">
++          <p>On the iPad, with the model set up as in T55 and the context size in Settings ▸ AI assistant left at the default, 8000. The model itself must be loaded with at least that much context (for Ollama, set it on the Ollama side, see the plan 3.8).</p>
++        </div>
++        <div class="result-row">
++          <span class="result-label">This test:</span>
++          <div class="options">
++            <label><input type="radio" name="result-t71" value="pass" data-key="t71-result"> Pass</label>
++            <label><input type="radio" name="result-t71" value="fail" data-key="t71-result"> Fail</label>
++            <label><input type="radio" name="result-t71" value="awkward" data-key="t71-result"> Awkward</label>
++            <label><input type="radio" name="result-t71" value="not tried" data-key="t71-result"> Not tried yet</label>
++          </div>
++        </div>
++        <div class="steps">
++          <article class="step" data-step="t71-step-1">
++            <label class="step-head">
++              <input type="checkbox" data-key="t71-step-1-done" aria-label="Step 1 done">
++              <span class="step-num">1.</span>
++              <span class="step-text">As a cashier, ask <em>What is low on stock?</em> Then, in the same chat, ask <em>And how many Bumble Bees do we have?</em> Pass: both answer from the till's own data, and the second does not forget the first.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t71-step-1-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t71-step-2">
++            <label class="step-head">
++              <input type="checkbox" data-key="t71-step-2-done" aria-label="Step 2 done">
++              <span class="step-num">2.</span>
++              <span class="step-text">Ask four short questions in a row: one about where a screen is, one about today's sales, one about the cart and one about the drawer. Pass: each is answered with its tool, and by the fourth the chat still remembers the first.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t71-step-2-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t71-step-3">
++            <label class="step-head">
++              <input type="checkbox" data-key="t71-step-3-done" aria-label="Step 3 done">
++              <span class="step-num">3.</span>
++              <span class="step-text">Ask <em>How do I refund a card payment?</em> Pass: it searches, reads a help page and names it, as before.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t71-step-3-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t71-step-4">
++            <label class="step-head">
++              <input type="checkbox" data-key="t71-step-4-done" aria-label="Step 4 done">
++              <span class="step-num">4.</span>
++              <span class="step-text">As a manager or an owner, ask <em>What is low on stock?</em> and then <em>Is the till syncing?</em> Pass: both answer, and the second still remembers the first.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t71-step-4-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t71-step-5">
++            <label class="step-head">
++              <input type="checkbox" data-key="t71-step-5-done" aria-label="Step 5 done">
++              <span class="step-num">5.</span>
++              <span class="step-text"><strong>Most important:</strong> ask the questions that gave you the best answers before this patch. Pass: they still use the right tool, and it still does not work out the date, the stock count, a total or the change itself. If any is worse than before, tell me which one.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t71-step-5-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++        </div>
++      </section>
+     </div>
+   </main>
+   <section class="global-notes" aria-labelledby="global-notes-title">
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 011db79..6f82cc4 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -155,6 +155,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0170 | 2026-10-18 | **E1 done: the Gift-card and Receipt Workers are styled like the storefront and the Docs site.** Both pages now load the same Instrument Sans from your CDN, show the same logo above the content, sit on the same dark plum background (`#13111c`) with peach text (`#efd8c9`) and the same card, line and soft-fill colours, and their buttons are pills (`border-radius:100px`), with the accent cream `#fae9dc` for the main button and the orange `#fb873f` for errors, exactly as the Docs site (patch 0059) has them. The claim form (`gift-claim-server/src/claim.ts`) is a plum page with a card holding the form and a plum-on-cream submit pill. The receipt page (`receipt-server/src/render.ts`) brands the chrome around the invoice: the plum page, the logo header, and the Download PDF / Save as image / Print bar with pill buttons. **The invoice itself stays white and printable**, because it is a tax invoice and the PDF and PNG are drawn separately on white; the print rule hides the header and the bar, so nothing branded reaches paper. The receipt's error pages use the same tokens. Both Workers' Content-Security-Policies now allow the logo image and the font from `www.aidens3dp.com` and nothing else. Tests: `tests/receipt.test.ts` (7) and `tests/giftclaim.test.ts` (7) pass. **Decided without you, change any you disagree with:** the paper stays white for printing rather than going plum; only the page around it is branded. Not tried on a real iPad. | E1 |
+ | 0172 | 2026-10-18 | AI assistant, patch 8 (your request, "work on the next task"): **the cash drawer, calculator and current cart tools**, from the plan's tool list (3.2 tools 8, 11 and 13). `cash_drawer` says whether the shared drawer is open, the float, cash sales since opening, paid in and out, what it should hold, the notes and coins the ledger says are in it, today's takings and the last five movements. `cash_calculator` does change (with cash rounding, and from the drawer where it can), split payments and a float suggestion, using the app's own rules. `current_cart` gives the priced lines, discounts, total, price checks and the warnings set to show at Charge, so it can answer why a sale will not go through. All three are read only and every role has them. They read a snapshot taken when the question is asked (`assistantCashIO.ts`), empty on practice data. No staff name, ledger note, gift card code or recipient, customer, note or payment detail is copied into a result. Files: `src/lib/assistantCash.ts`, `src/lib/assistantCashIO.ts`; `assistantTools.ts` (`cash` in the context), `assistantChat.ts` (prompt), `Assistant.tsx`. Help page `settings/ask-assistant` updated, `help.json` rebuilt, plan revision 25. Tests: `tests/assistantcash.test.ts` (31), pinned tool counts now eighteen for a cashier and nineteen for a manager or owner. Device test T69. **Decided without you, change any you disagree with:** one calculator tool with three kinds, not three tools; a warning set to queue is counted, not listed as blocking; the cart answer gives a warning's title and not its text; all three tools need the snapshot, so they are off on practice data (plan 3.7). **Worth knowing:** the tool definitions and prompt now take about 5,300 of the default 8000 context for a cashier, leaving about 700 for the chat, so raise the context size or shorten older tool descriptions before patch 9. Not tried on a real iPad. Not in this patch: the practice mode coach (patch 9) |
+ | 0173 | 2026-10-19 | AI assistant, patch 9 (your request, "work on the next task"): **the practice mode coach**, from plan 3.7. In a training **Check** the practice bar has an **Ask coach** button beside Hint. It opens a small window where you type what you are stuck on. **The app raises the shared hint ladder one rung per question**, exactly as Hint does (so the bar shows the same hint and the run's hint count goes up), and the model is given only the course title and summary, the goal's title and the rungs opened so far. It is never given the highlight spot, the test for done, the injected problem or the watches, so it cannot give the answer away, and a test checks that for every course. **The coach never raises the ladder to the answer**: when every written hint is used it says so and sends you to Hint, which stays the only thing that highlights it. Asking *just tell me* cannot skip a rung because the plan ignores the text. Off course, it points at the card's steps and spends no hint. A reply with a number that the goal, the opened hints or the question do not already hold is thrown out in code and the hint itself is shown. The model has `search_docs`, `read_doc` and `search_screens` only (4 calls a question), so no shop data, drawer, cart or settings. If the model is not set up or fails you still get the hint, with a line saying so. The question is scrubbed like every other, the thread is in memory only, and each question is logged with `practice: true` under the real signed in person, not Casey or Morgan (`coachLogSink`, `realSignIn`). Files: `src/lib/assistantCoach.ts`, `src/ui/CoachSheet.tsx`; `TrainingDock.tsx` (button), `trainingSession.ts` (`realSignIn`), `assistantLogIO.ts` (`coachLogSink`), `assistantChat.ts` (practice block wording). Help page `settings/ask-assistant` updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 26. Tests: `tests/assistantcoach.test.ts` (27). Device test T70. **Decided without you, change any you disagree with:** one question is one hint (the first question opens hint 1); the coach only runs in Check, not Guide; it keeps the docs and screen search tools as plan 3.7 says; a number from nowhere in a reply is the leak test, so a reply with an unexpected number falls back to the hint; **Start again** clears the thread; the Help chat itself stays off in practice and only the coach talks to the model there. **Worth knowing:** the leak check is about numbers only, so a reply could still name an item or a button the hints do not, and the first rung is written by the course author, so a course whose early hints already say the answer is not made safer by the coach. Not tried on a real iPad. Not in this patch: the plan's patch list is finished, apart from the checks in T70 | your request |
++| 0174 | 2026-10-19 | AI assistant, loose end from patch 8 (your request, "work on the next task"; the plan's patch list in 3.10 was already finished, so this is the one open item the plan itself names): **more room for the chat at the default context size.** At the default 8000 the system prompt and the 18 tool definitions took about 5,300 tokens, so after the 25 percent kept for the reply a cashier had about 716 tokens left for the chat and a manager about 428, and a tool result then had almost nowhere to go. The prompt said everything about each tool twice, once in prose and once in the tool's own description. Now the prompt keeps the rules (when to use a tool and what never to do) and leaves what a tool does to its description, and 18 of the 19 tool descriptions are tighter (all but `find_customers`). A cashier now has about 1,331 tokens left and a manager about 1,088, with no change to any tool's fields, results or gate map. Every rule a test pinned is kept word for word. Files: `src/lib/assistantChat.ts` (prompt), `assistantTools.ts`, `assistantStatus.ts`, `assistantTime.ts`, `assistantCash.ts`, `assistantDataTools.ts` (descriptions only). Tests: `tests/assistantbudget.test.ts` (3: the room left per role at 8000 must stay at 1,000 tokens or more, the chat code cuts to the same room, and the approved rules are still in the prompt). `patches/APPLIED.txt` now lists 0173, which was in the tree but missing from the ledger, so `scripts/apply-patches.sh` would have tried to apply it again and stopped. Device test T71. **Decided without you, change any you disagree with:** the default stays 8000 (plan 3.11), because you confirmed it; the descriptions were shortened and not removed, and no tool was merged or dropped. **Worth knowing:** 1,331 tokens is still not much once a tool result (up to 4,800 characters at this size) comes back, so a longer chat will drop its oldest turns sooner than you might expect. Raising the default to 16000, or telling the model to use a bigger context, is the real fix and is your call. Not tried on a real iPad. Not in this patch: a larger default, loading only the tools a question needs, or any new tool | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `docs/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+@@ -526,6 +527,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N61 **Non-blocking (B6, 0140):** device check for the items course (More ▸ Training ▸ Items and creating one), steps in `docs/DEVICE_TESTS.md` T45. Most important: the More row for Items opens the page, the Create item and search spots are ringed, opening Bumble Bee shows its price/SKU/barcode and Save to Shopify, editing the price and saving returns to the list with the new price, and a product made in practice stays on the iPad and is never sent to Shopify (check the real catalogue is unchanged after leaving practice). No real data is touched.
+ - [ ] N62 **Non-blocking (AI assistant, 0152):** device check for the conversation log, steps in `docs/DEVICE_TESTS.md` T53. Most important: no assistant-log folder in the Files app, a full or unwritable log still lets the answer through with the red *tell a manager* line, and nothing is logged in practice mode. The viewer comes in 0153, so recording cannot be read back on the iPad yet.
+ - [ ] N63 **Non-blocking (AI assistant, 0173):** device check for the practice mode coach, steps in `docs/DEVICE_TESTS.md` T70. Most important: Ask coach is only in a Check, each question opens exactly one more hint and never the answer, asking *just tell me* does not skip a hint, the answer is only highlighted by the Hint button, a coach question appears in the conversation log marked as practice under your own name, and nothing real changes after you leave practice.
++- [ ] N64 **Non-blocking (AI assistant, 0174):** device check for the chat's room at the default context size, steps in `docs/DEVICE_TESTS.md` T71. Most important: your best questions from before still use the right tool, and the chat remembers the first question after four more.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/patches/APPLIED.txt b/patches/APPLIED.txt
+index 705bab9..20e597b 100644
+--- a/patches/APPLIED.txt
++++ b/patches/APPLIED.txt
+@@ -147,4 +147,5 @@ drawer-pull-merge.patch
+ qr-ask-for-ip.patch
+ qr-wifi-fix.patch
+ shopify-receipt-fix.patch
+-0172-assistant-cash-drawer-calculator-cart.patch
+\ No newline at end of file
++0172-assistant-cash-drawer-calculator-cart.patch
++0173-assistant-practice-coach.patch
+diff --git a/src/lib/assistantCash.ts b/src/lib/assistantCash.ts
+index 02df3ab..90ea403 100644
+--- a/src/lib/assistantCash.ts
++++ b/src/lib/assistantCash.ts
+@@ -94,7 +94,7 @@ export const cashDrawerTool: AssistantTool = {
+   },
+   def: { type: 'function', function: {
+     name: 'cash_drawer',
+-    description: 'The cash drawer, read only: whether it is open, the float, what it should hold, which notes and coins the ledger says are in it, today\'s cash takings and the last few movements.',
++    description: 'The cash drawer, read only: open or not, the float, what it should hold, the notes and coins the ledger says are in it, today\'s cash takings and the last few movements.',
+     parameters: { type: 'object', properties: {}, additionalProperties: false },
+   } },
+   run: (_args, ctx) => (ctx.cash ? buildDrawerView(ctx.cash.drawer, ctx.cash.now) : NO_STATE),
+@@ -168,7 +168,7 @@ export const cashCalculatorTool: AssistantTool = {
+   },
+   def: { type: 'function', function: {
+     name: 'cash_calculator',
+-    description: 'Cash sums using the till\'s own rules, so you never work them out. kind "change" needs amount_due and amount_given in dollars. "split" needs total and either parts or first_payment. "float" suggests what to bank and what to leave in the drawer, from today\'s cash takings or a cash_takings amount.',
++    description: 'Cash sums using the till\'s own rules. kind "change" needs amount_due and amount_given in dollars. "split" needs total and either parts or first_payment. "float" suggests what to bank and what to leave, from today\'s cash takings or a cash_takings amount.',
+     parameters: { type: 'object', properties: {
+       kind: { type: 'string', enum: [...CALC_KINDS] }, amount_due: { type: 'string' }, amount_given: { type: 'string' }, total: { type: 'string' },
+       parts: { type: 'integer' }, first_payment: { type: 'string' }, cash_takings: { type: 'string' },
+@@ -248,7 +248,7 @@ export const currentCartTool: AssistantTool = {
+   },
+   def: { type: 'function', function: {
+     name: 'current_cart',
+-    description: 'The cart on the till now, read only: lines, discounts, total, price checks and the cart warnings that stand in the way of payment. Use it for "why won\'t this sale go through".',
++    description: 'The cart on the till now, read only: lines, discounts, total, price checks and the warnings that stand in the way of payment. Use it for "why won\'t this sale go through".',
+     parameters: { type: 'object', properties: {}, additionalProperties: false },
+   } },
+   run: (_args, ctx) => (ctx.cash ? buildCartView(ctx.cash.cart, ctx.cash.rounding) : NO_STATE),
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index a270f97..d7c75f2 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -35,11 +35,11 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false, n
+       'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
+     ]),
+     ...(withTools ? [
+-      `You have ${COUNT_WORD[names.length] ?? names.length} tools. search_docs finds the till\'s help pages and read_doc reads one. search_screens finds a screen by name or purpose and gives the taps to open it. show_link puts a button under your reply that opens a help page or a screen. show_guide puts a "Guide me" button under your reply that points at each tap, one at a time, to reach a screen. current_time gives today\'s date and the time on the till. Use it before any question about today, yesterday, this week or this month, and never guess the date. screen_context says which tab or page the person was on when they opened the chat, and which tabs their till shows. Use it when the answer depends on where they are, or when they say "this screen" or "here". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page. For any question about how the app works or where something is, search first. For how to do something, read the best help page before you answer.`
+-        + (names.includes('app_status') ? ' app_status says how the till is doing: whether it is syncing, how many sales are waiting to upload, whether the card reader is ready and the recent problems. Use it when someone says something is not working or not updating. Never explain a failure beyond what it returns.' : '')
+-        + (names.includes('read_settings') ? ' read_settings gives the till\'s current settings, read only, such as whether cash rounding is on or which roles may not change prices. Use search_screens to say where a setting is changed. Never change one, and never show a web address, key or PIN.' : ''),
+-      'For the shop\'s own figures, use the data tools. find_products gives the price and stock of a product and its variations, by name, SKU, barcode or category. stock_levels says what is low, out of stock or oversold, and how much stock a category has. Never count stock yourself: use stock_levels. sales_report gives totals for a period, already added up, and how many of an item sold. find_orders finds sales and refunds. list_deals lists the deals and discounts. find_customers finds a customer. gift_card_activity shows gift cards sold and paid with. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
+-      'cash_drawer says what the drawer should hold and which notes and coins the ledger says are in it. cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart says what is in the cart now and what stands in the way of Charge, and is the only source for why a sale will not go through. You can only read the drawer and the cart. Never open, count or edit them.',
++      `You have ${COUNT_WORD[names.length] ?? names.length} tools, and each one\'s description says what it does. For any question about how the app works or where something is, search first with search_docs or search_screens. For how to do something, read the best help page with read_doc before you answer. Use current_time before any question about today, yesterday, this week or this month, and never guess the date. Use screen_context when the answer depends on where the person is, or when they say \"this screen\" or \"here\". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page.`
++        + (names.includes('app_status') ? ' Use app_status when someone says something is not working or not updating. Never explain a failure beyond what it returns.' : '')
++        + (names.includes('read_settings') ? ' read_settings is read only. Use search_screens to say where a setting is changed. Never change one, and never show a web address, key or PIN.' : ''),
++      'For the shop\'s own figures, use find_products, stock_levels, sales_report, find_orders, list_deals, find_customers and gift_card_activity. Never count stock yourself: use stock_levels. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
++      'cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart is the only source for why a sale will not go through. cash_drawer says what the drawer should hold. You can only read the drawer and the cart. Never open, count or edit them.',
+       'The data tools only know what is saved on this till. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.',
+       'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
+       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
+diff --git a/src/lib/assistantDataTools.ts b/src/lib/assistantDataTools.ts
+index 0962af9..82124e7 100644
+--- a/src/lib/assistantDataTools.ts
++++ b/src/lib/assistantDataTools.ts
+@@ -75,7 +75,7 @@ const salesReportTool: AssistantTool = {
+   gate: SALES_REPORT_MAP,
+   def: { type: 'function', function: {
+     name: 'sales_report',
+-    description: 'Sales totals already added up for a period: orders, net sales, discounts, refunds, takings by payment method, top items and categories, cost and profit. Also answers how many of an item were sold, with item. Always use this instead of adding up orders yourself. Give a period, or from and to dates. Today if neither is given.',
++    description: 'Sales totals already added up for a period: orders, net sales, discounts, refunds, takings by payment method, top items and categories, cost and profit. With item, counts how many of it sold. Give a period, or from and to dates. Today if neither.',
+     parameters: { type: 'object', properties: {
+       period: { type: 'string', enum: [...PERIODS], description: 'A named period. Weeks start on Monday.' },
+       from: { type: 'string', description: `First day. ${DATE_HELP}` },
+@@ -90,7 +90,7 @@ const findOrdersTool: AssistantTool = {
+   gate: ORDERS_MAP,
+   def: { type: 'function', function: {
+     name: 'find_orders',
+-    description: 'Find sales and refunds saved on this till, newest first. query is an order number such as 1042, or words from an item name or a customer name. Can limit by dates and by type. Set detail to true to also get the items, prices, deals, price adjustments and notes of up to 3 orders.',
++    description: 'Find sales and refunds saved on this till, newest first. query is an order number such as 1042, or words from an item or customer name. Can limit by dates and type. detail true also gives the items, prices, deals, adjustments and notes of up to 3 orders.',
+     parameters: { type: 'object', properties: {
+       query: { type: 'string', description: 'An order number, or words from an item or customer name.' },
+       from: { type: 'string', description: `First day. ${DATE_HELP}` },
+@@ -107,7 +107,7 @@ const listDealsTool: AssistantTool = {
+   gate: DEALS_MAP,
+   def: { type: 'function', function: {
+     name: 'list_deals',
+-    description: 'List the deals the till applies: bundle deals, automatic discounts and the manual discounts staff can choose. Says what each does, what it applies to, and whether it is running now. Use it for questions about what deals or discounts exist.',
++    description: 'List the deals the till applies: bundle deals, automatic discounts and the manual discounts staff can choose, with what each does, what it applies to and whether it is running now.',
+     parameters: { type: 'object', properties: {
+       query: { type: 'string', description: 'Words from a deal name or an item it applies to.' },
+       only_live: { type: 'boolean', description: 'True to list only deals running now.' },
+@@ -135,7 +135,7 @@ const giftCardTool: AssistantTool = {
+   gate: GIFT_MAP,
+   def: { type: 'function', function: {
+     name: 'gift_card_activity',
+-    description: 'Gift cards sold and gift card payments in the sales saved on this till. Can filter by the card code (at least the last 4 characters), by sold or redeemed, and by dates. It does not know a card\'s remaining balance: that is only on the Gift cards screen.',
++    description: 'Gift cards sold and paid with in the sales saved on this till. Can filter by code (at least the last 4 characters), by sold or redeemed, and by dates. It cannot give a remaining balance: that is only on the Gift cards screen.',
+     parameters: { type: 'object', properties: {
+       code: { type: 'string', description: 'The gift card code, or at least its last 4 characters.' },
+       kind: { type: 'string', enum: ['sold', 'redeemed'], description: 'Only cards sold, or only payments with a card.' },
+@@ -151,7 +151,7 @@ const findProductsTool: AssistantTool = {
+   gate: PRODUCTS_MAP,
+   def: { type: 'function', function: {
+     name: 'find_products',
+-    description: 'Look up products and variations: price, stock and status. query is words from a product or variation name, a SKU or a barcode (every word must match). category limits it to a category. Set detail to true to also get SKU, barcode, usual price, cost, tags, categories and deals of up to 3 products. Active and unlisted products are searched unless status says otherwise.',
++    description: 'Look up products and variations: price, stock and status. query is words from a name (every word must match), a SKU or a barcode. category limits it. detail true also gives SKU, barcode, usual price, cost, tags, categories and deals of up to 3 products. Active and unlisted products unless status says otherwise.',
+     parameters: { type: 'object', properties: {
+       query: { type: 'string', description: 'Words from a name, or a SKU or barcode. Key words only, such as \"highland cow red\".' },
+       category: { type: 'string', description: 'A category name, or a word from it.' },
+@@ -166,7 +166,7 @@ const stockLevelsTool: AssistantTool = {
+   gate: STOCK_MAP,
+   def: { type: 'function', function: {
+     name: 'stock_levels',
+-    description: 'Stock levels across the catalogue: how many variations are tracked, out of stock, low, oversold and not tracked, units in stock, and the lowest ones that match a filter. Use it for what is low or out of stock, or the stock of a whole category. For one named product use find_products.',
++    description: 'Stock across the catalogue: how many variations are tracked, out of stock, low, oversold or not tracked, units in stock, and the lowest ones matching a filter. Use it for what is low or out of stock, or the stock of a whole category. For one named product use find_products.',
+     parameters: { type: 'object', properties: {
+       filter: { type: 'string', enum: [...STOCK_FILTERS], description: 'Which variations to list. low means 2 or fewer and includes out of stock. Defaults to low.' },
+       category: { type: 'string', description: 'A category name, or a word from it.' },
+diff --git a/src/lib/assistantStatus.ts b/src/lib/assistantStatus.ts
+index 1f82119..11ecc11 100644
+--- a/src/lib/assistantStatus.ts
++++ b/src/lib/assistantStatus.ts
+@@ -162,7 +162,7 @@ export const appStatusTool: AssistantTool = {
+   },
+   def: { type: 'function', function: {
+     name: 'app_status',
+-    description: 'How the till is doing right now: the app version, whether it is syncing and when it last did, how many sales are waiting to upload, whether the card reader is ready, when the catalogue was last imported, and the recent problems. Use it when someone says something is not working, is not updating, or asks whether the till is up to date.',
++    description: 'How the till is doing now: the app version, sync state and when it last ran, sales waiting to upload, whether the card reader is ready, when the catalogue was last imported and the recent problems. Use it when something is not working or not updating, or to check the till is up to date.',
+     parameters: { type: 'object', properties: {}, additionalProperties: false },
+   } },
+   run: (_args, ctx) => ctx.till?.status ?? { error: NO_STATE },
+@@ -186,7 +186,7 @@ export const readSettingsTool: AssistantTool = {
+   },
+   def: { type: 'function', function: {
+     name: 'read_settings',
+-    description: 'The till\'s current settings, read only: whether cash rounding is on, receipts, who must use a PIN, which roles may not change prices, the display and the screensaver. Web addresses, keys, PINs and staff names are never included, only whether something is set. Ask for one group, or leave it out for everything.',
++    description: 'The till\'s current settings, read only: cash rounding, receipts, who must use a PIN, which roles may not change prices, the display and the screensaver. Web addresses, keys, PINs and staff names are never included, only whether one is set. Ask for one group, or leave it out for all.',
+     parameters: { type: 'object', properties: { section: { type: 'string', enum: [...SETTINGS_SECTIONS], description: 'One group of settings. Leave it out for all of them.' } }, additionalProperties: false },
+   } },
+   run: (args, ctx) => {
+diff --git a/src/lib/assistantTime.ts b/src/lib/assistantTime.ts
+index 3f69aee..fc5ab53 100644
+--- a/src/lib/assistantTime.ts
++++ b/src/lib/assistantTime.ts
+@@ -33,7 +33,7 @@ export const currentTimeTool: AssistantTool = {
+   gate: { date: 'shop', weekday: 'shop', time: 'shop', time_zone: 'shop', yesterday: 'shop', this_week_from: 'shop', this_month_from: 'shop', last_month_from: 'shop', last_month_to: 'shop' },
+   def: { type: 'function', function: {
+     name: 'current_time',
+-    description: 'Today\'s date, the weekday and the time on this till, with the dates a week or month started. Use it for any question that depends on today, such as yesterday, this week, this month or how long ago, before asking for sales or orders.',
++    description: 'Today\'s date, the weekday and the time on this till, and when this week and month started. Use it before asking for sales or orders, for any question that depends on today, such as yesterday, this week or how long ago.',
+     parameters: { type: 'object', properties: {}, additionalProperties: false },
+   } },
+   run: (_args, ctx) => timeInfo(ctx.now ?? ctx.data?.now ?? Date.now()),
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index 028da0e..4d71788 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -116,7 +116,7 @@ const searchDocs: AssistantTool = {
+   gate: 'content',
+   def: { type: 'function', function: {
+     name: 'search_docs',
+-    description: 'Search the till\'s help pages. Use it first for any question about how the app works or where something is. Give a few key words, not a whole sentence. Returns up to 5 pages with a short summary and a matching line. Then use read_doc on the best one.',
++    description: 'Search the till\'s help pages by a few key words. Use it first for any question about how the app works or where something is. Returns up to 5 pages; then use read_doc on the best one.',
+     parameters: { type: 'object', properties: { query: { type: 'string', description: 'A few key words, for example "refund card payment".' } }, required: ['query'], additionalProperties: false },
+   } },
+   run: (args, ctx) => {
+@@ -142,7 +142,7 @@ const readDoc: AssistantTool = {
+   gate: 'content',
+   def: { type: 'function', function: {
+     name: 'read_doc',
+-    description: 'Read one help page, by the id search_docs gave. "basic" is the plain steps and is usually enough. Use "deep" for the detail behind it and "advanced" for how it works inside and where the code is. Answer only from what this returns.',
++    description: 'Read one help page by the id search_docs gave. "basic" (the default) is the plain steps, "deep" the detail and "advanced" how it works inside. Answer only from what this returns.',
+     parameters: { type: 'object', properties: { id: { type: 'string', description: 'The page id, for example "pay/cash".' }, depth: { type: 'string', enum: [...DEPTHS], description: 'How much to read. Default basic.' } }, required: ['id'], additionalProperties: false },
+   } },
+   run: (args, ctx) => {
+@@ -184,7 +184,7 @@ const searchScreens: AssistantTool = {
+   gate: 'content',
+   def: { type: 'function', function: {
+     name: 'search_screens',
+-    description: 'Search the till\'s screens (tabs, pages and windows) by name or by what they are for. Use it when someone asks where something is or how to get to it. Give a few key words, not a whole sentence. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use a screen, follow up with search_docs and read_doc.',
++    description: 'Search the till\'s screens (tabs, pages and windows) by name or purpose, using a few key words. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use one, follow up with search_docs and read_doc.',
+     parameters: { type: 'object', properties: { query: { type: 'string', description: 'A few key words, for example "cash drawer" or "discount one item".' } }, required: ['query'], additionalProperties: false },
+   } },
+   run: (args, ctx) => {
+@@ -227,7 +227,7 @@ const showLink: AssistantTool = {
+   gate: 'content',
+   def: { type: 'function', function: {
+     name: 'show_link',
+-    description: 'Put a button under your reply that opens a help page or a screen. Use it for the one or two best places, after search_docs or search_screens gave you the id. Give kind "doc" with a page id, or kind "screen" with a screen id. Some screens, such as windows, cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
++    description: 'Put a button under your reply that opens a help page or a screen, for the one or two best places, using an id from search_docs or search_screens. Windows cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
+     parameters: { type: 'object', properties: { kind: { type: 'string', enum: ['doc', 'screen'], description: '"doc" for a help page, "screen" for a screen.' }, id: { type: 'string', description: 'The id from search_docs or search_screens, for example "pay/cash" or "page_reports".' } }, required: ['kind', 'id'], additionalProperties: false },
+   } },
+   run: (args, ctx) => { const r = resolveLink(ctx, args.kind, args.id); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. Do not write the link yourself.` } : NO_LINK; },
+@@ -240,7 +240,7 @@ const showGuide: AssistantTool = {
+   gate: 'content',
+   def: { type: 'function', function: {
+     name: 'show_guide',
+-    description: 'Put a "Guide me" button under your reply. When the person taps it, the till points at each button to tap, one after the other, starting from the Checkout tab, until they reach the screen. Use it when someone asks to be shown, guided or walked to a screen, after search_screens gave you the id and marked it can_guide. Still give the taps in words. Never write the button or the id in your reply.',
++    description: 'Put a "Guide me" button under your reply. Tapping it points at each button to tap, from the Checkout tab, until the person reaches the screen. Use it when someone asks to be shown, guided or walked to a screen, after search_screens gave the id and marked it can_guide. Still give the taps in words. Never write the button or the id in your reply.',
+     parameters: { type: 'object', properties: { screen: { type: 'string', description: 'The id from search_screens, for example "page_reports".' } }, required: ['screen'], additionalProperties: false },
+   } },
+   run: (args, ctx) => { const r = resolveLink(ctx, 'guide', args.screen); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. It points at each tap from the Checkout tab. Do not write the button yourself.` } : NO_GUIDE; },
+@@ -257,7 +257,7 @@ const screenContext: AssistantTool = {
+   gate: { role: 'shop', display_mode: 'shop', tabs_shown: 'shop', guided_checkout: 'shop', practice_mode: 'shop', register: 'shop', selected_tab: 'shop', screen: { name: 'shop', kind: 'shop', summary: 'shop' } },
+   def: { type: 'function', function: {
+     name: 'screen_context',
+-    description: 'Where the person is on the till and how it is set up for them: the tab or page they were on when they opened the chat, their role, their display mode and which tabs it shows, and whether practice mode is on. Use it when the answer depends on where they are, such as which tab to tap first, or when they say "this screen" or "here".',
++    description: 'Where the person is on the till: the tab or page they were on when they opened the chat, their role, display mode and the tabs it shows, and whether practice mode is on. Use it when the answer depends on where they are, or when they say "this screen" or "here".',
+     parameters: { type: 'object', properties: {}, additionalProperties: false },
+   } },
+   run: (_args, ctx) => contextInfo(ctx.role, ctx.where, ctx.where?.screen ? visibleScreens(ctx).find(e => e.id === ctx.where!.screen) : undefined),
+diff --git a/tests/assistantbudget.test.ts b/tests/assistantbudget.test.ts
+new file mode 100644
+index 0000000..d04f844
+--- /dev/null
++++ b/tests/assistantbudget.test.ts
+@@ -0,0 +1,40 @@
++// Location: tests/assistantbudget.test.ts
++// Patch 0174: the prompt and the tool definitions are sent with every question and share the model's context with the chat.
++// At the default context of 8000 they took so much that a cashier had about 700 tokens left, and a manager about 400.
++// This pins the room that is left, so adding a tool or a long sentence has to be paid for somewhere else.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { buildMessagesDetailed, buildSystemPrompt, estimateTokens, REPLY_SHARE } from '../src/lib/assistantChat';
++import { DEFAULT_CONTEXT_SIZE } from '../src/lib/assistantConfig';
++import { makeToolSet, toolDefs, toolsFor } from '../src/lib/assistantTools';
++
++const ROOM_FOR_CHAT = 1000; // tokens of chat history and tool results, after the prompt, the definitions and the reply share
++
++const room = (role: string) => {
++  const tools = toolsFor(role);
++  const system = estimateTokens(buildSystemPrompt('short', true, tools.map(t => t.def.function.name)));
++  const defs = estimateTokens(JSON.stringify(toolDefs(tools)));
++  return { system, defs, left: Math.floor(DEFAULT_CONTEXT_SIZE * (1 - REPLY_SHARE)) - system - defs };
++};
++
++test('at the default context size every role keeps room for the chat', () => {
++  assert.equal(DEFAULT_CONTEXT_SIZE, 8000, 'the owner confirmed 8000 as the default (plan 3.11); change this test only with the plan');
++  for (const role of ['cashier', 'manager', 'owner']) {
++    const r = room(role);
++    assert.ok(r.left >= ROOM_FOR_CHAT, `${role}: the prompt (${r.system}) and the tool definitions (${r.defs}) leave ${r.left} tokens for the chat`);
++  }
++});
++
++test('the room the budget test counts is the room the chat code uses', () => {
++  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: DEFAULT_CONTEXT_SIZE });
++  const long = 'word '.repeat(2000);
++  const one = buildMessagesDetailed([{ id: 'a', role: 'user', text: long, at: 1 }], 'short', DEFAULT_CONTEXT_SIZE, set);
++  // A question this long is cut to the room that is left, not to the 200 token floor.
++  const kept = estimateTokens(one.messages[one.messages.length - 1].content ?? '');
++  assert.ok(kept >= ROOM_FOR_CHAT - 50 && kept <= room('cashier').left + 4, `kept ${kept}`);
++});
++
++test('a short prompt still carries every rule the owner approved', () => {
++  const p = buildSystemPrompt('short', true, toolsFor('manager').map(t => t.def.function.name));
++  for (const rule of [/never guess the date/i, /never tell them to tap a tab that it does not list/i, /never count stock yourself/i, /never add up figures yourself/i, /never do them yourself/, /only source for why a sale will not go through/, /Never open, count or edit them/, /Never change one/, /never show a web address, key or PIN/, /never write a link, an id or a page id/, /couldn't find anything on that/, /cannot see what is left on a gift card/, /privacy rules/]) assert.match(p, rule);
++});

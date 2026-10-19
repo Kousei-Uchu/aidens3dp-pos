@@ -926,3 +926,13 @@ On the iPad, with the model set up as in T55 (a local model is fine).
 9. With the model working, ask the coach a question that includes an email address and a phone number. Pass: it still answers, and the conversation log shows them hidden.
 10. As the owner (or a manager with no owner), open the conversation log and filter by practice mode. Pass: the coach questions are there, marked as practice, under your own name and not Casey or Morgan.
 11. **Most important:** leave practice. Pass: the real till, drawer, catalogue and your chat history are exactly as before, and the Help chat still says it is switched off while practice mode is on.
+
+## T71. Assistant room for the chat at the default context size (0174)
+
+On the iPad, with the model set up as in T55 and the context size in Settings ▸ AI assistant left at the default, 8000. The model itself must be loaded with at least that much context (for Ollama, set it on the Ollama side, see the plan 3.8).
+
+1. As a cashier, ask *What is low on stock?* Then, in the same chat, ask *And how many Bumble Bees do we have?* Pass: both answer from the till's own data, and the second does not forget the first.
+2. Ask four short questions in a row: one about where a screen is, one about today's sales, one about the cart and one about the drawer. Pass: each is answered with its tool, and by the fourth the chat still remembers the first.
+3. Ask *How do I refund a card payment?* Pass: it searches, reads a help page and names it, as before.
+4. As a manager or an owner, ask *What is low on stock?* and then *Is the till syncing?* Pass: both answer, and the second still remembers the first.
+5. **Most important:** ask the questions that gave you the best answers before this patch. Pass: they still use the right tool, and it still does not work out the date, the stock count, a total or the change itself. If any is worse than before, tell me which one.

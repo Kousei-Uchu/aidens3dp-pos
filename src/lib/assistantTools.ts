@@ -116,7 +116,7 @@ const searchDocs: AssistantTool = {
   gate: 'content',
   def: { type: 'function', function: {
     name: 'search_docs',
-    description: 'Search the till\'s help pages. Use it first for any question about how the app works or where something is. Give a few key words, not a whole sentence. Returns up to 5 pages with a short summary and a matching line. Then use read_doc on the best one.',
+    description: 'Search the till\'s help pages by a few key words. Use it first for any question about how the app works or where something is. Returns up to 5 pages; then use read_doc on the best one.',
     parameters: { type: 'object', properties: { query: { type: 'string', description: 'A few key words, for example "refund card payment".' } }, required: ['query'], additionalProperties: false },
   } },
   run: (args, ctx) => {
@@ -142,7 +142,7 @@ const readDoc: AssistantTool = {
   gate: 'content',
   def: { type: 'function', function: {
     name: 'read_doc',
-    description: 'Read one help page, by the id search_docs gave. "basic" is the plain steps and is usually enough. Use "deep" for the detail behind it and "advanced" for how it works inside and where the code is. Answer only from what this returns.',
+    description: 'Read one help page by the id search_docs gave. "basic" (the default) is the plain steps, "deep" the detail and "advanced" how it works inside. Answer only from what this returns.',
     parameters: { type: 'object', properties: { id: { type: 'string', description: 'The page id, for example "pay/cash".' }, depth: { type: 'string', enum: [...DEPTHS], description: 'How much to read. Default basic.' } }, required: ['id'], additionalProperties: false },
   } },
   run: (args, ctx) => {
@@ -184,7 +184,7 @@ const searchScreens: AssistantTool = {
   gate: 'content',
   def: { type: 'function', function: {
     name: 'search_screens',
-    description: 'Search the till\'s screens (tabs, pages and windows) by name or by what they are for. Use it when someone asks where something is or how to get to it. Give a few key words, not a whole sentence. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use a screen, follow up with search_docs and read_doc.',
+    description: 'Search the till\'s screens (tabs, pages and windows) by name or purpose, using a few key words. Returns up to 5 screens with what each is for and the taps to open it from the Checkout tab. To explain how to use one, follow up with search_docs and read_doc.',
     parameters: { type: 'object', properties: { query: { type: 'string', description: 'A few key words, for example "cash drawer" or "discount one item".' } }, required: ['query'], additionalProperties: false },
   } },
   run: (args, ctx) => {
@@ -227,7 +227,7 @@ const showLink: AssistantTool = {
   gate: 'content',
   def: { type: 'function', function: {
     name: 'show_link',
-    description: 'Put a button under your reply that opens a help page or a screen. Use it for the one or two best places, after search_docs or search_screens gave you the id. Give kind "doc" with a page id, or kind "screen" with a screen id. Some screens, such as windows, cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
+    description: 'Put a button under your reply that opens a help page or a screen, for the one or two best places, using an id from search_docs or search_screens. Windows cannot have a button: give their taps in words. Never write links or ids in your reply yourself.',
     parameters: { type: 'object', properties: { kind: { type: 'string', enum: ['doc', 'screen'], description: '"doc" for a help page, "screen" for a screen.' }, id: { type: 'string', description: 'The id from search_docs or search_screens, for example "pay/cash" or "page_reports".' } }, required: ['kind', 'id'], additionalProperties: false },
   } },
   run: (args, ctx) => { const r = resolveLink(ctx, args.kind, args.id); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. Do not write the link yourself.` } : NO_LINK; },
@@ -240,7 +240,7 @@ const showGuide: AssistantTool = {
   gate: 'content',
   def: { type: 'function', function: {
     name: 'show_guide',
-    description: 'Put a "Guide me" button under your reply. When the person taps it, the till points at each button to tap, one after the other, starting from the Checkout tab, until they reach the screen. Use it when someone asks to be shown, guided or walked to a screen, after search_screens gave you the id and marked it can_guide. Still give the taps in words. Never write the button or the id in your reply.',
+    description: 'Put a "Guide me" button under your reply. Tapping it points at each button to tap, from the Checkout tab, until the person reaches the screen. Use it when someone asks to be shown, guided or walked to a screen, after search_screens gave the id and marked it can_guide. Still give the taps in words. Never write the button or the id in your reply.',
     parameters: { type: 'object', properties: { screen: { type: 'string', description: 'The id from search_screens, for example "page_reports".' } }, required: ['screen'], additionalProperties: false },
   } },
   run: (args, ctx) => { const r = resolveLink(ctx, 'guide', args.screen); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. It points at each tap from the Checkout tab. Do not write the button yourself.` } : NO_GUIDE; },
@@ -257,7 +257,7 @@ const screenContext: AssistantTool = {
   gate: { role: 'shop', display_mode: 'shop', tabs_shown: 'shop', guided_checkout: 'shop', practice_mode: 'shop', register: 'shop', selected_tab: 'shop', screen: { name: 'shop', kind: 'shop', summary: 'shop' } },
   def: { type: 'function', function: {
     name: 'screen_context',
-    description: 'Where the person is on the till and how it is set up for them: the tab or page they were on when they opened the chat, their role, their display mode and which tabs it shows, and whether practice mode is on. Use it when the answer depends on where they are, such as which tab to tap first, or when they say "this screen" or "here".',
+    description: 'Where the person is on the till: the tab or page they were on when they opened the chat, their role, display mode and the tabs it shows, and whether practice mode is on. Use it when the answer depends on where they are, or when they say "this screen" or "here".',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   } },
   run: (_args, ctx) => contextInfo(ctx.role, ctx.where, ctx.where?.screen ? visibleScreens(ctx).find(e => e.id === ctx.where!.screen) : undefined),
