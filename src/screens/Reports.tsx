@@ -12,6 +12,7 @@ import { outstandingBalance } from '../lib/shopify/giftcards';
 import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, staffSummary, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
 import { fmt } from '../lib/money';
 import { loadSquareRollups } from '../lib/squareHistoryIO';
+import { SPOT } from '../lib/trainingSpots';
 
 const PERIODS: Period[] = ['1D', '1W', '1M', '3M', '1Y'];
 const isDay = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s) && !isNaN(parseDay(s).getTime());
@@ -56,7 +57,7 @@ export default function Reports() {
   const Stat = ({ label, cents, bold, before, sub }: { label: string; cents: number; bold?: boolean; before?: number; sub?: string }) => <Row title={label} sub={sub} last={false} right={<View style={{ alignItems: 'flex-end' }}><Money cents={cents} weight={bold ? '700' : '500'} size={bold ? 18 : 15} /><Trend now={cents} before={before} /></View>} />;
 
   return (
-    <Page title="Reports" onBack={nav.pop} helpId="orders/reports" right={<IconBtn icon="share-outline" label="Share report" onPress={exportText} />} >
+    <Page title="Reports" onBack={nav.pop} helpId="orders/reports" right={<IconBtn icon="share-outline" label="Export data" spot={SPOT.reportsExport} onPress={() => nav.push('export')} />} >
       <View style={{ padding: 16 }}><Segmented value={tab} onChange={setTab} options={[{ v: 'sales', label: 'Sales' }, { v: 'gift', label: 'Gift cards' }]} /></View>
       {tab === 'sales' ? <>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}>
@@ -86,7 +87,7 @@ export default function Reports() {
           <Txt size={13} sub weight="600" style={{ margin: 20, marginBottom: 6, textTransform: 'uppercase' }}>By team member</Txt>
           <Card style={{ marginHorizontal: 16 }}>{staff.map((s, i) => <Row key={s.name} last={i === staff.length - 1} icon="person-outline" title={s.name} sub={`${s.count} sale${s.count === 1 ? '' : 's'}`} right={<Money cents={s.cents} />} />)}</Card>
         </> : null}
-        <View style={{ padding: 16 }}><Btn title="Cash drawer" kind="secondary" icon="cash-outline" onPress={() => nav.push('drawer')} /><Btn title={busy ? 'Refreshing…' : 'Refresh'} kind="ghost" onPress={() => void load()} /></View>
+        <View style={{ padding: 16, gap: 8 }}><Btn title="Export data" kind="secondary" icon="download-outline" onPress={() => nav.push('export')} /><Btn title="Share summary" kind="ghost" icon="share-outline" onPress={exportText} /><Btn title="Cash drawer" kind="secondary" icon="cash-outline" onPress={() => nav.push('drawer')} /><Btn title={busy ? 'Refreshing…' : 'Refresh'} kind="ghost" onPress={() => void load()} /></View>
       </> : (
         <View style={{ marginTop: 4 }}><Card style={{ marginHorizontal: 16 }}>
           <Row title="Sold in period" sub="Gift cards sold" right={<Money cents={now.giftCardSalesCents} />} /><Row title="Redeemed in period" sub="Gift card tenders" right={<Money cents={now.tenders.gift_card ?? 0} />} />
