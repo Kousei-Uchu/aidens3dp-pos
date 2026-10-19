@@ -196,6 +196,14 @@ metaobjects stay as the backup), and the app is **iOS only**. With those settled
   profile. It arrives with the push subscriptions, in a later patch, not here.
 - **Verified by prebuild, not assumed.** A throwaway copy (with `node_modules` symlinked) ran `npx expo prebuild --platform ios
   --no-install`; the generated entitlements, `Info.plist` and project all came out right. The repo's own `ios/` was left alone.
+- **The skeleton is only account status, on purpose.** Patch 1 exists to prove the native path (entitlement, CloudKit API,
+  module wiring) end to end, not to ship sync. `CloudKitSyncModule.swift` answers the one question patch 2's screen needs first
+  (is iCloud usable here?), and the engine itself lands in patch 2, so nothing dead is written now.
+- **The JS bridge is split so the fallback is testable.** `status.ts` holds the types and the missing-module fallback with no
+  `expo` import, and `index.ts` is the two-line layer that supplies the native module. Importing `expo` hangs under plain Node,
+  so keeping it out of `status.ts` is what lets `tests/cloudkit.test.ts` run. `index.ts` is deliberately left out of `tsconfig`'s
+  include: adding it pulled the whole `expo` type graph in and turned a 4 s typecheck into a 12-minute one.
+- **Built, not assumed.** A throwaway copy ran `expo prebuild`, `pod install` and then `xcodebuild` on the `CloudKitSync` pod
+  target, which compiles the Swift against ExpoModulesCore and the iOS SDK. The repo's own `ios/` was untouched.
 - **Still the owner's.** The `iCloud.com.aidens3dp.pos` container must exist in their developer account with iCloud enabled on
-  the App ID before a device build signs, and the Swift `CKSyncEngine` module needs the Xcode toolchain, so it is generated
-  rather than hand-written.
+  the App ID before a device build can sign.
