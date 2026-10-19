@@ -64,6 +64,8 @@ let goalStart: Swap | null = null; let goalOrders: ReturnType<typeof capturePrac
 const cardMode = (moduleId: string | undefined): void => setManualCard(!!moduleId && getModule(moduleId)?.card === 'manual');
 /** Who is really using the till. During practice the signed in person can be a practice staff member (Casey, Morgan), so progress and "done" ticks must use the real one, held in the snapshot. */
 export const realStaffId = (): string | undefined => (real ? real.staffId : useApp.getState().staffId);
+/** The real settings and the real signed in person while practice is on (the practice till swaps both), for the coach's log line and role. */
+export const realSignIn = (): { settings: Swap['settings']; staffId: string | undefined } => (real ? { settings: real.settings, staffId: real.staffId } : { settings: useApp.getState().settings, staffId: useApp.getState().staffId });
 export const useTraining = create<Sess>((set, get) => ({
   run: null, sandbox: false, hint: freshHints(), view: null, progress: emptyProgress(), loaded: false, hintPress: 0, howNonce: 0,
   openHow: () => set(s => ({ howNonce: s.howNonce + 1 })),

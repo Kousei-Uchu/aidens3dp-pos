@@ -235,6 +235,6 @@ export function assistantEntryVisible(i: { locked: boolean; canEdit: boolean; op
   if (i.locked) return false;
   return (i.openToAll ?? ASSISTANT_OPEN_TO_ALL) || i.canEdit;
 }
-export const PRACTICE_BLOCK = 'The assistant is switched off in practice mode. Practice mode never sends anything out.';
+export const PRACTICE_BLOCK = 'The chat is switched off in practice mode. In a Check, tap Ask coach in the practice bar for help. Practice mode never sends shop data out.';
 /** Why sending is blocked right now, or null when it is not. */
 export function sendBlock(i: { training: boolean }): string | null { return i.training ? PRACTICE_BLOCK : null; }

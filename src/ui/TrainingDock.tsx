@@ -1,6 +1,6 @@
 // Location: src/ui/TrainingDock.tsx
 // The bar under the app during Guide and Check. It is in the layout (not floating), so the app above it shrinks and nothing is hidden behind it.
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useLayout, useTheme } from './theme';
@@ -12,10 +12,13 @@ import { trainingActions } from './trainingActions';
 import { Enter, useReduceMotion } from './Motion';
 import PulseBox from './HintPulse';
 import { hintLabel } from '../lib/hintPulse';
+import CoachSheet from './CoachSheet';
 
 export default function TrainingDock() {
   const reduce = useReduceMotion(); const { c } = useTheme(); const sp = useSpotlight(); const { tablet } = useLayout(); const view = useTraining(s => s.view); const run = useTraining(s => s.run); const mod = run ? getModule(run.moduleId) : undefined;
-  const pulse = useRef(new Animated.Value(0)).current; const nudge = !!view?.nudge;
+  const pulse = useRef(new Animated.Value(0)).current; const nudge = !!view?.nudge; const [coach, setCoach] = useState(false);
+  // The coach belongs to a goal: it closes when the Check moves on or the dock goes.
+  useEffect(() => { setCoach(false); }, [run?.stage, run?.goalIndex]);
   useEffect(() => { if (!nudge) { pulse.setValue(0); return undefined; } const l = Animated.loop(Animated.sequence([Animated.timing(pulse, { toValue: 1, duration: 600, useNativeDriver: false }), Animated.timing(pulse, { toValue: 0, duration: 600, useNativeDriver: false })])); l.start(); return () => l.stop(); }, [nudge, pulse]);
   if (!run) return null;
   const check = view?.mode === 'check';
@@ -43,9 +46,10 @@ export default function TrainingDock() {
           <Pressable onPress={() => trainingActions.hint()} accessibilityRole="button" accessibilityLabel="Hint" style={[btn, { backgroundColor: c.accent }]}><Ionicons name="help-circle" size={18} color={c.onAccent} /><Text style={{ color: c.onAccent, fontWeight: '700' }}>Hint</Text></Pressable>
         </Animated.View>
       ) : null}
+      {check ? <Pressable onPress={() => setCoach(true)} accessibilityRole="button" accessibilityLabel="Ask the coach" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="chatbubble-ellipses-outline" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Ask coach</Text></Pressable> : null}
       {check || view?.stray ? <Pressable onPress={() => trainingActions.restart()} accessibilityRole="button" accessibilityLabel="Start this part again" style={[btn, { backgroundColor: c.fill }]}><Ionicons name="refresh" size={16} color={c.text} /><Text style={{ color: c.text, fontWeight: '700' }}>Start again</Text></Pressable> : null}
       {view?.canSkip ? <Pressable onPress={() => trainingActions.skip()} accessibilityRole="button" accessibilityLabel="Skip" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Skip</Text></Pressable> : null}
       <Pressable onPress={() => trainingActions.exit()} accessibilityRole="button" accessibilityLabel="Exit training" style={[btn, { backgroundColor: c.fill }]}><Text style={{ color: c.text, fontWeight: '700' }}>Exit</Text></Pressable>
-    </View></Enter>
+    </View>{coach && check ? <CoachSheet onClose={() => setCoach(false)} /> : null}</Enter>
   );
 }
