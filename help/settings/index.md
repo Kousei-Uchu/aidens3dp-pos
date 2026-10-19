@@ -18,7 +18,7 @@ Open **More ▸ Settings** to configure Shopify, payments, discounts, hardware a
 - **Discounts & bundles** manages the bundle deals used in Checkout.
 - **Cart warnings** sets the prompts shown at Charge for chosen items or categories. See [[sales/cart-warnings]].
 - **Hardware** opens the scanner test; see [[settings/hardware]].
-- **Data** exports CSV files or deletes local history.
+- **Data** exports chosen records as CSV files or a spreadsheet, shares the raw CSV files, or deletes local history.
 - **Square history** imports old Square sales for Reports.
 - **Grid import / export** moves the Checkout tile layout.
 - **AI assistant** (owners, or managers when there is no owner) sets the model the Help assistant will use. See [[settings/assistant]].

@@ -936,3 +936,17 @@ On the iPad, with the model set up as in T55 and the context size in Settings �
 3. Ask *How do I refund a card payment?* Pass: it searches, reads a help page and names it, as before.
 4. As a manager or an owner, ask *What is low on stock?* and then *Is the till syncing?* Pass: both answer, and the second still remembers the first.
 5. **Most important:** ask the questions that gave you the best answers before this patch. Pass: they still use the right tool, and it still does not work out the date, the stock count, a total or the change itself. If any is worse than before, tell me which one.
+
+## T72. Report export (the Export questions)
+
+On the iPad, with some sales and a cash sale already recorded. Make sure at least one sale has an item, a discount and a cash tender, and open the drawer once so the ledger has an entry.
+
+1. Reports ▸ tap **Export data** in the top bar. Pass: the Export page opens asking **What would you like to export?**
+2. Choose **Choose the topics**, tick **Transactions and sales** plus **Cash ledger and drawer**, then **Continue**. Pass: **How much detail?** lists only those two, each with Summary, Full detail and Both. A topic that only has full detail says so instead.
+3. Set Transactions to **Both** and Cash to **Full detail**, then **Continue**. Pass: the file step offers **CSV files** and **Google Sheets workbook**.
+4. Choose **CSV files**, **Continue**, then **Export**. Pass: the share sheet shows a **.zip** (more than one table). Save it to Files and open it: it holds `transactions.csv`, `transactions_lines.csv` and `cash_ledger.csv`.
+5. Open `transactions.csv` in a spreadsheet. Pass: a refund row's total is negative, and money reads as a number (a plain `12.50`, no symbol).
+6. Go back to Export, this time choose **Everything**, leave the format on **Google Sheets workbook**, then **Export**. Pass: the share sheet shows one **.xlsx**.
+7. Open that file in Google Sheets (Drive ▸ Open with ▸ Google Sheets) and in Excel if you have it. Pass: it opens with a tab per table, an **Index** tab first that lists them, and every topic the questions offered is present.
+8. Open **Settings ▸ Data**. Pass: **Export data** is the first row; the raw CSV row now says **Export raw CSV files**; both still work.
+9. **Most important:** make no new sales, then run the **Everything** workbook a second time. Pass: the figures match the first run and the Reports page for the same period, and nothing is sent anywhere except the share sheet.

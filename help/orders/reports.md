@@ -20,7 +20,7 @@ Choose **Prev period** or **Last year** to compare, or **No compare** to hide th
 ### Read the Sales report
 The report shows Gross sales, Discounts, Refunds, Net sales, Total collected, estimated Card fees, Net after fees, COGS, Gross profit, payment types and top categories. Price adjustments, when present, are listed by reason; their savings are already included in Discounts.
 
-Tap **Refresh** to fetch shared reports again. Tap the share button in the top bar to export the current sales range and category totals as text.
+Tap **Refresh** to fetch shared reports again. Tap **Export data** in the top bar to choose what to export as CSV files or a spreadsheet; see [[orders/export]]. Tap **Share summary** to send the current sales range and category totals as text.
 
 ### Gift card report
 Switch to **Gift cards** for value of cards sold in the selected period, gift-card payments redeemed in that period, and the total balance across all active cards. Tap **Gift cards** to open the card hub and check an individual card.

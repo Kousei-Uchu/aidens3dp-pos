@@ -177,6 +177,9 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.drawerDenom]: 'page_drawer',
   [SPOT.drawerNote]: 'page_drawer',
   [SPOT.drawerConfirm]: 'page_drawer',
+  // Report export
+  [SPOT.reportsExport]: 'page_reports',
+  [SPOT.settingsExport]: 'page_settings',
   [SPOT.checkChangeAmount]: 'sheet_check_change',
   [SPOT.checkChangeUseCart]: 'sheet_check_change',
   [SPOT.checkChangeContinue]: 'sheet_check_change',

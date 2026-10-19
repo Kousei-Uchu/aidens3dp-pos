@@ -27,7 +27,7 @@ Tap **Choose backup file…** and select the backup. For an encrypted file, ente
 After restoring, open **Settings ▸ Shopify** and tap **Import from Shopify** to reload the catalogue. Pair the Zeller reader again on the receiving device.
 
 ### Export or delete CSV history
-Open **Settings ▸ Data**. **Export CSV** shares the local history files. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.
+Open **Settings ▸ Data**. **Export data** asks what you want and saves it as CSV files or a spreadsheet; see [[orders/export]]. **Export raw CSV files** shares the local history files exactly as written. Every sale, refund and declined card attempt is kept on this device and the files are not auto-cleared.
 
 **Delete local history** asks twice before erasing the CSV files from this iPad. Export first if you need them. Deleting these local files does not delete the orders in Shopify.
 
