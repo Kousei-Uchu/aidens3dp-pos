@@ -26,7 +26,7 @@ export function pageDirection(prevDepth: number, depth: number): From {
  * lists and read-only screens do. Pages that depend on a sale in flight or an unsaved form (Pay, the item forms) are never redrawn: they simply give way
  * to the page that arrives, which still slides in. (0073)
  */
-export const LEAVE_DRAWN: ReadonlySet<string> = new Set(['saved', 'orders', 'items', 'customers', 'reports', 'giftcards', 'drawer', 'settings', 'staff', 'diagnostics', 'help', 'training', 'trainingRun', 'cart']);
+export const LEAVE_DRAWN: ReadonlySet<string> = new Set(['saved', 'orders', 'items', 'customers', 'reports', 'giftcards', 'drawer', 'settings', 'staff', 'diagnostics', 'help', 'training', 'trainingRun', 'cart', 'cloudSync']);
 /** The Training pages, which are always safe and are ranked for direction (below). */
 export const TRANSITION_ROUTES: ReadonlySet<string> = new Set(['training', 'trainingRun']);
 

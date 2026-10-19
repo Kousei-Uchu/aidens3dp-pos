@@ -21,7 +21,7 @@ const ROUTE_SCREEN: Record<string, string> = {
   createItem: 'page_create_item', editItem: 'page_edit_item', customers: 'page_customers', reports: 'page_reports',
   giftcards: 'page_giftcards', drawer: 'page_drawer', settings: 'page_settings', staff: 'page_staff',
   diagnostics: 'page_diagnostics', help: 'page_help', training: 'page_training', trainingRun: 'page_training_run',
-  terminalPlay: 'page_terminal_play',
+  terminalPlay: 'page_terminal_play', cloudSync: 'page_cloud_sync',
 };
 
 /** The graph screen for a page the app pushes by route name, or undefined when the graph has no node for it (patch 0167). The assistant uses it to say which page a person is on. */

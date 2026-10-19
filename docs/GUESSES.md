@@ -207,3 +207,55 @@ metaobjects stay as the backup), and the app is **iOS only**. With those settled
   target, which compiles the Swift against ExpoModulesCore and the iOS SDK. The repo's own `ios/` was untouched.
 - **Still the owner's.** The `iCloud.com.aidens3dp.pos` container must exist in their developer account with iCloud enabled on
   the App ID before a device build can sign.
+
+## CloudKit, patch 2: the zone, the share and the Cloud sync page (2026-10-20)
+
+Patch 1 proved the native path. Patch 2 opens the shop's zone and links the registers, so a person can set one till up and
+join the others. Decisions I made without asking:
+
+- **One zone, one name.** The shop's records live in a single CloudKit zone named Store, in the owner's private database; a
+  register that joined sees the same zone name in its shared database. That is also how the page works out its role: the
+  database it finds the zone under tells it whether it owns the shop or joined it.
+- **A zone-wide share with read-write permission, so a link is enough.** `CKShare(recordZoneID:)` with
+  `publicPermission = .readWrite`, per section 4.1 of the plan: anyone with the link can join, and there is no participant
+  list to fill in by hand. The link is what the share sheet hands over.
+- **A link, not a QR code.** The plan mentioned a QR code for the iPad to iPad path. The link does the same job through the
+  share sheet, AirDrop or Messages, and a QR would mean a scanner screen and camera flow for no extra reach, so it waits until
+  the owner asks for it.
+- **The share link is caught twice, because one path cannot cover both cases.** iOS hands a tapped link to
+  `application(_:userDidAcceptCloudKitShareWith:)`, which Expo does not forward, so `plugins/withCloudKit.js` writes that
+  method into the generated `AppDelegate`. The method posts a note the module listens for (an app that is already running
+  joins at once) and also keeps the link in `UserDefaults` (a cold launch, where the module did not exist yet, shows the link
+  in the box for one tap).
+- **The method goes inside the AppDelegate class.** The generated `AppDelegate.swift` holds a second class
+  (`ReactNativeDelegate`) after `AppDelegate`, so the plugin finds the class body by matching braces. Writing before the
+  file's last brace, which was the first version, put the method on `ReactNativeDelegate`: it compiled, and iOS would never
+  have called it. The node tests pin this down now.
+- **`@objc` is explicit.** The superclass does not declare the method, so nothing else would expose it to UIKit's selector
+  lookup.
+- **The page lives under Settings ▸ Data.** Cloud sync sits next to Export data, since both are about where a register's
+  records go, and it is for managers and owners, matching the rest of Settings.
+- **Patch 2 links the registers but sends no records.** The engine is patch 3. The page says so plainly ("records arrive once
+  sync is switched on") rather than implying data is moving, and the device test says the same.
+- **One owner, and setup is one-way.** The first register to set up owns the shop; the others join. A register that has joined
+  is not offered the setup button, because two zones with the same name would be a confusing state to explain. Pressing setup
+  twice returns the existing link rather than making a second share.
+- **No training or demo.** Both actions are switched off in practice mode, so a course cannot link a real shop.
+- **The screen imports the bridge directly.** The patch 1 note said importing `modules/cloudkit-sync/index.ts` turned `tsc`
+  from 4 s into 12 minutes. Measuring again on this machine, twice, gives 4.4 s either way, so that observation does not hold
+  here and one code path is kept instead of a second wrapper.
+- **iOS 26 deprecates the delegate call.** The SDK marks `application(_:userDidAcceptCloudKitShareWith:)` deprecated in
+  favour of the scene based `windowScene(_:userDidAcceptCloudKitShareWith:)` on iOS 26. This app is not scene based (the
+  template builds a `UIWindow` directly), so the app delegate call is the one that fires. If a tapped link does not join on an
+  iOS 26 iPad, that deprecation is the reason and the fix is a scene delegate. T74 step 7 covers it.
+- **Verified without a device.** The AppDelegate text transform is checked by `tests/cloudkitplugin.test.ts`, and the native
+  half by a real `expo prebuild` in a throwaway copy: the generated `AppDelegate.swift` gains the method inside `AppDelegate`,
+  `expo-modules-autolinking` lists `cloudkit-sync`, and the entitlements and `Info.plist` keys are as patch 1 left them. Then
+  `pod install` and an `xcodebuild` of the `CloudKitSync` pod target.
+- **Still cannot be tested here.** Linking two registers needs two iPads and two Apple IDs. Steps are in
+  `docs/DEVICE_TESTS.md` T74.
+- **A rule that hid the native sources.** `.gitignore` had a bare `ios` line, meant for the app's generated project, and it
+  also caught `modules/cloudkit-sync/ios/`. Patch 1's commit therefore shipped the module without `CloudKitSyncModule.swift`
+  or `CloudKitSync.podspec`, so a fresh clone would have had no native module at all. The line is anchored now (`/ios` and
+  `/android`, the repo root only) and both files are tracked. No other folder in the repo is named `ios` or `android`
+  outside node_modules, so the change catches nothing else.
