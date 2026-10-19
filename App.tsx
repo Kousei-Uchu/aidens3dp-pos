@@ -35,6 +35,7 @@ import TerminalPlay from './src/screens/TerminalPlay';
 import DemoHome from './src/screens/DemoHome';
 import DemoShow from './src/screens/DemoShow';
 import Export from './src/screens/Export';
+import CloudSync from './src/screens/CloudSync';
 import TrainingHost from './src/ui/TrainingHost';
 import DemoBanner from './src/ui/DemoBanner';
 import AssistantGuideOverlay from './src/ui/AssistantGuide';
@@ -72,6 +73,7 @@ function Routes({ route: top }: { route: Route }) {
     case 'customers': return <Customers />;
     case 'reports': return <Reports />;
     case 'export': return <Export />;
+    case 'cloudSync': return <CloudSync />;
     case 'giftcards': return <GiftCards />;
     case 'drawer': return <Drawer />;
     case 'settings': return <Settings open={p.sub} />;

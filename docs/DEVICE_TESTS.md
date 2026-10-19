@@ -964,3 +964,19 @@ Two tills sharing one Shopify store through metaobjects. Do this after updating 
 7. Optional, to see the older-sales limit: ask about a sale made before you updated both tills. Pass: if it is old enough to have fallen out of the newest 2000, or was made before the update, it may be missing from the order search, and the reply says very old sales and sales made before sharing are not there. Its money still counts in the daily totals.
 8. On till A, run an export from **Reports ▸ Export data** and choose **Sales and money** only, with **Full detail**. Pass: till B's sale is in the Transactions sheet, and its item is in the item sales sheet. Run **Everything** and open the Daily totals sheet: every register has its own rows, and a row for till B is there.
 8. **Most important:** in the same export, open the Cash topic (or the exported Cash sheet). Pass: it holds only till A's drawer and ledger, and no cash from till B.
+
+## T74. Cloud sync between registers (CloudKit, patch 2)
+
+Two iPads, each signed in to iCloud under its own Apple ID (that is the point: the share is what links them). Update both first. Nothing here touches Shopify or any real sale.
+
+1. On iPad A: **More ▸ Settings ▸ Data**. Pass: **Cloud sync** is a row, under **Export data**.
+2. Open **Cloud sync**. Pass: the top line says **Signed in to iCloud.**, and there is a **Set up this till** button and a **Join a shop** box with a **Join** button.
+3. Tap **Set up this till**. Pass: the page says **This till holds the shop records**, shows an **Invite link** starting `https://www.icloud.com/share/`, and a **Share the invite link** button.
+4. Tap **Share the invite link**. Pass: the iOS share sheet opens with the link. Send it to iPad B by Messages, or copy it and paste it there.
+5. On iPad B: **More ▸ Settings ▸ Data ▸ Cloud sync**. Paste the link into the box and tap **Join**. Pass: no error, and the page then says **This till has joined the shop**.
+6. Back on iPad A, tap **Check again**. Pass: it still says this till holds the records, and the link is the same one (setting up twice must not make a second share).
+7. Tap the link on iPad B straight from Messages. Pass: the app opens on the Cloud sync page with the link already in the box, so joining is one tap. (The app was closed when the link was tapped, so the join is finished by hand rather than silently.)
+8. Turn training on (**More ▸ Training**, start any course) and open Cloud sync. Pass: the buttons are greyed out and the page says Cloud sync cannot be changed while training is on.
+9. Sign in as a cashier. Pass: there is no way to reach Cloud sync (the Settings row itself is hidden), so a cashier can neither set up nor join.
+10. **Most important:** on a register that was never set up, sell, report and export as usual. Pass: nothing about the till changes until someone sets Cloud sync up, and no records are sent anywhere by this page.
+10. **Most important (what this patch does not do):** make a sale on iPad A and look for it on iPad B. Pass: this patch only links the registers; the sales themselves still travel through the existing metaobject polling (T73), and full sync arrives in the next patch.

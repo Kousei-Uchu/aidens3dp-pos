@@ -150,6 +150,7 @@ function DataSettings() {
   return (
     <Section footer="Every sale, refund and declined card attempt is appended to CSV files on this device and never auto-cleared. They are also visible in the Files app under this app.">
       <Row title="Export data" sub="Choose what to export: transactions, items, cash, stock and more, as CSV or a spreadsheet" icon="download-outline" spot={SPOT.settingsExport} onPress={() => nav.push('export')} />
+      <Row title="Cloud sync" sub="Share records between the tills through iCloud" icon="cloud-outline" spot={SPOT.settingsCloudSync} onPress={() => nav.push('cloudSync')} />
       <Row title="Export raw CSV files" sub={files.length ? files.map(f => f.split('/').pop()).join(', ') : 'No history yet'} icon="share-outline" onPress={async () => { try { for (const f of files) { if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(f, { mimeType: 'text/csv', dialogTitle: f.split('/').pop() }); } } catch (e: any) { alertMsg('Export failed', e.message, 'settings/backup'); } }} />
       <Row title="Delete local history" danger icon="trash-outline" last onPress={async () => { if (await confirm('Delete local history?', 'The CSV files on this device are erased. Shopify keeps the orders. Export first if you need them.', 'Delete', true) && await confirm('Really delete?', 'This cannot be undone.', 'Delete forever', true)) { await csv.deleteAll(); setFiles([]); } }} />
     </Section>

@@ -180,6 +180,11 @@ export const SPOT_SCREEN: Record<string, string> = {
   // Report export
   [SPOT.reportsExport]: 'page_reports',
   [SPOT.settingsExport]: 'page_settings',
+  // Cloud sync
+  [SPOT.settingsCloudSync]: 'page_settings',
+  [SPOT.cloudSyncSetup]: 'page_cloud_sync',
+  [SPOT.cloudSyncShare]: 'page_cloud_sync',
+  [SPOT.cloudSyncJoin]: 'page_cloud_sync',
   [SPOT.checkChangeAmount]: 'sheet_check_change',
   [SPOT.checkChangeUseCart]: 'sheet_check_change',
   [SPOT.checkChangeContinue]: 'sheet_check_change',
