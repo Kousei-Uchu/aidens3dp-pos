@@ -5,7 +5,8 @@
 import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
 import { maskedNote, scrubText, type MaskKind } from './assistantScrub';
 import { CATEGORIES, FAIL_CLOSED_POLICY, restricted, type Category, type GatePolicy } from './assistantGate';
-import { MAX_LINKS, runToolCall, toolDefs, toolsFor, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
+import { MAX_LINKS, offeredTools, runToolCall, toolDefs, toolsFor, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
+import { MORE_TOOLS, TOOL_GROUPS } from './assistantToolGroups';
 
 // ---------- the small scrubber ----------
 // The scrubber moved to assistantScrub.ts in patch 0161 (the data gate uses it too). It is still re-exported here, so the chat code and its tests are unchanged.
@@ -26,6 +27,7 @@ export type Detail = 'short' | 'more';
 const COUNT_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
 /** `names` is the tools this person is offered (patch 0169), so the prompt never names or counts a tool their role does not have. Left out, it is the tools every role has. */
 export function buildSystemPrompt(detail: Detail = 'short', withTools = false, names: readonly string[] = toolsFor('cashier').map(t => t.def.function.name)): string {
+  const has = (g: keyof typeof TOOL_GROUPS): boolean => TOOL_GROUPS[g].some(n => names.includes(n));
   const lines = [
     'You are the help assistant inside a shop till app, used by shop staff.',
     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
@@ -35,12 +37,13 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false, n
       'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
     ]),
     ...(withTools ? [
-      `You have ${COUNT_WORD[names.length] ?? names.length} tools, and each one\'s description says what it does. For any question about how the app works or where something is, search first with search_docs or search_screens. For how to do something, read the best help page with read_doc before you answer. Use current_time before any question about today, yesterday, this week or this month, and never guess the date. Use screen_context when the answer depends on where the person is, or when they say \"this screen\" or \"here\". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page.`
+      `You have ${COUNT_WORD[names.length] ?? names.length} tools, and each one\'s description says what it does. For any question about how the app works or where something is, search first with search_docs or search_screens. For how to do something, read the best help page with read_doc before you answer. ${names.includes('current_time') ? 'Use current_time before any question about today, yesterday, this week or this month, and never guess the date. ' : ''}Use screen_context when the answer depends on where the person is, or when they say \"this screen\" or \"here\". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page.`
         + (names.includes('app_status') ? ' Use app_status when someone says something is not working or not updating. Never explain a failure beyond what it returns.' : '')
         + (names.includes('read_settings') ? ' read_settings is read only. Use search_screens to say where a setting is changed. Never change one, and never show a web address, key or PIN.' : ''),
-      'For the shop\'s own figures, use find_products, stock_levels, sales_report, find_orders, list_deals, find_customers and gift_card_activity. Never count stock yourself: use stock_levels. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
-      'cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart is the only source for why a sale will not go through. cash_drawer says what the drawer should hold. You can only read the drawer and the cart. Never open, count or edit them.',
-      'The data tools only know what is saved on this till and what the other tills have shared. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.',
+      ...(names.includes(MORE_TOOLS) ? ['Some tools are not loaded yet. When a question needs shop figures, cash or the till\'s status and you do not have the tool for it, call more_tools first and then use the new tool.'] : []),
+      ...(has('shop') ? ['For the shop\'s own figures, use find_products, stock_levels, sales_report, find_orders, list_deals, find_customers and gift_card_activity. Never count stock yourself: use stock_levels. Never add up figures yourself: use sales_report. Give money as the tool wrote it.'] : []),
+      ...(has('cash') ? ['cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart is the only source for why a sale will not go through. cash_drawer says what the drawer should hold. You can only read the drawer and the cart. Never open, count or edit them.'] : []),
+      ...(has('shop') ? ['The data tools only know what is saved on this till and what the other tills have shared. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.'] : []),
       'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
       'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
@@ -132,9 +135,9 @@ export type BuiltMessages = { messages: ChatMessage[]; /** The history entries b
  * Also says which entries went and what was hidden, for the audit log (patch 0152).
  */
 export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number, tools?: ToolSet): BuiltMessages {
-  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools, tools?.tools.map(t => t.def.function.name)) };
+  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools, tools ? offeredTools(tools).map(t => t.def.function.name) : undefined) };
   // The tool definitions are sent with every request and share the context, so they come off what is left for the chat.
-  const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
+  const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(offeredTools(tools)))) : 0;
   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
   history = forModel(history, tools?.ctx.policy);
@@ -189,11 +192,11 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
     if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
     return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
   }
-  const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
   const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
   let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = []; const used = new Set<Category>();
   for (;;) {
-    const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
+    const defs = toolDefs(offeredTools(set)); // read every time round: more_tools can add to it
+    const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, estimateTokens(JSON.stringify(defs))), tools: defs, temperature: a.settings.temperature });
     const wanted = res.message.tool_calls ?? [];
     if (!wanted.length) { raw = (res.message.content ?? '').trim(); break; }
     if (calls + wanted.length > set.limit) {
