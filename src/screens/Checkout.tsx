@@ -23,6 +23,7 @@ import { TileSettingsSheet } from './TileSettings';
 import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
 import { CameraScanner, HidScanner } from './Scanner';
 import { getCartScan, useCartScanBlocked } from '../lib/scanBridge';
+import { onScanFlush } from '../lib/scanFocus';
 import { SwitchStaffSheet } from './StaffLogin';
 import { lockNow, signInWithPass } from '../lib/staffAuth';
 import { CustomAmountSheet, CustomerSheet, DiscountSheet, GiftSellSheet } from './sheets';
@@ -44,6 +45,12 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const [q, setQ] = useState(''); const [filter, setFilter] = useState<'all' | 'items' | 'customers' | 'discounts' | 'carts'>('all'); const [allQ, setAllQ] = useState('');
   const [spotlightItem, setSpotlightItem] = useState<Variant | null>(null);
   const [warnList, setWarnList] = useState(false); // the queued warnings list (tile: Warnings list)
+  // A barcode that arrives while this screen's scan box is unmounted (the screensaver was up, or the camera sheet was open
+  // when the scan landed) is handed to onScan from here, S3. A ref keeps that registration from re-running on every render.
+  const scanNow = React.useRef<(code: string) => void>(() => {});
+  const deferredScans = React.useRef<string[]>([]);
+  const busy = React.useRef(false); busy.current = cam;
+  useEffect(() => onScanFlush(code => scanNow.current(code)), []);
   // Training (B6): let it see the tab, depth and typed text, point at one tab of the switch, and start a practice run from a clean Checkout.
   useEffect(() => { setProbe({ search: sheet === 'search' ? q : '', keypad: digits }, { tab, depth: path.length, sizes: !!variants }); }, [sheet, q, digits, tab, path, variants]);
   useEffect(() => () => clearProbe(), []);
@@ -70,6 +77,9 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const pick = (v: Variant) => { add(v); }; // a tap in the variation picker adds it and stays on the picker, so several variations can be added in a row; the back arrow or the path leaves it
   // One scan box, one order: an item (barcode, then SKU), a cashier pass, a gift card, a saved discount, else nothing (see resolveScan).
   const onScan = (code: string): string | null => {
+    // S4/S5: while the camera and its scan popup are up, the pane is theirs, so a keyboard scan must not flash the grid
+    // spotlight behind them. Code that arrives with no box mounted waits in `deferredScans` and runs when the camera closes.
+    if (busy.current) { deferredScans.current.push(code); return null; }
     const st = useApp.getState();
     const r = resolveScan(code, Object.values(st.data.variants), st.data.presets);
     switch (r.kind) {
@@ -83,6 +93,13 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
       }
       default: toast.show(`No item for ${code.trim()}`); return null;
     }
+  };
+  scanNow.current = code => { void onScan(code); };
+  // Closing the camera is also when anything that arrived while it was up (the deferred scans) runs.
+  const closeCam = () => {
+    setCam(false); busy.current = false;
+    const waiting = deferredScans.current; deferredScans.current = [];
+    for (const code of waiting) void onScan(code);
   };
 
   const handlers: TileHandlers = {
@@ -219,7 +236,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
       {tablet && !guided ? <View style={{ flex: 4, borderLeftWidth: 1, borderLeftColor: c.line }}><CartPane hid={false} /></View> : null}
 
       <HidScanner enabled={active && nav.tab === 'checkout' && sheet === 'none' && !cam && !cartBlocked && nav.stack.length === 0} onScan={code => void onScan(code)} />
-      <CameraScanner visible={cam} onClose={() => setCam(false)} onScan={onScan} />
+      <CameraScanner visible={cam} onClose={closeCam} onScan={onScan} />
       <SwitchStaffSheet visible={sheet === 'staff'} onClose={() => setSheet('none')} onSwitched={m => toast.show(m)} />
       <CustomAmountSheet visible={sheet === 'custom'} onClose={() => setSheet('none')} />
       <GiftSellSheet visible={sheet === 'gift'} onClose={() => setSheet('none')} />
