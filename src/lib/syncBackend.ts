@@ -121,3 +121,14 @@ export function removeShared(id: string): Promise<void> {
 export function detailReadyShared(type: SharedType): Promise<boolean> {
   return current?.detailReady ? current.detailReady(type) : Promise.resolve(true);
 }
+
+// Patch 8: a flag that forces the seam back to the metaobject backend for a rollback
+let forceMeta = false;
+
+export function forceMetaobjectBackend(force: boolean): void {
+  forceMeta = force;
+}
+
+export function metaobjectForced(): boolean {
+  return forceMeta;
+}
