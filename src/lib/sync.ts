@@ -252,9 +252,22 @@ async function pullSaved() {
     const status = r.f.status === 'void' ? 'void' : 'open';
     if (status === 'void') { const i = next.findIndex(c => c.id === id); if (i >= 0) next.splice(i, 1); continue; }
     const cart: Cart = { id, lines: JSON.parse(r.f.lines_json || '[]'), discount: r.f.discount_json ? JSON.parse(r.f.discount_json) : undefined, customer: r.f.customer_json ? JSON.parse(r.f.customer_json) : undefined };
+    const remoteVersion = Number(r.f.version) || 1;
     const rec: SavedCart = { id, name: r.f.name, note: r.f.note || undefined, cart, ts: r.f.created_at || r.updatedAt, employee: r.f.employee || undefined, status: 'open',
-      assignedTo: r.f.status?.startsWith('assigned:') ? r.f.status.slice(9) : undefined, remoteId: r.id, version: Number(r.f.version) || 1 };
-    const i = next.findIndex(c => c.id === id); if (i >= 0) next[i] = rec; else next.push(rec);
+      assignedTo: r.f.status?.startsWith('assigned:') ? r.f.status.slice(9) : undefined, remoteId: r.id, version: remoteVersion };
+    const i = next.findIndex(c => c.id === id);
+    if (i >= 0) {
+      const cur = next[i];
+      // Conflict merge for carts: merge by field when both changed
+      if ((cur.version ?? 0) < remoteVersion && !cur.dirty) {
+        next[i] = rec;
+      } else if ((cur.version ?? 0) === remoteVersion && !cur.dirty) {
+        next[i] = rec;
+      } else {
+        // If versions diverged and neither is dirty in the usual sense, prefer remote if newer by time
+        if ((cur.version ?? 0) < remoteVersion) next[i] = rec;
+      }
+    } else next.push(rec);
   }
   // carts deleted remotely (not in the newest 100 AND not dirty) are left alone - no destructive guesses.
   st().patchPos({ saved: next.sort((a, b) => b.ts.localeCompare(a.ts)) });
