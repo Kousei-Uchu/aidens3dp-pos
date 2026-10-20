@@ -6,6 +6,7 @@
 import { requireOptionalNativeModule } from 'expo';
 import {
   makeCloudKit,
+  CLOUDKIT_MISSING,
   type CloudKitAccountStatus,
   type CloudKitRole,
   type CloudKitState,

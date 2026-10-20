@@ -49,18 +49,30 @@ export const stockText = (stock: number | null): string =>
 export type StockRow = { variant: Variant; stock: number | null; isScanned: boolean };
 export type StockCheck = {
   productId: string; title: string;
-  rows: StockRow[];            // the scanned variation first, then the others in catalogue order
+  rows: StockRow[];            // the scanned variation first, then the others by stock level, most stock first
   single: boolean;             // the product has only this one variation (a plain item)
   totalTracked: number | null; // sum of tracked, non-negative stock across the rows; null when none are tracked
   untracked: number;           // how many rows have no stock tracking
 };
 /**
+ * Most stock first, least stock last, for the sibling list. Untracked variations have no level, so they go last, in
+ * catalogue order; that order is kept for a tie so two rows with the same count do not jump about between scans.
+ */
+export function byStockLevel(a: Variant, b: Variant): number {
+  const sa = a.stock, sb = b.stock;
+  if (sa === null && sb === null) return 0;
+  if (sa === null) return 1;
+  if (sb === null) return -1;
+  return sb - sa;
+}
+/**
  * Stock of a scanned variation and its siblings (the other variations of the same product).
  * `siblings` is whatever the catalogue holds for that product; the scanned one is always included, once.
+ * The scanned variation is the first row (the result's header); the others follow most stock first, least stock last.
  * A variation with no sibling is a plain item, so only its own stock is shown (`single`).
  */
 export function stockCheck(scanned: Variant, siblings: Variant[]): StockCheck {
-  const others = siblings.filter(v => v.id !== scanned.id && v.productId === scanned.productId);
+  const others = siblings.filter(v => v.id !== scanned.id && v.productId === scanned.productId).sort(byStockLevel);
   const rows: StockRow[] = [scanned, ...others].map((v, i) => ({ variant: v, stock: v.stock, isScanned: i === 0 }));
   const tracked = rows.filter(r => r.stock !== null);
   return {

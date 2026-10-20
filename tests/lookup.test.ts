@@ -42,6 +42,18 @@ test('stockCheck: scanned variation first, then its siblings; scanned never repe
   assert.deepEqual(r.rows.map(x => x.isScanned), [true, false, false, false]);
   assert.equal(r.single, false); assert.equal(r.title, 'Highland cow');
 });
+test('stockCheck: siblings are listed most stock first, least stock last, untracked last', () => {
+  const mid = cow('Mid', 7); const many = cow('Many', 40); const none = cow('None', 0);
+  const wide = stockCheck(small, [small, large, giant, plain, mid, many, none]);
+  // Small(3) is the scanned header, then Many(40), Mid(7), Large(0), None(0), Giant(-2), Plain(untracked)
+  assert.deepEqual(wide.rows.map(x => x.variant.variantTitle), ['Small', 'Many', 'Mid', 'Large', 'None', 'Giant', 'Plain']);
+  assert.deepEqual(wide.rows.map(x => x.isScanned), [true, false, false, false, false, false, false]);
+});
+test('stockCheck: a tie keeps catalogue order, so rows do not jump between scans', () => {
+  const a = cow('A', 5); const b = cow('B', 5);
+  assert.deepEqual(stockCheck(a, [a, b]).rows.map(x => x.variant.variantTitle), ['A', 'B']);
+  assert.deepEqual(stockCheck(b, [a, b]).rows.map(x => x.variant.variantTitle), ['B', 'A']);
+});
 test('stockCheck: total counts tracked stock only, negatives count as 0, untracked are reported', () => {
   const r = stockCheck(small, [small, large, giant, plain]);
   assert.equal(r.totalTracked, 3); // 3 + 0 + max(0,-2); Plain is not tracked
