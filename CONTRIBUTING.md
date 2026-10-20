@@ -6,7 +6,8 @@ This is a personal shop app that happens to be public. Pull requests are not exp
 
 - **Australian English** in all prose: colour, optimise, cancelled, licence (noun).
 - **No AI-sounding writing.** Em dashes spliced into sentences, "robust", "seamless", "delve", "furthermore" at the start of a sentence: don't. Write like a person explaining something to another person.
-- **Tests.** `npm test` must pass (four training-course failures are known and pre-existing). `npm run typecheck` must pass. `npm run graph:check` must pass if you add or move screens.
+- **Tests.** `npm test` must pass. `npm run typecheck` must pass. `npm run graph:check` must pass if you add or move screens.
+- **Changelog.** Add a line to `CHANGELOG.md` under Unreleased for anything a shop user would notice, with the patch number in brackets. Internal changes, tests and docs don't need one.
 - **Help text.** If you change behaviour a help page describes, change the page in the same commit. `npm run help:build` regenerates `help/help.json`; `npm run help:check` fails if it is stale.
 - **Patches.** This repo keeps a numbered patch file per change under `patches/`, with `patches/APPLIED.txt` as the ledger. Follow the pattern if you are working inside this repo; external contributors can skip it.
 
