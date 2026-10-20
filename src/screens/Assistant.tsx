@@ -40,6 +40,7 @@ import { builtinHelp } from '../lib/helpBuiltin';
 import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
 import { uid } from '../lib/ids';
+import { lockRequired } from '../lib/appMode';
 
 /** Questions to start with, shown while the chat is empty. Each one is sent as it stands. */
 const STARTERS = ['How do I refund a card payment?', 'What is low on stock?', 'How much did we sell today?', 'Show me how to get to Reports'];
@@ -110,8 +111,8 @@ function OfflineList({ query, role, pages, screens, onOpen }: { query: string; r
 export default function Assistant() {
   const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
   const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
-  const canEdit = useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
-  const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId));
+  const canEdit = useApp(s => canEditAdjustPerms(actingRole(lockRequired(s.settings), s.settings.staff, s.staffId), s.settings.staff));
+  const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(lockRequired(s.settings), s.settings.staff, s.staffId));
   const grid = useApp(s => s.grid); // the Quick Menu layout, so a guide can be walked to an item on it (B1)
   const key = historyKey(staffId);
   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);

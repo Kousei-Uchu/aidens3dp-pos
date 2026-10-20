@@ -15,7 +15,7 @@ import { useApp, currentStaff } from '../state/store';
 import { actingRole } from '../lib/adjustPerms';
 import { hasCreds } from '../lib/shopify/client';
 import { isTraining } from '../lib/trainingGuard';
-import { DEVICE_MODES, type DeviceMode } from '../lib/appMode';
+import { DEVICE_MODES, lockRequired, type DeviceMode } from '../lib/appMode';
 import { firstUnfinished, setupContext, setupProgress, setupSteps, type SetupProfile, type SetupStep } from '../lib/setupFlow';
 import { SPOT } from '../lib/trainingSpots';
 
@@ -44,7 +44,7 @@ export default function Setup() {
 
   const mode: DeviceMode = s.appMode;
   const profile: SetupProfile = mode === 'companion' ? 'companion' : 'register';
-  const role = actingRole(s.requirePin, s.staff, currentStaff()?.id);
+  const role = actingRole(lockRequired(s), s.staff, currentStaff()?.id);
   const ctx = setupContext(s, hasCreds());
   const steps = setupSteps(profile);
   const progress = setupProgress(profile, ctx);

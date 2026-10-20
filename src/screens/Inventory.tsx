@@ -15,6 +15,7 @@ import { SPOT, invChipSpot, invGroupSpot, invModeSpot, invReasonSpot, invRowSpot
 import { clearInvProbe, setInvProbe } from '../lib/trainingProbe';
 import { isTraining } from '../lib/trainingGuard';
 import type { Variant } from '../lib/types';
+import { requireStepUp } from '../lib/stepUpGate';
 
 const STOCK_LABEL: [StockFilter, string][] = [['all', 'All'], ['low', 'Low'], ['zero', 'Out (0)'], ['neg', 'Negative'], ['tracked', 'Tracked'], ['untracked', 'Not tracked']];
 const STATUS_LABEL: [StatusFilter, string][] = [['active', 'Active'], ['draft', 'Draft'], ['archived', 'Archived'], ['all', 'All']];
@@ -44,6 +45,7 @@ export default function Inventory() {
 
   const apply = async () => {
     if (!v?.inventoryItemId || !loc) return alertMsg('Not linked', 'This item has no inventory item or no location is set.');
+    if (!(await requireStepUp('shopify'))) return;
     setBusy(true);
     try {
       if (isTraining()) { /* practice: the count changes on this device only, nothing goes to Shopify */ }

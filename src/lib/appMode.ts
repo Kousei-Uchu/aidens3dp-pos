@@ -54,7 +54,7 @@ export function resolveFeatures(mode: unknown, features: unknown): RegisterFeatu
 export const featureOn = (mode: unknown, features: unknown, id: FeatureId): boolean => resolveFeatures(mode, features)[id];
 
 /** Tabs a Companion always keeps: browsing the catalogue, the till's records, notices and More. */
-const ALWAYS_TABS: TabId[] = ['inventory', 'transactions', 'notifications', 'more'];
+const ALWAYS_TABS: TabId[] = ['inventory', 'transactions', 'notifications', 'more', 'today', 'scan'];
 const TAB_FEATURE: Partial<Record<TabId, FeatureId>> = { checkout: 'selling' };
 
 /** Whether the device shows a tab. The display mode still narrows this further; it never widens it. */
@@ -87,6 +87,12 @@ export function rowAllowed(mode: unknown, features: unknown, row: MoreRowId): bo
   return !need || featureOn(mode, features, need);
 }
 
+/**
+ * Is the app locked behind a PIN? A Register follows the shared Require PIN setting. A Companion always locks (when anyone has a PIN),
+ * and it never touches that shared setting, so setting up a phone cannot switch the lock on for the shop's tills.
+ */
+export const lockRequired = (s: { requirePin: boolean; appMode?: unknown }): boolean => s.requirePin || readMode(s.appMode) === 'companion';
+
 /** The mode the device is in, and the switches it has, in the shape the screens and Settings want. */
 export type DeviceModeState = { mode: DeviceMode; features: RegisterFeatures };
-export const readDeviceMode = (settings: { appMode?: unknown; registerFeatures?: unknown }): DeviceModeState => ({ mode: readMode(settings.appMode), features: readFeatures(settings.registerFeatures) });
+export const readDeviceMode = (settings: { appMode?: unknown; registerFeatures?: unknown } = {}): DeviceModeState => ({ mode: readMode(settings.appMode), features: readFeatures(settings.registerFeatures) });

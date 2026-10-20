@@ -11,6 +11,7 @@ import { listPracticeOrders, markPracticeFulfilled } from '../lib/trainingOrders
 import { SPOT, orderRowSpot } from '../lib/trainingSpots';
 import { Spot, spotPressed } from '../ui/Spot';
 import type { SaleRecord } from '../lib/types';
+import { requireStepUp } from '../lib/stepUpGate';
 
 const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_status:unfulfilled', completed: 'tag:pos fulfillment_status:fulfilled' } as const;
 /** Orders: Open | Unfulfilled | Completed - Mark fulfilled, refund and receipt. */
@@ -20,7 +21,7 @@ export default function Orders() {
      catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
   useEffect(() => { void load(); }, [tab]);
   if (refund) return <RefundScreen order={refund} onClose={() => { setRefund(null); void load(); }} onGoPay={() => nav.push('pay')} />;
-  const mark = async (o: PosOrder) => { try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
+  const mark = async (o: PosOrder) => { if (!(await requireStepUp('shopify'))) return; try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
   return (
     <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
       <View style={{ padding: 16 }}><Spot id={SPOT.ordersTabOpen}><Segmented value={tab} onChange={t => { const spots = { open: SPOT.ordersTabOpen, unfulfilled: SPOT.ordersTabUnfulfilled, completed: SPOT.ordersTabCompleted }; spotPressed(spots[t]); setTab(t); }} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></Spot></View>

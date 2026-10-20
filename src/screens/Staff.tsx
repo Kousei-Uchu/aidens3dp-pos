@@ -13,6 +13,7 @@ import { uid } from '../lib/ids';
 import { MODES, MODE_BLURB, MODE_LABEL, MORE_GROUPS, MORE_LABEL, TAB_LABEL, TAB_ORDER, TABS_BY_LEVEL, TEXT_LABEL, isSoleAdmin, moreLevelIncludes, readUi, readCustom, withCustom, withMode, type CustomUi, type MoreRowId, type TabId, type UiMode } from '../lib/uiMode';
 import type { Role } from '../lib/types';
 import { ADJUST_KINDS, KIND_NAME, RESTRICTABLE_ROLES, ROLE_PLURAL, actingRole, canAdjust, canEditAdjustPerms, permsSummary, setAdjustPerm } from '../lib/adjustPerms';
+import { lockRequired } from '../lib/appMode';
 
 /** Staff: PINs (salted hash, shared across registers via the settings metaobject) and roles. */
 export default function Staff() {
@@ -123,7 +124,7 @@ void Card; void Chip;
 /** A16.9: which roles may set which price adjustments. Everything is allowed until a switch is turned off. */
 function AdjustRoleRules() {
   const s = useApp(st => st.settings); const staffId = useApp(st => st.staffId); const patch = useApp(st => st.patchSettings);
-  const me = actingRole(s.requirePin, s.staff, staffId); const mayEdit = canEditAdjustPerms(me, s.staff);
+  const me = actingRole(lockRequired(s), s.staff, staffId); const mayEdit = canEditAdjustPerms(me, s.staff);
   const notes = permsSummary(s.adjustPerms);
   const flip = (role: Role, kind: (typeof ADJUST_KINDS)[number], allowed: boolean) => {
     if (!mayEdit) return alertMsg('Only an owner can change this', 'Ask an owner to change who may set price adjustments.');

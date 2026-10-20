@@ -13,6 +13,7 @@ import { hashBadge } from './badge';
 import { PRACTICE_PASS_CODE } from './trainingPass';
 import type { StaffMember } from './types';
 import type { Injection } from './trainingModule';
+import { ALL_FEATURES } from './appMode';
 
 export const TRAIN_PREFIX = 'train-';
 export const isTrainId = (id: string | undefined): boolean => !!id && id.includes(TRAIN_PREFIX);
@@ -110,7 +111,7 @@ export function practiceStaff(): StaffMember[] {
 /** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
 export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
 export function sandboxSettings(real: Settings, perms: unknown = {}): Settings {
-  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, cartWarnings: [], smartChange: false, cashRounding: true };
+  return { ...real, appMode: 'register' as const, registerFeatures: { ...ALL_FEATURES }, /* practice and demo show every feature, whatever this device is */ receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, cartWarnings: [], smartChange: false, cashRounding: true };
 }
 export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
 /** The real state to put back afterwards. */

@@ -25,6 +25,7 @@ import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/g
 import { stripGiftPrefix, normaliseCode } from '../lib/giftCode';
 import { CameraScanner } from './Scanner';
 import type { CartLine, Customer, ManualDiscount } from '../lib/types';
+import { requireStepUp } from '../lib/stepUpGate';
 
 /** Manual discount: Shopify discount-code presets as tappable chips + custom % / $ keypad. */
 export function DiscountSheet({ visible, onClose, onApply, offSpot, current, title = 'Discount' }: { visible: boolean; onClose: () => void; onApply: (d?: ManualDiscount) => void; offSpot?: string; current?: ManualDiscount; title?: string }) {
@@ -91,6 +92,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
       const c: Customer = { id: `train-cu-new-${Date.now()}`, name: [f.first.trim(), f.last.trim()].filter(Boolean).join(' ') || f.email.trim() || f.phone.trim(), email: f.email.trim() || undefined, phone: f.phone.trim() || undefined, orders: 0, spentCents: 0 };
       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); setBusy(false); onPick(c); onClose(); return;
     }
+    if (!(await requireStepUp('shopify'))) { setBusy(false); return; }
     try {
       const c = await createCustomer({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); onPick(c); onClose();

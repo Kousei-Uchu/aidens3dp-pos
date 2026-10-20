@@ -20,6 +20,7 @@ import type { CartWarnings, WarningList } from '../lib/types';
 import type { ScannerCalibration } from '../lib/scanSpeed';
 import { isTraining } from '../lib/trainingGuard';
 import { DEFAULT_FEATURES, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
+import { AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_STEP_UP_MINUTES, STEP_UP_CHOICES, readMinutes } from '../lib/stepUp';
 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
@@ -50,11 +51,13 @@ export type Settings = {
   // Companion plan (0176): what this device is. Per device, like the register name, so a backup never moves a mode to
   // another till. A register has every feature; `registerFeatures` is what a companion is allowed to keep.
   appMode: DeviceMode; registerFeatures: RegisterFeatures; setupDone: boolean;
+  // 0177: Companion locking, per device like the rest. Minutes idle before the app locks itself (0 = never), and how long a PIN entry counts for sensitive actions (0 = every time).
+  autoLockMinutes: number; stepUpMinutes: number;
 };
 export const defaultSettings = (): Settings => ({
   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
   theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: [], assistant: defaultAssistant(),
-  appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false,
+  appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false, autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, stepUpMinutes: DEFAULT_STEP_UP_MINUTES,
 });
 
 export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
@@ -80,7 +83,7 @@ type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; atte
 
 export type App = {
   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
-  sync: SyncState; zeller: ZellerStatus; staffId?: string; unlocked: boolean; toast?: string; saverPreview?: boolean;
+  sync: SyncState; zeller: ZellerStatus; staffId?: string; unlocked: boolean; lastPinAt?: number; /* when a PIN was last typed (signing in counts), for the Companion step-up PIN; in memory only */ toast?: string; saverPreview?: boolean;
   set: (p: Partial<App>) => void;
   patchSettings: (p: Partial<Settings>) => void;
   patchData: (p: Partial<Data>) => void;
@@ -130,7 +133,7 @@ export const useApp = create<App>((set, get) => ({
     // register) and nobody is sent through setup after updating. A fresh install has no settings record and starts on it.
     const setUp = !!settings && (settings as any).setupDone === undefined;
     set({
-      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant), appMode: readMode(settings?.appMode), registerFeatures: readFeatures(settings?.registerFeatures), setupDone: setUp ? true : settings?.setupDone === true }, data: { ...emptyData(), ...(data ?? {}) },
+      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, autoLockMinutes: readMinutes(settings?.autoLockMinutes, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES), stepUpMinutes: readMinutes(settings?.stepUpMinutes, STEP_UP_CHOICES, DEFAULT_STEP_UP_MINUTES), itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant), appMode: readMode(settings?.appMode), registerFeatures: readFeatures(settings?.registerFeatures), setupDone: setUp ? true : settings?.setupDone === true }, data: { ...emptyData(), ...(data ?? {}) },
       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger), shared: { ...emptySharedHistory(), ...(pos?.shared ?? {}) } }, ready: true,
     });
     if (!settings || migrateTheme || setUp) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme and setup migrations

@@ -19,6 +19,7 @@ import { getTerminal } from '../zellerBridge';
 import { uid } from '../lib/ids';
 import type { PosOrder } from '../lib/shopify/orders';
 import type { Cart, Variant } from '../lib/types';
+import { requireStepUp } from '../lib/stepUpGate';
 
 /** Return or exchange: pick items or an amount, add replacement items; button reads "Refund $X" or "Even exchange". */
 export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOrder; onClose: () => void; onGoPay: () => void }) {
@@ -42,6 +43,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
   const label = returnCents <= 0 && !repl.lines.length ? 'Nothing selected' : sum.mode === 'even' ? 'Even exchange' : sum.mode === 'refund' ? `Refund ${fmt(sum.amountCents)}` : `Charge ${fmt(sum.amountCents)}`;
 
   const go = async () => {
+    if (!(await requireStepUp('refund'))) return;
     if (returnCents <= 0) return alertMsg('Select something to return');
     if (mode === 'amount' && digitsToCents(digits) > maxMoney) return alertMsg('Too much', `This order only has ${fmt(maxMoney)} left to refund.`);
     const credit = Math.min(returnCents, replPriced.netCents); const cashOut = Math.max(0, returnCents - replPriced.netCents);

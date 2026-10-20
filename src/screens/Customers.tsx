@@ -9,6 +9,7 @@ import { isTraining } from '../lib/trainingGuard';
 import { SPOT, customersRowSpot } from '../lib/trainingSpots';
 import { setCustomersDraftProbe } from '../lib/trainingProbe';
 import type { Customer } from '../lib/types';
+import { requireStepUp } from '../lib/stepUpGate';
 
 export default function Customers() {
   const nav = useNav(); const list = useApp(s => s.data.customers); const [q, setQ] = useState(''); const [sel, setSel] = useState<Customer | null>(null); const [form, setForm] = useState<{ id?: string; first: string; last: string; email: string; phone: string; note: string } | null>(null); const [busy, setBusy] = useState(false); const [remote, setRemote] = useState<Customer[]>([]);
@@ -16,7 +17,7 @@ export default function Customers() {
   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
   useEffect(() => { setCustomersDraftProbe(form ? { first: form.first, last: form.last, email: form.email, phone: form.phone } : undefined); return () => setCustomersDraftProbe(undefined); }, [form]); // training reads what is typed
   const save = async () => {
-    if (!form) return; setBusy(true);
+    if (!form) return; if (!(await requireStepUp('shopify'))) return; setBusy(true);
     try { const input = { firstName: form.first.trim() || undefined, lastName: form.last.trim() || undefined, email: form.email.trim() || undefined, phone: form.phone.trim() || undefined, note: form.note.trim() || undefined };
       const name = [form.first.trim(), form.last.trim()].filter(Boolean).join(' ') || form.email.trim() || form.phone.trim() || 'Customer';
       // In practice a customer is only ever made or changed on this iPad: nothing goes to Shopify.

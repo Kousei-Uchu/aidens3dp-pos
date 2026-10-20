@@ -13,7 +13,7 @@ export type SignInResult = { ok: boolean; message: string; staff?: StaffMember }
 function apply(m: StaffMember, method: 'PIN' | 'pass'): SignInResult {
   const st = useApp.getState(); const prev = st.settings.staff.find(x => x.id === st.staffId);
   if (prev?.id === m.id && st.unlocked) return { ok: true, message: `Already signed in as ${m.name}`, staff: m };
-  st.set({ staffId: m.id, unlocked: true });
+  st.set({ staffId: m.id, unlocked: true, lastPinAt: Date.now() });
   void csv.event({ kind: 'staff_switch', staff: m.name, detail: `${method}; from ${prev?.name ?? 'nobody'}` }).catch(() => {});
   return { ok: true, message: prev && st.unlocked ? `Switched to ${m.name}` : `Signed in as ${m.name}`, staff: m };
 }
@@ -34,7 +34,9 @@ export async function signInWithPass(raw: string): Promise<SignInResult> {
   const m = findByBadge(useApp.getState().settings.staff, raw);
   return m ? apply(m, 'pass') : { ok: false, message: 'That pass is not recognised. It may have been cancelled or replaced.' };
 }
-export function lockRegister() { useApp.getState().set({ unlocked: false, staffId: undefined }); }
+export function lockRegister() { useApp.getState().set({ unlocked: false, staffId: undefined, lastPinAt: undefined }); }
+/** A Companion locking itself after sitting idle or away. Logged like the Lock row, so the history shows why. */
+export function lockIdle() { const st = useApp.getState(); const who = st.settings.staff.find(x => x.id === st.staffId)?.name ?? ''; lockRegister(); void csv.event({ kind: 'staff_switch', staff: who, detail: 'locked after being idle' }).catch(() => {}); }
 /** The grid's Lock POS tile. Checks first (staff exist, no card payment waiting), then locks. The cart is left exactly as it is. */
 export function lockNow(): LockDecision {
   const st = useApp.getState();

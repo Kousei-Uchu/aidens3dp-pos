@@ -108,7 +108,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | --- | --- | --- |
 | 0175 | This plan as `dev_docs/COMPANION_PLAN.md`, tracker, `PROGRESS.md` entry | Done |
 | 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Done, needs your device (T75) |
-| 0177 | App-wide PIN lock and step-up PIN | Planned |
+| 0177 | App-wide PIN lock and step-up PIN | Built, needs a device test (T80) |
 | 0178 | Tabs from the gate, Today, Scan, More menu, wording, phone layout | Planned |
 | 0179 | Hardware and sync gating | Planned |
 | 0180 | Quick sale, expand to full POS, send to register | Planned |
@@ -126,8 +126,8 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C2 Per-device settings: not shared, kept on restore, Register by default (0176)
 - [~] C3 Setup flow registry, Register and Companion setup, existing installs marked set up (0176)
 - [~] C4 Companion features screen for every signed-in person (0176)
-- [ ] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177)
-- [ ] C6 `stepUp.ts` with tests, wired to every listed action (0177)
+- [~] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177, needs a device test)
+- [~] C6 `stepUp.ts` with tests, wired to the listed actions (0177, needs a device test)
 - [ ] C7 Tabs, home tab, route guard and deep links from the gate (0178)
 - [ ] C8 Today tab (0178)
 - [ ] C9 Scan tab (0178)
@@ -138,7 +138,7 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [ ] C14 Notices for hidden groups not raised, old ones fall back to Today (0179)
 - [ ] C15 Quick sale screen (0180)
 - [ ] C16 Expand quick sale into the full POS on the same cart (0180)
-- [?] C17 Payment methods follow their groups (0180, open question 1)
+- [ ] C17 Payment methods follow their groups; cash with Cash drawer off is allowed and flagged for the next drawer count (0180)
 - [ ] C18 Send a cart to the register as a saved cart with Selling off (0180)
 - [ ] C19 `needs` tag on Help pages and Training modules, hidden ones unsearchable (0181)
 - [ ] C20 Nav graph and assistant gating (0181)
@@ -160,10 +160,11 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 
 ## Open questions
 
-1. **Cash on the phone.** A cash sale puts money in the till drawer, which the app tracks in a ledger shared by every register. A phone with the Cash drawer switch off has no drawer to put it in. Suggested: the phone cannot take cash until Cash drawer is switched on, while card, gift card and hand-off carts all still work. The other option is to allow cash and flag it for the next drawer count. Gates patch 0180 (C17).
+1. **Staff must stay reachable on a companion.** The gate in `src/lib/appMode.ts` ties the `staff` page and row to **Till staff tools**. A companion with that group off could then never open Staff to create the owner PIN, which the lock needs, or to reset a PIN. Suggested for patch 0178, when the gate is wired: keep Staff reachable for owners and managers whatever the groups say, and let **Till staff tools** cover only staff passes, switching staff and cashier passes.
 
 ## Settled questions
 
+- **Cash on the phone.** If the phone takes cash while the Cash drawer group is off, it is allowed and flagged for the next drawer count (not blocked). Built in 0180.
 - **Card on the phone.** Your Zeller reader works from an iPhone, so phone card payments are in scope. It cannot be tested from the sandbox, so it stays a device test for you.
 - **PIN timing.** 2 minutes idle for auto-lock, 5 minutes for the step-up window, and the PIN-gated list as written.
 - **Patch numbers.** `dev` was merged into `main`, where 0173 and 0174 are the assistant patches, so this series starts at 0175.

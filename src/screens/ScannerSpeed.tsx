@@ -10,6 +10,7 @@ import { saveScannerCalibration } from '../lib/sync';
 import { actingRole } from '../lib/adjustPerms';
 import { ALL_SCANNER_CODES, DEFAULT_SPEED_RANGES, SPEED_TABLE, speedForInterval, type ScannerCode, type SpeedId } from '../lib/scannerCodes';
 import { MAX_SAMPLES, MIN_SAMPLES, SPEED_IDS, SPEED_NAME, SPEED_TEST_TEXT, calibrationProblems, canCalibrate, describeRange, effectiveRanges, measure, newTiming, noteChange, rangeFromSamples, withRange, type Measurement } from '../lib/scanSpeed';
+import { lockRequired } from '../lib/appMode';
 
 const codeById = (id: string): ScannerCode => ALL_SCANNER_CODES.find(c => c.id === id)!;
 const testCode = codeById('speed-test');
@@ -17,7 +18,7 @@ const ms = (n: number) => `${n.toFixed(1)} ms`;
 
 export function HardwareTest() {
   const cal = useApp(s => s.settings.scannerCal); const ranges = effectiveRanges(cal);
-  const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const admin = canCalibrate(role);
+  const role = useApp(s => actingRole(lockRequired(s.settings), s.settings.staff, s.staffId)); const admin = canCalibrate(role);
   const [scans, setScans] = useState<{ code: string; m: Measurement | null }[]>([]);
   const [test, setTest] = useState<Measurement | null>(null);
   const [full, setFull] = useState<ScannerCode | null>(null); const [calOpen, setCalOpen] = useState(false);

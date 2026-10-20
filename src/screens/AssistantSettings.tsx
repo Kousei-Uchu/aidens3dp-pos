@@ -16,10 +16,11 @@ import { testConnection, type TestReport } from '../lib/assistantClient';
 import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
 import { isTraining } from '../lib/trainingGuard';
 import { AssistantLogViewer } from './AssistantLog';
+import { lockRequired } from '../lib/appMode';
 
 /** Whether this person may open the page. The Settings menu and the page itself both ask, so a role change closes it. */
 export function useCanEditAssistant(): boolean {
-  return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
+  return useApp(s => canEditAdjustPerms(actingRole(lockRequired(s.settings), s.settings.staff, s.staffId), s.settings.staff));
 }
 
 type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string; gate: GateToggles };

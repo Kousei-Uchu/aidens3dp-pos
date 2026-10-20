@@ -9,6 +9,7 @@ import { useApp } from '../state/store';
 import { CameraScanner, HidScanner } from './Scanner';
 import { isBadgeCode } from '../lib/badge';
 import { lockRegister, signInWithPass, signInWithPin, type SignInResult } from '../lib/staffAuth';
+import { lockRequired } from '../lib/appMode';
 
 export const PinPad = ({ onKey }: { onKey: (k: string) => void }) => (
   <Spot id={SPOT.loginPinpad} style={{ width: 280 }}>
@@ -52,7 +53,7 @@ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignIn
 
 /** Quick staff change from the Checkout grid or header: sign in as someone else without locking the register first. */
 export function SwitchStaffSheet({ visible, onClose, onSwitched }: { visible: boolean; onClose: () => void; onSwitched?: (message: string) => void }) {
-  const staff = useApp(s => s.settings.staff); const requirePin = useApp(s => s.settings.requirePin);
+  const staff = useApp(s => s.settings.staff); const requirePin = useApp(s => lockRequired(s.settings));
   const cur = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
   return (
     <Sheet visible={visible} onClose={onClose} title="Switch staff">

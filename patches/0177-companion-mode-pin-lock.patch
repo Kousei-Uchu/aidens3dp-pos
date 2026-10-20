@@ -1,0 +1,1144 @@
+From daef4114b1b73d0c0e624e32a3e0f4afa6f6593b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 20 Oct 2026 05:23:10 +0000
+Subject: [PATCH] Companion mode patch 2: app-wide PIN lock and step-up PIN
+ (0177)
+
+---
+ App.tsx                           | 18 ++++++--
+ dev_docs/COMPANION_PLAN.md        | 11 ++---
+ dev_docs/DEVICE_TESTS.md          | 18 ++++++++
+ dev_docs/PROGRESS.md              |  3 ++
+ dev_docs/QUEUE.md                 | 12 +++---
+ help/device-mode.md               | 16 ++++++-
+ help/help.json                    | 12 ++++--
+ src/lib/appMode.ts                |  6 +++
+ src/lib/backupFile.ts             |  2 +-
+ src/lib/setupFlow.ts              |  5 ++-
+ src/lib/staffAuth.ts              |  6 ++-
+ src/lib/stepUp.ts                 | 49 +++++++++++++++++++++
+ src/lib/stepUpGate.ts             | 19 +++++++++
+ src/lib/trainingSandbox.ts        |  3 +-
+ src/screens/AdjustmentReview.tsx  |  3 +-
+ src/screens/Assistant.tsx         |  5 ++-
+ src/screens/AssistantSettings.tsx |  3 +-
+ src/screens/Customers.tsx         |  3 +-
+ src/screens/DeviceMode.tsx        | 24 ++++++++---
+ src/screens/Inventory.tsx         |  2 +
+ src/screens/More.tsx              |  5 ++-
+ src/screens/Orders.tsx            |  3 +-
+ src/screens/Refund.tsx            |  2 +
+ src/screens/ScannerSpeed.tsx      |  3 +-
+ src/screens/Settings.tsx          |  4 ++
+ src/screens/Setup.tsx             |  4 +-
+ src/screens/Staff.tsx             |  3 +-
+ src/screens/StaffLogin.tsx        |  3 +-
+ src/screens/sheets.tsx            |  2 +
+ src/state/stepUp.ts               | 11 +++++
+ src/state/store.ts                |  9 ++--
+ src/ui/CoachSheet.tsx             |  3 +-
+ src/ui/StepUpHost.tsx             | 38 +++++++++++++++++
+ src/ui/adjustGate.ts              |  9 ++--
+ src/ui/nav.tsx                    | 13 +++++-
+ tests/setupFlow.test.ts           |  8 ++++
+ tests/stepup.test.ts              | 71 +++++++++++++++++++++++++++++++
+ 37 files changed, 356 insertions(+), 55 deletions(-)
+ create mode 100644 src/lib/stepUp.ts
+ create mode 100644 src/lib/stepUpGate.ts
+ create mode 100644 src/state/stepUp.ts
+ create mode 100644 src/ui/StepUpHost.tsx
+ create mode 100644 tests/stepup.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index a40d6b3..0ade78a 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -50,7 +50,12 @@ import { useTraining } from './src/state/trainingSession';
+ import { getModule } from './src/training';
+ import { isTraining } from './src/lib/trainingGuard';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+-import { noteActivity } from './src/lib/idle';
++import { idleMs, noteActivity } from './src/lib/idle';
++import { lockRequired, readMode } from './src/lib/appMode';
++import { lockDue } from './src/lib/stepUp';
++import { lockIdle } from './src/lib/staffAuth';
++import { paymentActive } from './src/lib/screensaver';
++import StepUpHost from './src/ui/StepUpHost';
+ import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
+ import { Enter, TabPane } from './src/ui/Motion';
+ import { isLockScreen } from './src/lib/posLock';
+@@ -109,7 +114,7 @@ function Shell() {
+   // later patch swaps in CloudKit without sync.ts changing. Installing it before the first poll means every shared call has a
+   // backend from the start.
+   useEffect(() => { setBackend(metaobjectBackend); }, []);
+-  useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
++  useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (lockRequired(s.settings) && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+   // Companion plan, patch 0176: a device that has never been set up opens the setup checklist once. Installs from before
+   // this patch were marked set up by hydrate, and practice never runs it.
+   useEffect(() => { if (ready && !setupDone && !isTraining() && nav.stack.length === 0) nav.push('setup'); }, [ready, setupDone, nav.stack.length]); // eslint-disable-line react-hooks/exhaustive-deps
+@@ -119,6 +124,13 @@ function Shell() {
+     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
+     return () => { clearInterval(t); sub.remove(); };
+   }, [ready]);
++  // A Companion locks itself after sitting idle or away (src/lib/stepUp.ts). Time spent in the background counts as idle.
++  useEffect(() => {
++    if (!ready) return undefined;
++    const check = () => { if (isTraining()) return; const s = useApp.getState(); if (lockDue({ companion: readMode(s.settings.appMode) === 'companion', staffCount: s.settings.staff.length, unlocked: s.unlocked, paymentActive: paymentActive(s.pos.attempts, Date.now()), quietMs: idleMs(), minutes: s.settings.autoLockMinutes })) lockIdle(); };
++    const t = setInterval(check, 10000); const sub = AppState.addEventListener('change', st => { if (st === 'active') check(); });
++    return () => { clearInterval(t); sub.remove(); };
++  }, [ready]);
+   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
+   if (isLockScreen({ staffCount, unlocked }) && nav.stack[nav.stack.length - 1]?.name !== 'help') return <View style={{ flex: 1, backgroundColor: c.bg }}><PinLock /></View>;
+   const hasPage = nav.stack.length > 0; const moving = !!plan; // the tab screen stays drawn underneath while a page slides over it or away from it
+@@ -151,7 +163,7 @@ export default function App() {
+   return (
+     <ZellerRoot>
+       <SafeAreaProvider><ThemeProvider><UiProvider><NavProvider>
+-        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost><AssistantGuideOverlay /></View>
++        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost><AssistantGuideOverlay /><StepUpHost /></View>
+         <KeepAwake /><ScreensaverLayer />
+       </NavProvider></UiProvider></ThemeProvider></SafeAreaProvider>
+     </ZellerRoot>
+diff --git a/dev_docs/COMPANION_PLAN.md b/dev_docs/COMPANION_PLAN.md
+index eb61491..cfe36f5 100644
+--- a/dev_docs/COMPANION_PLAN.md
++++ b/dev_docs/COMPANION_PLAN.md
+@@ -108,7 +108,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities,
+ | --- | --- | --- |
+ | 0175 | This plan as `dev_docs/COMPANION_PLAN.md`, tracker, `PROGRESS.md` entry | Done |
+ | 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Done, needs your device (T75) |
+-| 0177 | App-wide PIN lock and step-up PIN | Planned |
++| 0177 | App-wide PIN lock and step-up PIN | Built, needs a device test (T80) |
+ | 0178 | Tabs from the gate, Today, Scan, More menu, wording, phone layout | Planned |
+ | 0179 | Hardware and sync gating | Planned |
+ | 0180 | Quick sale, expand to full POS, send to register | Planned |
+@@ -126,8 +126,8 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
+ - [~] C2 Per-device settings: not shared, kept on restore, Register by default (0176)
+ - [~] C3 Setup flow registry, Register and Companion setup, existing installs marked set up (0176)
+ - [~] C4 Companion features screen for every signed-in person (0176)
+-- [ ] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177)
+-- [ ] C6 `stepUp.ts` with tests, wired to every listed action (0177)
++- [~] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177, needs a device test)
++- [~] C6 `stepUp.ts` with tests, wired to the listed actions (0177, needs a device test)
+ - [ ] C7 Tabs, home tab, route guard and deep links from the gate (0178)
+ - [ ] C8 Today tab (0178)
+ - [ ] C9 Scan tab (0178)
+@@ -138,7 +138,7 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
+ - [ ] C14 Notices for hidden groups not raised, old ones fall back to Today (0179)
+ - [ ] C15 Quick sale screen (0180)
+ - [ ] C16 Expand quick sale into the full POS on the same cart (0180)
+-- [?] C17 Payment methods follow their groups (0180, open question 1)
++- [ ] C17 Payment methods follow their groups; cash with Cash drawer off is allowed and flagged for the next drawer count (0180)
+ - [ ] C18 Send a cart to the register as a saved cart with Selling off (0180)
+ - [ ] C19 `needs` tag on Help pages and Training modules, hidden ones unsearchable (0181)
+ - [ ] C20 Nav graph and assistant gating (0181)
+@@ -160,10 +160,11 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
+ 
+ ## Open questions
+ 
+-1. **Cash on the phone.** A cash sale puts money in the till drawer, which the app tracks in a ledger shared by every register. A phone with the Cash drawer switch off has no drawer to put it in. Suggested: the phone cannot take cash until Cash drawer is switched on, while card, gift card and hand-off carts all still work. The other option is to allow cash and flag it for the next drawer count. Gates patch 0180 (C17).
++1. **Staff must stay reachable on a companion.** The gate in `src/lib/appMode.ts` ties the `staff` page and row to **Till staff tools**. A companion with that group off could then never open Staff to create the owner PIN, which the lock needs, or to reset a PIN. Suggested for patch 0178, when the gate is wired: keep Staff reachable for owners and managers whatever the groups say, and let **Till staff tools** cover only staff passes, switching staff and cashier passes.
+ 
+ ## Settled questions
+ 
++- **Cash on the phone.** If the phone takes cash while the Cash drawer group is off, it is allowed and flagged for the next drawer count (not blocked). Built in 0180.
+ - **Card on the phone.** Your Zeller reader works from an iPhone, so phone card payments are in scope. It cannot be tested from the sandbox, so it stays a device test for you.
+ - **PIN timing.** 2 minutes idle for auto-lock, 5 minutes for the step-up window, and the PIN-gated list as written.
+ - **Patch numbers.** `dev` was merged into `main`, where 0173 and 0174 are the assistant patches, so this series starts at 0175.
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 2bb0ccb..67e41fc 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1038,3 +1038,21 @@ One iPad, a paired Bluetooth scanner, and the screensaver set to a short idle ti
+ 
+ 1. Open the camera (tap the camera icon) and let the iPad sit until the screensaver comes up over it. Scan a known product. Pass: the screensaver goes and the item is added, even though the camera is still open. The camera's own message does not show for that scan (it was the keyboard scanner, not the camera), and the pane popup does not fight with the camera.
+ 2. Close the camera. Pass: the grid is back, the cart has the item, and nothing is stuck on screen.
++
++## T80. PIN lock and step-up PIN on a companion (0177)
++
++On a phone you can make a companion, with an owner that has a PIN (create one in **More ▸ Staff** first, and leave **Require PIN** off). Nothing in this patch has been run on a device.
++
++1. Open **More ▸ Device mode**, tap **Switch this device to Companion mode** and confirm. Pass: it switches (it may ask for your PIN), and **Require PIN** in Staff on one of your tills has not changed.
++2. Close the app fully and open it again. Pass: the PIN screen shows before anything else.
++3. In **Device mode ▸ Locking** set **Lock after being idle** to **1 min**. Sign in, then leave the phone alone for a little over a minute with the app open. Pass: it locks and asks for the PIN.
++4. Sign in, send the app to the background for over a minute, then come back. Pass: it is locked.
++5. Sign in and open **Settings** straight away. Pass: it opens with no extra prompt (signing in counts as typing the PIN). Set **Ask for my PIN again after** to **Every time**.
++6. Go back and open **Settings** again. Pass: a PIN prompt shows. Type a wrong PIN. Pass: it says **Wrong PIN**. Cancel. Pass: Settings does not open.
++7. Type the wrong PIN five times. Pass: the app locks.
++8. With **Every time** still set, check each of these asks for the PIN before it does anything: saving a stock change in Inventory, saving a customer, marking an order fulfilled, starting a refund, **Export** in Settings, and opening **Staff**. Pass: all ask, and none changes anything until the PIN is right.
++9. Switch a feature in **Device mode** on or off. Pass: it asks for the PIN first. Open the payment screen. Pass: it asks first. Open the drawer. Pass: it asks first.
++10. Set **Ask for my PIN again after** to **5 min** and sign in. Pass: the same actions do not ask again until five minutes after your last PIN.
++11. On a register (till) without Require PIN switched on, do steps 8 and 9. Pass: no PIN prompts at all and no auto-lock.
++12. On the companion, open **Demo mode**. Pass: every feature is on show and it never locks. Leave Demo. Pass: the companion's own lock is back.
++
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 13b8d72..62b839e 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -161,6 +161,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0184 | 2026-10-19 | Docs tidy (your request). **Documentation only, no code.** `dev_docs/AI_ASSISTANT_PLAN.md`: section 1.1 said there were no tools and no data gate, section 1.4 said help page roles were not checked and the practice coach was "to confirm in patch 9", and section 2 listed role filtering, field maps, the prompt and the read-only rule as still to do. All are done, and each claim was checked against the code and tests before it was written (revision 28). One thing the check showed: the read-only rule is tested per tool group, with no single test over the whole set. `dev_docs/TO_DO.md`: the F7 numbers are now 512 steps across 71 sections, and the "11 unlisted patches" note is replaced, because all 11 are listed now. `dev_docs/PROGRESS.md`: F1 to F4, F6 to F8 are ticked as the TO_DO table already says, F5 is partly done and F9 waits on you. **Needs you:** `0175-companion-mode-plan.patch` is in `patches/` but not in `patches/APPLIED.txt`. Its changes are already in the tree, so the apply script fails on it and stops before any later patch. Add the name to the ledger by hand (this cannot be fixed inside a patch, because the script never reaches it). Not changed: the N and D lists (only a device run can tick those), and `dev_docs/COMPANION_PLAN.md` | your request |
+ | 0185 | 2026-10-19 | AI assistant (your request: load only the tools a question needs). **Each question is now sent only the tool definitions it is likely to need.** The 19 tools are in four groups in `src/lib/assistantToolGroups.ts`: help (`search_docs`, `read_doc`, `search_screens`, `show_link`, `show_guide`, `screen_context`, always sent), shop (the figure tools and `current_time`), cash and status. A group is sent when the question, or the last two things you typed in the chat, use its words, so a follow up such as "and the cow plush?" keeps its tools. The words lean towards sending a group. **Nothing is taken away:** while any group is left out the model is given `more_tools`, which loads a group for the rest of that question, so a question the words miss can still reach every tool. `toolsFor` is still the only place tools are filtered by role, `more_tools` can only load names the role already has (a cashier asking for the status group gets `app_status` and never `read_settings`), and a tool the groups do not name is always sent. The prompt only describes the tools that are sent, and says how to ask for the rest. **Measured at the default 8000:** room left for the chat after the prompt and definitions is 3,994 tokens for a help question (it was 1,318 for a cashier and 1,074 for a manager), 3,491 for a cash question, 1,797 for a shop question, and the same as before when every group is asked for (1,318 and 1,074). Files: new `assistantToolGroups.ts`; `assistantTools.ts` (`ToolSet.offered`, `offeredTools`, a `narrow` option on `makeToolSet`); `assistantChat.ts` (prompt, message budget and loop read the offered list, again after every call); `screens/Assistant.tsx` (passes the recent questions). A set made without `narrow`, and the practice coach, behave exactly as before. Tests: `tests/assistantnarrow.test.ts` (14, including a scripted model that has to ask for the shop tools, and the room per question type). Full suite 1332 of 1332, `tsc` clean. Device test T76. **Decided without you, change any you disagree with:** the groups and the words (they are in one file, easy to change); the follow up memory is the last three things typed; the default stays 8000. **Worth knowing:** the shop group is still about 2,200 tokens, so a shop question has 1,797 left, and it could be split (products and stock, sales and orders, customers and gift cards) if you want that. **The risk is in T76 step 4:** a small model may not call `more_tools` for a question the words miss, and would then say it could not find anything. Not tried on a real model | your request |
+ | 0186 | 2026-10-20 | F5 leftovers (your request: the changelog and Discussions). **Documentation only, no code.** `CHANGELOG.md` is new: Keep a Changelog layout, one Unreleased section because there are no tags and the version is 1.0.0, grouped into Added, Changed and Fixed, written from the patch row headlines and the recent commit titles. I read the full row wherever a headline was cut short, and that corrected two lines I had paraphrased wrongly (0155, 0168) before they went in. It is a summary: this log stays the complete list. `CONTRIBUTING.md` now asks for a changelog line for anything a shop user would notice, and no longer says four training-course tests are known failures (0183 fixed them). `README.md` says Discussions are off, says 68 help pages (it said 64), and lists the changelog. **Decided without you, change it if you disagree: Discussions stays off,** because the README already says there is no support channel and there is no licence yet. It is a GitHub setting rather than a file, so nothing here can turn it off: check Settings ▸ General ▸ Features. Details in `dev_docs/GUESSES.md`. `dev_docs/TO_DO.md` F5 now reads done except the licence. **Still yours:** the licence choice. No code changed, so no device test | your request |
++| 0177 | 2026-10-20 | Companion mode, patch 2 (your request: "next patch"). **App-wide PIN lock and step-up PIN on a companion.** New `src/lib/stepUp.ts` (pure rules: which pages and actions ask, when a PIN is due, when to lock after idle), `src/lib/stepUpGate.ts` (`requireStepUp`), `src/ui/StepUpHost.tsx` (the PIN prompt) and `lockRequired` in `src/lib/appMode.ts`: a companion always locks behind the PIN, while a register still follows the shared Require PIN setting, so making a phone a companion never turns the lock on for your tills. The setup checklist's owner PIN step now counts an owner with a PIN on a companion without needing Require PIN. A companion locks itself after sitting idle or away (default 2 minutes, never mid card payment). Payments, refunds, items, stock, customers, orders, the drawer, Settings, Staff, backups and changing the mode, a feature or the locking choices ask for the PIN again when the last PIN entry is older than the window (default 5 minutes, every time is a choice); five wrong PINs lock the app. Both choices are per device (Device mode ▸ Locking) and in `DEVICE_KEYS`, so a backup never copies them. Practice and Demo show every feature and never lock or ask. Help page `device-mode`, device test T80, tests in `tests/stepup.test.ts` and `tests/setupFlow.test.ts`. Not yet: wiring the gate into tabs and routes (0178). One open question in the plan: keep Staff reachable on a companion. | G2 |
+ | ledger-fix | 2026-10-20 | **Not a numbered patch: apply this by hand.** `patches/APPLIED.txt` had no newline after its last line, so when CI appended 0185 the name was glued onto the 0174 line (`0174-…patch0185-…patch`). `scripts/apply-patches.sh` skips a patch only when its name is a whole line, so 0174 and 0185 both counted as unapplied, as did 0175, 0183 and 0184 (never listed). The next run would have tried 0174 first, failed because it is already in the tree, and stopped with "Later patches were not tried". The ledger now lists 0174, 0175, 0183, 0184, 0185 and 0186, each on its own line. The script adds the missing newline before it appends, so a ledger that loses its trailing newline cannot glue two names together again. Tested by running the script in a scratch repo: with the fixed ledger it applies 0 patches, and with the newline stripped and a new patch added, the new name lands on its own line. **It has to be applied by hand and pushed** (`git apply ledger-fix.diff`), because a normal patch would be stopped by the very problem it fixes | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+@@ -446,6 +447,7 @@ Added in 0072. These are the last jobs, done after E1 and B8. Order matters a li
+ ## G. Companion mode (added by you)
+ The full plan, decisions, patch series and tracker live in `dev_docs/COMPANION_PLAN.md`. Each Companion patch ticks its own items there; this section only records the headline.
+ - [~] G1 **Plan saved (0175).** A per-device Register or Companion mode: register features off until requested, a phone-first home (Today, Scan), a quick sale that expands into the full POS, send a cart to the register, an app-wide PIN lock with a step-up PIN for anything that matters, and a setup screen that can take new profiles later. Items C1 to C23 in the plan. Next: 0176.
++- [~] G2 **PIN lock and step-up PIN (0177).** Items C5 and C6 in `dev_docs/COMPANION_PLAN.md`. Code-complete and tested here (1420 tests, `tsc`, help and nav graph checks); not run on a device, steps in `dev_docs/DEVICE_TESTS.md` T80. Next: 0178 (wire the gate into tabs, routes and More, plus Today and Scan).
+ 
+ ---
+ 
+@@ -547,6 +549,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N70 **Non-blocking (Companion mode, 0176):** patch 1 of `dev_docs/COMPANION_PLAN.md`. A device is now a register or a companion. `src/lib/appMode.ts` holds the six groups (Selling, Card reader, Cash drawer, Till staff tools, Till display, Till training), the defaults (a register has all six, a companion none until they are switched on) and the gate the later patches use (`tabAllowed`, `routeAllowed`, `rowAllowed`; an unknown stored mode reads as a register). The mode, the switches and `setupDone` are stored per device, and `DEVICE_KEYS` keeps all three out of a backup. `src/lib/setupFlow.ts` holds the setup checklist as data: a register is asked for Shopify, the owner PIN and a name, a companion for Shopify, the PIN and its features; `src/screens/Setup.tsx` shows it and each row opens the screen that does the job. It opens once on a fresh install, and an install that already had settings is marked set up as a register by `hydrate`, so nobody who had a working till is sent through it. `src/screens/DeviceMode.tsx` (More ▸ Device mode, open to everyone) says what the device is, carries the six switches and can change the mode. Nothing hides yet: wiring the tabs and pages to the gate is patch 0178, and the step-up PIN that guards a mode change is 0177. Device check: `dev_docs/DEVICE_TESTS.md` T75.
+ - [ ] N71 **Non-blocking (CloudKit, patch 3):** the plan's backend interface, wrapped around the metaobject code so patch 4's CloudKit backend is a drop-in. `src/lib/syncBackend.ts` is the seam: the `SharedBackend` interface (ensure, get, put, list, remove, plus an optional detail capability), the row and page shapes, the selector (`setBackend`, `activeBackend`, `activeBackendKind`) and the training block on writes (reads stay open so a course can teach on real history). `src/lib/shopify/metaobjectBackend.ts` is the one implementation that exists today, mapping the shop's five shared types onto the metaobject types and wrapping the same calls `sync.ts` made by hand. `sync.ts`, `Reports.tsx` and the Settings button now go through the seam, so the metaobject helpers are imported in one place only, and `App.tsx` installs the metaobject backend before the first poll. The Settings button reads **Set up shared storage** now (the "(metaobjects)" wording went), which updated the two help pages and regenerated `help/help.json`. No record moved and no CloudKit behaviour changed: it is a seam, so it is pinned in Node by `tests/syncbackend.test.ts` against a fake backend. The four owner decisions still open in the plan's section 7 are tagged there with the patch that will first need them (patch 4 for `encryptedValues` and the privacy and storage questions, patch 8 for dual-write), because none of them is about this seam.
+ - [ ] N72 **Non-blocking (AI assistant, 0185):** device check for loading only the tools a question needs, steps in `dev_docs/DEVICE_TESTS.md` T76. Most important: step 4, a question the words miss. Tell me whether the model asks for the shop tools with `more_tools` or gives up.
++- [ ] N73 **Non-blocking (Companion mode, 0177):** device check for the companion PIN lock and step-up PIN, steps in `dev_docs/DEVICE_TESTS.md` T80. Most important: the phone locks on opening, after idle and after the background, a stale PIN asks again before payments, stock, customers, refunds, backups and Settings, and your tills show no new prompts and keep their Require PIN setting. Also one question in `dev_docs/COMPANION_PLAN.md`: keep Staff reachable on a companion (otherwise a companion with Till staff tools off could never create or reset a PIN once 0178 wires the gate).
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 67d3b8b..9cd8e23 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -41,14 +41,12 @@ A lease so two registers do not migrate at once, a checkpoint per group, and a v
+ Stop the metaobject polling once the seam is proven, and add a flag that puts a register back on polling without a new
+ build. This is where the owner decides dual-write against a clean cut-over.
+ 
+-## Stream B: Companion mode, patches 0177 to 0182
++## Stream B: Companion mode, patches 0178 to 0182
+ 
+-Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan and 0176 added the setup checklist that
+-records whether a device is a register or a companion and which features it holds. The gate exists but nothing reads it.
+-
+-### Companion 0177. App-wide PIN lock and step-up PIN
+-
+-The device PIN, asked at open and again before anything sensitive (see the plan for which actions step up).
++Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan, 0176 added the setup checklist that
++records whether a device is a register or a companion and which features it holds, and 0177 added the PIN lock and the
++step-up PIN. The gate exists but nothing reads it yet. Before 0178, see the open question in the plan about keeping
++Staff reachable on a companion.
+ 
+ ### Companion 0178. Wire the gate into tabs, routes, More and deep links
+ 
+diff --git a/help/device-mode.md b/help/device-mode.md
+index 03f28e8..3f678a0 100644
+--- a/help/device-mode.md
++++ b/help/device-mode.md
+@@ -3,7 +3,7 @@ id: device-mode
+ title: Device mode
+ parent: start
+ summary: What this device is, a register or a companion, and which register features a companion keeps.
+-tags: [device mode, register, companion, phone, tablet, features, switch, remote, beside the till]
++tags: [device mode, register, companion, phone, tablet, features, switch, remote, beside the till, pin, lock, auto-lock, step-up]
+ related: [start/setup, settings/backup, staff]
+ updated: 2026-10-20
+ ---
+@@ -29,6 +29,13 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
+ - Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.
+ - Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.
+ 
++### PIN and locking on a companion
++- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.
++- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.
++- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.
++- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.
++- Practice and Demo mode show every feature and never lock.
++
+ ### Open the checklist again
+ - Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].
+ 
+@@ -72,5 +79,10 @@ flowchart TD
+ - `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.
+ - `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.
+ 
++### How the lock and the step-up decide
++- `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.
++- `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.
++- `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.
++
+ ### What is not wired yet
+-The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the step-up PIN that guards changing the mode arrives with 0177.
++The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the PIN lock and the step-up PIN that guards changing the mode arrived with 0177.
+diff --git a/help/help.json b/help/help.json
+index 3e6c383..0b1e028 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "1a006431",
++ "version": "7fec31b6",
+  "pages": [
+   {
+    "id": "cash",
+@@ -432,7 +432,11 @@
+     "features",
+     "switch",
+     "remote",
+-    "beside the till"
++    "beside the till",
++    "pin",
++    "lock",
++    "auto-lock",
++    "step-up"
+    ],
+    "related": [
+     "start/setup",
+@@ -442,9 +446,9 @@
+    "updated": "2026-10-20",
+    "lead": "Open **More ▸ Device mode** to say what this device is. A **register** is a till and has every feature. A **companion** is a phone or tablet beside the till: it has the register features you switch on, and everything else the app can do. Everyone who is signed in can open this page.",
+    "sections": {
+-    "basic": "### See what this device is\n- The top of the page says **This device is a register** or **This device is a companion**, with a line under it saying what that means.\n- The list of features below shows a switch for each group. On a register every switch is on and cannot be changed.\n\n### Switch a feature on or off\n- **Selling.** The checkout, cart and payments.\n- **Card reader.** The Zeller reader and terminal practice.\n- **Cash drawer.** The drawer, its ledger and the change tools.\n- **Till staff tools.** Lock register, staff pass scanning and switching staff.\n- **Till display.** Screensaver, keep awake, item spotlight and the grid editor.\n- **Till training.** The register courses.\n- Under each switch is a line listing what the group holds. Switch a group off to take those things off this device, and on to bring them back.\n\n### Change the mode\n- Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.\n- Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.\n- Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.\n\n### Open the checklist again\n- Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].",
++    "basic": "### See what this device is\n- The top of the page says **This device is a register** or **This device is a companion**, with a line under it saying what that means.\n- The list of features below shows a switch for each group. On a register every switch is on and cannot be changed.\n\n### Switch a feature on or off\n- **Selling.** The checkout, cart and payments.\n- **Card reader.** The Zeller reader and terminal practice.\n- **Cash drawer.** The drawer, its ledger and the change tools.\n- **Till staff tools.** Lock register, staff pass scanning and switching staff.\n- **Till display.** Screensaver, keep awake, item spotlight and the grid editor.\n- **Till training.** The register courses.\n- Under each switch is a line listing what the group holds. Switch a group off to take those things off this device, and on to bring them back.\n\n### Change the mode\n- Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.\n- Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.\n- Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.\n\n### PIN and locking on a companion\n- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.\n- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.\n- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.\n- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.\n- Practice and Demo mode show every feature and never lock.\n\n### Open the checklist again\n- Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].",
+     "deep": "### Two ways of narrowing, and neither one widens\nA device's mode decides what exists here. A person's display mode (Standard, Simple, Minimal, Custom) decides how much of that they see. Neither can bring back something the other has taken away: a companion with Selling off stays without the checkout however the person's display mode is set, and a companion cannot grant a cashier a page their role does not allow.\n\nSome things are on a companion whatever it has switched off, because they are not register features: Help, Demo mode, Notifications, the assistant, Settings for managers and owners, and the sync and Shopify diagnostics.\n\n### The mode belongs to the device\nThe mode and the feature switches are stored on this device only. They do not sync to the other registers, and a [[settings/backup]] file does not carry them, so a device restored onto new hardware keeps its own answer. The mode is never taken from another register either: a device always reads its own.\n\n### Which is which in the shop\nA register is usually the iPad at the counter with the reader and the drawer. A companion is a phone in someone's pocket, or a tablet used for looking things up, taking a cart to the counter, or asking the assistant. Turning Selling on a companion is what makes it a second till.",
+-    "advanced": "### The rules\n`src/lib/appMode.ts` holds the six group ids, the defaults (a register has all six, a companion has none until they are switched on), and the gate: `tabAllowed`, `routeAllowed` and `rowAllowed`. A stored mode that is not `register` or `companion` reads as a register, so an older app version or a hand-edited setting can never invent a companion.\n\n```mermaid\nflowchart TD\n  A[Device mode screen] --> B{A register or a companion}\n  B -->|Register| C[Every feature on, nothing to switch]\n  B -->|Companion| D[Six switches, all off to start]\n  D --> E[tabAllowed, routeAllowed, rowAllowed]\n  E --> F[The screens a companion can reach]\n```\n\n| Job | Where |\n|---|---|\n| The groups, the defaults and the gate | `src/lib/appMode.ts` |\n| The page and its six switches | `src/screens/DeviceMode.tsx` |\n| The stored keys `appMode` and `registerFeatures` | `src/state/store.ts` |\n| Keeping them out of a backup | `DEVICE_KEYS` in `src/lib/backupFile.ts` |\n| The row in More | `src/screens/More.tsx` and `src/lib/uiMode.ts` |\n\n### What the gate answers\n- `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.\n- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.\n- `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.\n\n### What is not wired yet\nThe gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the step-up PIN that guards changing the mode arrives with 0177."
++    "advanced": "### The rules\n`src/lib/appMode.ts` holds the six group ids, the defaults (a register has all six, a companion has none until they are switched on), and the gate: `tabAllowed`, `routeAllowed` and `rowAllowed`. A stored mode that is not `register` or `companion` reads as a register, so an older app version or a hand-edited setting can never invent a companion.\n\n```mermaid\nflowchart TD\n  A[Device mode screen] --> B{A register or a companion}\n  B -->|Register| C[Every feature on, nothing to switch]\n  B -->|Companion| D[Six switches, all off to start]\n  D --> E[tabAllowed, routeAllowed, rowAllowed]\n  E --> F[The screens a companion can reach]\n```\n\n| Job | Where |\n|---|---|\n| The groups, the defaults and the gate | `src/lib/appMode.ts` |\n| The page and its six switches | `src/screens/DeviceMode.tsx` |\n| The stored keys `appMode` and `registerFeatures` | `src/state/store.ts` |\n| Keeping them out of a backup | `DEVICE_KEYS` in `src/lib/backupFile.ts` |\n| The row in More | `src/screens/More.tsx` and `src/lib/uiMode.ts` |\n\n### What the gate answers\n- `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.\n- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.\n- `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.\n\n### How the lock and the step-up decide\n- `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.\n- `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.\n- `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.\n\n### What is not wired yet\nThe gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the PIN lock and the step-up PIN that guards changing the mode arrived with 0177."
+    }
+   },
+   {
+diff --git a/src/lib/appMode.ts b/src/lib/appMode.ts
+index 3d3c179..cecccec 100644
+--- a/src/lib/appMode.ts
++++ b/src/lib/appMode.ts
+@@ -87,6 +87,12 @@ export function rowAllowed(mode: unknown, features: unknown, row: MoreRowId): bo
+   return !need || featureOn(mode, features, need);
+ }
+ 
++/**
++ * Is the app locked behind a PIN? A Register follows the shared Require PIN setting. A Companion always locks (when anyone has a PIN),
++ * and it never touches that shared setting, so setting up a phone cannot switch the lock on for the shop's tills.
++ */
++export const lockRequired = (s: { requirePin: boolean; appMode?: unknown }): boolean => s.requirePin || readMode(s.appMode) === 'companion';
++
+ /** The mode the device is in, and the switches it has, in the shape the screens and Settings want. */
+ export type DeviceModeState = { mode: DeviceMode; features: RegisterFeatures };
+ export const readDeviceMode = (settings: { appMode?: unknown; registerFeatures?: unknown }): DeviceModeState => ({ mode: readMode(settings.appMode), features: readFeatures(settings.registerFeatures) });
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index 11bc779..08d1c10 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone'] as const;
++export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
+ 
+ export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+diff --git a/src/lib/setupFlow.ts b/src/lib/setupFlow.ts
+index fb44eaa..6a21d66 100644
+--- a/src/lib/setupFlow.ts
++++ b/src/lib/setupFlow.ts
+@@ -70,13 +70,14 @@ export const setupFinished = (profile: SetupProfile, ctx: SetupContext) => !firs
+  * read, so the screen passes it in.
+  */
+ export function setupContext(
+-  settings: { requirePin?: boolean; staff?: { role: string; pinHash?: string }[]; registerName?: string; registerFeatures?: unknown },
++  settings: { requirePin?: boolean; appMode?: unknown; staff?: { role: string; pinHash?: string }[]; registerName?: string; registerFeatures?: unknown },
+   shopifyConnected: boolean,
+ ): SetupContext {
+   const features = (settings.registerFeatures ?? {}) as Partial<RegisterFeatures>;
+   return {
+     shopify: shopifyConnected,
+-    ownerPin: !!settings.requirePin && (settings.staff ?? []).some(m => m.role === 'owner' && !!m.pinHash),
++    // A companion locks through the device mode (lockRequired), so it only needs an owner with a PIN. The shared Require PIN setting belongs to every register and is not changed for a phone.
++    ownerPin: (!!settings.requirePin || settings.appMode === 'companion') && (settings.staff ?? []).some(m => m.role === 'owner' && !!m.pinHash),
+     registerNamed: (settings.registerName ?? '').trim() !== '' && settings.registerName !== DEFAULT_REGISTER_NAME,
+     anyFeature: Object.values(features).some(v => v === true),
+   };
+diff --git a/src/lib/staffAuth.ts b/src/lib/staffAuth.ts
+index 27efefb..734a8fa 100644
+--- a/src/lib/staffAuth.ts
++++ b/src/lib/staffAuth.ts
+@@ -13,7 +13,7 @@ export type SignInResult = { ok: boolean; message: string; staff?: StaffMember }
+ function apply(m: StaffMember, method: 'PIN' | 'pass'): SignInResult {
+   const st = useApp.getState(); const prev = st.settings.staff.find(x => x.id === st.staffId);
+   if (prev?.id === m.id && st.unlocked) return { ok: true, message: `Already signed in as ${m.name}`, staff: m };
+-  st.set({ staffId: m.id, unlocked: true });
++  st.set({ staffId: m.id, unlocked: true, lastPinAt: Date.now() });
+   void csv.event({ kind: 'staff_switch', staff: m.name, detail: `${method}; from ${prev?.name ?? 'nobody'}` }).catch(() => {});
+   return { ok: true, message: prev && st.unlocked ? `Switched to ${m.name}` : `Signed in as ${m.name}`, staff: m };
+ }
+@@ -34,7 +34,9 @@ export async function signInWithPass(raw: string): Promise<SignInResult> {
+   const m = findByBadge(useApp.getState().settings.staff, raw);
+   return m ? apply(m, 'pass') : { ok: false, message: 'That pass is not recognised. It may have been cancelled or replaced.' };
+ }
+-export function lockRegister() { useApp.getState().set({ unlocked: false, staffId: undefined }); }
++export function lockRegister() { useApp.getState().set({ unlocked: false, staffId: undefined, lastPinAt: undefined }); }
++/** A Companion locking itself after sitting idle or away. Logged like the Lock row, so the history shows why. */
++export function lockIdle() { const st = useApp.getState(); const who = st.settings.staff.find(x => x.id === st.staffId)?.name ?? ''; lockRegister(); void csv.event({ kind: 'staff_switch', staff: who, detail: 'locked after being idle' }).catch(() => {}); }
+ /** The grid's Lock POS tile. Checks first (staff exist, no card payment waiting), then locks. The cart is left exactly as it is. */
+ export function lockNow(): LockDecision {
+   const st = useApp.getState();
+diff --git a/src/lib/stepUp.ts b/src/lib/stepUp.ts
+new file mode 100644
+index 0000000..8370608
+--- /dev/null
++++ b/src/lib/stepUp.ts
+@@ -0,0 +1,49 @@
++// Location: src/lib/stepUp.ts
++// Companion mode locking (docs/COMPANION_PLAN.md). Two rules, both only for a device in Companion mode (a Register behaves as it always has):
++//  1. The app locks again by itself when nobody has touched it for a while, or after it has been away in the background.
++//  2. Anything that changes something that matters asks for the signed-in person's PIN again when the last PIN entry is too old (a "step-up").
++// Pure rules, no React and no store, so they run in the node tests. The screen that asks is src/ui/StepUpHost.tsx.
++
++/** What a step-up is for. Each has the sentence the PIN prompt shows. */
++export type StepUpAction = 'payment' | 'refund' | 'shopify' | 'drawer' | 'admin' | 'mode';
++export const STEP_UP_INFO: Record<StepUpAction, { title: string; why: string }> = {
++  payment: { title: 'Take a payment', why: 'Enter your PIN to take a payment.' },
++  refund: { title: 'Refund or return', why: 'Enter your PIN to refund or return an order.' },
++  shopify: { title: 'Change the shop', why: 'Enter your PIN to change items, stock, customers or orders in Shopify.' },
++  drawer: { title: 'Change the cash drawer', why: 'Enter your PIN to change the cash drawer.' },
++  admin: { title: 'Settings and staff', why: 'Enter your PIN to change settings, staff or backups.' },
++  mode: { title: 'What this device is for', why: 'Enter your PIN to change which features this device has.' },
++};
++/** Opening one of these pages asks first. Anything not listed opens freely. */
++export const STEP_UP_ROUTES: Record<string, StepUpAction> = { pay: 'payment', createItem: 'shopify', editItem: 'shopify', drawer: 'drawer', settings: 'admin', staff: 'admin', deviceMode: 'mode' };
++export const stepUpForRoute = (route: string): StepUpAction | undefined => STEP_UP_ROUTES[route];
++
++/** Minutes. 0 means "every time" for the step-up window and "never" for auto-lock. */
++export const STEP_UP_CHOICES: readonly number[] = [0, 1, 5, 15];
++export const AUTO_LOCK_CHOICES: readonly number[] = [1, 2, 5, 10, 0];
++export const DEFAULT_STEP_UP_MINUTES = 5;
++export const DEFAULT_AUTO_LOCK_MINUTES = 2;
++/** Anything read from storage is untrusted: only one of the offered choices counts, the rest fall back. */
++export const readMinutes = (raw: unknown, choices: readonly number[], fallback: number): number => (typeof raw === 'number' && choices.includes(raw) ? raw : fallback);
++
++export type StepUpInput = { companion: boolean; staffCount: number; lastPinAt?: number; now: number; minutes: number };
++/**
++ * Does this action need the PIN typed again? No on a Register, none when nobody has a PIN (a prompt could never be answered),
++ * always when the window is 0, otherwise only when the last PIN entry (signing in counts) is older than the window.
++ */
++export function stepUpNeeded(i: StepUpInput): boolean {
++  if (!i.companion || i.staffCount === 0) return false;
++  if (i.minutes <= 0) return true;
++  return i.lastPinAt === undefined || i.now - i.lastPinAt > i.minutes * 60_000;
++}
++
++export type LockDueInput = { companion: boolean; staffCount: number; unlocked: boolean; paymentActive: boolean; quietMs: number; minutes: number };
++/** Should the app lock itself now? Never mid card payment (the same rule as the Lock row), never when there is nobody to sign back in. */
++export function lockDue(i: LockDueInput): boolean {
++  if (!i.companion || i.staffCount === 0 || !i.unlocked || i.paymentActive || i.minutes <= 0) return false;
++  return i.quietMs >= i.minutes * 60_000;
++}
++
++/** Five wrong PINs at the prompt lock the app. */
++export const MAX_STEP_UP_TRIES = 5;
++export const tooManyTries = (wrong: number): boolean => wrong >= MAX_STEP_UP_TRIES;
+diff --git a/src/lib/stepUpGate.ts b/src/lib/stepUpGate.ts
+new file mode 100644
+index 0000000..7e7ea97
+--- /dev/null
++++ b/src/lib/stepUpGate.ts
+@@ -0,0 +1,19 @@
++// Location: src/lib/stepUpGate.ts
++// The doorway the screens use: `await requireStepUp('shopify')` before a change that matters. Returns true straight away when no PIN is
++// needed (a Register, practice and demo, nobody has a PIN, or a PIN was typed recently) and otherwise shows the PIN prompt.
++import { useApp } from '../state/store';
++import { useStepUp } from '../state/stepUp';
++import { isTraining } from './trainingGuard';
++import { readMode } from './appMode';
++import { DEFAULT_STEP_UP_MINUTES, STEP_UP_CHOICES, readMinutes, stepUpNeeded, type StepUpAction } from './stepUp';
++
++/** Would a step-up be asked for right now? Synchronous, so navigation can stay instant when the answer is no. */
++export function stepUpDue(): boolean {
++  if (isTraining()) return false;
++  const s = useApp.getState();
++  return stepUpNeeded({ companion: readMode(s.settings.appMode) === 'companion', staffCount: s.settings.staff.length, lastPinAt: s.lastPinAt, now: Date.now(), minutes: readMinutes(s.settings.stepUpMinutes, STEP_UP_CHOICES, DEFAULT_STEP_UP_MINUTES) });
++}
++export async function requireStepUp(action: StepUpAction): Promise<boolean> {
++  if (!stepUpDue()) return true;
++  return useStepUp.getState().open(action);
++}
+diff --git a/src/lib/trainingSandbox.ts b/src/lib/trainingSandbox.ts
+index b2aa3b8..f71893e 100644
+--- a/src/lib/trainingSandbox.ts
++++ b/src/lib/trainingSandbox.ts
+@@ -13,6 +13,7 @@ import { hashBadge } from './badge';
+ import { PRACTICE_PASS_CODE } from './trainingPass';
+ import type { StaffMember } from './types';
+ import type { Injection } from './trainingModule';
++import { ALL_FEATURES } from './appMode';
+ 
+ export const TRAIN_PREFIX = 'train-';
+ export const isTrainId = (id: string | undefined): boolean => !!id && id.includes(TRAIN_PREFIX);
+@@ -110,7 +111,7 @@ export function practiceStaff(): StaffMember[] {
+ /** A made-up receipt server address. It makes the Receipt window offer its QR code, Email link and Text link as on a real till. Nothing is ever sent to it: uploads are switched off in training, so the QR page says "Not published yet". */
+ export const PRACTICE_RECEIPT_URL = 'https://receipts.practice.invalid';
+ export function sandboxSettings(real: Settings, perms: unknown = {}): Settings {
+-  return { ...real, receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, cartWarnings: [], smartChange: false, cashRounding: true };
++  return { ...real, appMode: 'register' as const, registerFeatures: { ...ALL_FEATURES }, /* practice and demo show every feature, whatever this device is */ receipt: { ...real.receipt, serverUrl: PRACTICE_RECEIPT_URL }, passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`, locationName: 'Practice location', inventory: defaultInvPrefs(), bundlesJson: PRACTICE_BUNDLES, adjustPerms: perms as any, cartWarnings: [], smartChange: false, cashRounding: true };
+ }
+ export type Swap = Pick<App, 'settings' | 'data' | 'grid' | 'gridVersion' | 'pos' | 'sync' | 'zeller' | 'staffId' | 'unlocked'>;
+ /** The real state to put back afterwards. */
+diff --git a/src/screens/AdjustmentReview.tsx b/src/screens/AdjustmentReview.tsx
+index 071a44a..0f287ca 100644
+--- a/src/screens/AdjustmentReview.tsx
++++ b/src/screens/AdjustmentReview.tsx
+@@ -10,6 +10,7 @@ import { usePriced } from '../state/selectors';
+ import { fmt } from '../lib/money';
+ import { adjustmentRows, keepRow, removeRow, signedSaving, unresolvedRows, type AdjustRow } from '../lib/adjustReview';
+ import { actingRole, canAdjust, flaggedDeniedHint } from '../lib/adjustPerms';
++import { lockRequired } from '../lib/appMode';
+ 
+ const KIND_LABEL = { item: 'Item price', line: 'Line price', order: 'Whole order price' } as const;
+ 
+@@ -17,7 +18,7 @@ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, on
+   const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced();
+   const rows = adjustmentRows(cart, priced); const todo = unresolvedRows(rows);
+   // A16.9: Keep and Adjust confirm or change a price, so they follow the role rules. Remove only puts a price back, so it never does.
+-  const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
++  const role = useApp(s => actingRole(lockRequired(s.settings), s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
+   const may = (k: AdjustRow['kind']) => canAdjust(perms, role, k);
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Check the price adjustments" screen="sheet_review">
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index 77ba8cf..16a306e 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -40,6 +40,7 @@ import { builtinHelp } from '../lib/helpBuiltin';
+ import { kvGet, kvSet, kvDel } from '../lib/kv';
+ import { isTraining } from '../lib/trainingGuard';
+ import { uid } from '../lib/ids';
++import { lockRequired } from '../lib/appMode';
+ 
+ /** Questions to start with, shown while the chat is empty. Each one is sent as it stands. */
+ const STARTERS = ['How do I refund a card payment?', 'What is low on stock?', 'How much did we sell today?', 'Show me how to get to Reports'];
+@@ -110,8 +111,8 @@ function OfflineList({ query, role, pages, screens, onOpen }: { query: string; r
+ export default function Assistant() {
+   const { c } = useTheme(); const nav = useNav(); const overlap = useKeyboardOverlap();
+   const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
+-  const canEdit = useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
+-  const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId));
++  const canEdit = useApp(s => canEditAdjustPerms(actingRole(lockRequired(s.settings), s.settings.staff, s.staffId), s.settings.staff));
++  const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(lockRequired(s.settings), s.settings.staff, s.staffId));
+   const grid = useApp(s => s.grid); // the Quick Menu layout, so a guide can be walked to an item on it (B1)
+   const key = historyKey(staffId);
+   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
+diff --git a/src/screens/AssistantSettings.tsx b/src/screens/AssistantSettings.tsx
+index 1ff4af2..f706ca5 100644
+--- a/src/screens/AssistantSettings.tsx
++++ b/src/screens/AssistantSettings.tsx
+@@ -16,10 +16,11 @@ import { testConnection, type TestReport } from '../lib/assistantClient';
+ import { getAssistantKey, setAssistantKey } from '../lib/assistantKey';
+ import { isTraining } from '../lib/trainingGuard';
+ import { AssistantLogViewer } from './AssistantLog';
++import { lockRequired } from '../lib/appMode';
+ 
+ /** Whether this person may open the page. The Settings menu and the page itself both ask, so a role change closes it. */
+ export function useCanEditAssistant(): boolean {
+-  return useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
++  return useApp(s => canEditAdjustPerms(actingRole(lockRequired(s.settings), s.settings.staff, s.staffId), s.settings.staff));
+ }
+ 
+ type Draft = { baseUrl: string; model: string; temperature: string; timeoutSec: string; contextSize: string; toolCallLimit: string; endpointMode: EndpointMode; logCapMB: string; gate: GateToggles };
+diff --git a/src/screens/Customers.tsx b/src/screens/Customers.tsx
+index fa643cd..40020ea 100644
+--- a/src/screens/Customers.tsx
++++ b/src/screens/Customers.tsx
+@@ -9,6 +9,7 @@ import { isTraining } from '../lib/trainingGuard';
+ import { SPOT, customersRowSpot } from '../lib/trainingSpots';
+ import { setCustomersDraftProbe } from '../lib/trainingProbe';
+ import type { Customer } from '../lib/types';
++import { requireStepUp } from '../lib/stepUpGate';
+ 
+ export default function Customers() {
+   const nav = useNav(); const list = useApp(s => s.data.customers); const [q, setQ] = useState(''); const [sel, setSel] = useState<Customer | null>(null); const [form, setForm] = useState<{ id?: string; first: string; last: string; email: string; phone: string; note: string } | null>(null); const [busy, setBusy] = useState(false); const [remote, setRemote] = useState<Customer[]>([]);
+@@ -16,7 +17,7 @@ export default function Customers() {
+   const shown = [...hits, ...remote.filter(r => !hits.some(h => h.id === r.id))];
+   useEffect(() => { setCustomersDraftProbe(form ? { first: form.first, last: form.last, email: form.email, phone: form.phone } : undefined); return () => setCustomersDraftProbe(undefined); }, [form]); // training reads what is typed
+   const save = async () => {
+-    if (!form) return; setBusy(true);
++    if (!form) return; if (!(await requireStepUp('shopify'))) return; setBusy(true);
+     try { const input = { firstName: form.first.trim() || undefined, lastName: form.last.trim() || undefined, email: form.email.trim() || undefined, phone: form.phone.trim() || undefined, note: form.note.trim() || undefined };
+       const name = [form.first.trim(), form.last.trim()].filter(Boolean).join(' ') || form.email.trim() || form.phone.trim() || 'Customer';
+       // In practice a customer is only ever made or changed on this iPad: nothing goes to Shopify.
+diff --git a/src/screens/DeviceMode.tsx b/src/screens/DeviceMode.tsx
+index 50a31da..adcd2fb 100644
+--- a/src/screens/DeviceMode.tsx
++++ b/src/screens/DeviceMode.tsx
+@@ -4,16 +4,18 @@
+ //
+ // A register has every feature whatever is stored, so a register shows the mode and nothing to switch. The switches a
+ // companion had are kept while it is a register, so going back and forth does not lose them. The step-up PIN that
+-// should guard these changes arrives with patch 0177.
++// guards these changes arrives with patch 0177 (below): changing the mode, a feature or the locking choices asks for the PIN.
+ import React from 'react';
+ import { View } from 'react-native';
+-import { Btn, Page, Row, Section, Toggle, Txt, confirm } from '../ui/kit';
++import { Btn, Page, Row, Section, Segmented, Toggle, Txt, confirm } from '../ui/kit';
+ import { Spot } from '../ui/Spot';
+ import { useNav } from '../ui/nav';
+ import { useApp } from '../state/store';
+ import { isTraining } from '../lib/trainingGuard';
+ import { FEATURE_GROUPS, resolveFeatures, type DeviceMode, type FeatureId } from '../lib/appMode';
+ import { featureSpot, SPOT } from '../lib/trainingSpots';
++import { requireStepUp } from '../lib/stepUpGate';
++import { AUTO_LOCK_CHOICES, STEP_UP_CHOICES } from '../lib/stepUp';
+ 
+ export default function DeviceMode() {
+   const nav = useNav();
+@@ -32,10 +34,11 @@ export default function DeviceMode() {
+         : 'This device gets every register feature back: the till, the card reader, the drawer and the rest.',
+       next === 'companion' ? 'Become a companion' : 'Become a register',
+     );
+-    if (ok) patch({ appMode: next });
++    if (ok && (await requireStepUp('mode'))) patch({ appMode: next });
+   };
+ 
+-  const setFeature = (id: FeatureId, on: boolean) => patch({ registerFeatures: { ...resolveFeatures('companion', s.registerFeatures), [id]: on } });
++  const setFeature = async (id: FeatureId, on: boolean) => { if (await requireStepUp('mode')) patch({ registerFeatures: { ...resolveFeatures('companion', s.registerFeatures), [id]: on } }); };
++  const setMinutes = async (key: 'autoLockMinutes' | 'stepUpMinutes', v: number) => { if (await requireStepUp('mode')) patch({ [key]: v }); };
+ 
+   return (
+     <Page title="Device mode" onBack={nav.pop} helpId="device-mode">
+@@ -56,13 +59,24 @@ export default function DeviceMode() {
+         {FEATURE_GROUPS.map((g, i) => (
+           <View key={g.id} style={{ paddingBottom: i === FEATURE_GROUPS.length - 1 ? 0 : 8 }}>
+             <Spot id={featureSpot(g.id)}>
+-              <Toggle label={g.title} sub={g.summary} value={features[g.id]} disabled={practice} onChange={v => setFeature(g.id, v)} />
++              <Toggle label={g.title} sub={g.summary} value={features[g.id]} disabled={practice} onChange={v => { void setFeature(g.id, v); }} />
+             </Spot>
+             <Txt size={12} sub style={{ marginHorizontal: 16 }}>{g.items.join(' · ')}</Txt>
+           </View>
+         ))}
+       </Section>
+ 
++      {mode === 'companion' ? (
++        <Section title="Locking" footer="The app asks for a PIN when it opens and locks itself when it has been idle or away. Changing the shop asks for your PIN again if you have not typed it recently.">
++          <View style={{ padding: 14, gap: 6 }}>
++            <Txt weight="600">Lock after being idle</Txt>
++            <Segmented value={s.autoLockMinutes} options={AUTO_LOCK_CHOICES.map(v => ({ v, label: v === 0 ? 'Never' : `${v} min` }))} onChange={v => { void setMinutes('autoLockMinutes', v); }} />
++            <Txt weight="600" style={{ marginTop: 12 }}>Ask for my PIN again after</Txt>
++            <Segmented value={s.stepUpMinutes} options={STEP_UP_CHOICES.map(v => ({ v, label: v === 0 ? 'Every time' : `${v} min` }))} onChange={v => { void setMinutes('stepUpMinutes', v); }} />
++          </View>
++        </Section>
++      ) : null}
++
+       <View style={{ padding: 16, gap: 10 }}>
+         {mode === 'companion'
+           ? <Btn title="Switch this device to Register mode" icon="storefront-outline" kind="secondary" spot={SPOT.deviceModeRegister} disabled={practice} onPress={() => void setMode('register')} />
+diff --git a/src/screens/Inventory.tsx b/src/screens/Inventory.tsx
+index bac843a..a71620a 100644
+--- a/src/screens/Inventory.tsx
++++ b/src/screens/Inventory.tsx
+@@ -15,6 +15,7 @@ import { SPOT, invChipSpot, invGroupSpot, invModeSpot, invReasonSpot, invRowSpot
+ import { clearInvProbe, setInvProbe } from '../lib/trainingProbe';
+ import { isTraining } from '../lib/trainingGuard';
+ import type { Variant } from '../lib/types';
++import { requireStepUp } from '../lib/stepUpGate';
+ 
+ const STOCK_LABEL: [StockFilter, string][] = [['all', 'All'], ['low', 'Low'], ['zero', 'Out (0)'], ['neg', 'Negative'], ['tracked', 'Tracked'], ['untracked', 'Not tracked']];
+ const STATUS_LABEL: [StatusFilter, string][] = [['active', 'Active'], ['draft', 'Draft'], ['archived', 'Archived'], ['all', 'All']];
+@@ -44,6 +45,7 @@ export default function Inventory() {
+ 
+   const apply = async () => {
+     if (!v?.inventoryItemId || !loc) return alertMsg('Not linked', 'This item has no inventory item or no location is set.');
++    if (!(await requireStepUp('shopify'))) return;
+     setBusy(true);
+     try {
+       if (isTraining()) { /* practice: the count changes on this device only, nothing goes to Shopify */ }
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index eade0d1..873f5e2 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -9,6 +9,7 @@ import { useDemo } from '../state/demoSession';
+ import { SPOT } from '../lib/trainingSpots';
+ import { actingRole } from '../lib/adjustPerms';
+ import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
++import { lockRequired } from '../lib/appMode';
+ 
+ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }> = {
+   orders: { icon: 'receipt-outline', title: 'Orders', route: 'orders' }, items: { icon: 'cube-outline', title: 'Items', route: 'items' },
+@@ -28,8 +29,8 @@ const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller rea
+ 
+ export default function More() {
+   const { c } = useTheme(); const nav = useNav(); const ui = useUi(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
+-  const lockOn = s.requirePin && s.staff.length > 0;
+-  const role = actingRole(s.requirePin, s.staff, staff?.id);
++  const lockOn = lockRequired(s) && s.staff.length > 0;
++  const role = actingRole(lockRequired(s), s.staff, staff?.id);
+   const groups = visibleMoreRows(ui, role, lockOn);
+   const demo = useDemo(st => st.active);
+   const openDemo = async () => {
+diff --git a/src/screens/Orders.tsx b/src/screens/Orders.tsx
+index aeffb19..3317a4e 100644
+--- a/src/screens/Orders.tsx
++++ b/src/screens/Orders.tsx
+@@ -11,6 +11,7 @@ import { listPracticeOrders, markPracticeFulfilled } from '../lib/trainingOrders
+ import { SPOT, orderRowSpot } from '../lib/trainingSpots';
+ import { Spot, spotPressed } from '../ui/Spot';
+ import type { SaleRecord } from '../lib/types';
++import { requireStepUp } from '../lib/stepUpGate';
+ 
+ const Q = { open: 'tag:pos status:open', unfulfilled: 'tag:pos fulfillment_status:unfulfilled', completed: 'tag:pos fulfillment_status:fulfilled' } as const;
+ /** Orders: Open | Unfulfilled | Completed - Mark fulfilled, refund and receipt. */
+@@ -20,7 +21,7 @@ export default function Orders() {
+      catch (e: any) { alertMsg('Could not load orders', e.message, 'orders'); } setBusy(false); }, [tab]);
+   useEffect(() => { void load(); }, [tab]);
+   if (refund) return <RefundScreen order={refund} onClose={() => { setRefund(null); void load(); }} onGoPay={() => nav.push('pay')} />;
+-  const mark = async (o: PosOrder) => { try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
++  const mark = async (o: PosOrder) => { if (!(await requireStepUp('shopify'))) return; try { if (isTraining()) markPracticeFulfilled(o.id); else await fulfillOrder(o.id); setSel(null); void load(); } catch (e: any) { alertMsg('Could not fulfil', e.message, 'orders'); } };
+   return (
+     <Page title="Orders" onBack={nav.pop} helpId="orders" scroll={false}>
+       <View style={{ padding: 16 }}><Spot id={SPOT.ordersTabOpen}><Segmented value={tab} onChange={t => { const spots = { open: SPOT.ordersTabOpen, unfulfilled: SPOT.ordersTabUnfulfilled, completed: SPOT.ordersTabCompleted }; spotPressed(spots[t]); setTab(t); }} options={[{ v: 'open', label: 'Open' }, { v: 'unfulfilled', label: 'Unfulfilled' }, { v: 'completed', label: 'Completed' }]} /></Spot></View>
+diff --git a/src/screens/Refund.tsx b/src/screens/Refund.tsx
+index b93df8a..974f59d 100644
+--- a/src/screens/Refund.tsx
++++ b/src/screens/Refund.tsx
+@@ -19,6 +19,7 @@ import { getTerminal } from '../zellerBridge';
+ import { uid } from '../lib/ids';
+ import type { PosOrder } from '../lib/shopify/orders';
+ import type { Cart, Variant } from '../lib/types';
++import { requireStepUp } from '../lib/stepUpGate';
+ 
+ /** Return or exchange: pick items or an amount, add replacement items; button reads "Refund $X" or "Even exchange". */
+ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOrder; onClose: () => void; onGoPay: () => void }) {
+@@ -42,6 +43,7 @@ export default function RefundScreen({ order, onClose, onGoPay }: { order: PosOr
+   const label = returnCents <= 0 && !repl.lines.length ? 'Nothing selected' : sum.mode === 'even' ? 'Even exchange' : sum.mode === 'refund' ? `Refund ${fmt(sum.amountCents)}` : `Charge ${fmt(sum.amountCents)}`;
+ 
+   const go = async () => {
++    if (!(await requireStepUp('refund'))) return;
+     if (returnCents <= 0) return alertMsg('Select something to return');
+     if (mode === 'amount' && digitsToCents(digits) > maxMoney) return alertMsg('Too much', `This order only has ${fmt(maxMoney)} left to refund.`);
+     const credit = Math.min(returnCents, replPriced.netCents); const cashOut = Math.max(0, returnCents - replPriced.netCents);
+diff --git a/src/screens/ScannerSpeed.tsx b/src/screens/ScannerSpeed.tsx
+index 5c38341..ddac945 100644
+--- a/src/screens/ScannerSpeed.tsx
++++ b/src/screens/ScannerSpeed.tsx
+@@ -10,6 +10,7 @@ import { saveScannerCalibration } from '../lib/sync';
+ import { actingRole } from '../lib/adjustPerms';
+ import { ALL_SCANNER_CODES, DEFAULT_SPEED_RANGES, SPEED_TABLE, speedForInterval, type ScannerCode, type SpeedId } from '../lib/scannerCodes';
+ import { MAX_SAMPLES, MIN_SAMPLES, SPEED_IDS, SPEED_NAME, SPEED_TEST_TEXT, calibrationProblems, canCalibrate, describeRange, effectiveRanges, measure, newTiming, noteChange, rangeFromSamples, withRange, type Measurement } from '../lib/scanSpeed';
++import { lockRequired } from '../lib/appMode';
+ 
+ const codeById = (id: string): ScannerCode => ALL_SCANNER_CODES.find(c => c.id === id)!;
+ const testCode = codeById('speed-test');
+@@ -17,7 +18,7 @@ const ms = (n: number) => `${n.toFixed(1)} ms`;
+ 
+ export function HardwareTest() {
+   const cal = useApp(s => s.settings.scannerCal); const ranges = effectiveRanges(cal);
+-  const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const admin = canCalibrate(role);
++  const role = useApp(s => actingRole(lockRequired(s.settings), s.settings.staff, s.staffId)); const admin = canCalibrate(role);
+   const [scans, setScans] = useState<{ code: string; m: Measurement | null }[]>([]);
+   const [test, setTest] = useState<Measurement | null>(null);
+   const [full, setFull] = useState<ScannerCode | null>(null); const [calOpen, setCalOpen] = useState(false);
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index f5694bd..8194d32 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -28,6 +28,7 @@ import { profileNote } from '../lib/changeScore';
+ import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
+ import { GIFT_CARD_PASSES } from '../lib/features';
+ import { TILE_COLORS, useTheme } from '../ui/theme';
++import { requireStepUp } from '../lib/stepUpGate';
+ 
+ type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings' | 'assistant';
+ const HELP_PAGE: Record<Sub, string> = {
+@@ -199,6 +200,7 @@ function BackupSettings() {
+     await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: name, UTI: uti });
+   };
+   const exportEncrypted = () => run(async () => {
++    if (!(await requireStepUp('admin'))) return;
+     if (pass.length < MIN_PASSPHRASE) throw new Error(`Use a passphrase of at least ${MIN_PASSPHRASE} characters.`);
+     if (pass !== pass2) throw new Error('The two passphrases do not match.');
+     setMsg('Encrypting… this takes a few seconds.');
+@@ -207,6 +209,7 @@ function BackupSettings() {
+     return 'Backup created. Keep the passphrase safe: without it the file cannot be opened.';
+   });
+   const exportPlain = () => run(async () => {
++    if (!(await requireStepUp('admin'))) return;
+     if (!(await confirm('Export without encryption?', 'The file will contain your Shopify client secret and other logins in plain text. Anyone who gets it can use them. Delete it once you have imported it.', 'Export plain', true))) return;
+     await shareFile(backupFileName(false), JSON.stringify(await collectBackup(), null, 2), 'public.json');
+     return 'Plain backup created. Delete it after importing.';
+@@ -214,6 +217,7 @@ function BackupSettings() {
+   const restorePlain = async (text: string) => {
+     const b = validateBackup(JSON.parse(text));
+     if (!(await confirm('Restore this backup?', 'This replaces the settings, grid layout and Shopify login on this device. This register keeps its own name and ID.', 'Restore', true))) return;
++    if (!(await requireStepUp('admin'))) return;
+     return applyBackup(b);
+   };
+   const pick = () => run(async () => {
+diff --git a/src/screens/Setup.tsx b/src/screens/Setup.tsx
+index 97c2b4d..86523aa 100644
+--- a/src/screens/Setup.tsx
++++ b/src/screens/Setup.tsx
+@@ -15,7 +15,7 @@ import { useApp, currentStaff } from '../state/store';
+ import { actingRole } from '../lib/adjustPerms';
+ import { hasCreds } from '../lib/shopify/client';
+ import { isTraining } from '../lib/trainingGuard';
+-import { DEVICE_MODES, type DeviceMode } from '../lib/appMode';
++import { DEVICE_MODES, lockRequired, type DeviceMode } from '../lib/appMode';
+ import { firstUnfinished, setupContext, setupProgress, setupSteps, type SetupProfile, type SetupStep } from '../lib/setupFlow';
+ import { SPOT } from '../lib/trainingSpots';
+ 
+@@ -44,7 +44,7 @@ export default function Setup() {
+ 
+   const mode: DeviceMode = s.appMode;
+   const profile: SetupProfile = mode === 'companion' ? 'companion' : 'register';
+-  const role = actingRole(s.requirePin, s.staff, currentStaff()?.id);
++  const role = actingRole(lockRequired(s), s.staff, currentStaff()?.id);
+   const ctx = setupContext(s, hasCreds());
+   const steps = setupSteps(profile);
+   const progress = setupProgress(profile, ctx);
+diff --git a/src/screens/Staff.tsx b/src/screens/Staff.tsx
+index 173bc14..7872a5b 100644
+--- a/src/screens/Staff.tsx
++++ b/src/screens/Staff.tsx
+@@ -13,6 +13,7 @@ import { uid } from '../lib/ids';
+ import { MODES, MODE_BLURB, MODE_LABEL, MORE_GROUPS, MORE_LABEL, TAB_LABEL, TAB_ORDER, TABS_BY_LEVEL, TEXT_LABEL, isSoleAdmin, moreLevelIncludes, readUi, readCustom, withCustom, withMode, type CustomUi, type MoreRowId, type TabId, type UiMode } from '../lib/uiMode';
+ import type { Role } from '../lib/types';
+ import { ADJUST_KINDS, KIND_NAME, RESTRICTABLE_ROLES, ROLE_PLURAL, actingRole, canAdjust, canEditAdjustPerms, permsSummary, setAdjustPerm } from '../lib/adjustPerms';
++import { lockRequired } from '../lib/appMode';
+ 
+ /** Staff: PINs (salted hash, shared across registers via the settings metaobject) and roles. */
+ export default function Staff() {
+@@ -123,7 +124,7 @@ void Card; void Chip;
+ /** A16.9: which roles may set which price adjustments. Everything is allowed until a switch is turned off. */
+ function AdjustRoleRules() {
+   const s = useApp(st => st.settings); const staffId = useApp(st => st.staffId); const patch = useApp(st => st.patchSettings);
+-  const me = actingRole(s.requirePin, s.staff, staffId); const mayEdit = canEditAdjustPerms(me, s.staff);
++  const me = actingRole(lockRequired(s), s.staff, staffId); const mayEdit = canEditAdjustPerms(me, s.staff);
+   const notes = permsSummary(s.adjustPerms);
+   const flip = (role: Role, kind: (typeof ADJUST_KINDS)[number], allowed: boolean) => {
+     if (!mayEdit) return alertMsg('Only an owner can change this', 'Ask an owner to change who may set price adjustments.');
+diff --git a/src/screens/StaffLogin.tsx b/src/screens/StaffLogin.tsx
+index 026fd5e..a3cf341 100644
+--- a/src/screens/StaffLogin.tsx
++++ b/src/screens/StaffLogin.tsx
+@@ -9,6 +9,7 @@ import { useApp } from '../state/store';
+ import { CameraScanner, HidScanner } from './Scanner';
+ import { isBadgeCode } from '../lib/badge';
+ import { lockRegister, signInWithPass, signInWithPin, type SignInResult } from '../lib/staffAuth';
++import { lockRequired } from '../lib/appMode';
+ 
+ export const PinPad = ({ onKey }: { onKey: (k: string) => void }) => (
+   <Spot id={SPOT.loginPinpad} style={{ width: 280 }}>
+@@ -52,7 +53,7 @@ export function StaffLoginPad({ onDone, scannerOn = true }: { onDone: (r: SignIn
+ 
+ /** Quick staff change from the Checkout grid or header: sign in as someone else without locking the register first. */
+ export function SwitchStaffSheet({ visible, onClose, onSwitched }: { visible: boolean; onClose: () => void; onSwitched?: (message: string) => void }) {
+-  const staff = useApp(s => s.settings.staff); const requirePin = useApp(s => s.settings.requirePin);
++  const staff = useApp(s => s.settings.staff); const requirePin = useApp(s => lockRequired(s.settings));
+   const cur = useApp(s => s.settings.staff.find(x => x.id === s.staffId));
+   return (
+     <Sheet visible={visible} onClose={onClose} title="Switch staff">
+diff --git a/src/screens/sheets.tsx b/src/screens/sheets.tsx
+index 5310c89..034f0f3 100644
+--- a/src/screens/sheets.tsx
++++ b/src/screens/sheets.tsx
+@@ -25,6 +25,7 @@ import { lookupGiftCard, newGiftCode, type GiftCardInfo } from '../lib/shopify/g
+ import { stripGiftPrefix, normaliseCode } from '../lib/giftCode';
+ import { CameraScanner } from './Scanner';
+ import type { CartLine, Customer, ManualDiscount } from '../lib/types';
++import { requireStepUp } from '../lib/stepUpGate';
+ 
+ /** Manual discount: Shopify discount-code presets as tappable chips + custom % / $ keypad. */
+ export function DiscountSheet({ visible, onClose, onApply, offSpot, current, title = 'Discount' }: { visible: boolean; onClose: () => void; onApply: (d?: ManualDiscount) => void; offSpot?: string; current?: ManualDiscount; title?: string }) {
+@@ -91,6 +92,7 @@ export function CustomerSheet({ visible, onClose, onPick, allowCreate = true, st
+       const c: Customer = { id: `train-cu-new-${Date.now()}`, name: [f.first.trim(), f.last.trim()].filter(Boolean).join(' ') || f.email.trim() || f.phone.trim(), email: f.email.trim() || undefined, phone: f.phone.trim() || undefined, orders: 0, spentCents: 0 };
+       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); setBusy(false); onPick(c); onClose(); return;
+     }
++    if (!(await requireStepUp('shopify'))) { setBusy(false); return; }
+     try {
+       const c = await createCustomer({ firstName: f.first.trim() || undefined, lastName: f.last.trim() || undefined, email: f.email.trim() || undefined, phone: f.phone.trim() || undefined });
+       useApp.getState().patchData({ customers: [c, ...useApp.getState().data.customers] }); setCreating(false); setF({ first: '', last: '', email: '', phone: '' }); onPick(c); onClose();
+diff --git a/src/state/stepUp.ts b/src/state/stepUp.ts
+new file mode 100644
+index 0000000..7d3dc8c
+--- /dev/null
++++ b/src/state/stepUp.ts
+@@ -0,0 +1,11 @@
++// Location: src/state/stepUp.ts
++// The PIN prompt that Companion mode shows before a sensitive action. In memory only: whoever asks gets a promise that
++// resolves true when the signed-in person typed their PIN, or false when they gave up (or were locked out for too many tries).
++import { create } from 'zustand';
++import type { StepUpAction } from '../lib/stepUp';
++
++type StepUpState = { ask?: { action: StepUpAction; resolve: (ok: boolean) => void }; open: (action: StepUpAction) => Promise<boolean>; close: (ok: boolean) => void };
++export const useStepUp = create<StepUpState>((set, get) => ({
++  open: action => new Promise<boolean>(resolve => { get().ask?.resolve(false); set({ ask: { action, resolve } }); }), // a second prompt cancels the first
++  close: ok => { const a = get().ask; set({ ask: undefined }); a?.resolve(ok); },
++}));
+diff --git a/src/state/store.ts b/src/state/store.ts
+index f7c8b7f..cd0e95c 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -20,6 +20,7 @@ import type { CartWarnings, WarningList } from '../lib/types';
+ import type { ScannerCalibration } from '../lib/scanSpeed';
+ import { isTraining } from '../lib/trainingGuard';
+ import { DEFAULT_FEATURES, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
++import { AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_STEP_UP_MINUTES, STEP_UP_CHOICES, readMinutes } from '../lib/stepUp';
+ 
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+@@ -50,11 +51,13 @@ export type Settings = {
+   // Companion plan (0176): what this device is. Per device, like the register name, so a backup never moves a mode to
+   // another till. A register has every feature; `registerFeatures` is what a companion is allowed to keep.
+   appMode: DeviceMode; registerFeatures: RegisterFeatures; setupDone: boolean;
++  // 0177: Companion locking, per device like the rest. Minutes idle before the app locks itself (0 = never), and how long a PIN entry counts for sensitive actions (0 = every time).
++  autoLockMinutes: number; stepUpMinutes: number;
+ };
+ export const defaultSettings = (): Settings => ({
+   shopName: '', registerId: uid().slice(0, 8), registerName: 'Register 1', cashRounding: true, smartChange: false, consolidate: true, fees: DEFAULT_FEES,
+   theme: 'brand', themeSetupVersion: 1, accent: '#111111', tileSize: 124, glassSurfaces: false, itemSpotlight: { name: false, image: false }, staff: [], requirePin: false, passServerUrl: '', giftClaimUrl: '', autoReceipt: 'ask', receipt: defaultReceiptProfile(), bundlesJson: '', screensaver: defaultScreensaver(), inventory: defaultInvPrefs(), helpDepth: 'basic', adjustPerms: {}, sharedVersion: 0, sharedSettingsPending: false, cartWarnings: [], assistant: defaultAssistant(),
+-  appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false,
++  appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false, autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, stepUpMinutes: DEFAULT_STEP_UP_MINUTES,
+ });
+ 
+ export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+@@ -80,7 +83,7 @@ type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; atte
+ 
+ export type App = {
+   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
+-  sync: SyncState; zeller: ZellerStatus; staffId?: string; unlocked: boolean; toast?: string; saverPreview?: boolean;
++  sync: SyncState; zeller: ZellerStatus; staffId?: string; unlocked: boolean; lastPinAt?: number; /* when a PIN was last typed (signing in counts), for the Companion step-up PIN; in memory only */ toast?: string; saverPreview?: boolean;
+   set: (p: Partial<App>) => void;
+   patchSettings: (p: Partial<Settings>) => void;
+   patchData: (p: Partial<Data>) => void;
+@@ -130,7 +133,7 @@ export const useApp = create<App>((set, get) => ({
+     // register) and nobody is sent through setup after updating. A fresh install has no settings record and starts on it.
+     const setUp = !!settings && (settings as any).setupDone === undefined;
+     set({
+-      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant), appMode: readMode(settings?.appMode), registerFeatures: readFeatures(settings?.registerFeatures), setupDone: setUp ? true : settings?.setupDone === true }, data: { ...emptyData(), ...(data ?? {}) },
++      settings: { ...defaultSettings(), ...(settings ?? {}), ...(migrateTheme ? { theme: 'brand' as const } : {}), themeSetupVersion: 1, autoLockMinutes: readMinutes(settings?.autoLockMinutes, AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES), stepUpMinutes: readMinutes(settings?.stepUpMinutes, STEP_UP_CHOICES, DEFAULT_STEP_UP_MINUTES), itemSpotlight: { ...defaultSettings().itemSpotlight, ...(settings?.itemSpotlight ?? {}) }, receipt: { ...defaultReceiptProfile(), ...(settings?.receipt ?? {}) }, screensaver: { ...defaultScreensaver(), ...(settings?.screensaver ?? {}) }, inventory: { ...defaultInvPrefs(), ...(settings?.inventory ?? {}) }, assistant: normaliseAssistant(settings?.assistant), appMode: readMode(settings?.appMode), registerFeatures: readFeatures(settings?.registerFeatures), setupDone: setUp ? true : settings?.setupDone === true }, data: { ...emptyData(), ...(data ?? {}) },
+       grid: g?.grid ?? defaultGrid(), gridVersion: g?.version ?? 0, pos: { ...emptyPos(), ...(pos ?? {}), ledger: readLedger(pos?.ledger), shared: { ...emptySharedHistory(), ...(pos?.shared ?? {}) } }, ready: true,
+     });
+     if (!settings || migrateTheme || setUp) persist('settings', () => get().settings); // keep the generated registerId and persist the one-time branded-theme and setup migrations
+diff --git a/src/ui/CoachSheet.tsx b/src/ui/CoachSheet.tsx
+index 7b8cb1b..5916d5a 100644
+--- a/src/ui/CoachSheet.tsx
++++ b/src/ui/CoachSheet.tsx
+@@ -23,6 +23,7 @@ import { makeToolSet } from '../lib/assistantTools';
+ import { builtinScreens } from '../lib/assistantScreens';
+ import { builtinHelp } from '../lib/helpBuiltin';
+ import { uid } from '../lib/ids';
++import { lockRequired } from '../lib/appMode';
+ 
+ export default function CoachSheet({ onClose }: { onClose: () => void }) {
+   const { c } = useTheme(); const overlap = useKeyboardOverlap();
+@@ -54,7 +55,7 @@ export default function CoachSheet({ onClose }: { onClose: () => void }) {
+     const pending = [...base, asked]; commit(pending);
+     if (!isConfigured(cfg)) { commit([...pending, hintOnlyReply(task, plan.level, uid(), Date.now())]); setLine(COACH_NOT_SET_UP); return; }
+     setBusy(true); let prepared: Prepared | null = null; const t0 = Date.now(); let apiKey = '';
+-    const real = realSignIn(); const role = actingRole(real.settings.requirePin, real.settings.staff, real.staffId);
++    const real = realSignIn(); const role = actingRole(lockRequired(real.settings), real.settings.staff, real.staffId);
+     const staff = logStaff(real.staffId, real.settings.staff, role); const endpoint = logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode);
+     const tools = makeToolSet({ pages: builtinHelp().pages, screens: builtinScreens(), role, contextSize: cfg.contextSize, limit: COACH_TOOL_LIMIT, tools: coachTools() });
+     try {
+diff --git a/src/ui/StepUpHost.tsx b/src/ui/StepUpHost.tsx
+new file mode 100644
+index 0000000..23824f8
+--- /dev/null
++++ b/src/ui/StepUpHost.tsx
+@@ -0,0 +1,38 @@
++// Location: src/ui/StepUpHost.tsx
++// The PIN prompt for sensitive actions on a Companion (rules in src/lib/stepUp.ts). Mounted once in App.tsx.
++import React, { useEffect, useState } from 'react';
++import { View } from 'react-native';
++import { Btn, Field, Sheet, Txt } from '../ui/kit';
++import { useApp } from '../state/store';
++import { useStepUp } from '../state/stepUp';
++import { verifyPin } from '../lib/pin';
++import { STEP_UP_INFO, tooManyTries } from '../lib/stepUp';
++import { lockIdle } from '../lib/staffAuth';
++
++export default function StepUpHost() {
++  const ask = useStepUp(s => s.ask); const close = useStepUp(s => s.close);
++  const [pin, setPin] = useState(''); const [wrong, setWrong] = useState(0); const [busy, setBusy] = useState(false); const [msg, setMsg] = useState('');
++  useEffect(() => { if (ask) { setPin(''); setWrong(0); setMsg(''); } }, [ask]);
++  if (!ask) return null;
++  const info = STEP_UP_INFO[ask.action];
++  const confirm = async () => {
++    const st = useApp.getState(); const me = st.settings.staff.find(x => x.id === st.staffId);
++    setBusy(true);
++    try {
++      const pool = me ? [me] : st.settings.staff; // whoever is signed in; if nobody is, any PIN on the team will do
++      let ok = false; for (const m of pool) if (await verifyPin(m.salt, pin, m.pinHash)) { ok = true; break; }
++      if (ok) { useApp.getState().set({ lastPinAt: Date.now() }); close(true); return; }
++      const n = wrong + 1; setWrong(n); setPin('');
++      if (tooManyTries(n)) { close(false); lockIdle(); return; }
++      setMsg('Wrong PIN');
++    } finally { setBusy(false); }
++  };
++  return (
++    <Sheet visible onClose={() => close(false)} title={info.title}>
++      <Txt style={{ marginBottom: 12 }}>{info.why}</Txt>
++      <Field label="PIN" value={pin} onChangeText={t => { setPin(t.replace(/\D/g, '')); setMsg(''); }} keyboardType="number-pad" secureTextEntry maxLength={6} autoFocus />
++      {msg ? <Txt color="#c0392b" style={{ marginBottom: 10 }}>{msg}</Txt> : null}
++      <View style={{ gap: 8 }}><Btn title="Confirm" busy={busy} disabled={pin.length < 4} onPress={() => { void confirm(); }} /><Btn kind="ghost" title="Cancel" onPress={() => close(false)} /></View>
++    </Sheet>
++  );
++}
+diff --git a/src/ui/adjustGate.ts b/src/ui/adjustGate.ts
+index bb91915..92fcaca 100644
+--- a/src/ui/adjustGate.ts
++++ b/src/ui/adjustGate.ts
+@@ -4,15 +4,16 @@ import { useApp } from '../state/store';
+ import { actingRole, canAdjust, deniedMessage } from '../lib/adjustPerms';
+ import type { AdjustKind } from '../lib/adjustReview';
+ import { alertMsg, confirm } from './kit';
++import { lockRequired } from '../lib/appMode';
+ 
+ /** Read at the moment of the tap, so a pass swipe or PIN change while a sheet is open is respected. */
+ export function adjustAllowedNow(kind: AdjustKind): boolean {
+   const s = useApp.getState(); const st = s.settings;
+-  return canAdjust(st.adjustPerms, actingRole(st.requirePin, st.staff, s.staffId), kind);
++  return canAdjust(st.adjustPerms, actingRole(lockRequired(st), st.staff, s.staffId), kind);
+ }
+ /** For drawing: re-renders when the person or the rules change. */
+ export function useAdjustAllowed(kind: AdjustKind): boolean {
+-  return useApp(s => canAdjust(s.settings.adjustPerms, actingRole(s.settings.requirePin, s.settings.staff, s.staffId), kind));
++  return useApp(s => canAdjust(s.settings.adjustPerms, actingRole(lockRequired(s.settings), s.settings.staff, s.staffId), kind));
+ }
+ /**
+  * Called before opening an editor. True = go ahead. False = the person may not set this kind of adjustment: with nothing
+@@ -20,7 +21,7 @@ export function useAdjustAllowed(kind: AdjustKind): boolean {
+  */
+ export async function gateAdjust(kind: AdjustKind, existing: boolean, remove: () => void): Promise<boolean> {
+   if (adjustAllowedNow(kind)) return true;
+-  const s = useApp.getState(); const st = s.settings; const d = deniedMessage(actingRole(st.requirePin, st.staff, s.staffId), kind);
++  const s = useApp.getState(); const st = s.settings; const d = deniedMessage(actingRole(lockRequired(st), st.staff, s.staffId), kind);
+   if (!existing) { alertMsg(d.title, d.message); return false; }
+   if (await confirm('Take the adjustment off?', `${d.message} You can take this one off, which puts the price back to normal.`, 'Take off', true)) remove();
+   return false;
+@@ -28,6 +29,6 @@ export async function gateAdjust(kind: AdjustKind, existing: boolean, remove: ()
+ /** A last check at the moment of saving. Shows the message and returns false when not allowed. */
+ export function checkAdjustAllowed(kind: AdjustKind): boolean {
+   if (adjustAllowedNow(kind)) return true;
+-  const s = useApp.getState(); const st = s.settings; const d = deniedMessage(actingRole(st.requirePin, st.staff, s.staffId), kind);
++  const s = useApp.getState(); const st = s.settings; const d = deniedMessage(actingRole(lockRequired(st), st.staff, s.staffId), kind);
+   alertMsg(d.title, d.message); return false;
+ }
+diff --git a/src/ui/nav.tsx b/src/ui/nav.tsx
+index 8ab252e..0082bce 100644
+--- a/src/ui/nav.tsx
++++ b/src/ui/nav.tsx
+@@ -1,4 +1,6 @@
+ import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
++import { stepUpForRoute } from '../lib/stepUp';
++import { requireStepUp, stepUpDue } from '../lib/stepUpGate';
+ 
+ export type Tab = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
+ export type Route = { name: string; params?: any };
+@@ -12,12 +14,19 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
+   const [tab, setTabState] = useState<Tab>('checkout');
+   const [stack, setStack] = useState<Route[]>([]);
+   const setTab = useCallback((t: Tab) => { setTabState(t); setStack([]); }, []);
+-  const push = useCallback((name: string, params?: any) => setStack(s => [...s, { name, params }]), []);
++  // Opening a page that changes something that matters asks for the PIN first on a Companion (src/lib/stepUp.ts). Instant when no PIN is due.
++  const open = useCallback((name: string, params?: any) => {
++    const add = () => setStack(s => [...s, { name, params }]);
++    const action = stepUpForRoute(name);
++    if (!action || !stepUpDue()) return add();
++    void requireStepUp(action).then(ok => { if (ok) add(); });
++  }, []);
++  const push = open;
+   helpOpener = id => push('help', { id });
+   const pop = useCallback(() => setStack(s => s.slice(0, -1)), []);
+   const reset = useCallback(() => setStack([]), []);
+   /** Notification deep-links: a tab name switches tab, anything else pushes a page. */
+-  const go = useCallback((route: string, params?: any) => { if (TAB_ROUTES[route]) { setTabState(TAB_ROUTES[route]); setStack([]); } else setStack(s => [...s, { name: route, params }]); }, []);
++  const go = useCallback((route: string, params?: any) => { if (TAB_ROUTES[route]) { setTabState(TAB_ROUTES[route]); setStack([]); } else open(route, params); }, [open]);
+   const v = useMemo(() => ({ tab, setTab, stack, push, pop, reset, go }), [tab, stack, setTab, push, pop, reset, go]);
+   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
+ }
+diff --git a/tests/setupFlow.test.ts b/tests/setupFlow.test.ts
+index 37a131b..7192136 100644
+--- a/tests/setupFlow.test.ts
++++ b/tests/setupFlow.test.ts
+@@ -61,3 +61,11 @@ test('the context reads the device settings, with the Shopify answer passed in',
+   assert.equal(setupContext({ registerFeatures: { selling: 'yes' } }, false).anyFeature, false);
+   assert.equal(setupContext({}, false).anyFeature, false);
+ });
++
++test('a companion locks through its device mode, so its owner PIN step does not wait for the shared Require PIN setting', () => {
++  const owner = { role: 'owner', pinHash: 'abc' }; const cashier = { role: 'cashier', pinHash: 'abc' };
++  assert.equal(setupContext({ requirePin: false, appMode: 'companion', staff: [owner] }, false).ownerPin, true);
++  assert.equal(setupContext({ requirePin: false, appMode: 'companion', staff: [cashier] }, false).ownerPin, false);
++  assert.equal(setupContext({ requirePin: false, appMode: 'companion', staff: [] }, false).ownerPin, false);
++  assert.equal(setupContext({ requirePin: false, appMode: 'register', staff: [owner] }, false).ownerPin, false); // a register still needs the shared setting
++});
+diff --git a/tests/stepup.test.ts b/tests/stepup.test.ts
+new file mode 100644
+index 0000000..125e33d
+--- /dev/null
++++ b/tests/stepup.test.ts
+@@ -0,0 +1,71 @@
++// Location: tests/stepup.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import fs from 'node:fs';
++import { AUTO_LOCK_CHOICES, MAX_STEP_UP_TRIES, STEP_UP_CHOICES, STEP_UP_INFO, STEP_UP_ROUTES, lockDue, readMinutes, stepUpForRoute, stepUpNeeded, tooManyTries } from '../src/lib/stepUp';
++import { lockRequired } from '../src/lib/appMode';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++import { defaultSettings } from '../src/state/store';
++import { sandboxSettings } from '../src/lib/trainingSandbox';
++
++const MIN = 60_000;
++const base = { companion: true, staffCount: 2, now: 1_000_000_000, minutes: 5 };
++
++test('a Register never asks for a step-up PIN, and neither does a team with no PINs', () => {
++  assert.equal(stepUpNeeded({ ...base, companion: false }), false);
++  assert.equal(stepUpNeeded({ ...base, staffCount: 0 }), false);
++  assert.equal(stepUpNeeded({ ...base, companion: false, minutes: 0 }), false);
++});
++
++test('a Companion asks when no PIN was typed yet, or the last one is older than the window', () => {
++  assert.equal(stepUpNeeded({ ...base, lastPinAt: undefined }), true);
++  assert.equal(stepUpNeeded({ ...base, lastPinAt: base.now - 4 * MIN }), false);
++  assert.equal(stepUpNeeded({ ...base, lastPinAt: base.now - 5 * MIN }), false); // exactly the window is still fine
++  assert.equal(stepUpNeeded({ ...base, lastPinAt: base.now - 5 * MIN - 1 }), true);
++  assert.equal(stepUpNeeded({ ...base, lastPinAt: base.now, minutes: 0 }), true); // 0 means every time
++});
++
++test('auto-lock: only a Companion with a PIN, signed in, quiet long enough, and not mid card payment', () => {
++  const idle = { companion: true, staffCount: 1, unlocked: true, paymentActive: false, quietMs: 2 * MIN, minutes: 2 };
++  assert.equal(lockDue(idle), true);
++  assert.equal(lockDue({ ...idle, quietMs: 2 * MIN - 1 }), false);
++  assert.equal(lockDue({ ...idle, companion: false }), false);
++  assert.equal(lockDue({ ...idle, staffCount: 0 }), false);
++  assert.equal(lockDue({ ...idle, unlocked: false }), false);
++  assert.equal(lockDue({ ...idle, paymentActive: true }), false);
++  assert.equal(lockDue({ ...idle, minutes: 0 }), false); // never
++});
++
++test('stored minutes: only an offered choice counts', () => {
++  assert.equal(readMinutes(10, AUTO_LOCK_CHOICES, 2), 10);
++  assert.equal(readMinutes(0, AUTO_LOCK_CHOICES, 2), 0);
++  for (const bad of [3, -1, '5', null, undefined, NaN]) assert.equal(readMinutes(bad, STEP_UP_CHOICES, 5), 5);
++});
++
++test('every page that asks has words to show, and the sensitive pages are the planned ones', () => {
++  for (const [route, action] of Object.entries(STEP_UP_ROUTES)) { assert.ok(STEP_UP_INFO[action].why.length > 10, route); assert.equal(stepUpForRoute(route), action); }
++  for (const route of ['pay', 'createItem', 'editItem', 'drawer', 'settings', 'staff', 'deviceMode']) assert.ok(stepUpForRoute(route), route);
++  for (const route of ['orders', 'items', 'customers', 'reports', 'help', 'training', 'giftcards', 'export']) assert.equal(stepUpForRoute(route), undefined, route);
++});
++
++test('five wrong PINs lock the app', () => { assert.equal(tooManyTries(MAX_STEP_UP_TRIES - 1), false); assert.equal(tooManyTries(MAX_STEP_UP_TRIES), true); });
++
++test('a Companion always locks and a Register follows the shared Require PIN setting', () => {
++  assert.equal(lockRequired({ requirePin: false }), false);
++  assert.equal(lockRequired({ requirePin: true }), true);
++  assert.equal(lockRequired({ requirePin: false, appMode: 'register' }), false);
++  assert.equal(lockRequired({ requirePin: false, appMode: 'companion' }), true);
++  assert.equal(lockRequired({ requirePin: false, appMode: 'nonsense' }), false);
++});
++
++test('the locking choices are per device, and setup never touches the shared Require PIN setting', () => {
++  for (const k of ['autoLockMinutes', 'stepUpMinutes']) assert.ok((DEVICE_KEYS as readonly string[]).includes(k), k);
++  assert.equal(defaultSettings().autoLockMinutes, 2); assert.equal(defaultSettings().stepUpMinutes, 5);
++  assert.equal(/requirePin/.test(fs.readFileSync('src/screens/Setup.tsx', 'utf8').replace(/\/\/[^\n]*/g, '')), false);
++});
++
++test('practice and demo show every feature whatever this device is, so they never lock themselves', () => {
++  const companion = { ...defaultSettings(), appMode: 'companion' as const, registerFeatures: { selling: false, cardReader: false, cashDrawer: false, staffTools: false, tillDisplay: false, tillTraining: false } };
++  const s = sandboxSettings(companion);
++  assert.equal(s.appMode, 'register'); assert.equal(Object.values(s.registerFeatures).every(Boolean), true);
++});
+-- 
+2.43.0
+
