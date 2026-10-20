@@ -4,7 +4,7 @@ import { clearProbe, registerCheckoutReset, setProbe } from '../lib/trainingProb
 import { SPOT, allProductSpot, findTabSpot, gridPageSpot, searchResultSpot } from '../lib/trainingSpots';
 import { Spot } from '../ui/Spot';
 import React, { useEffect, useMemo, useState } from 'react';
-import { FlatList, Image, Pressable, ScrollView, View } from 'react-native';
+import { FlatList, Pressable, ScrollView, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Btn, Chip, Empty, Field, HelpButton, IconBtn, Keypad, Money, Row, Segmented, Sheet, Txt, alertMsg, confirm, useToast } from '../ui/kit';
 import { useLayout, useTheme } from '../ui/theme';
@@ -22,6 +22,8 @@ import { pickerCrumbs, pickerTitle, resolveScan } from '../lib/lookup';
 import { TileSettingsSheet } from './TileSettings';
 import { addTileAt, breadcrumbs, childTiles, isContainer, moveTileAt, removeTileAt, resolvePath, updateTileAt, viewTiles, type Path } from '../lib/gridNav';
 import { CameraScanner, HidScanner } from './Scanner';
+import ScanPane from '../ui/ScanPane';
+import { POPUP_GONE_MS } from '../lib/scanFeedback';
 import { getCartScan, useCartScanBlocked } from '../lib/scanBridge';
 import { onScanFlush } from '../lib/scanFocus';
 import { SwitchStaffSheet } from './StaffLogin';
@@ -60,12 +62,17 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   const page = grid.pages[Math.min(pageIdx, grid.pages.length - 1)];
   const locked = !!cart.tenders?.length; const n = ops.itemCount(cart);
   useEffect(() => () => { if (spotlightTimer.current) clearTimeout(spotlightTimer.current); }, []);
+  // S5: the popup fills the inner left pane for a few seconds. `spotlightItem` carries the variant, `spotlightAt` the
+  // moment it arrived, so the fade is measured from the scan rather than from the render. A keyboard scan raises it too
+  // (it is the same "Added" confirmation the tap path shows), except while the camera and its own popup are up.
+  const [spotlightAt, setSpotlightAt] = useState(0);
   const showSpotlight = (v: Variant) => {
-    if (!spotlightOptions.name && !spotlightOptions.image) return;
-    setSpotlightItem(v);
+    if (busy.current) return; // the camera sheet has its own popup (S4), the pane popup is for the grid behind it
+    setSpotlightItem(v); setSpotlightAt(Date.now());
     if (spotlightTimer.current) clearTimeout(spotlightTimer.current);
-    spotlightTimer.current = setTimeout(() => setSpotlightItem(null), 2200);
+    spotlightTimer.current = setTimeout(() => setSpotlightItem(null), POPUP_GONE_MS);
   };
+  const clearSpotlight = () => { if (spotlightTimer.current) clearTimeout(spotlightTimer.current); setSpotlightItem(null); };
 
   const add = (v: Variant, count = 1) => {
     if (locked) return alertMsg('Payment in progress', 'Finish or cancel the payment before changing the cart.');
@@ -225,7 +232,7 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
   return (
     <View style={{ flex: 1, flexDirection: 'row' }}>
       <View style={{ flex: tablet && !guided ? 6 : 1 }}>
-        {left}
+        {spotlightItem ? <ScanPane item={spotlightItem} params={spotlightOptions} startedAt={spotlightAt} onDismiss={clearSpotlight} /> : left}
         {!tablet && !guided && n > 0 ? (
           <Pressable ref={openRef} onPress={() => { spotPressed(SPOT.cartOpen); nav.push('cart'); }} accessibilityRole="button" accessibilityLabel={`Cart, ${n} items, ${fmt(priced.netCents)}`} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line, padding: 12, paddingHorizontal: 16, gap: 12 }}>
             <Ionicons name="cart" size={22} color={c.text} /><Txt weight="700" style={{ flex: 1 }}>{n} item{n === 1 ? '' : 's'} · {fmt(priced.netCents)}</Txt>
@@ -244,12 +251,6 @@ export default function Checkout({ guided = false, active = true }: { guided?: b
       <CustomerSheet visible={sheet === 'customers'} onClose={() => setSheet('none')} onPick={cu => setCart(cc => ({ ...cc, customer: { id: cu.id, name: cu.name, email: cu.email, phone: cu.phone } }))} />
       <AddTileSheet visible={sheet === 'add'} onClose={() => setSheet('none')} onPick={onAddTile} />
       <TileSettingsSheet tile={editing_} onClose={() => setEditIdx(null)} onChange={t => editPage(l => updateTileAt(l, valid, editIdx!, () => t))} onRemove={() => { if (editIdx !== null) onRemove(editIdx); setEditIdx(null); }} onOpen={() => { if (editIdx !== null) setPath([...valid, editIdx]); }} />
-      {spotlightItem && (spotlightOptions.name || (spotlightOptions.image && spotlightItem.image)) ? <Pressable onPress={() => setSpotlightItem(null)} accessibilityRole="button" accessibilityLabel="Dismiss item confirmation"
-        style={{ position: 'absolute', top: '18%', alignSelf: 'center', maxWidth: '86%', padding: 14, borderRadius: 18, alignItems: 'center', gap: 8, backgroundColor: c.card, borderWidth: 1, borderColor: c.line, shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 16, elevation: 8 }}>
-        {spotlightOptions.image && spotlightItem.image ? <Image source={{ uri: spotlightItem.image }} resizeMode="contain" style={{ width: 180, height: 150, borderRadius: 12 }} /> : null}
-        {spotlightOptions.name ? <Txt size={22} weight="700" style={{ textAlign: 'center' }}>{spotlightItem.productTitle}{spotlightItem.variantTitle ? ` · ${spotlightItem.variantTitle}` : ''}</Txt> : null}
-      </Pressable> : null}
-
       <LookupSheet mode="price" visible={sheet === 'price'} onClose={() => setSheet('none')} />
       <LookupSheet mode="stock" visible={sheet === 'stock'} onClose={() => setSheet('none')} />
       <CheckChangeSheet visible={sheet === 'change'} onClose={() => setSheet('none')} />

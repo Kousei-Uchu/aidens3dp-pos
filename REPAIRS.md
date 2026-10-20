@@ -72,18 +72,20 @@ Grouped commits are allowed where a change is tiny; every commit still names the
   saver: Checkout keeps one mounted for the whole screen through `onScanFlush`, and re-registers it with a ref so the
   subscription is made once. A single stray key, the finger resting on the scanner, wakes the saver and nothing more. Any
   other scan asks for focus and runs on the screen holding the box, which is how a lookup or the sign-in screen behaves.
-- [ ] **S4. Camera scanner feedback.** Scanning with the camera should flash up the scanned item's details when the
-  existing setting is on, and should always give audio feedback for whether the scan was valid or not.
-- [ ] **S5. Scan popup fills the checkout left pane, with a fade slope.** The existing scan popup should take up the whole
-  inner left pane of checkout (as the split grid/keyboard/All products child view does), stay fully opaque for 3 seconds,
-  then fade with a rising slope so it is fully gone by 5 seconds, and be dismissed at once when tapped or clicked. The new
-  camera-scanner popup does **not** take the full pane: it stays a toast, but it uses the same fade and tap-to-dismiss
-  behaviour. Overlaps S4.
-  While B3 was done, Checkout grew the pieces S5 needs: `deferredScans`/`busy` in `src/screens/Checkout.tsx` keep a
-  keyboard scan out of the grid spotlight while the camera and its popup are up and run it when the camera closes, and the
-  camera closes through `closeCam` rather than `setCam(false)` for that reason. The flash the pane shows is the existing
-  `spotlightItem` block, which today is a card at 18% from the top, ends after a flat 2.2 seconds, and only appears when
-  `settings.itemSpotlight` has a name or an image, so S5 is the change from that card to the pane and its fade slope.
+- [x] **S4. Camera scanner feedback.** Done. The camera now answers in three ways, always, whatever the item spotlight
+  switches say, because a scan should not need to be looked at to be understood. Over the viewfinder a toast carries the
+  same text as before ("Added …" in green, "No item for …" in red), the device gives a double light tick for a hit, and a
+  heavier buzz plus a sideways shake of the toast for a code the till does not know. `src/lib/scanFeedback.ts` (pure)
+  decides the reply and the shake curve, `src/ui/scanFeedback.ts` holds the buzz, and `CameraFlash` in
+  `src/screens/Scanner.tsx` draws it. The camera path and the keyboard path share `scanReply`, so they cannot disagree
+  about what counts as a hit, and the camera's popup sits on the camera sheet, not on the pane behind it.
+- [x] **S5. Scan popup fills the checkout left pane, with a fade slope.** Done. A new `src/ui/ScanPane.tsx` fills the
+  inner left pane of Checkout (the same space the grid, keypad and All products child view take): solid for 3 seconds,
+  then a rising slope (the fall barely moves at first, then drops away) so it is fully gone by 5 seconds, and a tap or a
+  click dismisses it at once. The old card at 18% from the top is gone. The image and name still follow the item
+  spotlight switches; with both off, adds show only the toast, which is `useToast` and always says the name. The camera
+  keeps its own toast with the same fade and tap-to-dismiss, as the note above asks. Timing and the slope live in
+  `src/lib/scanFeedback.ts` (`popupTiming`, `popupOpacity`, `popupAlive`) and are tested in `tests/scanfeedback.test.ts`.
 
 ## Order and grouping
 

@@ -1006,3 +1006,35 @@ On the iPad, with the model set up as in T55 and the context size left at the de
 4. In a new chat, ask *What is selling fastest right now?* The words do not hint at sales, so the model has to ask for the shop tools. **Most important:** tell me which happened. Pass (either): it calls more_tools for the shop and then answers, or it says it could not find anything. Fail: it makes up an answer. In the audit log, a more_tools call shows with the group it asked for.
 5. As a cashier, ask *What are the card reader settings?* Pass: it points at the screen and never shows a setting's value.
 6. Ask the questions that gave you the best answers before this patch. Pass: they still use the right tool. If any is worse, tell me which, and how it was worded.
+
+## T77. Scans after the screensaver, and a barcode that wakes it (B3, S3)
+
+One iPad, a paired Bluetooth scanner, a product whose barcode and SKU are both known. Turn the screensaver on for this test (More ▸ Settings ▸ Screensaver, with a short idle time).
+
+1. Let the screensaver come up. Without tapping anything, scan the product. Pass: the screensaver goes, the item is in the cart, and the little bar says **Added …**. This is the whole of S3.
+2. Tap the screensaver away, then scan straight away. Pass: the item is added. This is B3: before this patch a scan here did nothing until a text field had been focused and unfocused by hand.
+3. Open the search box, type a few letters, then wait about three seconds and scan. Pass: the item is added and the search text stays.
+4. Type in the search box and scan **without** waiting. Pass: nothing is added, because the till is still backing off while you type. Clear the search and scan again: pass, the item is added.
+5. With the screensaver up, press one key on the scanner (hold it against something that is not a barcode, or bump the trigger so a single character arrives) and let go. Pass: the screensaver goes and nothing is added to the cart.
+6. **Most important:** on a cart that already has things in it, let the screensaver come up and scan. Pass: the new item joins the cart that was already there; the cart is not emptied or replaced.
+7. Go to Price check (a tile or the search), let the screensaver come up, and scan. Pass: the screensaver goes and the price is shown.
+
+## T78. Camera feedback, and the popup that fills the pane (S4, S5)
+
+One iPad with a camera, and the item spotlight switches in More ▸ Settings ▸ Theme. A product the camera can read, and a barcode the till does not know.
+
+1. With **Show item name** and **Show item image** off, tap a tile. Pass: the little bar along the bottom says **Added …** and the pane does not change. Nothing large appears.
+2. Turn both switches on. Tap a tile with an image. Pass: the whole left pane fills with the item's image and name.
+3. Watch the fade. Pass: it is fully solid for about 3 seconds, then fades away and is gone by about 5 seconds, and the grid is back underneath.
+4. Tap the full-pane confirmation as soon as it appears. Pass: it goes at once and the grid is back.
+5. **Most important (S4):** tap the camera icon and scan a known item. Pass: a green message appears over the camera, the iPad double-ticks, and the message fades on the same curve, gone by about 5 seconds. The full-pane popup does **not** appear behind the camera.
+6. Scan a barcode the till does not know. Pass: the message is red, says **No item for …**, gives a heavier buzz, and shakes sideways once before fading. Tap it: it goes at once.
+7. Tap **Done** on the camera straight after a scan. Pass: the grid is showing, no leftover confirmation is stuck on it, and a scan made while the camera was up (if the scanner sent one) is not lost: scan again on the grid and pass.
+8. Scan the camera at a real barcode and hold it there. Pass: it counts once, not once per frame.
+
+## T79. A barcode that wakes the screensaver while the camera is open (S3, S5)
+
+One iPad, a paired Bluetooth scanner, and the screensaver set to a short idle time.
+
+1. Open the camera (tap the camera icon) and let the iPad sit until the screensaver comes up over it. Scan a known product. Pass: the screensaver goes and the item is added, even though the camera is still open. The camera's own message does not show for that scan (it was the keyboard scanner, not the camera), and the pane popup does not fight with the camera.
+2. Close the camera. Pass: the grid is back, the cart has the item, and nothing is stuck on screen.

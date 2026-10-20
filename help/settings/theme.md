@@ -21,7 +21,9 @@ Turn on **Glass surfaces** for translucent blurred cards and buttons. This is a 
 Choose **Small**, **Medium** or **Large** under **Tile size**. Tap an accent swatch to change the app's highlight colour; **Default** uses the selected theme's accent.
 
 ### Spotlight added items
-In **Item spotlight**, independently turn on **Show item name** and **Show item image**. A short, large confirmation appears after an item is added by scan or tap; tap it to dismiss early. Both switches are off by default.
+In **Item spotlight**, independently turn on **Show item name** and **Show item image**. After an item is added by scan or tap, a large confirmation fills the left pane of Checkout for a moment: fully solid for 3 seconds, then fading away with a rising slope, gone by 5 seconds. Tap it, or click it, to dismiss it at once. When both switches are off, adds show only the little bar along the bottom (the toast). Both switches are off by default.
+
+A second, smaller confirmation appears over the camera while you are scanning with the camera: it carries the same fade and tap-to-dismiss behaviour, and it always appears, because a scan should always say what it did. A code the till does not know shows there in red with a shake, whatever the item spotlight switches say.
 
 The register's theme, tile size and accent update immediately. A staff member's personal display preferences, set in **More ▸ Staff**, override these defaults only while that person is signed in.
 
@@ -40,6 +42,8 @@ Register defaults are local to this iPad. Staff-specific appearance, accent and 
 | Theme | `brand`, `light`, `dark`, `system` | `src/state/store.ts`, `src/screens/Settings.tsx`, `src/ui/theme.tsx` |
 | Tile size | `S`, `M`, `L` | `src/state/store.ts`, `src/screens/Settings.tsx` |
 | Accent | Default, brand peach, plum, blue, green, red, purple or orange | `src/screens/Settings.tsx`, `src/ui/theme.tsx` |
+| The confirmation after an add | Fills the left pane, 3 s hold then a 2 s fade | `src/ui/ScanPane.tsx`, `src/lib/scanFeedback.ts` |
+| The camera's own confirmation | A toast over the viewfinder, same fade, with a shake and a buzz for a miss | `CameraFlash` in `src/screens/Scanner.tsx`, `src/ui/scanFeedback.ts` |
 | Item spotlight | `itemSpotlight.name`, `itemSpotlight.image` | `src/state/store.ts`, `src/screens/Checkout.tsx` |
 | Glass surfaces | `glassSurfaces` | `src/state/store.ts`, `src/ui/kit.tsx` |
 | Per-staff overrides | `StaffMember.preferences` | `src/lib/types.ts`, `src/screens/Staff.tsx`, `src/ui/theme.tsx`, `src/screens/Tiles.tsx` |
