@@ -21,7 +21,7 @@ Open **More ▸ Settings ▸ Shopify** to connect the register to a Shopify stor
 The domain can be entered as `yourshop.myshopify.com`; the screen normalises it. The Client ID and Client secret are from your Shopify Dev Dashboard app. They are stored in the iOS Keychain on this iPad, not shared with the other registers.
 
 ### Shared storage and disconnecting
-If you use multiple registers, tap **Set up shared storage (metaobjects)** to prepare the Shopify metaobjects used for shared POS data. **Disconnect** removes the Shopify credentials from this iPad; the existing local catalogue remains until you import again.
+If you use multiple registers, tap **Set up shared storage** to prepare the storage used for shared POS data (the Shopify metaobjects today). **Disconnect** removes the Shopify credentials from this iPad; the existing local catalogue remains until you import again.
 
 ## Deep
 
@@ -53,7 +53,7 @@ flowchart TD
 | Access token and Admin GraphQL requests | `getToken`, `gql` in `src/lib/shopify/client.ts` |
 | Shop name and active locations | `fetchShop` in `src/lib/shopify/catalogue.ts` |
 | Bulk catalogue import | `importFromShopify` in `src/lib/sync.ts` |
-| Shared storage definitions | `ensureDefinitions` in `src/lib/shopify/metaobjects.ts` |
+| Shared storage definitions | `ensureShared` in `src/lib/syncBackend.ts`, which the metaobject backend answers with `ensureDefinitions` in `src/lib/shopify/metaobjects.ts` |
 
 The access token is created by the app and refreshed automatically; you do not enter a token in Settings. Credentials and token are kept in the iOS Keychain on this device.
 

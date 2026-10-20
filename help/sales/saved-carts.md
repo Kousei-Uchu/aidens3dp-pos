@@ -89,7 +89,7 @@ flowchart TD
 | The list, Open, Assign, Delete, swipe | `src/screens/SavedCarts.tsx` (`SavedCarts`, `SwipeRow` in `src/ui/SwipeRow.tsx`) |
 | Open, delete, assign | `openSavedCart`, `deleteSavedCart`, `assignSavedCart` in `src/lib/savedOps.ts` |
 | Saving and syncing | `saveCartLocal`, `updateSaved`, `pushSaved`, `pullSaved`, `cartFields` in `src/lib/sync.ts` |
-| The stored shape | `SavedCart` in `src/state/store.ts`; the `pos_saved_cart` definition in `src/lib/shopify/metaobjects.ts` (`ensureDefinitions`) |
+| The stored shape | `SavedCart` in `src/state/store.ts`; the `pos_saved_cart` definition in `src/lib/shopify/metaobjects.ts` (`ensureDefinitions`, reached through `ensureShared` in `src/lib/syncBackend.ts`) |
 | Merging | `mergeCarts` in `src/lib/cartOps.ts` |
 | Removing a used cart | the `savedFrom` check in `Pay.tsx` |
 | Search filter | the `carts` results in `Checkout.tsx` |
@@ -100,7 +100,7 @@ A saved cart stores `lines_json`, `discount_json` and `customer_json` along with
 `pullSaved` asks for up to 100 carts. A cart that is deleted elsewhere and is not in that list is left alone, because the code does not guess about deletions. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet.
 
 ### Reading the code for a fault
-- **A cart saved on one register is missing on another.** On the saving register, look for **not synced**: it is still `dirty`. Otherwise check the other register's sync strip, and that Settings ▸ Shopify ▸ **Set up shared storage (metaobjects)** was run (it creates `pos_saved_cart`).
+- **A cart saved on one register is missing on another.** On the saving register, look for **not synced**: it is still `dirty`. Otherwise check the other register's sync strip, and that Settings ▸ Shopify ▸ **Set up shared storage** was run (it creates `pos_saved_cart`).
 - **A deleted cart came back.** The register that still had it was offline with its own copy marked dirty, and sent it on reconnecting.
 - **Saved, but the whole order price is gone.** Working as designed (see `SaveCartSheet`).
 - **A saved cart is still listed after the sale was paid.** The sale was made from a merged cart, not an opened one: only `openSavedCart` into an empty cart sets `savedFrom`. Delete the saved cart by hand.

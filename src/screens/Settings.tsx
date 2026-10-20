@@ -9,7 +9,7 @@ import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { getReceiptSecret, setReceiptSecret, getPassSecret, setPassSecret, getClaimSecret, setClaimSecret, clearCreds, getToken, hasCreds, loadCreds, saveCreds, shopDomain, tokenScopes, normaliseDomain } from '../lib/shopify/client';
 import { fetchShop } from '../lib/shopify/catalogue';
-import { ensureDefinitions } from '../lib/shopify/metaobjects';
+import { ensureShared } from '../lib/syncBackend';
 import { importFromShopify, pushLayout, pushSharedSettings, pollShared } from '../lib/sync';
 import { uploadSampleReceipt } from '../lib/receiptSync';
 import { csv } from '../lib/csvStore';
@@ -136,7 +136,7 @@ function ShopifySettings() {
       <Btn title="Save & test connection" onPress={() => void connect()} busy={busy} style={{ marginTop: 10 }} />
       {locs.length > 1 || s.locationName ? <View style={{ marginTop: 14 }}><Txt weight="600" style={{ marginBottom: 6 }}>Location (stock & orders)</Txt><View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>{(locs.length ? locs : [{ id: s.locationId!, name: s.locationName! }]).map(l => <Chip key={l.id} label={l.name} active={s.locationId === l.id} onPress={() => patch({ locationId: l.id, locationName: l.name })} />)}</View></View> : null}
       <Btn title="Import from Shopify" icon="cloud-download-outline" kind="secondary" onPress={() => void imp()} busy={busy} style={{ marginTop: 10 }} disabled={!hasCreds()} />
-      <Btn title="Set up shared storage (metaobjects)" icon="construct-outline" kind="secondary" disabled={!hasCreds()} onPress={async () => { try { await ensureDefinitions(); setMsg('Shared storage is ready.'); } catch (e: any) { setMsg(`Setup failed: ${e.message}`); } }} />
+      <Btn title="Set up shared storage" icon="construct-outline" kind="secondary" disabled={!hasCreds()} onPress={async () => { try { await ensureShared(); setMsg('Shared storage is ready.'); } catch (e: any) { setMsg(`Setup failed: ${e.message}`); } }} />
       <Btn title="Disconnect" kind="ghost" onPress={async () => { if (await confirm('Disconnect Shopify?', 'Credentials are removed from this device. Catalogue stays until re-import.', 'Disconnect', true)) { await clearCreds(); setF({ domain: '', id: '', secret: '' }); } }} />
       {msg ? <Txt size={13} sub style={{ marginTop: 8 }}>{msg}</Txt> : null}
       <Txt size={12} sub style={{ marginTop: 10 }}>{Object.keys(data.variants).length} variants · {data.collections.length} collections · {data.customers.length} customers{data.catalogueAt ? ` · imported ${new Date(data.catalogueAt).toLocaleString()}` : ''}</Txt>

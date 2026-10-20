@@ -260,6 +260,36 @@ join the others. Decisions I made without asking:
   `/android`, the repo root only) and both files are tracked. No other folder in the repo is named `ios` or `android`
   outside node_modules, so the change catches nothing else.
 
+## CloudKit, patch 3: the shared-state seam (2026-10-20)
+
+Patch 2 linked the registers. Patch 3 is the plan's "backend interface wrapped around the current metaobjects code": the seam
+both transports sit behind, so patch 4 can add CloudKit without `sync.ts` changing. Decisions I made without asking:
+
+- **The interface is the five calls sync.ts already made.** `SharedBackend` is `ensure`, `get`, `put`, `list` and `remove`,
+  with a row and a page shape taken straight from the metaobject helpers. Nothing cleverer: a bigger interface would have meant
+  inventing behaviour CloudKit's record API does not have, and the whole point is that the metaobject backend is a thin wrap.
+- **The shop's type names, not either store's.** The interface speaks in `cart`, `layout`, `sale`, `rollup` and `settings`,
+  and each backend maps those onto its own thing (`pos_sale` today, a CloudKit record type later). A `SHARED_TYPES` list is
+  exported so a test can prove both backends cover all five.
+- **The seam blocks writes in training, not reads.** The plan asks that `kvWriteAllowed` also cover CloudKit writes. The rule
+  lives in `putShared` and `removeShared` (the write path), while `getShared` and `listShared` stay open: a training course
+  teaches on real history, so reading it must not be what a guard stops. `backendWritable()` is exported so a caller can ask.
+- **A missing backend throws plainly.** Before one is installed the seam throws "Shared storage is not connected on this
+  till." (synchronously, because it is a wiring mistake, not a network state) rather than an undefined-method crash or a silent
+  no-op. `activeBackendKind()` answers `none` so a screen could say where records are kept.
+- **The sale-detail field is a backend capability, not a special case in sync.ts.** The metaobject backend adds `sale_json`
+  to an older shop's sales definition on demand and answers whether it worked. That moved behind an optional `detailReady`,
+  so a CloudKit backend (which has no such schema step) simply does not implement it and the caller defaults to "ready".
+  A caller that gets false still writes the sale without the detail, which is exactly the old behaviour.
+- **`metaobjects.ts` is unchanged.** The seam wraps it rather than rewriting it, so the raw metaobject helpers still hold the
+  GraphQL and the definition list, and the metaobject backend is a mapping over them. Reports and the Settings button were
+  moved onto the seam too, so the only remaining `metaobjects` import is inside the backend.
+- **The Settings button lost "(metaobjects)".** It is now **Set up shared storage**, because the storage behind it is the
+  backend's business, not the person's. The help pages that named the button are updated, which regenerated `help/help.json`.
+- **Patch 3 answers no CloudKit question and moves no record.** It is a seam, so it is fully testable in Node: the contract is
+  pinned in `tests/syncbackend.test.ts` against a fake backend. The four owner unknowns still open in the plan's section 7 are
+  each tagged in that plan with the patch that will first need them (4 and 8), because none of them is about this seam.
+
 ## Companion mode, patch 0176: the device mode and the setup checklist (2026-10-20)
 
 The first patch of `docs/COMPANION_PLAN.md`. It adds the gate, the two stored keys and the two screens; nothing is hidden yet.

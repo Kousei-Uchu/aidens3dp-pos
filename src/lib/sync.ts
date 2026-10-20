@@ -13,7 +13,7 @@ import { buildWarningListEntries, mergeWarningList } from './warningList';
 import { isTraining } from './trainingGuard';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
-import * as meta from './shopify/metaobjects';
+import { getShared, listShared, putShared, detailReadyShared } from './syncBackend';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
 import { createGiftCard } from './shopify/giftcards';
@@ -79,8 +79,8 @@ async function runItem(o: OutboxItem) {
   if (!o.done.entry) {
     // The whole sale in `sale_json`, so another till can show this one's orders in full (the shop-wide view). The definition's
     // field is added on demand; a till that cannot add it still sends the row, the same way it did before.
-    const detailed = await meta.ensureSaleDetailField();
-    await meta.upsert(meta.TYPES.sale, cur.uuid, {
+    const detailed = await detailReadyShared('sale');
+    await putShared('sale', cur.uuid, {
       sale_uuid: cur.uuid, order_gid: cur.orderGid, register_id: cur.registerId, employee: cur.staff, ts: cur.ts, entry_type: cur.type, items_cents: cur.itemsCents,
       discounts_cents: cur.discountCents, total_cents: cur.totalCents, cogs_cents: cur.cogsCents, fees_cents: cur.feesCents, rounding_cents: cur.roundingCents,
       refund_of: cur.refundOf, status: 'complete', tenders_json: JSON.stringify(cur.tenders.map(t => ({ k: t.kind, a: t.amountCents, r: t.card?.externalReference }))),
@@ -91,10 +91,10 @@ async function runItem(o: OutboxItem) {
   }
   if (!o.done.rollup) {
     const key = rollupKey(cur.registerId, cur.ts);
-    const row = await meta.getByHandle(meta.TYPES.rollup, key);
+    const row = await getShared('rollup', key);
     const base: Totals = row?.f.totals_json ? { ...emptyTotals(), ...JSON.parse(row.f.totals_json) } : emptyTotals();
     const next = applyRecord(base, cur); // idempotent via `applied`
-    await meta.upsert(meta.TYPES.rollup, key, { rollup_key: key, register_id: cur.registerId, date: key.split('|')[1], totals_json: JSON.stringify(next) });
+    await putShared('rollup', key, { rollup_key: key, register_id: cur.registerId, date: key.split('|')[1], totals_json: JSON.stringify(next) });
     st().patchPos({ rollups: { ...st().pos.rollups, [key]: next } });
     mark('rollup');
   }
@@ -141,10 +141,14 @@ export async function importFromShopify(onProgress: (s: string) => void) {
 export async function pollShared() {
   const s = st(); if (!hasCreds()) return;
   try {
-    if (s.settings.sharedSettingsPending) await pushSharedSettings();
-    if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
-    if (s.settings.drawerPending) await pushDrawer().catch(() => {});
-    if (s.settings.warningListPending) await pushWarningList().catch(() => {});
+    // Practice data is never sent: the seam refuses these writes in training anyway, and skipping them here keeps a course
+    // from showing a sync error for a push that was never meant to happen.
+    if (!isTraining()) {
+      if (s.settings.sharedSettingsPending) await pushSharedSettings();
+      if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
+      if (s.settings.drawerPending) await pushDrawer().catch(() => {});
+      if (s.settings.warningListPending) await pushWarningList().catch(() => {});
+    }
     // stock
     if (s.settings.locationId && s.data.stockSince) {
       const since = new Date().toISOString();
@@ -185,7 +189,7 @@ export async function pullSalesHistory(force = false): Promise<void> {
   const fresh: SaleRecord[] = [];
   let after: string | null = null;
   for (let page = 0; page < SALES_PAGES; page++) {
-    const r = await meta.list(meta.TYPES.sale, { first: 100, after });
+    const r = await listShared('sale', { first: 100, after });
     let added = 0;
     for (const row of r.rows) {
       const rec = decodeSaleRow(row.f);
@@ -200,7 +204,7 @@ export async function pullSalesHistory(force = false): Promise<void> {
   const rollups: RollupRow[] = [];
   after = null;
   for (let page = 0; page < ROLLUP_PAGES; page++) {
-    const r = await meta.list(meta.TYPES.rollup, { first: 100, after });
+    const r = await listShared('rollup', { first: 100, after });
     for (const row of r.rows) {
       const registerId = row.f.register_id, date = row.f.date;
       if (!registerId || !date) continue;
@@ -231,7 +235,7 @@ export async function pushSaved() {
   if (!hasCreds()) return;
   for (const c of st().pos.saved.filter(x => x.dirty)) {
     try {
-      const row = await meta.upsert(meta.TYPES.cart, c.id, cartFields(c));
+      const row = await putShared('cart', c.id, cartFields(c));
       st().patchPos({ saved: st().pos.saved.map(x => (x.id === c.id ? { ...x, dirty: false, remoteId: row.id, version: Number(row.f.version) || 1 } : x)) });
     } catch (e) { if (isNetworkError(e)) return; }
   }
@@ -239,7 +243,7 @@ export async function pushSaved() {
   st().patchPos({ saved: st().pos.saved.filter(x => !(x.status === 'void' && !x.dirty)) });
 }
 async function pullSaved() {
-  const { rows } = await meta.list(meta.TYPES.cart, { first: 100 });
+  const { rows } = await listShared('cart', { first: 100 });
   const local = st().pos.saved; const byId = new Map(local.map(c => [c.id, c]));
   const next: SavedCart[] = [...local];
   for (const r of rows) {
@@ -260,11 +264,11 @@ async function pullSaved() {
 export async function pushLayout() {
   if (!hasCreds()) return;
   const s = st(); const version = s.gridVersion + 1;
-  await meta.upsert(meta.TYPES.layout, 'main', { layout_key: 'main', layout_json: JSON.stringify(s.grid), version, updated_by: s.settings.registerName, updated_at: new Date().toISOString() });
+  await putShared('layout', 'main', { layout_key: 'main', layout_json: JSON.stringify(s.grid), version, updated_by: s.settings.registerName, updated_at: new Date().toISOString() });
   s.setGrid(s.grid, version);
 }
 async function pullLayout() {
-  const row = await meta.getByHandle(meta.TYPES.layout, 'main'); if (!row) return;
+  const row = await getShared('layout', 'main'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v > st().gridVersion) { try { st().setGrid(parseGrid(row.f.layout_json).grid, v); } catch { /* ignore a bad layout */ } }
 }
@@ -275,7 +279,7 @@ export async function pushSharedSettings() {
   if (!hasCreds()) return;
   const version = snapshot.sharedVersion + 1;
   try {
-    await meta.upsert(meta.TYPES.settings, 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(shared) });
+    await putShared('settings', 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(shared) });
   } catch (error) {
     st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Shared settings not uploaded: ${String((error as Error)?.message ?? error)}` } });
     throw error;
@@ -286,7 +290,7 @@ export async function pushSharedSettings() {
 }
 async function pullSettings() {
   if (st().settings.sharedSettingsPending) return;
-  const row = await meta.getByHandle(meta.TYPES.settings, 'shared'); if (!row) return;
+  const row = await getShared('settings', 'shared'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v > st().settings.sharedVersion) { try { st().patchSettings({ ...JSON.parse(row.f.settings_json), sharedVersion: v }); } catch {} }
 }
@@ -302,9 +306,9 @@ export async function pushScannerCalibration() {
   const cal = st().settings.scannerCal ?? null;
   try {
     // Number it after whatever is already there, so another register's newer copy is never mistaken for older.
-    const remote = await meta.getByHandle(meta.TYPES.settings, 'scanner');
+    const remote = await getShared('settings', 'scanner');
     const version = Math.max(st().settings.scannerCalVersion ?? 0, Number(remote?.f.version) || 0) + 1;
-    await meta.upsert(meta.TYPES.settings, 'scanner', { settings_key: 'scanner', version, settings_json: JSON.stringify({ calibration: cal }) });
+    await putShared('settings', 'scanner', { settings_key: 'scanner', version, settings_json: JSON.stringify({ calibration: cal }) });
     st().patchSettings({ scannerCalVersion: version, scannerCalPending: false });
   } catch (error) {
     st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Scanner calibration not uploaded: ${String((error as Error)?.message ?? error)}` } });
@@ -313,7 +317,7 @@ export async function pushScannerCalibration() {
 }
 async function pullScannerCalibration() {
   if (st().settings.scannerCalPending) return; // our unsent change wins until it is pushed
-  const row = await meta.getByHandle(meta.TYPES.settings, 'scanner'); if (!row) return;
+  const row = await getShared('settings', 'scanner'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v <= (st().settings.scannerCalVersion ?? 0)) return;
   try { const j = JSON.parse(row.f.settings_json); st().patchSettings({ scannerCal: j.calibration ? readCalibration(j.calibration) ?? undefined : undefined, scannerCalVersion: v }); } catch { /* ignore a bad record */ }
@@ -339,7 +343,7 @@ export async function pushDrawer() {
   let shift = pos.shift; let ledger = pos.ledger;
   let version = (st().settings.drawerVersion ?? 0) + 1;
   try {
-    const remote = await meta.getByHandle(meta.TYPES.settings, 'drawer');
+    const remote = await getShared('settings', 'drawer');
     const remoteV = Number(remote?.f.version) || 0;
     version = Math.max(st().settings.drawerVersion ?? 0, remoteV) + 1;
     if (remote?.f.settings_json) {
@@ -351,7 +355,7 @@ export async function pushDrawer() {
     }
   } catch { /* a read that fails leaves our own copy to upload */ }
   try {
-    await meta.upsert(meta.TYPES.settings, 'drawer', { settings_key: 'drawer', version, settings_json: JSON.stringify({ shift, ledger }) });
+    await putShared('settings', 'drawer', { settings_key: 'drawer', version, settings_json: JSON.stringify({ shift, ledger }) });
   } catch (error) {
     st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Drawer not uploaded: ${String((error as Error)?.message ?? error)}` } });
     throw error;
@@ -362,7 +366,7 @@ export async function pushDrawer() {
 
 async function pullDrawer() {
   if (isTraining() || st().settings.drawerPending) return; // our unsent change wins until it is pushed
-  const row = await meta.getByHandle(meta.TYPES.settings, 'drawer'); if (!row) return;
+  const row = await getShared('settings', 'drawer'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v <= (st().settings.drawerVersion ?? 0)) return;
   try {
@@ -427,7 +431,7 @@ export async function pushWarningList() {
   let version = (st().settings.warningListVersion ?? 0) + 1;
   try {
     // Fold in lines another register added before we write, so a push never drops their history.
-    const remote = await meta.getByHandle(meta.TYPES.settings, 'warning_list');
+    const remote = await getShared('settings', 'warning_list');
     version = Math.max(st().settings.warningListVersion ?? 0, Number(remote?.f.version) || 0) + 1;
     if (remote?.f.settings_json) {
       let r: { entries?: unknown } | null = null; try { r = JSON.parse(remote.f.settings_json); } catch { r = null; }
@@ -435,7 +439,7 @@ export async function pushWarningList() {
     }
   } catch { /* a read that fails leaves our own copy to upload */ }
   try {
-    await meta.upsert(meta.TYPES.settings, 'warning_list', { settings_key: 'warning_list', version, settings_json: JSON.stringify({ entries: list }) });
+    await putShared('settings', 'warning_list', { settings_key: 'warning_list', version, settings_json: JSON.stringify({ entries: list }) });
   } catch (error) {
     st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Warning list not uploaded: ${String((error as Error)?.message ?? error)}` } });
     throw error;
@@ -445,7 +449,7 @@ export async function pushWarningList() {
 
 async function pullWarningList() {
   if (isTraining() || st().settings.warningListPending) return; // our unsent change wins until it is pushed
-  const row = await meta.getByHandle(meta.TYPES.settings, 'warning_list'); if (!row) return;
+  const row = await getShared('settings', 'warning_list'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v <= (st().settings.warningListVersion ?? 0)) return;
   try {

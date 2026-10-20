@@ -9,6 +9,8 @@ import { Txt } from './src/ui/kit';
 import { useApp } from './src/state/store';
 import { loadCreds } from './src/lib/shopify/client';
 import { pollShared, processOutbox, pushSaved } from './src/lib/sync';
+import { setBackend } from './src/lib/syncBackend';
+import { metaobjectBackend } from './src/lib/shopify/metaobjectBackend';
 import Checkout from './src/screens/Checkout';
 import GuidedCheckout from './src/screens/GuidedCheckout';
 import CartPane from './src/screens/CartPane';
@@ -103,6 +105,10 @@ function Shell() {
   const { plan } = useRouteTransition(nav.stack, practiceRoutes); // the page that is leaving stays drawn while the new one arrives
   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
   useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
+  // CloudKit sync patch 3: shared state sits behind a backend seam. The metaobject backend is the one that exists today; a
+  // later patch swaps in CloudKit without sync.ts changing. Installing it before the first poll means every shared call has a
+  // backend from the start.
+  useEffect(() => { setBackend(metaobjectBackend); }, []);
   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
   // Companion plan, patch 0176: a device that has never been set up opens the setup checklist once. Installs from before
   // this patch were marked set up by hydrate, and practice never runs it.
