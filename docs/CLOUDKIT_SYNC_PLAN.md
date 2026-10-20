@@ -134,10 +134,27 @@ Imports use create-if-absent so an old import never overwrites a newer edit.
 
 ### Unknown, needing the owner
 
-- [ ] Whether the customer data held in sales records raises privacy-policy questions once stored in iCloud.
-- [ ] Owner iCloud storage headroom for sales and Square history.
-- [ ] Whether to use `encryptedValues` for sales and customer fields from the start.
-- [ ] Dual-write or cut over in one go.
+All four are answered (see "Answered by the owner" below). Nothing here blocks patch 4.
+
+- [x] Whether the customer data held in sales records raises privacy-policy questions once stored in iCloud. Answered: an in-app note now, policy wording the owner's.
+- [x] Owner iCloud storage headroom for sales and Square history. Answered: ample.
+- [x] Whether to use `encryptedValues` for sales and customer fields from the start. Answered: plain fields for now, encryption a later option.
+- [x] Dual-write or cut over in one go. Answered: decided at patch 8.
+
+### Answered by the owner (20 October 2026, before patch 4)
+
+- **Field encryption: plain fields for now, `encryptedValues` kept as a later option.** Sales are written unencrypted. The owner's reasoning is sound and is recorded here: it is easier to add encryption later than to remove it, so nothing is locked in by starting plain. Patch 4 therefore writes ordinary CloudKit fields, and the one helper that reads and writes a sale is kept small enough that switching a field to `encryptedValues` is a change in that helper, not a migration. The trade-off to remember: an encrypted field cannot be used in a `CKQuery` predicate, so a later switch moves anything queried server-side (totals, dates) off the encrypted side, which is why the plan already keeps rollups apart from the sale record.
+- **Cut-over: decided at patch 8, not now.** Patch 4 keeps the metaobject backend live beside the CloudKit one, so the seam has two implementations in patch 4 and the backend flag arrives with the rollback work. Section 6's dual-write question is therefore open until then.
+- **Privacy: an in-app note now, policy wording the owner's.** The Cloud sync page and its help page will say plainly what is stored in iCloud and what is not (see below). The shop's own privacy policy and the App Store privacy details stay the owner's to update; nothing in the code changes a policy.
+- **iCloud storage: fine.** The owner's plan has ample headroom. The estimate stands for the record: this till keeps 2000 sales locally at roughly 1 to 3 KB of `sale_json` each, so a few thousand sales is a few MB, and Square history is one gzipped month file each (a repo test packs 400 sales under one eighth of their JSON). A few MB of sales plus a few MB a year of Square history is well inside the owner's plan.
+
+### What is and is not in iCloud (for the in-app note)
+
+Written to the owner's iCloud, shared with the registers that joined the shop: the shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings), the grid layout, saved carts, sales records and daily totals, the shared cash drawer, the scanner calibration, the warning list, and the Square history files. A sale record carries the customer's name, email and phone when one was attached. All of this is currently stored **unencrypted** in CloudKit, protected by the Apple ID and the share, not by a field key.
+
+Never in iCloud: the Shopify token and app credentials, staff PINs and hashes, cashier passes, the AI assistant key, the open cart, the device's own settings (theme, tile size, register name, device mode and its switches), and the training or Demo data.
+
+If encryption is switched on later, the likely split is: customer name, email and phone into `encryptedValues`, with the queryable numbers (totals, dates, register, staff) left plain so reports and the shop-wide sales view still work server-side.
 
 ## 8. Risks
 

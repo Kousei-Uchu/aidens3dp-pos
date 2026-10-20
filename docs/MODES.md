@@ -23,6 +23,18 @@ Custom controls: text size (normal, large, extra large), plain-English lines (of
 ## Code
 `src/lib/uiMode.ts` holds every rule and is tested without the app (`tests/uimode.test.ts`). `src/ui/uiProfile.tsx` gives the current person's profile to the screens. Text scaling is applied in `Txt`, `Btn`, `Chip` and `Segmented` (`src/ui/kit.tsx`). Registers on an older app version ignore the mode and show Standard.
 
+## Device mode (Register or Companion)
+Display modes are about the person. The **device mode** is about the device: a Register has every feature, while a Companion has the till features switched off until someone turns them on in **More ▸ Device mode**. The same page is where the mode itself is changed.
+
+The six switches (the **Companion features** section of that page) are Selling, Card reader, Cash drawer, Till staff tools, Till display and Till training. A Companion starts with all six off; the page lists what each one covers.
+
+Rules:
+- It is set **per device**. It is never shared between registers through sync, and a backup never copies it to another device.
+- It only ever **narrows** what a person's role and display mode already allow. It never grants anything. A Register keeps every feature whatever is stored, and an unknown stored value reads as a Register, so a bad value can never hollow out a till.
+- A Companion keeps Help, Demo mode, Notifications, the AI assistant, Settings for owners and managers, and the sync and Shopify diagnostics open.
+
+Rules live in `src/lib/appMode.ts` and the checklist that sets a device up is `src/lib/setupFlow.ts`; both are tested without the app (`tests/appmode.test.ts`, `tests/setupflow.test.ts`). The plan is `docs/COMPANION_PLAN.md`.
+
 ## Guided checkout (Minimal, or Custom with Guided steps)
 One question per screen, with a step bar and Back / Next in the same place:
 1. **Items** - the normal item picker (Quick Menu and All products, scanning, search). No keypad, grid editing or staff chip. Next stays disabled until something is in the cart.
