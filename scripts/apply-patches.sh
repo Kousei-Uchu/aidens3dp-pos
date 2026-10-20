@@ -8,6 +8,8 @@ set -uo pipefail
 cd "$(git rev-parse --show-toplevel)"
 LEDGER=patches/APPLIED.txt
 touch "$LEDGER"
+# A ledger that does not end in a newline would have the next name glued onto its last line, and then neither name would match.
+[ -s "$LEDGER" ] && [ -n "$(tail -c1 "$LEDGER")" ] && echo >> "$LEDGER"
 applied=0
 shopt -s nullglob
 for p in $(ls patches/*.patch | sort); do
