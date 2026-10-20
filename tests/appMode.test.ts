@@ -8,6 +8,7 @@ import {
   featureOn, readDeviceMode, readFeatures, readMode, resolveFeatures, routeAllowed, rowAllowed, tabAllowed,
 } from '../src/lib/appMode';
 import { TAB_ORDER, MORE_GROUPS } from '../src/lib/uiMode';
+import { COMPANION_TAB_ORDER, deviceTabs, homeTab, isCompanionTab } from '../src/lib/appMode';
 
 test('only the two known modes are read, anything else is a register', () => {
   assert.deepEqual(DEVICE_MODES, ['register', 'companion']);
@@ -50,7 +51,7 @@ test('the store view keeps the mode and the raw switches apart', () => {
 });
 
 test('a register allows every tab, row and page', () => {
-  for (const tab of TAB_ORDER) assert.equal(tabAllowed('register', {}, tab), true);
+  for (const tab of TAB_ORDER) assert.equal(tabAllowed('register', {}, tab), !isCompanionTab(tab));
   for (const row of MORE_GROUPS.flat()) assert.equal(rowAllowed('register', {}, row), true);
   for (const route of ['cart', 'pay', 'saved', 'drawer', 'staff', 'terminalPlay', 'training', 'trainingRun', 'settings', 'help', 'orders', 'items', 'cloudSync']) {
     assert.equal(routeAllowed('register', {}, route), true);
@@ -70,7 +71,7 @@ test('a companion row and page follow their group', () => {
   const off = {};
   const on = { cashDrawer: true, staffTools: true, tillTraining: true, cardReader: true, selling: true };
   assert.equal(rowAllowed('companion', off, 'drawer'), false);
-  assert.equal(rowAllowed('companion', off, 'staff'), false);
+  assert.equal(rowAllowed('companion', off, 'staff'), true); // Staff stays open: the lock needs an owner PIN, made and reset there
   assert.equal(rowAllowed('companion', off, 'training'), false);
   assert.equal(rowAllowed('companion', off, 'settings'), true);
   assert.equal(rowAllowed('companion', off, 'help'), true);
@@ -79,7 +80,7 @@ test('a companion row and page follow their group', () => {
   assert.equal(rowAllowed('companion', on, 'staff'), true);
   assert.equal(rowAllowed('companion', on, 'training'), true);
   assert.equal(routeAllowed('companion', off, 'drawer'), false);
-  assert.equal(routeAllowed('companion', off, 'staff'), false);
+  assert.equal(routeAllowed('companion', off, 'staff'), true);
   assert.equal(routeAllowed('companion', off, 'terminalPlay'), false);
   assert.equal(routeAllowed('companion', off, 'training'), false);
   assert.equal(routeAllowed('companion', off, 'trainingRun'), false);
@@ -92,4 +93,24 @@ test('a companion row and page follow their group', () => {
   }
   assert.equal(routeAllowed('companion', on, 'drawer'), true);
   assert.equal(routeAllowed('companion', on, 'cart'), true);
+});
+
+test('Today and Scan are companion tabs: a register never shows them', () => {
+  for (const t of ['today', 'scan'] as const) { assert.equal(isCompanionTab(t), true); assert.equal(tabAllowed('register', {}, t), false); assert.equal(tabAllowed('companion', {}, t), true); }
+  assert.equal(isCompanionTab('checkout'), false);
+  assert.equal(tabAllowed('nonsense', {}, 'today'), false); // an unknown mode is a register
+});
+
+test('the tab bar: a register keeps its five, a companion gets Today and Scan, and Selling adds Checkout', () => {
+  assert.deepEqual(deviceTabs('register', {}, TAB_ORDER), TAB_ORDER);
+  assert.deepEqual(deviceTabs(undefined, undefined, TAB_ORDER), TAB_ORDER);
+  assert.deepEqual(deviceTabs('companion', {}, TAB_ORDER), ['today', 'scan', 'inventory', 'transactions', 'more']);
+  assert.deepEqual(deviceTabs('companion', { selling: true }, TAB_ORDER), ['today', 'scan', 'checkout', 'inventory', 'transactions', 'more']);
+  for (const t of deviceTabs('companion', { selling: true }, TAB_ORDER)) assert.ok(COMPANION_TAB_ORDER.includes(t), t);
+  assert.equal(deviceTabs('companion', {}, TAB_ORDER).includes('notifications'), false); // a bell on Today opens it
+});
+
+test('the app opens on Checkout on a register and Today on a companion, and both are always shown', () => {
+  assert.equal(homeTab('register'), 'checkout'); assert.equal(homeTab(undefined), 'checkout'); assert.equal(homeTab('companion'), 'today');
+  for (const [mode, f] of [['register', {}], ['companion', {}], ['companion', { selling: true }]] as const) assert.equal(tabAllowed(mode, f, homeTab(mode)), true);
 });
