@@ -15,6 +15,8 @@ A scan is the quickest way to add an item. The POS understands four kinds of cod
 - **Bluetooth scanner.** Pair it in the iPad's own Settings as a keyboard (HID mode). After that, on Checkout, just scan: the item goes in the cart.
 - **Camera.** Tap the camera icon next to the search bar. A full-screen camera opens and stays open, so you can scan several things in a row. Each scan shows a green message ("Added Dragon plush") or a red one ("Not found: …"). Tap **Done** when finished. The camera reads EAN-13, EAN-8, UPC-A, UPC-E, Code 128, Code 39, ITF-14 and QR codes.
 
+Each camera scan says whether it worked in three ways: the message over the camera, a double tick of vibration for a hit, and a heavier buzz with a shake of the message for a code the till does not know. That is always on, whatever the item spotlight switches in Settings ▸ Theme say, because a scan should not need to be looked at to be understood.
+
 The gift card pop-up (Charge ▸ Gift card) has its own camera button for scanning a gift card's QR code.
 
 To check a Bluetooth scanner is working, go to Settings ▸ **Hardware** and scan something. The last few scans are listed and nothing is added to any cart. See [[settings/hardware]] for the test steps.
@@ -81,6 +83,7 @@ flowchart TD
 | Order, pass, gift, discount, none | `resolveScan`, `findDiscountPreset`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
 | Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |
 | Waking up after the screensaver, or after a scan | `src/lib/scanFocus.ts` (`requestScanFocus`, `offerScan`, `onRefocusAsked`, `onScanFlush`); the saver's own hidden box and `ScreensaverLayer` in `src/ui/Screensaver.tsx` |
+| Camera feedback for a scan | `CameraFlash` in `src/screens/Scanner.tsx` (the toast over the viewfinder), timing in `src/lib/scanFeedback.ts`, the buzz in `src/ui/scanFeedback.ts` |
 | Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |
 | Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |
 | Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |
