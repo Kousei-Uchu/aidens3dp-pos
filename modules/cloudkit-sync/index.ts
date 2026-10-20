@@ -136,3 +136,12 @@ export async function listSquareHistory(limit = 100, after?: string | null): Pro
   if (!native?.listSquareHistory) return { rows: [], next: null };
   return native.listSquareHistory(limit, after ?? null);
 }
+
+export async function putMigration(fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putMigration) throw new Error(CLOUDKIT_MISSING);
+  return native.putMigration(fields);
+}
+export async function getMigration(): Promise<Record<string, any> | null> {
+  if (!native?.getMigration) return null;
+  return native.getMigration();
+}

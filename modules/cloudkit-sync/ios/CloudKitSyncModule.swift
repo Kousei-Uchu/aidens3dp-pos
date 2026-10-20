@@ -165,6 +165,15 @@ public class CloudKitSyncModule: Module {
     AsyncFunction("listSquareHistory") { (limit: Int, after: String?) async throws -> [String: Any] in
       try await self.listRecords(recordType: "SquareHistory", limit: limit, after: after)
     }
+
+    // --- Patch 7: migration state ---
+    AsyncFunction("putMigration") { (fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Migration", recordName: "migration-v1", fields: fields)
+    }
+
+    AsyncFunction("getMigration") { () async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Migration", recordName: "migration-v1")
+    }
   }
 
   // --- The container and the zone it shares ---------------------------------
