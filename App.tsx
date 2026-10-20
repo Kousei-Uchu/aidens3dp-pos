@@ -9,8 +9,10 @@ import { Txt } from './src/ui/kit';
 import { useApp } from './src/state/store';
 import { loadCreds } from './src/lib/shopify/client';
 import { pollShared, processOutbox, pushSaved } from './src/lib/sync';
-import { setBackend } from './src/lib/syncBackend';
+import { forceMetaobjectBackend, metaobjectForced, setBackend } from './src/lib/syncBackend';
 import { metaobjectBackend } from './src/lib/shopify/metaobjectBackend';
+import { cloudkitBackend } from './src/lib/cloudkit/cloudkitBackend';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Checkout from './src/screens/Checkout';
 import GuidedCheckout from './src/screens/GuidedCheckout';
 import CartPane from './src/screens/CartPane';
@@ -50,7 +52,12 @@ import { useTraining } from './src/state/trainingSession';
 import { getModule } from './src/training';
 import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
-import { noteActivity } from './src/lib/idle';
+import { idleMs, noteActivity } from './src/lib/idle';
+import { lockRequired, readMode } from './src/lib/appMode';
+import { lockDue } from './src/lib/stepUp';
+import { lockIdle } from './src/lib/staffAuth';
+import { paymentActive } from './src/lib/screensaver';
+import StepUpHost from './src/ui/StepUpHost';
 import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
 import { Enter, TabPane } from './src/ui/Motion';
 import { isLockScreen } from './src/lib/posLock';
@@ -108,8 +115,27 @@ function Shell() {
   // CloudKit sync patch 3: shared state sits behind a backend seam. The metaobject backend is the one that exists today; a
   // later patch swaps in CloudKit without sync.ts changing. Installing it before the first poll means every shared call has a
   // backend from the start.
-  useEffect(() => { setBackend(metaobjectBackend); }, []);
-  useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (s.settings.requirePin && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const raw = await AsyncStorage.getItem('cloudkit.backend');
+        if (raw === 'force_meta') {
+          forceMetaobjectBackend(true);
+          setBackend(metaobjectBackend);
+          return;
+        }
+      } catch {}
+      try {
+        // Try CloudKit if available; fall back to metaobjects
+        if (!metaobjectForced() && (cloudkitBackend as any)) {
+          // Only switch if explicitly enabled or native available? Keep metaobjects by default for now
+          // but allow a rollback flag
+        }
+      } catch {}
+      setBackend(metaobjectBackend);
+    })();
+  }, []);
+  useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (lockRequired(s.settings) && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
   // Companion plan, patch 0176: a device that has never been set up opens the setup checklist once. Installs from before
   // this patch were marked set up by hydrate, and practice never runs it.
   useEffect(() => { if (ready && !setupDone && !isTraining() && nav.stack.length === 0) nav.push('setup'); }, [ready, setupDone, nav.stack.length]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -117,6 +143,13 @@ function Shell() {
     if (!ready) return;
     const tick = () => { if (isTraining()) return; void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
+    return () => { clearInterval(t); sub.remove(); };
+  }, [ready]);
+  // A Companion locks itself after sitting idle or away (src/lib/stepUp.ts). Time spent in the background counts as idle.
+  useEffect(() => {
+    if (!ready) return undefined;
+    const check = () => { if (isTraining()) return; const s = useApp.getState(); if (lockDue({ companion: readMode(s.settings.appMode) === 'companion', staffCount: s.settings.staff.length, unlocked: s.unlocked, paymentActive: paymentActive(s.pos.attempts, Date.now()), quietMs: idleMs(), minutes: s.settings.autoLockMinutes })) lockIdle(); };
+    const t = setInterval(check, 10000); const sub = AppState.addEventListener('change', st => { if (st === 'active') check(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [ready]);
   if (!ready) return <View style={{ flex: 1, backgroundColor: c.bg }} />;
@@ -151,7 +184,7 @@ export default function App() {
   return (
     <ZellerRoot>
       <SafeAreaProvider><ThemeProvider><UiProvider><NavProvider>
-        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost><AssistantGuideOverlay /></View>
+        <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost><AssistantGuideOverlay /><StepUpHost /></View>
         <KeepAwake /><ScreensaverLayer />
       </NavProvider></UiProvider></ThemeProvider></SafeAreaProvider>
     </ZellerRoot>
