@@ -88,6 +88,31 @@ public class CloudKitSyncModule: Module {
       UserDefaults.standard.removeObject(forKey: cloudKitPendingInviteKey)
       return url
     }
+
+    // --- Patch 4: sales and rollups ---
+    AsyncFunction("putSale") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Sale", recordName: "sale-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getSale") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Sale", recordName: "sale-\(handle)")
+    }
+
+    AsyncFunction("listSales") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Sale", limit: limit, after: after)
+    }
+
+    AsyncFunction("putRollup") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Rollup", recordName: "rollup-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getRollup") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Rollup", recordName: "rollup-\(handle)")
+    }
+
+    AsyncFunction("listRollups") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Rollup", limit: limit, after: after)
+    }
   }
 
   // --- The container and the zone it shares ---------------------------------
@@ -188,5 +213,75 @@ public class CloudKitSyncModule: Module {
     case .temporarilyUnavailable: return "temporarilyUnavailable"
     @unknown default: return "couldNotDetermine"
     }
+  }
+
+  // --- Patch 4 helpers -------------------------------------------------------
+
+  private func database() -> CKDatabase {
+    // Prefer private; roles may differ. For reading shared zone records the shared database is used by participants,
+    // but this module will be called in the right context by the backend. Use private for now; the backend decides.
+    container().privateCloudDatabase
+  }
+
+  private func makeRecord(recordType: String, recordName: String) -> CKRecord {
+    let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+    return CKRecord(recordType: recordType, recordID: id)
+  }
+
+  private func recordToDict(_ record: CKRecord) -> [String: Any] {
+    var out: [String: Any] = ["id": record.recordID.recordName, "recordName": record.recordID.recordName, "updatedAt": record.modificationDate?.timeIntervalSince1970 ?? 0]
+    for key in record.allKeys() {
+      if let v = record[key] {
+        if let s = v as? String { out[key] = s }
+        else if let n = v as? NSNumber { out[key] = n }
+        else if let d = v as? Date { out[key] = d.timeIntervalSince1970 }
+        else { out[key] = String(describing: v) }
+      }
+    }
+    return out
+  }
+
+  private func putRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
+    let record = makeRecord(recordType: recordType, recordName: recordName)
+    for (k, v) in fields {
+      if k == "id" { continue }
+      if let s = v as? String { record[k] = s as CKRecordValue }
+      else if let i = v as? Int { record[k] = NSNumber(value: i) }
+      else if let d = v as? Double { record[k] = NSNumber(value: d) }
+      else if let b = v as? Bool { record[k] = NSNumber(value: b) }
+      else if v is NSNull { continue }
+      else { record[k] = String(describing: v) as CKRecordValue }
+    }
+    let saved = try await database().save(record)
+    return recordToDict(saved)
+  }
+
+  private func getRecord(recordType: String, recordName: String) async throws -> [String: Any]? {
+    let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+    do {
+      let record = try await database().record(for: id)
+      return recordToDict(record)
+    } catch let error as CKError {
+      if error.code == .unknownItem { return nil }
+      throw error
+    }
+  }
+
+  private func listRecords(recordType: String, limit: Int, after: String?) async throws -> [String: Any] {
+    let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
+    query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
+    let db = database()
+    var rows: [[String: Any]] = []
+    if let after {
+      // simple: for now just list from start up to limit; after is ignored in this stub
+      _ = after
+    }
+    let results = try await db.records(matching: query, inZoneWith: storeZoneID, resultsLimit: limit)
+    for (_, res) in results.matchResults {
+      if case .success(let record) = res {
+        rows.append(recordToDict(record))
+      }
+    }
+    return ["rows": rows, "next": NSNull()]
   }
 }

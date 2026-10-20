@@ -56,3 +56,29 @@ export function onShareJoined(listener: (payload: { ok: boolean; message: string
   const subscription = native?.addListener?.('onShareJoined', listener);
   return () => subscription?.remove();
 }
+
+// Patch 4: sales and rollups (CloudKit backend)
+export async function putSale(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putSale) throw new Error(CLOUDKIT_MISSING);
+  return native.putSale(handle, fields);
+}
+export async function getSale(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getSale) return null;
+  return native.getSale(handle);
+}
+export async function listSales(limit = 100, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }> {
+  if (!native?.listSales) return { rows: [], next: null };
+  return native.listSales(limit, after ?? null);
+}
+export async function putRollup(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putRollup) throw new Error(CLOUDKIT_MISSING);
+  return native.putRollup(handle, fields);
+}
+export async function getRollup(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getRollup) return null;
+  return native.getRollup(handle);
+}
+export async function listRollups(limit = 100, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }> {
+  if (!native?.listRollups) return { rows: [], next: null };
+  return native.listRollups(limit, after ?? null);
+}

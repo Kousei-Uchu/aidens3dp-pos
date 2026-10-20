@@ -36,6 +36,13 @@ export type CloudKitSyncNative = {
   /** An invite link that opened the app before the page was open, if there is one. */
   takePendingInvite(): Promise<string | null>;
   addListener?(event: 'onShareJoined', listener: (payload: { ok: boolean; message: string }) => void): { remove(): void };
+  // Patch 4: sales and rollups
+  putSale?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getSale?(handle: string): Promise<Record<string, any> | null>;
+  listSales?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getRollup?(handle: string): Promise<Record<string, any> | null>;
+  listRollups?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
 };
 
 /** What the rest of the app calls, whichever build it is in. */
