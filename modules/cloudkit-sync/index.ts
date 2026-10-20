@@ -83,3 +83,43 @@ export async function listRollups(limit = 100, after?: string | null): Promise<{
   if (!native?.listRollups) return { rows: [], next: null };
   return native.listRollups(limit, after ?? null);
 }
+
+// Patch 5: saved carts
+export async function putCart(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putCart) throw new Error(CLOUDKIT_MISSING);
+  return native.putCart(handle, fields);
+}
+export async function getCart(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getCart) return null;
+  return native.getCart(handle);
+}
+export async function listCarts(limit = 100, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }> {
+  if (!native?.listCarts) return { rows: [], next: null };
+  return native.listCarts(limit, after ?? null);
+}
+
+// Patch 6: settings and layout
+export async function putSettings(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putSettings) throw new Error(CLOUDKIT_MISSING);
+  return native.putSettings(handle, fields);
+}
+export async function getSettings(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getSettings) return null;
+  return native.getSettings(handle);
+}
+export async function listSettings(limit = 100, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }> {
+  if (!native?.listSettings) return { rows: [], next: null };
+  return native.listSettings(limit, after ?? null);
+}
+export async function putLayout(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putLayout) throw new Error(CLOUDKIT_MISSING);
+  return native.putLayout(handle, fields);
+}
+export async function getLayout(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getLayout) return null;
+  return native.getLayout(handle);
+}
+export async function listLayout(limit = 100, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }> {
+  if (!native?.listLayout) return { rows: [], next: null };
+  return native.listLayout(limit, after ?? null);
+}

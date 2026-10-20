@@ -2,7 +2,7 @@
 // CloudKit sync plan, patch 4b: a CloudKit backend for the shared-state seam.
 // Sales and rollups are implemented first, using the seam's own row shapes. The
 // backend strips customer PII from sale records and keeps only the Shopify customer
-// id, because customers live in Shopify (customer data is not synced to CloudKit).
+// id as an opaque reference, because customers live in Shopify (customer data is not synced to CloudKit).
 // The metaobject backend stays live beside this one; cut-over is deferred to patch 8.
 import type { BackendListOptions, BackendPage, BackendRow, SharedBackend, SharedType } from '../syncBackend';
 import * as ck from '../../../modules/cloudkit-sync';
@@ -73,6 +73,24 @@ export const cloudkitBackend: SharedBackend = {
       if (!rec) return null;
       return asRow(`rollup-${h}`, rec);
     }
+    if (type === 'cart') {
+      const h = handle.startsWith('cart-') ? handle.slice(5) : handle;
+      const rec = await (ck.getCart ? ck.getCart(h) : Promise.resolve(null));
+      if (!rec) return null;
+      return asRow(`cart-${h}`, rec);
+    }
+    if (type === 'settings') {
+      const h = handle.startsWith('settings-') ? handle.slice(9) : handle;
+      const rec = await (ck.getSettings ? ck.getSettings(h) : Promise.resolve(null));
+      if (!rec) return null;
+      return asRow(`settings-${h}`, rec);
+    }
+    if (type === 'layout') {
+      const h = handle.startsWith('layout-') ? handle.slice(7) : handle;
+      const rec = await (ck.getLayout ? ck.getLayout(h) : Promise.resolve(null));
+      if (!rec) return null;
+      return asRow(`layout-${h}`, rec);
+    }
     return null;
   },
 
@@ -89,6 +107,21 @@ export const cloudkitBackend: SharedBackend = {
       const rec = await ck.putRollup(h, fields as any);
       return asRow(`rollup-${h}`, rec);
     }
+    if (type === 'cart') {
+      const h = handle.startsWith('cart-') ? handle.slice(5) : handle;
+      const rec = await (ck.putCart ? ck.putCart(h, fields as any) : Promise.reject(new Error(CLOUDKIT_MISSING)));
+      return asRow(`cart-${h}`, rec);
+    }
+    if (type === 'settings') {
+      const h = handle.startsWith('settings-') ? handle.slice(9) : handle;
+      const rec = await (ck.putSettings ? ck.putSettings(h, fields as any) : Promise.reject(new Error(CLOUDKIT_MISSING)));
+      return asRow(`settings-${h}`, rec);
+    }
+    if (type === 'layout') {
+      const h = handle.startsWith('layout-') ? handle.slice(7) : handle;
+      const rec = await (ck.putLayout ? ck.putLayout(h, fields as any) : Promise.reject(new Error(CLOUDKIT_MISSING)));
+      return asRow(`layout-${h}`, rec);
+    }
     throw new Error(`CloudKit backend does not support type ${type} yet`);
   },
 
@@ -103,6 +136,30 @@ export const cloudkitBackend: SharedBackend = {
       const res = await ck.listRollups(options.first ?? 100, options.after ?? null);
       const rows = (res.rows ?? []).map(r => asRow(r.recordName ?? '', r));
       return { rows, next: res.next ?? null };
+    }
+    if (type === 'cart') {
+      if (ck.listCarts) {
+        const res = await ck.listCarts(options.first ?? 100, options.after ?? null);
+        const rows = (res.rows ?? []).map(r => asRow(r.recordName ?? '', r));
+        return { rows, next: res.next ?? null };
+      }
+      return { rows: [], next: null };
+    }
+    if (type === 'settings') {
+      if (ck.listSettings) {
+        const res = await ck.listSettings(options.first ?? 100, options.after ?? null);
+        const rows = (res.rows ?? []).map(r => asRow(r.recordName ?? '', r));
+        return { rows, next: res.next ?? null };
+      }
+      return { rows: [], next: null };
+    }
+    if (type === 'layout') {
+      if (ck.listLayout) {
+        const res = await ck.listLayout(options.first ?? 100, options.after ?? null);
+        const rows = (res.rows ?? []).map(r => asRow(r.recordName ?? '', r));
+        return { rows, next: res.next ?? null };
+      }
+      return { rows: [], next: null };
     }
     return { rows: [], next: null };
   },
