@@ -43,6 +43,17 @@ export type CloudKitSyncNative = {
   putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   getRollup?(handle: string): Promise<Record<string, any> | null>;
   listRollups?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 5: saved carts
+  putCart?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getCart?(handle: string): Promise<Record<string, any> | null>;
+  listCarts?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 6: settings and layout
+  putSettings?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getSettings?(handle: string): Promise<Record<string, any> | null>;
+  listSettings?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  putLayout?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getLayout?(handle: string): Promise<Record<string, any> | null>;
+  listLayout?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
 };
 
 /** What the rest of the app calls, whichever build it is in. */

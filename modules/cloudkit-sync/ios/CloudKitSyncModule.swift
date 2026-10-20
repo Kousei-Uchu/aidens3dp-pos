@@ -1,5 +1,6 @@
 import ExpoModulesCore
 import CloudKit
+import Foundation
 
 // The iCloud container declared by plugins/withCloudKit.js. The two must stay the same string: the entitlement and
 // this identifier together are what let CloudKit open the container, and a mismatch fails at runtime, not at build.
@@ -112,6 +113,44 @@ public class CloudKitSyncModule: Module {
 
     AsyncFunction("listRollups") { (limit: Int, after: String?) async throws -> [String: Any] in
       try await self.listRecords(recordType: "Rollup", limit: limit, after: after)
+    }
+
+    // --- Patch 5: saved carts ---
+    AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getCart") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Cart", recordName: "cart-\(handle)")
+    }
+
+    AsyncFunction("listCarts") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Cart", limit: limit, after: after)
+    }
+
+    // --- Patch 6: settings, layout and square history shards ---
+    AsyncFunction("putSettings") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Settings", recordName: "settings-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getSettings") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Settings", recordName: "settings-\(handle)")
+    }
+
+    AsyncFunction("listSettings") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Settings", limit: limit, after: after)
+    }
+
+    AsyncFunction("putLayout") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Layout", recordName: "layout-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getLayout") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Layout", recordName: "layout-\(handle)")
+    }
+
+    AsyncFunction("listLayout") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Layout", limit: limit, after: after)
     }
   }
 
@@ -272,16 +311,29 @@ public class CloudKitSyncModule: Module {
     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
     let db = database()
     var rows: [[String: Any]] = []
-    if let after {
-      // simple: for now just list from start up to limit; after is ignored in this stub
-      _ = after
+    var cursor: CKQueryCursor? = nil
+    if let after, !after.isEmpty {
+      if let data = Data(base64Encoded: after) {
+        cursor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKQueryCursor.self, from: data)
+      }
     }
-    let results = try await db.records(matching: query, inZoneWith: storeZoneID, resultsLimit: limit)
+    var results: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryCursor?)
+    if let c = cursor {
+      results = try await db.records(continuingMatchFrom: c, resultsLimit: limit)
+    } else {
+      results = try await db.records(matching: query, inZoneWith: storeZoneID, resultsLimit: limit)
+    }
     for (_, res) in results.matchResults {
       if case .success(let record) = res {
         rows.append(recordToDict(record))
       }
     }
-    return ["rows": rows, "next": NSNull()]
+    var next: Any = NSNull()
+    if let qc = results.queryCursor {
+      if let data = try? NSKeyedArchiver.archivedData(withRootObject: qc, requiringSecureCoding: true) {
+        next = data.base64EncodedString()
+      }
+    }
+    return ["rows": rows, "next": next]
   }
 }
