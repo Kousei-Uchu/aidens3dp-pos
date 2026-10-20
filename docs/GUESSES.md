@@ -328,3 +328,18 @@ Decisions I made without asking:
 - **Nothing is hidden yet.** The mode, the switches and the page are real and stored, but the tabs still show everything,
   because wiring the tabs, the route guard and the deep links to the gate is patch 0178. The device test says the same, so a
   reader is not left thinking a switch did nothing.
+
+## The stashed 0185 patch: checked and dropped (2026-10-20)
+
+A file, `patches/pending_merge/0185-companion-mode-gate-and-setup.patch`, was found untracked in the repo. It was checked before
+anything was done with it, and it turned out to be the same feature as the shipped patch 0176, in an earlier draft: it was
+written while the Companion series was still numbered 0185 to 0191, before the renumber to 0176 to 0182. It creates the same
+`appMode.ts`, `setupFlow.ts`, `Setup.tsx` and their tests, and it stores the identical `appMode`, `registerFeatures` and
+`setupDone` keys with the same migration (missing flag on stored settings means an upgraded install). It does not apply cleanly,
+because the files it creates already exist and the rest does not match, and applying it would have undone three decisions 0176
+made deliberately: setup as a non-blocking checklist rather than a full-screen block, deferring the App.tsx wiring to 0178, and
+calling the More row **Device mode** rather than **Companion features**. The one piece that was genuinely missing from the tree
+was a short **Device mode** section in `docs/MODES.md`, which is now written by hand against the shipped behaviour and naming.
+The folder was deleted, including the `.DS_Store` beside the patch, and nothing was applied. The lesson for next time: a patch
+left in `patches/pending_merge/` is not picked up by `scripts/apply-patches.sh`, which only globs `patches/*.patch`, so it sits
+inert until someone looks at it by hand.
