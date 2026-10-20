@@ -47,8 +47,8 @@ export default function More() {
         {/* Demo mode (F8) is always here, whatever display mode is on: it is how someone shows the till to a new person. */}
         <Section>
           {demo
-            ? <Row icon="flask-outline" title="Leave demo mode" sub="Back to your own till, exactly as you left it." last onPress={() => { useDemo.getState().leave(); nav.reset(); }} />
-            : <Row icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on made-up data. Nothing real is touched.' : 'Made-up data'} last onPress={() => { void openDemo(); }} />}
+            ? <Row spot={SPOT.moreDemo} icon="flask-outline" title="Leave demo mode" sub="Back to your own till, exactly as you left it." last onPress={() => { useDemo.getState().leave(); nav.reset(); }} />
+            : <Row spot={SPOT.moreDemo} icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on made-up data. Nothing real is touched.' : 'Made-up data'} last onPress={() => { void openDemo(); }} />}
         </Section>
         {groups.map((g, gi) => (
           <Section key={gi}>

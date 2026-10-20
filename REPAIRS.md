@@ -31,10 +31,15 @@ Grouped commits are allowed where a change is tiny; every commit still names the
   events may do the same; the screensaver is the one spotted. Likely in `src/ui/Screensaver.tsx` and the checkout scan box
   (patch 0155 put one scan box in checkout). Fixing this overlaps with side note S3 (a real barcode should dismiss the
   screensaver and refocus checkout), so the two are done together.
-- [ ] **B4. Routegraph coverage.** Check whether any screens that are not hardcoded are missing from the route graph, and
-  whether the graph is regenerated when screens change. Build and check with `npm run graph:build` / `graph:check`
-  (`scripts/build-navgraph.ts`, output `src/app.navgraph`). Report which screens are discovered dynamically and are
-  therefore easy to miss.
+- [x] **B4. Routegraph coverage.** Done. The graph is hand written (`src/app.navgraph`), so the check is which App.tsx
+  routes have no screen. Two did: `demoHome` and `demoShow`, the Demo mode pages, so `search_screens`, guides and the
+  assistant could never reach Demo mode. Both are now screens in the graph (78 screens, 188 edges, was 76 and 184), with
+  edges from the More tab (`more.demo`), to the demo show (`demo.watch`) and back (`page.back`). The Demo mode row in
+  `src/screens/More.tsx` gained its spot, the Watch button in `src/screens/DemoHome.tsx` became a `Btn` so it carries one,
+  and both spots are mapped in `src/lib/appControls.ts`. `tests/appnavgraph.test.ts` passes (32). The graph is regenerated
+  by `npm run graph:build`; anything reached by a variable route rather than a `case` in App.tsx is the kind that goes
+  missing, so that is where to look next time. This was the real answer to the question: yes, non-hardcoded screens could be
+  missed, and two were.
 
 ## Side notes
 
