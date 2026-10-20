@@ -53,22 +53,37 @@ export function resolveFeatures(mode: unknown, features: unknown): RegisterFeatu
 
 export const featureOn = (mode: unknown, features: unknown, id: FeatureId): boolean => resolveFeatures(mode, features)[id];
 
+/** Tabs only a companion has: Today (a glance at the shop) and Scan (price and stock check). A register never shows them. */
+export type CompanionTab = 'today' | 'scan';
+export type AnyTab = TabId | CompanionTab;
+export const COMPANION_TABS: CompanionTab[] = ['today', 'scan'];
+export const isCompanionTab = (t: string): t is CompanionTab => (COMPANION_TABS as string[]).includes(t);
+
 /** Tabs a Companion always keeps: browsing the catalogue, the till's records, notices and More. */
-const ALWAYS_TABS: TabId[] = ['inventory', 'transactions', 'notifications', 'more', 'today', 'scan'];
+const ALWAYS_TABS: TabId[] = ['inventory', 'transactions', 'notifications', 'more'];
 const TAB_FEATURE: Partial<Record<TabId, FeatureId>> = { checkout: 'selling' };
 
 /** Whether the device shows a tab. The display mode still narrows this further; it never widens it. */
-export function tabAllowed(mode: unknown, features: unknown, tab: TabId): boolean {
+export function tabAllowed(mode: unknown, features: unknown, tab: AnyTab): boolean {
+  if (isCompanionTab(tab)) return readMode(mode) === 'companion';
   if (ALWAYS_TABS.includes(tab)) return true;
   const need = TAB_FEATURE[tab];
   return !need || featureOn(mode, features, need);
 }
 
-/** Pages a Companion always keeps open: help, settings for managers (its own role check), diagnostics, history. */
+/** The tab bar of a companion, left to right. Notifications is not a tab there: a bell on Today opens it, so the bar stays at five (six with Selling on). */
+export const COMPANION_TAB_ORDER: AnyTab[] = ['today', 'scan', 'checkout', 'inventory', 'transactions', 'more'];
+/** The tabs this device shows, in order, before the display mode narrows them. A register has the five it has always had. */
+export function deviceTabs(mode: unknown, features: unknown, registerOrder: TabId[]): AnyTab[] {
+  return readMode(mode) === 'companion' ? COMPANION_TAB_ORDER.filter(t => tabAllowed(mode, features, t)) : registerOrder;
+}
+/** Where the app opens, and where a hidden tab sends you. */
+export const homeTab = (mode: unknown): AnyTab => (readMode(mode) === 'companion' ? 'today' : 'checkout');
+
+/** Pages a Companion always keeps open: help, settings and Staff for managers (their own role checks), diagnostics, history. Staff stays open because the lock needs an owner PIN, and a PIN can only be made or reset there. */
 const ROUTE_FEATURE: Partial<Record<string, FeatureId>> = {
   cart: 'selling', pay: 'selling', saved: 'selling',
   drawer: 'cashDrawer',
-  staff: 'staffTools',
   terminalPlay: 'cardReader',
   training: 'tillTraining', trainingRun: 'tillTraining',
 };
@@ -79,7 +94,7 @@ export function routeAllowed(mode: unknown, features: unknown, route: string): b
   return !need || featureOn(mode, features, need);
 }
 
-const ROW_FEATURE: Partial<Record<MoreRowId, FeatureId>> = { drawer: 'cashDrawer', staff: 'staffTools', training: 'tillTraining' };
+const ROW_FEATURE: Partial<Record<MoreRowId, FeatureId>> = { drawer: 'cashDrawer', training: 'tillTraining' };
 
 /** Whether a device shows a More row. The row is still subject to the display mode and the person's role. */
 export function rowAllowed(mode: unknown, features: unknown, row: MoreRowId): boolean {

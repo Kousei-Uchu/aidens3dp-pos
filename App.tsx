@@ -53,7 +53,9 @@ import { getModule } from './src/training';
 import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { idleMs, noteActivity } from './src/lib/idle';
-import { lockRequired, readDeviceMode, readMode, routeAllowed, tabAllowed } from './src/lib/appMode';
+import { deviceTabs, homeTab, isCompanionTab, lockRequired, readMode, routeAllowed, tabAllowed } from './src/lib/appMode';
+import Today from './src/screens/Today';
+import ScanTab from './src/screens/ScanTab';
 import { lockDue } from './src/lib/stepUp';
 import { lockIdle } from './src/lib/staffAuth';
 import { paymentActive } from './src/lib/screensaver';
@@ -62,22 +64,22 @@ import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
 import { Enter, TabPane } from './src/ui/Motion';
 import { isLockScreen } from './src/lib/posLock';
 import { UiProvider, useUi } from './src/ui/uiProfile';
-import { effectiveTab } from './src/lib/uiMode';
+import { TAB_ORDER, effectiveTab } from './src/lib/uiMode';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-const ALL_TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { id: 'today' as Tab, label: 'Today', icon: 'today-outline' },
-  { id: 'scan' as Tab, label: 'Scan', icon: 'scan-outline' },
-  { id: 'checkout', label: 'Checkout', icon: 'apps' },
-  { id: 'inventory', label: 'Inventory', icon: 'cube' },
-  { id: 'transactions', label: 'Transactions', icon: 'receipt' },
-  { id: 'notifications', label: 'Notifications', icon: 'notifications' },
-  { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
+const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
+  { id: 'notifications', label: 'Notifications', icon: 'notifications' }, { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
+  { id: 'today', label: 'Today', icon: 'sunny' }, { id: 'scan', label: 'Scan', icon: 'barcode' },
 ];
 
 function Routes({ route: top }: { route: Route }) {
-  const nav = useNav();
+  const nav = useNav(); const mode = useApp(s => s.settings.appMode); const features = useApp(s => s.settings.registerFeatures);
   const p = top.params ?? {};
+  const allowed = routeAllowed(mode, features, top.name);
+  // A page this device's mode hides (a notification link, the assistant, a mode change while it was open) closes itself.
+  useEffect(() => { if (!allowed) nav.pop(); }, [allowed]); // eslint-disable-line react-hooks/exhaustive-deps
+  if (!allowed) return null;
   switch (top.name) {
     case 'pay': return <Pay onBack={nav.pop} />;
     case 'cart': return <CartPane onClose={nav.pop} />;
@@ -88,6 +90,7 @@ function Routes({ route: top }: { route: Route }) {
     case 'editItem': return <EditItem id={p.id} />;
     case 'customers': return <Customers />;
     case 'reports': return <Reports />;
+    case 'notices': return <Notifications onBack={nav.pop} />; // a companion has no Notifications tab: the bell on Today opens it
     case 'export': return <Export />;
     case 'cloudSync': return <CloudSync />;
     case 'setup': return <Setup />;
@@ -116,7 +119,10 @@ function Shell() {
   const practiceRoutes = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.routes : undefined));
   const { plan } = useRouteTransition(nav.stack, practiceRoutes); // the page that is leaving stays drawn while the new one arrives
   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
-  useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
+  // This device's mode decides which tabs exist (Today and Scan on a companion, Checkout only with Selling on). A hidden tab falls back to the home tab.
+  const devMode = useApp(s => s.settings.appMode); const devFeatures = useApp(s => s.settings.registerFeatures);
+  const barTabs = deviceTabs(devMode, devFeatures, TAB_ORDER);
+  useEffect(() => { if (!tabAllowed(devMode, devFeatures, nav.tab) || (!isCompanionTab(nav.tab) && effectiveTab(nav.tab, ui) !== nav.tab)) nav.setTab(homeTab(devMode)); }, [nav.tab, ui, devMode, devFeatures]); // eslint-disable-line react-hooks/exhaustive-deps
   // CloudKit sync patch 3: shared state sits behind a backend seam. The metaobject backend is the one that exists today; a
   // later patch swaps in CloudKit without sync.ts changing. Installing it before the first poll means every shared call has a
   // backend from the start.
@@ -166,15 +172,15 @@ function Shell() {
       <DemoBanner />
       <View style={{ flex: 1 }}>
         <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
-          <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane>
-          {nav.tab !== 'checkout' ? <Enter key={nav.tab} from="up" distance={10} duration={280} style={{ flex: 1 }}>{nav.tab === 'inventory' ? <Inventory /> : nav.tab === 'transactions' ? <Transactions /> : nav.tab === 'notifications' ? <Notifications /> : <More />}</Enter> : null}
+          {tabAllowed(devMode, devFeatures, 'checkout') ? <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane> : null}
+          {nav.tab !== 'checkout' ? <Enter key={nav.tab} from="up" distance={10} duration={280} style={{ flex: 1 }}>{nav.tab === 'inventory' ? <Inventory /> : nav.tab === 'transactions' ? <Transactions /> : nav.tab === 'notifications' ? <Notifications /> : nav.tab === 'today' ? <Today /> : nav.tab === 'scan' ? <ScanTab /> : <More />}</Enter> : null}
         </View>
         {hasPage || moving ? <RouteStage stack={nav.stack} plan={plan} render={r => <Routes route={r} />} /> : null}
       </View>
       {!hasPage ? (
         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
           <View style={{ flexDirection: 'row', paddingTop: 6, paddingBottom: 8 }}>
-            {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
+            {barTabs.map(id => TABS.find(t => t.id === id)!).filter(t => (isCompanionTab(t.id) || ui.tabs.includes(t.id as any)) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
               <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : t.id === 'inventory' ? SPOT.tabInventory : t.id === 'transactions' ? SPOT.tabTransactions : t.id === 'notifications' ? SPOT.tabNotifications : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ alignSelf: 'stretch', alignItems: 'center', gap: 2 }}>
                 <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
                 <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}

@@ -9,7 +9,7 @@ import { outboxRetrySpot } from '../lib/trainingSpots';
 
 const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline' };
 const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/offline-sync', stock: 'fix/stock-mismatch', reader: 'fix/reader', pass: 'fix/locked-out', refund: 'orders/refunds' };
-export default function Notifications() {
+export default function Notifications({ onBack }: { onBack?: () => void } = {}) {
   const { c } = useTheme(); const nav = useNav(); const list = useApp(s => s.pos.notices); const outbox = useApp(s => s.pos.outbox); const patchPos = useApp(s => s.patchPos);
   const stuck = outbox.filter(o => o.blocked);
   // live low/negative stock summary, derived - not stored
@@ -17,7 +17,7 @@ export default function Notifications() {
   return (
     <View style={{ flex: 1, backgroundColor: c.bg }}>
       <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center' }}>
-        <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
+        {onBack ? <Btn small kind="ghost" title="Back" icon="chevron-back" onPress={onBack} /> : null}<Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
       <FlatList data={list} keyExtractor={n => n.id} ListEmptyComponent={<Empty icon="notifications-outline" title="All clear" sub="Sync failures, queued sales, stock and reader issues show up here." />}
         ListHeaderComponent={<View>
           {stuck.map(o => <Row key={o.id} icon="warning-outline" danger title={`Sale ${o.sale.orderName ?? o.id.slice(0, 8)} needs attention`} sub={o.error} right={<Btn small title="Retry" spot={outboxRetrySpot(o.id)} onPress={() => retryBlocked(o.id)} />} />)}

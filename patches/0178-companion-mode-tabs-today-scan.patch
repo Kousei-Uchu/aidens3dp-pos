@@ -1,0 +1,661 @@
+From bba4bcc95de1ac3ed863b21d58775dc2ddbd0bee Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Tue, 20 Oct 2026 11:18:53 +0000
+Subject: [PATCH] Companion mode patch 3: gate wired into tabs, pages and rows,
+ Today and Scan tabs (0178)
+
+---
+ App.tsx                       | 36 +++++++++++---------
+ dev_docs/COMPANION_PLAN.md    | 15 +++++----
+ dev_docs/DEVICE_TESTS.md      | 15 +++++++++
+ dev_docs/PROGRESS.md          |  3 ++
+ dev_docs/QUEUE.md             | 12 ++-----
+ help/device-mode.md           | 15 +++++++--
+ help/help.json                |  6 ++--
+ src/lib/appMode.ts            | 25 +++++++++++---
+ src/lib/todayCards.ts         | 15 +++++++++
+ src/screens/Lookup.tsx        |  3 +-
+ src/screens/More.tsx          |  5 +--
+ src/screens/Notifications.tsx |  4 +--
+ src/screens/ScanTab.tsx       | 31 +++++++++++++++++
+ src/screens/Today.tsx         | 63 +++++++++++++++++++++++++++++++++++
+ src/ui/nav.tsx                |  4 ++-
+ tests/appMode.test.ts         | 25 ++++++++++++--
+ tests/todaycards.test.ts      | 37 ++++++++++++++++++++
+ 17 files changed, 264 insertions(+), 50 deletions(-)
+ create mode 100644 src/lib/todayCards.ts
+ create mode 100644 src/screens/ScanTab.tsx
+ create mode 100644 src/screens/Today.tsx
+ create mode 100644 tests/todaycards.test.ts
+
+diff --git a/App.tsx b/App.tsx
+index 3ad94d4..9d1f36a 100644
+--- a/App.tsx
++++ b/App.tsx
+@@ -53,7 +53,9 @@ import { getModule } from './src/training';
+ import { isTraining } from './src/lib/trainingGuard';
+ import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
+ import { idleMs, noteActivity } from './src/lib/idle';
+-import { lockRequired, readDeviceMode, readMode, routeAllowed, tabAllowed } from './src/lib/appMode';
++import { deviceTabs, homeTab, isCompanionTab, lockRequired, readMode, routeAllowed, tabAllowed } from './src/lib/appMode';
++import Today from './src/screens/Today';
++import ScanTab from './src/screens/ScanTab';
+ import { lockDue } from './src/lib/stepUp';
+ import { lockIdle } from './src/lib/staffAuth';
+ import { paymentActive } from './src/lib/screensaver';
+@@ -62,22 +64,22 @@ import { RouteStage, useRouteTransition } from './src/ui/RouteTransition';
+ import { Enter, TabPane } from './src/ui/Motion';
+ import { isLockScreen } from './src/lib/posLock';
+ import { UiProvider, useUi } from './src/ui/uiProfile';
+-import { effectiveTab } from './src/lib/uiMode';
++import { TAB_ORDER, effectiveTab } from './src/lib/uiMode';
+ import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+ 
+-const ALL_TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+-  { id: 'today' as Tab, label: 'Today', icon: 'today-outline' },
+-  { id: 'scan' as Tab, label: 'Scan', icon: 'scan-outline' },
+-  { id: 'checkout', label: 'Checkout', icon: 'apps' },
+-  { id: 'inventory', label: 'Inventory', icon: 'cube' },
+-  { id: 'transactions', label: 'Transactions', icon: 'receipt' },
+-  { id: 'notifications', label: 'Notifications', icon: 'notifications' },
+-  { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
++const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
++  { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
++  { id: 'notifications', label: 'Notifications', icon: 'notifications' }, { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
++  { id: 'today', label: 'Today', icon: 'sunny' }, { id: 'scan', label: 'Scan', icon: 'barcode' },
+ ];
+ 
+ function Routes({ route: top }: { route: Route }) {
+-  const nav = useNav();
++  const nav = useNav(); const mode = useApp(s => s.settings.appMode); const features = useApp(s => s.settings.registerFeatures);
+   const p = top.params ?? {};
++  const allowed = routeAllowed(mode, features, top.name);
++  // A page this device's mode hides (a notification link, the assistant, a mode change while it was open) closes itself.
++  useEffect(() => { if (!allowed) nav.pop(); }, [allowed]); // eslint-disable-line react-hooks/exhaustive-deps
++  if (!allowed) return null;
+   switch (top.name) {
+     case 'pay': return <Pay onBack={nav.pop} />;
+     case 'cart': return <CartPane onClose={nav.pop} />;
+@@ -88,6 +90,7 @@ function Routes({ route: top }: { route: Route }) {
+     case 'editItem': return <EditItem id={p.id} />;
+     case 'customers': return <Customers />;
+     case 'reports': return <Reports />;
++    case 'notices': return <Notifications onBack={nav.pop} />; // a companion has no Notifications tab: the bell on Today opens it
+     case 'export': return <Export />;
+     case 'cloudSync': return <CloudSync />;
+     case 'setup': return <Setup />;
+@@ -116,7 +119,10 @@ function Shell() {
+   const practiceRoutes = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.routes : undefined));
+   const { plan } = useRouteTransition(nav.stack, practiceRoutes); // the page that is leaving stays drawn while the new one arrives
+   // A tab this person's display mode hides (mode changed while signed in, or a notification link) falls back to Checkout.
+-  useEffect(() => { if (effectiveTab(nav.tab, ui) !== nav.tab) nav.setTab('checkout'); }, [nav.tab, ui]); // eslint-disable-line react-hooks/exhaustive-deps
++  // This device's mode decides which tabs exist (Today and Scan on a companion, Checkout only with Selling on). A hidden tab falls back to the home tab.
++  const devMode = useApp(s => s.settings.appMode); const devFeatures = useApp(s => s.settings.registerFeatures);
++  const barTabs = deviceTabs(devMode, devFeatures, TAB_ORDER);
++  useEffect(() => { if (!tabAllowed(devMode, devFeatures, nav.tab) || (!isCompanionTab(nav.tab) && effectiveTab(nav.tab, ui) !== nav.tab)) nav.setTab(homeTab(devMode)); }, [nav.tab, ui, devMode, devFeatures]); // eslint-disable-line react-hooks/exhaustive-deps
+   // CloudKit sync patch 3: shared state sits behind a backend seam. The metaobject backend is the one that exists today; a
+   // later patch swaps in CloudKit without sync.ts changing. Installing it before the first poll means every shared call has a
+   // backend from the start.
+@@ -166,15 +172,15 @@ function Shell() {
+       <DemoBanner />
+       <View style={{ flex: 1 }}>
+         <View style={{ flex: 1, display: hasPage && !moving ? 'none' : 'flex' }}>{/* tabs stay mounted: cart/scan state survives navigation */}
+-          <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane>
+-          {nav.tab !== 'checkout' ? <Enter key={nav.tab} from="up" distance={10} duration={280} style={{ flex: 1 }}>{nav.tab === 'inventory' ? <Inventory /> : nav.tab === 'transactions' ? <Transactions /> : nav.tab === 'notifications' ? <Notifications /> : <More />}</Enter> : null}
++          {tabAllowed(devMode, devFeatures, 'checkout') ? <TabPane active={nav.tab === 'checkout'} style={{ flex: 1, display: nav.tab === 'checkout' ? 'flex' : 'none' }}>{ui.guided ? <GuidedCheckout /> : <Checkout />}</TabPane> : null}
++          {nav.tab !== 'checkout' ? <Enter key={nav.tab} from="up" distance={10} duration={280} style={{ flex: 1 }}>{nav.tab === 'inventory' ? <Inventory /> : nav.tab === 'transactions' ? <Transactions /> : nav.tab === 'notifications' ? <Notifications /> : nav.tab === 'today' ? <Today /> : nav.tab === 'scan' ? <ScanTab /> : <More />}</Enter> : null}
+         </View>
+         {hasPage || moving ? <RouteStage stack={nav.stack} plan={plan} render={r => <Routes route={r} />} /> : null}
+       </View>
+       {!hasPage ? (
+         <SafeAreaView edges={['bottom']} style={{ backgroundColor: c.card, borderTopWidth: 1, borderTopColor: c.line }}>
+           <View style={{ flexDirection: 'row', paddingTop: 6, paddingBottom: 8 }}>
+-            {TABS.filter(t => ui.tabs.includes(t.id) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
++            {barTabs.map(id => TABS.find(t => t.id === id)!).filter(t => (isCompanionTab(t.id) || ui.tabs.includes(t.id as any)) && (!onlyTabs || onlyTabs.includes(t.id))).map(t => { const on = nav.tab === t.id; return (
+               <Spot key={t.id} id={t.id === 'checkout' ? SPOT.tabCheckout : t.id === 'more' ? SPOT.tabMore : t.id === 'inventory' ? SPOT.tabInventory : t.id === 'transactions' ? SPOT.tabTransactions : t.id === 'notifications' ? SPOT.tabNotifications : undefined} style={{ flex: 1 }}><Pressable onPress={() => nav.setTab(t.id)} accessibilityRole="tab" accessibilityState={{ selected: on }} accessibilityLabel={t.label} style={{ alignSelf: 'stretch', alignItems: 'center', gap: 2 }}>
+                 <View><Ionicons name={on ? t.icon : (`${t.icon}-outline` as any)} size={Math.round(24 * ui.textScale)} color={on ? c.text : c.sub} />{t.id === 'notifications' && unread ? <View style={{ position: 'absolute', top: -2, right: -8, backgroundColor: c.bad, borderRadius: 8, minWidth: 16, height: 16, alignItems: 'center', justifyContent: 'center' }}><Txt size={10} weight="700" color="#fff">{unread > 9 ? '9+' : unread}</Txt></View> : null}</View>
+                 <Txt size={11} weight={on ? '700' : '500'} color={on ? c.text : c.sub}>{t.label}</Txt></Pressable></Spot>); })}
+diff --git a/dev_docs/COMPANION_PLAN.md b/dev_docs/COMPANION_PLAN.md
+index cfe36f5..9c5a143 100644
+--- a/dev_docs/COMPANION_PLAN.md
++++ b/dev_docs/COMPANION_PLAN.md
+@@ -109,7 +109,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities,
+ | 0175 | This plan as `dev_docs/COMPANION_PLAN.md`, tracker, `PROGRESS.md` entry | Done |
+ | 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Done, needs your device (T75) |
+ | 0177 | App-wide PIN lock and step-up PIN | Built, needs a device test (T80) |
+-| 0178 | Tabs from the gate, Today, Scan, More menu, wording, phone layout | Planned |
++| 0178 | Tabs, pages and More rows from the gate, Today and Scan tabs | Built, needs a device test (T81) |
+ | 0179 | Hardware and sync gating | Planned |
+ | 0180 | Quick sale, expand to full POS, send to register | Planned |
+ | 0181 | Help, Training and assistant gating, docs | Planned |
+@@ -128,11 +128,11 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
+ - [~] C4 Companion features screen for every signed-in person (0176)
+ - [~] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177, needs a device test)
+ - [~] C6 `stepUp.ts` with tests, wired to the listed actions (0177, needs a device test)
+-- [ ] C7 Tabs, home tab, route guard and deep links from the gate (0178)
+-- [ ] C8 Today tab (0178)
+-- [ ] C9 Scan tab (0178)
+-- [ ] C10 More menu and Companion wording (0178)
+-- [ ] C11 Phone-first layout pass, iPad wider layout (0178)
++- [~] C7 Tabs, home tab, route guard and deep links from the gate (0178, needs a device test)
++- [~] C8 Today tab (0178, needs a device test)
++- [~] C9 Scan tab (0178, needs a device test)
++- [~] C10 More menu rows follow the gate (0178). Companion wording on the screens that stay is not done yet and moves to 0181.
++- [ ] C11 Phone-first layout pass for the existing screens, iPad wider layout (moves to 0181; the new Today and Scan screens are already single column)
+ - [ ] C12 Zeller bridge idle without Card reader, no reader notices (0179)
+ - [ ] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179)
+ - [ ] C14 Notices for hidden groups not raised, old ones fall back to Today (0179)
+@@ -160,10 +160,11 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
+ 
+ ## Open questions
+ 
+-1. **Staff must stay reachable on a companion.** The gate in `src/lib/appMode.ts` ties the `staff` page and row to **Till staff tools**. A companion with that group off could then never open Staff to create the owner PIN, which the lock needs, or to reset a PIN. Suggested for patch 0178, when the gate is wired: keep Staff reachable for owners and managers whatever the groups say, and let **Till staff tools** cover only staff passes, switching staff and cashier passes.
++None at the moment.
+ 
+ ## Settled questions
+ 
++- **Staff stays reachable on a companion.** The `staff` page and More row are no longer tied to Till staff tools, so a companion can always make or reset a PIN (still managers and owners only, by the existing role rule). Done in 0178.
+ - **Cash on the phone.** If the phone takes cash while the Cash drawer group is off, it is allowed and flagged for the next drawer count (not blocked). Built in 0180.
+ - **Card on the phone.** Your Zeller reader works from an iPhone, so phone card payments are in scope. It cannot be tested from the sandbox, so it stays a device test for you.
+ - **PIN timing.** 2 minutes idle for auto-lock, 5 minutes for the step-up window, and the PIN-gated list as written.
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 67e41fc..d8e211a 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1056,3 +1056,18 @@ On a phone you can make a companion, with an owner that has a PIN (create one in
+ 11. On a register (till) without Require PIN switched on, do steps 8 and 9. Pass: no PIN prompts at all and no auto-lock.
+ 12. On the companion, open **Demo mode**. Pass: every feature is on show and it never locks. Leave Demo. Pass: the companion's own lock is back.
+ 
++## T81. Companion tabs, Today and Scan (0178)
++
++On the phone that is a companion (T80). Nothing in this patch has been run on a device.
++
++1. Open the app and sign in. Pass: it opens on **Today**, and the tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**. There is no **Checkout** tab and no **Notifications** tab.
++2. On **Today** as an owner or manager, check the sales card. Pass: it shows today's sales and the order count, and **Open reports** opens Reports. Pull down. Pass: the figures refresh.
++3. Sign in as a cashier. Pass: there is no sales card, and the low stock card still shows.
++4. Check the stock card. Pass: it lists low, out and oversold items, worst first, and tapping a row opens Inventory.
++5. Tap **Notices** (the bell). Pass: Notifications opens with a **Back** button, and Back returns to Today. Tap a notice that links somewhere. Pass: it opens that page.
++6. Open **Scan**, choose **Price check** and tap **Scan an item**. Pass: the camera opens at once. Scan an item. Pass: its price and deals show. Do the same with **Stock check**. Pass: stock and the other variations show, and no cart is touched.
++7. Open **More**. Pass: there is no **Saved carts** or **Cash drawer** row, **Staff** is there for an owner or manager, and **Device mode** is there.
++8. In **Device mode** switch **Selling** on. Pass: the **Checkout** tab appears between Scan and Inventory, and **Saved carts** appears in More. Switch it off while on Checkout. Pass: the app lands on Today and the tab is gone.
++9. Switch **Cash drawer** on and open **Drawer**. Pass: it opens (after the PIN prompt from T80). Switch the feature off with the drawer open. Pass: the page closes itself.
++10. On a register (till), open the app. Pass: the tabs are exactly the five it had before, and there is no Today or Scan.
++
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 62b839e..eed998c 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -162,6 +162,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0185 | 2026-10-19 | AI assistant (your request: load only the tools a question needs). **Each question is now sent only the tool definitions it is likely to need.** The 19 tools are in four groups in `src/lib/assistantToolGroups.ts`: help (`search_docs`, `read_doc`, `search_screens`, `show_link`, `show_guide`, `screen_context`, always sent), shop (the figure tools and `current_time`), cash and status. A group is sent when the question, or the last two things you typed in the chat, use its words, so a follow up such as "and the cow plush?" keeps its tools. The words lean towards sending a group. **Nothing is taken away:** while any group is left out the model is given `more_tools`, which loads a group for the rest of that question, so a question the words miss can still reach every tool. `toolsFor` is still the only place tools are filtered by role, `more_tools` can only load names the role already has (a cashier asking for the status group gets `app_status` and never `read_settings`), and a tool the groups do not name is always sent. The prompt only describes the tools that are sent, and says how to ask for the rest. **Measured at the default 8000:** room left for the chat after the prompt and definitions is 3,994 tokens for a help question (it was 1,318 for a cashier and 1,074 for a manager), 3,491 for a cash question, 1,797 for a shop question, and the same as before when every group is asked for (1,318 and 1,074). Files: new `assistantToolGroups.ts`; `assistantTools.ts` (`ToolSet.offered`, `offeredTools`, a `narrow` option on `makeToolSet`); `assistantChat.ts` (prompt, message budget and loop read the offered list, again after every call); `screens/Assistant.tsx` (passes the recent questions). A set made without `narrow`, and the practice coach, behave exactly as before. Tests: `tests/assistantnarrow.test.ts` (14, including a scripted model that has to ask for the shop tools, and the room per question type). Full suite 1332 of 1332, `tsc` clean. Device test T76. **Decided without you, change any you disagree with:** the groups and the words (they are in one file, easy to change); the follow up memory is the last three things typed; the default stays 8000. **Worth knowing:** the shop group is still about 2,200 tokens, so a shop question has 1,797 left, and it could be split (products and stock, sales and orders, customers and gift cards) if you want that. **The risk is in T76 step 4:** a small model may not call `more_tools` for a question the words miss, and would then say it could not find anything. Not tried on a real model | your request |
+ | 0186 | 2026-10-20 | F5 leftovers (your request: the changelog and Discussions). **Documentation only, no code.** `CHANGELOG.md` is new: Keep a Changelog layout, one Unreleased section because there are no tags and the version is 1.0.0, grouped into Added, Changed and Fixed, written from the patch row headlines and the recent commit titles. I read the full row wherever a headline was cut short, and that corrected two lines I had paraphrased wrongly (0155, 0168) before they went in. It is a summary: this log stays the complete list. `CONTRIBUTING.md` now asks for a changelog line for anything a shop user would notice, and no longer says four training-course tests are known failures (0183 fixed them). `README.md` says Discussions are off, says 68 help pages (it said 64), and lists the changelog. **Decided without you, change it if you disagree: Discussions stays off,** because the README already says there is no support channel and there is no licence yet. It is a GitHub setting rather than a file, so nothing here can turn it off: check Settings ▸ General ▸ Features. Details in `dev_docs/GUESSES.md`. `dev_docs/TO_DO.md` F5 now reads done except the licence. **Still yours:** the licence choice. No code changed, so no device test | your request |
+ | 0177 | 2026-10-20 | Companion mode, patch 2 (your request: "next patch"). **App-wide PIN lock and step-up PIN on a companion.** New `src/lib/stepUp.ts` (pure rules: which pages and actions ask, when a PIN is due, when to lock after idle), `src/lib/stepUpGate.ts` (`requireStepUp`), `src/ui/StepUpHost.tsx` (the PIN prompt) and `lockRequired` in `src/lib/appMode.ts`: a companion always locks behind the PIN, while a register still follows the shared Require PIN setting, so making a phone a companion never turns the lock on for your tills. The setup checklist's owner PIN step now counts an owner with a PIN on a companion without needing Require PIN. A companion locks itself after sitting idle or away (default 2 minutes, never mid card payment). Payments, refunds, items, stock, customers, orders, the drawer, Settings, Staff, backups and changing the mode, a feature or the locking choices ask for the PIN again when the last PIN entry is older than the window (default 5 minutes, every time is a choice); five wrong PINs lock the app. Both choices are per device (Device mode ▸ Locking) and in `DEVICE_KEYS`, so a backup never copies them. Practice and Demo show every feature and never lock or ask. Help page `device-mode`, device test T80, tests in `tests/stepup.test.ts` and `tests/setupFlow.test.ts`. Not yet: wiring the gate into tabs and routes (0178). One open question in the plan: keep Staff reachable on a companion. | G2 |
++| 0178 | 2026-10-20 | Companion mode, patch 3 (your request: "next"). **The gate now hides what a companion does not hold, and the companion gets its own home.** The tab bar, the pages and the More rows follow `tabAllowed`, `routeAllowed` and `rowAllowed`; a hidden tab falls back to the home tab and a page that is open when its feature is switched off closes itself. New **Today** tab (today's sales and orders for managers and owners, low, out and oversold stock, stuck and queued uploads, a bell for notices) and **Scan** tab (one button for a price or stock check, opening the camera, reusing the checkout lookup); a register never shows either. A companion's bar is Today, Scan, Inventory, Transactions, More, with Checkout added when Selling is on; Notifications is the bell, opened by a new `notices` page. **Staff stays reachable on a companion** (no longer tied to Till staff tools), which answers the open question from 0177. Tests in `tests/appMode.test.ts` and `tests/todaycards.test.ts`, help page `device-mode` updated, device test T81. Not yet: Companion wording on the screens that stay and the phone layout pass for existing screens (moved to 0181), the card reader, drawer and sync gating (0179). | G2 |
+ | ledger-fix | 2026-10-20 | **Not a numbered patch: apply this by hand.** `patches/APPLIED.txt` had no newline after its last line, so when CI appended 0185 the name was glued onto the 0174 line (`0174-…patch0185-…patch`). `scripts/apply-patches.sh` skips a patch only when its name is a whole line, so 0174 and 0185 both counted as unapplied, as did 0175, 0183 and 0184 (never listed). The next run would have tried 0174 first, failed because it is already in the tree, and stopped with "Later patches were not tried". The ledger now lists 0174, 0175, 0183, 0184, 0185 and 0186, each on its own line. The script adds the missing newline before it appends, so a ledger that loses its trailing newline cannot glue two names together again. Tested by running the script in a scratch repo: with the fixed ledger it applies 0 patches, and with the newline stripped and a new patch added, the new name lands on its own line. **It has to be applied by hand and pushed** (`git apply ledger-fix.diff`), because a normal patch would be stopped by the very problem it fixes | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+@@ -448,6 +449,7 @@ Added in 0072. These are the last jobs, done after E1 and B8. Order matters a li
+ The full plan, decisions, patch series and tracker live in `dev_docs/COMPANION_PLAN.md`. Each Companion patch ticks its own items there; this section only records the headline.
+ - [~] G1 **Plan saved (0175).** A per-device Register or Companion mode: register features off until requested, a phone-first home (Today, Scan), a quick sale that expands into the full POS, send a cart to the register, an app-wide PIN lock with a step-up PIN for anything that matters, and a setup screen that can take new profiles later. Items C1 to C23 in the plan. Next: 0176.
+ - [~] G2 **PIN lock and step-up PIN (0177).** Items C5 and C6 in `dev_docs/COMPANION_PLAN.md`. Code-complete and tested here (1420 tests, `tsc`, help and nav graph checks); not run on a device, steps in `dev_docs/DEVICE_TESTS.md` T80. Next: 0178 (wire the gate into tabs, routes and More, plus Today and Scan).
++- [~] G3 **Gate wired, Today and Scan (0178).** Items C7 to C10 in `dev_docs/COMPANION_PLAN.md`. Code-complete and tested here (1428 tests, `tsc`, help and nav graph checks); not run on a device, steps in `dev_docs/DEVICE_TESTS.md` T81. Next: 0179 (hardware and sync gating).
+ 
+ ---
+ 
+@@ -550,6 +552,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N71 **Non-blocking (CloudKit, patch 3):** the plan's backend interface, wrapped around the metaobject code so patch 4's CloudKit backend is a drop-in. `src/lib/syncBackend.ts` is the seam: the `SharedBackend` interface (ensure, get, put, list, remove, plus an optional detail capability), the row and page shapes, the selector (`setBackend`, `activeBackend`, `activeBackendKind`) and the training block on writes (reads stay open so a course can teach on real history). `src/lib/shopify/metaobjectBackend.ts` is the one implementation that exists today, mapping the shop's five shared types onto the metaobject types and wrapping the same calls `sync.ts` made by hand. `sync.ts`, `Reports.tsx` and the Settings button now go through the seam, so the metaobject helpers are imported in one place only, and `App.tsx` installs the metaobject backend before the first poll. The Settings button reads **Set up shared storage** now (the "(metaobjects)" wording went), which updated the two help pages and regenerated `help/help.json`. No record moved and no CloudKit behaviour changed: it is a seam, so it is pinned in Node by `tests/syncbackend.test.ts` against a fake backend. The four owner decisions still open in the plan's section 7 are tagged there with the patch that will first need them (patch 4 for `encryptedValues` and the privacy and storage questions, patch 8 for dual-write), because none of them is about this seam.
+ - [ ] N72 **Non-blocking (AI assistant, 0185):** device check for loading only the tools a question needs, steps in `dev_docs/DEVICE_TESTS.md` T76. Most important: step 4, a question the words miss. Tell me whether the model asks for the shop tools with `more_tools` or gives up.
+ - [ ] N73 **Non-blocking (Companion mode, 0177):** device check for the companion PIN lock and step-up PIN, steps in `dev_docs/DEVICE_TESTS.md` T80. Most important: the phone locks on opening, after idle and after the background, a stale PIN asks again before payments, stock, customers, refunds, backups and Settings, and your tills show no new prompts and keep their Require PIN setting. Also one question in `dev_docs/COMPANION_PLAN.md`: keep Staff reachable on a companion (otherwise a companion with Till staff tools off could never create or reset a PIN once 0178 wires the gate).
++- [ ] N74 **Non-blocking (Companion mode, 0178):** device check for the companion tabs, Today and Scan, steps in `dev_docs/DEVICE_TESTS.md` T81. Most important: a register keeps exactly its five tabs, a companion opens on Today with no Checkout tab, switching Selling on brings Checkout back, and Scan opens the camera at once.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/dev_docs/QUEUE.md b/dev_docs/QUEUE.md
+index 9cd8e23..7636d75 100644
+--- a/dev_docs/QUEUE.md
++++ b/dev_docs/QUEUE.md
+@@ -41,17 +41,11 @@ A lease so two registers do not migrate at once, a checkpoint per group, and a v
+ Stop the metaobject polling once the seam is proven, and add a flag that puts a register back on polling without a new
+ build. This is where the owner decides dual-write against a clean cut-over.
+ 
+-## Stream B: Companion mode, patches 0178 to 0182
++## Stream B: Companion mode, patches 0179 to 0182
+ 
+ Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan, 0176 added the setup checklist that
+-records whether a device is a register or a companion and which features it holds, and 0177 added the PIN lock and the
+-step-up PIN. The gate exists but nothing reads it yet. Before 0178, see the open question in the plan about keeping
+-Staff reachable on a companion.
+-
+-### Companion 0178. Wire the gate into tabs, routes, More and deep links
+-
+-The recorded features actually hide what a companion does not hold: tabs, routes, the More rows and deep links. Add the
+-Today and Scan tabs and the phone layout here.
++records whether a device is a register or a companion and which features it holds, 0177 added the PIN lock and the
++step-up PIN, and 0178 wired the gate into the tabs, pages and More rows and added the Today and Scan tabs.
+ 
+ ### Companion 0179. Hardware and sync gating
+ 
+diff --git a/help/device-mode.md b/help/device-mode.md
+index 3f678a0..3d78710 100644
+--- a/help/device-mode.md
++++ b/help/device-mode.md
+@@ -29,6 +29,12 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
+ - Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.
+ - Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.
+ 
++### What a companion shows
++- The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.
++- **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.
++- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.
++- A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.
++
+ ### PIN and locking on a companion
+ - A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.
+ - Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.
+@@ -76,13 +82,16 @@ flowchart TD
+ 
+ ### What the gate answers
+ - `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.
+-- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.
+-- `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.
++- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.
++- `rowAllowed`: the **Cash drawer** and **Training** rows follow their group (Staff does not, see above). The row is still subject to the display mode and the person's role.
+ 
+ ### How the lock and the step-up decide
+ - `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.
+ - `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.
+ - `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.
+ 
++### Tabs, pages and rows
++`deviceTabs` in `src/lib/appMode.ts` gives the tab bar, `homeTab` says where the app opens and where a hidden tab sends you, and `tabAllowed`, `routeAllowed` and `rowAllowed` answer for each tab, page and More row. `App.tsx` asks them for the bar and the panes, the `Routes` guard closes a page the device does not hold, and the More screen filters its rows. `src/screens/Today.tsx` draws the Today cards from `todayCards` in `src/lib/todayCards.ts`, and `src/screens/ScanTab.tsx` reuses `LookupSheet`.
++
+ ### What is not wired yet
+-The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the PIN lock and the step-up PIN that guards changing the mode arrived with 0177.
++The card reader, the cash drawer and the sync pages following the same switches arrive with patch 0179 of `dev_docs/COMPANION_PLAN.md`, and the selling path with 0180.
+diff --git a/help/help.json b/help/help.json
+index 0b1e028..7d32393 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "7fec31b6",
++ "version": "3a1b46c5",
+  "pages": [
+   {
+    "id": "cash",
+@@ -446,9 +446,9 @@
+    "updated": "2026-10-20",
+    "lead": "Open **More ▸ Device mode** to say what this device is. A **register** is a till and has every feature. A **companion** is a phone or tablet beside the till: it has the register features you switch on, and everything else the app can do. Everyone who is signed in can open this page.",
+    "sections": {
+-    "basic": "### See what this device is\n- The top of the page says **This device is a register** or **This device is a companion**, with a line under it saying what that means.\n- The list of features below shows a switch for each group. On a register every switch is on and cannot be changed.\n\n### Switch a feature on or off\n- **Selling.** The checkout, cart and payments.\n- **Card reader.** The Zeller reader and terminal practice.\n- **Cash drawer.** The drawer, its ledger and the change tools.\n- **Till staff tools.** Lock register, staff pass scanning and switching staff.\n- **Till display.** Screensaver, keep awake, item spotlight and the grid editor.\n- **Till training.** The register courses.\n- Under each switch is a line listing what the group holds. Switch a group off to take those things off this device, and on to bring them back.\n\n### Change the mode\n- Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.\n- Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.\n- Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.\n\n### PIN and locking on a companion\n- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.\n- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.\n- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.\n- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.\n- Practice and Demo mode show every feature and never lock.\n\n### Open the checklist again\n- Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].",
++    "basic": "### See what this device is\n- The top of the page says **This device is a register** or **This device is a companion**, with a line under it saying what that means.\n- The list of features below shows a switch for each group. On a register every switch is on and cannot be changed.\n\n### Switch a feature on or off\n- **Selling.** The checkout, cart and payments.\n- **Card reader.** The Zeller reader and terminal practice.\n- **Cash drawer.** The drawer, its ledger and the change tools.\n- **Till staff tools.** Lock register, staff pass scanning and switching staff.\n- **Till display.** Screensaver, keep awake, item spotlight and the grid editor.\n- **Till training.** The register courses.\n- Under each switch is a line listing what the group holds. Switch a group off to take those things off this device, and on to bring them back.\n\n### Change the mode\n- Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.\n- Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.\n- Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.\n\n### What a companion shows\n- The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.\n- **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.\n- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.\n- A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.\n\n### PIN and locking on a companion\n- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.\n- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.\n- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.\n- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.\n- Practice and Demo mode show every feature and never lock.\n\n### Open the checklist again\n- Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].",
+     "deep": "### Two ways of narrowing, and neither one widens\nA device's mode decides what exists here. A person's display mode (Standard, Simple, Minimal, Custom) decides how much of that they see. Neither can bring back something the other has taken away: a companion with Selling off stays without the checkout however the person's display mode is set, and a companion cannot grant a cashier a page their role does not allow.\n\nSome things are on a companion whatever it has switched off, because they are not register features: Help, Demo mode, Notifications, the assistant, Settings for managers and owners, and the sync and Shopify diagnostics.\n\n### The mode belongs to the device\nThe mode and the feature switches are stored on this device only. They do not sync to the other registers, and a [[settings/backup]] file does not carry them, so a device restored onto new hardware keeps its own answer. The mode is never taken from another register either: a device always reads its own.\n\n### Which is which in the shop\nA register is usually the iPad at the counter with the reader and the drawer. A companion is a phone in someone's pocket, or a tablet used for looking things up, taking a cart to the counter, or asking the assistant. Turning Selling on a companion is what makes it a second till.",
+-    "advanced": "### The rules\n`src/lib/appMode.ts` holds the six group ids, the defaults (a register has all six, a companion has none until they are switched on), and the gate: `tabAllowed`, `routeAllowed` and `rowAllowed`. A stored mode that is not `register` or `companion` reads as a register, so an older app version or a hand-edited setting can never invent a companion.\n\n```mermaid\nflowchart TD\n  A[Device mode screen] --> B{A register or a companion}\n  B -->|Register| C[Every feature on, nothing to switch]\n  B -->|Companion| D[Six switches, all off to start]\n  D --> E[tabAllowed, routeAllowed, rowAllowed]\n  E --> F[The screens a companion can reach]\n```\n\n| Job | Where |\n|---|---|\n| The groups, the defaults and the gate | `src/lib/appMode.ts` |\n| The page and its six switches | `src/screens/DeviceMode.tsx` |\n| The stored keys `appMode` and `registerFeatures` | `src/state/store.ts` |\n| Keeping them out of a backup | `DEVICE_KEYS` in `src/lib/backupFile.ts` |\n| The row in More | `src/screens/More.tsx` and `src/lib/uiMode.ts` |\n\n### What the gate answers\n- `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.\n- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.\n- `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.\n\n### How the lock and the step-up decide\n- `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.\n- `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.\n- `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.\n\n### What is not wired yet\nThe gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the PIN lock and the step-up PIN that guards changing the mode arrived with 0177."
++    "advanced": "### The rules\n`src/lib/appMode.ts` holds the six group ids, the defaults (a register has all six, a companion has none until they are switched on), and the gate: `tabAllowed`, `routeAllowed` and `rowAllowed`. A stored mode that is not `register` or `companion` reads as a register, so an older app version or a hand-edited setting can never invent a companion.\n\n```mermaid\nflowchart TD\n  A[Device mode screen] --> B{A register or a companion}\n  B -->|Register| C[Every feature on, nothing to switch]\n  B -->|Companion| D[Six switches, all off to start]\n  D --> E[tabAllowed, routeAllowed, rowAllowed]\n  E --> F[The screens a companion can reach]\n```\n\n| Job | Where |\n|---|---|\n| The groups, the defaults and the gate | `src/lib/appMode.ts` |\n| The page and its six switches | `src/screens/DeviceMode.tsx` |\n| The stored keys `appMode` and `registerFeatures` | `src/state/store.ts` |\n| Keeping them out of a backup | `DEVICE_KEYS` in `src/lib/backupFile.ts` |\n| The row in More | `src/screens/More.tsx` and `src/lib/uiMode.ts` |\n\n### What the gate answers\n- `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.\n- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.\n- `rowAllowed`: the **Cash drawer** and **Training** rows follow their group (Staff does not, see above). The row is still subject to the display mode and the person's role.\n\n### How the lock and the step-up decide\n- `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.\n- `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.\n- `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.\n\n### Tabs, pages and rows\n`deviceTabs` in `src/lib/appMode.ts` gives the tab bar, `homeTab` says where the app opens and where a hidden tab sends you, and `tabAllowed`, `routeAllowed` and `rowAllowed` answer for each tab, page and More row. `App.tsx` asks them for the bar and the panes, the `Routes` guard closes a page the device does not hold, and the More screen filters its rows. `src/screens/Today.tsx` draws the Today cards from `todayCards` in `src/lib/todayCards.ts`, and `src/screens/ScanTab.tsx` reuses `LookupSheet`.\n\n### What is not wired yet\nThe card reader, the cash drawer and the sync pages following the same switches arrive with patch 0179 of `dev_docs/COMPANION_PLAN.md`, and the selling path with 0180."
+    }
+   },
+   {
+diff --git a/src/lib/appMode.ts b/src/lib/appMode.ts
+index 73b0ccb..284e92d 100644
+--- a/src/lib/appMode.ts
++++ b/src/lib/appMode.ts
+@@ -53,22 +53,37 @@ export function resolveFeatures(mode: unknown, features: unknown): RegisterFeatu
+ 
+ export const featureOn = (mode: unknown, features: unknown, id: FeatureId): boolean => resolveFeatures(mode, features)[id];
+ 
++/** Tabs only a companion has: Today (a glance at the shop) and Scan (price and stock check). A register never shows them. */
++export type CompanionTab = 'today' | 'scan';
++export type AnyTab = TabId | CompanionTab;
++export const COMPANION_TABS: CompanionTab[] = ['today', 'scan'];
++export const isCompanionTab = (t: string): t is CompanionTab => (COMPANION_TABS as string[]).includes(t);
++
+ /** Tabs a Companion always keeps: browsing the catalogue, the till's records, notices and More. */
+-const ALWAYS_TABS: TabId[] = ['inventory', 'transactions', 'notifications', 'more', 'today', 'scan'];
++const ALWAYS_TABS: TabId[] = ['inventory', 'transactions', 'notifications', 'more'];
+ const TAB_FEATURE: Partial<Record<TabId, FeatureId>> = { checkout: 'selling' };
+ 
+ /** Whether the device shows a tab. The display mode still narrows this further; it never widens it. */
+-export function tabAllowed(mode: unknown, features: unknown, tab: TabId): boolean {
++export function tabAllowed(mode: unknown, features: unknown, tab: AnyTab): boolean {
++  if (isCompanionTab(tab)) return readMode(mode) === 'companion';
+   if (ALWAYS_TABS.includes(tab)) return true;
+   const need = TAB_FEATURE[tab];
+   return !need || featureOn(mode, features, need);
+ }
+ 
+-/** Pages a Companion always keeps open: help, settings for managers (its own role check), diagnostics, history. */
++/** The tab bar of a companion, left to right. Notifications is not a tab there: a bell on Today opens it, so the bar stays at five (six with Selling on). */
++export const COMPANION_TAB_ORDER: AnyTab[] = ['today', 'scan', 'checkout', 'inventory', 'transactions', 'more'];
++/** The tabs this device shows, in order, before the display mode narrows them. A register has the five it has always had. */
++export function deviceTabs(mode: unknown, features: unknown, registerOrder: TabId[]): AnyTab[] {
++  return readMode(mode) === 'companion' ? COMPANION_TAB_ORDER.filter(t => tabAllowed(mode, features, t)) : registerOrder;
++}
++/** Where the app opens, and where a hidden tab sends you. */
++export const homeTab = (mode: unknown): AnyTab => (readMode(mode) === 'companion' ? 'today' : 'checkout');
++
++/** Pages a Companion always keeps open: help, settings and Staff for managers (their own role checks), diagnostics, history. Staff stays open because the lock needs an owner PIN, and a PIN can only be made or reset there. */
+ const ROUTE_FEATURE: Partial<Record<string, FeatureId>> = {
+   cart: 'selling', pay: 'selling', saved: 'selling',
+   drawer: 'cashDrawer',
+-  staff: 'staffTools',
+   terminalPlay: 'cardReader',
+   training: 'tillTraining', trainingRun: 'tillTraining',
+ };
+@@ -79,7 +94,7 @@ export function routeAllowed(mode: unknown, features: unknown, route: string): b
+   return !need || featureOn(mode, features, need);
+ }
+ 
+-const ROW_FEATURE: Partial<Record<MoreRowId, FeatureId>> = { drawer: 'cashDrawer', staff: 'staffTools', training: 'tillTraining' };
++const ROW_FEATURE: Partial<Record<MoreRowId, FeatureId>> = { drawer: 'cashDrawer', training: 'tillTraining' };
+ 
+ /** Whether a device shows a More row. The row is still subject to the display mode and the person's role. */
+ export function rowAllowed(mode: unknown, features: unknown, row: MoreRowId): boolean {
+diff --git a/src/lib/todayCards.ts b/src/lib/todayCards.ts
+new file mode 100644
+index 0000000..dc75235
+--- /dev/null
++++ b/src/lib/todayCards.ts
+@@ -0,0 +1,15 @@
++// Location: src/lib/todayCards.ts
++// What the companion's Today tab shows, worked out from plain data so it can be tested. Pure, no React.
++import type { Variant } from './types';
++import { stockToneOf } from './lookup';
++
++export type TodayInput = { variants: Pick<Variant, 'id' | 'productTitle' | 'variantTitle' | 'stock'>[]; outbox: { blocked?: boolean }[]; unread: number; role: string };
++export type TodayCards = { money: boolean; low: TodayInput['variants']; lowCount: number; stuck: number; queued: number; unread: number };
++export const LOW_SHOWN = 5;
++
++/** Money figures follow the Reports rule: a cashier never sees them. Low stock is the same three tones the stock dot uses (low, out, oversold), worst first. */
++export function todayCards(i: TodayInput): TodayCards {
++  const low = i.variants.filter(v => ['low', 'out', 'neg'].includes(stockToneOf(v.stock))).sort((a, b) => (a.stock ?? 0) - (b.stock ?? 0) || a.productTitle.localeCompare(b.productTitle));
++  const stuck = i.outbox.filter(o => o.blocked).length;
++  return { money: i.role !== 'cashier', low: low.slice(0, LOW_SHOWN), lowCount: low.length, stuck, queued: i.outbox.length - stuck, unread: i.unread };
++}
+diff --git a/src/screens/Lookup.tsx b/src/screens/Lookup.tsx
+index 83af64e..04e4c0a 100644
+--- a/src/screens/Lookup.tsx
++++ b/src/screens/Lookup.tsx
+@@ -18,10 +18,11 @@ import { setLookupModeProbe, setLookupResultProbe } from '../lib/trainingProbe';
+ export type LookupMode = 'price' | 'stock';
+ const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B45309', neg: '#B91C1C' } as const;
+ 
+-export function LookupSheet({ mode, visible, onClose }: { mode: LookupMode; visible: boolean; onClose: () => void }) {
++export function LookupSheet({ mode, visible, onClose, startWithCamera = false }: { mode: LookupMode; visible: boolean; onClose: () => void; /** The companion's Scan tab opens straight onto the camera. */ startWithCamera?: boolean }) {
+   const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
+   const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false);
+   useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
++  useEffect(() => { if (visible && startWithCamera) setCam(true); }, [visible, startWithCamera]);
+   useEffect(() => { setFound(null); setMsg(''); setQ(''); setLookupModeProbe(mode); setLookupResultProbe(undefined); }, [mode]);
+ 
+   // scans and picks both go through here; the latest one replaces the result so a stack of items can be checked quickly
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index 873f5e2..537c90a 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -9,7 +9,7 @@ import { useDemo } from '../state/demoSession';
+ import { SPOT } from '../lib/trainingSpots';
+ import { actingRole } from '../lib/adjustPerms';
+ import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
+-import { lockRequired } from '../lib/appMode';
++import { lockRequired, rowAllowed } from '../lib/appMode';
+ 
+ const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }> = {
+   orders: { icon: 'receipt-outline', title: 'Orders', route: 'orders' }, items: { icon: 'cube-outline', title: 'Items', route: 'items' },
+@@ -31,7 +31,8 @@ export default function More() {
+   const { c } = useTheme(); const nav = useNav(); const ui = useUi(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
+   const lockOn = lockRequired(s) && s.staff.length > 0;
+   const role = actingRole(lockRequired(s), s.staff, staff?.id);
+-  const groups = visibleMoreRows(ui, role, lockOn);
++  const devMode = useApp(st => st.settings.appMode); const devFeatures = useApp(st => st.settings.registerFeatures);
++  const groups = visibleMoreRows(ui, role, lockOn).map(g => g.filter(id => rowAllowed(devMode, devFeatures, id))).filter(g => g.length > 0); // a companion leaves out the till rows it does not hold
+   const demo = useDemo(st => st.active);
+   const openDemo = async () => {
+     const msg = await useDemo.getState().enter();
+diff --git a/src/screens/Notifications.tsx b/src/screens/Notifications.tsx
+index 0830ef9..0237b17 100644
+--- a/src/screens/Notifications.tsx
++++ b/src/screens/Notifications.tsx
+@@ -9,7 +9,7 @@ import { outboxRetrySpot } from '../lib/trainingSpots';
+ 
+ const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline' };
+ const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/offline-sync', stock: 'fix/stock-mismatch', reader: 'fix/reader', pass: 'fix/locked-out', refund: 'orders/refunds' };
+-export default function Notifications() {
++export default function Notifications({ onBack }: { onBack?: () => void } = {}) {
+   const { c } = useTheme(); const nav = useNav(); const list = useApp(s => s.pos.notices); const outbox = useApp(s => s.pos.outbox); const patchPos = useApp(s => s.patchPos);
+   const stuck = outbox.filter(o => o.blocked);
+   // live low/negative stock summary, derived - not stored
+@@ -17,7 +17,7 @@ export default function Notifications() {
+   return (
+     <View style={{ flex: 1, backgroundColor: c.bg }}>
+       <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center' }}>
+-        <Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
++        {onBack ? <Btn small kind="ghost" title="Back" icon="chevron-back" onPress={onBack} /> : null}<Txt size={24} weight="700" style={{ flex: 1 }}>Notifications</Txt><HelpButton id="fix" label="Troubleshooting help" /><Btn small kind="ghost" title="Clear all" onPress={() => patchPos({ notices: [] })} /></View>
+       <FlatList data={list} keyExtractor={n => n.id} ListEmptyComponent={<Empty icon="notifications-outline" title="All clear" sub="Sync failures, queued sales, stock and reader issues show up here." />}
+         ListHeaderComponent={<View>
+           {stuck.map(o => <Row key={o.id} icon="warning-outline" danger title={`Sale ${o.sale.orderName ?? o.id.slice(0, 8)} needs attention`} sub={o.error} right={<Btn small title="Retry" spot={outboxRetrySpot(o.id)} onPress={() => retryBlocked(o.id)} />} />)}
+diff --git a/src/screens/ScanTab.tsx b/src/screens/ScanTab.tsx
+new file mode 100644
+index 0000000..e484d01
+--- /dev/null
++++ b/src/screens/ScanTab.tsx
+@@ -0,0 +1,31 @@
++// Location: src/screens/ScanTab.tsx
++// The companion's Scan tab: one big button that opens the camera for a price check or a stock check. The lookup itself is the
++// same sheet the checkout grid uses, so the cart is never touched (a companion may not even have one).
++import React, { useState } from 'react';
++import { View } from 'react-native';
++import { Ionicons } from '@expo/vector-icons';
++import { Btn, Segmented, Txt } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { LookupSheet, type LookupMode } from './Lookup';
++
++export default function ScanTab() {
++  const { c } = useTheme();
++  const [mode, setMode] = useState<LookupMode>('price'); const [open, setOpen] = useState(false);
++  return (
++    <View style={{ flex: 1, backgroundColor: c.bg }}>
++      <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line }}>
++        <Txt size={24} weight="700">Scan</Txt>
++      </View>
++      <View style={{ flex: 1, padding: 20, gap: 18, justifyContent: 'center' }}>
++        <View style={{ alignItems: 'center', gap: 8 }}>
++          <Ionicons name={mode === 'price' ? 'pricetag-outline' : 'layers-outline'} size={56} color={c.sub} />
++          <Txt size={13} sub style={{ textAlign: 'center' }}>{mode === 'price' ? 'Shows the price and any deals for an item.' : 'Shows how many are in stock, and the other variations.'}</Txt>
++        </View>
++        <Segmented value={mode} options={[{ v: 'price', label: 'Price check' }, { v: 'stock', label: 'Stock check' }]} onChange={setMode} />
++        <Btn title="Scan an item" icon="barcode-outline" onPress={() => setOpen(true)} />
++        <Txt size={12} sub style={{ textAlign: 'center' }}>A Bluetooth scanner works once the check is open. You can also search by name, SKU or barcode there.</Txt>
++      </View>
++      <LookupSheet mode={mode} visible={open} onClose={() => setOpen(false)} startWithCamera />
++    </View>
++  );
++}
+diff --git a/src/screens/Today.tsx b/src/screens/Today.tsx
+new file mode 100644
+index 0000000..1a476a4
+--- /dev/null
++++ b/src/screens/Today.tsx
+@@ -0,0 +1,63 @@
++// Location: src/screens/Today.tsx
++// The companion's home tab: a glance at the shop. Today's sales and orders (managers and owners only, the same rule as Reports),
++// items that are low or out of stock, and anything stuck in the upload queue. Every card opens the full screen behind it.
++// Nothing here writes anything, so it needs no PIN.
++import React, { useMemo, useState } from 'react';
++import { RefreshControl, ScrollView, View } from 'react-native';
++import { Btn, Card, Money, Row, Txt } from '../ui/kit';
++import { useTheme } from '../ui/theme';
++import { useNav } from '../ui/nav';
++import { useApp } from '../state/store';
++import { useRollups } from './Reports';
++import { actingRole } from '../lib/adjustPerms';
++import { lockRequired } from '../lib/appMode';
++import { derived, periodRange, sumRange } from '../lib/rollup';
++import { stockText, stockToneOf } from '../lib/lookup';
++import { todayCards } from '../lib/todayCards';
++
++export default function Today() {
++  const { c } = useTheme(); const nav = useNav();
++  const settings = useApp(s => s.settings); const staffId = useApp(s => s.staffId);
++  const variants = useApp(s => s.data.variants); const outbox = useApp(s => s.pos.outbox); const notices = useApp(s => s.pos.notices);
++  const { rows, busy, load } = useRollups();
++  const [now] = useState(() => new Date());
++  const role = actingRole(lockRequired(settings), settings.staff, staffId);
++  const cards = useMemo(() => todayCards({ variants: Object.values(variants), outbox, unread: notices.filter(n => !n.read).length, role }), [variants, outbox, notices, role]);
++  const totals = useMemo(() => derived(sumRange(rows, periodRange('1D', now))), [rows, now]);
++  const orders = useMemo(() => sumRange(rows, periodRange('1D', now)).orders, [rows, now]);
++  return (
++    <View style={{ flex: 1, backgroundColor: c.bg }}>
++      <View style={{ paddingTop: 8, paddingHorizontal: 16, paddingBottom: 10, backgroundColor: c.card, borderBottomWidth: 1, borderBottomColor: c.line, flexDirection: 'row', alignItems: 'center' }}>
++        <View style={{ flex: 1 }}>
++          <Txt size={24} weight="700">Today</Txt>
++          <Txt size={13} sub>{now.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })}</Txt>
++        </View>
++        <Btn small kind="ghost" title={cards.unread ? `Notices ${cards.unread}` : 'Notices'} icon="notifications-outline" onPress={() => nav.push('notices')} />
++      </View>
++      <ScrollView refreshControl={<RefreshControl refreshing={busy} onRefresh={() => { void load(); }} />} contentContainerStyle={{ padding: 16, gap: 14 }}>
++        {cards.money ? (
++          <Card style={{ padding: 16 }}>
++            <Txt size={13} sub weight="600">Sales today</Txt>
++            <Money cents={totals.netSales} size={36} weight="700" />
++            <Txt sub>{`${orders} order${orders === 1 ? '' : 's'}${orders ? `, average $${(totals.avgSale / 100).toFixed(2)}` : ''}`}</Txt>
++            <Btn kind="ghost" small title="Open reports" onPress={() => nav.push('reports')} style={{ alignSelf: 'flex-start', marginTop: 6 }} />
++          </Card>
++        ) : null}
++        <Card style={{ padding: 0, overflow: 'hidden' }}>
++          <View style={{ padding: 16, paddingBottom: 8 }}>
++            <Txt size={13} sub weight="600">Stock</Txt>
++            <Txt size={20} weight="700">{cards.lowCount ? `${cards.lowCount} item${cards.lowCount === 1 ? '' : 's'} low, out or oversold` : 'Nothing low on stock'}</Txt>
++          </View>
++          {cards.low.map((v, i) => <Row key={v.id} last={i === cards.low.length - 1} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Txt size={13} weight="600" color={stockToneOf(v.stock) === 'neg' || stockToneOf(v.stock) === 'out' ? c.bad : c.sub}>{stockText(v.stock)}</Txt>} onPress={() => nav.setTab('inventory')} />)}
++        </Card>
++        {cards.stuck || cards.queued ? (
++          <Card style={{ padding: 0, overflow: 'hidden' }}>
++            {cards.stuck ? <Row icon="warning-outline" danger title={`${cards.stuck} sale${cards.stuck === 1 ? '' : 's'} need attention`} sub="They did not reach Shopify." onPress={() => nav.push('notices')} /> : null}
++            {cards.queued ? <Row icon="time-outline" last title={`${cards.queued} sale${cards.queued === 1 ? '' : 's'} queued`} sub="They upload when the connection is back." onPress={() => nav.push('notices')} /> : null}
++          </Card>
++        ) : null}
++        {!cards.money ? <Txt size={13} sub style={{ textAlign: 'center' }}>Sales figures are for managers and owners.</Txt> : null}
++      </ScrollView>
++    </View>
++  );
++}
+diff --git a/src/ui/nav.tsx b/src/ui/nav.tsx
+index f35a762..12bcdf9 100644
+--- a/src/ui/nav.tsx
++++ b/src/ui/nav.tsx
+@@ -1,5 +1,7 @@
+ import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+ import { stepUpForRoute } from '../lib/stepUp';
++import { useApp } from '../state/store';
++import { readMode } from '../lib/appMode';
+ import { requireStepUp, stepUpDue } from '../lib/stepUpGate';
+ 
+ export type Tab = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more' | 'today' | 'scan';
+@@ -26,7 +28,7 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
+   const pop = useCallback(() => setStack(s => s.slice(0, -1)), []);
+   const reset = useCallback(() => setStack([]), []);
+   /** Notification deep-links: a tab name switches tab, anything else pushes a page. */
+-  const go = useCallback((route: string, params?: any) => { if (TAB_ROUTES[route]) { setTabState(TAB_ROUTES[route]); setStack([]); } else open(route, params); }, [open]);
++  const go = useCallback((route: string, params?: any) => { if (route === 'notifications' && readMode(useApp.getState().settings.appMode) === 'companion') open('notices'); else if (TAB_ROUTES[route]) { setTabState(TAB_ROUTES[route]); setStack([]); } else open(route, params); }, [open]);
+   const v = useMemo(() => ({ tab, setTab, stack, push, pop, reset, go }), [tab, stack, setTab, push, pop, reset, go]);
+   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
+ }
+diff --git a/tests/appMode.test.ts b/tests/appMode.test.ts
+index 1ee8987..9c59425 100644
+--- a/tests/appMode.test.ts
++++ b/tests/appMode.test.ts
+@@ -8,6 +8,7 @@ import {
+   featureOn, readDeviceMode, readFeatures, readMode, resolveFeatures, routeAllowed, rowAllowed, tabAllowed,
+ } from '../src/lib/appMode';
+ import { TAB_ORDER, MORE_GROUPS } from '../src/lib/uiMode';
++import { COMPANION_TAB_ORDER, deviceTabs, homeTab, isCompanionTab } from '../src/lib/appMode';
+ 
+ test('only the two known modes are read, anything else is a register', () => {
+   assert.deepEqual(DEVICE_MODES, ['register', 'companion']);
+@@ -70,7 +71,7 @@ test('a companion row and page follow their group', () => {
+   const off = {};
+   const on = { cashDrawer: true, staffTools: true, tillTraining: true, cardReader: true, selling: true };
+   assert.equal(rowAllowed('companion', off, 'drawer'), false);
+-  assert.equal(rowAllowed('companion', off, 'staff'), false);
++  assert.equal(rowAllowed('companion', off, 'staff'), true); // Staff stays open: the lock needs an owner PIN, made and reset there
+   assert.equal(rowAllowed('companion', off, 'training'), false);
+   assert.equal(rowAllowed('companion', off, 'settings'), true);
+   assert.equal(rowAllowed('companion', off, 'help'), true);
+@@ -79,7 +80,7 @@ test('a companion row and page follow their group', () => {
+   assert.equal(rowAllowed('companion', on, 'staff'), true);
+   assert.equal(rowAllowed('companion', on, 'training'), true);
+   assert.equal(routeAllowed('companion', off, 'drawer'), false);
+-  assert.equal(routeAllowed('companion', off, 'staff'), false);
++  assert.equal(routeAllowed('companion', off, 'staff'), true);
+   assert.equal(routeAllowed('companion', off, 'terminalPlay'), false);
+   assert.equal(routeAllowed('companion', off, 'training'), false);
+   assert.equal(routeAllowed('companion', off, 'trainingRun'), false);
+@@ -93,3 +94,23 @@ test('a companion row and page follow their group', () => {
+   assert.equal(routeAllowed('companion', on, 'drawer'), true);
+   assert.equal(routeAllowed('companion', on, 'cart'), true);
+ });
++
++test('Today and Scan are companion tabs: a register never shows them', () => {
++  for (const t of ['today', 'scan'] as const) { assert.equal(isCompanionTab(t), true); assert.equal(tabAllowed('register', {}, t), false); assert.equal(tabAllowed('companion', {}, t), true); }
++  assert.equal(isCompanionTab('checkout'), false);
++  assert.equal(tabAllowed('nonsense', {}, 'today'), false); // an unknown mode is a register
++});
++
++test('the tab bar: a register keeps its five, a companion gets Today and Scan, and Selling adds Checkout', () => {
++  assert.deepEqual(deviceTabs('register', {}, TAB_ORDER), TAB_ORDER);
++  assert.deepEqual(deviceTabs(undefined, undefined, TAB_ORDER), TAB_ORDER);
++  assert.deepEqual(deviceTabs('companion', {}, TAB_ORDER), ['today', 'scan', 'inventory', 'transactions', 'more']);
++  assert.deepEqual(deviceTabs('companion', { selling: true }, TAB_ORDER), ['today', 'scan', 'checkout', 'inventory', 'transactions', 'more']);
++  for (const t of deviceTabs('companion', { selling: true }, TAB_ORDER)) assert.ok(COMPANION_TAB_ORDER.includes(t), t);
++  assert.equal(deviceTabs('companion', {}, TAB_ORDER).includes('notifications'), false); // a bell on Today opens it
++});
++
++test('the app opens on Checkout on a register and Today on a companion, and both are always shown', () => {
++  assert.equal(homeTab('register'), 'checkout'); assert.equal(homeTab(undefined), 'checkout'); assert.equal(homeTab('companion'), 'today');
++  for (const [mode, f] of [['register', {}], ['companion', {}], ['companion', { selling: true }]] as const) assert.equal(tabAllowed(mode, f, homeTab(mode)), true);
++});
+diff --git a/tests/todaycards.test.ts b/tests/todaycards.test.ts
+new file mode 100644
+index 0000000..b2a1de6
+--- /dev/null
++++ b/tests/todaycards.test.ts
+@@ -0,0 +1,37 @@
++// Location: tests/todaycards.test.ts
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { LOW_SHOWN, todayCards } from '../src/lib/todayCards';
++
++const v = (id: string, stock: number | null, productTitle = id) => ({ id, productTitle, variantTitle: '', stock });
++const base = { variants: [], outbox: [], unread: 0, role: 'owner' };
++
++test('money follows the Reports rule: everyone but a cashier sees it', () => {
++  for (const role of ['owner', 'manager']) assert.equal(todayCards({ ...base, role }).money, true, role);
++  assert.equal(todayCards({ ...base, role: 'cashier' }).money, false);
++});
++
++test('low stock lists low, out and oversold items, worst first, and counts them all', () => {
++  const c = todayCards({ ...base, variants: [v('ok', 9), v('untracked', null), v('two', 2), v('out', 0), v('neg', -3), v('three', 3)] });
++  assert.deepEqual(c.low.map(x => x.id), ['neg', 'out', 'two']);
++  assert.equal(c.lowCount, 3);
++});
++
++test('only the first few are listed, but the count is the whole story', () => {
++  const many = Array.from({ length: 12 }, (_, i) => v(`v${i}`, 1, `Item ${String(i).padStart(2, '0')}`));
++  const c = todayCards({ ...base, variants: many });
++  assert.equal(c.low.length, LOW_SHOWN); assert.equal(c.lowCount, 12);
++});
++
++test('stuck sales are the blocked ones, the rest are queued', () => {
++  const c = todayCards({ ...base, outbox: [{ blocked: true }, {}, { blocked: false }, { blocked: true }], unread: 4 });
++  assert.equal(c.stuck, 2); assert.equal(c.queued, 2); assert.equal(c.unread, 4);
++  assert.deepEqual(todayCards(base), { money: true, low: [], lowCount: 0, stuck: 0, queued: 0, unread: 0 });
++});
++
++test('the companion tabs and the new routes are wired into the shell', async () => {
++  const fs = await import('node:fs');
++  const app = fs.readFileSync('App.tsx', 'utf8');
++  for (const needle of ["<Today />", "<ScanTab />", "case 'notices'", 'routeAllowed(mode, features, top.name)', 'deviceTabs(devMode, devFeatures, TAB_ORDER)']) assert.ok(app.includes(needle), needle);
++  assert.ok(fs.readFileSync('src/screens/More.tsx', 'utf8').includes('rowAllowed(devMode, devFeatures, id)'));
++});
+-- 
+2.43.0
+

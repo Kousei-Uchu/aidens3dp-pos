@@ -41,17 +41,11 @@ A lease so two registers do not migrate at once, a checkpoint per group, and a v
 Stop the metaobject polling once the seam is proven, and add a flag that puts a register back on polling without a new
 build. This is where the owner decides dual-write against a clean cut-over.
 
-## Stream B: Companion mode, patches 0178 to 0182
+## Stream B: Companion mode, patches 0179 to 0182
 
 Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan, 0176 added the setup checklist that
-records whether a device is a register or a companion and which features it holds, and 0177 added the PIN lock and the
-step-up PIN. The gate exists but nothing reads it yet. Before 0178, see the open question in the plan about keeping
-Staff reachable on a companion.
-
-### Companion 0178. Wire the gate into tabs, routes, More and deep links
-
-The recorded features actually hide what a companion does not hold: tabs, routes, the More rows and deep links. Add the
-Today and Scan tabs and the phone layout here.
+records whether a device is a register or a companion and which features it holds, 0177 added the PIN lock and the
+step-up PIN, and 0178 wired the gate into the tabs, pages and More rows and added the Today and Scan tabs.
 
 ### Companion 0179. Hardware and sync gating
 

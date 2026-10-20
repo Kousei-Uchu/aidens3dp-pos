@@ -109,7 +109,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | 0175 | This plan as `dev_docs/COMPANION_PLAN.md`, tracker, `PROGRESS.md` entry | Done |
 | 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Done, needs your device (T75) |
 | 0177 | App-wide PIN lock and step-up PIN | Built, needs a device test (T80) |
-| 0178 | Tabs from the gate, Today, Scan, More menu, wording, phone layout | Planned |
+| 0178 | Tabs, pages and More rows from the gate, Today and Scan tabs | Built, needs a device test (T81) |
 | 0179 | Hardware and sync gating | Planned |
 | 0180 | Quick sale, expand to full POS, send to register | Planned |
 | 0181 | Help, Training and assistant gating, docs | Planned |
@@ -128,11 +128,11 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C4 Companion features screen for every signed-in person (0176)
 - [~] C5 App-wide PIN lock, first PIN made in setup, auto-lock (0177, needs a device test)
 - [~] C6 `stepUp.ts` with tests, wired to the listed actions (0177, needs a device test)
-- [ ] C7 Tabs, home tab, route guard and deep links from the gate (0178)
-- [ ] C8 Today tab (0178)
-- [ ] C9 Scan tab (0178)
-- [ ] C10 More menu and Companion wording (0178)
-- [ ] C11 Phone-first layout pass, iPad wider layout (0178)
+- [~] C7 Tabs, home tab, route guard and deep links from the gate (0178, needs a device test)
+- [~] C8 Today tab (0178, needs a device test)
+- [~] C9 Scan tab (0178, needs a device test)
+- [~] C10 More menu rows follow the gate (0178). Companion wording on the screens that stay is not done yet and moves to 0181.
+- [ ] C11 Phone-first layout pass for the existing screens, iPad wider layout (moves to 0181; the new Today and Scan screens are already single column)
 - [ ] C12 Zeller bridge idle without Card reader, no reader notices (0179)
 - [ ] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179)
 - [ ] C14 Notices for hidden groups not raised, old ones fall back to Today (0179)
@@ -160,10 +160,11 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 
 ## Open questions
 
-1. **Staff must stay reachable on a companion.** The gate in `src/lib/appMode.ts` ties the `staff` page and row to **Till staff tools**. A companion with that group off could then never open Staff to create the owner PIN, which the lock needs, or to reset a PIN. Suggested for patch 0178, when the gate is wired: keep Staff reachable for owners and managers whatever the groups say, and let **Till staff tools** cover only staff passes, switching staff and cashier passes.
+None at the moment.
 
 ## Settled questions
 
+- **Staff stays reachable on a companion.** The `staff` page and More row are no longer tied to Till staff tools, so a companion can always make or reset a PIN (still managers and owners only, by the existing role rule). Done in 0178.
 - **Cash on the phone.** If the phone takes cash while the Cash drawer group is off, it is allowed and flagged for the next drawer count (not blocked). Built in 0180.
 - **Card on the phone.** Your Zeller reader works from an iPhone, so phone card payments are in scope. It cannot be tested from the sandbox, so it stays a device test for you.
 - **PIN timing.** 2 minutes idle for auto-lock, 5 minutes for the step-up window, and the PIN-gated list as written.
