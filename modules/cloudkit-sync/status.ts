@@ -57,6 +57,8 @@ export type CloudKitSyncNative = {
   putSquareHistory?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   getSquareHistory?(handle: string): Promise<Record<string, any> | null>;
   listSquareHistory?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  putMigration?(fields: Record<string, any>): Promise<Record<string, any>>;
+  getMigration?(): Promise<Record<string, any> | null>;
 };
 
 /** What the rest of the app calls, whichever build it is in. */
