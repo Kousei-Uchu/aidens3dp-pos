@@ -91,6 +91,12 @@ export const cloudkitBackend: SharedBackend = {
       if (!rec) return null;
       return asRow(`layout-${h}`, rec);
     }
+    if (type === 'squareHistory' as any) {
+      const h = String(handle);
+      const rec = await (ck.getSquareHistory ? ck.getSquareHistory(h) : Promise.resolve(null));
+      if (!rec) return null;
+      return asRow(h, rec);
+    }
     return null;
   },
 
@@ -121,6 +127,11 @@ export const cloudkitBackend: SharedBackend = {
       const h = handle.startsWith('layout-') ? handle.slice(7) : handle;
       const rec = await (ck.putLayout ? ck.putLayout(h, fields as any) : Promise.reject(new Error(CLOUDKIT_MISSING)));
       return asRow(`layout-${h}`, rec);
+    }
+    if ((type as any) === 'squareHistory') {
+      const h = String(handle);
+      const rec = await (ck.putSquareHistory ? ck.putSquareHistory(h, fields as any) : Promise.reject(new Error(CLOUDKIT_MISSING)));
+      return asRow(h, rec);
     }
     throw new Error(`CloudKit backend does not support type ${type} yet`);
   },

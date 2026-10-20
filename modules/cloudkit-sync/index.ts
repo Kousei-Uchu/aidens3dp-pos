@@ -123,3 +123,16 @@ export async function listLayout(limit = 100, after?: string | null): Promise<{ 
   if (!native?.listLayout) return { rows: [], next: null };
   return native.listLayout(limit, after ?? null);
 }
+
+export async function putSquareHistory(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putSquareHistory) throw new Error(CLOUDKIT_MISSING);
+  return native.putSquareHistory(handle, fields);
+}
+export async function getSquareHistory(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getSquareHistory) return null;
+  return native.getSquareHistory(handle);
+}
+export async function listSquareHistory(limit = 100, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }> {
+  if (!native?.listSquareHistory) return { rows: [], next: null };
+  return native.listSquareHistory(limit, after ?? null);
+}

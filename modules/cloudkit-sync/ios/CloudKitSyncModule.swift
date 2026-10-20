@@ -152,6 +152,19 @@ public class CloudKitSyncModule: Module {
     AsyncFunction("listLayout") { (limit: Int, after: String?) async throws -> [String: Any] in
       try await self.listRecords(recordType: "Layout", limit: limit, after: after)
     }
+
+    // Square history shards (month files)
+    AsyncFunction("putSquareHistory") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "SquareHistory", recordName: "square-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getSquareHistory") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "SquareHistory", recordName: "square-\(handle)")
+    }
+
+    AsyncFunction("listSquareHistory") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "SquareHistory", limit: limit, after: after)
+    }
   }
 
   // --- The container and the zone it shares ---------------------------------
