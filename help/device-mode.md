@@ -3,7 +3,7 @@ id: device-mode
 title: Device mode
 parent: start
 summary: What this device is, a register or a companion, and which register features a companion keeps.
-tags: [device mode, register, companion, phone, tablet, features, switch, remote, beside the till]
+tags: [device mode, register, companion, phone, tablet, features, switch, remote, beside the till, pin, lock, auto-lock, step-up]
 related: [start/setup, settings/backup, staff]
 updated: 2026-10-20
 ---
@@ -28,6 +28,13 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
 - Tap **Switch this device to Companion mode** or **Switch this device to Register mode** and confirm.
 - Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.
 - Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.
+
+### PIN and locking on a companion
+- A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.
+- Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.
+- A register is not changed by any of this. It locks only if **Require PIN** is switched on in Staff, as before. Making a phone a companion never switches that shared setting on, so your tills are not affected.
+- A companion needs an owner with a PIN to lock. Create one in Staff first; the setup checklist step ticks once there is an owner with a PIN.
+- Practice and Demo mode show every feature and never lock.
 
 ### Open the checklist again
 - Tap **Open the setup checklist** to see the first-run steps for this device and which are done. See [[start/setup]].
@@ -72,5 +79,10 @@ flowchart TD
 - `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.
 - `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.
 
+### How the lock and the step-up decide
+- `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.
+- `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.
+- `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.
+
 ### What is not wired yet
-The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the step-up PIN that guards changing the mode arrives with 0177.
+The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the PIN lock and the step-up PIN that guards changing the mode arrived with 0177.

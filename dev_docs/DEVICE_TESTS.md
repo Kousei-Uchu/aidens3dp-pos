@@ -1038,3 +1038,21 @@ One iPad, a paired Bluetooth scanner, and the screensaver set to a short idle ti
 
 1. Open the camera (tap the camera icon) and let the iPad sit until the screensaver comes up over it. Scan a known product. Pass: the screensaver goes and the item is added, even though the camera is still open. The camera's own message does not show for that scan (it was the keyboard scanner, not the camera), and the pane popup does not fight with the camera.
 2. Close the camera. Pass: the grid is back, the cart has the item, and nothing is stuck on screen.
+
+## T80. PIN lock and step-up PIN on a companion (0177)
+
+On a phone you can make a companion, with an owner that has a PIN (create one in **More ▸ Staff** first, and leave **Require PIN** off). Nothing in this patch has been run on a device.
+
+1. Open **More ▸ Device mode**, tap **Switch this device to Companion mode** and confirm. Pass: it switches (it may ask for your PIN), and **Require PIN** in Staff on one of your tills has not changed.
+2. Close the app fully and open it again. Pass: the PIN screen shows before anything else.
+3. In **Device mode ▸ Locking** set **Lock after being idle** to **1 min**. Sign in, then leave the phone alone for a little over a minute with the app open. Pass: it locks and asks for the PIN.
+4. Sign in, send the app to the background for over a minute, then come back. Pass: it is locked.
+5. Sign in and open **Settings** straight away. Pass: it opens with no extra prompt (signing in counts as typing the PIN). Set **Ask for my PIN again after** to **Every time**.
+6. Go back and open **Settings** again. Pass: a PIN prompt shows. Type a wrong PIN. Pass: it says **Wrong PIN**. Cancel. Pass: Settings does not open.
+7. Type the wrong PIN five times. Pass: the app locks.
+8. With **Every time** still set, check each of these asks for the PIN before it does anything: saving a stock change in Inventory, saving a customer, marking an order fulfilled, starting a refund, **Export** in Settings, and opening **Staff**. Pass: all ask, and none changes anything until the PIN is right.
+9. Switch a feature in **Device mode** on or off. Pass: it asks for the PIN first. Open the payment screen. Pass: it asks first. Open the drawer. Pass: it asks first.
+10. Set **Ask for my PIN again after** to **5 min** and sign in. Pass: the same actions do not ask again until five minutes after your last PIN.
+11. On a register (till) without Require PIN switched on, do steps 8 and 9. Pass: no PIN prompts at all and no auto-lock.
+12. On the companion, open **Demo mode**. Pass: every feature is on show and it never locks. Leave Demo. Pass: the companion's own lock is back.
+

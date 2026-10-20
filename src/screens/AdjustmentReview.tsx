@@ -10,6 +10,7 @@ import { usePriced } from '../state/selectors';
 import { fmt } from '../lib/money';
 import { adjustmentRows, keepRow, removeRow, signedSaving, unresolvedRows, type AdjustRow } from '../lib/adjustReview';
 import { actingRole, canAdjust, flaggedDeniedHint } from '../lib/adjustPerms';
+import { lockRequired } from '../lib/appMode';
 
 const KIND_LABEL = { item: 'Item price', line: 'Line price', order: 'Whole order price' } as const;
 
@@ -17,7 +18,7 @@ export default function AdjustmentReviewSheet({ visible, onClose, onContinue, on
   const { c } = useTheme(); const cart = useApp(s => s.pos.cart); const setCart = useApp(s => s.setCart); const priced = usePriced();
   const rows = adjustmentRows(cart, priced); const todo = unresolvedRows(rows);
   // A16.9: Keep and Adjust confirm or change a price, so they follow the role rules. Remove only puts a price back, so it never does.
-  const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
+  const role = useApp(s => actingRole(lockRequired(s.settings), s.settings.staff, s.staffId)); const perms = useApp(s => s.settings.adjustPerms);
   const may = (k: AdjustRow['kind']) => canAdjust(perms, role, k);
   return (
     <Sheet visible={visible} onClose={onClose} title="Check the price adjustments" screen="sheet_review">

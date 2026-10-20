@@ -61,3 +61,11 @@ test('the context reads the device settings, with the Shopify answer passed in',
   assert.equal(setupContext({ registerFeatures: { selling: 'yes' } }, false).anyFeature, false);
   assert.equal(setupContext({}, false).anyFeature, false);
 });
+
+test('a companion locks through its device mode, so its owner PIN step does not wait for the shared Require PIN setting', () => {
+  const owner = { role: 'owner', pinHash: 'abc' }; const cashier = { role: 'cashier', pinHash: 'abc' };
+  assert.equal(setupContext({ requirePin: false, appMode: 'companion', staff: [owner] }, false).ownerPin, true);
+  assert.equal(setupContext({ requirePin: false, appMode: 'companion', staff: [cashier] }, false).ownerPin, false);
+  assert.equal(setupContext({ requirePin: false, appMode: 'companion', staff: [] }, false).ownerPin, false);
+  assert.equal(setupContext({ requirePin: false, appMode: 'register', staff: [owner] }, false).ownerPin, false); // a register still needs the shared setting
+});

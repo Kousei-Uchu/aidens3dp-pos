@@ -70,13 +70,14 @@ export const setupFinished = (profile: SetupProfile, ctx: SetupContext) => !firs
  * read, so the screen passes it in.
  */
 export function setupContext(
-  settings: { requirePin?: boolean; staff?: { role: string; pinHash?: string }[]; registerName?: string; registerFeatures?: unknown },
+  settings: { requirePin?: boolean; appMode?: unknown; staff?: { role: string; pinHash?: string }[]; registerName?: string; registerFeatures?: unknown },
   shopifyConnected: boolean,
 ): SetupContext {
   const features = (settings.registerFeatures ?? {}) as Partial<RegisterFeatures>;
   return {
     shopify: shopifyConnected,
-    ownerPin: !!settings.requirePin && (settings.staff ?? []).some(m => m.role === 'owner' && !!m.pinHash),
+    // A companion locks through the device mode (lockRequired), so it only needs an owner with a PIN. The shared Require PIN setting belongs to every register and is not changed for a phone.
+    ownerPin: (!!settings.requirePin || settings.appMode === 'companion') && (settings.staff ?? []).some(m => m.role === 'owner' && !!m.pinHash),
     registerNamed: (settings.registerName ?? '').trim() !== '' && settings.registerName !== DEFAULT_REGISTER_NAME,
     anyFeature: Object.values(features).some(v => v === true),
   };

@@ -53,7 +53,7 @@ import { getModule } from './src/training';
 import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { idleMs, noteActivity } from './src/lib/idle';
-import { lockRequired, readMode } from './src/lib/appMode';
+import { lockRequired, readDeviceMode, readMode, routeAllowed, tabAllowed } from './src/lib/appMode';
 import { lockDue } from './src/lib/stepUp';
 import { lockIdle } from './src/lib/staffAuth';
 import { paymentActive } from './src/lib/screensaver';
@@ -65,9 +65,14 @@ import { UiProvider, useUi } from './src/ui/uiProfile';
 import { effectiveTab } from './src/lib/uiMode';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
-const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
-  { id: 'checkout', label: 'Checkout', icon: 'apps' }, { id: 'inventory', label: 'Inventory', icon: 'cube' }, { id: 'transactions', label: 'Transactions', icon: 'receipt' },
-  { id: 'notifications', label: 'Notifications', icon: 'notifications' }, { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
+const ALL_TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons>['name'] }[] = [
+  { id: 'today' as Tab, label: 'Today', icon: 'today-outline' },
+  { id: 'scan' as Tab, label: 'Scan', icon: 'scan-outline' },
+  { id: 'checkout', label: 'Checkout', icon: 'apps' },
+  { id: 'inventory', label: 'Inventory', icon: 'cube' },
+  { id: 'transactions', label: 'Transactions', icon: 'receipt' },
+  { id: 'notifications', label: 'Notifications', icon: 'notifications' },
+  { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
 ];
 
 function Routes({ route: top }: { route: Route }) {

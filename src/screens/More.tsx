@@ -9,6 +9,7 @@ import { useDemo } from '../state/demoSession';
 import { SPOT } from '../lib/trainingSpots';
 import { actingRole } from '../lib/adjustPerms';
 import { MORE_EXPLAIN, visibleMoreRows, type MoreRowId } from '../lib/uiMode';
+import { lockRequired } from '../lib/appMode';
 
 const ROWS: Record<MoreRowId, { icon: IconName; title: string; route?: string }> = {
   orders: { icon: 'receipt-outline', title: 'Orders', route: 'orders' }, items: { icon: 'cube-outline', title: 'Items', route: 'items' },
@@ -28,8 +29,8 @@ const PLAIN_SUB: Partial<Record<MoreRowId, string>> = { diagnostics: 'Zeller rea
 
 export default function More() {
   const { c } = useTheme(); const nav = useNav(); const ui = useUi(); const s = useApp(st => st.settings); const staff = currentStaff(); const unread = useApp(st => st.pos.notices.filter(n => !n.read).length);
-  const lockOn = s.requirePin && s.staff.length > 0;
-  const role = actingRole(s.requirePin, s.staff, staff?.id);
+  const lockOn = lockRequired(s) && s.staff.length > 0;
+  const role = actingRole(lockRequired(s), s.staff, staff?.id);
   const groups = visibleMoreRows(ui, role, lockOn);
   const demo = useDemo(st => st.active);
   const openDemo = async () => {

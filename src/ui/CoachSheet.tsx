@@ -23,6 +23,7 @@ import { makeToolSet } from '../lib/assistantTools';
 import { builtinScreens } from '../lib/assistantScreens';
 import { builtinHelp } from '../lib/helpBuiltin';
 import { uid } from '../lib/ids';
+import { lockRequired } from '../lib/appMode';
 
 export default function CoachSheet({ onClose }: { onClose: () => void }) {
   const { c } = useTheme(); const overlap = useKeyboardOverlap();
@@ -54,7 +55,7 @@ export default function CoachSheet({ onClose }: { onClose: () => void }) {
     const pending = [...base, asked]; commit(pending);
     if (!isConfigured(cfg)) { commit([...pending, hintOnlyReply(task, plan.level, uid(), Date.now())]); setLine(COACH_NOT_SET_UP); return; }
     setBusy(true); let prepared: Prepared | null = null; const t0 = Date.now(); let apiKey = '';
-    const real = realSignIn(); const role = actingRole(real.settings.requirePin, real.settings.staff, real.staffId);
+    const real = realSignIn(); const role = actingRole(lockRequired(real.settings), real.settings.staff, real.staffId);
     const staff = logStaff(real.staffId, real.settings.staff, role); const endpoint = logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode);
     const tools = makeToolSet({ pages: builtinHelp().pages, screens: builtinScreens(), role, contextSize: cfg.contextSize, limit: COACH_TOOL_LIMIT, tools: coachTools() });
     try {

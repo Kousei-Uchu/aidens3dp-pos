@@ -28,6 +28,7 @@ import { profileNote } from '../lib/changeScore';
 import { TENDER_MACHINE_READY } from '../lib/tenderMachine';
 import { GIFT_CARD_PASSES } from '../lib/features';
 import { TILE_COLORS, useTheme } from '../ui/theme';
+import { requireStepUp } from '../lib/stepUpGate';
 
 type Sub = 'menu' | 'shopify' | 'payments' | 'discounts' | 'hardware' | 'data' | 'square' | 'grid' | 'gift' | 'receipts' | 'backup' | 'display' | 'theme' | 'about' | 'warnings' | 'assistant';
 const HELP_PAGE: Record<Sub, string> = {
@@ -199,6 +200,7 @@ function BackupSettings() {
     await Sharing.shareAsync(path, { mimeType: 'application/json', dialogTitle: name, UTI: uti });
   };
   const exportEncrypted = () => run(async () => {
+    if (!(await requireStepUp('admin'))) return;
     if (pass.length < MIN_PASSPHRASE) throw new Error(`Use a passphrase of at least ${MIN_PASSPHRASE} characters.`);
     if (pass !== pass2) throw new Error('The two passphrases do not match.');
     setMsg('Encrypting… this takes a few seconds.');
@@ -207,6 +209,7 @@ function BackupSettings() {
     return 'Backup created. Keep the passphrase safe: without it the file cannot be opened.';
   });
   const exportPlain = () => run(async () => {
+    if (!(await requireStepUp('admin'))) return;
     if (!(await confirm('Export without encryption?', 'The file will contain your Shopify client secret and other logins in plain text. Anyone who gets it can use them. Delete it once you have imported it.', 'Export plain', true))) return;
     await shareFile(backupFileName(false), JSON.stringify(await collectBackup(), null, 2), 'public.json');
     return 'Plain backup created. Delete it after importing.';
@@ -214,6 +217,7 @@ function BackupSettings() {
   const restorePlain = async (text: string) => {
     const b = validateBackup(JSON.parse(text));
     if (!(await confirm('Restore this backup?', 'This replaces the settings, grid layout and Shopify login on this device. This register keeps its own name and ID.', 'Restore', true))) return;
+    if (!(await requireStepUp('admin'))) return;
     return applyBackup(b);
   };
   const pick = () => run(async () => {
