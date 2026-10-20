@@ -5,6 +5,7 @@ import { Btn, Txt } from '../ui/kit';
 import { useTheme } from '../ui/theme';
 import { noteActivity } from '../lib/idle';
 import { isUserTyping } from '../lib/focusGuard';
+import { onRefocusAsked, refocusRequests } from '../lib/scanFocus';
 import { isTraining } from '../lib/trainingGuard';
 import { PracticePassSheet } from '../ui/PracticePass';
 import { PracticeScanSheet } from '../ui/PracticeScan';
@@ -47,6 +48,12 @@ export function HidScanner({ onScan, enabled = true, onText }: { onScan: (code: 
   // Never grab focus while someone is typing in a real field (that is what made the keyboard vanish): the guard
   // knows about every <Field>, and Keyboard.isVisible() covers any raw TextInput we don't own.
   const canGrab = () => !isUserTyping() && !Keyboard.isVisible();
+  // The screensaver waking, and any scan (S3), asks the input to take focus. Remounting it with a new key clears
+  // whatever is left in it and steals focus back from a field the screensaver covered.
+  const [asked, setAsked] = useState(() => refocusRequests());
+  const refocus = useRef(() => setInputKey(k => k + 1));
+  refocus.current = () => { if (!isUserTyping() && !Keyboard.isVisible()) setInputKey(k => k + 1); };
+  useEffect(() => { if (!enabled) return undefined; return onRefocusAsked(() => setAsked(refocusRequests())); }, [enabled]);
   useEffect(() => {
     if (!enabled) return;
     if (canGrab()) ref.current?.focus();
@@ -55,7 +62,7 @@ export function HidScanner({ onScan, enabled = true, onText }: { onScan: (code: 
   }, [enabled]);
   useEffect(() => {
     if (enabled && canGrab()) ref.current?.focus();
-  }, [enabled, inputKey]);
+  }, [enabled, inputKey, asked]);
   if (!enabled) return null;
   // Everyday scanning (Checkout, Pay, sign-in, lookups) reads the code on Return only: no `onText`, no clock, nothing run per character.
   // Only a caller that passes `onText` (the Hardware page, the speed test and calibration) gets the per-character timing.

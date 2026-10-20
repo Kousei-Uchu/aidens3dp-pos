@@ -32,11 +32,19 @@ Grouped commits are allowed where a change is tiny; every commit still names the
   `byStockLevel` in `src/lib/lookup.ts` does the sort, the scanned variation stays the header row, and the label reads
   "Other variations (n), most stock first". Tests in `tests/lookup.test.ts`. Also fixed a `tsc` error left by the CloudKit
   patch 4 scaffold (`CLOUDKIT_MISSING` was re-exported from `modules/cloudkit-sync/index.ts` but not imported).
-- [ ] **B3. HID scanner field loses focus after the screensaver.** When the screensaver appears and is dismissed, the HID
-  scanner field is unfocused, so scans do nothing until a text field is manually focused and unfocused. Other screens or
-  events may do the same; the screensaver is the one spotted. Likely in `src/ui/Screensaver.tsx` and the checkout scan box
-  (patch 0155 put one scan box in checkout). Fixing this overlaps with side note S3 (a real barcode should dismiss the
-  screensaver and refocus checkout), so the two are done together.
+- [x] **B3. HID scanner field loses focus after the screensaver.** Done. Two faults, one on each side. The guard
+  (`src/lib/focusGuard.ts`) counted a field as focused until it reported a blur, but the screensaver covers its field
+  rather than unmounting it, so no blur ever came, `isUserTyping()` stayed true for the rest of the session and the scan
+  box stopped taking focus. `releaseFocusGuard()` now forgets every field still counted, and `src/lib/scanFocus.ts`
+  (pure, tested) is the ask the saver sends through it: `requestScanFocus()` clears the guard, asks every mounted box to
+  focus again, and leaves a count a box can read if it mounts just after the ask (the box behind the saver is unmounted
+  itself, so it takes focus on the way back). The scan box in `src/screens/Scanner.tsx` subscribes through
+  `onRefocusAsked` and remounts on the request, which also clears any half-typed code. The camera path (`onScan`) is
+  the S4 half of this: the field covered while the camera sheet is up is the same fault seen from the other side.
+- [x] **B3 and S3 device note.** On a device: scan with the saver up (the code is added and the saver goes), tap the saver
+  and scan (the code is added with no tap on a field first), type in the search box, wait about three seconds, scan (the
+  code is added), and press one key while the saver is up (it wakes, nothing is added). B3's worst case, a field covered
+  by the saver and never blurred, is the one a person will notice first.
 - [x] **B4. Routegraph coverage.** Done. The graph is hand written (`src/app.navgraph`), so the check is which App.tsx
   routes have no screen. Two did: `demoHome` and `demoShow`, the Demo mode pages, so `search_screens`, guides and the
   assistant could never reach Demo mode. Both are now screens in the graph (78 screens, 188 edges, was 76 and 184), with
@@ -58,9 +66,12 @@ Grouped commits are allowed where a change is tiny; every commit still names the
   `CHANGELOG.md`, `scripts/`, help build, any doc that links another doc). Do this with care around `docs/PROGRESS.md`,
   `docs/TO_DO.md`, `docs/GUESSES.md`, `docs/DEVICE_TESTS.md`, the plan docs and `docs/CLOUDKIT_SYNC_PLAN.md`. Note that
   the just-applied 0186 links `docs/PROGRESS.md` from `CHANGELOG.md`, so the rename has to catch that too.
-- [ ] **S3. A barcode scan dismisses the screensaver.** Scanning a barcode should dismiss the screensaver, and when it is a
-  real barcode with no other reason not to (a scanner hardware test is running, and so on) it should refocus checkout
-  automatically. Done with B3.
+- [x] **S3. A barcode scan dismisses the screensaver.** Done, with B3. The saver's window now holds its own hidden box
+  (`src/ui/Screensaver.tsx`), focused while it is up. A real barcode typed into it wakes the saver and, through
+  `offerScan` in `src/lib/scanFocus.ts`, is handed to Checkout even though the checkout scan box is unmounted behind the
+  saver: Checkout keeps one mounted for the whole screen through `onScanFlush`, and re-registers it with a ref so the
+  subscription is made once. A single stray key, the finger resting on the scanner, wakes the saver and nothing more. Any
+  other scan asks for focus and runs on the screen holding the box, which is how a lookup or the sign-in screen behaves.
 - [ ] **S4. Camera scanner feedback.** Scanning with the camera should flash up the scanned item's details when the
   existing setting is on, and should always give audio feedback for whether the scan was valid or not.
 - [ ] **S5. Scan popup fills the checkout left pane, with a fade slope.** The existing scan popup should take up the whole
@@ -68,6 +79,11 @@ Grouped commits are allowed where a change is tiny; every commit still names the
   then fade with a rising slope so it is fully gone by 5 seconds, and be dismissed at once when tapped or clicked. The new
   camera-scanner popup does **not** take the full pane: it stays a toast, but it uses the same fade and tap-to-dismiss
   behaviour. Overlaps S4.
+  While B3 was done, Checkout grew the pieces S5 needs: `deferredScans`/`busy` in `src/screens/Checkout.tsx` keep a
+  keyboard scan out of the grid spotlight while the camera and its popup are up and run it when the camera closes, and the
+  camera closes through `closeCam` rather than `setCam(false)` for that reason. The flash the pane shows is the existing
+  `spotlightItem` block, which today is a card at 18% from the top, ends after a flat 2.2 seconds, and only appears when
+  `settings.itemSpotlight` has a name or an image, so S5 is the change from that card to the pane and its fade slope.
 
 ## Order and grouping
 

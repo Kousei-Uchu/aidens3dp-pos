@@ -80,17 +80,22 @@ flowchart TD
 | Matching | `findByBarcode`, `normaliseBarcode` in `src/lib/cartOps.ts` (strips whitespace and leading zeros; then SKU, lower-cased) |
 | Order, pass, gift, discount, none | `resolveScan`, `findDiscountPreset`, `scanProblem` in `src/lib/lookup.ts`; `isBadgeCode`, `cleanScan`, `BADGE_RE` (`/^P[0-9A-HJKMNP-TV-Z]{12}$/`) in `src/lib/badge.ts`; `isGiftQr` in `src/lib/giftCode.ts` |
 | Not stealing the keyboard | `src/lib/focusGuard.ts` (`isUserTyping`, `TYPING_GRACE_MS` = 2500); every `Field` calls `fieldFocused` and `fieldBlurred` |
+| Waking up after the screensaver, or after a scan | `src/lib/scanFocus.ts` (`requestScanFocus`, `offerScan`, `onRefocusAsked`, `onScanFlush`); the saver's own hidden box and `ScreensaverLayer` in `src/ui/Screensaver.tsx` |
 | Price and Stock check | `src/screens/Lookup.tsx` (`HidScanner enabled={visible && !cam}`) |
 | Sign-in screen | `src/screens/StaffLogin.tsx` (only passes accepted) |
 | Hardware test and speed test | `HardwareTest` in `src/screens/ScannerSpeed.tsx` (keeps the last 8 scans) |
-| Tests | `tests/focusguard.test.ts`, `tests/lookup.test.ts`, `tests/scanorder.test.ts` |
+| Tests | `tests/focusguard.test.ts`, `tests/scanfocus.test.ts`, `tests/lookup.test.ts`, `tests/scanorder.test.ts` |
 
 ### How HidScanner keeps focus
 It only takes focus when `isUserTyping()` is false and `Keyboard.isVisible()` is false. It tries on mount and then every 1.5 seconds if it has lost focus. The text box is 1 pixel, almost invisible, hides the soft keyboard (`showSoftInputOnFocus={false}`), and is replaced (new `key`) after every scan so the old text can never leak into the next code. The code used is `nativeEvent.text`, falling back to the last typed value, trimmed.
 
+### Waking after the screensaver
+The screensaver covers the scanner box. A field that is covered while it is focused never reports a blur, so `isUserTyping()` stayed true and the box stopped trying to take focus once the saver went. Two things put that right (`src/lib/scanFocus.ts`). Waking the saver, by a tap or by a key, calls `requestScanFocus()`: it forgets every field still counted as focused and asks every mounted box to take focus again. A box that mounts just after the ask reads the request count, so it takes focus too. The saver also holds its own hidden box: a real barcode typed while it is up dismisses it and the code is handed to Checkout through `offerScan`, which works even though the checkout box is unmounted behind the saver (`onScanFlush`). A single stray key is only the finger on the scanner, so the saver wakes but nothing is added.
+
 ### Reading the code for a fault
 - **"No item for …" on a real product.** The variation has no `barcode` or `sku` on this device, or the value differs by more than spaces and leading zeros. A Shopify barcode with letters or a dash will not match a scan without them. Fix it in Shopify, then import again in Settings ▸ Shopify.
 - **Scan works in Settings ▸ Hardware but not on Checkout.** One of the conditions in the `enabled` expression is false: a sheet is open (including a cart window beside the grid), the camera is up, a screen is stacked on top, or the tab is not Checkout.
+- **Scans do nothing after the screensaver has been up.** This was a bug fixed in patch 0187; if it returns, check that the saver still calls `requestScanFocus()` on wake and that every `Field` still reports its blur. A field that is covered or unmounted while focused never blurs, which is what left the guard up.
 - **Scan is ignored just after typing.** Working as designed (`TYPING_GRACE_MS`). Wait about 2½ seconds.
 - **The keyboard disappears while typing.** That was a bug fixed in patch 0001; if it returns, check that the input in question is a kit `Field` (a raw `TextInput` is invisible to the guard, though `Keyboard.isVisible()` still covers it).
 - **The same item is added twice.** The scanner sent the code twice, or its trigger was held. The camera path de-duplicates within 1.2 seconds; the Bluetooth path does not.

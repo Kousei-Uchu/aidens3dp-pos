@@ -2,13 +2,14 @@
 // Idle screensaver (logo on a colour) and the keep-awake switch. Mounted once in App.tsx.
 // The app's own status bar is drawn across the top of the saver, so it stays on screen while the saver is up.
 import React, { useEffect, useRef, useState } from 'react';
-import { Animated, Easing, Image, Modal, Pressable, Text, View, useWindowDimensions } from 'react-native';
+import { Animated, Easing, Image, Modal, Pressable, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { setStatusBarHidden } from 'expo-status-bar';
 import AppStatusBar from './AppStatusBar';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import { useApp } from '../state/store';
 import { idleMs, noteActivity } from '../lib/idle';
 import { isLockScreen } from '../lib/posLock';
+import { offerScan, requestScanFocus } from '../lib/scanFocus';
 import { contrastOn, logoSource, normaliseHex, paymentActive, shouldShowScreensaver } from '../lib/screensaver';
 
 const KEEP_TAG = 'pos-keep-awake';
@@ -61,7 +62,19 @@ export function ScreensaverLayer() {
     setStatusBarHidden(true, 'none'); const t = setTimeout(() => setStatusBarHidden(true, 'none'), 450);
     return () => clearTimeout(t);
   }, [show]);
-  const wake = () => { noteActivity(); setIdle(false); if (useApp.getState().saverPreview) useApp.getState().set({ saverPreview: false }); };
+  const wake = () => { noteActivity(); setIdle(false); if (useApp.getState().saverPreview) useApp.getState().set({ saverPreview: false }); requestScanFocus(); };
+  // A real barcode dismisses the saver and, when the screen is not holding one already, hands the code to Checkout (S3),
+  // which takes it even when its own scan box is unmounted. A single stray key on its own is only the finger on the scanner.
+  const onCode = (code: string) => {
+    const c = code.trim(); if (!c) return;
+    wake(); if (!offerScan(c)) requestScanFocus();
+  };
+  const box = useRef<TextInput>(null); const typed = useRef('');
+  useEffect(() => {
+    if (!show) return undefined;
+    const t = setInterval(() => { if (!box.current?.isFocused()) box.current?.focus(); }, 1500);
+    return () => clearInterval(t);
+  }, [show]);
   const bg = normaliseHex(ss.bgColor) ?? '#111111'; const fg = contrastOn(bg); const src = failed ? null : logoSource(ss); const side = Math.min(width, height);
   return (
     <Modal visible={show} animationType="fade" supportedOrientations={['portrait', 'landscape']} onRequestClose={wake}>
@@ -75,6 +88,10 @@ export function ScreensaverLayer() {
         </Drifter>
         <Text style={{ position: 'absolute', bottom: 28, color: fg, opacity: 0.4, fontSize: 14 }}>Tap to wake</Text>
         </View>
+        <TextInput ref={box} autoFocus value="" caretHidden autoCorrect={false} autoCapitalize="none" showSoftInputOnFocus={false}
+          keyboardType="default" onKeyPress={e => { if (e.nativeEvent.key === '\r' || e.nativeEvent.key === '\n') onCode(typed.current); }}
+          onSubmitEditing={e => onCode(e.nativeEvent.text)} onChangeText={t => { typed.current = t; }} onBlur={() => onCode(typed.current)}
+          style={{ position: 'absolute', width: 1, height: 1, opacity: 0.01, top: 0, left: 0 }} accessibilityElementsHidden importantForAccessibility="no" />
       </Pressable>
     </Modal>
   );
