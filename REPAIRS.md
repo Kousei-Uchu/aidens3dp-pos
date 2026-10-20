@@ -16,11 +16,17 @@ Grouped commits are allowed where a change is tiny; every commit still names the
 
 ## Bugs to fix
 
-- [ ] **B1. Assistant guides to "All products" and stops.** Asking the assistant to guide you to a specific item should
-  walk the grid view first, and only fall back to **All products** when the item is not in the grid. Owner's words: "it
-  guides me to the `all products` tab and stops there, it should guide me in the grid view, and if its not in the grid view
-  it should use all products." Start from `src/lib/assistantGuide.ts` and `src/lib/assistantTools.ts` (`show_guide`,
-  `resolveLink`, and the `walk`/`target` a guide carries), then the grid walk in `src/app.navgraph`.
+- [x] **B1. Assistant guides to "All products" and stops.** Done. `show_guide` now takes an optional `item` (a few key words
+  from the item's name) as well as `screen`. `src/lib/assistantGridGuide.ts` (pure, tested) works out where the item sits in
+  the Quick Menu grid by the same rule the grid itself fills categories with (`viewTiles`/`ownProductIds`), and builds the walk:
+  the Quick Menu tab, the page chip when the grid has more than one page, each category on the way, then the item's own tile.
+  Tapping that last tile ends the guide. An item with no walkable place in the grid (nothing on the till matches, it only shows
+  inside a display group, because a group tile carries no spot, or the grid or catalogue was not given) falls back to the All
+  products guide, the same as the owner asked for. A saved button's id is `grid.item:<key>` and is resolved again from the grid
+  and catalogue every time it is drawn, so a button made before the layout changed still points at the right tile or falls back
+  to All products. The note the model reads never names the item (the name is shop data and `show_guide` is gated `content`), so
+  only the button the person sees carries it. Tool definitions grew, so the budget test fetches its room from the trimmed
+  `show_guide` description. Tests in `tests/assistantguide.test.ts` (24).
 - [x] **B2. Stock check ordering.** Done. The stock check's sibling list is now most stock first, least stock last, with
   untracked variations last (they have no level) and catalogue order kept for a tie so rows do not jump between scans.
   `byStockLevel` in `src/lib/lookup.ts` does the sort, the scanned variation stays the header row, and the label reads

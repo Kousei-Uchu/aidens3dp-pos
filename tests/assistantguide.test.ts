@@ -5,15 +5,20 @@ import assert from 'node:assert/strict';
 import { DONE_SHOW_MS, GUIDE_MAX_MS, LOST_LINE, atTarget, currentGuide, doneLine, guideVersion, guideView, pressedLast, progressLabel, startGuide, stopGuide, subscribeGuide, type Guide } from '../src/lib/assistantGuide';
 import { buildScreenIndex, type GuideGap, type ScreenEntry } from '../src/lib/assistantScreens';
 import { ASSISTANT_TOOLS, liveLinks, resolveLink, runToolCall, searchScreenList, type ToolContext } from '../src/lib/assistantTools';
+import { ALL_PRODUCTS_SCREEN, itemGuide, placeForWords, placeGuide } from '../src/lib/assistantGridGuide';
 import { readLinks, buildSystemPrompt } from '../src/lib/assistantChat';
 import { isKnownSpot } from '../src/lib/trainingSpots';
 import { PAGE_ROLES } from '../src/lib/helpDocs';
+import type { CatalogueView } from '../src/lib/assistantProducts';
+import type { Grid } from '../src/lib/grid';
+import type { Variant } from '../src/lib/types';
 
 const screens = buildScreenIndex();
 const byId = (id: string): ScreenEntry => screens.find(e => e.id === id)!;
 const ctxFor = (role: string, over: Partial<ToolContext> = {}): ToolContext => ({ pages: [], screens, role, maxChars: 6000, ...over });
 const call = (name: string, args: unknown) => ({ id: 'c1', type: 'function' as const, function: { name, arguments: JSON.stringify(args) } });
 const run = (name: string, args: unknown, role = 'cashier') => runToolCall(call(name, args), { tools: ASSISTANT_TOOLS, ctx: ctxFor(role) });
+const runWith = (ctx: ToolContext, name: string, args: unknown) => runToolCall(call(name, args), { tools: ASSISTANT_TOOLS, ctx });
 const only = (...on: string[]) => (spot: string) => on.includes(spot);
 
 const reports: Guide = { screen: 'page_reports', name: 'Reports', steps: [{ spot: 'tab.more', say: 'Tap More.' }, { spot: 'more.reports', say: 'Tap Reports.' }], target: { route: 'reports' } };
@@ -161,6 +166,99 @@ test('a guide button is checked again when drawn, so it goes when the role can n
   assert.deepEqual(liveLinks(ctxFor('cashier', { screens: [] }), stored), []);
 });
 
+// ---------- guides to an item on the Quick Menu grid (B1) ----------
+const V = (id: string, productId: string, productTitle: string, variantTitle = '', over: Partial<Variant> = {}): Variant => ({ id, productId, productTitle, variantTitle, priceCents: 500, tracked: false, stock: null, tags: [], active: true, ...over });
+const cat: CatalogueView = {
+  now: 0,
+  variants: {
+    'v-flat': V('v-flat', 'p-flat', 'Flat white'),
+    'v-latte': V('v-latte', 'p-latte', 'Latte'),
+    'v-tadling': V('v-tadling', 'p-tadling', 'Tadlings', 'Small', { sku: 'TAD-S', barcode: '9312345678901' }),
+    'v-mug': V('v-mug', 'p-mug', 'Mug', '', { sku: 'MUG-1' }),
+    'v-ghost': V('v-ghost', 'p-ghost', 'Retired mug', '', { active: false }),
+  },
+  collections: [
+    { id: 'c-drinks', title: 'Drinks', productIds: ['p-flat', 'p-latte'] },
+    { id: 'c-hot', title: 'Hot drinks', productIds: ['p-flat'] },
+    { id: 'c-counter', title: 'Counter specials', productIds: ['p-tadling'] },
+    { id: 'c-treats', title: 'Treats', productIds: [] },
+  ],
+  autos: [],
+  bundles: null,
+};
+const layout: Grid = {
+  version: 1,
+  pages: [
+    { id: 'page-home', name: 'Home', tiles: [
+      { type: 'category', collectionId: 'c-drinks', label: 'Drinks', subs: [{ type: 'category', collectionId: 'c-hot', label: 'Hot drinks' }] },
+      { type: 'group', name: 'Front counter', tiles: [], collectionId: 'c-counter' },
+    ] },
+    { id: 'page-extras', name: 'Extras', tiles: [{ type: 'item', productId: 'p-mug' }, { type: 'category', collectionId: 'c-treats', label: 'Treats', subs: [{ type: 'item', variantId: 'v-tadling' }] }] },
+  ],
+};
+const gridCtx = (over: Partial<ToolContext> = {}): ToolContext => ctxFor('cashier', { grid: layout, catalogue: cat, ...over });
+
+test('an item in the grid is walked to: the Quick Menu, each container on the way, then the tile itself (B1)', () => {
+  // Flat white is in Drinks, which shows it only inside Hot drinks (the same fill rule the grid uses), so the walk opens both.
+  const flat = placeForWords(layout, cat, 'flat white')!;
+  assert.ok(flat); assert.equal(flat.key, 'p-flat'); assert.equal(flat.name, 'Flat white');
+  assert.deepEqual(flat.containers.map(x => x.collectionId), ['c-drinks', 'c-hot']);
+  assert.deepEqual(placeGuide(flat, 2).steps.map(s => s.spot), ['find.tab:quick', 'grid.page:page-home', 'grid.cat:c-drinks', 'grid.cat:c-hot', 'grid.item:p-flat']);
+  // Latte shows in the Drinks view itself, so the walk stops at Drinks: it never opens Hot drinks for it.
+  const latte = placeForWords(layout, cat, 'latte')!;
+  assert.equal(latte.key, 'p-latte'); assert.equal(latte.page.id, 'page-home'); assert.deepEqual(latte.containers.map(x => x.collectionId), ['c-drinks']);
+  assert.deepEqual(placeGuide(latte, 2).steps.map(s => s.spot), ['find.tab:quick', 'grid.page:page-home', 'grid.cat:c-drinks', 'grid.item:p-latte']);
+  assert.deepEqual(placeGuide(latte, 1).steps.map(s => s.spot), ['find.tab:quick', 'grid.cat:c-drinks', 'grid.item:p-latte'], 'one page means no page chip');
+  // An item pinned straight on a page is one tap from the Quick Menu.
+  const pinned: Grid = { version: 1, pages: [{ id: 'page-only', name: 'Only', tiles: [{ type: 'item', productId: 'p-mug' }] }] };
+  assert.equal(placeForWords(pinned, cat, 'mug')?.key, 'p-mug');
+  assert.deepEqual(placeGuide(placeForWords(pinned, cat, 'mug')!, 1).steps.map(s => s.spot), ['find.tab:quick', 'grid.item:p-mug'], 'a product pinned on a page is one tap from the Quick Menu');
+  // The words look in the variation name, the SKU and the barcode too, not only the product name.
+  assert.equal(placeForWords(layout, cat, 'small tadling')?.name, 'Tadlings - Small', 'a tile can pin one variation inside a category');
+  assert.equal(placeForWords(layout, cat, 'tad-s')?.key, 'v-tadling', 'the SKU matches');
+  assert.equal(placeForWords(layout, cat, '9312345678901')?.key, 'v-tadling', 'the barcode matches');
+});
+
+test('an item only inside a display group has no walk, and the guide falls back to All products (B1)', () => {
+  // The Counter specials group holds the Tadlings, but a group tile carries no spot, so nothing behind one can be walked to.
+  // This grid has that group and nothing else holding them.
+  const onlyGroup: Grid = { version: 1, pages: [{ id: 'page-g', name: 'G', tiles: [{ type: 'group', name: 'Front counter', tiles: [], collectionId: 'c-counter' }] }] };
+  assert.equal(placeForWords(onlyGroup, cat, 'tadlings'), null, 'the only place they would show is a group');
+  assert.equal(placeForWords(layout, cat, 'retired mug'), null, 'the grid never shows a draft or archived item, and those words match no other item');
+  assert.equal(placeForWords(layout, cat, 'no such thing'), null);
+  assert.equal(placeForWords(undefined, cat, 'flat white'), null, 'no grid given');
+  assert.equal(placeForWords(layout, undefined, 'flat white'), null, 'no catalogue given');
+  // A saved button for an item that is not in the grid at all is the All products walk, the same as when it was first asked for.
+  const back = resolveLink(gridCtx(), 'guide', 'grid.item:p-ghost')!;
+  assert.equal(back.link.id, ALL_PRODUCTS_SCREEN); assert.equal(back.link.label, 'Guide me to All products');
+  if (back.action.to === 'guide') assert.deepEqual(back.action.guide.steps.map(s => s.spot), ['find.tab:all']);
+  assert.equal(resolveLink(ctxFor('cashier'), 'guide', 'grid.item:p-flat')!.link.id, ALL_PRODUCTS_SCREEN, 'a context with no grid at all: the item cannot be placed, so the fallback is used');
+});
+
+test('a guide button for an item is worked out again from the grid when it is drawn (B1)', () => {
+  const stored = [{ kind: 'guide' as const, id: 'grid.item:p-flat', label: 'Guide me to Flat white' }];
+  const now = liveLinks(gridCtx(), stored);
+  assert.deepEqual(now.map(l => l.link.id), ['grid.item:p-flat']);
+  assert.equal(now[0].action.to, 'guide');
+  if (now[0].action.to === 'guide') assert.deepEqual(now[0].action.guide.steps.map(s => s.spot), ['find.tab:quick', 'grid.page:page-home', 'grid.cat:c-drinks', 'grid.cat:c-hot', 'grid.item:p-flat']);
+  // The grid gone (a sync, a person still on practice data) means the saved item button falls back to All products, which needs no grid.
+  assert.deepEqual(liveLinks(ctxFor('cashier', { grid: undefined }), stored).map(l => l.link.id), [ALL_PRODUCTS_SCREEN], 'with no grid the item falls back to All products');
+});
+
+test('show_guide: an item makes a "Guide me" button, and the reply the model reads never names it (B1)', () => {
+  const r = runWith(gridCtx(), 'show_guide', { item: 'flat white' });
+  assert.equal(r.record.ok, true);
+  assert.deepEqual(r.link, { kind: 'guide', id: 'grid.item:p-flat', label: 'Guide me to Flat white' });
+  const note = r.message.content ?? '';
+  assert.ok(!note.includes('Flat white'), `the note named the item: ${note}`);
+  assert.ok(/All products/.test(note), 'the note says where it falls back to');
+  // The screen argument still works, and neither argument on its own is required by the tool.
+  assert.equal(runWith(gridCtx(), 'show_guide', { screen: 'page_reports' }).record.ok, true);
+  assert.equal(runWith(gridCtx(), 'show_guide', {}).record.ok, false);
+  assert.equal(runWith(gridCtx(), 'show_guide', { item: 'no such item' }).record.ok, true, 'an item with no place in the grid still gets the All products guide');
+  assert.equal(runWith(gridCtx(), 'show_guide', { item: 'no such item' }).link?.id, ALL_PRODUCTS_SCREEN);
+});
+
 test('a guide button and a link to the same screen are two buttons, and a stored guide button is read back', () => {
   const both = liveLinks(ctxFor('cashier'), [{ kind: 'screen', id: 'page_reports', label: 'Open Reports' }, { kind: 'guide', id: 'page_reports', label: 'Guide me to Reports' }]);
   assert.deepEqual(both.map(b => b.link.kind), ['screen', 'guide']);
@@ -169,7 +267,8 @@ test('a guide button and a link to the same screen are two buttons, and a stored
 
 test('the tool cannot write, and the prompt tells the model about it without naming anything', () => {
   const t = ASSISTANT_TOOLS.find(x => x.def.function.name === 'show_guide')!; assert.ok(t);
-  assert.equal((t.def.function.parameters as any).type, 'object'); assert.deepEqual((t.def.function.parameters as any).required, ['screen']);
+  assert.equal((t.def.function.parameters as any).type, 'object');
+  const props = (t.def.function.parameters as any).properties; assert.ok(props.screen && props.item); assert.equal((t.def.function.parameters as any).required, undefined, 'neither argument is required on its own: screen for a screen, item for an item');
   assert.equal(t.run.length <= 2, true);
   const p = buildSystemPrompt('short', true);
   assert.match(p, /show_guide/); assert.match(p, /can_guide/); assert.match(p, /never write a link, an id or a page id/);
