@@ -6,6 +6,8 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
 Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
 Part 4 is how to work in this repo.
 
+**Revision 30 (20 October 2026), patch 0185:** not a numbered patch in 3.10. Each question is sent only the tool definitions it is likely to need, and the rest can be loaded with `more_tools`. Four groups (help always, then shop, cash and status), chosen by words in the question and in the last two things typed. Nothing is removed from a role: `toolsFor` still filters by role, `more_tools` only loads names the role has, and a tool in no group is always sent. Room left for the chat at 8000 is now 3,994 tokens for a help question, against 1,318 before. Decided here, and the owner may want to change any of them: **(1) the groups and the words** (one file); **(2) the shop group is one group,** about 2,200 tokens, and could be split; **(3) the default stays 8000.** The open risk is whether a small model calls `more_tools` for a question the words miss, which device test T72 step 4 answers.
+
 **Revision 29 (19 October 2026), shop-wide sales (not a numbered patch):** the owner saw that the assistant only knew this till's sales and asked for sales history to reach every till. The sales it reads are now this till's plus every other till's, the same rows the Reports page already reads. Decided here, and the owner may want to change any of them: **(1) Every till uploads its whole sale record** in a new `sale_json` field on the `pos_sale` metaobject, added to an older shop's definition on demand (`ensureSaleDetailField`), so a till that cannot add the field still uploads its sale. **(2) A sale made before the field existed has no line detail,** so it counts in the daily totals but is left out of the order and gift card tools; the notes say so. **(3) What is kept is the other tills' newest 2000 sales and their daily totals,** in `pos.shared`, kept apart from `pos.sales` because the cash tools read that and a drawer figure must stay this till's. **(4) The pull runs at most every 5 minutes,** newest first, and stops at sales already held. **(5) iCloud is still the plan** (`docs/CLOUDKIT_SYNC_PLAN.md`); this is the metaobject path until it lands. Decision 7 below was rewritten to match.
 
 **Revision 28 (19 October 2026), patch 0184:** documentation only. Section 1.1 said there were no tools and no data gate, and section 2 listed finished work as still to do; both now match the code, which I checked claim by claim (the role filters, the field map tests, the read-only tests and the help page `roles:` header). No decision changed.
@@ -232,6 +234,7 @@ Built in 0169: the settings reader (`read_settings`, owner and manager only) and
 Built in 0172: the cash drawer, cash calculator and current cart tools (patch 8).
 Built in 0173: the practice mode coach (patch 9, 3.7), the Ask coach button in a Check.
 Built in 0174: more room for the chat at the default context size (the prompt and tool descriptions trimmed, with a test that holds the room).
+Built in 0185: only the tools a question needs are sent (`assistantToolGroups.ts`), with `more_tools` so the model can ask for the rest.
 
 Nothing in the 3.10 list is left. What this section used to list as still to do is done, as follows:
 
@@ -246,7 +249,7 @@ Nothing in the 3.10 list is left. What this section used to list as still to do 
   `assistantlinks`). There is no single test across the whole tool set, so a new tool needs its own.
 - **Tests, a help page, a device test and a progress log entry:** each patch carried them.
 
-Open, and the owner's call: the default context size (3.11), which 0174 made less tight but did not change.
+Open, and the owner's call: the default context size (3.11), which 0174 and 0185 made less tight but did not change.
 
 ## 3. Decisions
 

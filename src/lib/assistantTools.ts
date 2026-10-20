@@ -17,6 +17,7 @@ import { currentTimeTool } from './assistantTime';
 import { contextInfo, type RegisterContext } from './assistantContext';
 import { appStatusTool, readSettingsTool, type TillState } from './assistantStatus';
 import { CASH_TOOLS, type CashState } from './assistantCash';
+import { narrow } from './assistantToolGroups';
 
 export type ToolContext = {
   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
@@ -57,7 +58,7 @@ export const MAX_LINKS = 3;
 
 /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
 export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number; /** What the data gate hid from this result, by category (patch 0161). Counts only. */ withheld?: Record<string, number>; /** The categories of shop data the result still held. */ used?: Category[] };
-export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[] };
+export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[]; /** Patch 0185: the names of the tools sent to the model for this question. `tools` is still every tool the role has, so a call always runs. Left out, every tool is sent. `more_tools` adds to it. */ offered?: Set<string> };
 
 export const DEFAULT_TOOL_LIMIT = 15;
 export const MAX_RESULT_CHARS = 6000;
@@ -268,6 +269,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScre
 /** The tools this role is offered. The one place tools are filtered by role, so a request cannot forget to. */
 export const toolsFor = (role: string, tools: AssistantTool[] = ASSISTANT_TOOLS): AssistantTool[] => tools.filter(t => !t.roles || t.roles.includes(role));
 export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
+/** The tools sent to the model right now (patch 0185). All of them unless the set was narrowed. Read it again after every tool call, because more_tools can add to it. */
+export const offeredTools = (set: Pick<ToolSet, 'tools' | 'offered'>): AssistantTool[] => (set.offered ? set.tools.filter(t => set.offered!.has(t.def.function.name)) : set.tools);
 
 // ---------- running a call ----------
 const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}[cut]` : s);
@@ -311,5 +314,7 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet =>
-  ({ tools: toolsFor(o.role, o.tools), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
+export function makeToolSet(o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; /** What the person has typed lately, newest last. When given, only the tools those words call for are sent (patch 0185). */ narrow?: readonly string[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet {
+  const allowed = toolsFor(o.role, o.tools); const n = o.narrow ? narrow(allowed, o.narrow) : undefined;
+  return { tools: n?.more ? [...allowed, n.more] : allowed, ...(n ? { offered: n.offered } : {}), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] };
+}

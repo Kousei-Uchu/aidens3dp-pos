@@ -996,4 +996,13 @@ One device is enough for most of this; a second register is only needed for step
 9. **Switching the mode.** On the companion, tap **Switch this device to Register mode** and confirm. Pass: the page says this device is a register and the switches are on and greyed out. Switch back to **Companion mode**. Pass: **Selling** is still on from step 5, so a mode change does not lose the switches.
 10. **Training.** Start any course, then open **More ▸ Device mode**. Pass: the mode buttons and every switch are greyed out, and the page says training is on.
 11. **Most important:** on a register, do a day's work (sell, take cash, check a gift card, refund something). Pass: nothing about the till behaves differently from before this update, and nothing on the Device mode page changed any of it.
+## T76. Assistant: only the tools a question needs (0185)
 
+On the iPad, with the model set up as in T55 and the context size left at the default, 8000. Open the audit log (Settings ▸ AI assistant) to see which tools each question used.
+
+1. Ask *Where do I find the reports page?* Pass: it answers from the help pages and the screens, as before.
+2. Ask *How many Bumble Bees do we have?* Pass: it answers from the till's own data, as before.
+3. In the same chat, ask *And the cow plush?* Pass: it looks that up too, without being asked about stock again.
+4. In a new chat, ask *What is selling fastest right now?* The words do not hint at sales, so the model has to ask for the shop tools. **Most important:** tell me which happened. Pass (either): it calls more_tools for the shop and then answers, or it says it could not find anything. Fail: it makes up an answer. In the audit log, a more_tools call shows with the group it asked for.
+5. As a cashier, ask *What are the card reader settings?* Pass: it points at the screen and never shows a setting's value.
+6. Ask the questions that gave you the best answers before this patch. Pass: they still use the right tool. If any is worse, tell me which, and how it was worded.
