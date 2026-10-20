@@ -343,3 +343,15 @@ was a short **Device mode** section in `docs/MODES.md`, which is now written by 
 The folder was deleted, including the `.DS_Store` beside the patch, and nothing was applied. The lesson for next time: a patch
 left in `patches/pending_merge/` is not picked up by `scripts/apply-patches.sh`, which only globs `patches/*.patch`, so it sits
 inert until someone looks at it by hand.
+
+## F5 leftovers: the changelog and GitHub Discussions (0186, 2026-10-20)
+
+Two items were left open in F5, and one decision was made without asking you. Change either if you disagree.
+
+**The changelog.** `CHANGELOG.md` is new, in the Keep a Changelog layout. There are no tags or releases and the version is 1.0.0, so it has one section, Unreleased, grouped into Added, Changed and Fixed. It was written from the headlines of the patch rows in `docs/PROGRESS.md` and from the commit titles of the work done since (report export, shop-wide sales, CloudKit, Companion mode). Where a headline was cut short I read the full row before using it, and two lines were corrected that way. It is a summary, not a complete list: the progress log is the complete list. `CONTRIBUTING.md` now asks for a line in it for anything a shop user would notice.
+
+**Discussions: off.** This is a guess. The README already says this is one person's shop app, public to be inspected, with no support channel. Discussions would add a second place for questions that nobody has agreed to answer, and the repo has no licence yet, so there is nothing for a community to build on. Issues stay open for bugs. The README now says Discussions are off. **This is a GitHub setting, not a file,** so nothing in the repo turns it off: new repositories have it off by default, and the check is Settings ▸ General ▸ Features. If you want it on later, tick it there and change the README line.
+
+**Also fixed while there:** `CONTRIBUTING.md` still said four training-course test failures were known and pre-existing, which stopped being true with 0183. The README said 64 help pages, and there are 68.
+
+**Still open, and yours:** the licence choice. No LICENSE file has been added and the README still says all rights reserved.
