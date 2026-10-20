@@ -953,7 +953,7 @@ On the iPad, with some sales and a cash sale already recorded. Make sure at leas
 
 ## T73. The assistant sees every till's sales (shop-wide sales view)
 
-Two tills sharing one Shopify store through metaobjects. Do this after updating both. On **each** till: Settings ▸ Shopify ▸ **Set up shared storage (metaobjects)**. Pass on the first run: it says **Shared storage is ready.** (on an older shop this also adds the `sale_json` field to the sales definition; a failing add leaves sales uploading as before). Both tills must be named differently in Settings ▸ Register (for example Front and Back).
+Two tills sharing one Shopify store through metaobjects. Do this after updating both. On **each** till: Settings ▸ Shopify ▸ **Set up shared storage**. Pass on the first run: it says **Shared storage is ready.** (on an older shop this also adds the `sale_json` field to the sales definition; a failing add leaves sales uploading as before). Both tills must be named differently in Settings ▸ Register (for example Front and Back).
 
 1. On till B, make a sale with an item and, if you like, a gift card. Let it upload (Notifications shows it is gone, or Reports shows it).
 2. On till A, wait up to five minutes, or close and reopen the app, then ask the assistant *Find order* followed by till B's order number. Pass: it finds the sale, with the item, the price and the person who sold it, even though it was never made on till A.

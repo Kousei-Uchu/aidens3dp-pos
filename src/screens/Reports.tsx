@@ -6,7 +6,7 @@ import { Btn, Card, Chip, Field, IconBtn, Money, Page, Row, Segmented, Sheet, Tx
 import { useTheme } from '../ui/theme';
 import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
-import * as meta from '../lib/shopify/metaobjects';
+import { listShared } from '../lib/syncBackend';
 import { hasCreds } from '../lib/shopify/client';
 import { outstandingBalance } from '../lib/shopify/giftcards';
 import { applyRecord, derived, emptyTotals, lastYearRange, parseDay, pctChange, periodRange, previousRange, rollupKey, staffSummary, sumRange, type Period, type Range, type RollupRow, type Totals, adjustmentSummary } from '../lib/rollup';
@@ -23,7 +23,7 @@ export function useRollups() {
   const load = useCallback(async () => {
     if (!hasCreds()) return; setBusy(true);
     try { const rows: RollupRow[] = []; let after: string | null = null;
-      for (let i = 0; i < 8; i++) { const r = await meta.list(meta.TYPES.rollup, { first: 100, after }); for (const x of r.rows) { try { rows.push({ registerId: x.f.register_id, date: x.f.date, totals: { ...emptyTotals(), ...JSON.parse(x.f.totals_json) } }); } catch {} } if (!r.next) break; after = r.next; }
+      for (let i = 0; i < 8; i++) { const r = await listShared('rollup', { first: 100, after }); for (const x of r.rows) { try { rows.push({ registerId: x.f.register_id, date: x.f.date, totals: { ...emptyTotals(), ...JSON.parse(x.f.totals_json) } }); } catch {} } if (!r.next) break; after = r.next; }
       setRemote(rows); } catch (e: any) { if (!/network|connection/i.test(e.message)) alertMsg('Could not load reports', e.message, 'orders/reports'); }
     setBusy(false);
   }, []);
