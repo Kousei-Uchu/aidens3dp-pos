@@ -12,6 +12,9 @@ import { DEPTHS, depthsPresent, pageVisibleTo, selectDepth, type Depth, type Pag
 import type { ScreenEntry, ScreenTarget } from './assistantScreens';
 import type { Guide } from './assistantGuide';
 import type { AssistantData } from './assistantData';
+import type { CatalogueView } from './assistantProducts';
+import type { Grid } from './grid';
+import { ALL_PRODUCTS_SCREEN, GRID_ITEM_PREFIX, itemGuide, placeForWords } from './assistantGridGuide';
 import { DATA_TOOLS } from './assistantDataTools';
 import { currentTimeTool } from './assistantTime';
 import { contextInfo, type RegisterContext } from './assistantContext';
@@ -39,6 +42,10 @@ export type ToolContext = {
   till?: TillState;
   /** The cash drawer and the cart on the till, taken when the question was asked (patch 0172). Left out (practice data), the cash and cart tools say they could not read the till. */
   cash?: CashState;
+  /** The Quick Menu grid layout, as it is now (B1). show_guide walks it to an item; left out, an item guide falls back to All products. */
+  grid?: Grid;
+  /** The catalogue the grid is filled from (B1). Derived from `data` when that is given; left out, an item guide falls back to All products. */
+  catalogue?: CatalogueView;
 };
 export type AssistantTool = {
   /** Only these roles are offered the tool (patch 0169). Left out, every role is. A role not listed never sees it in the request, and calling it gets the answer an unknown tool gets (plan 3.4). */
@@ -202,11 +209,18 @@ const searchScreens: AssistantTool = {
  * Works out a button for a help page or a screen, or null. The one place a button is checked, used when the model asks for one
  * and again when the button is drawn, so a button saved in the history is gone once the signed in role can no longer reach it.
  * A page or screen this role may not see gets null, exactly like one that does not exist.
+ * A guide whose id points at a grid item (B1) is worked out again from the grid and the catalogue as they are now; when the
+ * item no longer has a place in the grid it falls back to the All products guide, the same as when it was first asked for.
  */
-export function resolveLink(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, kind: unknown, id: unknown): { link: ChatLink; action: LinkAction } | null {
+export function resolveLink(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role' | 'grid' | 'catalogue'>, kind: unknown, id: unknown): { link: ChatLink; action: LinkAction } | null {
   const key = typeof id === 'string' ? id.trim() : ''; if (!key) return null;
   if (kind === 'doc') { const p = visiblePages(ctx).find(x => x.id === key); return p ? { link: { kind: 'doc', id: p.id, label: p.title }, action: { to: 'help', id: p.id } } : null; }
   if (kind === 'guide') {
+    if (key.startsWith(GRID_ITEM_PREFIX)) {
+      const g = itemGuide(ctx.grid, ctx.catalogue, key.slice(GRID_ITEM_PREFIX.length));
+      if (g) return { link: { kind: 'guide', id: key, label: `Guide me to ${g.name}` }, action: { to: 'guide', guide: g } };
+      return resolveLink(ctx, 'guide', ALL_PRODUCTS_SCREEN);
+    }
     const e = visibleScreens(ctx).find(x => x.id === key); const walk = e?.walk?.[ctx.role]; if (!e || !walk || !walk.length) return null;
     return { link: { kind: 'guide', id: e.id, label: `Guide me to ${e.name}` }, action: { to: 'guide', guide: { screen: e.id, name: e.name, steps: walk.map(s => ({ ...s })), ...(e.target ? { target: e.target } : {}), ...(e.arrive?.length ? { arrive: [...e.arrive] } : {}) } } };
   }
@@ -217,7 +231,7 @@ export function resolveLink(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>
   return null;
 }
 /** The buttons that still work for this role, with what each does. Anything else is dropped. */
-export function liveLinks(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role'>, links: ChatLink[] | undefined): { link: ChatLink; action: LinkAction }[] {
+export function liveLinks(ctx: Pick<ToolContext, 'pages' | 'screens' | 'role' | 'grid' | 'catalogue'>, links: ChatLink[] | undefined): { link: ChatLink; action: LinkAction }[] {
   const out: { link: ChatLink; action: LinkAction }[] = [];
   for (const l of links ?? []) { const r = resolveLink(ctx, l.kind, l.id); if (r && !out.some(o => o.link.kind === r.link.kind && o.link.id === r.link.id)) out.push(r); }
   return out;
@@ -236,16 +250,34 @@ const showLink: AssistantTool = {
 };
 
 // ---------- show_guide ----------
-const NO_GUIDE = { error: 'No guide can be made for that screen. Only screens that search_screens marks can_guide have one. Give the taps in words instead.' };
+const NO_GUIDE = { error: 'No guide can be made for that. Only screens that search_screens marks can_guide have one, and only items saved on this till can be walked to. Give the taps in words instead.' };
+/** The note for a guide to an item (B1). It never names the item: the tools may only return what the data gate calls content, and the name came from the shop's catalogue. The button under the reply carries the name for the person to read. */
+const ITEM_GUIDE_NOTE = 'A button will be shown under your reply. It points at each tap from the Checkout tab to that item on the Quick Menu grid, or to All products when the item has no place in the grid. Do not write the button or the item name yourself.';
 const showGuide: AssistantTool = {
   gate: 'content',
   def: { type: 'function', function: {
     name: 'show_guide',
-    description: 'Put a "Guide me" button under your reply. Tapping it points at each button to tap, from the Checkout tab, until the person reaches the screen. Use it when someone asks to be shown, guided or walked to a screen, after search_screens gave the id and marked it can_guide. Still give the taps in words. Never write the button or the id in your reply.',
-    parameters: { type: 'object', properties: { screen: { type: 'string', description: 'The id from search_screens, for example "page_reports".' } }, required: ['screen'], additionalProperties: false },
+    description: 'Put a "Guide me" button under your reply. Tapping it points at each button to tap, from the Checkout tab, until the person reaches the screen or the item. Use it when someone asks to be shown, guided or walked to a screen (one search_screens marked can_guide) or to an item on the Quick Menu grid. Still give the taps in words.',
+    parameters: { type: 'object', properties: {
+      screen: { type: 'string', description: 'The screen id from search_screens, for example "page_reports".' },
+      item: { type: 'string', description: 'The item, as a few key words from its name, instead of a screen id.' },
+    }, additionalProperties: false },
   } },
-  run: (args, ctx) => { const r = resolveLink(ctx, 'guide', args.screen); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. It points at each tap from the Checkout tab. Do not write the button yourself.` } : NO_GUIDE; },
-  link: (args, ctx) => resolveLink(ctx, 'guide', args.screen)?.link ?? null,
+  run: (args, ctx) => {
+    const item = typeof args.item === 'string' ? args.item.trim() : '';
+    if (item) { // an item either has a walkable place in the grid, or the guide falls back to All products (B1)
+      if (placeForWords(ctx.grid, ctx.catalogue, item) || resolveLink(ctx, 'guide', ALL_PRODUCTS_SCREEN)) return { ok: true, note: ITEM_GUIDE_NOTE };
+      return NO_GUIDE;
+    }
+    const r = resolveLink(ctx, 'guide', args.screen); return r ? { ok: true, note: `A button "${r.link.label}" will be shown under your reply. It points at each tap from the Checkout tab. Do not write the button yourself.` } : NO_GUIDE;
+  },
+  link: (args, ctx) => {
+    const item = typeof args.item === 'string' ? args.item.trim() : '';
+    if (!item) return resolveLink(ctx, 'guide', args.screen)?.link ?? null;
+    const place = placeForWords(ctx.grid, ctx.catalogue, item);
+    if (place && ctx.grid) return { kind: 'guide', id: GRID_ITEM_PREFIX + place.key, label: `Guide me to ${place.name}` };
+    return resolveLink(ctx, 'guide', ALL_PRODUCTS_SCREEN)?.link ?? null;
+  },
 };
 
 // ---------- screen_context ----------
@@ -314,7 +346,8 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
 }
 
 /** A new tool set for one question. */
-export function makeToolSet(o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; /** What the person has typed lately, newest last. When given, only the tools those words call for are sent (patch 0185). */ narrow?: readonly string[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet {
+export function makeToolSet(o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; /** What the person has typed lately, newest last. When given, only the tools those words call for are sent (patch 0185). */ narrow?: readonly string[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState; grid?: Grid; /** Left out, the catalogue is the slice of `data` the grid is filled from. */ catalogue?: CatalogueView }): ToolSet {
   const allowed = toolsFor(o.role, o.tools); const n = o.narrow ? narrow(allowed, o.narrow) : undefined;
-  return { tools: n?.more ? [...allowed, n.more] : allowed, ...(n ? { offered: n.offered } : {}), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] };
+  const catalogue = o.catalogue ?? o.data; // AssistantData carries every field CatalogueView needs
+  return { tools: n?.more ? [...allowed, n.more] : allowed, ...(n ? { offered: n.offered } : {}), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}), ...(o.grid ? { grid: o.grid } : {}), ...(catalogue ? { catalogue } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] };
 }

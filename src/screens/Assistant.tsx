@@ -112,6 +112,7 @@ export default function Assistant() {
   const cfg = useApp(s => s.settings.assistant); const staffId = useApp(s => s.staffId);
   const canEdit = useApp(s => canEditAdjustPerms(actingRole(s.settings.requirePin, s.settings.staff, s.staffId), s.settings.staff));
   const staffList = useApp(s => s.settings.staff); const role = useApp(s => actingRole(s.settings.requirePin, s.settings.staff, s.staffId));
+  const grid = useApp(s => s.grid); // the Quick Menu layout, so a guide can be walked to an item on it (B1)
   const key = historyKey(staffId);
   const [hist, setHist] = useState<ChatEntry[]>([]); const [loaded, setLoaded] = useState(false);
   const [text, setText] = useState(''); const [busy, setBusy] = useState(false); const [secs, setSecs] = useState(0);
@@ -162,7 +163,7 @@ export default function Assistant() {
       apiKey = await getAssistantKey();
       const shopData = await takeAssistantData(); const till = takeTillState(role); const cash = takeCashState();
       const out = await askLogged(assistantFetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, narrow: recentAsks(histRef.current, trimmed), policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), ...(cash ? { cash } : {}), where }) },
+          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, narrow: recentAsks(histRef.current, trimmed), policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), ...(cash ? { cash } : {}), grid, where }) },
         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
       if (!out.ok) throw out.error;
@@ -173,7 +174,7 @@ export default function Assistant() {
       if (forKey !== keyRef.current) return;
       await goOffline(e);
     } finally { setBusy(false); }
-  }, [busy, cfg, staffId, staffList, role, helpPages, screenList]);
+  }, [busy, cfg, staffId, staffList, role, helpPages, screenList, grid]);
 
   const clear = async () => {
     if (!(await confirm('Clear your chat history?', 'This clears your own messages with the assistant on this iPad. It cannot be undone.', 'Clear', true))) return;
@@ -186,8 +187,8 @@ export default function Assistant() {
     if (a.to === 'guide') { if (startGuide({ ...a.guide, ...(staffId ? { staffId } : {}) })) nav.setTab('checkout'); return; }
     if (a.to === 'help') nav.push('help', { id: a.id }); else if (a.to === 'tab') nav.setTab(a.tab as Tab); else nav.push(a.route);
   };
-  // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown.
-  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: helpPages, screens: screenList, role }, e.links) : []);
+  // Checked again each time it is drawn, for the role signed in now, so a button a role can no longer reach is not shown. A guide to an item is worked out again from the grid and the catalogue as they are now (B1).
+  const buttons = (e: ChatEntry) => (e.role === 'assistant' ? liveLinks({ pages: helpPages, screens: screenList, role, grid, catalogue: takeCatalogue() ?? undefined }, e.links) : []);
   const bubble = (e: ChatEntry, i: number) => {
     if (e.offline) return <OfflineList key={e.id} query={hist[i - 1]?.text ?? ''} role={role} pages={helpPages} screens={screenList} onOpen={open} />;
     const mine = e.role === 'user'; const btns = buttons(e); const time = clock(e.at);
