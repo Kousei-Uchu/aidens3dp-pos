@@ -106,7 +106,7 @@ function StockResult({ v, siblings }: { v: Variant; siblings: Variant[] }) {
         </View>
       </Card>
       {r.single ? <Txt size={13} sub style={{ marginTop: 8, marginLeft: 4 }}>This product has no other variations.</Txt> : <View style={{ marginTop: 12 }}>
-        <Txt size={13} sub weight="600" style={{ marginBottom: 2, marginLeft: 4 }}>Other variations ({others.length})</Txt>
+        <Txt size={13} sub weight="600" style={{ marginBottom: 2, marginLeft: 4 }}>Other variations ({others.length}), most stock first</Txt>
         {others.map((o, i) => <Row key={o.variant.id} image={o.variant.image ?? null} last={i === others.length - 1} title={o.variant.variantTitle || 'Default'}
           sub={`$${(o.variant.priceCents / 100).toFixed(2)}`} right={<Txt weight="700" color={TONE_COLOR[stockToneOf(o.stock)] ?? c.sub}>{stockText(o.stock)}</Txt>} />)}
         {r.totalTracked !== null ? <Txt size={13} sub style={{ marginTop: 6, marginLeft: 4 }}>{`${r.totalTracked} in stock across all ${r.rows.length} variations${r.untracked ? ` (${r.untracked} not tracked)` : ''}.`}</Txt> : null}
