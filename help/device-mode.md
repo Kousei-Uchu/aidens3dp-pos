@@ -29,6 +29,12 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
 - Switching to a companion keeps the feature switches as they are: whatever was on stays on, and anything you switch on as a companion is still there if you switch back to a register.
 - Nothing is deleted by a mode change. A hidden feature is hidden, not removed, so a cart, a saved sale or a cash count is still there when it comes back.
 
+### What a companion shows
+- The tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**, with **Checkout** added when Selling is on. Notifications is the bell on Today, and also opens from a notice link. A register keeps the five tabs it has always had and never shows Today or Scan.
+- **Today** is a glance at the shop: today's sales and orders (managers and owners only, the same rule as Reports), items that are low, out or oversold, and any sales stuck in the upload queue. Each card opens the full screen, and pulling down refreshes it.
+- **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.
+- A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.
+
 ### PIN and locking on a companion
 - A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.
 - Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.
@@ -76,13 +82,16 @@ flowchart TD
 
 ### What the gate answers
 - `tabAllowed`: a companion keeps Inventory, Transactions, Notifications and More, and needs **Selling** for Checkout.
-- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `staff` needs **Till staff tools**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.
-- `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.
+- `routeAllowed`: `cart`, `pay` and `saved` need **Selling**; `drawer` needs **Cash drawer**; `terminalPlay` needs **Card reader**; `training` and `trainingRun` need **Till training**. Every other page is allowed.
+- `rowAllowed`: the **Cash drawer** and **Training** rows follow their group (Staff does not, see above). The row is still subject to the display mode and the person's role.
 
 ### How the lock and the step-up decide
 - `lockRequired` in `src/lib/appMode.ts` says whether the app is locked: a register follows Require PIN, a companion always locks.
 - `stepUpNeeded` and `lockDue` in `src/lib/stepUp.ts` say whether a PIN is due, from the time of the last PIN entry, and whether to lock after being idle. Pages in `STEP_UP_ROUTES` ask before they open (`pay`, `createItem`, `editItem`, `drawer`, `settings`, `staff`, `deviceMode`), and the handlers for stock, customers, fulfilling orders, refunds and backups call `requireStepUp` from `src/lib/stepUpGate.ts` themselves. The prompt is `src/ui/StepUpHost.tsx`.
 - `autoLockMinutes` and `stepUpMinutes` are per device and listed in `DEVICE_KEYS`, so a backup never copies them.
 
+### Tabs, pages and rows
+`deviceTabs` in `src/lib/appMode.ts` gives the tab bar, `homeTab` says where the app opens and where a hidden tab sends you, and `tabAllowed`, `routeAllowed` and `rowAllowed` answer for each tab, page and More row. `App.tsx` asks them for the bar and the panes, the `Routes` guard closes a page the device does not hold, and the More screen filters its rows. `src/screens/Today.tsx` draws the Today cards from `todayCards` in `src/lib/todayCards.ts`, and `src/screens/ScanTab.tsx` reuses `LookupSheet`.
+
 ### What is not wired yet
-The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the PIN lock and the step-up PIN that guards changing the mode arrived with 0177.
+The card reader, the cash drawer and the sync pages following the same switches arrive with patch 0179 of `dev_docs/COMPANION_PLAN.md`, and the selling path with 0180.

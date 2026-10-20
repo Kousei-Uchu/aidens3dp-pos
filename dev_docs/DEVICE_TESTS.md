@@ -1056,3 +1056,18 @@ On a phone you can make a companion, with an owner that has a PIN (create one in
 11. On a register (till) without Require PIN switched on, do steps 8 and 9. Pass: no PIN prompts at all and no auto-lock.
 12. On the companion, open **Demo mode**. Pass: every feature is on show and it never locks. Leave Demo. Pass: the companion's own lock is back.
 
+## T81. Companion tabs, Today and Scan (0178)
+
+On the phone that is a companion (T80). Nothing in this patch has been run on a device.
+
+1. Open the app and sign in. Pass: it opens on **Today**, and the tab bar is **Today**, **Scan**, **Inventory**, **Transactions** and **More**. There is no **Checkout** tab and no **Notifications** tab.
+2. On **Today** as an owner or manager, check the sales card. Pass: it shows today's sales and the order count, and **Open reports** opens Reports. Pull down. Pass: the figures refresh.
+3. Sign in as a cashier. Pass: there is no sales card, and the low stock card still shows.
+4. Check the stock card. Pass: it lists low, out and oversold items, worst first, and tapping a row opens Inventory.
+5. Tap **Notices** (the bell). Pass: Notifications opens with a **Back** button, and Back returns to Today. Tap a notice that links somewhere. Pass: it opens that page.
+6. Open **Scan**, choose **Price check** and tap **Scan an item**. Pass: the camera opens at once. Scan an item. Pass: its price and deals show. Do the same with **Stock check**. Pass: stock and the other variations show, and no cart is touched.
+7. Open **More**. Pass: there is no **Saved carts** or **Cash drawer** row, **Staff** is there for an owner or manager, and **Device mode** is there.
+8. In **Device mode** switch **Selling** on. Pass: the **Checkout** tab appears between Scan and Inventory, and **Saved carts** appears in More. Switch it off while on Checkout. Pass: the app lands on Today and the tab is gone.
+9. Switch **Cash drawer** on and open **Drawer**. Pass: it opens (after the PIN prompt from T80). Switch the feature off with the drawer open. Pass: the page closes itself.
+10. On a register (till), open the app. Pass: the tabs are exactly the five it had before, and there is no Today or Scan.
+

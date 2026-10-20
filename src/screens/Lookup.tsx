@@ -18,10 +18,11 @@ import { setLookupModeProbe, setLookupResultProbe } from '../lib/trainingProbe';
 export type LookupMode = 'price' | 'stock';
 const TONE_COLOR = { none: undefined, ok: '#16A34A', low: '#B45309', out: '#B45309', neg: '#B91C1C' } as const;
 
-export function LookupSheet({ mode, visible, onClose }: { mode: LookupMode; visible: boolean; onClose: () => void }) {
+export function LookupSheet({ mode, visible, onClose, startWithCamera = false }: { mode: LookupMode; visible: boolean; onClose: () => void; /** The companion's Scan tab opens straight onto the camera. */ startWithCamera?: boolean }) {
   const { c } = useTheme(); const cat = useCatalogue(); const autos = useApp(s => s.data.autos); const bundlesJson = useApp(s => s.settings.bundlesJson);
   const [found, setFound] = useState<Variant | null>(null); const [msg, setMsg] = useState(''); const [q, setQ] = useState(''); const [cam, setCam] = useState(false);
   useEffect(() => { if (!visible) { setFound(null); setMsg(''); setQ(''); setCam(false); setLookupModeProbe(undefined); setLookupResultProbe(undefined); } }, [visible]);
+  useEffect(() => { if (visible && startWithCamera) setCam(true); }, [visible, startWithCamera]);
   useEffect(() => { setFound(null); setMsg(''); setQ(''); setLookupModeProbe(mode); setLookupResultProbe(undefined); }, [mode]);
 
   // scans and picks both go through here; the latest one replaces the result so a stack of items can be checked quickly

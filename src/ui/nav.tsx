@@ -1,5 +1,7 @@
 import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { stepUpForRoute } from '../lib/stepUp';
+import { useApp } from '../state/store';
+import { readMode } from '../lib/appMode';
 import { requireStepUp, stepUpDue } from '../lib/stepUpGate';
 
 export type Tab = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more' | 'today' | 'scan';
@@ -26,7 +28,7 @@ export function NavProvider({ children }: { children: React.ReactNode }) {
   const pop = useCallback(() => setStack(s => s.slice(0, -1)), []);
   const reset = useCallback(() => setStack([]), []);
   /** Notification deep-links: a tab name switches tab, anything else pushes a page. */
-  const go = useCallback((route: string, params?: any) => { if (TAB_ROUTES[route]) { setTabState(TAB_ROUTES[route]); setStack([]); } else open(route, params); }, [open]);
+  const go = useCallback((route: string, params?: any) => { if (route === 'notifications' && readMode(useApp.getState().settings.appMode) === 'companion') open('notices'); else if (TAB_ROUTES[route]) { setTabState(TAB_ROUTES[route]); setStack([]); } else open(route, params); }, [open]);
   const v = useMemo(() => ({ tab, setTab, stack, push, pop, reset, go }), [tab, stack, setTab, push, pop, reset, go]);
   return <Ctx.Provider value={v}>{children}</Ctx.Provider>;
 }

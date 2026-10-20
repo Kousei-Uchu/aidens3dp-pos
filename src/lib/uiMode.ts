@@ -7,7 +7,7 @@ export type UiMode = 'standard' | 'simple' | 'minimal' | 'custom';
 export type TextSize = 'normal' | 'large' | 'xlarge';
 export type TabLevel = 'all' | 'core' | 'basic';
 export type MoreLevel = 'all' | 'everyday' | 'essential';
-export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more';
+export type TabId = 'checkout' | 'inventory' | 'transactions' | 'notifications' | 'more' | 'today' | 'scan';
 export type MoreRowId = 'orders' | 'items' | 'customers' | 'saved' | 'giftcards' | 'reports' | 'drawer' | 'staff' | 'settings' | 'deviceMode' | 'diagnostics' | 'help' | 'training' | 'lock';
 
 /** The four dials a Custom mode exposes. */
@@ -22,7 +22,7 @@ export type StaffUi = { mode: UiMode; custom?: CustomUi };
 
 export const MODES: UiMode[] = ['standard', 'simple', 'minimal', 'custom'];
 export const TEXT_SCALE: Record<TextSize, number> = { normal: 1, large: 1.05, xlarge: 1.1 };
-export const TAB_ORDER: TabId[] = ['checkout', 'inventory', 'transactions', 'notifications', 'more'];
+export const TAB_ORDER: TabId[] = ['today', 'scan', 'checkout', 'inventory', 'transactions', 'notifications', 'more'];
 export const TABS_BY_LEVEL: Record<TabLevel, TabId[]> = {
   all: ['checkout', 'inventory', 'transactions', 'notifications', 'more'],
   core: ['checkout', 'inventory', 'transactions', 'more'],
