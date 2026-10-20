@@ -11,7 +11,7 @@ Grouped commits are allowed where a change is tiny; every commit still names the
   patch. It applies cleanly and is now in `patches/APPLIED.txt`.
 - [x] **P2. Apply `patches/0186-changelog-and-discussions.patch`.** Done (`8d62580`). Adds `CHANGELOG.md`, points
   `CONTRIBUTING.md` at it, corrects `README.md` (68 help pages, Discussions off, changelog listed) and closes the F5 note
-  except the licence. Applied with a 3-way merge because the `docs/PROGRESS.md` hunk's context assumed an older row order
+  except the licence. Applied with a 3-way merge because the `dev_docs/PROGRESS.md` hunk's context assumed an older row order
   (the 0183 and 0184 rows sit above it now); the additions themselves were unaffected.
 
 ## Bugs to fix
@@ -58,14 +58,22 @@ Grouped commits are allowed where a change is tiny; every commit still names the
 ## Side notes
 
 - [x] **S0. This plan as its own `REPAIRS.md`.** Done: this file, with items ticked as they land.
-- [ ] **S1. Put the patch queue into its own MD doc.** The numbered queue given earlier (CloudKit 4 to 8, then Companion
-  0177 to 0182) goes into a doc so it is not only in the chat. Likely a new `docs/QUEUE.md` or a section in
-  `docs/PROGRESS.md`; decide the home when the doc-prune work (S2) is done, so the two do not disagree.
-- [ ] **S2. Prune and merge stale docs, and rename `docs/` to `dev_docs/`.** Read every file in `docs/`, remove or merge
-  what is stale or duplicated, then rename the folder and fix every reference (`README.md`, `CONTRIBUTING.md`,
-  `CHANGELOG.md`, `scripts/`, help build, any doc that links another doc). Do this with care around `docs/PROGRESS.md`,
-  `docs/TO_DO.md`, `docs/GUESSES.md`, `docs/DEVICE_TESTS.md`, the plan docs and `docs/CLOUDKIT_SYNC_PLAN.md`. Note that
-  the just-applied 0186 links `docs/PROGRESS.md` from `CHANGELOG.md`, so the rename has to catch that too.
+- [x] **S1. Put the patch queue into its own MD doc.** Done: `dev_docs/QUEUE.md`. It carries the numbered queue (CloudKit
+  4 to 8, then Companion 0177 to 0182), one section per patch with the first step for each so a fresh session can start
+  without reading the whole plan, and the rules that hold across the whole queue (the customer policy, the seam, one
+  concern per patch). The long form stays in `dev_docs/CLOUDKIT_SYNC_PLAN.md` (section 9) and `dev_docs/COMPANION_PLAN.md`,
+  which the queue links; it is a short table of contents over those, not a second copy of them, so the two cannot drift.
+- [x] **S2. Prune and merge stale docs, and rename `docs/` to `dev_docs/`.** Done. The whole folder moved with `git mv`, so
+  the history follows, and every reference was updated: `README.md` (the folder table, now naming `QUEUE.md` and the
+  archive), `CHANGELOG.md` (including the 0186 `PROGRESS.md` link), `CONTRIBUTING.md` needed nothing (`no docs/` path in
+  it), `DEV_NOTES.md`, the help pages that point at a plan (`settings/assistant`, `settings/cloud-sync`, `device-mode`,
+  `gift/index`, `help/README`), `scripts/style-check.mjs`, the CloudKit module comments (`index.ts`, `status.ts`,
+  `package.json`, the Swift file), `plugins/withCloudKit.js`, `src/lib/appMode.ts` and `src/screens/CloudSync.tsx`. The five
+  finished one-off docs moved to `dev_docs/archive/` (`REVIEW-F1.md`, `F2-SWEEP.md`, `TRAINING_MODULE_BUGS.md`,
+  `next-steps.html`, `DEVICE_TEST_GUIDE.html`), each listed in `dev_docs/archive/README.md` with what it was, and the
+  references to them from `TO_DO.md`, `PROGRESS.md` and `DEVICE_TESTS.md` now point into the archive. `PROGRESS.md`,
+  `TO_DO.md`, `GUESSES.md`, `DEVICE_TESTS.md` and the plan docs were otherwise left alone, and an untracked duplicate
+  `PROGRESS 2.md` was deleted. `help/help.json` was rebuilt (`help:build`) so the bundled copy matches the edited pages.
 - [x] **S3. A barcode scan dismisses the screensaver.** Done, with B3. The saver's window now holds its own hidden box
   (`src/ui/Screensaver.tsx`), focused while it is up. A real barcode typed into it wakes the saver and, through
   `offerScan` in `src/lib/scanFocus.ts`, is handed to Checkout even though the checkout scan box is unmounted behind the
@@ -103,7 +111,7 @@ Grouped so there are not dozens of commits:
 ## Notes for whoever picks this up
 
 - The repo style check forbids em and en dashes and a list of AI words; where a dash would go, use a comma or a colon.
-- `docs/DEVICE_TESTS.md` gains a test for anything a person would notice on a device, and `help/help.json` is rebuilt with
+- `dev_docs/DEVICE_TESTS.md` gains a test for anything a person would notice on a device, and `help/help.json` is rebuilt with
   `npm run help:build` after help pages change.
 - CloudKit patch 4 is still only a scaffold (`abf8147`): the native side is unverified and nothing calls the CloudKit
   backend yet. That work is not in this list; it is on the queue for S1.

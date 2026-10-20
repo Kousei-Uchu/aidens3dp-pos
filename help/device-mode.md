@@ -73,4 +73,4 @@ flowchart TD
 - `rowAllowed`: the **Cash drawer**, **Staff** and **Training** rows follow their group. The row is still subject to the display mode and the person's role.
 
 ### What is not wired yet
-The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `docs/COMPANION_PLAN.md`; the step-up PIN that guards changing the mode arrives with 0177.
+The gate is used by the settings, the setup checklist and this page today. Hiding the tabs, guarding a page someone reaches by a link, and the Today and Scan home arrive with patches 0178 and 0179 of `dev_docs/COMPANION_PLAN.md`; the step-up PIN that guards changing the mode arrives with 0177.

@@ -1,5 +1,5 @@
 // Location: scripts/style-check.mjs
-// Offline writing audit (docs/WRITING_ASSISTANT.md). Finds em and en dashes and the most common AI
+// Offline writing audit (dev_docs/WRITING_ASSISTANT.md). Finds em and en dashes and the most common AI
 // phrasings in the repo's own prose, so the F4 tidy up is repeatable. No network, no model.
 // Usage: node scripts/style-check.mjs [path ...]   (default: the repo's prose and source)
 // Exit code 1 when anything is found, so it can gate a check.

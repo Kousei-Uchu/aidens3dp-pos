@@ -1,4 +1,4 @@
-// The pure half of the CloudKit bridge (patches 1 and 2 of docs/CLOUDKIT_SYNC_PLAN.md). It holds the types and the "no
+// The pure half of the CloudKit bridge (patches 1 and 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md). It holds the types and the "no
 // native module" fallback, with no import of expo, so the node tests can check the fallback without a device. index.ts
 // is the thin layer that hands it the real native module.
 
