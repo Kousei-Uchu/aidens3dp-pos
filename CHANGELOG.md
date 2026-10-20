@@ -2,7 +2,7 @@
 
 What has changed in the app, grouped the way [Keep a Changelog](https://keepachangelog.com) does it.
 
-There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `app.json`), so everything below is unreleased. Work began on 2026-10-10. This file is the short version. The full history, one entry per patch with the reasoning and what was decided, is in [`docs/PROGRESS.md`](docs/PROGRESS.md). Patch numbers are in brackets.
+There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `app.json`), so everything below is unreleased. Work began on 2026-10-10. This file is the short version. The full history, one entry per patch with the reasoning and what was decided, is in [`dev_docs/PROGRESS.md`](dev_docs/PROGRESS.md). Patch numbers are in brackets.
 
 ## [Unreleased]
 
@@ -20,7 +20,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 - **Square history import** by QR from a PC script (0008), and copying that history from one register to another (0150).
 - **Grid.** Categories nested to any depth, a settings sheet for each tile, the variation picker as a page of the grid, and Lock POS, Price check and Stock check tiles (0016, 0017). Cart warnings (0142, 0145), unlisted products (0143) and scanner setup barcodes with a speed test (0144, 0147).
 - **Inventory screen** with no row cap, draft and archived products, filters and sorting (0003).
-- **Cloud sync between registers** with CloudKit, and **Companion mode** for a device that cuts the Register features until you ask for them. Both are in progress (`docs/CLOUDKIT_SYNC_PLAN.md`, `docs/COMPANION_PLAN.md`).
+- **Cloud sync between registers** with CloudKit, and **Companion mode** for a device that cuts the Register features until you ask for them. Both are in progress (`dev_docs/CLOUDKIT_SYNC_PLAN.md`, `dev_docs/COMPANION_PLAN.md`).
 
 ### Changed
 

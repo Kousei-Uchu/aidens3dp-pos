@@ -60,7 +60,7 @@ flowchart TD
 | The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |
 | The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |
 | The iCloud container and the share link handler | `plugins/withCloudKit.js` |
-| The plan and the patch list | `docs/CLOUDKIT_SYNC_PLAN.md` |
+| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |
 
 ### If it will not join
 - **"This till is not signed in to iCloud."** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.

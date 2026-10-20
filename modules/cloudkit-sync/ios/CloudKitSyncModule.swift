@@ -25,7 +25,7 @@ struct CloudKitStateRecord: Record {
   @Field var shareURL: String? = nil
 }
 
-// Patch 2 of docs/CLOUDKIT_SYNC_PLAN.md: the zone, the share and the answers the account screen needs. The records
+// Patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md: the zone, the share and the answers the account screen needs. The records
 // themselves (the sync engine) arrive in patch 3; this patch only opens the door and says which side of it a till is on.
 public class CloudKitSyncModule: Module {
   private var shareObserver: NSObjectProtocol?

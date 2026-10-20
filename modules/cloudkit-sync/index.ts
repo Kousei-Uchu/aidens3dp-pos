@@ -1,4 +1,4 @@
-// CloudKit sync, the JavaScript side (patches 1 and 2 of docs/CLOUDKIT_SYNC_PLAN.md).
+// CloudKit sync, the JavaScript side (patches 1 and 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md).
 //
 // The native module is optional on purpose. A build that carries no CloudKit module (an older native build, or a
 // test run in Node) must still start, so every caller gets a clear "unavailable" answer instead of a crash. The

@@ -9,7 +9,7 @@ A point-of-sale app for iPhone and iPad that sells your Shopify catalogue throug
 
 ## Status
 
-The logic layer (pricing, bundles, cash rounding, split tenders, returns, reports, CSV, Shopify order building) is unit-tested (`npm test`, 1200+ tests) and the project passes strict `tsc`. The in-app help (68 pages) is written and maintained alongside the code. Device and store behaviour is being verified on real hardware; `docs/DEVICE_TESTS.md` is the checklist.
+The logic layer (pricing, bundles, cash rounding, split tenders, returns, reports, CSV, Shopify order building) is unit-tested (`npm test`, 1200+ tests) and the project passes strict `tsc`. The in-app help (68 pages) is written and maintained alongside the code. Device and store behaviour is being verified on real hardware; `dev_docs/DEVICE_TESTS.md` is the checklist.
 
 This is one person's shop app, not a product. It is public so the code can be inspected, forked and learned from. There is no support channel, so GitHub Discussions are off. Issues are open for bugs.
 
@@ -33,7 +33,7 @@ Read [SETUP.md](SETUP.md). Short version:
 | `pass-server/` | Cloudflare Worker that issues Apple Wallet gift-card passes. |
 | `tests/` | The test suite. `npm test`. |
 | `CHANGELOG.md` | What has changed in the app, in short. Nothing is tagged as a release yet. |
-| `docs/` | Dev docs: progress log, patch history, device test checklist, guesses we made without asking. |
+| `dev_docs/` | Dev docs: the patch queue (`QUEUE.md`), the plans, the progress log, the device test checklist, and the guesses we made without asking. Finished one-off reports are in `dev_docs/archive/`. |
 | `patches/` | Numbered patch files for every change, with `APPLIED.txt` as the ledger. |
 
 ## How sales are stored

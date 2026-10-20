@@ -10,7 +10,7 @@ import type { MoreRowId, TabId } from './uiMode';
 export type DeviceMode = 'register' | 'companion';
 export const DEVICE_MODES: DeviceMode[] = ['register', 'companion'];
 
-/** One switch on the Companion features screen. The six groups match docs/COMPANION_PLAN.md. */
+/** One switch on the Companion features screen. The six groups match dev_docs/COMPANION_PLAN.md. */
 export type FeatureId = 'selling' | 'cardReader' | 'cashDrawer' | 'staffTools' | 'tillDisplay' | 'tillTraining';
 export const FEATURE_IDS: FeatureId[] = ['selling', 'cardReader', 'cashDrawer', 'staffTools', 'tillDisplay', 'tillTraining'];
 
@@ -29,7 +29,7 @@ export const FEATURE_GROUPS: FeatureGroup[] = [
   { id: 'tillTraining', title: 'Till training', summary: 'The register courses.', items: ['Register courses in Training'] },
 ];
 
-/** A Companion starts with every group off (docs/COMPANION_PLAN.md), then whoever sets it up turns on what it needs. */
+/** A Companion starts with every group off (dev_docs/COMPANION_PLAN.md), then whoever sets it up turns on what it needs. */
 export const DEFAULT_FEATURES: RegisterFeatures = { selling: false, cardReader: false, cashDrawer: false, staffTools: false, tillDisplay: false, tillTraining: false };
 export const ALL_FEATURES: RegisterFeatures = { selling: true, cardReader: true, cashDrawer: true, staffTools: true, tillDisplay: true, tillTraining: true };
 

@@ -70,4 +70,4 @@ flowchart TD
 The sync outbox records completed gift-card codes in `giftDone`, so a retry skips cards already created. Card creation is idempotent by code. A sale with no email can still show a claim QR if the claim service is configured.
 
 ### Known receipt detail
-The immediate receipt document currently prints the full gift card code in its payment line; the Shopify order keeps only the last four characters. Handle the immediate receipt link and its QR as sensitive. See the open note N30 in `docs/PROGRESS.md`.
+The immediate receipt document currently prints the full gift card code in its payment line; the Shopify order keeps only the last four characters. Handle the immediate receipt link and its QR as sensitive. See the open note N30 in `dev_docs/PROGRESS.md`.

@@ -101,4 +101,4 @@ Tests: `tests/assistantconfig.test.ts`, `tests/assistantclient.test.ts`, `tests/
 
 Tests: `tests/assistantgate.test.ts`. `assertNoUnknownFields` in that file is the check every data tool added later should call with realistic data.
 
-Known to change: the data tools themselves (products, inventory, sales, customers and the rest) are later patches. See `docs/AI_ASSISTANT_PLAN.md`.
+Known to change: the data tools themselves (products, inventory, sales, customers and the rest) are later patches. See `dev_docs/AI_ASSISTANT_PLAN.md`.

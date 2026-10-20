@@ -1,5 +1,5 @@
 // Location: tests/cloudkitplugin.test.ts
-// The AppDelegate half of plugins/withCloudKit.js (patch 2 of docs/CLOUDKIT_SYNC_PLAN.md). CloudKit hands the app a
+// The AppDelegate half of plugins/withCloudKit.js (patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md). CloudKit hands the app a
 // share link through a delegate call that Expo does not forward, so the plugin writes that method into the generated
 // AppDelegate. This checks the text it writes, so a mistake is caught without a native build.
 //

@@ -27,7 +27,7 @@ Use exactly `## Basic`, `## Deep`, `## Advanced`, in that order. A reader who pi
 - **Deep**: why it behaves the way it does. Still plain English, but you may explain the rules, the order things happen in, and the odd cases. Worked examples go here.
 - **Advanced**: how it is built. Name the files and functions, add a flowchart, say how to trace a fault, and list the tests. Every claim here should be something you checked in the code.
 
-`## Basic` is required. Deep and Advanced can be left out for a simple page, but say so in the plan (`docs/PROGRESS.md`) rather than leaving them out by accident.
+`## Basic` is required. Deep and Advanced can be left out for a simple page, but say so in the plan (`dev_docs/PROGRESS.md`) rather than leaving them out by accident.
 
 Inside a section use `###` for headings. `##` is reserved for the three depth headings, and the checker rejects any other `##`.
 

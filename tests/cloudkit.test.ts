@@ -1,5 +1,5 @@
 // Location: tests/cloudkit.test.ts
-// The pure half of the CloudKit bridge (patches 1 and 2 of docs/CLOUDKIT_SYNC_PLAN.md). The important case is the
+// The pure half of the CloudKit bridge (patches 1 and 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md). The important case is the
 // missing native module: an old build, or a test run, must get a clear "unavailable" answer rather than a crash.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';

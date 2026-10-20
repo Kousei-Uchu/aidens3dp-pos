@@ -1,5 +1,5 @@
 // Location: src/screens/CloudSync.tsx
-// Cloud sync, patch 2 of docs/CLOUDKIT_SYNC_PLAN.md. One till sets the shop up: it opens the shared zone and shows an
+// Cloud sync, patch 2 of dev_docs/CLOUDKIT_SYNC_PLAN.md. One till sets the shop up: it opens the shared zone and shows an
 // invite link. Every other till pastes that link to join. The records themselves travel in patch 3; this page only opens
 // the door and says which side of it this till is on.
 import React, { useEffect, useState } from 'react';
