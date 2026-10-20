@@ -45,6 +45,8 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.customerForm]: 'sheet_customer_new',
   [SPOT.customerSave]: 'sheet_customer_new',
   [SPOT.moreCustomers]: 'tab_more',
+  [SPOT.moreDemo]: 'tab_more',
+  [SPOT.demoWatch]: 'page_demo_home',
   [SPOT.customersNew]: 'page_customers',
   [SPOT.customersSearch]: 'page_customers',
   [SPOT.customersStart]: 'page_customers',

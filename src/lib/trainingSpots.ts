@@ -200,6 +200,8 @@ export const SPOT = {
   setupStepFeatures: 'setup.step.features',     // the Choose its features row
   setupFinish: 'setup.finish',                  // the Finish setup button
   moreDeviceMode: 'more.devicemode',            // the Device mode row in More
+  moreDemo: 'more.demo',                        // the Demo mode row in More (patch: routegraph coverage)
+  demoWatch: 'demo.watch',                      // a Watch button in Demo mode that plays a feature's show
   deviceModeRegister: 'devicemode.register',    // Switch this device to Register mode
   deviceModeCompanion: 'devicemode.companion',  // Switch this device to Companion mode
   deviceModeSetup: 'devicemode.setup',          // Open the setup checklist again

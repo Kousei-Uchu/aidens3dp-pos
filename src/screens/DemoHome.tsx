@@ -10,6 +10,7 @@ import { useTheme } from '../ui/theme';
 import { useNav, type Tab } from '../ui/nav';
 import { useDemo } from '../state/demoSession';
 import { entriesByArea, type DemoEntry } from '../lib/demoCatalog';
+import { SPOT } from '../lib/trainingSpots';
 import { Enter } from '../ui/Motion';
 
 export default function DemoHome() {
@@ -37,7 +38,7 @@ export default function DemoHome() {
                     <View style={{ flex: 1 }}><Txt size={16} weight="700">{e.title}</Txt><Txt size={13} sub>{e.summary}</Txt></View>
                   </View>
                   <View style={{ flexDirection: 'row', gap: 10 }}>
-                    {e.module ? <Pressable onPress={() => nav.push('demoShow', { id: e.id })} accessibilityRole="button" accessibilityLabel={`Watch the ${e.title} demo`} style={{ flex: 1, backgroundColor: c.accent, borderRadius: 999, paddingVertical: 11, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}><Ionicons name="play" size={15} color={c.onAccent} /><Txt weight="700" color={c.onAccent}>Watch</Txt></Pressable> : null}
+                    {e.module ? <Btn spot={SPOT.demoWatch} title="Watch" icon="play" small style={{ flex: 1 }} onPress={() => nav.push('demoShow', { id: e.id })} /> : null}
                     {e.tab || e.route ? <Pressable onPress={() => open(e)} accessibilityRole="button" accessibilityLabel={`Open ${e.title}`} style={{ flex: 1, backgroundColor: c.fill, borderRadius: 999, paddingVertical: 11, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}><Ionicons name="open-outline" size={15} color={c.text} /><Txt weight="700">{e.module ? 'Try it' : 'Open'}</Txt></Pressable> : null}
                   </View>
                 </Card>
