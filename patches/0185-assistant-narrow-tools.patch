@@ -1,0 +1,579 @@
+diff --git a/docs/AI_ASSISTANT_PLAN.md b/docs/AI_ASSISTANT_PLAN.md
+index e28f38f..8338786 100644
+--- a/docs/AI_ASSISTANT_PLAN.md
++++ b/docs/AI_ASSISTANT_PLAN.md
+@@ -6,6 +6,8 @@ This document is the starting point for planning the Help menu chatbot. Part 1 i
+ Part 2 is what is not built. Part 3 is the decisions, with the owner's answers.
+ Part 4 is how to work in this repo.
+ 
++**Revision 30 (20 October 2026), patch 0185:** not a numbered patch in 3.10. Each question is sent only the tool definitions it is likely to need, and the rest can be loaded with `more_tools`. Four groups (help always, then shop, cash and status), chosen by words in the question and in the last two things typed. Nothing is removed from a role: `toolsFor` still filters by role, `more_tools` only loads names the role has, and a tool in no group is always sent. Room left for the chat at 8000 is now 3,994 tokens for a help question, against 1,318 before. Decided here, and the owner may want to change any of them: **(1) the groups and the words** (one file); **(2) the shop group is one group,** about 2,200 tokens, and could be split; **(3) the default stays 8000.** The open risk is whether a small model calls `more_tools` for a question the words miss, which device test T72 step 4 answers.
++
+ **Revision 29 (19 October 2026), shop-wide sales (not a numbered patch):** the owner saw that the assistant only knew this till's sales and asked for sales history to reach every till. The sales it reads are now this till's plus every other till's, the same rows the Reports page already reads. Decided here, and the owner may want to change any of them: **(1) Every till uploads its whole sale record** in a new `sale_json` field on the `pos_sale` metaobject, added to an older shop's definition on demand (`ensureSaleDetailField`), so a till that cannot add the field still uploads its sale. **(2) A sale made before the field existed has no line detail,** so it counts in the daily totals but is left out of the order and gift card tools; the notes say so. **(3) What is kept is the other tills' newest 2000 sales and their daily totals,** in `pos.shared`, kept apart from `pos.sales` because the cash tools read that and a drawer figure must stay this till's. **(4) The pull runs at most every 5 minutes,** newest first, and stops at sales already held. **(5) iCloud is still the plan** (`docs/CLOUDKIT_SYNC_PLAN.md`); this is the metaobject path until it lands. Decision 7 below was rewritten to match.
+ 
+ **Revision 28 (19 October 2026), patch 0184:** documentation only. Section 1.1 said there were no tools and no data gate, and section 2 listed finished work as still to do; both now match the code, which I checked claim by claim (the role filters, the field map tests, the read-only tests and the help page `roles:` header). No decision changed.
+@@ -232,6 +234,7 @@ Built in 0169: the settings reader (`read_settings`, owner and manager only) and
+ Built in 0172: the cash drawer, cash calculator and current cart tools (patch 8).
+ Built in 0173: the practice mode coach (patch 9, 3.7), the Ask coach button in a Check.
+ Built in 0174: more room for the chat at the default context size (the prompt and tool descriptions trimmed, with a test that holds the room).
++Built in 0185: only the tools a question needs are sent (`assistantToolGroups.ts`), with `more_tools` so the model can ask for the rest.
+ 
+ Nothing in the 3.10 list is left. What this section used to list as still to do is done, as follows:
+ 
+@@ -246,7 +249,7 @@ Nothing in the 3.10 list is left. What this section used to list as still to do
+   `assistantlinks`). There is no single test across the whole tool set, so a new tool needs its own.
+ - **Tests, a help page, a device test and a progress log entry:** each patch carried them.
+ 
+-Open, and the owner's call: the default context size (3.11), which 0174 made less tight but did not change.
++Open, and the owner's call: the default context size (3.11), which 0174 and 0185 made less tight but did not change.
+ 
+ ## 3. Decisions
+ 
+diff --git a/docs/DEVICE_TESTS.md b/docs/DEVICE_TESTS.md
+index 1261789..e0e0814 100644
+--- a/docs/DEVICE_TESTS.md
++++ b/docs/DEVICE_TESTS.md
+@@ -996,4 +996,13 @@ One device is enough for most of this; a second register is only needed for step
+ 9. **Switching the mode.** On the companion, tap **Switch this device to Register mode** and confirm. Pass: the page says this device is a register and the switches are on and greyed out. Switch back to **Companion mode**. Pass: **Selling** is still on from step 5, so a mode change does not lose the switches.
+ 10. **Training.** Start any course, then open **More ▸ Device mode**. Pass: the mode buttons and every switch are greyed out, and the page says training is on.
+ 11. **Most important:** on a register, do a day's work (sell, take cash, check a gift card, refund something). Pass: nothing about the till behaves differently from before this update, and nothing on the Device mode page changed any of it.
++## T76. Assistant: only the tools a question needs (0185)
+ 
++On the iPad, with the model set up as in T55 and the context size left at the default, 8000. Open the audit log (Settings ▸ AI assistant) to see which tools each question used.
++
++1. Ask *Where do I find the reports page?* Pass: it answers from the help pages and the screens, as before.
++2. Ask *How many Bumble Bees do we have?* Pass: it answers from the till's own data, as before.
++3. In the same chat, ask *And the cow plush?* Pass: it looks that up too, without being asked about stock again.
++4. In a new chat, ask *What is selling fastest right now?* The words do not hint at sales, so the model has to ask for the shop tools. **Most important:** tell me which happened. Pass (either): it calls more_tools for the shop and then answers, or it says it could not find anything. Fail: it makes up an answer. In the audit log, a more_tools call shows with the group it asked for.
++5. As a cashier, ask *What are the card reader settings?* Pass: it points at the screen and never shows a setting's value.
++6. Ask the questions that gave you the best answers before this patch. Pass: they still use the right tool. If any is worse, tell me which, and how it was worded.
+diff --git a/docs/DEVICE_TEST_GUIDE.html b/docs/DEVICE_TEST_GUIDE.html
+index 0201705..c5d6b10 100644
+--- a/docs/DEVICE_TEST_GUIDE.html
++++ b/docs/DEVICE_TEST_GUIDE.html
+@@ -7481,6 +7481,93 @@
+           </article>
+         </div>
+       </section>
++
++      <section class="test assistant" id="t76" aria-labelledby="t76-title">
++        <div class="test-head">
++          <span class="test-tag">T76</span>
++          <h2 id="t76-title">Assistant: only the tools a question needs (0185)</h2>
++        </div>
++        <div class="intro-lines">
++          <p>On the iPad, with the model set up as in T55 and the context size left at the default, 8000. Open the audit log (Settings ▸ AI assistant) to see which tools each question used.</p>
++        </div>
++        <div class="result-row">
++          <span class="result-label">This test:</span>
++          <div class="options">
++            <label><input type="radio" name="result-t76" value="pass" data-key="t76-result"> Pass</label>
++            <label><input type="radio" name="result-t76" value="fail" data-key="t76-result"> Fail</label>
++            <label><input type="radio" name="result-t76" value="awkward" data-key="t76-result"> Awkward</label>
++            <label><input type="radio" name="result-t76" value="not tried" data-key="t76-result"> Not tried yet</label>
++          </div>
++        </div>
++        <div class="steps">
++          <article class="step" data-step="t76-step-1">
++            <label class="step-head">
++              <input type="checkbox" data-key="t76-step-1-done" aria-label="Step 1 done">
++              <span class="step-num">1.</span>
++              <span class="step-text">Ask <em>Where do I find the reports page?</em> Pass: it answers from the help pages and the screens, as before.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t76-step-1-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t76-step-2">
++            <label class="step-head">
++              <input type="checkbox" data-key="t76-step-2-done" aria-label="Step 2 done">
++              <span class="step-num">2.</span>
++              <span class="step-text">Ask <em>How many Bumble Bees do we have?</em> Pass: it answers from the till's own data, as before.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t76-step-2-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t76-step-3">
++            <label class="step-head">
++              <input type="checkbox" data-key="t76-step-3-done" aria-label="Step 3 done">
++              <span class="step-num">3.</span>
++              <span class="step-text">In the same chat, ask <em>And the cow plush?</em> Pass: it looks that up too, without being asked about stock again.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t76-step-3-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t76-step-4">
++            <label class="step-head">
++              <input type="checkbox" data-key="t76-step-4-done" aria-label="Step 4 done">
++              <span class="step-num">4.</span>
++              <span class="step-text">In a new chat, ask <em>What is selling fastest right now?</em> The words do not hint at sales, so the model has to ask for the shop tools. <strong>Most important:</strong> tell me which happened. Pass (either): it calls more_tools for the shop and then answers, or it says it could not find anything. Fail: it makes up an answer. In the audit log, a more_tools call shows with the group it asked for.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t76-step-4-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t76-step-5">
++            <label class="step-head">
++              <input type="checkbox" data-key="t76-step-5-done" aria-label="Step 5 done">
++              <span class="step-num">5.</span>
++              <span class="step-text">As a cashier, ask <em>What are the card reader settings?</em> Pass: it points at the screen and never shows a setting's value.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t76-step-5-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++          <article class="step" data-step="t76-step-6">
++            <label class="step-head">
++              <input type="checkbox" data-key="t76-step-6-done" aria-label="Step 6 done">
++              <span class="step-num">6.</span>
++              <span class="step-text">Ask the questions that gave you the best answers before this patch. Pass: they still use the right tool. If any is worse, tell me which, and how it was worded.</span>
++            </label>
++            <label class="notes">
++              <span>Notes</span>
++              <textarea data-key="t76-step-6-notes" placeholder="What happened? Exact wording, amounts, anything odd…"></textarea>
++            </label>
++          </article>
++        </div>
++      </section>
+     </div>
+   </main>
+   <section class="global-notes" aria-labelledby="global-notes-title">
+diff --git a/docs/PROGRESS.md b/docs/PROGRESS.md
+index 730005b..193d52c 100644
+--- a/docs/PROGRESS.md
++++ b/docs/PROGRESS.md
+@@ -159,6 +159,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0175 | 2026-10-19 | Companion mode, plan only (your request: a mode that cuts the Register features until requested and fits a phone companion app). **Saves the plan as `docs/COMPANION_PLAN.md`** with your twelve answers and my take on each, the updated plan, the eight-patch series (0175 to 0182) and its own progress tracker. No app code changes. | G1 |
+ | 0183 | 2026-10-19 | Training (B6), clean-up of the stock-lookup course (your request: fix the four failing tests and three `tsc` errors). **The suite is now green: 1318 of 1318 tests pass and `tsc` has no errors.** The four failures had two causes. (1) `tests/trainingstocklookup.test.ts` first appears in the "WIP: add adjust-review" commit and was never matched to the course: it used a name that does not exist (`stockLookup`), two fields the course type never had (`tier`, `order`), the Bee keyring where the course uses the Dragon figurine and the Keyring (as the 0132 entry describes), and a rule that every Check 2 goal injects a problem, when `validateModule` only asks for at least one. The test now matches the course and the real rule, and also checks that a Guide step is not won by the wrong tool. (2) `trainingitems.test.ts` still said its course was registered last, which stopped being true when `adjust-review` was added after it, so it now says it sits right after the customers course (`trainingcustomerslist.test.ts` only had the title fixed). **One real course bug found while doing this:** the last Check 2 goal sets the Tadpole's stock to -5, but its hint said the line would read "400 in stock"; it now says "5 oversold", which is what the Lookup sheet shows (`src/lib/lookup.ts` drops the minus sign). The Info page and a Guide step also said "-5 oversold", now corrected, along with the matching step in device test T37 (in both `DEVICE_TESTS.md` and the HTML guide). Files: `src/training/modules/stock-lookup.ts` (text only), `tests/trainingstocklookup.test.ts`, `tests/trainingitems.test.ts`, `tests/trainingcustomerslist.test.ts`, and the two device test files. No app behaviour changes. **Worth knowing:** I could not find patch 0132's original test file anywhere in the history, so I matched the test to the course and to the 0132 entry rather than to the original. If you meant the course to use the Bee keyring, say so and I will change the course instead | your request |
+ | 0184 | 2026-10-19 | Docs tidy (your request). **Documentation only, no code.** `docs/AI_ASSISTANT_PLAN.md`: section 1.1 said there were no tools and no data gate, section 1.4 said help page roles were not checked and the practice coach was "to confirm in patch 9", and section 2 listed role filtering, field maps, the prompt and the read-only rule as still to do. All are done, and each claim was checked against the code and tests before it was written (revision 28). One thing the check showed: the read-only rule is tested per tool group, with no single test over the whole set. `docs/TO_DO.md`: the F7 numbers are now 512 steps across 71 sections, and the "11 unlisted patches" note is replaced, because all 11 are listed now. `docs/PROGRESS.md`: F1 to F4, F6 to F8 are ticked as the TO_DO table already says, F5 is partly done and F9 waits on you. **Needs you:** `0175-companion-mode-plan.patch` is in `patches/` but not in `patches/APPLIED.txt`. Its changes are already in the tree, so the apply script fails on it and stops before any later patch. Add the name to the ledger by hand (this cannot be fixed inside a patch, because the script never reaches it). Not changed: the N and D lists (only a device run can tick those), and `docs/COMPANION_PLAN.md` | your request |
++| 0185 | 2026-10-19 | AI assistant (your request: load only the tools a question needs). **Each question is now sent only the tool definitions it is likely to need.** The 19 tools are in four groups in `src/lib/assistantToolGroups.ts`: help (`search_docs`, `read_doc`, `search_screens`, `show_link`, `show_guide`, `screen_context`, always sent), shop (the figure tools and `current_time`), cash and status. A group is sent when the question, or the last two things you typed in the chat, use its words, so a follow up such as "and the cow plush?" keeps its tools. The words lean towards sending a group. **Nothing is taken away:** while any group is left out the model is given `more_tools`, which loads a group for the rest of that question, so a question the words miss can still reach every tool. `toolsFor` is still the only place tools are filtered by role, `more_tools` can only load names the role already has (a cashier asking for the status group gets `app_status` and never `read_settings`), and a tool the groups do not name is always sent. The prompt only describes the tools that are sent, and says how to ask for the rest. **Measured at the default 8000:** room left for the chat after the prompt and definitions is 3,994 tokens for a help question (it was 1,318 for a cashier and 1,074 for a manager), 3,491 for a cash question, 1,797 for a shop question, and the same as before when every group is asked for (1,318 and 1,074). Files: new `assistantToolGroups.ts`; `assistantTools.ts` (`ToolSet.offered`, `offeredTools`, a `narrow` option on `makeToolSet`); `assistantChat.ts` (prompt, message budget and loop read the offered list, again after every call); `screens/Assistant.tsx` (passes the recent questions). A set made without `narrow`, and the practice coach, behave exactly as before. Tests: `tests/assistantnarrow.test.ts` (14, including a scripted model that has to ask for the shop tools, and the room per question type). Full suite 1332 of 1332, `tsc` clean. Device test T76. **Decided without you, change any you disagree with:** the groups and the words (they are in one file, easy to change); the follow up memory is the last three things typed; the default stays 8000. **Worth knowing:** the shop group is still about 2,200 tokens, so a shop question has 1,797 left, and it could be split (products and stock, sales and orders, customers and gift cards) if you want that. **The risk is in T76 step 4:** a small model may not call `more_tools` for a question the words miss, and would then say it could not find anything. Not tried on a real model | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `docs/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+@@ -543,6 +544,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N69 **Non-blocking (CloudKit, patch 2):** the zone, the share and the Cloud sync page are in. `plugins/withCloudKit.js` now also writes `application(_:userDidAcceptCloudKitShareWith:)` into the generated `AppDelegate`, inside the `AppDelegate` class (found by matching braces, because the file has a second class after it), so a tapped invite link is caught: the module joins at once when the app is running, and a cold launch leaves the link in the box for one tap. `CloudKitSyncModule.swift` grew `getState` (this till's role, from which database holds the zone), `createZoneAndShare` (one zone-wide share with read-write permission, so a link is enough), `acceptShare(url)` and `takePendingInvite`. The page is `src/screens/CloudSync.tsx`, reached from **Settings ▸ Data ▸ Cloud sync**, for managers and owners, and both actions are switched off in practice mode. Patch 2 links the registers but sends no records yet: the engine is patch 3, so sales still travel through the metaobject polling of N67. Verified in a throwaway copy with `expo prebuild`, `pod install` and an `xcodebuild` of the `CloudKitSync` pod target; the AppDelegate text transform has node tests in `tests/cloudkitplugin.test.ts`. Found and fixed in the same patch: `.gitignore` had an unanchored `ios` line, so patch 1's commit shipped `modules/cloudkit-sync/` without `ios/CloudKitSyncModule.swift` or `ios/CloudKitSync.podspec` (a fresh clone had no native module at all). The rule is now `/ios` and `/android`, and the sources are tracked. Device check: `docs/DEVICE_TESTS.md` T74.
+ - [ ] N70 **Non-blocking (Companion mode, 0176):** patch 1 of `docs/COMPANION_PLAN.md`. A device is now a register or a companion. `src/lib/appMode.ts` holds the six groups (Selling, Card reader, Cash drawer, Till staff tools, Till display, Till training), the defaults (a register has all six, a companion none until they are switched on) and the gate the later patches use (`tabAllowed`, `routeAllowed`, `rowAllowed`; an unknown stored mode reads as a register). The mode, the switches and `setupDone` are stored per device, and `DEVICE_KEYS` keeps all three out of a backup. `src/lib/setupFlow.ts` holds the setup checklist as data: a register is asked for Shopify, the owner PIN and a name, a companion for Shopify, the PIN and its features; `src/screens/Setup.tsx` shows it and each row opens the screen that does the job. It opens once on a fresh install, and an install that already had settings is marked set up as a register by `hydrate`, so nobody who had a working till is sent through it. `src/screens/DeviceMode.tsx` (More ▸ Device mode, open to everyone) says what the device is, carries the six switches and can change the mode. Nothing hides yet: wiring the tabs and pages to the gate is patch 0178, and the step-up PIN that guards a mode change is 0177. Device check: `docs/DEVICE_TESTS.md` T75.
+ - [ ] N71 **Non-blocking (CloudKit, patch 3):** the plan's backend interface, wrapped around the metaobject code so patch 4's CloudKit backend is a drop-in. `src/lib/syncBackend.ts` is the seam: the `SharedBackend` interface (ensure, get, put, list, remove, plus an optional detail capability), the row and page shapes, the selector (`setBackend`, `activeBackend`, `activeBackendKind`) and the training block on writes (reads stay open so a course can teach on real history). `src/lib/shopify/metaobjectBackend.ts` is the one implementation that exists today, mapping the shop's five shared types onto the metaobject types and wrapping the same calls `sync.ts` made by hand. `sync.ts`, `Reports.tsx` and the Settings button now go through the seam, so the metaobject helpers are imported in one place only, and `App.tsx` installs the metaobject backend before the first poll. The Settings button reads **Set up shared storage** now (the "(metaobjects)" wording went), which updated the two help pages and regenerated `help/help.json`. No record moved and no CloudKit behaviour changed: it is a seam, so it is pinned in Node by `tests/syncbackend.test.ts` against a fake backend. The four owner decisions still open in the plan's section 7 are tagged there with the patch that will first need them (patch 4 for `encryptedValues` and the privacy and storage questions, patch 8 for dual-write), because none of them is about this seam.
++- [ ] N72 **Non-blocking (AI assistant, 0185):** device check for loading only the tools a question needs, steps in `docs/DEVICE_TESTS.md` T76. Most important: step 4, a question the words miss. Tell me whether the model asks for the shop tools with `more_tools` or gives up.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/src/lib/assistantChat.ts b/src/lib/assistantChat.ts
+index 518d0c7..ba920bf 100644
+--- a/src/lib/assistantChat.ts
++++ b/src/lib/assistantChat.ts
+@@ -5,7 +5,8 @@
+ import { AssistantError, chat, redactSecrets, type AssistantErrorKind, type ChatMessage, type Endpoint, type FetchLike } from './assistantClient';
+ import { maskedNote, scrubText, type MaskKind } from './assistantScrub';
+ import { CATEGORIES, FAIL_CLOSED_POLICY, restricted, type Category, type GatePolicy } from './assistantGate';
+-import { MAX_LINKS, runToolCall, toolDefs, toolsFor, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
++import { MAX_LINKS, offeredTools, runToolCall, toolDefs, toolsFor, visiblePages, type ChatLink, type ToolSet } from './assistantTools';
++import { MORE_TOOLS, TOOL_GROUPS } from './assistantToolGroups';
+ 
+ // ---------- the small scrubber ----------
+ // The scrubber moved to assistantScrub.ts in patch 0161 (the data gate uses it too). It is still re-exported here, so the chat code and its tests are unchanged.
+@@ -26,6 +27,7 @@ export type Detail = 'short' | 'more';
+ const COUNT_WORD = ['no', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+ /** `names` is the tools this person is offered (patch 0169), so the prompt never names or counts a tool their role does not have. Left out, it is the tools every role has. */
+ export function buildSystemPrompt(detail: Detail = 'short', withTools = false, names: readonly string[] = toolsFor('cashier').map(t => t.def.function.name)): string {
++  const has = (g: keyof typeof TOOL_GROUPS): boolean => TOOL_GROUPS[g].some(n => names.includes(n));
+   const lines = [
+     'You are the help assistant inside a shop till app, used by shop staff.',
+     'You can only read and explain. You never change anything: no prices, refunds, carts, stock, customers or settings.',
+@@ -35,12 +37,13 @@ export function buildSystemPrompt(detail: Detail = 'short', withTools = false, n
+       'You have no access to the shop\'s data in this version. You cannot see products, prices, stock, customers, orders or sales. Do not guess them. If asked, say you cannot look that up yet.',
+     ]),
+     ...(withTools ? [
+-      `You have ${COUNT_WORD[names.length] ?? names.length} tools, and each one\'s description says what it does. For any question about how the app works or where something is, search first with search_docs or search_screens. For how to do something, read the best help page with read_doc before you answer. Use current_time before any question about today, yesterday, this week or this month, and never guess the date. Use screen_context when the answer depends on where the person is, or when they say \"this screen\" or \"here\". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page.`
++      `You have ${COUNT_WORD[names.length] ?? names.length} tools, and each one\'s description says what it does. For any question about how the app works or where something is, search first with search_docs or search_screens. For how to do something, read the best help page with read_doc before you answer. ${names.includes('current_time') ? 'Use current_time before any question about today, yesterday, this week or this month, and never guess the date. ' : ''}Use screen_context when the answer depends on where the person is, or when they say \"this screen\" or \"here\". Never tell them to tap a tab that it does not list, and say you cannot tell if it does not name their page.`
+         + (names.includes('app_status') ? ' Use app_status when someone says something is not working or not updating. Never explain a failure beyond what it returns.' : '')
+         + (names.includes('read_settings') ? ' read_settings is read only. Use search_screens to say where a setting is changed. Never change one, and never show a web address, key or PIN.' : ''),
+-      'For the shop\'s own figures, use find_products, stock_levels, sales_report, find_orders, list_deals, find_customers and gift_card_activity. Never count stock yourself: use stock_levels. Never add up figures yourself: use sales_report. Give money as the tool wrote it.',
+-      'cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart is the only source for why a sale will not go through. cash_drawer says what the drawer should hold. You can only read the drawer and the cart. Never open, count or edit them.',
+-      'The data tools only know what is saved on this till and what the other tills have shared. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.',
++      ...(names.includes(MORE_TOOLS) ? ['Some tools are not loaded yet. When a question needs shop figures, cash or the till\'s status and you do not have the tool for it, call more_tools first and then use the new tool.'] : []),
++      ...(has('shop') ? ['For the shop\'s own figures, use find_products, stock_levels, sales_report, find_orders, list_deals, find_customers and gift_card_activity. Never count stock yourself: use stock_levels. Never add up figures yourself: use sales_report. Give money as the tool wrote it.'] : []),
++      ...(has('cash') ? ['cash_calculator does cash sums (change, split payments, a float suggestion): never do them yourself. current_cart is the only source for why a sale will not go through. cash_drawer says what the drawer should hold. You can only read the drawer and the cart. Never open, count or edit them.'] : []),
++      ...(has('shop') ? ['The data tools only know what is saved on this till and what the other tills have shared. If a tool says something is hidden by the shop\'s privacy rules, say you cannot show it. Never guess it, and never repeat details from earlier in the chat that a tool has now hidden.'] : []),
+       'Use show_link for the one or two best places only, and only after a search gave you the id. Use show_guide only when the person asks to be shown, guided or walked to a screen, and search_screens marked it can_guide. The button is shown for you, so never write a link, an id or a page id in your reply.',
+       'Answer only from what the tools return. If they return nothing useful, say "I couldn\'t find anything on that." Do not fill the gap with general knowledge about how other shops or tills work.',
+       'Say which help page you used, by its title. Call a screen by the name the tool gives it, and give only the taps it lists. Do not make up page names, screens, buttons or steps.',
+@@ -132,9 +135,9 @@ export type BuiltMessages = { messages: ChatMessage[]; /** The history entries b
+  * Also says which entries went and what was hidden, for the audit log (patch 0152).
+  */
+ export function buildMessagesDetailed(history: ChatEntry[], detail: Detail, contextSize: number, tools?: ToolSet): BuiltMessages {
+-  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools, tools?.tools.map(t => t.def.function.name)) };
++  const system: ChatMessage = { role: 'system', content: buildSystemPrompt(detail, !!tools, tools ? offeredTools(tools).map(t => t.def.function.name) : undefined) };
+   // The tool definitions are sent with every request and share the context, so they come off what is left for the chat.
+-  const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(tools.tools))) : 0;
++  const toolCost = tools ? estimateTokens(JSON.stringify(toolDefs(offeredTools(tools)))) : 0;
+   const budget = Math.max(200, Math.floor(contextSize * (1 - REPLY_SHARE)) - estimateTokens(system.content ?? '') - toolCost);
+   const picked: ChatMessage[] = []; const entries: ChatEntry[] = []; let used = 0;
+   history = forModel(history, tools?.ctx.policy);
+@@ -189,11 +192,11 @@ export async function runPrepared(f: FetchLike, a: AskInput, p: Prepared): Promi
+     if (!raw) throw new AssistantError('bad_reply', 'The model sent an empty reply. Try asking again.');
+     return { user: p.user, reply: { id: a.id(), role: 'assistant', text: stripDashes(raw), at: a.now() } };
+   }
+-  const defs = toolDefs(set.tools); const toolTokens = estimateTokens(JSON.stringify(defs));
+   const budget = Math.max(200, Math.floor(a.settings.contextSize * (1 - REPLY_SHARE)));
+   let messages = [...p.messages]; let calls = 0; let raw = ''; const links: ChatLink[] = []; const used = new Set<Category>();
+   for (;;) {
+-    const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, toolTokens), tools: defs, temperature: a.settings.temperature });
++    const defs = toolDefs(offeredTools(set)); // read every time round: more_tools can add to it
++    const res = await chat(f, a.endpoint, { messages: fitToContext(messages, budget, estimateTokens(JSON.stringify(defs))), tools: defs, temperature: a.settings.temperature });
+     const wanted = res.message.tool_calls ?? [];
+     if (!wanted.length) { raw = (res.message.content ?? '').trim(); break; }
+     if (calls + wanted.length > set.limit) {
+diff --git a/src/lib/assistantToolGroups.ts b/src/lib/assistantToolGroups.ts
+new file mode 100644
+index 0000000..7807955
+--- /dev/null
++++ b/src/lib/assistantToolGroups.ts
+@@ -0,0 +1,96 @@
++// Location: src/lib/assistantToolGroups.ts
++// Patch 0185: send the model only the tools a question is likely to need.
++// Every tool definition is sent with every request and shares the model's context with the chat (0174 measured it: at the
++// default 8000 the definitions were about 3,700 tokens of what is left). Most questions are "where is" or "how do I", and
++// need only the help tools, so the rest are left out until the question, or the chat so far, mentions what they are for.
++//
++// This never takes a tool away from anyone: it only chooses which of the tools the person's role already has are sent.
++// A question the words miss can still reach them, because the model is given `more_tools` while any group is left out.
++// `toolsFor` stays the one place tools are filtered by role, and nothing here can add a tool it did not return.
++import type { AssistantTool } from './assistantTools';
++
++export type ToolGroup = 'help' | 'shop' | 'cash' | 'status';
++/** The help tools are always sent. The others are sent when the question asks for them. */
++export const TOOL_GROUPS: Record<ToolGroup, readonly string[]> = {
++  help: ['search_docs', 'read_doc', 'search_screens', 'show_link', 'show_guide', 'screen_context'],
++  shop: ['current_time', 'find_products', 'stock_levels', 'sales_report', 'find_orders', 'list_deals', 'find_customers', 'gift_card_activity'],
++  cash: ['cash_drawer', 'cash_calculator', 'current_cart'],
++  status: ['app_status', 'read_settings'],
++};
++export const OPTIONAL_GROUPS = ['shop', 'cash', 'status'] as const;
++export type OptionalGroup = typeof OPTIONAL_GROUPS[number];
++export const MORE_TOOLS = 'more_tools';
++
++/** What the model is told each group holds, so it can ask for the right one. */
++const BLURB: Record<OptionalGroup, string> = {
++  shop: 'shop figures: products and prices, stock, sales totals, orders, deals, customers, gift card activity, and the date',
++  cash: 'cash: the cash drawer, change and split sums, and the cart on the till',
++  status: 'the till itself: sync and app status, and its settings',
++};
++
++/**
++ * Words that say a question is about a group. They lean towards including a group, because a group sent for nothing costs
++ * some of the context and a group left out costs a lookup (the model can still ask for it with more_tools).
++ */
++const WORDS: Record<OptionalGroup, RegExp> = {
++  shop: /\b(stock|inventory|sku|barcode|products?|variations?|prices?|cost|margin|profit|revenue|takings|turnover|sales?|sold|sell(?:ing)?|best.?sell\w*|top.?sell\w*|orders?|deals?|discounts?|bundles?|customers?|gift.?cards?|vouchers?|catalogue|oversold|low|totals?|how many|how much|do we have|have we got|we got|today|yesterday|tomorrow|this (?:week|month|year)|last (?:week|month|year)|so far)\b/i,
++  cash: /\b(cash|drawer|float|coins?|notes?|change|cart|basket|tender|rounding|split|paying|pay|payment|charge|go(?:es)? through|won'?t (?:go|let|take)|can'?t (?:pay|take|charge))\b/i,
++  status: /\b(not working|isn'?t working|doesn'?t work|stopped|broken|broke|error|fail\w*|sync\w*|updat\w*|version|offline|online|connect\w*|reader|terminal|settings?|setting up|turned (?:on|off)|switched (?:on|off)|enabled|disabled|is it on|is it off|pin|display mode|who can)\b/i,
++};
++
++/** The newest few things the person typed, so a follow up such as "and the large one?" keeps the tools the chat already needed. */
++export const RECENT_ASKS = 3;
++export const recentAsks = (history: ReadonlyArray<{ role: string; text: string }>, text: string, n = RECENT_ASKS): string[] =>
++  [...history.filter(e => e.role === 'user').slice(-(n - 1)).map(e => e.text), text].slice(-n);
++
++/** Which optional groups these messages ask for. The help group is not listed because it is always sent. */
++export function wantedGroups(texts: readonly string[]): OptionalGroup[] {
++  const all = texts.join('\n');
++  return OPTIONAL_GROUPS.filter(g => WORDS[g].test(all));
++}
++
++const namesOf = (tools: readonly AssistantTool[]): Set<string> => new Set(tools.map(t => t.def.function.name));
++/** The names in a group this role really has. A group a role has nothing in is not offered or asked for. */
++export const groupNames = (g: ToolGroup, allowed: readonly AssistantTool[]): string[] => {
++  const have = namesOf(allowed); return TOOL_GROUPS[g].filter(n => have.has(n));
++};
++
++export type Narrowed = {
++  /** What is sent now. Always a subset of what `allowed` holds, plus more_tools when something was left out. */
++  offered: Set<string>;
++  /** The groups left out that this role could still ask for. */
++  left: OptionalGroup[];
++  /** more_tools, only when `left` is not empty. Add it to the tools of the set. */
++  more?: AssistantTool;
++};
++
++/**
++ * Chooses what to send for these messages out of `allowed` (the tools this role has). Tools the groups do not name (a tool
++ * added later and not put in a group yet) are always sent, so a new tool cannot silently go missing.
++ */
++export function narrow(allowed: readonly AssistantTool[], texts: readonly string[]): Narrowed {
++  const grouped = new Set<string>(Object.values(TOOL_GROUPS).flat());
++  const want = new Set<OptionalGroup>(wantedGroups(texts));
++  const offered = new Set<string>(allowed.map(t => t.def.function.name).filter(n => !grouped.has(n)));
++  for (const n of groupNames('help', allowed)) offered.add(n);
++  for (const g of want) for (const n of groupNames(g, allowed)) offered.add(n);
++  const left = OPTIONAL_GROUPS.filter(g => !want.has(g) && groupNames(g, allowed).length > 0);
++  if (!left.length) return { offered, left };
++  offered.add(MORE_TOOLS);
++  const more: AssistantTool = {
++    gate: 'content',
++    def: { type: 'function', function: {
++      name: MORE_TOOLS,
++      description: `Load more tools for this question. Groups: ${left.map(g => `${g} (${BLURB[g]})`).join('; ')}. Use it when the question needs one of these and you do not have the tool yet, then use the new tool.`,
++      parameters: { type: 'object', properties: { group: { type: 'string', enum: [...left], description: 'The group to load.' } }, required: ['group'], additionalProperties: false },
++    } },
++    run: args => {
++      const g = typeof args.group === 'string' ? args.group : '';
++      if (!(left as readonly string[]).includes(g)) return { error: `There is no group called "${g}". The groups you can load are: ${left.join(', ')}.` };
++      const names = groupNames(g as ToolGroup, allowed); const fresh = names.filter(n => !offered.has(n));
++      for (const n of names) offered.add(n);
++      return fresh.length ? { ok: true, loaded: fresh, note: 'These tools can be used from now on in this question.' } : { ok: true, loaded: [], note: 'That group was already loaded.' };
++    },
++  };
++  return { offered, left, more };
++}
+diff --git a/src/lib/assistantTools.ts b/src/lib/assistantTools.ts
+index 4d71788..bceb72a 100644
+--- a/src/lib/assistantTools.ts
++++ b/src/lib/assistantTools.ts
+@@ -17,6 +17,7 @@ import { currentTimeTool } from './assistantTime';
+ import { contextInfo, type RegisterContext } from './assistantContext';
+ import { appStatusTool, readSettingsTool, type TillState } from './assistantStatus';
+ import { CASH_TOOLS, type CashState } from './assistantCash';
++import { narrow } from './assistantToolGroups';
+ 
+ export type ToolContext = {
+   /** Every help page the app has. Tools filter these by role themselves, through `visiblePages`. */
+@@ -57,7 +58,7 @@ export const MAX_LINKS = 3;
+ 
+ /** What one tool call did, kept for the audit log (the manager sees exactly what the model was given). */
+ export type ToolRecord = { name: string; args: string; ok: boolean; result: string; ms: number; /** What the data gate hid from this result, by category (patch 0161). Counts only. */ withheld?: Record<string, number>; /** The categories of shop data the result still held. */ used?: Category[] };
+-export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[] };
++export type ToolSet = { tools: AssistantTool[]; ctx: ToolContext; /** Most tool calls in one question. */ limit: number; /** Filled in as calls are made, so a failed question still shows what ran. */ records: ToolRecord[]; /** Patch 0185: the names of the tools sent to the model for this question. `tools` is still every tool the role has, so a call always runs. Left out, every tool is sent. `more_tools` adds to it. */ offered?: Set<string> };
+ 
+ export const DEFAULT_TOOL_LIMIT = 15;
+ export const MAX_RESULT_CHARS = 6000;
+@@ -268,6 +269,8 @@ export const ASSISTANT_TOOLS: AssistantTool[] = [searchDocs, readDoc, searchScre
+ /** The tools this role is offered. The one place tools are filtered by role, so a request cannot forget to. */
+ export const toolsFor = (role: string, tools: AssistantTool[] = ASSISTANT_TOOLS): AssistantTool[] => tools.filter(t => !t.roles || t.roles.includes(role));
+ export const toolDefs = (tools: AssistantTool[]): ToolDef[] => tools.map(t => t.def);
++/** The tools sent to the model right now (patch 0185). All of them unless the set was narrowed. Read it again after every tool call, because more_tools can add to it. */
++export const offeredTools = (set: Pick<ToolSet, 'tools' | 'offered'>): AssistantTool[] => (set.offered ? set.tools.filter(t => set.offered!.has(t.def.function.name)) : set.tools);
+ 
+ // ---------- running a call ----------
+ const clip = (s: string, n: number): string => (s.length > n ? `${s.slice(0, n)}[cut]` : s);
+@@ -311,5 +314,7 @@ export function runToolCall(call: ToolCall, set: Pick<ToolSet, 'tools' | 'ctx'>,
+ }
+ 
+ /** A new tool set for one question. */
+-export const makeToolSet = (o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet =>
+-  ({ tools: toolsFor(o.role, o.tools), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] });
++export function makeToolSet(o: { pages: Page[]; screens?: ScreenEntry[]; role: string; contextSize: number; limit?: number; tools?: AssistantTool[]; /** What the person has typed lately, newest last. When given, only the tools those words call for are sent (patch 0185). */ narrow?: readonly string[]; policy?: GatePolicy; data?: AssistantData; now?: number; where?: RegisterContext; till?: TillState; cash?: CashState }): ToolSet {
++  const allowed = toolsFor(o.role, o.tools); const n = o.narrow ? narrow(allowed, o.narrow) : undefined;
++  return { tools: n?.more ? [...allowed, n.more] : allowed, ...(n ? { offered: n.offered } : {}), ctx: { pages: o.pages, ...(o.screens ? { screens: o.screens } : {}), role: o.role, maxChars: resultCharsFor(o.contextSize), ...(o.policy ? { policy: o.policy } : {}), ...(o.data ? { data: o.data } : {}), ...(o.now !== undefined ? { now: o.now } : {}), ...(o.where ? { where: o.where } : {}), ...(o.till ? { till: o.till } : {}), ...(o.cash ? { cash: o.cash } : {}) }, limit: Math.max(1, Math.round(o.limit ?? DEFAULT_TOOL_LIMIT)), records: [] };
++}
+diff --git a/src/screens/Assistant.tsx b/src/screens/Assistant.tsx
+index bff20f7..cdc4005 100644
+--- a/src/screens/Assistant.tsx
++++ b/src/screens/Assistant.tsx
+@@ -27,6 +27,7 @@ import { OFFLINE_EMPTY, OFFLINE_LABEL, hasOfflineHits, offlineExchange, offlineS
+ import { assistantLog, logSink } from '../lib/assistantLogIO';
+ import { resolvePolicy } from '../lib/assistantGate';
+ import { liveLinks, makeToolSet, resolveLink, type LinkAction } from '../lib/assistantTools';
++import { recentAsks } from '../lib/assistantToolGroups';
+ import { takeAssistantData, takeCatalogue } from '../lib/assistantDataIO';
+ import { takeTillState } from '../lib/assistantStatusIO';
+ import { takeCashState } from '../lib/assistantCashIO';
+@@ -161,7 +162,7 @@ export default function Assistant() {
+       apiKey = await getAssistantKey();
+       const shopData = await takeAssistantData(); const till = takeTillState(role); const cash = takeCashState();
+       const out = await askLogged(assistantFetch as any, { history: histRef.current, text: trimmed, detail, settings: { contextSize: cfg.contextSize, temperature: cfg.temperature }, endpoint: { baseUrl: cfg.baseUrl, apiKey, model: cfg.model, timeoutSec: cfg.timeoutSec }, id: uid, now: Date.now,
+-          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), ...(cash ? { cash } : {}), where }) },
++          tools: makeToolSet({ pages: helpPages, screens: screenList, role, contextSize: cfg.contextSize, narrow: recentAsks(histRef.current, trimmed), policy: resolvePolicy(classifyEndpoint(cfg.baseUrl, cfg.endpointMode), cfg.gate), ...(shopData ? { data: shopData } : {}), ...(till ? { till } : {}), ...(cash ? { cash } : {}), where }) },
+         { staff: logStaff(staffId, staffList, role), practice: false, endpoint: logEndpoint(cfg.baseUrl, cfg.model, cfg.endpointMode), apiKey, known: assistantLog.knows, sink: logSink, newId: uid });
+       if (forKey === keyRef.current) setLogWarn(out.logError ? LOG_FAIL_LINE : '');
+       if (!out.ok) throw out.error;
+diff --git a/tests/assistantnarrow.test.ts b/tests/assistantnarrow.test.ts
+new file mode 100644
+index 0000000..b38c3e8
+--- /dev/null
++++ b/tests/assistantnarrow.test.ts
+@@ -0,0 +1,178 @@
++// Location: tests/assistantnarrow.test.ts
++// Patch 0185: only the tools a question is likely to need are sent to the model, and the rest can be asked for with more_tools.
++// It never gives anyone a tool their role does not have, and a set that is not narrowed behaves exactly as before.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import type { Endpoint, FetchLike } from '../src/lib/assistantClient';
++import { buildMessagesDetailed, buildSystemPrompt, estimateTokens, prepare, REPLY_SHARE, runPrepared, type AskInput } from '../src/lib/assistantChat';
++import { DEFAULT_CONTEXT_SIZE } from '../src/lib/assistantConfig';
++import { ASSISTANT_TOOLS, makeToolSet, offeredTools, runToolCall, toolDefs, toolsFor, type AssistantTool } from '../src/lib/assistantTools';
++import { MORE_TOOLS, TOOL_GROUPS, narrow, recentAsks, wantedGroups } from '../src/lib/assistantToolGroups';
++
++const names = (set: Parameters<typeof offeredTools>[0]) => offeredTools(set).map(t => t.def.function.name);
++const mk = (role: string, ...asks: string[]) => makeToolSet({ pages: [], role, contextSize: DEFAULT_CONTEXT_SIZE, narrow: asks });
++const call = (name: string, args: unknown) => ({ id: 'c1', type: 'function' as const, function: { name, arguments: JSON.stringify(args) } });
++const json = (set: ReturnType<typeof mk>, name: string, args: unknown) => JSON.parse(runToolCall(call(name, args), set).message.content ?? '{}');
++
++test('every tool is in exactly one group, so none can go missing', () => {
++  const all = Object.values(TOOL_GROUPS).flat();
++  assert.equal(new Set(all).size, all.length, 'no tool is in two groups');
++  assert.deepEqual([...all].sort(), ASSISTANT_TOOLS.map(t => t.def.function.name).sort(), 'the groups name every tool and nothing else');
++});
++
++test('the words: a where-is question wants only help, and figures, cash and status questions want their group', () => {
++  assert.deepEqual(wantedGroups(['Where do I find the reports page?']), []);
++  assert.deepEqual(wantedGroups(['How do I add a staff member']), []);
++  assert.ok(wantedGroups(['How many Bumble Bees do we have?']).includes('shop'));
++  assert.ok(wantedGroups(['What is low on stock?']).includes('shop'));
++  assert.ok(wantedGroups(['How did we do yesterday?']).includes('shop'));
++  assert.ok(wantedGroups(['What should be in the drawer?']).includes('cash'));
++  assert.ok(wantedGroups(['Why won\'t this sale go through?']).includes('cash'));
++  assert.ok(wantedGroups(['Is the till syncing?']).includes('status'));
++  assert.ok(wantedGroups(['The card reader is not working']).includes('status'));
++  assert.deepEqual(wantedGroups(['How many in the drawer and is it syncing today?']).sort(), ['cash', 'shop', 'status']);
++});
++
++test('recentAsks keeps the newest few things the person typed, so a follow up keeps its tools', () => {
++  const h = [{ role: 'user', text: 'one' }, { role: 'assistant', text: 'a1' }, { role: 'user', text: 'two' }, { role: 'assistant', text: 'a2' }, { role: 'user', text: 'three' }];
++  assert.deepEqual(recentAsks(h, 'four'), ['two', 'three', 'four']);
++  assert.deepEqual(recentAsks([], 'only'), ['only']);
++  const stock = mk('cashier', ...recentAsks([{ role: 'user', text: 'What is low on stock?' }, { role: 'assistant', text: 'These are low.' }], 'and the cow plush?'));
++  assert.ok(names(stock).includes('find_products'), 'the follow up keeps the shop tools the chat already asked for');
++});
++
++test('a help question is sent the help tools and more_tools, and the definitions are far smaller', () => {
++  const set = mk('cashier', 'Where do I find the reports page?');
++  assert.deepEqual(names(set).sort(), [...TOOL_GROUPS.help, MORE_TOOLS].sort());
++  const all = makeToolSet({ pages: [], role: 'cashier', contextSize: DEFAULT_CONTEXT_SIZE });
++  assert.equal(all.offered, undefined, 'a set that is not narrowed has no offered list');
++  assert.equal(offeredTools(all).length, toolsFor('cashier').length, 'and sends every tool, as before');
++  const small = estimateTokens(JSON.stringify(toolDefs(offeredTools(set)))); const big = estimateTokens(JSON.stringify(toolDefs(offeredTools(all))));
++  assert.ok(small < big * 0.55, `narrowed ${small} against ${big}`);
++  const more = offeredTools(set).find(t => t.def.function.name === MORE_TOOLS)!;
++  assert.deepEqual((more.def.function.parameters as any).properties.group.enum, ['shop', 'cash', 'status']);
++});
++
++test('a question that asks for a group gets it, and when every group is asked for there is no more_tools', () => {
++  assert.ok(TOOL_GROUPS.shop.every(n => names(mk('cashier', 'How many Bumble Bees do we have?')).includes(n)));
++  const cash = names(mk('cashier', 'What should be in the drawer?'));
++  assert.ok(TOOL_GROUPS.cash.every(n => cash.includes(n)) && !cash.includes('find_products'));
++  const everything = mk('manager', 'How many in the drawer and is it syncing today?');
++  assert.equal(names(everything).length, toolsFor('manager').length);
++  assert.ok(!names(everything).includes(MORE_TOOLS));
++  assert.equal(everything.tools.length, toolsFor('manager').length, 'nothing extra was added to the set');
++});
++
++test('roles: nobody gets a tool through the groups or more_tools that their role does not have', () => {
++  // A cashier asking about settings is given app_status and never read_settings.
++  const cashier = mk('cashier', 'Is the till syncing? What are the settings?');
++  assert.ok(names(cashier).includes('app_status')); assert.ok(!names(cashier).includes('read_settings'));
++  const manager = mk('manager', 'What are the settings?'); assert.ok(names(manager).includes('read_settings'));
++  // And asking for the status group by hand loads only what the cashier may have.
++  const c2 = mk('cashier', 'Where is the reports page?');
++  const r = json(c2, MORE_TOOLS, { group: 'status' });
++  assert.deepEqual(r.loaded, ['app_status']);
++  assert.ok(!names(c2).includes('read_settings'));
++  // The set's own list never held it, so a call for it fails the way an unknown tool does.
++  assert.match(json(c2, 'read_settings', {}).error, /no tool called/);
++});
++
++test('more_tools loads a group for the rest of the question, refuses a made-up group, and says when it is already loaded', () => {
++  const set = mk('cashier', 'Where is the reports page?');
++  assert.ok(!names(set).includes('find_products'));
++  const r = json(set, MORE_TOOLS, { group: 'shop' });
++  assert.equal(r.ok, true); assert.ok(r.loaded.includes('find_products') && r.loaded.includes('current_time'));
++  assert.ok(names(set).includes('stock_levels'), 'the offered list now has it');
++  assert.match(json(set, MORE_TOOLS, { group: 'shop' }).note, /already loaded/);
++  assert.match(json(set, MORE_TOOLS, { group: 'secrets' }).error, /no group called/);
++  assert.match(json(set, MORE_TOOLS, {}).error, /no group called/);
++  // More_tools is read only: it changes the list of names and nothing else.
++  assert.equal(set.ctx.role, 'cashier');
++});
++
++test('a tool the groups do not name is always sent, and a tool the model calls without being sent it still runs', () => {
++  const extra: AssistantTool = { gate: 'content', def: { type: 'function', function: { name: 'later_tool', description: 'A tool added in a later patch and not put in a group.', parameters: { type: 'object', properties: {}, additionalProperties: false } } }, run: () => ({ ok: true }) };
++  const set = makeToolSet({ pages: [], role: 'cashier', contextSize: DEFAULT_CONTEXT_SIZE, tools: [...ASSISTANT_TOOLS, extra], narrow: ['Where is the reports page?'] });
++  assert.ok(names(set).includes('later_tool'));
++  assert.ok(!names(set).includes('stock_levels'));
++  assert.notEqual(json(set, 'stock_levels', {}).error ?? '', 'There is no tool called "stock_levels".', 'a role-permitted tool is found even when it was not sent');
++});
++
++test('narrow never offers a name that is not in the allowed list', () => {
++  const allowed = toolsFor('cashier'); const n = narrow(allowed, ['How many? Is it syncing? Cash in the drawer?']);
++  const have = new Set(allowed.map(t => t.def.function.name));
++  for (const o of n.offered) assert.ok(have.has(o) || o === MORE_TOOLS, o);
++});
++
++test('the prompt only talks about the tools that are sent, and says how to get the rest', () => {
++  const help = buildSystemPrompt('short', true, names(mk('cashier', 'Where is the reports page?')));
++  assert.match(help, /more_tools/); assert.match(help, /search_docs/);
++  assert.doesNotMatch(help, /never count stock yourself/); assert.doesNotMatch(help, /never do them yourself/); assert.doesNotMatch(help, /privacy rules/); assert.doesNotMatch(help, /current_time/);
++  assert.match(help, /never tell them to tap a tab that it does not list/i);
++  assert.match(help, /cannot see what is left on a gift card/);
++  const shop = buildSystemPrompt('short', true, names(mk('cashier', 'How many Bumble Bees do we have?')));
++  assert.match(shop, /never count stock yourself/i); assert.match(shop, /privacy rules/); assert.match(shop, /never guess the date/i); assert.doesNotMatch(shop, /never do them yourself/);
++  const full = buildSystemPrompt('short', true, toolsFor('manager').map(t => t.def.function.name));
++  assert.doesNotMatch(full, /more_tools/); assert.match(full, /nineteen tools/);
++  assert.ok(estimateTokens(help) < estimateTokens(full) * 0.75, 'and it is shorter');
++});
++
++test('at the default context a help question leaves much more room for the chat than before', () => {
++  const room = (role: string, ...asks: string[]) => {
++    const set = mk(role, ...asks);
++    const b = buildMessagesDetailed([{ id: 'u', role: 'user', text: asks[asks.length - 1], at: 1 }], 'short', DEFAULT_CONTEXT_SIZE, set);
++    return Math.floor(DEFAULT_CONTEXT_SIZE * (1 - REPLY_SHARE)) - estimateTokens(b.system) - estimateTokens(JSON.stringify(toolDefs(offeredTools(set))));
++  };
++  // Measured at 8000: help only 3,994 (it was 1,331 for a cashier and 1,088 for a manager), cash 3,491, shop 1,797, every group 1,318 and 1,074.
++  assert.ok(room('cashier', 'Where is the reports page?') >= 3500, `${room('cashier', 'Where is the reports page?')}`);
++  assert.ok(room('manager', 'Where is the reports page?') >= 3500);
++  assert.ok(room('cashier', 'What should be in the drawer?') >= 3000, 'cash questions are cheap too');
++  assert.ok(room('cashier', 'How many Bumble Bees do we have?') >= 1500, 'the shop tools are the heavy group');
++  assert.ok(room('manager', 'How many in the drawer and is it syncing today?') >= 1000, 'with every group asked for it is the same as before, and still above the budget test floor');
++});
++
++// ---- the loop, with a scripted model ----
++const ep: Endpoint = { baseUrl: 'http://localhost:11434/v1', model: 'm', timeoutSec: 5 };
++function scripted(steps: Array<{ content?: string | null; calls?: { name: string; args: unknown }[] }>) {
++  const sent: any[] = []; let i = 0;
++  const f: FetchLike = async (_u, init) => {
++    sent.push(JSON.parse(init.body ?? '{}')); const s = steps[Math.min(i++, steps.length - 1)];
++    const message: any = { role: 'assistant', content: s.content ?? null };
++    if (s.calls) message.tool_calls = s.calls.map((c, k) => ({ id: `call_${i}_${k}`, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
++    return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message, finish_reason: s.calls ? 'tool_calls' : 'stop' }] }) };
++  };
++  return { f, sent };
++}
++const askFor = (text: string, history: AskInput['history'] = []): AskInput => ({ history, text, detail: 'short', settings: { contextSize: DEFAULT_CONTEXT_SIZE, temperature: 0.2 }, endpoint: ep, id: (() => { let n = 0; return () => `id${++n}`; })(), now: () => 1000,
++  tools: mk('cashier', ...recentAsks(history, text)) });
++
++test('the loop: the first request leaves the shop tools out, the model asks for them, and the next request has them', async () => {
++  const { f, sent } = scripted([
++    { calls: [{ name: MORE_TOOLS, args: { group: 'shop' } }] },
++    { calls: [{ name: 'stock_levels', args: {} }] },
++    { content: 'Nothing is low.' },
++  ]);
++  const a = askFor('Where is the reports page?'); // the words miss on purpose: the model has to ask
++  const out = await runPrepared(f, a, prepare(a));
++  assert.equal(out.reply.text, 'Nothing is low.');
++  const sentNames = (i: number) => (sent[i].tools as any[]).map(t => t.function.name);
++  assert.ok(!sentNames(0).includes('stock_levels') && sentNames(0).includes(MORE_TOOLS) && sentNames(0).includes('search_docs'));
++  assert.ok(sentNames(1).includes('stock_levels') && sentNames(1).includes('find_products'), 'after more_tools the shop tools are sent');
++  assert.deepEqual(a.tools!.records.map(r => [r.name, r.ok]).slice(0, 1), [[MORE_TOOLS, true]]);
++  assert.ok(sent[1].messages.some((m: any) => m.role === 'tool' && /loaded/.test(m.content)), 'the model is told what it got');
++});
++
++test('the loop: a question that names the shop sends the shop tools straight away, with no more_tools needed', async () => {
++  const { f, sent } = scripted([{ content: 'None left.' }]);
++  const a = askFor('How many Bumble Bees do we have?'); await runPrepared(f, a, prepare(a));
++  const n = (sent[0].tools as any[]).map(t => t.function.name);
++  assert.ok(n.includes('find_products') && n.includes('stock_levels') && !n.includes('cash_drawer'));
++});
++
++test('the system prompt in the request matches the tools in the request', async () => {
++  const { f, sent } = scripted([{ content: 'ok' }]);
++  const a = askFor('Is the till syncing?'); await runPrepared(f, a, prepare(a));
++  const sys: string = sent[0].messages[0].content; const n = (sent[0].tools as any[]).map(t => t.function.name);
++  assert.ok(n.includes('app_status')); assert.match(sys, /app_status/); assert.match(sys, /more_tools/);
++  assert.doesNotMatch(sys, /never count stock yourself/i);
++});
