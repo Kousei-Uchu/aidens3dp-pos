@@ -1,0 +1,798 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 91356a7..e6dca37 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -24,6 +24,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Changed
+ 
++- Demo mode runs on a copy of your own catalogue, customers, sales, reports and cash drawer, with practice data only where your till has none. Anything that leaves the iPad or changes a file on it is switched off in the demo: exporting or restoring a backup, changing the imported Square history, and making a cashier pass (0187).
+ - The app no longer draws its own sheet over the Zeller terminal's popup. A slim "waiting on terminal" strip shows instead (0013).
+ - Cart rows look like an invoice, with one row for each discount, and swipe to delete (0014).
+ - Text boxes stay visible above the keyboard, and every field has a suitable keyboard type (0002).
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index d8e211a..9ba9113 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1071,3 +1071,15 @@ On the phone that is a companion (T80). Nothing in this patch has been run on a
+ 9. Switch **Cash drawer** on and open **Drawer**. Pass: it opens (after the PIN prompt from T80). Switch the feature off with the drawer open. Pass: the page closes itself.
+ 10. On a register (till), open the app. Pass: the tabs are exactly the five it had before, and there is no Today or Scan.
+ 
++## T80. Demo mode on your own data (0187)
++
++On the iPad, on a till that has its real catalogue, some real sales and a cash drawer. Keep your Shopify admin open in a browser to check nothing changes there.
++
++1. Open More ▸ Demo mode. Pass: the bar across the top says *DEMO MODE · your real data, nothing is saved or sent*, and the home screen says it is a copy of your till's own data, naming what it holds (for example the catalogue, customers, sales and cash drawer) and, if anything, what is practice.
++2. Open Checkout. Pass: your own products are on the grid, with your own prices and stock, and the cart is empty even if the real till had one going.
++3. Ring up two items and pay by card. Pass: the practice terminal appears and the sale completes. Then open your Shopify admin. Pass: no new order, and no stock change.
++4. In Items, change a price and a stock count. Pass: the change shows in the demo. Check Shopify. Pass: nothing changed there.
++5. Open Transactions and Reports. Pass: your real sales and your real daily totals are there. Open the Cash drawer. Pass: it shows your real notes and coins.
++6. Try the things that would change something outside the till: Settings ▸ Backup & transfer ▸ Export, Settings ▸ Square history ▸ Remove, and Staff ▸ make a cashier pass. **Most important:** each one should say it is switched off while practising, and do nothing. Then leave Demo mode and open Square history. Pass: your imported history is still there and no backup was shared.
++7. Leave Demo mode with the bar's Leave button. Pass: the price and stock you changed are back as they were, the cart you had before is back, and Shopify still shows nothing new.
++8. On the real till, start a card payment and leave it waiting on the reader, then try Demo mode. Pass: it will not start, and says to finish the payment first, in words about Demo mode and not training.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index d6436eb..7c4c84d 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -355,3 +355,17 @@ Two items were left open in F5, and one decision was made without asking you. Ch
+ **Also fixed while there:** `CONTRIBUTING.md` still said four training-course test failures were known and pre-existing, which stopped being true with 0183. The README said 64 help pages, and there are 68.
+ 
+ **Still open, and yours:** the licence choice. No LICENSE file has been added and the README still says all rights reserved.
++
++## Demo mode on the real data (0187, 2026-10-20)
++
++You asked for Demo mode to use the real catalogue and real data where there is some, and to block only what has consequences or cannot be rolled back. The rule I applied is the guard's: anything that stays in memory is allowed, because leaving puts the real state back exactly; anything that leaves the iPad, or changes a file that is already on it, is switched off. These were my choices, and each is easy to change.
++
++- **Real staff stay in the list, next to the made-up owner.** The demo is still signed in as the made-up owner with no PIN, so every feature shows and it cannot lock itself out. The real people appear on the Staff page and on the sales that name them. The alternative is hiding them, which is safer for a demo shown to a customer and less true to the till.
++- **Shopify reads are still off.** I did not allow live lookups (Orders, customer search, a catalogue refresh). The demo shows what is already on the iPad, which is what "if present" read as to me. It would be possible to allow queries and block only mutations at the one place Shopify is called, but the sync loops and the Orders and Customers screens all switch to practice data when the guard is on, so it is a patch of its own. Say if you want it.
++- **Practice data fills a gap only where an empty screen would show nothing worth seeing.** A till with a real catalogue and an empty upload queue gets no pretend queued sales, because that is the healthy case. A till with no drawer yet gets a practice drawer so the cash features can be shown.
++- **The cart being rung up and card attempts are not copied.** They belong to a sale that is really happening. Demo mode now also refuses to start while a card payment is in flight or a sale is part paid, the same rule training has.
++- **Everything pointing outside the iPad stays blank or practice** even though the rest is real: the receipt server, the pass server, the gift card claim address and the location id. This is on top of the guard, in case a path is ever missed.
++- **Exports are allowed.** The Export wizard writes one new file in the cache folder for the person to share, with data the till already shows. Backup export and restore are not allowed, because the backup carries the real logins.
++- **A copy, not a view.** The demo is a JSON copy of the data taken when it starts, so even code that edits an object in place cannot reach the real one. On a very large catalogue the copy takes a moment.
++
++**What the audit found:** the Square history screen could delete or overwrite the real history files in Demo mode (this was already true of the old Demo mode), Backup & transfer could export the real logins, and the pass request could reach the pass server. All three are now stopped, and `tests/demoguard.test.ts` keeps the list: a new file that fetches or writes must check the guard or be added with a reason.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index eed998c..b1623fd 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -164,6 +164,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0177 | 2026-10-20 | Companion mode, patch 2 (your request: "next patch"). **App-wide PIN lock and step-up PIN on a companion.** New `src/lib/stepUp.ts` (pure rules: which pages and actions ask, when a PIN is due, when to lock after idle), `src/lib/stepUpGate.ts` (`requireStepUp`), `src/ui/StepUpHost.tsx` (the PIN prompt) and `lockRequired` in `src/lib/appMode.ts`: a companion always locks behind the PIN, while a register still follows the shared Require PIN setting, so making a phone a companion never turns the lock on for your tills. The setup checklist's owner PIN step now counts an owner with a PIN on a companion without needing Require PIN. A companion locks itself after sitting idle or away (default 2 minutes, never mid card payment). Payments, refunds, items, stock, customers, orders, the drawer, Settings, Staff, backups and changing the mode, a feature or the locking choices ask for the PIN again when the last PIN entry is older than the window (default 5 minutes, every time is a choice); five wrong PINs lock the app. Both choices are per device (Device mode ▸ Locking) and in `DEVICE_KEYS`, so a backup never copies them. Practice and Demo show every feature and never lock or ask. Help page `device-mode`, device test T80, tests in `tests/stepup.test.ts` and `tests/setupFlow.test.ts`. Not yet: wiring the gate into tabs and routes (0178). One open question in the plan: keep Staff reachable on a companion. | G2 |
+ | 0178 | 2026-10-20 | Companion mode, patch 3 (your request: "next"). **The gate now hides what a companion does not hold, and the companion gets its own home.** The tab bar, the pages and the More rows follow `tabAllowed`, `routeAllowed` and `rowAllowed`; a hidden tab falls back to the home tab and a page that is open when its feature is switched off closes itself. New **Today** tab (today's sales and orders for managers and owners, low, out and oversold stock, stuck and queued uploads, a bell for notices) and **Scan** tab (one button for a price or stock check, opening the camera, reusing the checkout lookup); a register never shows either. A companion's bar is Today, Scan, Inventory, Transactions, More, with Checkout added when Selling is on; Notifications is the bell, opened by a new `notices` page. **Staff stays reachable on a companion** (no longer tied to Till staff tools), which answers the open question from 0177. Tests in `tests/appMode.test.ts` and `tests/todaycards.test.ts`, help page `device-mode` updated, device test T81. Not yet: Companion wording on the screens that stay and the phone layout pass for existing screens (moved to 0181), the card reader, drawer and sync gating (0179). | G2 |
+ | ledger-fix | 2026-10-20 | **Not a numbered patch: apply this by hand.** `patches/APPLIED.txt` had no newline after its last line, so when CI appended 0185 the name was glued onto the 0174 line (`0174-…patch0185-…patch`). `scripts/apply-patches.sh` skips a patch only when its name is a whole line, so 0174 and 0185 both counted as unapplied, as did 0175, 0183 and 0184 (never listed). The next run would have tried 0174 first, failed because it is already in the tree, and stopped with "Later patches were not tried". The ledger now lists 0174, 0175, 0183, 0184, 0185 and 0186, each on its own line. The script adds the missing newline before it appends, so a ledger that loses its trailing newline cannot glue two names together again. Tested by running the script in a scratch repo: with the fixed ledger it applies 0 patches, and with the newline stripped and a new patch added, the new name lands on its own line. **It has to be applied by hand and pushed** (`git apply ledger-fix.diff`), because a normal patch would be stopped by the very problem it fixes | your request |
++| 0187 | 2026-10-20 | Demo mode on the real data (your request: use the real catalogue and real-world data if present, and block only what has consequences or cannot be rolled back). **Demo mode now runs on a copy of the till's own data.** New `src/lib/demoData.ts` builds it: the catalogue with its grid, automatic deals, discount presets, bundles and display settings, the customers, this till's sales, the other tills' history, the daily totals, saved carts, the upload queue, the notifications and the cash drawer. Practice data fills a gap only where a screen would have nothing worth showing, and the catalogue group is all or nothing so practice ids never mix with real ones. Not carried over: the cart being rung up and card attempts (they belong to a sale really happening). Everything is copied (not shared), so even code that edits an object in place cannot reach the real one, and leaving restores the real state exactly. Signed in as the made-up owner with no PIN as before, with the real staff kept in the list. The banner, the home screen intro, the Show fallback and the More row say what is real. Demo mode now will not start while a card payment is in flight or a sale is part paid, the rule training already had. **Why the audit mattered:** with real ids in memory, a write that slipped past the guard would land in Shopify instead of failing on a made-up id. I swept every network call, file write and Keychain write in `src/`. Shopify (`gql`, `getToken`), storage, receipts, the card bridge, the CloudKit seam and the assistant were already guarded. **Four gaps found and closed:** (1) the Square history screen could delete or overwrite the real history files, because only its share button was guarded (`installFromUrl`, `installFromPicked`, `rebuild`, `removeSquareHistory` now stop first; reading stays open); this was already true of the old Demo mode; (2) Backup & transfer ▸ Export put the real Shopify and pass logins into a file and opened the share sheet, and Restore could replace settings (`collectBackup` and `applyBackup` now stop); (3) `requestStaffPass` asked the pass server for a real pass (now stops); (4) a restored backup wrote a logo file (now skipped). Tests: `tests/demodata.test.ts` (11: what is real and what is practice, that no practice id mixes into real data, a copy that shares nothing, outbound settings stay blank, the live store shows the real catalogue and edits are never stored or leaked and leaving restores it exactly, entry blocked mid payment) and `tests/demoguard.test.ts` (5, the permanent audit: every file that fetches or writes must check the guard or be listed with a verified reason, the four Square functions, the backup functions, the CloudKit seam, and the pass request). I broke each protected thing on purpose and confirmed the right test fails. Device test T80. **Decided without you, change any you disagree with:** see `dev_docs/GUESSES.md`. **Not done, and your call:** live Shopify reads (Orders lookups, customer search, a catalogue refresh) are still off, so the demo shows what is already on the iPad; allowing queries but not mutations is possible and I can do it as its own patch. **Found, not mine:** `tests/assistantcontext.test.ts` fails on `origin/main` ("missing tab_today") and `tsc` reports one error in `Staff.tsx`, both from Companion patch 0178 adding the `today` and `scan` tabs; I left them for that series. With my patch the suite is 1445 of 1446 passing, the same one failure as before it | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+@@ -553,6 +554,7 @@ Ordered by priority, highest first. **Step-by-step instructions for every open d
+ - [ ] N72 **Non-blocking (AI assistant, 0185):** device check for loading only the tools a question needs, steps in `dev_docs/DEVICE_TESTS.md` T76. Most important: step 4, a question the words miss. Tell me whether the model asks for the shop tools with `more_tools` or gives up.
+ - [ ] N73 **Non-blocking (Companion mode, 0177):** device check for the companion PIN lock and step-up PIN, steps in `dev_docs/DEVICE_TESTS.md` T80. Most important: the phone locks on opening, after idle and after the background, a stale PIN asks again before payments, stock, customers, refunds, backups and Settings, and your tills show no new prompts and keep their Require PIN setting. Also one question in `dev_docs/COMPANION_PLAN.md`: keep Staff reachable on a companion (otherwise a companion with Till staff tools off could never create or reset a PIN once 0178 wires the gate).
+ - [ ] N74 **Non-blocking (Companion mode, 0178):** device check for the companion tabs, Today and Scan, steps in `dev_docs/DEVICE_TESTS.md` T81. Most important: a register keeps exactly its five tabs, a companion opens on Today with no Checkout tab, switching Selling on brings Checkout back, and Scan opens the camera at once.
++- [ ] N75 **Non-blocking (Demo mode, 0187):** device check for Demo mode on your own data, steps in `dev_docs/DEVICE_TESTS.md` T80. Most important: step 6. Try Backup export, Square history remove and a cashier pass in Demo mode, then leave and check your real Square history is intact. Also check Shopify admin after step 3 and step 4: no new order, nothing changed.
+ 
+ ### Priority 3
+ - [x] N6 **Non-blocking (B2):** the Apple Pass Type ID certificate for Wallet passes. Printed cashier passes work without it. 
+diff --git a/dev_docs/TO_DO.md b/dev_docs/TO_DO.md
+index 638c13b..dd1e9ab 100644
+--- a/dev_docs/TO_DO.md
++++ b/dev_docs/TO_DO.md
+@@ -49,7 +49,7 @@ No owner input needed.
+ | F5 | The GitHub public face: README, CONTRIBUTING, SECURITY, a code of conduct, issue and PR templates, a changelog, Discussions on or off, and a licence decision. | **Done except the licence (2026-10-20).** README, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, a bug-report issue template and a PR template added (2026-10-18); `CHANGELOG.md` added and Discussions decided as off (0186, see GUESSES.md). **Open: your licence choice** (no LICENSE file added; README says all rights reserved for now). Discussions is a GitHub setting, so check Settings ▸ General ▸ Features that it is off. |
+ | F6 | Fix docs gaps and wrong bits. Known one: the Help page `pay/gift-card` still says cancelling a part-paid sale does not put the money back on the gift card, but patch 0056 changed that. | **Done (2026-10-18)** as part of the F1 follow-ups: gift-card page rewritten to describe the credit-back behaviour, plus the other five fixes the review found. |
+ | F7 | A full step-by-step test guide as one HTML file, a notes box under each step, exporting the findings at the end (same style as `dev_docs/archive/next-steps.html`). `dev_docs/DEVICE_TESTS.md` is the source. | **Done (2026-10-18).** `dev_docs/archive/DEVICE_TEST_GUIDE.html`: 512 steps across 71 sections (T1 to T71), notes per step, pass/fail, auto-save, Export (JSON/Markdown), printable. |
+-| F8 | Demo mode: the app locks into a full demo with virtual terminals (card, drawer, scanner, receipts) so nothing real is touched, with a home screen showing every feature in the Training Show style. Built on the Training fixture state. | **Done (2026-10-18).** More > Demo mode. One guard locks the till onto the Training fixtures (card terminal, scanner, drawer, receipts and every sync seam are the practice ones), signed in as a made-up owner so every feature is on show. `src/screens/DemoHome.tsx` lists every feature by area; each one plays its Training Show or opens live. A bar across the top says so and leaves in one tap. Nothing is written or sent; leaving restores the real till exactly. Details and guesses in `dev_docs/GUESSES.md`. |
++| F8 | Demo mode: the app locks into a full demo with virtual terminals (card, drawer, scanner, receipts) so nothing real is touched, with a home screen showing every feature in the Training Show style. Built on the Training fixture state. | **Done (2026-10-18).** More > Demo mode. One guard locks the till onto the Training fixtures (card terminal, scanner, drawer, receipts and every sync seam are the practice ones), signed in as a made-up owner so every feature is on show. `src/screens/DemoHome.tsx` lists every feature by area; each one plays its Training Show or opens live. A bar across the top says so and leaves in one tap. Nothing is written or sent; leaving restores the real till exactly. Details and guesses in `dev_docs/GUESSES.md`. **Changed 2026-10-20 (0187):** it now runs on a copy of the till's own catalogue, customers, sales and drawer, with practice data only where there is none, and the guard was audited and closed (see PROGRESS). |
+ | F9 | A new public template repo from the app, with everything personal stripped (store, domains, keys, branding, staff, passes, certificates, history), published as open source. | **Waiting on you.** Needs your answers to seven decisions: which branding to strip, what to do with the assets, the secrets/config placeholder rules, whether to keep or discard the git history, exactly what counts as me-specific, whether the three Workers ship as is or are left out, and the licence choice. Once answered, I can prepare the public repo. |
+ | D5 | Fill in the tender machine adapter (built in 0024 as one empty function plus a locked-Off setting). | Waits on your hardware. |
+ | D7 | Extra ideas, saved for last after E1. | Not started. |
+diff --git a/src/lib/backupIO.ts b/src/lib/backupIO.ts
+index abc052e..274fdb0 100644
+--- a/src/lib/backupIO.ts
++++ b/src/lib/backupIO.ts
+@@ -6,8 +6,11 @@ import { getClaimSecret, getPassSecret, getReceiptSecret, getToken, loadCreds, s
+ import { getAssistantKey, setAssistantKey } from './assistantKey';
+ import { parseGrid } from './grid';
+ import { buildBackup, mergeSettings, type BackupV1 } from './backupFile';
++import { TrainingBlockedError, isTraining } from './trainingGuard';
+ 
+ export async function collectBackup(): Promise<BackupV1> {
++  // The backup carries the real Shopify and pass logins out of the Keychain, then opens the share sheet: once it is sent it cannot be taken back.
++  if (isTraining()) throw new TrainingBlockedError('exporting a backup');
+   const c = await loadCreds();
+   const [passSecret, receiptSecret, claimSecret, assistantKey] = await Promise.all([getPassSecret(), getReceiptSecret(), getClaimSecret(), getAssistantKey()]);
+   const st = useApp.getState();
+@@ -34,6 +37,7 @@ async function readLogoData(file: string): Promise<string> {
+   } catch { return ''; }
+ }
+ async function writeLogoData(data: string): Promise<string> {
++  if (isTraining()) return ''; // a new file in Documents that nothing would clean up afterwards
+   const m = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(data);
+   if (!m || m[2].length > MAX_LOGO_BYTES * 1.4) return '';
+   try {
+@@ -44,6 +48,7 @@ async function writeLogoData(data: string): Promise<string> {
+ 
+ /** Applies a validated backup. This device keeps its own register id/name. Returns a message for the user. */
+ export async function applyBackup(b: BackupV1): Promise<string> {
++  if (isTraining()) throw new TrainingBlockedError('restoring a backup'); // it would replace the settings and logins, and only part of that could be undone
+   const st = useApp.getState();
+   const incoming: Record<string, any> = { ...b.settings };
+   let logoFile = '';
+diff --git a/src/lib/demoCatalog.ts b/src/lib/demoCatalog.ts
+index 7244b6b..75c2284 100644
+--- a/src/lib/demoCatalog.ts
++++ b/src/lib/demoCatalog.ts
+@@ -1,7 +1,7 @@
+ // Location: src/lib/demoCatalog.ts
+ // The Demo mode (F8) home screen's catalogue: every feature, in the areas the app is used in.
+ // A feature that has a Training Show plays that animation (same style); one that does not is simply opened live in the
+-// locked demo till, where nothing is real either way. Pure data, so the home screen and its tests agree on what is there.
++// demo till, which runs on a copy of the till's data, so nothing is real either way. Pure data, so the home screen and its tests agree on what is there.
+ import { MODULES, getModule } from '../training';
+ import type { Demo } from './trainingModule';
+ 
+diff --git a/src/lib/demoData.ts b/src/lib/demoData.ts
+new file mode 100644
+index 0000000..cb5c307
+--- /dev/null
++++ b/src/lib/demoData.ts
+@@ -0,0 +1,127 @@
++// Location: src/lib/demoData.ts
++// Patch 0187: what Demo mode (F8) puts on the till.
++//
++// Demo mode used to swap the whole till onto made-up data. It now works on a COPY of the real till's data, so a demo shows
++// the shop's own catalogue, customers, sales and drawer. Practice data fills a gap only where a screen would otherwise have
++// nothing worth showing (a new till with no sales yet). The rule for what is allowed is the guard's (src/lib/trainingGuard.ts):
++// anything that stays in memory is fine, because leaving Demo mode puts the real state back exactly; anything that leaves the
++// iPad or changes a file on it is switched off.
++//
++// Pure: no store imports except types, so the choices here can be tested without a device.
++import type { Swap } from './trainingSandbox';
++import { PRACTICE_RECEIPT_URL, TRAIN_PREFIX, buildSandbox } from './trainingSandbox';
++import { DEMO_OWNER_ID, demoNotices, demoRollups, demoSales, demoStaff } from './demoFixtures';
++import { emptyCart } from './cartOps';
++
++/** The groups of data a demo can draw from, each either the till's own or practice. */
++export type DemoPart = 'catalogue' | 'customers' | 'sales' | 'reports' | 'notices' | 'drawer' | 'saved' | 'outbox';
++export type DemoSource = { real: DemoPart[]; practice: DemoPart[]; products: number; customers: number; sales: number };
++
++const LABEL: Record<DemoPart, string> = {
++  catalogue: 'catalogue', customers: 'customers', sales: 'sales', reports: 'reports',
++  notices: 'notifications', drawer: 'cash drawer', saved: 'saved carts', outbox: 'upload queue',
++};
++const ORDER: DemoPart[] = ['catalogue', 'customers', 'sales', 'reports', 'drawer', 'saved', 'outbox', 'notices'];
++/** "a", "a and b", "a, b and c". */
++const list = (xs: string[]): string => (xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs[xs.length - 1]}`);
++export const partsText = (parts: readonly DemoPart[]): string => list(ORDER.filter(p => parts.includes(p)).map(p => LABEL[p]));
++
++/** A copy that shares nothing with the original, so nothing done in Demo mode can reach the real objects. The till's state is
++ *  plain data (it is saved as JSON), so this loses nothing but keys that hold `undefined`, which read the same as a missing key. */
++const copy = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
++
++/**
++ * The state for Demo mode, built from the real till's. `real` is never changed and nothing in the result points into it.
++ *
++ * What is the till's own: the catalogue (with its grid, automatic deals, discount presets, bundles and display settings),
++ * customers, this till's sales and the other tills' history, the day's totals, saved carts, the upload queue, the notifications
++ * and the cash drawer. What is always left out: the cart being rung up and card payment attempts (they belong to a sale that is
++ * really happening), and anything that points outside the iPad, which stays blank so a button cannot reach a real server even if
++ * a guard were missed.
++ */
++export function buildDemoSwap(real: Swap): { swap: Swap; source: DemoSource } {
++  const practice = buildSandbox(real, { sync: 'idle', outbox: { stuck: 1, queued: 3 } });
++  const rp = real.pos;
++  const has = {
++    catalogue: Object.keys(real.data.variants).length > 0,
++    customers: real.data.customers.length > 0,
++    sales: rp.sales.length > 0,
++    reports: Object.keys(rp.rollups).length > 0,
++    notices: rp.notices.length > 0,
++    drawer: Object.values(rp.ledger.counts).some(n => n > 0),
++    saved: rp.saved.length > 0,
++    outbox: rp.outbox.length > 0,
++  };
++
++  // The catalogue, its grid, deals, presets and the settings that describe them travel together: practice ids and real ids must never mix.
++  const data = {
++    variants: copy(has.catalogue ? real.data.variants : practice.data.variants),
++    collections: copy(has.catalogue ? real.data.collections : practice.data.collections),
++    autos: copy(has.catalogue ? real.data.autos : practice.data.autos),
++    presets: copy(has.catalogue ? real.data.presets : practice.data.presets),
++    customers: copy(has.customers ? real.data.customers : practice.data.customers),
++  };
++  const base = has.catalogue ? copy(real.settings) : practice.settings;
++  const settings = {
++    ...base,
++    // Everything that points outside the iPad stays blank or practice, whatever else is real.
++    receipt: { ...base.receipt, serverUrl: PRACTICE_RECEIPT_URL },
++    passServerUrl: '', giftClaimUrl: '', locationId: `${TRAIN_PREFIX}loc`,
++    // Signed in as a made-up owner with no PIN, so every feature is on show and the demo can never lock itself out. The real staff stay
++    // in the list, so Staff and the sales that name them look like the real till.
++    staff: [...demoStaff(), ...copy(real.settings.staff)],
++    requirePin: false,
++  };
++
++  const sales = has.sales ? copy(rp.sales) : demoSales(real.settings.registerId, real.settings.registerName);
++  const pos: Swap['pos'] = {
++    saved: has.saved ? copy(rp.saved) : has.catalogue ? [] : practice.pos.saved,
++    // A till with a real catalogue and nothing waiting to upload is the normal, healthy case, so it is not given pretend queued sales.
++    outbox: has.outbox ? copy(rp.outbox) : has.catalogue ? [] : practice.pos.outbox,
++    sales,
++    attempts: [],
++    notices: has.notices ? copy(rp.notices) : demoNotices(),
++    rollups: has.reports ? copy(rp.rollups) : demoRollups(sales),
++    shift: has.drawer ? copy(rp.shift) : practice.pos.shift,
++    ledger: has.drawer ? copy(rp.ledger) : practice.pos.ledger,
++    cart: emptyCart(),
++    shared: copy(rp.shared),
++  };
++
++  const swap: Swap = {
++    settings, data,
++    grid: has.catalogue ? copy(real.grid) : practice.grid, gridVersion: has.catalogue ? real.gridVersion : 0,
++    pos, sync: practice.sync, zeller: practice.zeller, staffId: DEMO_OWNER_ID, unlocked: true,
++  };
++
++  const realParts: DemoPart[] = []; const practiceParts: DemoPart[] = [];
++  const put = (p: DemoPart, isReal: boolean) => (isReal ? realParts : practiceParts).push(p);
++  put('catalogue', has.catalogue); put('customers', has.customers); put('sales', has.sales);
++  put('reports', has.reports || has.sales); // totals worked out from the till's own sales are the till's own
++  put('notices', has.notices); put('drawer', has.drawer); put('saved', has.saved);
++  if (has.outbox || has.catalogue) realParts.push('outbox'); else practiceParts.push('outbox');
++  const products = new Set(Object.values(data.variants).map(v => v.productId)).size;
++  return { swap, source: { real: ORDER.filter(p => realParts.includes(p)), practice: ORDER.filter(p => practiceParts.includes(p)), products, customers: data.customers.length, sales: sales.length } };
++}
++
++/** True when nothing in the demo is the till's own. */
++export const allPractice = (s: DemoSource | null | undefined): boolean => !s || s.real.length === 0;
++
++/** The bar across the top of the app. */
++export const demoBannerText = (s: DemoSource | null | undefined): string =>
++  allPractice(s) ? 'DEMO MODE  ·  nothing here is real' : 'DEMO MODE  ·  your real data, nothing is saved or sent';
++
++/** The home screen's introduction: what is the till's own, what is practice, and what is switched off. */
++export function demoIntro(s: DemoSource | null | undefined): { using: string; gaps: string; rules: string } {
++  const rules = 'Anything you change stays on this iPad for as long as Demo mode is on, and is dropped when you leave. Card payments go to a practice terminal, and nothing is sent to Shopify, saved to the cloud, emailed, or written to your real files.';
++  if (allPractice(s)) return { using: 'This till has no catalogue or sales of its own yet, so everything here is practice data.', gaps: '', rules };
++  const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
++  const bits = [
++    s!.real.includes('catalogue') ? n(s!.products, 'product', 'products') : '',
++    s!.real.includes('customers') ? n(s!.customers, 'customer', 'customers') : '',
++    s!.real.includes('sales') ? n(s!.sales, 'sale', 'sales') : '',
++  ].filter(Boolean);
++  const using = `This is a copy of your till's own data: ${partsText(s!.real)}${bits.length ? ` (${list(bits)})` : ''}.`;
++  const gaps = s!.practice.length ? `Practice data fills in what the till has none of yet: ${partsText(s!.practice)}.` : '';
++  return { using, gaps, rules };
++}
+diff --git a/src/lib/passUrl.ts b/src/lib/passUrl.ts
+index c2d7c0a..9ab33f7 100644
+--- a/src/lib/passUrl.ts
++++ b/src/lib/passUrl.ts
+@@ -3,6 +3,7 @@
+ import { hmac } from '@noble/hashes/hmac';
+ import { sha256 } from '@noble/hashes/sha256';
+ import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
++import { TrainingBlockedError, isTraining } from './trainingGuard';
+ 
+ export const PASS_URL_TTL_SEC = 300;
+ export const signPass = (secret: string, code: string, ts: number) => bytesToHex(hmac(sha256, utf8ToBytes(secret), utf8ToBytes(`${code}.${ts}`)));
+@@ -17,6 +18,7 @@ export const staffPassMessage = (f: StaffPassFields, ts: number) => ['staffpass'
+ export const signStaffPass = (secret: string, f: StaffPassFields, ts: number) => bytesToHex(hmac(sha256, utf8ToBytes(secret), utf8ToBytes(staffPassMessage(f, ts))));
+ /** Asks the pass server for a signed .pkpass and returns its bytes. */
+ export async function requestStaffPass(base: string, secret: string, f: StaffPassFields, now = Date.now()): Promise<Uint8Array> {
++  if (isTraining()) throw new TrainingBlockedError('making a cashier pass'); // it asks the pass server to sign a real pass for a real badge code
+   const ts = Math.floor(now / 1000);
+   const res = await fetch(`${base.replace(/\/$/, '')}/staff-pass`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...f, ts, sig: signStaffPass(secret, f, ts) }) });
+   if (!res.ok) throw new Error(res.status === 401 ? 'The pass server rejected the secret. Check it matches the Worker\'s POS_SECRET.' : `The pass server said ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);
+diff --git a/src/lib/squareHistoryIO.ts b/src/lib/squareHistoryIO.ts
+index 87fd569..91fe992 100644
+--- a/src/lib/squareHistoryIO.ts
++++ b/src/lib/squareHistoryIO.ts
+@@ -4,6 +4,7 @@
+ import * as FS from 'expo-file-system/legacy';
+ import { useApp } from '../state/store';
+ import { kvDel, kvGet, kvSet } from './kv';
++import { TrainingBlockedError, isTraining } from './trainingGuard';
+ import { emptyTotals, type RollupRow, type Totals } from './rollup';
+ import type { SaleRecord } from './types';
+ import type { HistSale } from './squareConvert';
+@@ -11,6 +12,9 @@ import { addToRollups, buildLinkIndex, canonicalName, finishRollups, linkSale, l
+ 
+ const dir = () => `${FS.documentDirectory ?? ''}square-history/`;
+ const META_KEY = 'squareHistoryMeta';
++/** Demo mode and training run on a copy of the till's data, but these files are the real ones on this iPad: installing, re-matching and deleting
++ *  change them for good, so each of the four starts here. Reading the history (loadSquareRollups, loadSquareSales) stays open. */
++const guardWrite = (): void => { if (isTraining()) throw new TrainingBlockedError('changing the imported Square history'); };
+ export type SquareMeta = { installedAt: string; relinkedAt: string; sales: number; refunds: number; from?: string; to?: string; lines: number; linkedLines: number; days: number };
+ let cache: { rows?: RollupRow[] } = {};
+ 
+@@ -42,6 +46,7 @@ export async function storedManifest(): Promise<SquareManifest | null> {
+ 
+ /** Fetches the manifest from the PC script's address, downloads every file next to it, then links and builds rollups. */
+ export async function installFromUrl(manifestUrl: string, progress: (m: string) => void): Promise<SquareMeta> {
++  guardWrite();
+   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
+   let text: string;
+   try { const res = await fetch(manifestUrl, { signal: ctl.signal }); if (!res.ok) throw new Error(`The PC said ${res.status}.`); text = await res.text(); }
+@@ -57,6 +62,7 @@ export async function installFromUrl(manifestUrl: string, progress: (m: string)
+ 
+ /** Fallback: files picked from Files.app (AirDrop / iCloud / USB from the PC's `out` folder). */
+ export async function installFromPicked(files: { name: string; uri: string }[], progress: (m: string) => void): Promise<SquareMeta> {
++  guardWrite();
+   await FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(() => {});
+   let got = 0, hasManifest = false;
+   for (const f of files) { const name = canonicalName(f.name); if (!name) continue; progress(`Copying ${name}…`); await FS.deleteAsync(dir() + name, { idempotent: true }); await FS.copyAsync({ from: f.uri, to: dir() + name }); got++; if (name === 'manifest.json') hasManifest = true; }
+@@ -71,6 +77,7 @@ async function inferManifest(): Promise<SquareManifest> {
+ 
+ /** Re-reads every stored month, links lines to the current Shopify catalogue, and rewrites the daily rollups. Safe to run again after "Import from Shopify". */
+ export async function rebuild(progress: (m: string) => void): Promise<SquareMeta> {
++  guardWrite();
+   const m = parseManifest(await FS.readAsStringAsync(dir() + 'manifest.json'));
+   const st = useApp.getState(); const idx = buildLinkIndex(st.data.variants, st.data.collections);
+   const roll: Record<string, Totals> = {}; let sales = 0, refunds = 0, lines = 0, linked = 0, from: string | undefined, to: string | undefined; let i = 0;
+@@ -108,4 +115,4 @@ export async function loadSquareSales(): Promise<SaleRecord[]> {
+   return out;
+ }
+ 
+-export async function removeSquareHistory() { await FS.deleteAsync(dir(), { idempotent: true }); await kvDel(META_KEY); cache = {}; }
++export async function removeSquareHistory() { guardWrite(); await FS.deleteAsync(dir(), { idempotent: true }); await kvDel(META_KEY); cache = {}; }
+diff --git a/src/screens/DemoHome.tsx b/src/screens/DemoHome.tsx
+index 672bdd0..9080c0b 100644
+--- a/src/screens/DemoHome.tsx
++++ b/src/screens/DemoHome.tsx
+@@ -1,7 +1,7 @@
+ // Location: src/screens/DemoHome.tsx
+ // Demo mode's home (F8): every feature, in the areas it is used in. A feature with a Training Show plays that
+-// animation; one without is simply opened live. The whole till is on practice data while this is open, so trying
+-// anything here touches nothing real.
++// animation; one without is simply opened live. The till is running on a copy of its own data while this is open (practice
++// data only where it has none), so trying anything here touches nothing real.
+ import React from 'react';
+ import { Pressable, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -10,11 +10,12 @@ import { useTheme } from '../ui/theme';
+ import { useNav, type Tab } from '../ui/nav';
+ import { useDemo } from '../state/demoSession';
+ import { entriesByArea, type DemoEntry } from '../lib/demoCatalog';
++import { demoIntro } from '../lib/demoData';
+ import { SPOT } from '../lib/trainingSpots';
+ import { Enter } from '../ui/Motion';
+ 
+ export default function DemoHome() {
+-  const { c } = useTheme(); const nav = useNav();
++  const { c } = useTheme(); const nav = useNav(); const intro = demoIntro(useDemo(s => s.source));
+   const open = (e: DemoEntry) => { if (e.tab) nav.setTab(e.tab as Tab); if (e.route) nav.push(e.route); };
+   return (
+     <Page title="Demo mode" onBack={nav.pop}>
+@@ -24,7 +25,8 @@ export default function DemoHome() {
+             <View style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}><Txt size={12} weight="700" color={c.onAccent}>DEMO MODE</Txt></View>
+           </View>
+           <Txt size={17} weight="700">Try the whole till, safely</Txt>
+-          <Txt sub>Everything below is real to use, but nothing is real behind it: the catalogue, customers, orders and drawer are made up, and nothing is sent to Shopify or charged to a card. Watch a feature, or open it and have a go.</Txt>
++          <Txt sub>{intro.using}{intro.gaps ? ` ${intro.gaps}` : ''}</Txt>
++          <Txt sub>{intro.rules} Watch a feature, or open it and have a go.</Txt>
+           <Btn title="Leave demo mode" kind="secondary" icon="exit-outline" onPress={() => { useDemo.getState().leave(); nav.reset(); nav.setTab('more'); }} />
+         </Card>
+         {entriesByArea().map((g, gi) => (
+diff --git a/src/screens/DemoShow.tsx b/src/screens/DemoShow.tsx
+index b38ff55..81b7226 100644
+--- a/src/screens/DemoShow.tsx
++++ b/src/screens/DemoShow.tsx
+@@ -16,7 +16,7 @@ export default function DemoShow() {
+   if (!entry || !demo) return (
+     <Page title={entry?.title ?? 'Demo'} onBack={nav.pop}>
+       <View style={{ padding: 16, gap: 12 }}>
+-        <Txt sub>This feature has no animated demonstration. Open it and try it live: the till is on practice data, so nothing is real.</Txt>
++        <Txt sub>This feature has no animated demonstration. Open it and try it live: the till is running on a copy, so nothing you do is saved or sent.</Txt>
+         {entry && (entry.tab || entry.route) ? <Btn title="Open it" icon="open-outline" onPress={open} /> : null}
+       </View>
+     </Page>
+diff --git a/src/screens/More.tsx b/src/screens/More.tsx
+index 537c90a..9c4f3c8 100644
+--- a/src/screens/More.tsx
++++ b/src/screens/More.tsx
+@@ -50,7 +50,7 @@ export default function More() {
+         <Section>
+           {demo
+             ? <Row spot={SPOT.moreDemo} icon="flask-outline" title="Leave demo mode" sub="Back to your own till, exactly as you left it." last onPress={() => { useDemo.getState().leave(); nav.reset(); }} />
+-            : <Row spot={SPOT.moreDemo} icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on made-up data. Nothing real is touched.' : 'Made-up data'} last onPress={() => { void openDemo(); }} />}
++            : <Row spot={SPOT.moreDemo} icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on a copy of your own data. Nothing real is touched.' : 'A copy of your data'} last onPress={() => { void openDemo(); }} />}
+         </Section>
+         {groups.map((g, gi) => (
+           <Section key={gi}>
+diff --git a/src/state/demoSession.ts b/src/state/demoSession.ts
+index 0f6126e..2ff80f6 100644
+--- a/src/state/demoSession.ts
++++ b/src/state/demoSession.ts
+@@ -1,18 +1,20 @@
+ // Location: src/state/demoSession.ts
+-// Demo mode (F8): locks the till onto practice fixtures so every feature can be shown without touching anything real.
++// Demo mode (F8): runs the till on a COPY of its own data (patch 0187), so every feature can be shown on the shop's real catalogue
++// without touching anything real. Practice data fills in only what the till has none of (src/lib/demoData.ts).
+ // It is separate from a training course run: there is no course, it stays on until the person leaves it, and its home
+-// screen lists every feature. The swap is the same as training's (src/lib/trainingSandbox.ts), so the card reader,
+-// scanner, drawer, receipts and every sync seam behave exactly as they do in practice: nothing is written or sent.
++// screen lists every feature. The guard is the same as training's (src/lib/trainingGuard.ts), so the card reader,
++// scanner, receipts and every sync seam behave exactly as they do in practice: nothing is written or sent, and
++// leaving puts the real state back exactly.
+ import { create } from 'zustand';
+ import { useApp, flushPersist } from './store';
+ import { setDemoGuard } from '../lib/trainingGuard';
+-import { buildSandbox, takeSnapshot } from '../lib/trainingSandbox';
++import { takeSnapshot, trainingBlocker } from '../lib/trainingSandbox';
+ import { resetTrainingTerminal } from '../lib/trainingTerminal';
+ import { resetCheckout } from '../lib/trainingProbe';
+ import { resetPracticeOrders } from '../lib/trainingOrders';
+ import { resetPracticeGifts } from '../lib/trainingGifts';
+ import { resetPass } from '../lib/trainingPass';
+-import { demoSales, demoRollups, demoNotices, demoStaff, DEMO_OWNER_ID } from '../lib/demoFixtures';
++import { buildDemoSwap, type DemoSource } from '../lib/demoData';
+ import { isPractising } from './trainingSession';
+ 
+ /** The real state, kept in memory only while Demo mode is on. A crash just reopens the normal till. */
+@@ -20,25 +22,28 @@ let real: ReturnType<typeof takeSnapshot> | null = null;
+ 
+ type DemoState = {
+   active: boolean;
++  /** What the demo was built from (the till's own data, or practice where it had none). Null when Demo mode is off. */
++  source: DemoSource | null;
+   /** Enter Demo mode. Returns a message when it cannot start, or null on success. */
+   enter: () => Promise<string | null>;
+   leave: () => void;
+ };
+ export const useDemo = create<DemoState>((set, get) => ({
+   active: false,
++  source: null,
+   enter: async () => {
+     if (get().active) return null;
+     if (isPractising()) return 'Finish the training course first, then start Demo mode.';
++    // A card payment that is really in flight, or a part-paid sale, belongs to the real till: finish it first (the same rule training has).
++    const blocker = trainingBlocker(useApp.getState());
++    if (blocker) return blocker.replace('start training', 'start Demo mode');
+     await flushPersist(); // anything still waiting for its 400 ms timer is written now, so no timer fires inside the sandbox
+     real = takeSnapshot(useApp.getState());
+     setDemoGuard(true);
+     resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts();
+-    const sb = buildSandbox(real, { sync: 'idle', outbox: { stuck: 1, queued: 3 } });
+-    const sales = demoSales(sb.settings.registerId, sb.settings.registerName);
+-    // Signed in as a made-up owner with no PIN, so every feature is on show and the demo can never lock itself out.
+-    const settings = { ...sb.settings, staff: demoStaff(), requirePin: false };
+-    useApp.setState({ ...sb, settings, staffId: DEMO_OWNER_ID, unlocked: true, pos: { ...sb.pos, sales, rollups: demoRollups(sales), notices: demoNotices() } });
+-    set({ active: true });
++    const { swap, source } = buildDemoSwap(real);
++    useApp.setState({ ...swap });
++    set({ active: true, source });
+     return null;
+   },
+   leave: () => {
+@@ -48,6 +53,6 @@ export const useDemo = create<DemoState>((set, get) => ({
+       resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts();
+     }
+     setDemoGuard(false); // restore first, then drop the guard
+-    set({ active: false });
++    set({ active: false, source: null });
+   },
+ }));
+diff --git a/src/ui/DemoBanner.tsx b/src/ui/DemoBanner.tsx
+index 42fa2e9..9913ef6 100644
+--- a/src/ui/DemoBanner.tsx
++++ b/src/ui/DemoBanner.tsx
+@@ -1,6 +1,6 @@
+ // Location: src/ui/DemoBanner.tsx
+ // The thin bar across the top of the whole app while Demo mode is on (F8). It says so, and leaves in one tap,
+-// so there is never any doubt that what is on screen is not the real till.
++// so there is never any doubt that what is on screen is a copy and not the real till. It says whether the data is the till's own (0187).
+ import React from 'react';
+ import { Pressable, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+@@ -8,14 +8,15 @@ import { Txt } from './kit';
+ import { useTheme } from './theme';
+ import { useNav } from './nav';
+ import { useDemo } from '../state/demoSession';
++import { demoBannerText } from '../lib/demoData';
+ 
+ export default function DemoBanner() {
+-  const { c } = useTheme(); const nav = useNav(); const active = useDemo(s => s.active);
++  const { c } = useTheme(); const nav = useNav(); const active = useDemo(s => s.active); const source = useDemo(s => s.source);
+   if (!active) return null;
+   return (
+     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: c.accent, paddingHorizontal: 12, paddingVertical: 6 }}>
+       <Ionicons name="flask-outline" size={15} color={c.onAccent} />
+-      <Txt size={12} weight="700" color={c.onAccent} style={{ flex: 1 }}>DEMO MODE  ·  nothing here is real</Txt>
++      <Txt size={12} weight="700" color={c.onAccent} style={{ flex: 1 }}>{demoBannerText(source)}</Txt>
+       <Pressable onPress={() => { useDemo.getState().leave(); nav.reset(); nav.setTab('more'); }} accessibilityRole="button" accessibilityLabel="Leave demo mode" style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: c.onAccent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 4 }}>
+         <Ionicons name="exit-outline" size={13} color={c.accent} />
+         <Txt size={12} weight="700" color={c.accent}>Leave</Txt>
+diff --git a/tests/demodata.test.ts b/tests/demodata.test.ts
+new file mode 100644
+index 0000000..993e519
+--- /dev/null
++++ b/tests/demodata.test.ts
+@@ -0,0 +1,192 @@
++// Location: tests/demodata.test.ts
++// Patch 0187: Demo mode runs on a copy of the till's own data, with practice data only where the till has none.
++// What is pinned here: which data is the till's own, that nothing done in the demo can reach the real objects, that everything
++// pointing outside the iPad stays blank, and that a card payment in flight keeps Demo mode from starting.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { useApp, flushPersist } from '../src/state/store';
++import { kvGet, kvUseMemory } from '../src/lib/kv';
++import { isTraining } from '../src/lib/trainingGuard';
++import { FIXTURE_VARIANTS, PRACTICE_BUNDLES, PRACTICE_RECEIPT_URL, fixtureGrid, fixtureOutbox, takeSnapshot, type Swap } from '../src/lib/trainingSandbox';
++import { allPractice, buildDemoSwap, demoBannerText, demoIntro, partsText } from '../src/lib/demoData';
++import { DEMO_OWNER_ID, demoRollups, demoSales } from '../src/lib/demoFixtures';
++import { addVariant, emptyCart } from '../src/lib/cartOps';
++import { useDemo } from '../src/state/demoSession';
++import type { Variant } from '../src/lib/types';
++
++kvUseMemory();
++const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x));
++const realise = <T>(x: T): T => JSON.parse(JSON.stringify(x).replaceAll('train-', 'real-'));
++const hasTrain = (x: unknown): boolean => JSON.stringify(x).includes('train-');
++const base = takeSnapshot(useApp.getState());
++
++const cow: Variant = { ...FIXTURE_VARIANTS[0], id: 'gid://shopify/ProductVariant/11', productId: 'gid://shopify/Product/1', productTitle: 'Real Cow', variantTitle: '', sku: 'RC1', priceCents: 1500, stock: 7, inventoryItemId: 'gid://shopify/InventoryItem/11' };
++const owl: Variant = { ...FIXTURE_VARIANTS[1], id: 'gid://shopify/ProductVariant/12', productId: 'gid://shopify/Product/2', productTitle: 'Real Owl', variantTitle: '', sku: 'RO1', priceCents: 900, stock: 3, inventoryItemId: 'gid://shopify/InventoryItem/12' };
++const REG = 'reg-real';
++
++/** A till with a catalogue, customers, sales, a drawer, saved carts and a waiting upload, all its own. */
++function fullTill(): Swap {
++  const sales = realise(demoSales(REG, 'Front counter'));
++  // Built through JSON, the way the till's state really arrives: loaded from storage, so no key holds `undefined`.
++  return clone({
++    ...base,
++    settings: {
++      ...base.settings, shopName: 'Real Shop', registerId: REG, registerName: 'Front counter', locationId: 'gid://shopify/Location/1', locationName: 'Front shop',
++      passServerUrl: 'https://pass.example', giftClaimUrl: 'https://claim.example', receipt: { ...base.settings.receipt, serverUrl: 'https://receipts.example' },
++      bundlesJson: '{"version":1,"real":true}', cartWarnings: [{ id: 'w1' }] as any, smartChange: true, cashRounding: false,
++      staff: [{ id: 'staff-1', name: 'Real Person', role: 'manager', salt: 's', pinHash: 'h' }], requirePin: true,
++    },
++    data: {
++      variants: { [cow.id]: cow, [owl.id]: owl }, collections: [{ id: 'gid://shopify/Collection/1', title: 'Real animals', productIds: [cow.productId] }],
++      customers: [{ id: 'gid://shopify/Customer/1', name: 'Real Customer', email: 'real@example.com', orders: 2, spentCents: 3000 }],
++      autos: [{ id: 'auto-real', title: 'Real deal', kind: 'basic', pct: 10, target: { variantIds: [cow.id] }, minQty: 2 }] as any, presets: [{ id: 'pre-real', kind: 'pct', value: 15, label: 'Real 15% off' }],
++    },
++    grid: { version: 1, pages: [{ id: 'page-real', name: 'Real home', tiles: [{ type: 'item', variantId: cow.id }, { type: 'item', variantId: owl.id }] }] } as any, gridVersion: 4,
++    pos: {
++      saved: [{ id: 'saved-real', name: 'Real holding', cart: addVariant(emptyCart(), cow, 1), ts: '2026-10-14T09:00:00.000Z', status: 'open' }],
++      outbox: realise(fixtureOutbox({ stuck: 1 })), sales, rollups: demoRollups(sales),
++      attempts: [{ ref: 'r1', saleUuid: 'real-sale-open', amountCents: 500, ts: new Date().toISOString(), status: 'approved' }],
++      notices: [{ id: 'n-real', ts: new Date().toISOString(), kind: 'sync', title: 'Real notice', body: 'Real body', route: 'transactions', read: false }],
++      shift: { open: true, openedAt: '2026-10-19T09:00:00.000Z', floatCents: 20000, paidInCents: 0, paidOutCents: 0 },
++      cart: addVariant(emptyCart(), owl, 2), ledger: { counts: { '2000': 3, '500': 4 }, entries: [] }, shared: base.pos.shared,
++    } as any,
++    staffId: 'staff-1', unlocked: true,
++  });
++}
++/** A till that has never been used. */
++const emptyTill = (): Swap => ({ ...base, settings: { ...base.settings, registerId: REG, registerName: 'Front counter' } });
++
++test('a till with its own data: the demo uses its catalogue, grid, deals, customers, sales, drawer, saved carts and queue', () => {
++  const real = fullTill(); const { swap, source } = buildDemoSwap(real);
++  assert.deepEqual(swap.data.variants, real.data.variants);
++  assert.deepEqual(swap.data.collections, real.data.collections); assert.deepEqual(swap.data.autos, real.data.autos); assert.deepEqual(swap.data.presets, real.data.presets);
++  assert.deepEqual(swap.data.customers, real.data.customers);
++  assert.deepEqual(swap.grid, real.grid); assert.equal(swap.gridVersion, 4);
++  assert.deepEqual(swap.pos.sales, real.pos.sales); assert.deepEqual(swap.pos.rollups, real.pos.rollups);
++  assert.deepEqual(swap.pos.notices, real.pos.notices); assert.deepEqual(swap.pos.saved, real.pos.saved);
++  assert.deepEqual(swap.pos.outbox, real.pos.outbox, 'the real upload queue, not a pretend one');
++  assert.deepEqual(swap.pos.ledger, real.pos.ledger); assert.deepEqual(swap.pos.shift, real.pos.shift);
++  // Settings that describe the shop are the shop's own too.
++  assert.equal(swap.settings.bundlesJson, '{"version":1,"real":true}'); assert.equal(swap.settings.locationName, 'Front shop');
++  assert.equal(swap.settings.smartChange, true); assert.equal(swap.settings.cashRounding, false); assert.deepEqual(swap.settings.cartWarnings, [{ id: 'w1' }]);
++  assert.equal(hasTrain({ data: swap.data, grid: swap.grid, pos: swap.pos }), false, 'practice ids never mix into the till\'s own data');
++  assert.equal(allPractice(source), false); assert.equal(source.practice.length, 0);
++  assert.deepEqual(source.real.sort(), ['catalogue', 'customers', 'drawer', 'notices', 'outbox', 'reports', 'sales', 'saved'].sort());
++  assert.equal(source.products, 2); assert.equal(source.customers, 1); assert.equal(source.sales, real.pos.sales.length);
++});
++
++test('a copy shares nothing with the real till, so nothing done in the demo can reach it', () => {
++  const real = fullTill(); const before = clone({ data: real.data, grid: real.grid, pos: real.pos, settings: real.settings });
++  const { swap } = buildDemoSwap(real);
++  // Mutate the demo in place, the worst case: code that edits an object without copying it first.
++  Object.values(swap.data.variants)[0].stock = 999; swap.data.variants[cow.id].priceCents = 1;
++  swap.data.customers[0].name = 'Changed'; swap.pos.sales.length = 0; swap.pos.ledger.counts['2000'] = 0;
++  (swap.grid as any).pages[0].tiles.length = 0; swap.settings.staff.length = 0; swap.pos.saved[0].name = 'Changed'; swap.pos.outbox.length = 0;
++  assert.deepEqual(clone({ data: real.data, grid: real.grid, pos: real.pos, settings: real.settings }), before, 'the real objects are exactly as they were');
++});
++
++test('the cart being rung up and card payment attempts belong to a real sale, so the demo starts without them', () => {
++  const real = fullTill(); assert.ok(real.pos.cart.lines.length > 0 && real.pos.attempts.length > 0);
++  const { swap } = buildDemoSwap(real);
++  assert.equal(swap.pos.cart.lines.length, 0); assert.equal(swap.pos.attempts.length, 0);
++  assert.equal(real.pos.cart.lines.length > 0, true, 'and the real cart is still there');
++});
++
++test('everything that points outside the iPad stays blank or practice, whatever else is real', () => {
++  const { swap } = buildDemoSwap(fullTill());
++  assert.equal(swap.settings.receipt.serverUrl, PRACTICE_RECEIPT_URL); assert.equal(swap.settings.passServerUrl, ''); assert.equal(swap.settings.giftClaimUrl, '');
++  assert.match(swap.settings.locationId ?? '', /^train-/, 'a practice location, never the shop\'s real one');
++  assert.equal(swap.sync.state, 'idle'); assert.equal(swap.zeller.ready, true, 'the card reader is the practice terminal');
++  // The same on a till with nothing of its own.
++  const empty = buildDemoSwap(emptyTill()).swap;
++  assert.equal(empty.settings.passServerUrl, ''); assert.equal(empty.settings.receipt.serverUrl, PRACTICE_RECEIPT_URL);
++});
++
++test('signed in as a made-up owner with no PIN, with the real staff kept in the list', () => {
++  const { swap } = buildDemoSwap(fullTill());
++  assert.equal(swap.staffId, DEMO_OWNER_ID); assert.equal(swap.unlocked, true); assert.equal(swap.settings.requirePin, false);
++  assert.equal(swap.settings.staff[0].id, DEMO_OWNER_ID); assert.equal(swap.settings.staff[0].role, 'owner');
++  assert.ok(swap.settings.staff.some(m => m.id === 'staff-1' && m.name === 'Real Person'), 'the real people are on the Staff page');
++});
++
++test('a till with nothing of its own gets practice data for every group, as before', () => {
++  const { swap, source } = buildDemoSwap(emptyTill());
++  for (const v of Object.values(swap.data.variants)) assert.match(v.id, /^train-/);
++  assert.deepEqual(swap.grid, fixtureGrid()); assert.equal(swap.settings.bundlesJson, PRACTICE_BUNDLES);
++  assert.ok(swap.pos.sales.length >= 5 && swap.pos.sales.every(s => s.uuid.startsWith('train-')));
++  assert.ok(Object.keys(swap.pos.rollups).length >= 2); assert.ok(swap.pos.notices.length >= 2);
++  assert.ok(swap.pos.saved.length > 0, 'saved carts for the Saved carts feature'); assert.ok(swap.pos.outbox.length > 0, 'an upload queue for the offline feature');
++  assert.ok(Object.values(swap.pos.ledger.counts).some(n => n > 0) && swap.pos.shift.open, 'a drawer with cash in it');
++  assert.equal(allPractice(source), true); assert.equal(source.real.length, 0);
++  assert.equal(demoBannerText(source), 'DEMO MODE  ·  nothing here is real');
++  assert.match(demoIntro(source).using, /everything here is practice data/);
++});
++
++test('a real catalogue with nothing else yet: practice fills the gaps, but never pretend queued sales, and ids never mix', () => {
++  const real: Swap = { ...emptyTill(), data: { ...fullTill().data, customers: [] }, grid: fullTill().grid, settings: { ...emptyTill().settings, bundlesJson: '{"version":1,"real":true}' } };
++  const { swap, source } = buildDemoSwap(real);
++  assert.deepEqual(swap.data.variants, real.data.variants);
++  assert.deepEqual(source.real.sort(), ['catalogue', 'outbox'].sort(), 'a healthy till has an empty queue, and that is its own');
++  assert.deepEqual(source.practice.sort(), ['customers', 'drawer', 'notices', 'reports', 'sales', 'saved'].sort());
++  assert.equal(swap.pos.outbox.length, 0, 'no pretend sales waiting to upload on a real catalogue');
++  assert.equal(swap.pos.saved.length, 0, 'saved carts built on practice items would point at nothing');
++  assert.ok(swap.pos.sales.length >= 5, 'but there are sales to look at'); assert.ok(Object.keys(swap.pos.rollups).length >= 2);
++  assert.ok(swap.data.customers.every(c => c.id.startsWith('train-')));
++  assert.equal(hasTrain({ variants: swap.data.variants, collections: swap.data.collections, autos: swap.data.autos, presets: swap.data.presets, grid: swap.grid, bundles: swap.settings.bundlesJson }), false);
++});
++
++test('real sales with no daily totals yet: Reports is worked out from the real sales', () => {
++  const sales = realise(demoSales(REG, 'Front counter'));
++  const { swap, source } = buildDemoSwap({ ...emptyTill(), pos: { ...base.pos, sales } });
++  assert.deepEqual(swap.pos.rollups, demoRollups(sales)); assert.ok(source.real.includes('sales') && source.real.includes('reports'));
++  assert.ok(!source.practice.includes('reports'));
++});
++
++test('the words the person reads say what is real and what is practice', () => {
++  const { source } = buildDemoSwap(fullTill());
++  assert.equal(demoBannerText(source), 'DEMO MODE  ·  your real data, nothing is saved or sent');
++  const i = demoIntro(source);
++  assert.match(i.using, /^This is a copy of your till's own data: catalogue, customers, sales, reports, cash drawer, saved carts, upload queue and notifications \(/);
++  assert.match(i.using, /\(2 products, 1 customer and \d+ sales\)/); assert.equal(i.gaps, '');
++  assert.match(i.rules, /dropped when you leave/); assert.match(i.rules, /nothing is sent to Shopify/);
++  const mixed = demoIntro(buildDemoSwap({ ...emptyTill(), data: fullTill().data }).source);
++  assert.match(mixed.gaps, /^Practice data fills in what the till has none of yet: .*sales/);
++  assert.equal(partsText(['notices', 'catalogue']), 'catalogue and notifications'); assert.equal(partsText([]), '');
++});
++
++// ---- on the live store ----
++const reset = () => { if (useDemo.getState().active) useDemo.getState().leave(); useApp.setState({ ...base }); };
++
++test('on the live store: the demo shows the real catalogue, a change is never stored or leaked, and leaving restores it exactly', async () => {
++  const real = fullTill(); useApp.setState({ ...real, pos: { ...real.pos, cart: emptyCart(), attempts: [] } });
++  try {
++    await flushPersist(); const before = useApp.getState(); const beforeJson = JSON.stringify({ d: before.data, p: before.pos, s: before.settings, g: before.grid });
++    assert.equal(await useDemo.getState().enter(), null); assert.equal(isTraining(), true);
++    const during = useApp.getState();
++    assert.deepEqual(Object.keys(during.data.variants).sort(), [cow.id, owl.id].sort(), 'the real catalogue is on the till');
++    assert.equal(useDemo.getState().source?.real.includes('catalogue'), true);
++    // Edit in the demo, both ways: a proper state change and an in-place mutation.
++    during.patchData({ variants: { ...during.data.variants, [cow.id]: { ...during.data.variants[cow.id], priceCents: 1 } } });
++    during.patchPos({ sales: [] }); useApp.getState().data.variants[owl.id].stock = 999;
++    await new Promise(r => setTimeout(r, 500)); await flushPersist();
++    assert.equal(await kvGet('data', null), null, 'the changed catalogue was never written'); assert.equal(await kvGet('pos', null), null, 'nor the sales');
++    useDemo.getState().leave(); assert.equal(isTraining(), false); assert.equal(useDemo.getState().source, null);
++    const after = useApp.getState();
++    assert.equal(after.data, before.data); assert.equal(after.pos, before.pos); assert.equal(after.settings, before.settings); assert.equal(after.grid, before.grid);
++    assert.equal(JSON.stringify({ d: after.data, p: after.pos, s: after.settings, g: after.grid }), beforeJson, 'and not one value in it changed');
++  } finally { reset(); }
++});
++
++test('Demo mode will not start while a card payment is in flight or a sale is part paid, and says how to carry on', async () => {
++  const real = fullTill();
++  try {
++    useApp.setState({ ...real, pos: { ...real.pos, cart: emptyCart(), attempts: [{ ref: 'r1', saleUuid: 'real-s', amountCents: 500, ts: new Date().toISOString(), status: 'started' }] } });
++    const why = await useDemo.getState().enter();
++    assert.match(why ?? '', /still waiting on the reader/); assert.match(why ?? '', /start Demo mode/); assert.doesNotMatch(why ?? '', /training/i);
++    assert.equal(useDemo.getState().active, false); assert.equal(isTraining(), false);
++    useApp.setState({ ...real, pos: { ...real.pos, attempts: [], cart: { ...emptyCart(), tenders: [{ id: 't', kind: 'cash', amountCents: 100, at: 'x' }] as any } } });
++    assert.match((await useDemo.getState().enter()) ?? '', /part-paid sale/); assert.equal(useDemo.getState().active, false);
++    useApp.setState({ ...real, pos: { ...real.pos, attempts: [], cart: emptyCart() } });
++    assert.equal(await useDemo.getState().enter(), null, 'and it starts once they are done'); assert.equal(useDemo.getState().active, true);
++  } finally { reset(); }
++});
+diff --git a/tests/demoguard.test.ts b/tests/demoguard.test.ts
+new file mode 100644
+index 0000000..dc39586
+--- /dev/null
++++ b/tests/demoguard.test.ts
+@@ -0,0 +1,90 @@
++// Location: tests/demoguard.test.ts
++// Patch 0187: Demo mode now runs on a copy of the till's REAL data, so its ids are real ids. A write that slipped past the guard would no
++// longer fail harmlessly against a made-up id, it would land. This is the audit that keeps the guard whole: every place in the app that
++// can send something out or change a file on the iPad must either check the guard or be listed here with the reason it is safe.
++//
++// The rule being kept (src/lib/trainingGuard.ts): anything that stays in memory is fine, because leaving puts the real state back; anything
++// that leaves the iPad, or changes a file that is already there, is switched off.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readdirSync, readFileSync } from 'node:fs';
++import path from 'node:path';
++import { setDemoGuard, isTraining, TrainingBlockedError } from '../src/lib/trainingGuard';
++import { requestStaffPass } from '../src/lib/passUrl';
++
++const read = (f: string) => readFileSync(f, 'utf8');
++const walk = (dir: string): string[] => readdirSync(dir, { withFileTypes: true }).flatMap(e => e.isDirectory() ? walk(path.join(dir, e.name)) : /\.tsx?$/.test(e.name) ? [path.join(dir, e.name).split(path.sep).join('/')] : []);
++const GUARD = /isTraining\(|kvWriteAllowed\(|TrainingBlockedError|isDemo\(/;
++const EFFECTS: Record<string, RegExp> = {
++  'a network request': /\bfetch\(/,
++  'a file write or delete': /\bFS\.(writeAsStringAsync|deleteAsync|moveAsync|copyAsync|makeDirectoryAsync)\b/,
++  'a Keychain write': /\bSecureStore\.(setItemAsync|deleteItemAsync)\b/,
++  'a storage write': /\bAsyncStorage\.(setItem|removeItem|multiSet|clear)\b/,
++};
++
++/** Files that send or write something and do not check the guard themselves, each with what was checked about it. */
++const EXEMPT: Record<string, string> = {
++  'src/lib/exportCollect.ts': 'the Export wizard writes one new file in the cache folder for the person to share. Nothing that already exists is changed, and it holds only data the till already shows.',
++  'src/lib/shopify/catalogue.ts': 'downloads the result of a bulk query from the URL gql() handed back. gql() stops on the guard, so there is never a URL to fetch.',
++  'src/screens/Settings.tsx': 'Backup & transfer writes one new file in the cache folder to share. The export itself (collectBackup) and the restore (applyBackup) are guarded in backupIO.ts.',
++  'src/screens/StaffPass.tsx': 'writes one new file in the cache folder to share. The request to the pass server (requestStaffPass) is guarded, and the pass server address is blank in Demo mode.',
++};
++
++test('every file that can send something out or change a file on the iPad checks the guard, or is listed with the reason it is safe', () => {
++  const unguarded: string[] = []; const seenExempt = new Set<string>(); const staleGuarded: string[] = [];
++  for (const f of walk('src')) {
++    const src = read(f); const hits = Object.entries(EFFECTS).filter(([, re]) => re.test(src)).map(([k]) => k);
++    if (!hits.length) continue;
++    if (f in EXEMPT) { seenExempt.add(f); if (GUARD.test(src)) staleGuarded.push(f); continue; }
++    if (!GUARD.test(src)) unguarded.push(`${f} (${hits.join(', ')})`);
++  }
++  assert.deepEqual(unguarded, [], 'These do something that cannot be rolled back and never ask whether Demo mode or training is on. Make them check the guard, or add them to EXEMPT with what you checked:\n  ' + unguarded.join('\n  '));
++  assert.deepEqual(Object.keys(EXEMPT).filter(f => !seenExempt.has(f)), [], 'An exemption names a file that no longer sends or writes anything. Remove it.');
++  assert.deepEqual(staleGuarded, [], 'These now check the guard themselves, so the exemption is not needed. Remove it.');
++});
++
++test('the Square history files are the real ones on the iPad, so all four functions that change them stop first', () => {
++  const src = read('src/lib/squareHistoryIO.ts');
++  for (const fn of ['installFromUrl', 'installFromPicked', 'rebuild']) {
++    assert.match(src, new RegExp(`export async function ${fn}\\([^)]*\\)[^{]*\\{\\s*guardWrite\\(\\);`), `${fn} starts with guardWrite()`);
++  }
++  assert.match(src, /export async function removeSquareHistory\(\) \{ guardWrite\(\);/, 'removeSquareHistory starts with guardWrite()');
++  assert.match(src, /const guardWrite = \(\): void => \{ if \(isTraining\(\)\) throw new TrainingBlockedError\(/);
++  // Reading the history is how Reports and Transactions show it, and stays open.
++  for (const fn of ['loadSquareRollups', 'loadSquareSales']) {
++    const body = src.slice(src.indexOf(`export async function ${fn}`)); assert.doesNotMatch(body.slice(0, body.indexOf('\n}\n')), /guardWrite/, `${fn} is a read`);
++  }
++});
++
++test('a backup carries the real logins out of the Keychain, so exporting and restoring one stop first', () => {
++  const src = read('src/lib/backupIO.ts');
++  assert.match(src, /export async function collectBackup\(\)[^{]*\{[^]*?if \(isTraining\(\)\) throw new TrainingBlockedError\('exporting a backup'\)/);
++  assert.match(src, /export async function applyBackup\([^)]*\)[^{]*\{\s*if \(isTraining\(\)\) throw new TrainingBlockedError\('restoring a backup'\)/);
++  assert.match(src, /async function writeLogoData\([^)]*\)[^{]*\{\s*if \(isTraining\(\)\) return ''/);
++});
++
++test('CloudKit is only reached through the sync seam, whose writes check the guard, and the Cloud sync buttons are off', () => {
++  const importers = walk('src').filter(f => /from '(\.\.\/)+modules\/cloudkit-sync'/.test(read(f))).sort();
++  assert.deepEqual(importers, ['src/lib/cloudkit/cloudkitBackend.ts', 'src/screens/CloudSync.tsx'], 'a new file that imports the native module must be added here after it is checked');
++  const seam = read('src/lib/syncBackend.ts');
++  assert.match(seam, /if \(!backendWritable\(\)\) throw new BackendBlockedError\(`Writing \$\{type\}`\);\s*return requireBackend\(\)\.put\(/);
++  assert.match(seam, /if \(!backendWritable\(\)\) throw new BackendBlockedError\('Deleting a record'\)/);
++  assert.match(seam, /export const backendWritable = \(\): boolean => !isTraining\(\)/);
++  const callers = walk('src').filter(f => !/^src\/lib\/(cloudkit|shopify\/metaobjectBackend)/.test(f) && f !== 'src/lib/syncBackend.ts' && /\.put\(/.test(read(f)));
++  assert.deepEqual(callers, [], 'only the seam may call a backend\'s put()');
++  const screen = read('src/screens/CloudSync.tsx');
++  for (const spot of ['cloudSyncSetup', 'cloudSyncShare', 'cloudSyncJoin']) assert.match(screen, new RegExp(`spot=\\{SPOT\\.${spot}\\}[^>]*practice`), `the ${spot} button is off while practising`);
++});
++
++test('the pass server request is stopped by the guard, before anything is sent', async () => {
++  const real = globalThis.fetch; let sent = 0;
++  globalThis.fetch = (async () => { sent++; return { ok: false, status: 500, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) } as any; }) as any;
++  try {
++    setDemoGuard(true); assert.equal(isTraining(), true);
++    await assert.rejects(requestStaffPass('https://pass.example', 'secret', { name: 'A', role: 'owner', code: 'x', format: 'qr', shop: 'S' } as any), (e: unknown) => e instanceof TrainingBlockedError);
++    assert.equal(sent, 0, 'nothing was sent');
++    setDemoGuard(false); assert.equal(isTraining(), false);
++    await assert.rejects(requestStaffPass('https://pass.example', 'secret', { name: 'A', role: 'owner', code: 'x', format: 'qr', shop: 'S' } as any), (e: unknown) => !(e instanceof TrainingBlockedError));
++    assert.equal(sent, 1, 'and with the guard off the request is made, so it was the guard that stopped it');
++  } finally { setDemoGuard(false); globalThis.fetch = real; }
++});
