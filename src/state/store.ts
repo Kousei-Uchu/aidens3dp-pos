@@ -19,7 +19,7 @@ import type { AdjustPerms } from '../lib/adjustPerms';
 import type { CartWarnings, WarningList } from '../lib/types';
 import type { ScannerCalibration } from '../lib/scanSpeed';
 import { isTraining } from '../lib/trainingGuard';
-import { DEFAULT_FEATURES, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
+import { DEFAULT_FEATURES, noticeAllowed, readFeatures, readMode, type DeviceMode, type RegisterFeatures } from '../lib/appMode';
 import { AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_STEP_UP_MINUTES, STEP_UP_CHOICES, readMinutes } from '../lib/stepUp';
 
 export type Settings = {
@@ -120,6 +120,7 @@ export const useApp = create<App>((set, get) => ({
   setGrid: (g, version) => { set(s => ({ grid: g, gridVersion: version ?? s.gridVersion })); persist('grid', () => ({ grid: get().grid, version: get().gridVersion })); },
   notify: n => {
     const pos = get().pos;
+    if (!noticeAllowed(get().settings.appMode, get().settings.registerFeatures, n.kind)) return; // a feature this device does not hold raises no notices
     // collapse repeats of the same unread notice
     if (pos.notices.some(x => !x.read && x.kind === n.kind && x.title === n.title && x.body === n.body)) return;
     get().patchPos({ notices: [{ ...n, id: uid(), ts: new Date().toISOString() }, ...pos.notices].slice(0, 200) });

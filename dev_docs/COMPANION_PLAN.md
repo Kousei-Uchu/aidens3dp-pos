@@ -110,7 +110,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | 0176 | Device mode gate, per-device settings, setup flow, Companion features screen | Done, needs your device (T75) |
 | 0177 | App-wide PIN lock and step-up PIN | Built, needs a device test (T80) |
 | 0178 | Tabs, pages and More rows from the gate, Today and Scan tabs | Built, needs a device test (T81) |
-| 0179 | Hardware and sync gating | Planned |
+| 0179 | Hardware and sync gating | Built, needs a device test (T82) |
 | 0180 | Quick sale, expand to full POS, send to register | Planned |
 | 0181 | Help, Training and assistant gating, docs | Planned |
 | 0182 | Stock actions from Scan | Planned |
@@ -133,9 +133,9 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C9 Scan tab (0178, needs a device test)
 - [~] C10 More menu rows follow the gate (0178). Companion wording on the screens that stay is not done yet and moves to 0181.
 - [ ] C11 Phone-first layout pass for the existing screens, iPad wider layout (moves to 0181; the new Today and Scan screens are already single column)
-- [ ] C12 Zeller bridge idle without Card reader, no reader notices (0179)
-- [ ] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179)
-- [ ] C14 Notices for hidden groups not raised, old ones fall back to Today (0179)
+- [~] C12 Zeller bridge idle without Card reader, no reader notices (0179, needs a device test)
+- [~] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179, needs a device test). The outbox and saved-cart push also run while something is left to send, so nothing is stranded.
+- [~] C14 Notices for hidden groups not raised, old ones hidden (0179, needs a device test). A notice that links to a hidden page does not open it.
 - [ ] C15 Quick sale screen (0180)
 - [ ] C16 Expand quick sale into the full POS on the same cart (0180)
 - [ ] C17 Payment methods follow their groups; cash with Cash drawer off is allowed and flagged for the next drawer count (0180)

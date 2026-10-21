@@ -4,6 +4,10 @@ import * as Zeller from '@zeller-public/payments-sdk-react-native';
 import { useApp } from './state/store';
 import type { TerminalLike } from './lib/zeller';
 import { isTraining } from './lib/trainingGuard';
+import { featureOn } from './lib/appMode';
+
+/** A companion that does not hold the Card reader group never talks to the terminal: no checks, no polling, no reader notices. The provider itself stays mounted. */
+const readerOn = (): boolean => { const s = useApp.getState().settings; return isTraining() || featureOn(s.appMode, s.registerFeatures, 'cardReader'); };
 import { trainingTerminal } from './lib/trainingTerminal';
 
 let handle: TerminalLike | null = null;
@@ -18,6 +22,7 @@ export const ZellerRoot = ({ children }: { children: React.ReactNode }) => (
 
 export async function checkReader(): Promise<boolean> {
   if (isTraining()) return useApp.getState().zeller.ready; // the practice reader, not the real one: a course can make it unready, and pairing fixes it
+  if (!readerOn()) return false;
   const set = useApp.getState().set;
   if (!handle) { set({ zeller: { ready: false, message: 'Reader starting…' } }); return false; }
   const r: any = await handle.initialise();
@@ -40,6 +45,7 @@ export async function pairReader(): Promise<string | null> {
 
 function Bridge() {
   const terminal = Zeller.useTerminal() as TerminalLike;
-  useEffect(() => { handle = terminal; void checkReader(); const t = setInterval(() => { if (!useApp.getState().zeller.ready) void checkReader(); }, 60000); return () => clearInterval(t); }, [terminal]);
+  const on = useApp(s => featureOn(s.settings.appMode, s.settings.registerFeatures, 'cardReader')); // switching the group on starts the checks straight away
+  useEffect(() => { handle = terminal; if (!on) return undefined; void checkReader(); const t = setInterval(() => { if (!useApp.getState().zeller.ready) void checkReader(); }, 60000); return () => clearInterval(t); }, [terminal, on]);
   return null;
 }

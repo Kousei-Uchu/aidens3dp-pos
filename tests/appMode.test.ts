@@ -114,3 +114,24 @@ test('the app opens on Checkout on a register and Today on a companion, and both
   assert.equal(homeTab('register'), 'checkout'); assert.equal(homeTab(undefined), 'checkout'); assert.equal(homeTab('companion'), 'today');
   for (const [mode, f] of [['register', {}], ['companion', {}], ['companion', { selling: true }]] as const) assert.equal(tabAllowed(mode, f, homeTab(mode)), true);
 });
+
+test('background work follows the features, and never strands what a device still has to send', async () => {
+  const { backgroundJobs } = await import('../src/lib/appMode');
+  const none = { queuedSales: 0, savedCarts: 0 };
+  assert.deepEqual(backgroundJobs('register', {}, none), { reader: true, outbox: true, savedCarts: true, drawer: true, display: true });
+  assert.deepEqual(backgroundJobs('companion', {}, none), { reader: false, outbox: false, savedCarts: false, drawer: false, display: false });
+  assert.deepEqual(backgroundJobs('companion', { cardReader: true, cashDrawer: true, tillDisplay: true }, none), { reader: true, outbox: false, savedCarts: false, drawer: true, display: true });
+  assert.equal(backgroundJobs('companion', { selling: true }, none).outbox, true);
+  assert.equal(backgroundJobs('companion', {}, { queuedSales: 2, savedCarts: 0 }).outbox, true); // a queued sale is never left behind
+  assert.equal(backgroundJobs('companion', {}, { queuedSales: 0, savedCarts: 1 }).savedCarts, true);
+  assert.equal(backgroundJobs('nonsense', undefined, none).reader, true); // an unknown mode is a register
+});
+
+test('notices for a feature the device does not hold are not shown', async () => {
+  const { noticeAllowed, visibleNotices } = await import('../src/lib/appMode');
+  const list = [{ kind: 'reader' }, { kind: 'pass' }, { kind: 'sync' }, { kind: 'queue' }, { kind: 'stock' }, { kind: 'refund' }, { kind: 'info' }];
+  assert.equal(visibleNotices(list, 'register', {}).length, list.length);
+  assert.deepEqual(visibleNotices(list, 'companion', {}).map(n => n.kind), ['sync', 'queue', 'stock', 'refund', 'info']);
+  assert.deepEqual(visibleNotices(list, 'companion', { cardReader: true }).map(n => n.kind), ['reader', 'sync', 'queue', 'stock', 'refund', 'info']);
+  assert.equal(noticeAllowed('companion', { staffTools: true }, 'pass'), true);
+});
