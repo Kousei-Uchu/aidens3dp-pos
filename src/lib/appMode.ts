@@ -108,6 +108,25 @@ export function rowAllowed(mode: unknown, features: unknown, row: MoreRowId): bo
  */
 export const lockRequired = (s: { requirePin: boolean; appMode?: unknown }): boolean => s.requirePin || readMode(s.appMode) === 'companion';
 
+/**
+ * Background work and hardware by feature (0179). A companion does not run what it does not hold: the card reader stays idle, the
+ * cash drawer is neither pushed nor pulled, and the screensaver and keep awake stay off. The two jobs that hold the device's own
+ * data (the sale upload queue and saved carts) also run while there is something left to send, so switching Selling off never strands
+ * a queued sale or a saved cart. Pure, so the tests can pin it.
+ */
+export type JobCounts = { queuedSales: number; savedCarts: number };
+export type Jobs = { reader: boolean; outbox: boolean; savedCarts: boolean; drawer: boolean; display: boolean };
+export function backgroundJobs(mode: unknown, features: unknown, counts: JobCounts): Jobs {
+  const on = (id: FeatureId) => featureOn(mode, features, id);
+  return { reader: on('cardReader'), outbox: on('selling') || counts.queuedSales > 0, savedCarts: on('selling') || counts.savedCarts > 0, drawer: on('cashDrawer'), display: on('tillDisplay') };
+}
+
+/** Which feature a notice kind belongs to. Kinds not listed (sync, queue, stock, refund, info) always show. */
+const NOTICE_FEATURE: Partial<Record<string, FeatureId>> = { reader: 'cardReader', pass: 'staffTools' };
+export const noticeAllowed = (mode: unknown, features: unknown, kind: string): boolean => { const need = NOTICE_FEATURE[kind]; return !need || featureOn(mode, features, need); };
+/** Notices for a feature the device does not hold are neither raised nor shown, old ones included. */
+export const visibleNotices = <T extends { kind: string }>(list: T[], mode: unknown, features: unknown): T[] => list.filter(n => noticeAllowed(mode, features, n.kind));
+
 /** The mode the device is in, and the switches it has, in the shape the screens and Settings want. */
 export type DeviceModeState = { mode: DeviceMode; features: RegisterFeatures };
 export const readDeviceMode = (settings: { appMode?: unknown; registerFeatures?: unknown } = {}): DeviceModeState => ({ mode: readMode(settings.appMode), features: readFeatures(settings.registerFeatures) });

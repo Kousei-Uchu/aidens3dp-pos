@@ -53,7 +53,7 @@ import { getModule } from './src/training';
 import { isTraining } from './src/lib/trainingGuard';
 import { KeepAwake, ScreensaverLayer } from './src/ui/Screensaver';
 import { idleMs, noteActivity } from './src/lib/idle';
-import { deviceTabs, homeTab, isCompanionTab, lockRequired, readMode, routeAllowed, tabAllowed } from './src/lib/appMode';
+import { backgroundJobs, deviceTabs, homeTab, isCompanionTab, lockRequired, readMode, routeAllowed, tabAllowed, visibleNotices } from './src/lib/appMode';
 import Today from './src/screens/Today';
 import ScanTab from './src/screens/ScanTab';
 import { lockDue } from './src/lib/stepUp';
@@ -72,6 +72,20 @@ const TABS: { id: Tab; label: string; icon: React.ComponentProps<typeof Ionicons
   { id: 'notifications', label: 'Notifications', icon: 'notifications' }, { id: 'more', label: 'More', icon: 'ellipsis-horizontal-circle' },
   { id: 'today', label: 'Today', icon: 'sunny' }, { id: 'scan', label: 'Scan', icon: 'barcode' },
 ];
+
+/** The screensaver and keep awake belong to the Till display group: a companion that does not hold it gets neither. */
+function DisplayLayers() {
+  const mode = useApp(s => s.settings.appMode); const features = useApp(s => s.settings.registerFeatures);
+  return backgroundJobs(mode, features, { queuedSales: 0, savedCarts: 0 }).display ? <><KeepAwake /><ScreensaverLayer /></> : null;
+}
+
+/** The sale upload, the shared poll and the saved-cart push. A companion only runs what it holds or still has something to send (see backgroundJobs). */
+function runBackground() {
+  const s = useApp.getState(); const jobs = backgroundJobs(s.settings.appMode, s.settings.registerFeatures, { queuedSales: s.pos.outbox.length, savedCarts: s.pos.saved.length });
+  if (jobs.outbox) void processOutbox();
+  void pollShared(); // staff, settings and the shop's shared records are needed whatever the device holds
+  if (jobs.savedCarts) void pushSaved();
+}
 
 function Routes({ route: top }: { route: Route }) {
   const nav = useNav(); const mode = useApp(s => s.settings.appMode); const features = useApp(s => s.settings.registerFeatures);
@@ -114,7 +128,7 @@ function Routes({ route: top }: { route: Route }) {
 function Shell() {
   const { c } = useTheme(); const nav = useNav(); const ready = useApp(s => s.ready); const unlocked = useApp(s => s.unlocked); const staffCount = useApp(s => s.settings.staff.length);
   const setupDone = useApp(s => s.settings.setupDone);
-  const unread = useApp(s => s.pos.notices.filter(n => !n.read).length); const ui = useUi();
+  const unreadNotices = useApp(s => s.pos.notices); const unreadMode = useApp(s => s.settings.appMode); const unreadFeatures = useApp(s => s.settings.registerFeatures); const unread = visibleNotices(unreadNotices, unreadMode, unreadFeatures).filter(n => !n.read).length; const ui = useUi();
   const onlyTabs = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.tabs : undefined));
   const practiceRoutes = useTraining(s => (s.sandbox && s.run ? getModule(s.run.moduleId)?.routes : undefined));
   const { plan } = useRouteTransition(nav.stack, practiceRoutes); // the page that is leaving stays drawn while the new one arrives
@@ -146,13 +160,13 @@ function Shell() {
       setBackend(metaobjectBackend);
     })();
   }, []);
-  useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (lockRequired(s.settings) && s.settings.staff.length) s.set({ unlocked: false }); void processOutbox(); void pollShared(); void pushSaved(); }); }, []);
+  useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (lockRequired(s.settings) && s.settings.staff.length) s.set({ unlocked: false }); runBackground(); }); }, []);
   // Companion plan, patch 0176: a device that has never been set up opens the setup checklist once. Installs from before
   // this patch were marked set up by hydrate, and practice never runs it.
   useEffect(() => { if (ready && !setupDone && !isTraining() && nav.stack.length === 0) nav.push('setup'); }, [ready, setupDone, nav.stack.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ready) return;
-    const tick = () => { if (isTraining()) return; void processOutbox(); void pollShared(); void pushSaved(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
+    const tick = () => { if (isTraining()) return; runBackground(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [ready]);
@@ -196,7 +210,7 @@ export default function App() {
     <ZellerRoot>
       <SafeAreaProvider><ThemeProvider><UiProvider><NavProvider>
         <View style={{ flex: 1 }} onTouchStart={noteActivity}><StatusBar hidden /><TrainingHost><Shell /></TrainingHost><AssistantGuideOverlay /><StepUpHost /></View>
-        <KeepAwake /><ScreensaverLayer />
+        <DisplayLayers />
       </NavProvider></UiProvider></ThemeProvider></SafeAreaProvider>
     </ZellerRoot>
   );

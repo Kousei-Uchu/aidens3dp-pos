@@ -1083,3 +1083,17 @@ On the iPad, on a till that has its real catalogue, some real sales and a cash d
 6. Try the things that would change something outside the till: Settings ▸ Backup & transfer ▸ Export, Settings ▸ Square history ▸ Remove, and Staff ▸ make a cashier pass. **Most important:** each one should say it is switched off while practising, and do nothing. Then leave Demo mode and open Square history. Pass: your imported history is still there and no backup was shared.
 7. Leave Demo mode with the bar's Leave button. Pass: the price and stock you changed are back as they were, the cart you had before is back, and Shopify still shows nothing new.
 8. On the real till, start a card payment and leave it waiting on the reader, then try Demo mode. Pass: it will not start, and says to finish the payment first, in words about Demo mode and not training.
+## T82. What a companion stops doing (0179)
+
+On the phone that is a companion (T80, T81), with your real Zeller reader switched on nearby and a till you can look at. Nothing in this patch has been run on a device.
+
+1. Make sure **Card reader**, **Cash drawer** and **Till display** are off in **Device mode**. Open **More ▸ Support & diagnostics**. Pass: there is no **Zeller reader** section, and the Sync section is still there.
+2. Leave the phone on for a few minutes with the reader powered. Pass: no **Reader issue** notice appears, and the reader is not asked to do anything.
+3. Switch **Card reader** on. Pass: the reader section appears in Support & diagnostics, and **Check reader** works. Switch it off again.
+4. On the till, open the drawer and take a cash sale. Wait a minute. Pass: the phone's drawer is not touched, and the till's drawer shows no change from the phone. Switch **Cash drawer** on. Pass: the phone's drawer picks up the till's open drawer and ledger. Switch it off.
+5. Leave the phone idle for the usual screensaver time. Pass: no screensaver shows, and the phone auto-locks on its own timing as usual. Switch **Till display** on and set a short screensaver time. Pass: the screensaver shows.
+6. Make a sale on a till with the network off so it queues, then move to the phone: switch **Selling** on, queue a sale there with the network off, turn **Selling** off, then turn the network on. Pass: the queued sale still uploads.
+7. Cause a notice for a feature that is off (for example a reader issue on a register). Pass: the phone's notice list and the bell count do not show it.
+8. Tap a notice that links to a page the phone does not hold. Pass: nothing opens.
+9. On a till, check the reader, drawer, screensaver and notices behave exactly as before.
+

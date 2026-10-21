@@ -10,7 +10,7 @@ import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useRollups } from './Reports';
 import { actingRole } from '../lib/adjustPerms';
-import { lockRequired } from '../lib/appMode';
+import { lockRequired, visibleNotices } from '../lib/appMode';
 import { derived, periodRange, sumRange } from '../lib/rollup';
 import { stockText, stockToneOf } from '../lib/lookup';
 import { todayCards } from '../lib/todayCards';
@@ -18,11 +18,11 @@ import { todayCards } from '../lib/todayCards';
 export default function Today() {
   const { c } = useTheme(); const nav = useNav();
   const settings = useApp(s => s.settings); const staffId = useApp(s => s.staffId);
-  const variants = useApp(s => s.data.variants); const outbox = useApp(s => s.pos.outbox); const notices = useApp(s => s.pos.notices);
+  const variants = useApp(s => s.data.variants); const outbox = useApp(s => s.pos.outbox); const notices = useApp(s => s.pos.notices); const devMode = useApp(s => s.settings.appMode); const devFeatures = useApp(s => s.settings.registerFeatures);
   const { rows, busy, load } = useRollups();
   const [now] = useState(() => new Date());
   const role = actingRole(lockRequired(settings), settings.staff, staffId);
-  const cards = useMemo(() => todayCards({ variants: Object.values(variants), outbox, unread: notices.filter(n => !n.read).length, role }), [variants, outbox, notices, role]);
+  const cards = useMemo(() => todayCards({ variants: Object.values(variants), outbox, unread: visibleNotices(notices, devMode, devFeatures).filter(n => !n.read).length, role }), [variants, outbox, notices, devMode, devFeatures, role]);
   const totals = useMemo(() => derived(sumRange(rows, periodRange('1D', now))), [rows, now]);
   const orders = useMemo(() => sumRange(rows, periodRange('1D', now)).orders, [rows, now]);
   return (

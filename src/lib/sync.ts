@@ -20,6 +20,7 @@ import { createGiftCard } from './shopify/giftcards';
 import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
 import { adjustStock } from './shopify/inventory';
 import type { BundleConfig, Cart, SaleRecord } from './types';
+import { featureOn } from './appMode';
 
 const st = () => useApp.getState();
 let running = false;
@@ -347,9 +348,13 @@ export function drawerChanged(shift = false) {
   void pushDrawer();
 }
 
+const drawerOn = (): boolean => { const x = st().settings; return featureOn(x.appMode, x.registerFeatures, 'cashDrawer'); };
+
 export async function pushDrawer() {
   const s = st();
   if (isTraining()) return; // practice data is never sent
+  // A companion without the Cash drawer group never writes the shared drawer, except to finish an unsent change it made earlier as a register.
+  if (!drawerOn() && !s.settings.drawerPending) return;
   s.patchSettings({ drawerPending: true });
   if (!hasCreds()) return;
   const pos = st().pos;
@@ -378,7 +383,7 @@ export async function pushDrawer() {
 }
 
 async function pullDrawer() {
-  if (isTraining() || st().settings.drawerPending) return; // our unsent change wins until it is pushed
+  if (isTraining() || !drawerOn() || st().settings.drawerPending) return; // our unsent change wins until it is pushed
   const row = await getShared('settings', 'drawer'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v <= (st().settings.drawerVersion ?? 0)) return;

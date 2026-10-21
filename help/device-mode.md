@@ -35,6 +35,15 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
 - **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.
 - A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.
 
+### What a feature that is off stops doing
+- **Card reader** off: the app never talks to the terminal, so there are no reader checks and no reader notices, and **Support & diagnostics** leaves out the reader tools. Switch it on and the checks start straight away.
+- **Cash drawer** off: the device neither reads nor writes the shop's shared drawer, so a phone can never overwrite a till's drawer. The one exception is an unsent drawer change the device made earlier as a register, which finishes uploading.
+- **Selling** off: sale uploads and saved-cart uploads only run while there is something left to send, so switching Selling off never strands a queued sale or a saved cart.
+- **Till display** off: no screensaver and no keep awake.
+- **Till staff tools** off: no pass notices.
+- Notices for a feature the device does not hold are not raised, and old ones are hidden from the list and the count. A notice that links to a page the device does not hold stays put when you tap it.
+- Always running whatever the device holds: the shared poll (staff, settings and the shop's shared records), Shopify and sync checks, stock and sync notices.
+
 ### PIN and locking on a companion
 - A companion asks for a PIN when it opens, and locks itself again when nobody has touched it for a while or after it has been away in the background. **Locking** on this page sets how long: 1, 2, 5 or 10 minutes, or never. It never locks in the middle of a card payment.
 - Anything that changes something that matters asks for your PIN again if you have not typed it recently: taking a payment, refunds, changing items, stock, customers or orders, the cash drawer, Settings, Staff and backups, and changing the mode, a feature or the locking choices on this page. Signing in counts as typing it. **Ask for my PIN again after** can be every time, 1, 5 or 15 minutes. Five wrong PINs lock the app.
@@ -93,5 +102,8 @@ flowchart TD
 ### Tabs, pages and rows
 `deviceTabs` in `src/lib/appMode.ts` gives the tab bar, `homeTab` says where the app opens and where a hidden tab sends you, and `tabAllowed`, `routeAllowed` and `rowAllowed` answer for each tab, page and More row. `App.tsx` asks them for the bar and the panes, the `Routes` guard closes a page the device does not hold, and the More screen filters its rows. `src/screens/Today.tsx` draws the Today cards from `todayCards` in `src/lib/todayCards.ts`, and `src/screens/ScanTab.tsx` reuses `LookupSheet`.
 
+### Background work and hardware
+`backgroundJobs` in `src/lib/appMode.ts` says which jobs run: the reader, the sale upload, the saved-cart push, the drawer and the display layers. `runBackground` and `DisplayLayers` in `App.tsx`, `readerOn` in `src/zellerBridge.tsx` and `drawerOn` in `src/lib/sync.ts` ask it. `noticeAllowed` and `visibleNotices` decide which notices are raised (in `notify`, in the store) and shown.
+
 ### What is not wired yet
-The card reader, the cash drawer and the sync pages following the same switches arrive with patch 0179 of `dev_docs/COMPANION_PLAN.md`, and the selling path with 0180.
+Which payment methods the checkout offers, and the selling path itself, arrive with patch 0180 of `dev_docs/COMPANION_PLAN.md`.
