@@ -333,13 +333,13 @@ public class CloudKitSyncModule: Module {
     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
     let db = database()
     var rows: [[String: Any]] = []
-    var cursor: CKQueryCursor? = nil
+    var cursor: CKQueryOperation.Cursor? = nil
     if let after, !after.isEmpty {
       if let data = Data(base64Encoded: after) {
-        cursor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKQueryCursor.self, from: data)
+        cursor = try? NSKeyedUnarchiver.unarchivedObject(ofClass: CKQueryOperation.Cursor.self, from: data)
       }
     }
-    var results: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryCursor?)
+    var results: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryOperation.Cursor?)
     if let c = cursor {
       results = try await db.records(continuingMatchFrom: c, resultsLimit: limit)
     } else {
