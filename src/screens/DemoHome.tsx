@@ -1,7 +1,7 @@
 // Location: src/screens/DemoHome.tsx
 // Demo mode's home (F8): every feature, in the areas it is used in. A feature with a Training Show plays that
-// animation; one without is simply opened live. The whole till is on practice data while this is open, so trying
-// anything here touches nothing real.
+// animation; one without is simply opened live. The till is running on a copy of its own data while this is open (practice
+// data only where it has none), so trying anything here touches nothing real.
 import React from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,11 +10,12 @@ import { useTheme } from '../ui/theme';
 import { useNav, type Tab } from '../ui/nav';
 import { useDemo } from '../state/demoSession';
 import { entriesByArea, type DemoEntry } from '../lib/demoCatalog';
+import { demoIntro } from '../lib/demoData';
 import { SPOT } from '../lib/trainingSpots';
 import { Enter } from '../ui/Motion';
 
 export default function DemoHome() {
-  const { c } = useTheme(); const nav = useNav();
+  const { c } = useTheme(); const nav = useNav(); const intro = demoIntro(useDemo(s => s.source));
   const open = (e: DemoEntry) => { if (e.tab) nav.setTab(e.tab as Tab); if (e.route) nav.push(e.route); };
   return (
     <Page title="Demo mode" onBack={nav.pop}>
@@ -24,7 +25,8 @@ export default function DemoHome() {
             <View style={{ backgroundColor: c.accent, borderRadius: 999, paddingHorizontal: 10, paddingVertical: 3 }}><Txt size={12} weight="700" color={c.onAccent}>DEMO MODE</Txt></View>
           </View>
           <Txt size={17} weight="700">Try the whole till, safely</Txt>
-          <Txt sub>Everything below is real to use, but nothing is real behind it: the catalogue, customers, orders and drawer are made up, and nothing is sent to Shopify or charged to a card. Watch a feature, or open it and have a go.</Txt>
+          <Txt sub>{intro.using}{intro.gaps ? ` ${intro.gaps}` : ''}</Txt>
+          <Txt sub>{intro.rules} Watch a feature, or open it and have a go.</Txt>
           <Btn title="Leave demo mode" kind="secondary" icon="exit-outline" onPress={() => { useDemo.getState().leave(); nav.reset(); nav.setTab('more'); }} />
         </Card>
         {entriesByArea().map((g, gi) => (

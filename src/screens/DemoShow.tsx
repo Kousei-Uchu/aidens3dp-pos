@@ -16,7 +16,7 @@ export default function DemoShow() {
   if (!entry || !demo) return (
     <Page title={entry?.title ?? 'Demo'} onBack={nav.pop}>
       <View style={{ padding: 16, gap: 12 }}>
-        <Txt sub>This feature has no animated demonstration. Open it and try it live: the till is on practice data, so nothing is real.</Txt>
+        <Txt sub>This feature has no animated demonstration. Open it and try it live: the till is running on a copy, so nothing you do is saved or sent.</Txt>
         {entry && (entry.tab || entry.route) ? <Btn title="Open it" icon="open-outline" onPress={open} /> : null}
       </View>
     </Page>

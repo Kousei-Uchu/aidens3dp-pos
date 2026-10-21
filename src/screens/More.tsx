@@ -50,7 +50,7 @@ export default function More() {
         <Section>
           {demo
             ? <Row spot={SPOT.moreDemo} icon="flask-outline" title="Leave demo mode" sub="Back to your own till, exactly as you left it." last onPress={() => { useDemo.getState().leave(); nav.reset(); }} />
-            : <Row spot={SPOT.moreDemo} icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on made-up data. Nothing real is touched.' : 'Made-up data'} last onPress={() => { void openDemo(); }} />}
+            : <Row spot={SPOT.moreDemo} icon="flask-outline" title="Demo mode" sub={ui.explain ? 'Try every feature on a copy of your own data. Nothing real is touched.' : 'A copy of your data'} last onPress={() => { void openDemo(); }} />}
         </Section>
         {groups.map((g, gi) => (
           <Section key={gi}>

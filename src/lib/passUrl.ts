@@ -3,6 +3,7 @@
 import { hmac } from '@noble/hashes/hmac';
 import { sha256 } from '@noble/hashes/sha256';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils';
+import { TrainingBlockedError, isTraining } from './trainingGuard';
 
 export const PASS_URL_TTL_SEC = 300;
 export const signPass = (secret: string, code: string, ts: number) => bytesToHex(hmac(sha256, utf8ToBytes(secret), utf8ToBytes(`${code}.${ts}`)));
@@ -17,6 +18,7 @@ export const staffPassMessage = (f: StaffPassFields, ts: number) => ['staffpass'
 export const signStaffPass = (secret: string, f: StaffPassFields, ts: number) => bytesToHex(hmac(sha256, utf8ToBytes(secret), utf8ToBytes(staffPassMessage(f, ts))));
 /** Asks the pass server for a signed .pkpass and returns its bytes. */
 export async function requestStaffPass(base: string, secret: string, f: StaffPassFields, now = Date.now()): Promise<Uint8Array> {
+  if (isTraining()) throw new TrainingBlockedError('making a cashier pass'); // it asks the pass server to sign a real pass for a real badge code
   const ts = Math.floor(now / 1000);
   const res = await fetch(`${base.replace(/\/$/, '')}/staff-pass`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...f, ts, sig: signStaffPass(secret, f, ts) }) });
   if (!res.ok) throw new Error(res.status === 401 ? 'The pass server rejected the secret. Check it matches the Worker\'s POS_SECRET.' : `The pass server said ${res.status}: ${(await res.text().catch(() => '')).slice(0, 120)}`);

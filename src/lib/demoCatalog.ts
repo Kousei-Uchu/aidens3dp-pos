@@ -1,7 +1,7 @@
 // Location: src/lib/demoCatalog.ts
 // The Demo mode (F8) home screen's catalogue: every feature, in the areas the app is used in.
 // A feature that has a Training Show plays that animation (same style); one that does not is simply opened live in the
-// locked demo till, where nothing is real either way. Pure data, so the home screen and its tests agree on what is there.
+// demo till, which runs on a copy of the till's data, so nothing is real either way. Pure data, so the home screen and its tests agree on what is there.
 import { MODULES, getModule } from '../training';
 import type { Demo } from './trainingModule';
 

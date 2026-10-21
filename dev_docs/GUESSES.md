@@ -355,3 +355,17 @@ Two items were left open in F5, and one decision was made without asking you. Ch
 **Also fixed while there:** `CONTRIBUTING.md` still said four training-course test failures were known and pre-existing, which stopped being true with 0183. The README said 64 help pages, and there are 68.
 
 **Still open, and yours:** the licence choice. No LICENSE file has been added and the README still says all rights reserved.
+
+## Demo mode on the real data (0187, 2026-10-20)
+
+You asked for Demo mode to use the real catalogue and real data where there is some, and to block only what has consequences or cannot be rolled back. The rule I applied is the guard's: anything that stays in memory is allowed, because leaving puts the real state back exactly; anything that leaves the iPad, or changes a file that is already on it, is switched off. These were my choices, and each is easy to change.
+
+- **Real staff stay in the list, next to the made-up owner.** The demo is still signed in as the made-up owner with no PIN, so every feature shows and it cannot lock itself out. The real people appear on the Staff page and on the sales that name them. The alternative is hiding them, which is safer for a demo shown to a customer and less true to the till.
+- **Shopify reads are still off.** I did not allow live lookups (Orders, customer search, a catalogue refresh). The demo shows what is already on the iPad, which is what "if present" read as to me. It would be possible to allow queries and block only mutations at the one place Shopify is called, but the sync loops and the Orders and Customers screens all switch to practice data when the guard is on, so it is a patch of its own. Say if you want it.
+- **Practice data fills a gap only where an empty screen would show nothing worth seeing.** A till with a real catalogue and an empty upload queue gets no pretend queued sales, because that is the healthy case. A till with no drawer yet gets a practice drawer so the cash features can be shown.
+- **The cart being rung up and card attempts are not copied.** They belong to a sale that is really happening. Demo mode now also refuses to start while a card payment is in flight or a sale is part paid, the same rule training has.
+- **Everything pointing outside the iPad stays blank or practice** even though the rest is real: the receipt server, the pass server, the gift card claim address and the location id. This is on top of the guard, in case a path is ever missed.
+- **Exports are allowed.** The Export wizard writes one new file in the cache folder for the person to share, with data the till already shows. Backup export and restore are not allowed, because the backup carries the real logins.
+- **A copy, not a view.** The demo is a JSON copy of the data taken when it starts, so even code that edits an object in place cannot reach the real one. On a very large catalogue the copy takes a moment.
+
+**What the audit found:** the Square history screen could delete or overwrite the real history files in Demo mode (this was already true of the old Demo mode), Backup & transfer could export the real logins, and the pass request could reach the pass server. All three are now stopped, and `tests/demoguard.test.ts` keeps the list: a new file that fetches or writes must check the guard or be added with a reason.
