@@ -24,6 +24,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 
 ### Changed
 
+- Demo mode runs on a copy of your own catalogue, customers, sales, reports and cash drawer, with practice data only where your till has none. Anything that leaves the iPad or changes a file on it is switched off in the demo: exporting or restoring a backup, changing the imported Square history, and making a cashier pass (0187).
 - The app no longer draws its own sheet over the Zeller terminal's popup. A slim "waiting on terminal" strip shows instead (0013).
 - Cart rows look like an invoice, with one row for each discount, and swipe to delete (0014).
 - Text boxes stay visible above the keyboard, and every field has a suitable keyboard type (0002).

@@ -6,8 +6,11 @@ import { getClaimSecret, getPassSecret, getReceiptSecret, getToken, loadCreds, s
 import { getAssistantKey, setAssistantKey } from './assistantKey';
 import { parseGrid } from './grid';
 import { buildBackup, mergeSettings, type BackupV1 } from './backupFile';
+import { TrainingBlockedError, isTraining } from './trainingGuard';
 
 export async function collectBackup(): Promise<BackupV1> {
+  // The backup carries the real Shopify and pass logins out of the Keychain, then opens the share sheet: once it is sent it cannot be taken back.
+  if (isTraining()) throw new TrainingBlockedError('exporting a backup');
   const c = await loadCreds();
   const [passSecret, receiptSecret, claimSecret, assistantKey] = await Promise.all([getPassSecret(), getReceiptSecret(), getClaimSecret(), getAssistantKey()]);
   const st = useApp.getState();
@@ -34,6 +37,7 @@ async function readLogoData(file: string): Promise<string> {
   } catch { return ''; }
 }
 async function writeLogoData(data: string): Promise<string> {
+  if (isTraining()) return ''; // a new file in Documents that nothing would clean up afterwards
   const m = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/.exec(data);
   if (!m || m[2].length > MAX_LOGO_BYTES * 1.4) return '';
   try {
@@ -44,6 +48,7 @@ async function writeLogoData(data: string): Promise<string> {
 
 /** Applies a validated backup. This device keeps its own register id/name. Returns a message for the user. */
 export async function applyBackup(b: BackupV1): Promise<string> {
+  if (isTraining()) throw new TrainingBlockedError('restoring a backup'); // it would replace the settings and logins, and only part of that could be undone
   const st = useApp.getState();
   const incoming: Record<string, any> = { ...b.settings };
   let logoFile = '';

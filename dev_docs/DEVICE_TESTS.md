@@ -1071,3 +1071,15 @@ On the phone that is a companion (T80). Nothing in this patch has been run on a 
 9. Switch **Cash drawer** on and open **Drawer**. Pass: it opens (after the PIN prompt from T80). Switch the feature off with the drawer open. Pass: the page closes itself.
 10. On a register (till), open the app. Pass: the tabs are exactly the five it had before, and there is no Today or Scan.
 
+## T80. Demo mode on your own data (0187)
+
+On the iPad, on a till that has its real catalogue, some real sales and a cash drawer. Keep your Shopify admin open in a browser to check nothing changes there.
+
+1. Open More ▸ Demo mode. Pass: the bar across the top says *DEMO MODE · your real data, nothing is saved or sent*, and the home screen says it is a copy of your till's own data, naming what it holds (for example the catalogue, customers, sales and cash drawer) and, if anything, what is practice.
+2. Open Checkout. Pass: your own products are on the grid, with your own prices and stock, and the cart is empty even if the real till had one going.
+3. Ring up two items and pay by card. Pass: the practice terminal appears and the sale completes. Then open your Shopify admin. Pass: no new order, and no stock change.
+4. In Items, change a price and a stock count. Pass: the change shows in the demo. Check Shopify. Pass: nothing changed there.
+5. Open Transactions and Reports. Pass: your real sales and your real daily totals are there. Open the Cash drawer. Pass: it shows your real notes and coins.
+6. Try the things that would change something outside the till: Settings ▸ Backup & transfer ▸ Export, Settings ▸ Square history ▸ Remove, and Staff ▸ make a cashier pass. **Most important:** each one should say it is switched off while practising, and do nothing. Then leave Demo mode and open Square history. Pass: your imported history is still there and no backup was shared.
+7. Leave Demo mode with the bar's Leave button. Pass: the price and stock you changed are back as they were, the cart you had before is back, and Shopify still shows nothing new.
+8. On the real till, start a card payment and leave it waiting on the reader, then try Demo mode. Pass: it will not start, and says to finish the payment first, in words about Demo mode and not training.

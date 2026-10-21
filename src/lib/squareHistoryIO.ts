@@ -4,6 +4,7 @@
 import * as FS from 'expo-file-system/legacy';
 import { useApp } from '../state/store';
 import { kvDel, kvGet, kvSet } from './kv';
+import { TrainingBlockedError, isTraining } from './trainingGuard';
 import { emptyTotals, type RollupRow, type Totals } from './rollup';
 import type { SaleRecord } from './types';
 import type { HistSale } from './squareConvert';
@@ -11,6 +12,9 @@ import { addToRollups, buildLinkIndex, canonicalName, finishRollups, linkSale, l
 
 const dir = () => `${FS.documentDirectory ?? ''}square-history/`;
 const META_KEY = 'squareHistoryMeta';
+/** Demo mode and training run on a copy of the till's data, but these files are the real ones on this iPad: installing, re-matching and deleting
+ *  change them for good, so each of the four starts here. Reading the history (loadSquareRollups, loadSquareSales) stays open. */
+const guardWrite = (): void => { if (isTraining()) throw new TrainingBlockedError('changing the imported Square history'); };
 export type SquareMeta = { installedAt: string; relinkedAt: string; sales: number; refunds: number; from?: string; to?: string; lines: number; linkedLines: number; days: number };
 let cache: { rows?: RollupRow[] } = {};
 
@@ -42,6 +46,7 @@ export async function storedManifest(): Promise<SquareManifest | null> {
 
 /** Fetches the manifest from the PC script's address, downloads every file next to it, then links and builds rollups. */
 export async function installFromUrl(manifestUrl: string, progress: (m: string) => void): Promise<SquareMeta> {
+  guardWrite();
   const ctl = new AbortController(); const timer = setTimeout(() => ctl.abort(), 20000);
   let text: string;
   try { const res = await fetch(manifestUrl, { signal: ctl.signal }); if (!res.ok) throw new Error(`The PC said ${res.status}.`); text = await res.text(); }
@@ -57,6 +62,7 @@ export async function installFromUrl(manifestUrl: string, progress: (m: string) 
 
 /** Fallback: files picked from Files.app (AirDrop / iCloud / USB from the PC's `out` folder). */
 export async function installFromPicked(files: { name: string; uri: string }[], progress: (m: string) => void): Promise<SquareMeta> {
+  guardWrite();
   await FS.makeDirectoryAsync(dir(), { intermediates: true }).catch(() => {});
   let got = 0, hasManifest = false;
   for (const f of files) { const name = canonicalName(f.name); if (!name) continue; progress(`Copying ${name}…`); await FS.deleteAsync(dir() + name, { idempotent: true }); await FS.copyAsync({ from: f.uri, to: dir() + name }); got++; if (name === 'manifest.json') hasManifest = true; }
@@ -71,6 +77,7 @@ async function inferManifest(): Promise<SquareManifest> {
 
 /** Re-reads every stored month, links lines to the current Shopify catalogue, and rewrites the daily rollups. Safe to run again after "Import from Shopify". */
 export async function rebuild(progress: (m: string) => void): Promise<SquareMeta> {
+  guardWrite();
   const m = parseManifest(await FS.readAsStringAsync(dir() + 'manifest.json'));
   const st = useApp.getState(); const idx = buildLinkIndex(st.data.variants, st.data.collections);
   const roll: Record<string, Totals> = {}; let sales = 0, refunds = 0, lines = 0, linked = 0, from: string | undefined, to: string | undefined; let i = 0;
@@ -108,4 +115,4 @@ export async function loadSquareSales(): Promise<SaleRecord[]> {
   return out;
 }
 
-export async function removeSquareHistory() { await FS.deleteAsync(dir(), { idempotent: true }); await kvDel(META_KEY); cache = {}; }
+export async function removeSquareHistory() { guardWrite(); await FS.deleteAsync(dir(), { idempotent: true }); await kvDel(META_KEY); cache = {}; }
