@@ -8,7 +8,7 @@ import { routeAllowed, visibleNotices } from '../lib/appMode';
 import { retryBlocked } from '../lib/sync';
 import { outboxRetrySpot } from '../lib/trainingSpots';
 
-const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline' };
+const ICON: Record<string, any> = { sync: 'cloud-offline-outline', queue: 'time-outline', stock: 'alert-circle-outline', reader: 'card-outline', refund: 'return-down-back-outline', pass: 'wallet-outline', info: 'information-circle-outline', cash: 'cash-outline' };
 const HELP: Record<string, string> = { sync: 'fix/offline-sync', queue: 'fix/offline-sync', stock: 'fix/stock-mismatch', reader: 'fix/reader', pass: 'fix/locked-out', refund: 'orders/refunds' };
 export default function Notifications({ onBack }: { onBack?: () => void } = {}) {
   const { c } = useTheme(); const nav = useNav(); const allNotices = useApp(s => s.pos.notices); const devMode = useApp(s => s.settings.appMode); const devFeatures = useApp(s => s.settings.registerFeatures); const list = visibleNotices(allNotices, devMode, devFeatures); const outbox = useApp(s => s.pos.outbox); const patchPos = useApp(s => s.patchPos);

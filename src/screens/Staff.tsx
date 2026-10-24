@@ -83,7 +83,7 @@ export default function Staff() {
 /** The four dials of Custom mode. */
 function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: Partial<CustomUi>) => void }) {
   const label = (t: string) => <Txt size={13} weight="600" style={{ marginTop: 6 }}>{t}</Txt>;
-  const tabNames: Record<TabId, string> = { checkout: 'Checkout tab', inventory: 'Inventory tab', transactions: 'Transactions tab', notifications: 'Notifications tab', more: 'More tab' };
+  const tabNames: Record<TabId, string> = { checkout: 'Checkout tab', inventory: 'Inventory tab', transactions: 'Transactions tab', notifications: 'Notifications tab', more: 'More tab', today: 'Today tab', scan: 'Scan tab' };
   const moreNames: Record<MoreRowId, string> = { orders: 'Orders', items: 'Items', customers: 'Customers', saved: 'Saved carts', giftcards: 'Gift cards', reports: 'Reports', drawer: 'Cash drawer', staff: 'Staff', settings: 'Settings', deviceMode: 'Device mode', diagnostics: 'Diagnostics', help: 'Help', training: 'Training', lock: 'Lock register' };
   const flipTab = (id: TabId, shown: boolean) => onChange({ tabOverrides: { ...value.tabOverrides, [id]: shown } });
   const flipMore = (id: MoreRowId, shown: boolean) => onChange({ moreOverrides: { ...value.moreOverrides, [id]: shown } });
@@ -101,7 +101,7 @@ function CustomModeEditor({ value, onChange }: { value: CustomUi; onChange: (p: 
       <Txt size={12} sub>Guided steps ask one question at a time: items, discount, check and pay.</Txt>
       {value.guided ? <Toggle label="Ask for a customer as a separate step" value={value.guidedCustomer ?? false} onChange={guidedCustomer => onChange({ guidedCustomer })} /> : null}
       {label('Show individual tabs')}
-      {TAB_ORDER.map(id => <Toggle key={id} label={tabNames[id]} value={id === 'checkout' || id === 'more' || (value.tabOverrides?.[id] ?? TABS_BY_LEVEL[value.tabs].includes(id))} disabled={id === 'checkout' || id === 'more'} onChange={shown => flipTab(id, shown)} />)}
+      {TAB_ORDER.filter(id => id !== 'today' && id !== 'scan').map(id => <Toggle key={id} label={tabNames[id]} value={id === 'checkout' || id === 'more' || (value.tabOverrides?.[id] ?? TABS_BY_LEVEL[value.tabs].includes(id))} disabled={id === 'checkout' || id === 'more'} onChange={shown => flipTab(id, shown)} />)}
       {label('More menu')}
       <Segmented<CustomUi['more']> value={value.more} onChange={more => onChange({ more })} options={(['all', 'everyday', 'essential'] as const).map(v => ({ v, label: v === 'all' ? 'All' : v === 'everyday' ? 'Everyday' : 'Essentials' }))} />
       <Txt size={12} sub>{MORE_LABEL[value.more]}</Txt>

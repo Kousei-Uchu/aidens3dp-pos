@@ -28,6 +28,7 @@ import { Spot } from '../ui/Spot';
 import { SPOT, splitEqualSpot } from '../lib/trainingSpots';
 import { payHint, payQuestion, payTitle } from '../lib/simpleLabels';
 import type { SaleRecord, Tender } from '../lib/types';
+import { payMethods } from '../lib/appMode';
 
 type Card = { phase: 'idle' } | { phase: 'waiting'; text: string; amount: number } | { phase: 'declined'; text: string; amount: number; code?: string }
   | { phase: 'unknown'; ref: string; amount: number; text: string; checking: boolean } | { phase: 'notready'; text: string };
@@ -135,11 +136,14 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
   // ── cash ──
   /** Cash taken on the Cash sheet, including denomination counts for every received or given note and coin. */
+  const methods = payMethods(settings.appMode, settings.registerFeatures);
   const takeCash = (r: CashResult) => {
     const isFinal = target === remaining && r.applyCents === undefined; const { tender, settles } = cashTender(r.applyCents ?? target, r.tendered, settings.cashRounding && isFinal);
     if (!settles && r.tendered <= 0) return;
     const uuid = saleUuid(); const t: Tender = { ...tender, cashIn: r.received, cashOut: r.given };
-    useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) }); drawerChanged();
+    if (methods.cashInDrawer) { useApp.getState().patchPos({ ledger: postCashSale(useApp.getState().pos.ledger, { saleUuid: uuid, received: r.received, given: r.given, staff: staffName }) }); drawerChanged(); }
+    // No Cash drawer group on this device: the sale still takes cash, but there is no drawer to post it to, so it is flagged to be added to the next drawer count.
+    else if (t.amountCents > 0) useApp.getState().notify({ kind: 'cash', title: 'Cash outside the drawer', body: `${fmt(t.amountCents)} cash from sale ${uuid.slice(0, 8)}. Add it to the next drawer count.` });
     addTender(t, uuid, r.plan); setCashOpen(false);
   };
 
@@ -211,7 +215,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
       </View> : remaining > 0 ? (
         <View style={{ paddingHorizontal: 16, gap: 10 }}>
           {payQuestion(ui.explain, true) ? <Txt size={17} weight="700" style={{ textAlign: 'center', marginBottom: 2 }}>{payQuestion(ui.explain, true)}</Txt> : null}
-          <PayOption hint={payHint('card', ui.explain)}><Btn spot={SPOT.payCard} title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption>
+          {methods.card ? <PayOption hint={payHint('card', ui.explain)}><Btn spot={SPOT.payCard} title={payTitle('card', ui.explain, target)} icon="card-outline" disabled={lockPayButtons(card.phase)} onPress={() => void runCard()} /></PayOption> : null}
           <PayOption hint={payHint('cash', ui.explain)}><Btn spot={SPOT.payCash} title={payTitle('cash', ui.explain, target)} icon="cash-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setCashOpen(true)} /></PayOption>
           <PayOption hint={payHint('gift', ui.explain)}><Btn spot={SPOT.payGift} title={payTitle('gift', ui.explain, target)} icon="gift-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => setGift(true)} /></PayOption>
           <PayOption hint={payHint('split', ui.explain)}><Btn spot={SPOT.paySplit} title={payTitle('split', ui.explain, target)} icon="git-branch-outline" kind="secondary" disabled={lockPayButtons(card.phase)} onPress={() => { setSplitDigits(''); setSplitOpen(true); }} /></PayOption>

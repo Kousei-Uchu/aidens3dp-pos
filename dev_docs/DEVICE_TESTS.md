@@ -1097,3 +1097,19 @@ On the phone that is a companion (T80, T81), with your real Zeller reader switch
 8. Tap a notice that links to a page the phone does not hold. Pass: nothing opens.
 9. On a till, check the reader, drawer, screensaver and notices behave exactly as before.
 
+## T83. Quick sale, full checkout and send to a register (0180)
+
+On the phone that is a companion (T80 to T82), with a till you can look at. Nothing in this patch has been run on a device.
+
+1. In **Device mode** switch **Selling** on, leave **Card reader** and **Cash drawer** off. Open the **Checkout** tab. Pass: it opens a **Quick sale** screen with a find box, a **Scan** button, an amount keypad and an empty cart.
+2. Type part of an item name. Pass: matches show with stock and price, and tapping one adds it. Tap **Scan** and scan a barcode. Pass: the item is added. Use the **+** and **-** buttons. Pass: the quantity and the line price change, and **-** on one removes the line.
+3. Type an amount on the keypad and tap **Add**. Pass: a custom amount line appears. Pass: the footer shows the item count and total.
+4. Tap **Full checkout**. Pass: the whole checkout opens with the same cart. Tap **Quick sale**. Pass: you are back with the same cart.
+5. Tap **Pay**. Pass: it asks for your PIN if one is due (T80), then the Pay screen shows **Cash** and **Gift card** but no **Card**. Switch **Card reader** on and open Pay again. Pass: **Card** is there.
+6. Take a cash sale. Pass: the sale completes. On a till, open the drawer. Pass: nothing from this sale is in the till's drawer, and the phone shows a **Cash outside the drawer** notice with the amount. **Today** says there is one cash sale to add to the next drawer count.
+7. Switch **Cash drawer** on and take another cash sale. Pass: it posts to the drawer as on a register, with no notice.
+8. Build a cart and tap **Send to register**. Name it and save. Pass: the cart empties on the phone. On a till, open **More ▸ Saved carts**. Pass: the cart is there within a minute and opens with its items.
+9. Switch **Selling** off. Pass: the Checkout tab goes. On **Today** tap **Build a cart for a register**. Pass: the same screen opens with no **Pay** and no **Full checkout**, and **Send to register** works as in step 8.
+10. Queue a sale while offline, then switch Selling off. Pass: it still uploads when the network is back.
+11. On a till, check the tab bar. Pass: exactly Checkout, Inventory, Transactions, Notifications and More. There is no Today or Scan tab. In **Settings ▸ Display mode ▸ Custom** there are no Today or Scan toggles.
+

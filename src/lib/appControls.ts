@@ -214,6 +214,8 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.passScan]: 'overlay_practice_pass',
   // Inventory: the list, its chips and the item window opened from a row.
   [SPOT.tabInventory]: 'tab_inventory',
+  [SPOT.tabToday]: 'tab_today',
+  [SPOT.tabScan]: 'tab_scan',
   [SPOT.tabTransactions]: 'tab_transactions',
   [SPOT.invSearch]: 'tab_inventory',
   [SPOT.invFilters]: 'tab_inventory',

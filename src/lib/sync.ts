@@ -344,6 +344,7 @@ async function pullScannerCalibration() {
 // register's entries are folded in before we write, so a push never drops their history.
 /** A drawer change on this register. `shift` marks a change to open/paid in/out/close, which a push must keep over an older copy. */
 export function drawerChanged(shift = false) {
+  if (!drawerOn()) return; // a companion without the Cash drawer group has no drawer to change (and must not mark one as pending)
   st().patchSettings({ drawerPending: true, ...(shift ? { drawerShiftPending: true } : {}) });
   void pushDrawer();
 }

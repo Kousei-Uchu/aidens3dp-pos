@@ -111,7 +111,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | 0177 | App-wide PIN lock and step-up PIN | Built, needs a device test (T80) |
 | 0178 | Tabs, pages and More rows from the gate, Today and Scan tabs | Built, needs a device test (T81) |
 | 0179 | Hardware and sync gating | Built, needs a device test (T82) |
-| 0180 | Quick sale, expand to full POS, send to register | Planned |
+| 0180 | Quick sale, expand to full POS, send to register, payment methods by group | Built, needs a device test (T83) |
 | 0181 | Help, Training and assistant gating, docs | Planned |
 | 0182 | Stock actions from Scan | Planned |
 
@@ -136,10 +136,10 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C12 Zeller bridge idle without Card reader, no reader notices (0179, needs a device test)
 - [~] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179, needs a device test). The outbox and saved-cart push also run while something is left to send, so nothing is stranded.
 - [~] C14 Notices for hidden groups not raised, old ones hidden (0179, needs a device test). A notice that links to a hidden page does not open it.
-- [ ] C15 Quick sale screen (0180)
-- [ ] C16 Expand quick sale into the full POS on the same cart (0180)
-- [ ] C17 Payment methods follow their groups; cash with Cash drawer off is allowed and flagged for the next drawer count (0180)
-- [ ] C18 Send a cart to the register as a saved cart with Selling off (0180)
+- [~] C15 Quick sale screen (0180, needs a device test)
+- [~] C16 Expand quick sale into the full POS on the same cart (0180, needs a device test)
+- [~] C17 Payment methods follow their groups: Card needs the reader; cash with Cash drawer off is allowed, not posted to a ledger, and flagged for the next drawer count (0180, needs a device test)
+- [~] C18 Send a cart to the register as a saved cart, with Selling off or on (0180, needs a device test)
 - [ ] C19 `needs` tag on Help pages and Training modules, hidden ones unsearchable (0181)
 - [ ] C20 Nav graph and assistant gating (0181)
 - [ ] C21 `COMPANION.md`, `MODES.md`, Help page, `DEVICE_TESTS.md` steps (0181)

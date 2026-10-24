@@ -222,7 +222,7 @@ export type SaleRecord = {
 };
 
 export type Notice = {
-  id: string; ts: string; kind: 'sync' | 'queue' | 'stock' | 'reader' | 'refund' | 'pass' | 'info';
+  id: string; ts: string; kind: 'sync' | 'queue' | 'stock' | 'reader' | 'refund' | 'pass' | 'info' | 'cash';
   title: string; body?: string; route?: string; read?: boolean;
 };
 
