@@ -41,6 +41,12 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
 - **Card** is offered at Pay only when **Card reader** is on. **Cash** and **gift card** are always offered.
 - Cash with **Cash drawer** off is allowed. The sale takes the cash as normal but nothing is posted to a drawer, and a **Cash outside the drawer** notice is raised for each one. Today shows how many are waiting, and they are for adding to the next drawer count.
 
+### Help, the assistant and Training on a companion
+- **Help** leaves out the pages for a feature the device does not hold. With **Cash drawer** off there is no Cash drawer section, the card pages need **Card reader** and **Selling**, and the cart, saved cart and Pay pages need **Selling**. Search never finds them.
+- The **assistant** is in step with the device the same way it is with your role: it does not know about screens or pages for a feature the device does not hold, so it never points at them, and a search for them comes back empty. Its directions start from **Today** on a companion.
+- **Training** lists a course when the device holds **Till training**, or when the course needs nothing the device does not have. With everything off, the register courses (they start at Checkout) are hidden, and the count of finished courses covers only the ones listed. Practice itself still runs with every feature on.
+- A **register** sees every page, screen and course, exactly as before. Today and Scan are not on a register's map.
+
 ### What a feature that is off stops doing
 - **Card reader** off: the app never talks to the terminal, so there are no reader checks and no reader notices, and **Support & diagnostics** leaves out the reader tools. Switch it on and the checks start straight away.
 - **Cash drawer** off: the device neither reads nor writes the shop's shared drawer, so a phone can never overwrite a till's drawer. The one exception is an unsent drawer change the device made earlier as a register, which finishes uploading.
@@ -111,8 +117,14 @@ flowchart TD
 ### Selling
 `QuickSale` in `src/screens/QuickSale.tsx` is the quick sale and the hand-off (the `kind` says which). It uses the same cart as the checkout, the same cart operations, pricing and scanners, and the same save-cart sheet. `salesPane`, `canHandOff` and `payMethods` in `src/lib/appMode.ts` make the choices: which pane the Checkout tab shows, whether the phone can hand a cart over, and which payment methods Pay offers. With no drawer, `takeCash` in `src/screens/Pay.tsx` skips the ledger and raises a `cash` notice, and `drawerChanged` in `src/lib/sync.ts` does nothing.
 
+### Help, the assistant and Training
+- A help page lists the features it needs in its header (`needs: [cashDrawer]`). `pageAvailable` and `pagesForDevice` in `src/lib/helpDocs.ts` hide a page whose features are not all held, and every page under a hidden page. `helpSetForDevice` in `src/lib/helpBuiltin.ts` rebuilds the index for the Help screen. The page builder rejects a `needs:` value that is not a feature.
+- `screensFor` in `src/lib/assistantScreens.ts` walks the app graph for the device: a tab or page the device does not hold is not on the map, so neither is a window reachable only through it, and a companion's walks start from `tab_today`. `builtinScreens` is the register's list. `Assistant.tsx` passes the device's pages and screens to the tools, so nothing else changes.
+- `moduleAvailable` in `src/lib/appMode.ts` decides which courses the hub lists, from each course's `tabs` and `routes`.
+- Tests: `tests/devicegating.test.ts`.
+
 ### Background work and hardware
 `backgroundJobs` in `src/lib/appMode.ts` says which jobs run: the reader, the sale upload, the saved-cart push, the drawer and the display layers. `runBackground` and `DisplayLayers` in `App.tsx`, `readerOn` in `src/zellerBridge.tsx` and `drawerOn` in `src/lib/sync.ts` ask it. `noticeAllowed` and `visibleNotices` decide which notices are raised (in `notify`, in the store) and shown.
 
 ### What is not wired yet
-The wording of the screens that stay, the phone layout for existing screens, and keeping the assistant, Help and Training in step with what a companion holds, arrive with patch 0181 of `dev_docs/COMPANION_PLAN.md`.
+The wording of the screens that stay and the phone layout for existing screens are not done yet (see `dev_docs/COMPANION_PLAN.md`).

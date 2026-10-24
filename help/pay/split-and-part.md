@@ -2,6 +2,7 @@
 id: pay/split-and-part
 title: Split and part payments
 parent: pay
+needs: [selling]
 summary: Paying one bill in pieces: splitting equally or by an amount, part payments in cash or by gift card, and how the next payment amount is worked out.
 tags: [split, part payment, partial, equal, share, remaining, next payment, cancel split, mix, several payments]
 related: [pay, pay/cash, pay/card, pay/gift-card]

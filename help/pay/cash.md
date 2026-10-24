@@ -2,6 +2,7 @@
 id: pay/cash
 title: Paying by cash
 parent: pay
+needs: [selling]
 summary: Taking cash by tapping the notes and coins handed over, giving change from the drawer, and what to do when the drawer cannot make the change.
 tags: [cash, change, notes, coins, drawer, ledger, rounding, short, part payment, denomination, tap pad]
 related: [pay, pay/card, pay/receipts, cash, cash/open-close, cash/change, cash/check-change, cash/smart-change, fix/cant-make-change, sales/cart-and-prices]

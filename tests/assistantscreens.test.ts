@@ -33,7 +33,7 @@ test('the index follows the graph: every entry is a real screen, and its words c
   const t = tree(); assert.ok(t);
   for (const e of index) { assert.ok(t!.hasScreen(e.id), e.id); assert.equal(screenMeta(e.id)?.summary, e.summary); }
 });
-test('the list for the app is built once and is the same list', () => { assert.equal(builtinScreens(), builtinScreens()); assert.equal(builtinScreens().length, index.length); });
+test('the list for the app is built once and is the same list', () => { assert.equal(builtinScreens(), builtinScreens()); assert.equal(builtinScreens().length, index.filter(e => e.id !== 'tab_today' && e.id !== 'tab_scan').length); /* a register has no Today or Scan */ });
 
 // ---- roles ----
 test('a cashier is not given Settings, Staff or the windows inside them, though the Settings screen carries no roles of its own', () => {

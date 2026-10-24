@@ -2,6 +2,7 @@
 id: pay/card
 title: Paying by card
 parent: pay
+needs: [cardReader]
 summary: Taking a card payment on the Zeller terminal, what the strip and the sheets mean, and what to do when it is declined, not ready, or the result is unknown.
 tags: [card, zeller, terminal, reader, declined, unknown, cancel, tap, insert, swipe, pair, setup, fee]
 related: [pay, sales/cart-and-prices]

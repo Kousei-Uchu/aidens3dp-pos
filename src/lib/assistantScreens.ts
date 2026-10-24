@@ -11,6 +11,7 @@ import { metaInScope, scopeForReal, spotOfPlanStep, tree } from './appGraph';
 import { PAGE_ROLES } from './helpDocs';
 import { SPOT_SCREEN } from './appControls';
 import { isKnownSpot } from './trainingSpots';
+import { readMode, routeAllowed, tabAllowed, type AnyTab } from './appMode';
 
 /** How a button can open a screen (patch 0159): a tab to switch to, or a page to push. Only these two can be opened without knowing anything else. */
 export type ScreenTarget = { tab: string } | { route: string };
@@ -46,6 +47,8 @@ export type ScreenEntry = {
   walk?: Partial<Record<string, GuideStep[]>>;
   /** For a view (which has no tab or page of its own to arrive at): controls that live on it, so the guide can see the person has arrived when one is on screen. */
   arrive?: string[];
+  /** The tab or the page this screen is on, from the graph. A window belongs to the tab it opens over. The device gate (screensForDevice) reads these. */
+  tab?: string; route?: string;
   /** How a button opens it. Missing for views and windows (they only exist on top of something else) and for the pages in NOT_LINKABLE_ROUTES. */
   target?: ScreenTarget;
 };
@@ -71,21 +74,29 @@ const roleOk = (meta: JsonObject, role: string): boolean => { const r = strings(
  * is every screen that only exists in a practice lesson. Screens made while the till runs (one window per cart line) are not
  * on the graph yet, so they are not here either.
  */
-export function buildScreenIndex(roles: readonly string[] = PAGE_ROLES, gaps?: GuideGap[]): ScreenEntry[] {
-  const t = tree(); if (!t || !t.hasScreen(HOME_SCREEN)) return [];
+export function buildScreenIndex(roles: readonly string[] = PAGE_ROLES, gaps?: GuideGap[], dev?: DeviceView): ScreenEntry[] {
+  // The device narrows the graph the way a role does: a tab or page the device does not hold is not on the map, so neither is anything
+  // that can only be reached through it. A companion starts from Today, because it has no Checkout tab unless Selling is on.
+  const home = dev && readMode(dev.mode) === 'companion' ? 'tab_today' : HOME_SCREEN;
+  const devOk = (meta: JsonObject): boolean => {
+    if (!dev) return true;
+    const tab = typeof meta.tab === 'string' ? meta.tab : ''; const route = typeof meta.route === 'string' ? meta.route : '';
+    return (!tab || !isTabId(tab) || tabAllowed(dev.mode, dev.features, tab)) && (!route || routeAllowed(dev.mode, dev.features, route));
+  };
+  const t = tree(); if (!t || !t.hasScreen(home)) return [];
   const scope = scopeForReal();
   const reach: Record<string, Set<string>> = {}; const steps: Record<string, Map<string, string[]>> = {}; const walks: Record<string, Map<string, GuideStep[]>> = {};
   for (const role of roles) {
     const edgeFilter = (e: Edge): boolean => {
       const to = t.screen(e.to);
-      return !!to && metaInScope(to.meta, scope) && metaInScope(e.meta, scope) && roleOk(to.meta, role) && roleOk(e.meta, role);
+      return !!to && metaInScope(to.meta, scope) && metaInScope(e.meta, scope) && roleOk(to.meta, role) && roleOk(e.meta, role) && devOk(to.meta);
     };
-    let ids: string[] = []; try { ids = findReachable(t, HOME_SCREEN, { edgeFilter }); } catch { ids = []; }
+    let ids: string[] = []; try { ids = findReachable(t, home, { edgeFilter }); } catch { ids = []; }
     reach[role] = new Set(ids); steps[role] = new Map(); walks[role] = new Map();
     for (const id of ids) {
-      if (id === HOME_SCREEN) { steps[role].set(id, []); continue; }
+      if (id === home) { steps[role].set(id, []); continue; }
       try {
-        const plan = planRoute(t, HOME_SCREEN, [{ screen: id }], { edgeFilter, variables: PLAN_VARIABLES });
+        const plan = planRoute(t, home, [{ screen: id }], { edgeFilter, variables: PLAN_VARIABLES });
         if (!plan.ok) continue;
         const said = plan.instructions.steps.map(s => t.edge(s.edge)?.meta.say).filter((x): x is string => typeof x === 'string' && x.length > 0);
         if (said.length) steps[role].set(id, said);
@@ -114,11 +125,22 @@ export function buildScreenIndex(roles: readonly string[] = PAGE_ROLES, gaps?: G
     const guides: Partial<Record<string, GuideStep[]>> = {}; for (const r of who) { const w = walks[r].get(s.id); if (w) guides[r] = w; }
     const tab = typeof s.meta.tab === 'string' ? s.meta.tab : ''; const route = typeof s.meta.route === 'string' ? s.meta.route : '';
     const target: ScreenTarget | undefined = kind === 'tab' && tab ? { tab } : kind === 'page' && route && !NOT_LINKABLE_ROUTES.includes(route) ? { route } : undefined;
-    out.push({ id: s.id, name: label, kind: KIND_WORD[kind], summary: typeof s.meta.summary === 'string' ? s.meta.summary : '', keywords: strings(s.meta.keywords), roles: who, steps: byRole, walk: guides, ...(kind === 'view' && arriveSpots(s.id).length ? { arrive: arriveSpots(s.id) } : {}), ...(target ? { target } : {}) });
+    out.push({ id: s.id, ...(tab ? { tab } : {}), ...(route ? { route } : {}), name: label, kind: KIND_WORD[kind], summary: typeof s.meta.summary === 'string' ? s.meta.summary : '', keywords: strings(s.meta.keywords), roles: who, steps: byRole, walk: guides, ...(kind === 'view' && arriveSpots(s.id).length ? { arrive: arriveSpots(s.id) } : {}), ...(target ? { target } : {}) });
   }
   return out;
 }
 
-let cached: ScreenEntry[] | undefined;
-/** The list for the app, built the first time it is asked for. */
-export function builtinScreens(): ScreenEntry[] { return (cached ??= buildScreenIndex()); }
+/** What a device holds, as far as screens go. */
+export type DeviceView = { mode: unknown; features: unknown };
+const isTabId = (t: string): t is AnyTab => ['checkout', 'inventory', 'transactions', 'notifications', 'more', 'today', 'scan'].includes(t);
+
+const byDevice = new Map<string, ScreenEntry[]>();
+/** The screens this device can open, built the first time each combination is asked for. A register's list is the app as it has always been. */
+export function screensFor(mode: unknown, features: unknown): ScreenEntry[] {
+  const m = readMode(mode); const f = (features && typeof features === 'object' ? features : {}) as Record<string, unknown>;
+  const key = m === 'register' ? 'register' : `${m}:${Object.keys(f).filter(k => f[k] === true).sort().join(',')}`;
+  let list = byDevice.get(key); if (!list) { list = buildScreenIndex(PAGE_ROLES, undefined, { mode: m, features: f }); byDevice.set(key, list); }
+  return list;
+}
+/** The list for a register, which is what the assistant's tools used before there were companions. */
+export function builtinScreens(): ScreenEntry[] { return screensFor('register', {}); }

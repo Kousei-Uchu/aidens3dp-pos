@@ -2,6 +2,7 @@
 id: cash/smart-change
 title: Smart change
 parent: cash
+needs: [cashDrawer]
 summary: The setting that picks the notes and coins for change so the drawer stays stocked for the next sales, what it learns from, and how to read its reasons.
 tags: [smart change, change, learned, weighted, score, profile, settings, payments, show another way, coverage, stocked]
 related: [cash, cash/change, cash/check-change, cash/float-report, pay/cash]

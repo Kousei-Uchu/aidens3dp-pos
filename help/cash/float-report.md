@@ -2,6 +2,7 @@
 id: cash/float-report
 title: The daily float report
 parent: cash
+needs: [cashDrawer]
 summary: How to read the cash takings, recommended banking and float, and record notes and coins taken to the bank.
 tags: [cash, drawer, float, report, banking, bank, takings, ledger, profile, top up]
 related: [cash, cash/open-close, cash/smart-change, cash/change, cash/swap-cash]

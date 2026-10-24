@@ -2,6 +2,7 @@
 id: cash/tender-machine
 title: The cash tender machine
 parent: cash
+needs: [cashDrawer]
 summary: What the Under Construction payment setting means and how cash handling works until a machine is built.
 tags: [cash, tender machine, raspberry pi, hardware, payments, under construction, drawer]
 related: [cash, cash/change, cash/open-close]

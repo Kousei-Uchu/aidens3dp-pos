@@ -2,6 +2,7 @@
 id: sales/grid
 title: The Quick Menu grid and editing it
 parent: sales
+needs: [selling]
 summary: Tiles, categories, display groups and pages on the Quick Menu, how to change them, and how the layout is shared and moved.
 tags: [grid, quick menu, tile, category, group, page, edit, layout, import, export]
 related: [sales, sales/variants-and-stock]

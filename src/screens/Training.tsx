@@ -1,6 +1,6 @@
 // Location: src/screens/Training.tsx
 // More > Training: every course, with a dot per stage and a big green tick once both Checks are passed. Courses are never locked.
-import React, { useEffect } from 'react';
+import React, { useMemo, useEffect } from 'react';
 import { Pressable, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Card, Page, Txt } from '../ui/kit';
@@ -13,7 +13,8 @@ import { useTraining } from '../state/trainingSession';
 import { useDemo } from '../state/demoSession';
 import { MODULES } from '../training';
 import { STAGES, STAGE_LABEL, type Stage } from '../lib/trainingModule';
-import { completedCount, isComplete, staffKey, stagesDone } from '../lib/trainingProgress';
+import { isComplete, staffKey, stagesDone } from '../lib/trainingProgress';
+import { moduleAvailable } from '../lib/appMode';
 import { canOpenStage, startRun } from '../lib/trainingRun';
 
 export const firstOpenStage = (done: readonly Stage[]): Stage => STAGES.find(s => !done.includes(s) && s !== 'gratify') ?? 'info';
@@ -23,13 +24,16 @@ export default function Training() {
   useEffect(() => { void useTraining.getState().loadProgress(); }, []);
   // Starting a course while Demo mode is on leaves Demo mode first: a course does its own swap and its own guard.
   const open = (id: string, stage: Stage) => { if (useDemo.getState().active) useDemo.getState().leave(); useTraining.getState().setRun(startRun(id, stage)); nav.push('trainingRun'); };
-  const n = completedCount(progress, who);
+  // A companion lists the courses for what it holds (the register courses are the Till training group); the count follows the list.
+  const devMode = useApp(st => st.settings.appMode); const devFeatures = useApp(st => st.settings.registerFeatures);
+  const shown = useMemo(() => MODULES.filter(m => moduleAvailable(devMode, devFeatures, m)), [devMode, devFeatures]);
+  const n = shown.filter(m => progress.by[who]?.[m.id]?.done).length;
   return (
     <Page title="Training" onBack={nav.pop}>
       <View style={{ padding: 16, gap: 12 }}>
         <Enter delay={stagger(0, 120)}><Txt sub>Short courses for each job at the till. Do them in any order. Practice data is used, so nothing is saved, sent or charged.</Txt></Enter>
-        <Enter delay={stagger(1, 120)}><Txt size={13} weight="700" sub>{n} of {MODULES.length} finished</Txt></Enter>
-        {MODULES.map((m, mi) => {
+        <Enter delay={stagger(1, 120)}><Txt size={13} weight="700" sub>{n} of {shown.length} finished</Txt></Enter>
+        {shown.map((m, mi) => {
           const done = stagesDone(progress, who, m.id); const complete = isComplete(progress, who, m.id);
           return (
             <Enter key={m.id} delay={stagger(mi + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10, borderColor: complete ? c.good : c.line, borderWidth: complete ? 2 : 1 }}>
@@ -51,7 +55,7 @@ export default function Training() {
                 <Txt weight="700" color={c.onAccent}>{complete ? 'Do it again' : done.length ? 'Continue' : 'Start'}</Txt></Pressable>
             </Card></Enter>);
         })}
-        <Enter delay={stagger(MODULES.length + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10 }}>
+        <Enter delay={stagger(shown.length + 2, 120)} distance={18}><Card style={{ padding: 16, gap: 10 }}>
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}><Ionicons name="card-outline" size={34} color={c.sub} /><View style={{ flex: 1 }}><Txt size={17} weight="700">Virtual terminal</Txt><Txt size={13} sub>Practice Zeller Terminal 2</Txt></View></View>
           <Txt sub>Try the card terminal on its own: ask it for a payment, tap or insert a card, key a PIN, and see every screen it can show.</Txt>
           <Pressable onPress={() => nav.push('terminalPlay')} accessibilityRole="button" style={{ backgroundColor: c.fill, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}><Txt weight="700">Open</Txt></Pressable>

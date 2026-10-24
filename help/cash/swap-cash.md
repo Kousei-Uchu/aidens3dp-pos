@@ -2,6 +2,7 @@
 id: cash/swap-cash
 title: Swapping your own cash with the drawer
 parent: cash
+needs: [cashDrawer]
 summary: Enter the notes and coins you hold yourself and see which to swap with the drawer so it copes better with the next cash sales.
 tags: [cash, drawer, swap, exchange, own cash, pocket, notes, coins, float, ledger]
 related: [cash, cash/float-report, cash/open-close, cash/smart-change]

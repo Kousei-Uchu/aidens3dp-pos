@@ -2,6 +2,7 @@
 id: pay/receipts
 title: Receipts, QR codes and email
 parent: pay
+needs: [selling]
 summary: The Receipt sheet after a sale, how a customer gets their receipt (QR, email, text, share), what the receipt page shows, tax invoices, and what to do when a receipt is not published yet.
 tags: [receipt, tax invoice, qr, email, text, share, link, pdf, abn, gst, refund receipt, receipt server, not published, new receipt]
 related: [pay, pay/card, pay/cash, pay/gift-card, sales/customers]

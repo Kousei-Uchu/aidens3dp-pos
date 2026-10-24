@@ -2,6 +2,7 @@
 id: pay/gift-card
 title: Paying with a gift card
 parent: pay
+needs: [selling]
 summary: Scanning or typing a gift card code to pay, what the balance screen says, why the card is charged straight away, and what the messages mean.
 tags: [gift card, gift, code, qr, scan, balance, redeem, shopify, disabled, expired, not found]
 related: [pay, pay/card, pay/cash, gift/check-redeem]

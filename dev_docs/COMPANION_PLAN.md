@@ -112,7 +112,7 @@ With Selling off, the phone can still build a cart (search or scan, quantities, 
 | 0178 | Tabs, pages and More rows from the gate, Today and Scan tabs | Built, needs a device test (T81) |
 | 0179 | Hardware and sync gating | Built, needs a device test (T82) |
 | 0180 | Quick sale, expand to full POS, send to register, payment methods by group | Built, needs a device test (T83) |
-| 0181 | Help, Training and assistant gating, docs | Planned |
+| 0181 | Help, Training and assistant gating, docs | Built, needs a device test (T84) |
 | 0182 | Stock actions from Scan | Planned |
 
 ## Progress tracker
@@ -131,8 +131,8 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C7 Tabs, home tab, route guard and deep links from the gate (0178, needs a device test)
 - [~] C8 Today tab (0178, needs a device test)
 - [~] C9 Scan tab (0178, needs a device test)
-- [~] C10 More menu rows follow the gate (0178). Companion wording on the screens that stay is not done yet and moves to 0181.
-- [ ] C11 Phone-first layout pass for the existing screens, iPad wider layout (moves to 0181; the new Today and Scan screens are already single column)
+- [~] C10 More menu rows follow the gate (0178). Companion wording on the screens that stay is not done yet.
+- [ ] C11 Phone-first layout pass for the existing screens, iPad wider layout (not done yet; the new Today, Scan and quick sale screens are already single column)
 - [~] C12 Zeller bridge idle without Card reader, no reader notices (0179, needs a device test)
 - [~] C13 Outbox, drawer sync, saved-cart push, screensaver and keep awake follow groups (0179, needs a device test). The outbox and saved-cart push also run while something is left to send, so nothing is stranded.
 - [~] C14 Notices for hidden groups not raised, old ones hidden (0179, needs a device test). A notice that links to a hidden page does not open it.
@@ -140,9 +140,9 @@ Legend: `[x]` done in code, `[~]` done but needs your device, `[ ]` not started,
 - [~] C16 Expand quick sale into the full POS on the same cart (0180, needs a device test)
 - [~] C17 Payment methods follow their groups: Card needs the reader; cash with Cash drawer off is allowed, not posted to a ledger, and flagged for the next drawer count (0180, needs a device test)
 - [~] C18 Send a cart to the register as a saved cart, with Selling off or on (0180, needs a device test)
-- [ ] C19 `needs` tag on Help pages and Training modules, hidden ones unsearchable (0181)
-- [ ] C20 Nav graph and assistant gating (0181)
-- [ ] C21 `COMPANION.md`, `MODES.md`, Help page, `DEVICE_TESTS.md` steps (0181)
+- [~] C19 `needs` tag on Help pages, a device rule for Training courses, hidden ones unsearchable (0181, needs a device test)
+- [~] C20 Nav graph (Today and Scan, 0180) and assistant gating (0181, needs a device test)
+- [x] C21 Help page, `MODES.md` and `DEVICE_TESTS.md` steps (kept up to date in each patch; the separate `COMPANION.md` is not needed because the Device mode help page and this plan cover it)
 - [ ] C22 Receive, count and adjust from a Scan result (0182)
 - [ ] C23 Device tests on iPhone and iPad, by you (end)
 
