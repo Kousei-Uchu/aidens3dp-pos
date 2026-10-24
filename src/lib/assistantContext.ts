@@ -12,7 +12,7 @@ import type { ScreenEntry } from './assistantScreens';
 import { MODE_LABEL, type UiMode } from './uiMode';
 
 /** The names the tab bar shows. A test pins these to the tab names in the app graph, so they cannot drift. */
-export const TAB_LABELS: Readonly<Record<string, string>> = { checkout: 'Checkout', inventory: 'Inventory', transactions: 'Transactions', notifications: 'Notifications', more: 'More' };
+export const TAB_LABELS: Readonly<Record<string, string>> = { checkout: 'Checkout', inventory: 'Inventory', transactions: 'Transactions', notifications: 'Notifications', more: 'More', today: 'Today', scan: 'Scan' };
 
 /** What was true on the till when the question was asked. Plain values only. */
 export type RegisterContext = {

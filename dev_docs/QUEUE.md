@@ -41,15 +41,11 @@ A lease so two registers do not migrate at once, a checkpoint per group, and a v
 Stop the metaobject polling once the seam is proven, and add a flag that puts a register back on polling without a new
 build. This is where the owner decides dual-write against a clean cut-over.
 
-## Stream B: Companion mode, patches 0180 to 0182
+## Stream B: Companion mode, patches 0181 to 0182
 
 Then Companion mode, against `COMPANION_PLAN.md`. Patch 0175 saved the plan, 0176 added the setup checklist that
 records whether a device is a register or a companion and which features it holds, 0177 added the PIN lock and the
-step-up PIN, 0178 wired the gate into the tabs, pages and More rows and added the Today and Scan tabs, and 0179 made the card reader, drawer sync, uploads, display and notices follow the switches.
-
-### Companion 0180. Quick sale, expand to full POS, send to a register
-
-The companion's selling path, and how it hands a sale to a register.
+step-up PIN, 0178 wired the gate into the tabs, pages and More rows and added the Today and Scan tabs, 0179 made the card reader, drawer sync, uploads, display and notices follow the switches, and 0180 added the quick sale, the expand to the full POS, sending a cart to a register and payment methods by group.
 
 ### Companion 0181. Help, Training and assistant gating
 

@@ -75,8 +75,24 @@ export function tabAllowed(mode: unknown, features: unknown, tab: AnyTab): boole
 export const COMPANION_TAB_ORDER: AnyTab[] = ['today', 'scan', 'checkout', 'inventory', 'transactions', 'more'];
 /** The tabs this device shows, in order, before the display mode narrows them. A register has the five it has always had. */
 export function deviceTabs(mode: unknown, features: unknown, registerOrder: TabId[]): AnyTab[] {
-  return readMode(mode) === 'companion' ? COMPANION_TAB_ORDER.filter(t => tabAllowed(mode, features, t)) : registerOrder;
+  return readMode(mode) === 'companion' ? COMPANION_TAB_ORDER.filter(t => tabAllowed(mode, features, t)) : registerOrder.filter(t => !isCompanionTab(t)); // a register never shows Today or Scan
 }
+/**
+ * Selling on a companion (0180). With Selling on, the Checkout tab opens a quick sale that expands into the full POS. With Selling
+ * off there is no Checkout tab, but the phone can still build a cart and send it to a register. A register has neither: it always
+ * has the full checkout.
+ */
+export type SalesPane = 'full' | 'quick';
+export const salesPane = (mode: unknown, expanded: boolean): SalesPane => (readMode(mode) === 'companion' && !expanded ? 'quick' : 'full');
+export const canHandOff = (mode: unknown, features: unknown): boolean => readMode(mode) === 'companion' && !featureOn(mode, features, 'selling');
+
+/**
+ * Which ways of paying Pay offers. Card needs the Card reader group. Cash and gift cards are always there. With the Cash drawer group
+ * off, a cash sale is still allowed but is not posted to the drawer ledger: it is flagged so it can be added to the next drawer count.
+ */
+export type PayMethods = { card: boolean; cash: boolean; gift: boolean; cashInDrawer: boolean };
+export const payMethods = (mode: unknown, features: unknown): PayMethods => ({ card: featureOn(mode, features, 'cardReader'), cash: true, gift: true, cashInDrawer: featureOn(mode, features, 'cashDrawer') });
+
 /** Where the app opens, and where a hidden tab sends you. */
 export const homeTab = (mode: unknown): AnyTab => (readMode(mode) === 'companion' ? 'today' : 'checkout');
 

@@ -148,6 +148,8 @@ export const SPOT = {
   lookupClear: 'lookup.clear',         // Clear, in the Lookup sheet (when a result is shown)
   // Inventory
   tabInventory: 'tab.inventory',       // the Inventory tab
+  tabToday: 'tab.today',               // the Today tab (companion)
+  tabScan: 'tab.scan',                 // the Scan tab (companion)
   tabTransactions: 'tab.transactions', // the Transactions tab (patch 0162: the button had no spot, so nothing could point at it)
   invSearch: 'inv.search',             // the search box on the Inventory screen
   invFilters: 'inv.filters',           // the Filters chip on the Inventory screen

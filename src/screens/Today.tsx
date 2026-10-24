@@ -10,7 +10,7 @@ import { useNav } from '../ui/nav';
 import { useApp } from '../state/store';
 import { useRollups } from './Reports';
 import { actingRole } from '../lib/adjustPerms';
-import { lockRequired, visibleNotices } from '../lib/appMode';
+import { canHandOff, lockRequired, visibleNotices } from '../lib/appMode';
 import { derived, periodRange, sumRange } from '../lib/rollup';
 import { stockText, stockToneOf } from '../lib/lookup';
 import { todayCards } from '../lib/todayCards';
@@ -22,7 +22,7 @@ export default function Today() {
   const { rows, busy, load } = useRollups();
   const [now] = useState(() => new Date());
   const role = actingRole(lockRequired(settings), settings.staff, staffId);
-  const cards = useMemo(() => todayCards({ variants: Object.values(variants), outbox, unread: visibleNotices(notices, devMode, devFeatures).filter(n => !n.read).length, role }), [variants, outbox, notices, devMode, devFeatures, role]);
+  const cards = useMemo(() => todayCards({ variants: Object.values(variants), outbox, unread: visibleNotices(notices, devMode, devFeatures).filter(n => !n.read).length, cashFlags: notices.filter(n => n.kind === 'cash' && !n.read).length, role }), [variants, outbox, notices, devMode, devFeatures, role]);
   const totals = useMemo(() => derived(sumRange(rows, periodRange('1D', now))), [rows, now]);
   const orders = useMemo(() => sumRange(rows, periodRange('1D', now)).orders, [rows, now]);
   return (
@@ -50,6 +50,12 @@ export default function Today() {
           </View>
           {cards.low.map((v, i) => <Row key={v.id} last={i === cards.low.length - 1} title={v.productTitle + (v.variantTitle ? ` · ${v.variantTitle}` : '')} right={<Txt size={13} weight="600" color={stockToneOf(v.stock) === 'neg' || stockToneOf(v.stock) === 'out' ? c.bad : c.sub}>{stockText(v.stock)}</Txt>} onPress={() => nav.setTab('inventory')} />)}
         </Card>
+        {canHandOff(devMode, devFeatures) ? <Btn title="Build a cart for a register" icon="cart-outline" kind="secondary" onPress={() => nav.push('handoff')} /> : null}
+        {cards.cashFlags ? (
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            <Row icon="cash-outline" last title={`${cards.cashFlags} cash sale${cards.cashFlags === 1 ? '' : 's'} to add to the next drawer count`} sub="Taken on this device without a cash drawer." onPress={() => nav.push('notices')} />
+          </Card>
+        ) : null}
         {cards.stuck || cards.queued ? (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             {cards.stuck ? <Row icon="warning-outline" danger title={`${cards.stuck} sale${cards.stuck === 1 ? '' : 's'} need attention`} sub="They did not reach Shopify." onPress={() => nav.push('notices')} /> : null}

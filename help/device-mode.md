@@ -35,6 +35,12 @@ Open **More ▸ Device mode** to say what this device is. A **register** is a ti
 - **Scan** is one big button for a price check or a stock check. It opens the camera, and a Bluetooth scanner works once the check is open. It never touches a cart.
 - A tab, page or More row that belongs to a feature the device does not hold is not shown. A page that is open when its feature is switched off closes itself. **Staff** is always shown for managers and owners, so a companion can always make or reset a PIN.
 
+### Selling from a companion
+- With **Selling** on, the **Checkout** tab opens a **Quick sale**: find an item by name, SKU or barcode (or scan it with the camera or a Bluetooth scanner), type an amount, check the cart and tap **Pay**. **Full checkout** swaps in the whole checkout on the same cart, and **Quick sale** swaps back, so nothing is lost either way.
+- With **Selling** off, there is no Checkout tab, but **Today** has **Build a cart for a register**. It is the same screen without Pay: build the cart and tap **Send to register**. It becomes a saved cart that every register sees in Saved carts, ready to open and take payment.
+- **Card** is offered at Pay only when **Card reader** is on. **Cash** and **gift card** are always offered.
+- Cash with **Cash drawer** off is allowed. The sale takes the cash as normal but nothing is posted to a drawer, and a **Cash outside the drawer** notice is raised for each one. Today shows how many are waiting, and they are for adding to the next drawer count.
+
 ### What a feature that is off stops doing
 - **Card reader** off: the app never talks to the terminal, so there are no reader checks and no reader notices, and **Support & diagnostics** leaves out the reader tools. Switch it on and the checks start straight away.
 - **Cash drawer** off: the device neither reads nor writes the shop's shared drawer, so a phone can never overwrite a till's drawer. The one exception is an unsent drawer change the device made earlier as a register, which finishes uploading.
@@ -102,8 +108,11 @@ flowchart TD
 ### Tabs, pages and rows
 `deviceTabs` in `src/lib/appMode.ts` gives the tab bar, `homeTab` says where the app opens and where a hidden tab sends you, and `tabAllowed`, `routeAllowed` and `rowAllowed` answer for each tab, page and More row. `App.tsx` asks them for the bar and the panes, the `Routes` guard closes a page the device does not hold, and the More screen filters its rows. `src/screens/Today.tsx` draws the Today cards from `todayCards` in `src/lib/todayCards.ts`, and `src/screens/ScanTab.tsx` reuses `LookupSheet`.
 
+### Selling
+`QuickSale` in `src/screens/QuickSale.tsx` is the quick sale and the hand-off (the `kind` says which). It uses the same cart as the checkout, the same cart operations, pricing and scanners, and the same save-cart sheet. `salesPane`, `canHandOff` and `payMethods` in `src/lib/appMode.ts` make the choices: which pane the Checkout tab shows, whether the phone can hand a cart over, and which payment methods Pay offers. With no drawer, `takeCash` in `src/screens/Pay.tsx` skips the ledger and raises a `cash` notice, and `drawerChanged` in `src/lib/sync.ts` does nothing.
+
 ### Background work and hardware
 `backgroundJobs` in `src/lib/appMode.ts` says which jobs run: the reader, the sale upload, the saved-cart push, the drawer and the display layers. `runBackground` and `DisplayLayers` in `App.tsx`, `readerOn` in `src/zellerBridge.tsx` and `drawerOn` in `src/lib/sync.ts` ask it. `noticeAllowed` and `visibleNotices` decide which notices are raised (in `notify`, in the store) and shown.
 
 ### What is not wired yet
-Which payment methods the checkout offers, and the selling path itself, arrive with patch 0180 of `dev_docs/COMPANION_PLAN.md`.
+The wording of the screens that stay, the phone layout for existing screens, and keeping the assistant, Help and Training in step with what a companion holds, arrive with patch 0181 of `dev_docs/COMPANION_PLAN.md`.

@@ -102,8 +102,8 @@ test('Today and Scan are companion tabs: a register never shows them', () => {
 });
 
 test('the tab bar: a register keeps its five, a companion gets Today and Scan, and Selling adds Checkout', () => {
-  assert.deepEqual(deviceTabs('register', {}, TAB_ORDER), TAB_ORDER);
-  assert.deepEqual(deviceTabs(undefined, undefined, TAB_ORDER), TAB_ORDER);
+  assert.deepEqual(deviceTabs('register', {}, TAB_ORDER), ['checkout', 'inventory', 'transactions', 'notifications', 'more']); // TAB_ORDER also lists the companion tabs, a register never shows them
+  assert.deepEqual(deviceTabs(undefined, undefined, TAB_ORDER), ['checkout', 'inventory', 'transactions', 'notifications', 'more']);
   assert.deepEqual(deviceTabs('companion', {}, TAB_ORDER), ['today', 'scan', 'inventory', 'transactions', 'more']);
   assert.deepEqual(deviceTabs('companion', { selling: true }, TAB_ORDER), ['today', 'scan', 'checkout', 'inventory', 'transactions', 'more']);
   for (const t of deviceTabs('companion', { selling: true }, TAB_ORDER)) assert.ok(COMPANION_TAB_ORDER.includes(t), t);
@@ -134,4 +134,15 @@ test('notices for a feature the device does not hold are not shown', async () =>
   assert.deepEqual(visibleNotices(list, 'companion', {}).map(n => n.kind), ['sync', 'queue', 'stock', 'refund', 'info']);
   assert.deepEqual(visibleNotices(list, 'companion', { cardReader: true }).map(n => n.kind), ['reader', 'sync', 'queue', 'stock', 'refund', 'info']);
   assert.equal(noticeAllowed('companion', { staffTools: true }, 'pass'), true);
+});
+
+test('selling on a companion: the Checkout tab opens a quick sale, and with Selling off a cart can be handed to a register', async () => {
+  const { salesPane, canHandOff, payMethods } = await import('../src/lib/appMode');
+  assert.equal(salesPane('register', false), 'full'); assert.equal(salesPane(undefined, false), 'full');
+  assert.equal(salesPane('companion', false), 'quick'); assert.equal(salesPane('companion', true), 'full'); // Full checkout swaps the whole POS in
+  assert.equal(canHandOff('companion', {}), true); assert.equal(canHandOff('companion', { selling: true }), false);
+  assert.equal(canHandOff('register', {}), false);
+  assert.deepEqual(payMethods('register', {}), { card: true, cash: true, gift: true, cashInDrawer: true });
+  assert.deepEqual(payMethods('companion', { selling: true }), { card: false, cash: true, gift: true, cashInDrawer: false }); // cash is allowed, flagged, and card needs the reader
+  assert.deepEqual(payMethods('companion', { selling: true, cardReader: true, cashDrawer: true }), { card: true, cash: true, gift: true, cashInDrawer: true });
 });

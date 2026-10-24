@@ -26,7 +26,7 @@ test('only the first few are listed, but the count is the whole story', () => {
 test('stuck sales are the blocked ones, the rest are queued', () => {
   const c = todayCards({ ...base, outbox: [{ blocked: true }, {}, { blocked: false }, { blocked: true }], unread: 4 });
   assert.equal(c.stuck, 2); assert.equal(c.queued, 2); assert.equal(c.unread, 4);
-  assert.deepEqual(todayCards(base), { money: true, low: [], lowCount: 0, stuck: 0, queued: 0, unread: 0 });
+  assert.deepEqual(todayCards(base), { money: true, low: [], lowCount: 0, stuck: 0, queued: 0, unread: 0, cashFlags: 0 });
 });
 
 test('the companion tabs and the new routes are wired into the shell', async () => {

@@ -30,7 +30,7 @@ test('pages that need a cart, an item, a lesson or the chat itself have no butto
   for (const id of ['page_pay', 'page_cart', 'page_create_item', 'page_edit_item', 'page_assistant', 'page_training_run', 'page_terminal_play']) assert.equal(byId(id).target, undefined, id);
 });
 test('every target is something the app can open: a real tab, or a route the app has', () => {
-  const tabs = ['checkout', 'inventory', 'transactions', 'notifications', 'more'];
+  const tabs = ['checkout', 'inventory', 'transactions', 'notifications', 'more', 'today', 'scan'];
   for (const e of screens) { if (!e.target) continue; if ('tab' in e.target) assert.ok(tabs.includes(e.target.tab), e.id); else assert.match(e.target.route, /^[a-z][A-Za-z]+$/, e.id); }
 });
 
