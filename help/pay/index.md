@@ -2,6 +2,7 @@
 id: pay
 title: Taking payment
 parent: start
+needs: [selling]
 summary: The Payment screen: the four ways to pay, part payments, what happens when the sale is paid, and what Back does once money has been taken.
 tags: [pay, payment, charge, card, cash, gift card, split, total, remaining, receipt, cancel sale]
 related: [pay/card, pay/cash, pay/gift-card, pay/split-and-part, pay/receipts, cash, sales/cart-and-prices, sales/bundles, sales]

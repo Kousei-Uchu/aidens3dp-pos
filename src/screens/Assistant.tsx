@@ -31,7 +31,7 @@ import { recentAsks } from '../lib/assistantToolGroups';
 import { takeAssistantData, takeCatalogue } from '../lib/assistantDataIO';
 import { takeTillState } from '../lib/assistantStatusIO';
 import { takeCashState } from '../lib/assistantCashIO';
-import { builtinScreens, type ScreenEntry } from '../lib/assistantScreens';
+import { builtinScreens, screensFor, type ScreenEntry } from '../lib/assistantScreens';
 import { registerContext } from '../lib/assistantContext';
 import { screenOfRoute } from '../lib/appGraph';
 import { startGuide } from '../lib/assistantGuide';
@@ -41,6 +41,7 @@ import { kvGet, kvSet, kvDel } from '../lib/kv';
 import { isTraining } from '../lib/trainingGuard';
 import { uid } from '../lib/ids';
 import { lockRequired } from '../lib/appMode';
+import { pagesForDevice } from '../lib/helpDocs';
 
 /** Questions to start with, shown while the chat is empty. Each one is sent as it stands. */
 const STARTERS = ['How do I refund a card payment?', 'What is low on stock?', 'How much did we sell today?', 'Show me how to get to Reports'];
@@ -136,8 +137,10 @@ export default function Assistant() {
   const blocked = sendBlock({ training: isTraining() });
   const ready = isConfigured(cfg);
 
-  const helpPages = React.useMemo(() => builtinHelp().pages, []);
-  const screenList = React.useMemo(() => builtinScreens(), []);
+  // What this device holds narrows what the assistant knows, the same way a role does: pages and screens of a feature it does not hold are not there to find.
+  const devMode = useApp(st => st.settings.appMode); const devFeatures = useApp(st => st.settings.registerFeatures);
+  const helpPages = React.useMemo(() => pagesForDevice(builtinHelp().pages, devMode, devFeatures), [devMode, devFeatures]);
+  const screenList = React.useMemo(() => screensFor(devMode, devFeatures), [devMode, devFeatures]);
 
   const send = useCallback(async (input: string, detail: Detail, o: { search?: boolean; replace?: string } = {}) => {
     const trimmed = input.trim(); if (!trimmed || busy) return;

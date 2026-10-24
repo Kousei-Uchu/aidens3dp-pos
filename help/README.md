@@ -16,6 +16,8 @@ parent: sales                    (every page except `start` needs one; it must e
 summary: One line for lists and search results.
 tags: [cart, discount]           (words people might search for)
 related: [sales]                 (pages to list under "Related", optional)
+needs: [cashDrawer]              (optional: a device without these features does not show the page, and neither do its sub-pages.
+                                  Values: selling, cardReader, cashDrawer, staffTools, tillDisplay, tillTraining. See help/device-mode.)
 updated: 2026-10-11              (optional, YYYY-MM-DD)
 ---
 ```

@@ -2,6 +2,7 @@
 id: sales/lookup-tiles
 title: Lock POS, Price check and Stock check
 parent: sales
+needs: [selling]
 summary: The three Quick Menu buttons that do not sell anything: lock the register, look up a price and its deals, look up stock.
 tags: [lock, lock pos, price check, stock check, scan, lookup, sign in, deals, stock]
 related: [sales, sales/grid, sales/scanners, sales/variants-and-stock]

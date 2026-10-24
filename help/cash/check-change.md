@@ -2,6 +2,7 @@
 id: cash/check-change
 title: Check change
 parent: cash
+needs: [cashDrawer]
 summary: Ask the POS, before you take a customer's notes, whether the drawer can make the change for this sale, whether it is worth it, or whether to ask for card.
 tags: [check change, change, notes, coins, tile, grid, cart menu, worth it, card, ledger, customer has]
 related: [cash, cash/change, cash/smart-change, pay/cash, sales/grid]

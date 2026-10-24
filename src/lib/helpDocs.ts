@@ -20,6 +20,7 @@
 // A ```screen block is a picture of a screen, drawn by the app (src/ui/HelpFigure.tsx) and by the Docs site from
 // the HTML this file pre-renders into the bundle. See src/lib/helpFigures.ts for the lines it understands.
 import { figureToHTML, parseFigure } from './helpFigures';
+import { FEATURE_IDS, featureOn, type FeatureId } from './appMode';
 
 export const DEPTHS = ['basic', 'deep', 'advanced'] as const;
 export type Depth = (typeof DEPTHS)[number];
@@ -35,6 +36,8 @@ export type Page = {
   id: string; title: string; parent?: string; summary: string; tags: string[]; related: string[]; updated?: string;
   /** Only these roles may see the page (the assistant leaves it out for everyone else). Absent means every role. */
   roles?: string[];
+  /** Only a device that holds all of these features shows the page (a companion with the Cash drawer group off has no cash pages). Absent means every device. Values are FeatureIds. */
+  needs?: string[];
   /** Text before the first depth heading. Shown at every depth. */
   lead: string;
   sections: Record<Depth, string>;
@@ -110,7 +113,7 @@ export function parsePage(file: string, raw: string): { page: Page } | { issue: 
   const s = (k: string) => (typeof fm.meta[k] === 'string' ? (fm.meta[k] as string).trim() : '');
   const l = (k: string) => (Array.isArray(fm.meta[k]) ? (fm.meta[k] as string[]) : typeof fm.meta[k] === 'string' && s(k) ? [s(k)] : []);
   const sp = splitSections(fm.body);
-  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), ...(l('roles').length ? { roles: l('roles') } : {}), lead: sp.lead, sections: sp.sections, file } };
+  return { page: { id: s('id'), title: s('title'), ...(s('parent') ? { parent: s('parent') } : {}), summary: s('summary'), tags: l('tags'), related: l('related'), ...(s('updated') ? { updated: s('updated') } : {}), ...(l('roles').length ? { roles: l('roles') } : {}), ...(l('needs').length ? { needs: l('needs') } : {}), lead: sp.lead, sections: sp.sections, file } };
 }
 
 // ── links ────────────────────────────────────────────────────────────────────
@@ -214,10 +217,20 @@ export function trail(idx: HelpIndex, id: string): Page[] {
 export const PAGE_ROLES: readonly string[] = ['cashier', 'manager', 'owner'];
 /** Whether this role may see the page: pages without a `roles:` header are for everyone. */
 export const pageVisibleTo = (p: Pick<Page, 'roles'>, role: string): boolean => !p.roles || p.roles.length === 0 || p.roles.includes(role);
+/** Whether this device shows the page: it holds every feature in the page's `needs:` header. A register holds them all. */
+export const pageAvailable = (p: Pick<Page, 'needs'>, mode: unknown, features: unknown): boolean => !p.needs || p.needs.every(f => (FEATURE_IDS as readonly string[]).includes(f) && featureOn(mode, features, f as FeatureId));
+/** The pages this device shows. A page whose parent is hidden is hidden too, so no page is left hanging with a broken trail. */
+export function pagesForDevice<T extends Pick<Page, 'id' | 'parent' | 'needs'>>(pages: T[], mode: unknown, features: unknown): T[] {
+  const hidden = new Set(pages.filter(p => !pageAvailable(p, mode, features)).map(p => p.id));
+  const byId = new Map(pages.map(p => [p.id, p] as const));
+  const gone = (p: T): boolean => { const seen = new Set<string>(); let cur: T | undefined = p; while (cur && !seen.has(cur.id)) { if (hidden.has(cur.id)) return true; seen.add(cur.id); cur = cur.parent ? byId.get(cur.parent) : undefined; } return false; };
+  return pages.filter(p => !gone(p));
+}
 const ID_OK = /^[a-z0-9]+(?:-[a-z0-9]+)*(?:\/[a-z0-9]+(?:-[a-z0-9]+)*)*$/;
 /** Everything that would make the help wrong or broken. An empty list means the set is sound. */
 export function validatePages(pages: Page[]): PageIssue[] {
   const issues: PageIssue[] = []; const bad = (p: Page, problem: string) => issues.push({ file: p.file, id: p.id || undefined, problem });
+  for (const p of pages) for (const f of p.needs ?? []) if (!(FEATURE_IDS as readonly string[]).includes(f)) bad(p, `needs: "${f}" is not a feature (${FEATURE_IDS.join(', ')}).`);
   const seen = new Map<string, Page>();
   for (const p of pages) {
     if (!p.id) { bad(p, 'No `id`.'); continue; }
@@ -301,7 +314,7 @@ export function readBundle(raw: unknown): HelpBundle | null {
     if (!x || typeof x !== 'object') continue; const p = x as Record<string, unknown>; const sec = (p.sections ?? {}) as Record<string, unknown>;
     if (typeof p.id !== 'string' || !p.id || typeof p.title !== 'string') continue;
     const str = (v: unknown) => (typeof v === 'string' ? v : ''); const arr = (v: unknown) => (Array.isArray(v) ? v.filter((t): t is string => typeof t === 'string') : []);
-    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), ...(arr(p.roles).length ? { roles: arr(p.roles) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) }, ...(arr(p.figures).length ? { figures: arr(p.figures) } : {}) });
+    pages.push({ id: p.id, title: p.title, ...(str(p.parent) ? { parent: str(p.parent) } : {}), summary: str(p.summary), tags: arr(p.tags), related: arr(p.related), ...(str(p.updated) ? { updated: str(p.updated) } : {}), ...(arr(p.roles).length ? { roles: arr(p.roles) } : {}), ...(arr(p.needs).length ? { needs: arr(p.needs) } : {}), lead: str(p.lead), sections: { basic: str(sec.basic), deep: str(sec.deep), advanced: str(sec.advanced) }, ...(arr(p.figures).length ? { figures: arr(p.figures) } : {}) });
   }
   return pages.length ? { version: r.version, pages } : null;
 }

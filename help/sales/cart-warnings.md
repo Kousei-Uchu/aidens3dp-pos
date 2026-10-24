@@ -2,6 +2,7 @@
 id: sales/cart-warnings
 title: Customer warnings at Charge
 parent: sales
+needs: [selling]
 summary: Prompts that appear before payment when the cart holds a chosen item or category, such as "joints are fragile", and how to set them up.
 tags: [warning, customer warning, prompt, fragile, acknowledge, charge, category, always show, next, back]
 related: [sales, sales/cart-and-prices, sales/bundles, pay, settings]

@@ -2,6 +2,7 @@
 id: sales/cart-and-prices
 title: The cart and how prices are worked out
 parent: sales
+needs: [selling]
 summary: What is in the cart, how to change a line, and how bundles, automatic deals and discounts turn into the final price.
 tags: [cart, discount, bundle, price, total, line, customer]
 related: [sales, concepts/money, concepts/roles]

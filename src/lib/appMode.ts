@@ -93,6 +93,15 @@ export const canHandOff = (mode: unknown, features: unknown): boolean => readMod
 export type PayMethods = { card: boolean; cash: boolean; gift: boolean; cashInDrawer: boolean };
 export const payMethods = (mode: unknown, features: unknown): PayMethods => ({ card: featureOn(mode, features, 'cardReader'), cash: true, gift: true, cashInDrawer: featureOn(mode, features, 'cashDrawer') });
 
+/**
+ * Which practice courses the Training hub lists (0181). A register lists them all. A companion lists a course when it holds the
+ * **Till training** group, or when the course never needs anything the device does not hold: it does not start at the Checkout tab
+ * and every page it visits is one the device has. The practice itself always runs with every feature on (the sandbox sees to that).
+ */
+export const moduleAvailable = (mode: unknown, features: unknown, m: { tabs: readonly string[]; routes: readonly string[] }): boolean =>
+  readMode(mode) !== 'companion' || featureOn(mode, features, 'tillTraining') || (m.tabs.every(t => t !== 'checkout' && (!isKnownTab(t) || tabAllowed(mode, features, t as AnyTab))) && m.routes.every(r => routeAllowed(mode, features, r)));
+const isKnownTab = (t: string): boolean => ['checkout', 'inventory', 'transactions', 'notifications', 'more', 'today', 'scan'].includes(t);
+
 /** Where the app opens, and where a hidden tab sends you. */
 export const homeTab = (mode: unknown): AnyTab => (readMode(mode) === 'companion' ? 'today' : 'checkout');
 

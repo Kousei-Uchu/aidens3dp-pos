@@ -2,6 +2,7 @@
 id: fix/reader
 title: Reader not ready or pairing
 parent: fix
+needs: [cardReader]
 summary: Check the Zeller terminal connection, pair it again if needed, and distinguish reader trouble from a card decline.
 tags: [reader, Zeller, pairing, terminal, offline, Wi-Fi, diagnostics, card]
 related: [fix, fix/card-declined, settings/payments, pay/card]

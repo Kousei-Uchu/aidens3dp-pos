@@ -15,7 +15,7 @@ import { SPOT } from '../lib/trainingSpots';
 import { isLockScreen } from '../lib/posLock';
 import { assistantEntryVisible } from '../lib/assistantChat';
 import { useCanEditAssistant } from './AssistantSettings';
-import { builtinHelp } from '../lib/helpBuiltin';
+import { builtinHelp, helpSetForDevice } from '../lib/helpBuiltin';
 import { DEPTHS, DEPTH_BLURB, DEPTH_LABEL, ROOT_ID, depthsPresent, resolveLinks, searchPages, selectDepth, trail, type Depth } from '../lib/helpDocs';
 import { parseBlocks } from '../lib/mdBlocks';
 import { fetchRemoteHelp } from '../lib/helpRemote';
@@ -42,7 +42,9 @@ export default function Help({ id }: { id?: string }) {
     });
     return () => { current = false; };
   }, [docsUrl, builtIn.version]);
-  const { index, pages } = helpSet;
+  const devMode = useApp(st => st.settings.appMode); const devFeatures = useApp(st => st.settings.registerFeatures);
+  const shown = useMemo(() => helpSetForDevice(helpSet, devMode, devFeatures), [helpSet, devMode, devFeatures]); // a companion has no pages for features it does not hold
+  const { index, pages } = shown;
   const depth = asDepth(useApp(s => s.settings.helpDepth)); const patch = useApp(s => s.patchSettings);
   const [hist, setHist] = useState<string[]>([id && index.byId[id] ? id : ROOT_ID]);
   const [q, setQ] = useState(''); const [menu, setMenu] = useState(false);

@@ -2,6 +2,7 @@
 id: cash/change
 title: How change is worked out
 parent: cash
+needs: [cashDrawer]
 summary: Where the change comes from, how the notes and coins are picked, what "Can't make change" really means, and the three ways round it.
 tags: [change, cannot make change, ledger, notes, coins, fewest pieces, exact, ask for less, part cash, cash refund, impossible, drawer record]
 related: [cash, pay/cash, cash/open-close, cash/check-change, cash/smart-change, fix/cant-make-change]

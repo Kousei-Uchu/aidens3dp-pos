@@ -2,6 +2,7 @@
 id: fix/cant-make-change
 title: The drawer cannot make change
 parent: fix
+needs: [cashDrawer]
 summary: Respond when the cash drawer ledger cannot make exact change, or check whether a different handover would work.
 tags: [cash, change, drawer, ledger, notes, coins, part payment, cash rounding]
 related: [fix, cash/change, cash/check-change, pay/cash]

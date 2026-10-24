@@ -2,6 +2,7 @@
 id: cash/open-close
 title: Opening, paid in and out, counting and closing
 parent: cash
+needs: [cashDrawer]
 summary: Opening the drawer with a float, recording money paid in and out, correcting the contents, and counting and closing at the end of the day (the Z-report).
 tags: [open drawer, float, paid in, paid out, count, close, z-report, over, short, correct contents, expected, shift, banking]
 related: [cash, pay/cash]

@@ -2,6 +2,7 @@
 id: sales/saved-carts
 title: Saved carts
 parent: sales
+needs: [selling]
 summary: Park a sale to finish later, find it again on any register, merge it into another cart, and how saved carts are shared.
 tags: [saved cart, save cart, park, hold, open, merge, assign, delete, swipe, sync]
 related: [sales, sales/cart-and-prices, sales/customers, sales/grid]

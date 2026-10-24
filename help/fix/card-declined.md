@@ -2,6 +2,7 @@
 id: fix/card-declined
 title: Card declined or payment result is unclear
 parent: fix
+needs: [cardReader]
 summary: Respond safely to a declined card, interrupted terminal request or payment whose final result is unknown.
 tags: [card declined, payment, Zeller, terminal, timeout, unknown, retry, split]
 related: [fix, fix/reader, pay/card, pay/split-and-part]

@@ -2,6 +2,7 @@
 id: cash
 title: The cash drawer and ledger
 parent: start
+needs: [cashDrawer]
 summary: What More ▸ Cash drawer shows, the difference between the shift figures and the notes-and-coins ledger, what updates the ledger, and why it can drift.
 tags: [cash, drawer, ledger, float, notes, coins, expected, paid in, paid out, history, z-report, per register]
 related: [cash/open-close, cash/change, cash/check-change, cash/smart-change, cash/float-report, cash/swap-cash, cash/tender-machine, pay/cash, pay]

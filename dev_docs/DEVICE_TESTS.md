@@ -1113,3 +1113,14 @@ On the phone that is a companion (T80 to T82), with a till you can look at. Noth
 10. Queue a sale while offline, then switch Selling off. Pass: it still uploads when the network is back.
 11. On a till, check the tab bar. Pass: exactly Checkout, Inventory, Transactions, Notifications and More. There is no Today or Scan tab. In **Settings ▸ Display mode ▸ Custom** there are no Today or Scan toggles.
 
+## T84. Help, the assistant and Training on a companion (0181)
+
+On the phone that is a companion with every feature off, then with some switched on. Nothing in this patch has been run on a device.
+
+1. Open **More ▸ Help**. Pass: there is no **Cash drawer** section, and the **Pay** section is missing. Search for "float report" and "swap cash". Pass: nothing is found.
+2. In **Device mode** switch **Cash drawer** on and open Help again. Pass: the **Cash drawer** section and its pages are there and searchable.
+3. Switch **Selling** on and **Card reader** on. Pass: the **Pay** section is back, and so is the card page. Switch **Card reader** off. Pass: the card page goes and the others stay.
+4. Open **More ▸ Training** with everything off. Pass: only courses that do not start at Checkout are listed, and the "finished" count matches the list. Switch **Till training** on. Pass: every course is listed. Start one. Pass: it runs normally, with every feature on inside the practice.
+5. Open the assistant and ask where the cash drawer is, with Cash drawer off. Pass: it answers as it would for something it cannot find. Ask how to scan an item. Pass: it points at **Scan** and starts from **Today**. Switch Cash drawer on and ask again. Pass: it now knows the drawer.
+6. On a register (till), open Help, Training and the assistant. Pass: every page, course and screen is there as before, and the assistant knows nothing about Today or Scan.
+
