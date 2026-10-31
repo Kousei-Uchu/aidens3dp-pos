@@ -44,6 +44,15 @@ export type CloudKitSyncNative = {
   putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   getRollup?(handle: string): Promise<Record<string, any> | null>;
   listRollups?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 4: events and payment attempts
+  putEvent?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  listEvents?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  putAttempt?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getAttempt?(handle: string): Promise<Record<string, any> | null>;
+  listAttempts?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  putResolution?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  getResolution?(handle: string): Promise<Record<string, any> | null>;
+  listResolutions?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   // Patch 6b: the shared cash drawer
   putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
   getDrawerShift?(): Promise<Record<string, any> | null>;

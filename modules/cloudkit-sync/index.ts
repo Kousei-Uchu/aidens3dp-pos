@@ -177,3 +177,38 @@ export async function getDrawerCheckpoint(): Promise<Record<string, any> | null>
   if (!native?.getDrawerCheckpoint) return null;
   return native.getDrawerCheckpoint();
 }
+
+// Patch 4: events and payment attempts. The names match EventNative in src/lib/cloudkit/eventCloud.ts, so this module can be
+// handed to it as it is.
+export async function putEvent(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putEvent) throw new Error(CLOUDKIT_MISSING);
+  return native.putEvent(handle, fields);
+}
+export async function listEvents(limit = 100, after?: string | null): Promise<Page> {
+  if (!native?.listEvents) return { rows: [], next: null };
+  return native.listEvents(limit, after ?? null);
+}
+export async function putAttempt(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putAttempt) throw new Error(CLOUDKIT_MISSING);
+  return native.putAttempt(handle, fields);
+}
+export async function getAttempt(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getAttempt) return null;
+  return native.getAttempt(handle);
+}
+export async function listAttempts(limit = 100, after?: string | null): Promise<Page> {
+  if (!native?.listAttempts) return { rows: [], next: null };
+  return native.listAttempts(limit, after ?? null);
+}
+export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
+  return native.putResolution(handle, fields);
+}
+export async function getResolution(handle: string): Promise<Record<string, any> | null> {
+  if (!native?.getResolution) return null;
+  return native.getResolution(handle);
+}
+export async function listResolutions(limit = 100, after?: string | null): Promise<Page> {
+  if (!native?.listResolutions) return { rows: [], next: null };
+  return native.listResolutions(limit, after ?? null);
+}

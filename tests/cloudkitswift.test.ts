@@ -44,3 +44,15 @@ test('recordToDict reads the encrypted values by name and hands them back under 
   const b = body('recordToDict');
   assert.match(b, /cloudKitEncryptedKeys\[record\.recordType\]/); assert.match(b, /record\.encryptedValues\[key\]/); assert.match(b, /out\["encrypted"\] = enc/);
 });
+
+// Events and payment attempts. A resolution and an event must be written once (the first one stays); an attempt is updated in place.
+const fn = (name: string): string => { const i = src.indexOf(`AsyncFunction("${name}")`); assert.ok(i >= 0, `${name} exists`); return src.slice(i, src.indexOf('\n    }', i)); };
+test('events and resolutions are written once, and attempts are updated in place', () => {
+  assert.match(fn('putEvent'), /putRecordOnce\(recordType: "Event", recordName: "event-/);
+  assert.match(fn('putResolution'), /putRecordOnce\(recordType: "Resolution", recordName: "resolve-/);
+  assert.match(fn('putAttempt'), /upsertRecord\(recordType: "Attempt", recordName: "attempt-/);
+});
+test('the names the JavaScript side builds match the names the Swift reads', () => {
+  for (const [name, prefix, type] of [['getAttempt', 'attempt-', 'Attempt'], ['getResolution', 'resolve-', 'Resolution']] as const) assert.match(fn(name), new RegExp(`getRecord\\(recordType: "${type}", recordName: "${prefix}`));
+  for (const [name, type] of [['listEvents', 'Event'], ['listAttempts', 'Attempt'], ['listResolutions', 'Resolution']] as const) assert.match(fn(name), new RegExp(`listRecords\\(recordType: "${type}"`));
+});

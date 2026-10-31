@@ -80,8 +80,10 @@ export const attemptRecordName = (saleUuid: string, ref: string): string => `att
 export const resolutionRecordName = (saleUuid: string, ref: string): string => `resolve-${saleUuid}-${ref}`;
 export type SharedAttempt = Attempt & { registerId: string; registerName: string; resolvedAt?: string };
 
-type Open = Exclude<Attempt['status'], 'resolved'>;
+export type OpenStatus = Exclude<Attempt['status'], 'resolved'>;
+type Open = OpenStatus;
 const OPEN: readonly Open[] = ['started', 'unknown', 'cancelled', 'declined', 'approved'];
+export const isOpenStatus = (s: unknown): s is OpenStatus => OPEN.includes(s as Open);
 /** How far along an attempt is. A status only ever moves to a higher number, so a late upload from an offline register cannot undo a newer one. */
 const RANK: Record<Open, number> = { started: 0, unknown: 1, cancelled: 2, declined: 2, approved: 2 };
 /** The status to keep when two copies of an attempt meet: the further along one, and the one already stored when they tie. */

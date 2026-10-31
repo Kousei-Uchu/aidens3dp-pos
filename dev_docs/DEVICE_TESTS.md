@@ -1137,3 +1137,16 @@ Needs two iPads, each signed in to a different Apple ID, both running a build wi
 6. Sign the participant iPad out of iCloud (or remove it from the share) and read again. Pass: the read fails or returns nothing, and does not return card details.
 7. Write the same sale record a second time from the participant iPad with a changed note. Pass: it succeeds (no `serverRecordChanged` error), the note changes, and `secure_json` is still readable on the owner iPad.
 8. Check the total of a day's sales on the participant iPad using the plain `total_cents` fields only. Pass: it adds up without reading any encrypted field.
+
+## T86. Events and payment attempts in CloudKit (0197)
+
+Needs two iPads on the shop's share (T74), both on a build with this patch. Nothing in this patch has been run on a device, the Swift has not been compiled, and the app does not call any of this yet, so every step is run from a debug build that calls `pushCloudEvents`, `pushCloudAttempt`, `pullCloudEvents` and `pullCloudAttempts` directly.
+
+1. In the CloudKit dashboard (Development), make `modificationDate` sortable and queryable on the `Event`, `Attempt` and `Resolution` types. Pass: a list call from each iPad returns records instead of an error about the index.
+2. On iPad A, push three events (one of them a decline). Push the same three again. Pass: the dashboard shows three `Event` records, and the second push reports zero uploaded.
+3. On iPad B, push one event with exactly the same fields as one of A's. Pass: there are now four events, and each carries its own register's name.
+4. On either iPad, pull the events and build the combined CSV. Pass: every event appears once, oldest first, with the register's name in the last column.
+5. On iPad A, push an attempt with status `unknown`. Pass: iPad B's pull shows it as unresolved, with A's name.
+6. Push the same attempt from B with status `started`. Pass: it stays `unknown`, and A's name stays on it.
+7. Resolve the attempt on A and B within a second of each other (two debug buttons, or two quick taps). Pass: the dashboard shows one `Resolution` record, both iPads' pulls show the same person resolved it, and the iPad that came second was told who won.
+8. Sign iPad B out of iCloud and try step 5 again. Pass: the push fails with a clear error and does not appear to succeed.
