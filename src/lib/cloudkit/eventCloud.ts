@@ -5,7 +5,7 @@
 // csvStore and Pay, and nothing reaches it unless the CloudKit backend is the active one, so today's behaviour is unchanged.
 // Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md items 9 and 12, Q3, Q10, Q13.
 import type { Attempt } from '../../state/store';
-import { attemptFromFields, attemptToFields, eventFromFields, eventIdFromRecord, eventToFields, eventsToUpload, furtherStatus, isOpenStatus, type EventInput, type OpenStatus, type SharedAttempt, type SharedEvent } from '../eventRecords';
+import { attemptFromFields, attemptToFields, eventFromFields, eventId, eventIdFromRecord, eventToFields, eventsToUpload, furtherStatus, isOpenStatus, type EventInput, type OpenStatus, type SharedAttempt, type SharedEvent } from '../eventRecords';
 import { pageAll, PAGE_SIZE } from './drawerCloud';
 
 type Rec = Record<string, any>;
@@ -46,6 +46,14 @@ export async function pushCloudEvents(n: EventNative, registerId: string, regist
   const todo = eventsToUpload(registerId, local, remoteIds);
   for (const { id, event } of todo) await n.putEvent(id, eventToFields(registerId, registerName, event));
   return todo.length;
+}
+
+/**
+ * Upload one event as it happens. No listing first: the event is written once under its own id, so an event already there is left
+ * alone and repeating this is safe. `pushCloudEvents` is the pass that catches up everything this one missed.
+ */
+export async function pushCloudEvent(n: EventNative, registerId: string, registerName: string, e: EventInput): Promise<void> {
+  await n.putEvent(eventId(registerId, e), eventToFields(registerId, registerName, e));
 }
 
 const handleOf = (a: { saleUuid: string; ref: string }): string => `${a.saleUuid}-${a.ref}`;
