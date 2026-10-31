@@ -1175,3 +1175,16 @@ Needs two iPads on the shop's share (T74) and a card reader on at least one, bot
 6. Turn airplane mode on at A and make a payment end as cancelled, then turn it off. Pass: no error shows at A, and within about 30 seconds the `Attempt` record appears once.
 7. Force-quit and reopen A twice. Pass: the number of `Attempt` and `Resolution` records does not change.
 8. Start practice mode (Training) on A and run a practice card payment. Pass: no new `Attempt` record.
+
+## T89. Payment attempts read back from CloudKit (0200)
+
+Needs two iPads on the shop's share (T74), both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8), and a card reader on iPad A. Nothing in this patch has been run on a device.
+
+1. On iPad A, make a card payment end as unknown (turn the reader's network off right after the card is tapped). Wait about 30 seconds, then on iPad B open Support and diagnostics. Pass: a section "Card payments waiting (all registers)" lists the payment, "no result yet", with A's register name.
+2. On A, start a card payment and leave it on the reader without tapping a card. Pass: within about 30 seconds B lists it as "in progress". Cancel it on the reader, wait again, and Pass: it leaves B's list.
+3. Force-quit A in the middle of a charge (card not yet tapped), reopen it, and wait more than 5 minutes. Pass: B lists it as "stopped part way", and it stays listed.
+4. With the unknown payment from step 1 still open, resolve it on A with "Customer was NOT charged". Wait about 30 seconds. Pass: it leaves B's list, and B shows no notice (A resolved its own payment).
+5. Repeat step 1 so A has a new unknown payment. This time let B resolve it (from a debug build, since B has no resolve button yet). Wait about 30 seconds. Pass: A shows the notice "Card payment resolved on another register" naming B's staff, A's Pay screen no longer blocks charging that sale, and the attempt on A's Diagnostics reads "resolved by" B's staff. A second notice does not appear after another 30 seconds.
+6. Turn airplane mode on at B, wait through two polls, then turn it off. Pass: no error shows at B, B's list keeps its last contents while offline, and refreshes within about 30 seconds of reconnecting.
+7. Force-quit and reopen B. Pass: the section is absent until the first poll (or Sync now), then lists the same payments as before.
+8. Start practice mode (Training) on B. Pass: the section does not change and no notice appears while it runs.

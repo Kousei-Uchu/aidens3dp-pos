@@ -9,6 +9,7 @@ import { emptyCart } from '../lib/cartOps';
 import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPreset, Notice, SaleRecord, StaffMember, Variant } from '../lib/types';
 import type { Totals } from '../lib/rollup';
 import { emptySharedHistory, type SharedHistory } from '../lib/salesHistory';
+import type { SharedAttempt } from '../lib/eventRecords';
 import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
 import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
 import { defaultAssistant, normaliseAssistant, type AssistantSettings } from '../lib/assistantConfig';
@@ -83,7 +84,10 @@ type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; atte
 
 export type App = {
   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
-  sync: SyncState; zeller: ZellerStatus; staffId?: string; unlocked: boolean; lastPinAt?: number; /* when a PIN was last typed (signing in counts), for the Companion step-up PIN; in memory only */ toast?: string; saverPreview?: boolean;
+  sync: SyncState; zeller: ZellerStatus;
+  /** 0200: every register's card payment attempts as CloudKit holds them. In memory only, never saved: CloudKit is the record. */
+  sharedAttempts: SharedAttempt[];
+  staffId?: string; unlocked: boolean; lastPinAt?: number; /* when a PIN was last typed (signing in counts), for the Companion step-up PIN; in memory only */ toast?: string; saverPreview?: boolean;
   set: (p: Partial<App>) => void;
   patchSettings: (p: Partial<Settings>) => void;
   patchData: (p: Partial<Data>) => void;
@@ -111,7 +115,7 @@ export async function flushPersist(): Promise<void> {
 
 export const useApp = create<App>((set, get) => ({
   ready: false, settings: defaultSettings(), data: emptyData(), grid: defaultGrid(), gridVersion: 0, pos: emptyPos(),
-  sync: { state: 'idle' }, zeller: { ready: false, message: 'Reader not set up' }, unlocked: true,
+  sync: { state: 'idle' }, zeller: { ready: false, message: 'Reader not set up' }, sharedAttempts: [], unlocked: true,
   set: p => set(p),
   patchSettings: p => { set(s => ({ settings: { ...s.settings, ...p } })); persist('settings', () => get().settings); },
   patchData: p => { set(s => ({ data: { ...s.data, ...p } })); persist('data', () => get().data); },
