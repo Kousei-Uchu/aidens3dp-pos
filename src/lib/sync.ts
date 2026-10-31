@@ -2,7 +2,7 @@
 // Outbox + polling. Cash and saved carts work offline; sales queue locally and upload later; card needs internet.
 // Every outbox step is idempotent, so a crash or retry never double-books.
 import { useApp, currentStaff, type OutboxItem, type SavedCart, type Shift } from '../state/store';
-import { csv } from './csvStore';
+import { csv, setEventSink } from './csvStore';
 import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
 import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
 import { parseBundleConfig } from './bundles';
@@ -15,6 +15,8 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
 import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
 import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
+import { createEventSync } from './cloudkit/eventSync';
+import type { EventNative } from './cloudkit/eventCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
 import { createGiftCard } from './shopify/giftcards';
@@ -25,6 +27,16 @@ import { featureOn } from './appMode';
 
 const st = () => useApp.getState();
 let running = false;
+
+// CloudKit patch 4: every event written to events.csv is also written to CloudKit, once, when CloudKit is the active backend.
+const events = createEventSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as EventNative,
+  readCsv: () => csv.readEvents(),
+});
+setEventSink(e => { void events.upload(e); });
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
@@ -150,6 +162,7 @@ export async function pollShared() {
       if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
       if (s.settings.drawerPending) await pushDrawer().catch(() => {});
       if (s.settings.warningListPending) await pushWarningList().catch(() => {});
+      await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {

@@ -1150,3 +1150,15 @@ Needs two iPads on the shop's share (T74), both on a build with this patch. Noth
 6. Push the same attempt from B with status `started`. Pass: it stays `unknown`, and A's name stays on it.
 7. Resolve the attempt on A and B within a second of each other (two debug buttons, or two quick taps). Pass: the dashboard shows one `Resolution` record, both iPads' pulls show the same person resolved it, and the iPad that came second was told who won.
 8. Sign iPad B out of iCloud and try step 5 again. Pass: the push fails with a clear error and does not appear to succeed.
+
+## T87. Events reach CloudKit (0198)
+
+Needs two iPads on the shop's share (T74), both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8). Nothing in this patch has been run on a device.
+
+1. On iPad A, do a paid in of $5 on the cash drawer. Pass: within about 30 seconds the CloudKit dashboard (Development) shows one `Event` record, kind `paid_in`, labelled with A's register name, and `events.csv` on A has the same row.
+2. On A, turn on airplane mode and do a paid out of $2 with a note that contains a comma and quotes, for example `float, "small"`. Pass: no error is shown, `events.csv` has the row, and there is no new `Event` record yet.
+3. Turn airplane mode off and wait about 30 seconds. Pass: exactly one new `Event` record appears for the paid out, with the note unchanged, and the paid in is still one record.
+4. Force-quit and reopen A twice. Pass: the number of `Event` records does not change.
+5. On iPad B, which has its own `events.csv` history from before it joined, open the app and wait about 30 seconds. Pass: B's older events appear once each, labelled with B's name, and A's events are untouched.
+6. On A, start practice mode (Training) and do a paid in. Pass: no `Event` record, and no new row in `events.csv`.
+7. Switch the CloudKit backend off again from the debug build and do a paid in. Pass: the row is in `events.csv` and nothing new reaches CloudKit.

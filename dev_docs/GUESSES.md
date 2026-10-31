@@ -390,3 +390,13 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 2. **A resolution is its own record.** The decisions name only `attempt-<sale uuid>-<reference>` and say the first resolution wins. Guess: resolving writes a second, write-once record `resolve-<sale uuid>-<reference>`, because a write-once record is the one way two registers resolving at the same moment cannot both win.
 3. **A resolved attempt's old status.** The app overwrites the status with `resolved`, so the earlier one is lost. Guess: the attempt record keeps `unknown` and the resolution says it was resolved.
 4. **Events hold no card or customer detail, so they are not encrypted.** A free-text `message` or `detail` could in principle hold a name, the same minor exception as a sale note (item 18).
+
+## CloudKit event call sites (0198)
+
+These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **No stored marker of what has been uploaded.** Guess: each launch compares `events.csv` with CloudKit once (one listing, then a write for each missing event), and again after a failed upload. The alternative is a "last uploaded" marker in the settings, which is one more per-device counter to keep right. The cost of the guess is that the comparison grows with the history; at a few thousand events it is a few pages.
+2. **Events made before the first catch-up wait for it.** Guess: after a launch, a live event is not sent on its own until the catch-up has run once, so the history goes up in order and the first pass lists CloudKit only once. The catch-up runs on the 25 second poll, so the wait is short.
+3. **Events already in the CSV when CloudKit goes live are uploaded.** Guess: yes, by the same first catch-up, since the history is the register's own (Q13). A register that was on Shopify storage first therefore sends its whole `events.csv` the first time CloudKit is the active backend.
+4. **A bad row is skipped, not uploaded.** A row with no time or a kind the app does not know is left out of the upload and left alone in the file.
+5. **Paid in and paid out are now both an event record and a ledger entry.** The ledger entry is the money; the event is the audit line, as in `events.csv` today.
