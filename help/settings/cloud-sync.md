@@ -5,7 +5,7 @@ parent: settings
 summary: Set one register up to hold the shop's shared records, then join the others with its invite link.
 tags: [cloud, icloud, cloudkit, share, registers, sync, invite link, multiple ipads, join, join a shop]
 related: [settings/backup, orders/export, settings/shopify]
-updated: 2026-10-20
+updated: 2026-10-31
 roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.
@@ -38,8 +38,8 @@ Two things follow from that:
 
 ### What travels
 - Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.
-- Cash stays on the register it was counted on: the drawer, its float and its ledger belong to one till and are never merged.
-- Settings are unchanged: each register keeps its own, and [[settings/backup]] is still how you copy them across.
+- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
+- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
 
 ## Advanced
 
