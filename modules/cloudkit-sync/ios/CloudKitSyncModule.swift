@@ -332,19 +332,11 @@ public class CloudKitSyncModule: Module {
     return out
   }
 
+  /// Create or update the record with this name. It goes through upsertRecord because CloudKit refuses to save a fresh
+  /// record over a name that already exists (serverRecordChanged), which made every second write of the same sale,
+  /// rollup, cart, settings or layout record fail. Fields not mentioned are left as they were.
   private func putRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
-    let record = makeRecord(recordType: recordType, recordName: recordName)
-    for (k, v) in fields {
-      if k == "id" { continue }
-      if let s = v as? String { record[k] = s as CKRecordValue }
-      else if let i = v as? Int { record[k] = NSNumber(value: i) }
-      else if let d = v as? Double { record[k] = NSNumber(value: d) }
-      else if let b = v as? Bool { record[k] = NSNumber(value: b) }
-      else if v is NSNull { continue }
-      else { record[k] = String(describing: v) as CKRecordValue }
-    }
-    let saved = try await database().save(record)
-    return recordToDict(saved)
+    try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields)
   }
 
   private func copyFields(_ fields: [String: Any], into record: CKRecord) {
