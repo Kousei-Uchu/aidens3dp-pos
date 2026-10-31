@@ -20,7 +20,7 @@ export type SharedHistory = { sales: SaleRecord[]; rollups: Record<string, Total
 export const emptySharedHistory = (): SharedHistory => ({ sales: [], rollups: {} });
 
 /** True when a decoded row looks like a whole sale record, so a bad or half-written row never reaches the tools. */
-function looksLikeSale(v: unknown): v is SaleRecord {
+export function looksLikeSale(v: unknown): v is SaleRecord {
   const x = v as SaleRecord;
   return !!x && typeof x.uuid === 'string' && (x.type === 'sale' || x.type === 'refund') && typeof x.ts === 'string'
     && typeof x.registerId === 'string' && Array.isArray(x.lines) && Array.isArray(x.tenders);
