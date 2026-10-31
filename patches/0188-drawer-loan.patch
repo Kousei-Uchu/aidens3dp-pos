@@ -1,0 +1,185 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index e6dca37..0f23067 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
+ 
+ ### Added
+ 
++- **Loans to the drawer.** Paid in has a switch to mark the money as a loan, the drawer shows what is owed back, and Take loan back pays it out again. Closing with a loan still owed asks first (0188).
+ - **AI assistant** (Help ▸ sparkles button, and More ▸ Settings ▸ AI assistant). It talks to a model you run yourself, reads the help pages and the till's own data, and never changes anything. The connection settings (0148, 0149), the chat screen (0151), the conversation log and its viewer (0152, 0156), the help, screen, link and guide tools (0157 to 0159, 0162), an offline mode (0160), the privacy gate every result passes through (0161), the product, stock and sales tools (0163, 0164), the date and screen tools (0166, 0167), the settings and status tools (0169), the cash drawer, change calculator and cart tools (0172), and the coach that helps in training Checks (0173). It only sends the tools a question is likely to need (0185). It reads sales from every register in the shop, not only the one in your hand.
+ - **Training mode.** Show, Info, Guide and Check for 28 task courses, from signing in to refunds, with a virtual Zeller terminal (0065 to 0140, 0183). Going off course is caught and says which course teaches the fix.
+ - **In-app help**, 68 pages with a searchable Help screen, depth picker, related pages and a pop-out contents menu (0028 to 0034, 0092).
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 0e182c9..95ab17d 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -168,6 +168,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0181 | 2026-10-22 | Companion mode, patch 6 (your request: "continue"). **Help, the assistant and Training follow the device.** Help pages have an optional `needs:` header (a list of features); a device that does not hold all of them does not show the page or anything under it, in the Help screen, its search, or the assistant. 22 pages are tagged (the Cash drawer section, the Pay section, the cart, saved cart, grid and lookup-tile pages, the card and reader fix pages). The assistant's screen list is now built per device by walking the app graph with the device's tabs and pages removed, so a window reachable only through a page the device does not hold (Swap cash through the drawer) is gone too, and a companion's walks start from Today; a register's list is the one it always had, minus Today and Scan. Training lists a course when the device holds **Till training** or the course needs nothing the device does not have (it does not start at Checkout and every page it visits is held), and the finished count follows the list; practice itself still runs with every feature on. The page builder rejects a `needs:` value that is not a feature, and `help/README.md` documents it. Tests in `tests/devicegating.test.ts`, help page `device-mode` updated, device test T84. **Not done, and moved out of the series for your call:** Companion wording on the screens that stay, and the phone layout pass for existing screens (C10, C11 in the plan). Next: 0182 (stock actions from Scan). | G2 |
+ | ledger-fix | 2026-10-20 | **Not a numbered patch: apply this by hand.** `patches/APPLIED.txt` had no newline after its last line, so when CI appended 0185 the name was glued onto the 0174 line (`0174-…patch0185-…patch`). `scripts/apply-patches.sh` skips a patch only when its name is a whole line, so 0174 and 0185 both counted as unapplied, as did 0175, 0183 and 0184 (never listed). The next run would have tried 0174 first, failed because it is already in the tree, and stopped with "Later patches were not tried". The ledger now lists 0174, 0175, 0183, 0184, 0185 and 0186, each on its own line. The script adds the missing newline before it appends, so a ledger that loses its trailing newline cannot glue two names together again. Tested by running the script in a scratch repo: with the fixed ledger it applies 0 patches, and with the newline stripped and a new patch added, the new name lands on its own line. **It has to be applied by hand and pushed** (`git apply ledger-fix.diff`), because a normal patch would be stopped by the very problem it fixes | your request |
+ | 0187 | 2026-10-20 | Demo mode on the real data (your request: use the real catalogue and real-world data if present, and block only what has consequences or cannot be rolled back). **Demo mode now runs on a copy of the till's own data.** New `src/lib/demoData.ts` builds it: the catalogue with its grid, automatic deals, discount presets, bundles and display settings, the customers, this till's sales, the other tills' history, the daily totals, saved carts, the upload queue, the notifications and the cash drawer. Practice data fills a gap only where a screen would have nothing worth showing, and the catalogue group is all or nothing so practice ids never mix with real ones. Not carried over: the cart being rung up and card attempts (they belong to a sale really happening). Everything is copied (not shared), so even code that edits an object in place cannot reach the real one, and leaving restores the real state exactly. Signed in as the made-up owner with no PIN as before, with the real staff kept in the list. The banner, the home screen intro, the Show fallback and the More row say what is real. Demo mode now will not start while a card payment is in flight or a sale is part paid, the rule training already had. **Why the audit mattered:** with real ids in memory, a write that slipped past the guard would land in Shopify instead of failing on a made-up id. I swept every network call, file write and Keychain write in `src/`. Shopify (`gql`, `getToken`), storage, receipts, the card bridge, the CloudKit seam and the assistant were already guarded. **Four gaps found and closed:** (1) the Square history screen could delete or overwrite the real history files, because only its share button was guarded (`installFromUrl`, `installFromPicked`, `rebuild`, `removeSquareHistory` now stop first; reading stays open); this was already true of the old Demo mode; (2) Backup & transfer ▸ Export put the real Shopify and pass logins into a file and opened the share sheet, and Restore could replace settings (`collectBackup` and `applyBackup` now stop); (3) `requestStaffPass` asked the pass server for a real pass (now stops); (4) a restored backup wrote a logo file (now skipped). Tests: `tests/demodata.test.ts` (11: what is real and what is practice, that no practice id mixes into real data, a copy that shares nothing, outbound settings stay blank, the live store shows the real catalogue and edits are never stored or leaked and leaving restores it exactly, entry blocked mid payment) and `tests/demoguard.test.ts` (5, the permanent audit: every file that fetches or writes must check the guard or be listed with a verified reason, the four Square functions, the backup functions, the CloudKit seam, and the pass request). I broke each protected thing on purpose and confirmed the right test fails. Device test T80. **Decided without you, change any you disagree with:** see `dev_docs/GUESSES.md`. **Not done, and your call:** live Shopify reads (Orders lookups, customer search, a catalogue refresh) are still off, so the demo shows what is already on the iPad; allowing queries but not mutations is possible and I can do it as its own patch. **Found, not mine:** `tests/assistantcontext.test.ts` fails on `origin/main` ("missing tab_today") and `tsc` reports one error in `Staff.tsx`, both from Companion patch 0178 adding the `today` and `scan` tabs; I left them for that series. With my patch the suite is 1445 of 1446 passing, the same one failure as before it | your request |
++| 0188 | 2026-10-31 | Cash drawer, loans to the drawer (your request: a quick way to mark money you lend the drawer when you pay it in, so you can take the same amount back out at the end). **Paid in now has a "This is a loan to the drawer" switch.** A loan is still an ordinary paid-in, so expected cash adds up as before; the shift just remembers how much of it is owed back (`loanCents`, new pure helpers in `src/lib/drawerLoan.ts`). While a loan is owed the drawer shows it under Paid in, and a **Take loan back** button opens Paid out with the switch on; paying out reduces what is owed and never goes below zero. Closing with a loan still owed asks first, and the Z-report prints "Loan still owed to you". Ledger and CSV events say "Loan to drawer" and "Loan taken back". The shift syncs between registers as before, so a loan shows everywhere. Tests: `tests/drawerloan.test.ts` (7). **Not done, your call:** the AI assistant's cash view and the Daily float report do not mention the loan yet; a loan taken back is an ordinary paid-out, so it is not counted as takings. Device check: put in $50 as a loan, confirm Take loan back appears and offers $50, take $20 back, then close and see the confirm and the Z-report line. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/drawerLoan.ts b/src/lib/drawerLoan.ts
+new file mode 100644
+index 0000000..aef510c
+--- /dev/null
++++ b/src/lib/drawerLoan.ts
+@@ -0,0 +1,20 @@
++// Location: src/lib/drawerLoan.ts
++// A loan to the drawer: cash you put in that is yours to take back out at the end (0188).
++// A loan is an ordinary "paid in", so the expected cash still adds up; this only remembers how much of the paid-in is owed
++// back to you, and takes it down when you pay it out again. Integer cents, pure, unit-tested in tests/drawerloan.test.ts.
++import type { Shift } from '../state/store';
++
++const whole = (cents: number): number => (Number.isFinite(cents) ? Math.max(0, Math.round(cents)) : 0);
++
++/** How much of what was paid in is still owed back to you. */
++export const loanOwed = (s: Pick<Shift, 'loanCents'>): number => whole(s.loanCents ?? 0);
++
++/** The shift after `cents` more was put in as a loan. The caller adds the same amount to `paidInCents`. */
++export const addLoan = (s: Shift, cents: number): Shift => ({ ...s, loanCents: loanOwed(s) + whole(cents) });
++
++/** The shift after `cents` of the loan was taken back out. Never goes below zero; at zero the field is dropped. */
++export const repayLoan = (s: Shift, cents: number): Shift => {
++  const left = Math.max(0, loanOwed(s) - whole(cents));
++  const { loanCents: _gone, ...rest } = s; void _gone;
++  return left ? { ...rest, loanCents: left } : rest;
++};
+diff --git a/src/screens/Drawer.tsx b/src/screens/Drawer.tsx
+index 518099a..952e707 100644
+--- a/src/screens/Drawer.tsx
++++ b/src/screens/Drawer.tsx
+@@ -1,6 +1,6 @@
+ import React, { useState } from 'react';
+ import { Share, View } from 'react-native';
+-import { Btn, Card, Field, Money, Page, Row, Section, Sheet, Txt, alertMsg, confirm } from '../ui/kit';
++import { Btn, Card, Field, Money, Page, Row, Section, Sheet, Toggle, Txt, alertMsg, confirm } from '../ui/kit';
+ import { DenomPad } from '../ui/DenomPad';
+ import { FloatReportSheet } from './FloatReport';
+ import { SwapCashSheet } from './SwapCash';
+@@ -8,6 +8,7 @@ import { useNav } from '../ui/nav';
+ import { useApp, currentStaff } from '../state/store';
+ import { drawerChanged } from '../lib/sync';
+ import { ledgerCashSince } from '../lib/drawerSync';
++import { addLoan, loanOwed, repayLoan } from '../lib/drawerLoan';
+ import { csv } from '../lib/csvStore';
+ import { fmt } from '../lib/money';
+ import { DENOMS, LEDGER_LABEL, applyEntry, diffCounts, draftCounts, entryTotal, newEntry, shortfall, summariseCounts, totalOf, type Draft, type LedgerKind } from '../lib/cashLedger';
+@@ -21,13 +22,13 @@ export const cashSince = (sinceISO: string, registerId: string | undefined, sale
+ 
+ export default function Drawer() {
+   const nav = useNav(); const shift = useApp(s => s.pos.shift); const sales = useApp(s => s.pos.sales); const patchPos = useApp(s => s.patchPos); const ledger = useApp(s => s.pos.ledger);
+-  const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close' | 'fix'>('none'); const [floatOpen, setFloatOpen] = useState(false); const [swapOpen, setSwapOpen] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [note, setNote] = useState('');
++  const [sheet, setSheet] = useState<'none' | 'open' | 'in' | 'out' | 'close' | 'fix'>('none'); const [floatOpen, setFloatOpen] = useState(false); const [swapOpen, setSwapOpen] = useState(false); const [draft, setDraft] = useState<Draft>([]); const [note, setNote] = useState(''); const [loan, setLoan] = useState(false);
+   const staff = currentStaff()?.name; const cash = shift.open && shift.openedAt ? cashSince(shift.openedAt, undefined, sales) : 0;
+-  const expected = shift.floatCents + cash + shift.paidInCents - shift.paidOutCents;
++  const expected = shift.floatCents + cash + shift.paidInCents - shift.paidOutCents; const owed = loanOwed(shift); // owed: a loan you put in that is still to be taken back out (0188)
+   // open and "fix contents" start from what the drawer holds (adjust it); in, out and the closing count start empty (a blind count)
+   const base = sheet === 'open' || sheet === 'fix' ? ledger.counts : {};
+   const entered = draftCounts(draft, base); const amt = totalOf(entered);
+-  const done = () => { setSheet('none'); setDraft([]); setNote(''); };
++  const done = () => { setSheet('none'); setDraft([]); setNote(''); setLoan(false); };
+   const record = (kind: LedgerKind, delta: Record<string, number>, n?: string) => applyEntry(useApp.getState().pos.ledger, newEntry(kind, delta, { staff, note: n }));
+ 
+   const submit = async () => {
+@@ -37,21 +38,24 @@ export default function Drawer() {
+     }
+     if (sheet === 'in') {
+       if (!amt) return alertMsg('Nothing entered', 'Tap the notes and coins that went in.');
+-      patchPos({ shift: { ...shift, paidInCents: shift.paidInCents + amt }, ledger: record('paid_in', entered, note) }); drawerChanged(true); void csv.event({ kind: 'paid_in', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
++      const inNote = [loan ? 'Loan to drawer' : '', note].filter(Boolean).join(' · '); const paidIn = { ...shift, paidInCents: shift.paidInCents + amt };
++      patchPos({ shift: loan ? addLoan(paidIn, amt) : paidIn, ledger: record('paid_in', entered, inNote) }); drawerChanged(true); void csv.event({ kind: 'paid_in', amountCents: amt, message: [inNote, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
+     }
+     if (sheet === 'out') {
+       if (!amt) return alertMsg('Nothing entered', 'Tap the notes and coins that came out.');
+       const short = shortfall(ledger.counts, entered);
+       if (short.length && !(await confirm('More than the drawer should hold', `You are taking ${short.map(x => `${x.need} × ${DENOMS.find(d => d.cents === x.cents)?.label} (ledger has ${x.have})`).join(', ')}. The ledger may not know about recent cash sales yet. Take it out anyway?`, 'Take out'))) return;
+-      patchPos({ shift: { ...shift, paidOutCents: shift.paidOutCents + amt }, ledger: record('paid_out', Object.fromEntries(Object.entries(entered).map(([v, n]) => [v, -n])), note) }); drawerChanged(true); void csv.event({ kind: 'paid_out', amountCents: amt, message: [note, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
++      const outNote = [loan && owed ? 'Loan taken back' : '', note].filter(Boolean).join(' · '); const paidOut = { ...shift, paidOutCents: shift.paidOutCents + amt };
++      patchPos({ shift: loan && owed ? repayLoan(paidOut, amt) : paidOut, ledger: record('paid_out', Object.fromEntries(Object.entries(entered).map(([v, n]) => [v, -n])), outNote) }); drawerChanged(true); void csv.event({ kind: 'paid_out', amountCents: amt, message: [outNote, summariseCounts(entered)].filter(Boolean).join(' · '), staff });
+     }
+     if (sheet === 'fix') {
+       const delta = diffCounts(entered, ledger.counts); if (!Object.keys(delta).length) return done();
+       patchPos({ ledger: record('adjust', delta, note || 'Corrected by hand') }); drawerChanged();
+     }
+     if (sheet === 'close') {
++      if (owed && !(await confirm('Loan not taken back', `You put in ${fmt(owed)} as a loan and have not taken it back out. Close anyway?`, 'Close anyway'))) return;
+       const diff = amt - expected; const byDenom = diffCounts(entered, ledger.counts);
+-      const z = [`Z-report · ${new Date().toLocaleString()}`, `Opened ${shift.openedAt ? new Date(shift.openedAt).toLocaleString() : ''}`, `Float ${fmt(shift.floatCents)}`, `Cash sales (net of refunds) ${fmt(cash)}`, `Paid in ${fmt(shift.paidInCents)}`, `Paid out ${fmt(shift.paidOutCents)}`, `Expected ${fmt(expected)}`, `Counted ${fmt(amt)}`, `Difference ${fmt(diff)}`, `In the drawer: ${summariseCounts(entered)}`].join('\n');
++      const z = [`Z-report · ${new Date().toLocaleString()}`, `Opened ${shift.openedAt ? new Date(shift.openedAt).toLocaleString() : ''}`, `Float ${fmt(shift.floatCents)}`, `Cash sales (net of refunds) ${fmt(cash)}`, `Paid in ${fmt(shift.paidInCents)}`, `Paid out ${fmt(shift.paidOutCents)}`, ...(owed ? [`Loan still owed to you ${fmt(owed)}`] : []), `Expected ${fmt(expected)}`, `Counted ${fmt(amt)}`, `Difference ${fmt(diff)}`, `In the drawer: ${summariseCounts(entered)}`].join('\n');
+       void csv.event({ kind: 'shift_close', amountCents: amt, message: `expected ${expected} diff ${diff}; ${summariseCounts(entered)}`, staff });
+       // what was counted becomes what the ledger says is in the drawer; the next opening starts from it
+       patchPos({ shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, ledger: record('close', byDenom, `Counted ${fmt(amt)}`) }); drawerChanged(true); done(); await Share.share({ message: z }); return;
+@@ -60,13 +64,13 @@ export default function Drawer() {
+   };
+   const title = sheet === 'open' ? 'Opening float' : sheet === 'in' ? 'Paid in' : sheet === 'out' ? 'Paid out' : sheet === 'fix' ? 'Correct drawer contents' : 'Count the drawer';
+   const hint = sheet === 'open' ? `Carried over from last time: ${fmt(totalOf(ledger.counts))}. Tap to add or remove until it matches what you are putting in.` : sheet === 'fix' ? 'Starts from what the ledger thinks is there. Add or remove until it matches the drawer.'
+-    : sheet === 'close' ? `Count everything in the drawer. Expected ${fmt(expected)}.` : sheet === 'in' ? 'Tap the notes and coins you are putting in.' : 'Tap the notes and coins you are taking out.';
++    : sheet === 'close' ? `Count everything in the drawer. Expected ${fmt(expected)}.` : sheet === 'in' ? 'Tap the notes and coins you are putting in.' : owed ? `Tap the notes and coins you are taking out. You are owed ${fmt(owed)} from the loan.` : 'Tap the notes and coins you are taking out.';
+   const recent = ledger.entries.slice(0, 15);
+   return (
+     <Page title="Cash drawer" onBack={nav.pop} helpId="cash">
+       {!shift.open ? <View style={{ padding: 16, gap: 10 }}><Txt sub>No drawer open.</Txt><Txt size={13} sub>This is one drawer shared with every register: open it here and it is open on all of them.</Txt><Btn title="Open drawer with float" onPress={() => setSheet('open')} spot={SPOT.drawerOpen} /></View> : <>
+-        <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
+-        <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} spot={SPOT.drawerPaidIn} /><Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} spot={SPOT.drawerPaidOut} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} spot={SPOT.drawerCountClose} /></View></>}
++        <View style={{ margin: 16 }}><Card><Row title="Float" right={<Money cents={shift.floatCents} />} /><Row title="Cash sales" sub="Net of cash refunds" right={<Money cents={cash} />} /><Row title="Paid in" sub={owed ? `Includes a ${fmt(owed)} loan` : undefined} right={<Money cents={shift.paidInCents} />} /><Row title="Paid out" right={<Money cents={-shift.paidOutCents} />} /><Row title="Expected in drawer" right={<Money cents={expected} weight="700" size={18} />} last /></Card></View>
++        <View style={{ paddingHorizontal: 16, gap: 8 }}><Btn title="Paid in" kind="secondary" onPress={() => setSheet('in')} spot={SPOT.drawerPaidIn} />{owed ? <Btn title={`Take loan back (${fmt(owed)})`} kind="secondary" onPress={() => { setLoan(true); setSheet('out'); }} /> : null}<Btn title="Paid out" kind="secondary" onPress={() => setSheet('out')} spot={SPOT.drawerPaidOut} /><Btn title="Count & close (Z-report)" onPress={() => setSheet('close')} spot={SPOT.drawerCountClose} /></View></>}
+ 
+       <Section title="Notes and coins in the drawer" footer="This is the ledger: what the drawer should hold. Counting at close resets it to what you actually counted. Cash sales at the Cash screen add to it as you tap the notes and coins.">
+         {DENOMS.map(d => <Row key={d.cents} title={d.label} sub={d.kind === 'note' ? 'Note' : 'Coin'} right={<View style={{ alignItems: 'flex-end' }}><Txt weight="700">× {ledger.counts[String(d.cents)] ?? 0}</Txt><Txt size={12} sub>{fmt(d.cents * (ledger.counts[String(d.cents)] ?? 0))}</Txt></View>} />)}
+@@ -84,6 +88,8 @@ export default function Drawer() {
+       <Sheet visible={sheet !== 'none'} onClose={done} title={title} full>
+         <Txt size={13} sub style={{ textAlign: 'center', marginBottom: 8 }}>{hint}</Txt>
+         {sheet === 'in' || sheet === 'out' || sheet === 'fix' ? <Spot id={SPOT.drawerNote}><Field kind="text" placeholder={sheet === 'fix' ? 'Reason (optional)' : 'Reason'} value={note} onChangeText={setNote} /></Spot> : null}
++        {sheet === 'in' ? <Toggle label="This is a loan to the drawer" sub="Marked so you can take the same amount back out at the end." value={loan} onChange={setLoan} /> : null}
++        {sheet === 'out' && owed ? <Toggle label="This takes the loan back" sub={`${fmt(owed)} still owed to you.`} value={loan} onChange={setLoan} /> : null}
+         <DenomPad draft={draft} onChange={setDraft} base={base} spots={{ pad: SPOT.drawerDenom, undo: 'cash.undo' }} />
+         {sheet === 'close' ? <Txt size={13} style={{ textAlign: 'center', marginTop: 10 }} color={amt === expected ? '#16A34A' : '#B45309'}>{amt === expected ? 'Matches the expected amount.' : `${amt > expected ? 'Over' : 'Short'} by ${fmt(Math.abs(amt - expected))}`}</Txt> : null}
+         <Btn title="Confirm" onPress={() => void submit()} style={{ marginTop: 14 }} spot={SPOT.drawerConfirm} />
+diff --git a/src/state/store.ts b/src/state/store.ts
+index e016f8f..4ab4a56 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -70,7 +70,7 @@ export type OutboxItem = {
+ export type Attempt = { ref: string; saleUuid: string; amountCents: number; ts: string; status: 'started' | 'approved' | 'declined' | 'cancelled' | 'unknown' | 'resolved'; note?: string; resolvedBy?: string };
+ export type SyncState = { state: 'idle' | 'syncing' | 'error' | 'offline'; at?: string; error?: string };
+ export type ZellerStatus = { ready: boolean; message?: string };
+-export type Shift = { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; staff?: string };
++export type Shift = { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; staff?: string; /** 0188: how much of the paid-in is a loan to the drawer, still to be taken back out (see lib/drawerLoan.ts) */ loanCents?: number };
+ 
+ type Data = {
+   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
+diff --git a/tests/drawerloan.test.ts b/tests/drawerloan.test.ts
+new file mode 100644
+index 0000000..8a3d512
+--- /dev/null
++++ b/tests/drawerloan.test.ts
+@@ -0,0 +1,25 @@
++// Location: tests/drawerloan.test.ts
++// 0188: a loan to the drawer is remembered when paid in and taken down when paid back out.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { addLoan, loanOwed, repayLoan } from '../src/lib/drawerLoan';
++import type { Shift } from '../src/state/store';
++
++const shift = (o: Partial<Shift> = {}): Shift => ({ open: true, floatCents: 10000, paidInCents: 0, paidOutCents: 0, ...o });
++
++test('no loan until one is put in', () => { assert.equal(loanOwed(shift()), 0); });
++test('a loan adds up across several deposits', () => {
++  const s = addLoan(addLoan(shift(), 5000), 2000);
++  assert.equal(loanOwed(s), 7000);
++});
++test('paying part of it back leaves the rest owed', () => { assert.equal(loanOwed(repayLoan(addLoan(shift(), 5000), 2000)), 3000); });
++test('paying back all of it drops the field', () => {
++  const s = repayLoan(addLoan(shift(), 5000), 5000);
++  assert.equal(loanOwed(s), 0); assert.equal('loanCents' in s, false);
++});
++test('taking out more than was loaned never goes below zero', () => { assert.equal(loanOwed(repayLoan(addLoan(shift(), 1000), 9000)), 0); });
++test('other shift fields are untouched', () => {
++  const s = addLoan(shift({ paidInCents: 5000, staff: 'Sam' }), 5000);
++  assert.equal(s.paidInCents, 5000); assert.equal(s.staff, 'Sam'); assert.equal(s.floatCents, 10000);
++});
++test('junk amounts count as nothing', () => { assert.equal(loanOwed(addLoan(shift(), NaN)), 0); assert.equal(loanOwed(addLoan(shift(), -500)), 0); });
