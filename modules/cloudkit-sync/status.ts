@@ -43,6 +43,14 @@ export type CloudKitSyncNative = {
   putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   getRollup?(handle: string): Promise<Record<string, any> | null>;
   listRollups?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 6b: the shared cash drawer
+  putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
+  getDrawerShift?(): Promise<Record<string, any> | null>;
+  putLedgerEntry?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  listLedgerEntries?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  listLedgerSince?(since: number, limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  putDrawerCheckpoint?(fields: Record<string, any>): Promise<Record<string, any>>;
+  getDrawerCheckpoint?(): Promise<Record<string, any> | null>;
   // Patch 5: saved carts
   putCart?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   getCart?(handle: string): Promise<Record<string, any> | null>;
