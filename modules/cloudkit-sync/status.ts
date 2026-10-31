@@ -37,7 +37,8 @@ export type CloudKitSyncNative = {
   takePendingInvite(): Promise<string | null>;
   addListener?(event: 'onShareJoined', listener: (payload: { ok: boolean; message: string }) => void): { remove(): void };
   // Patch 4: sales and rollups
-  putSale?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+  /** `encrypted` holds the fields stored as CloudKit encrypted values (a sale's `secure_json`); the record it returns carries the ones this device could read under `encrypted`. */
+  putSale?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
   getSale?(handle: string): Promise<Record<string, any> | null>;
   listSales?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;

@@ -59,9 +59,9 @@ export function onShareJoined(listener: (payload: { ok: boolean; message: string
 }
 
 // Patch 4: sales and rollups (CloudKit backend)
-export async function putSale(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+export async function putSale(handle: string, fields: Record<string, any>, encrypted: Record<string, any> = {}): Promise<Record<string, any>> {
   if (!native?.putSale) throw new Error(CLOUDKIT_MISSING);
-  return native.putSale(handle, fields);
+  return native.putSale(handle, fields, encrypted);
 }
 export async function getSale(handle: string): Promise<Record<string, any> | null> {
   if (!native?.getSale) return null;

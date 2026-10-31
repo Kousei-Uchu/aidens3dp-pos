@@ -124,3 +124,42 @@ export function saleFromParts(plain: Record<string, unknown>, encrypted?: Record
   }
   return sale;
 }
+
+/**
+ * What the CloudKit backend writes for a `put('sale')`, from the row fields the shared-state seam hands it. When the row
+ * carries the whole sale (`sale_json`), everything is rebuilt from that sale by `saleToParts`, so nothing the row also
+ * carries (a customer, the receipt link, a card reference inside `tenders_json`) can slip through beside it. A row with no
+ * readable whole sale keeps its own fields, minus those same private ones.
+ */
+export function saleWriteFromFields(fields: Record<string, string | number | undefined | null>, mode: CardMode = 'omit'): SaleParts {
+  const sale = parseObject(fields.sale_json);
+  if (sale && looksLikeSale(sale)) return saleToParts(sale as SaleRecord, mode);
+  const plain: Fields = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === undefined || v === null) continue;
+    if (k === 'customer' || k === 'customer_json' || k === 'receipt_link' || k === 'sale_json' || k === SALE_SECURE_FIELD) continue;
+    if (k === 'tenders_json') {
+      try { const list: unknown = JSON.parse(String(v)); if (Array.isArray(list)) plain[k] = JSON.stringify(list.map(t => { const { r: _ref, ...rest } = (t ?? {}) as Record<string, unknown>; return rest; })); } catch { /* dropped */ }
+      continue;
+    }
+    plain[k] = v;
+  }
+  return { plain, encrypted: {} };
+}
+
+/**
+ * The row fields the seam gets back for a sale record the native side returned (`encrypted` holds the encrypted fields it
+ * could read, none when it could not). Plain fields come back as strings, and `sale_json` is rebuilt with the private parts
+ * and the customer id when they are there, so `decodeSaleRow` and the shop-wide views read it as they read a metaobject row.
+ */
+export function saleRowFields(rec: Record<string, unknown>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of Object.entries(rec ?? {})) {
+    if (v === null || v === undefined || k === 'id' || k === 'recordName' || k === 'updatedAt' || k === 'encrypted' || k === SALE_SECURE_FIELD) continue;
+    out[k] = String(v);
+  }
+  const enc = rec?.encrypted && typeof rec.encrypted === 'object' ? (rec.encrypted as Record<string, unknown>) : undefined;
+  const sale = saleFromParts(rec ?? {}, enc);
+  if (sale) out.sale_json = JSON.stringify(sale);
+  return out;
+}

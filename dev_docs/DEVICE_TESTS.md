@@ -1124,3 +1124,16 @@ On the phone that is a companion with every feature off, then with some switched
 5. Open the assistant and ask where the cash drawer is, with Cash drawer off. Pass: it answers as it would for something it cannot find. Ask how to scan an item. Pass: it points at **Scan** and starts from **Today**. Switch Cash drawer on and ask again. Pass: it now knows the drawer.
 6. On a register (till), open Help, Training and the assistant. Pass: every page, course and screen is there as before, and the assistant knows nothing about Today or Scan.
 
+
+## T85. Encrypted sale fields across two Apple IDs (CloudKit patch 0195, decisions O4)
+
+Needs two iPads, each signed in to a different Apple ID, both running a build with this patch, the first as the owner of the shop's zone and the second joined through the invite link (T74). Nothing in this patch has been run on a device, and the Swift has not been compiled yet, so a build error is possible first. Run this before `setSaleCardMode('encrypted')` is switched on in a build, and before the encrypted secrets and pass codes (patch 6d) are built.
+
+1. Build and install on both iPads. Pass: the build compiles, and the Cloud sync page (T74) shows the owner on one and a participant on the other.
+2. With the card mode left at `omit`, write one test sale from the owner iPad (a call to the CloudKit backend's `put('sale', ...)` from a debug build, since nothing in the app calls it until patch 8). Open the CloudKit dashboard, Development environment, and look at that Sale record. Pass: the record has `sale_json` and the amounts, and **no** `secure_json`, and the card details appear nowhere in any field.
+3. Switch the card mode to `encrypted` in the debug build and write a second test sale that has a card tender, a gift card code and a receipt link. In the dashboard, open that record. Pass: `secure_json` is shown as encrypted (its value is not readable there), and every other field is the same as step 2 with no card detail in the clear.
+4. On the participant iPad, read that sale back through the backend. Pass: the card tender comes back with its masked number, last four, approval code, retrieval reference, receipt link, response code and transaction references, and the gift card code and the sale's receipt link are there. **This is the answer to O4.** If the card details are missing, record exactly what you saw and do not switch `encrypted` on.
+5. Read the same sale back on the owner iPad. Pass: the same details are there.
+6. Sign the participant iPad out of iCloud (or remove it from the share) and read again. Pass: the read fails or returns nothing, and does not return card details.
+7. Write the same sale record a second time from the participant iPad with a changed note. Pass: it succeeds (no `serverRecordChanged` error), the note changes, and `secure_json` is still readable on the owner iPad.
+8. Check the total of a day's sales on the participant iPad using the plain `total_cents` fields only. Pass: it adds up without reading any encrypted field.
