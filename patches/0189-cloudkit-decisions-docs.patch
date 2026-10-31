@@ -1,0 +1,362 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+new file mode 100644
+index 0000000..ac6ef42
+--- /dev/null
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -0,0 +1,169 @@
++# CloudKit sync: decisions and open items
++
++Aiden’s 3D Printing POS · 31 October 2026 · written against `main` at commit 9f855c2 (patch 0181)
++
++Rechecked on 31 October 2026 against `main` at 50af9e2 (patch 0188). Nothing here changed except the shared drawer shift (item 6) and the events list (item 12), which now carry the loan to the drawer added by 0188.
++
++## What this is
++
++This records every decision made on 31 October 2026 about what syncs through iCloud (CloudKit) and what stays on each device. It also lists what is still undecided, with a recommendation for each open point. Items keep the numbers from the review (1 to 27) so they can be cross-referred. It builds on `dev_docs/CLOUDKIT_SYNC_PLAN.md`, which it corrects in several places (see “Changes to make to the plan and help pages” near the end).
++
++Tags used: **Sync** (goes to iCloud and is shared between registers), **Local** (stays on the device), **Open** (not settled yet).
++
++## At a glance
++
++- **Sync, decided:** 1, 2, 3, 5, 6, 9, 13, 14, 15, 17, 18, 19, 20, 21, 23.
++- **Local, decided:** 4, 7, 8, 16, 22, 24, 25, 26.
++- **Settled in this round:** 10 (notices), 12 (CSV history), 27 (grid version).
++- **Open:** only the encryption test (O4), which is deferred.
++- **Understanding confirmed:** 11 (the other-tills cache).
++
++## A. Items where the plan contradicted itself or the code
++
++**1. Staff list, including PIN and badge hashes. Sync fully.** Each staff entry holds a name, a role, a PIN hash and salt, and a badge hash and salt. All of it now syncs, so a PIN set on one iPad works on every iPad. The plan’s line that PIN hashes never reach iCloud is therefore wrong and has to be rewritten. Decided (Q8): accepted, because the share link is private. All owner logins can reprint a cashier pass from any iPad, so the pass codes sync too, encrypted (note N1).
++
++**2. Staff display settings. Sync.** Each person’s display mode (Standard, Simple, Minimal, Custom) and personal theme, accent and tile size travel with their staff entry, so they follow the person to any iPad. The iPad’s own theme, accent and tile size (item 22) stay local. I have not checked which of the two wins on screen today; the sync should not change that rule.
++
++**3. Receipt profile. Sync.** The business details printed on receipts, including the receipt server URL. The receipt server secret syncs too, encrypted (Q9, note N1). The logo is item 14.
++
++**4. Inventory screen preferences. Local.** Filters, sort and grouping are a viewing habit, not shop data.
++
++**5. Fees, cash rounding and Require PIN. Sync.** These already sync through Shopify today and move to CloudKit with the other shared settings. The plan’s section 5 table left them out and needs them added.
++
++**6. Cash drawer. Sync fully, one single shared drawer.** The drawer is the shift (open or closed, float, paid in, paid out, and the loan still owed back, `loanCents`, added by 0188) and the ledger (current note and coin counts plus up to 1000 history entries). It belongs to the shop, not to any till. Notes:
++
++- Expected cash and the float report already read from the shared ledger, so most of the code agrees. Anywhere that still assumes “this till’s drawer” needs an audit (a comment in the store still says a drawer figure must stay this till’s).
++- The Cloud sync help page says drawer cash is never merged. That is wrong and must be fixed.
++- Suggested CloudKit shape: the shift as one record, and each ledger entry as its own append-only record named by its id, with the counts worked out from the entries. This matches how the app already merges entry lists, and avoids one record holding 1000 entries (Q12).
++- Cash taken on a phone with the drawer feature off is still allowed and flagged for the next count (an earlier companion-mode decision).
++
++**7. Sync bookkeeping fields (`drawerVersion`, `drawerPending`, `drawerShiftPending`, `warningListVersion`, `warningListPending`). Local, decided.** You were unsure, so here is what they are. Each one is a note a single iPad keeps about itself, not shop data:
++
++- `drawerVersion` and `warningListVersion` mean “the newest version of the shared record that I have seen”.
++- `drawerPending` and `warningListPending` mean “I have a change that has not been uploaded yet”.
++- `drawerShiftPending` means that unsent change included opening, closing, paid in or paid out, so an older update must not overwrite it.
++
++If these synced, every iPad would see the others’ values. One iPad could then wrongly believe it was up to date, or believe someone else’s unsent change was its own, and skip a real upload. They describe where this iPad is in the sync, so they only make sense per device. CloudKit also keeps its own per-device sync position (a server change token) that is never shared, and once the CloudKit backend is live it replaces most of these counters. Decided (Q1): **Local**.
++
++## B. Things the plan never mentioned
++
++**8. Outbox (queued sales waiting for Shopify). Local.** It is a per-device work queue. If two iPads shared one queue they could both create the Shopify order for the same sale. The finished sale record itself syncs. Decided (Q11): if an iPad dies with sales still queued, another register can find sales that have no Shopify order and create it.
++
++**9. Payment attempts. Sync, labelled with the register name.** Each attempt (started, approved, declined, cancelled, unknown) syncs with the name of the register that made it, so a manager can see unresolved payments shop-wide. Decided (Q10): any register can resolve an unresolved payment, and the first resolution wins.
++
++**10. Notices. Local, but sync the ones that make sense.** The app has eight kinds: sync, queue, stock, reader, refund, pass, info and cash. Approved (Q2):
++
++- Sync **cash** (a drawer count is needed and the drawer is now shared) and **refund** (a failed refund needs a manager wherever they are).
++- Keep **sync, queue, reader, stock, pass and info** local, because each describes one iPad or is derived from Shopify on each iPad.
++- Reading or dismissing a notice is per iPad, so it does not clear it on the other iPads (Q2).
++
++**11. The other-tills history cache (`pos.shared`). Understanding confirmed.** Yes, you understood it correctly. Today each till pulls other tills’ sales and daily totals from Shopify into this cache. Once CloudKit carries sales (plan patch 4), it becomes a local cache fed from CloudKit, and the Shopify pull is retired. The cache itself is not synced.
++
++**12. Local CSV history files. Decided: keep a local copy and also have a shared copy.** The three files (`sales.csv`, `sale_lines.csv`, `events.csv`) stay on each iPad exactly as they are, never auto-cleared, as the safety copy. The shared copy, as agreed:
++
++- Do not sync the CSV files as files. The app appends by reading the whole file and rewriting it, so two iPads editing copies would conflict.
++- Sales and sale lines are already covered by the synced sale records (items 17 and 18), so they need nothing new.
++- `events.csv` is the gap. It holds declined and unknown payments, voids, overrides, errors, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds, and staff switches. Only paid in and out reach the shared ledger today (a loan to the drawer and taking it back are paid in and out with a loan label, 0188). Sync events as their own append-only records (one per event, named by id, labelled with the register), and let the app build a combined CSV from them on demand.
++
++Confirmed (Q3).
++
++**13. Assistant audit log. Sync, labelled with the register.** Every assistant exchange, from every register, visible to managers in one place. Decided (Q4): the whole log syncs, encrypted, including anything a local model was sent, such as customer names. That is an exception to the plan’s rule that no customer name, email or phone reaches CloudKit (note N2).
++
++**14. Branding logo. Sync.** Stored as an iCloud asset alongside the receipt profile, so a new register prints the logo without a backup restore.
++
++**15. Training progress. Sync per staff member, and owners and managers can reset progress.** Progress follows the person across iPads. Training and demo data itself is still never synced; only the progress marks are. Decided (Q5): owners can reset anyone’s progress, and managers can reset progress for roles below manager. All modules can be reset (O1).
++
++**16. The `cloudkit.backend` flag. Local.** It is the rollback switch. If it synced, one wrong flip would move every till at once.
++
++**17. Tender and card details. Sync all, encrypt where necessary.** Every field on a tender syncs. Card tenders also carry a masked card number, last four digits, approval code, retrieval reference, receipt link, response code and transaction references. This reverses the plan’s earlier “plain fields now, encryption later” decision: encryption is now in scope from the first sales patch. Decided (Q6): encrypt the card fields (masked number, last four, approval code, retrieval reference, receipt link, response code, transaction references) using CloudKit’s encrypted fields, and keep kind, amount, tendered and change in plain fields. In plain terms: encrypted fields can only be read by the registers in your share and cannot be searched, so amounts stay plain to let reports add them up. I have not confirmed that encrypted fields read correctly for a participant in a shared zone on a different Apple ID, so that needs a two-device test early (O4).
++
++**18. Staff name, notes, reasons and price adjustments on sales. Sync.** These are what make reports and audits useful. One small residue: a free-text note could contain a customer’s name, which the plan promises never reaches CloudKit. You have accepted that sales sync, so treat this as a known, minor exception unless you want notes scrubbed.
++
++## C. Settings covered only by “everything else is per-device”
++
++**19. Shop name. Sync.**
++
++**20. Pass server URL and gift claim URL. Sync.** The addresses sync. The secrets that go with them also sync, encrypted (Q9, note N1).
++
++**21. Auto-receipt. Sync, decided.** This setting has two values, “ask” and “none”. After a sale, “ask” prompts the cashier about a receipt and “none” skips it. It decides what a till does at the end of every sale. Decided (Q7): **Sync**, so every till ends a sale the same way.
++
++**22. Accent, glass surfaces, item spotlight, theme setup version. Local.** Look and feel of the device.
++
++**23. Smart change and consolidate. Sync fully.** These choose how cash change is made up. They are now shop-wide, matching the shared drawer. The code comment that calls smart change “per device like the drawer ledger” is out of date and should be fixed.
++
++**24. Catalogue cache (variants, collections, customers). Local.** Derived from Shopify, and it exists so items and customers can be used offline.
++
++**25. Automatic discounts and discount presets. Local.** Confirmed in the code: both are fetched from Shopify (the presets are Shopify discount codes), so they are derived.
++
++**26. Catalogue and stock timestamps. Local.** They mark when this iPad last refreshed.
++
++**27. Grid version counter. Agreed, with a plainer explanation.** The grid layout itself syncs. Today a small counter says “is the shared layout newer than mine?”. CloudKit tracks that itself through each record’s change tag, so the counter is no longer needed. It is kept only during migration, to compare the old Shopify layout with a local one, and it is not synced as data.
++
++## Answers to the open questions (31 October 2026)
++
++All fourteen questions are answered. The numbers are the same as before.
++
++- **Q1 (item 7).** Local.
++- **Q2 (item 10).** Approved: only the cash and refund notices sync. Reading or dismissing one is per iPad.
++- **Q3 (item 12).** Confirmed. The shared copy is the synced sale records plus synced event records, with the CSV export built from them. The local CSV files stay unchanged.
++- **Q4 (item 13).** Encrypt and sync the whole audit log. Note N2 covers the customer-data exception this creates.
++- **Q5 (item 15).** Owners can reset anyone’s progress. Managers can reset progress for roles below manager only. Which modules: still open (O1).
++- **Q6 (item 17).** Approved. In plain terms: each piece of data in an iCloud record is stored either normally or encrypted. Encrypted pieces can only be read by the registers in your share and cannot be searched. Card details are encrypted. Amounts stay normal so reports can still add them up.
++- **Q7 (item 21).** Sync.
++- **Q8 (item 1).** Accepted, because the share link is private. All owner logins can reprint a pass, so pass codes must be available on every iPad (note N1).
++- **Q9.** The Keychain secrets sync, encrypted: the Shopify login (domain, client ID, client secret), the pass, claim and receipt secrets, and the AI key (note N1).
++- **Q10 (item 9).** The first resolution wins. Any register can resolve an unresolved payment, not only the one with the reader.
++- **Q11 (item 8).** Yes. A register can find sales with no Shopify order and create the order.
++- **Q12 (item 6).** Approved. In plain terms: today the drawer history is stored as one bundle, so two iPads writing at the same moment can overwrite each other. With one record per cash movement, each iPad only adds lines and nothing collides, and the drawer total is worked out by adding the entries up. The shift (open or closed, float, paid in and out) is a single small record, because there is only ever one.
++- **Q13.** Agreed. Every register uploads its own local-only data (events, payment attempts, audit log, training progress) once after joining.
++- **Q14.** Agreed. Also wanted: a CloudKit export (note N3).
++
++## New points from these answers
++
++**N1. Secrets and pass codes now sync, which reverses the plan.** The plan listed the Shopify login, the pass, claim and receipt secrets, the AI key and cashier pass codes as never in iCloud. They now sync, encrypted. One caveat: encryption keeps the data from anyone outside the share, but every register in the share can read it, and the share link is read-write. Anyone holding the link can therefore reach the Shopify client secret. You have accepted that the link is private. Treat it like the shop’s keys, share it only with your own devices, and turn the share off in iCloud if a device is lost. The Shopify access token itself expires and is fetched by each register, so it stays local.
++
++**N2. The customer-data rule has one exception.** The plan promised that no customer name, email or phone is written to CloudKit. The audit log is the exception, because it records what the model was sent and a local model can be sent customer details. It syncs encrypted. The in-app “what is in iCloud” note, the Cloud sync help page and your privacy policy wording should say this plainly.
++
++**N3. CloudKit export (new feature).** An owner-only action that writes everything stored in CloudKit to files in the Files app. It is a backup that does not depend on the owner’s Apple ID staying healthy. It belongs in plan patch 8 or a patch of its own. Decided in O5: one zip of JSON files containing everything.
++
++## Answers to the last five questions (31 October 2026)
++
++- **O1.** All training modules can be reset. Owners can reset anyone’s progress, and managers can reset progress for lower roles.
++- **O2.** Yes. The assistant’s connection settings (address, model name, options) sync along with the AI key, so a new register works straight away.
++- **O3.** CloudKit keeps every drawer ledger entry. The app loads the latest 1000.
++- **O4.** Deferred. There is no second Apple ID or device to test with right now. My suggestion, not yet agreed: build the encrypted fields behind a switch, and run the cross-Apple-ID test before turning on the encrypted secrets and pass codes (patch 6d).
++- **O5.** The export is one zip of JSON files containing everything stored in CloudKit. Because it includes the secrets, the zip is as sensitive as the Shopify login itself. Keep it owner-only.
++
++## Still open
++
++Only the encryption test (O4), which waits for a second device.
++
++## Additional notes
++
++- **Record names for new types** (all deterministic, to avoid duplicates): `drawer-shift`, `ledger-<entry id>`, `attempt-<sale uuid>-<reference>`, `event-<id>`, `staff-<staff id>`, `training-<staff id>-<module>`, and audit files named by register and day, e.g. `audit-<register id>-<date>`. Each register writes only its own audit and event files, so they cannot conflict.
++- **Payment data in sale records:** only masked card numbers are kept, never a full card number.
++- **The privacy note in the app** (“what is and is not in iCloud”) must be rewritten. It now has to say that staff PIN hashes, encrypted card details, payment attempts, events, the audit log (including any customer names a local model was sent), training progress, and the encrypted logins, secrets and pass codes are stored in iCloud.
++- **The shop’s privacy policy** stays yours to update. These changes add payment and staff data to what is stored.
++- **Never synced:** the Shopify access token (each register fetches its own), the open cart, the device’s own settings (items 4, 16, 22 and the per-device settings), the catalogue cache, training and demo data.
++
++## Changes to make to the plan and help pages
++
++1. Section 5 table: add the drawer, fees, cash rounding, Require PIN, staff (with hashes), staff display settings, payment attempts, events, notices (cash and refund only), audit log, training progress, logo, shop name, the two server URLs, and smart change and consolidate. Resolve the inventory prefs and receipt profile contradiction (inventory prefs Local, receipt profile Sync).
++2. Section 7 “never in iCloud”: remove staff PIN hashes. Also remove the cashier pass codes, the Shopify login, the pass, claim and receipt secrets and the AI key, which now sync encrypted.
++3. Section 7 “what is and is not in iCloud” and the in-app note: update as above.
++4. Replace the “encryptedValues later” decision with the card-field encryption decision.
++5. `help/settings/cloud-sync.md`: fix “cash stays on the register it was counted on” and “each register keeps its own settings”.
++6. Store comments for `smartChange` and the sales and drawer split need updating.
++
++## Suggested patch placement (proposal, not agreed)
++
++- **Patch 4 (sales and rollups):** sale records with encrypted card fields, payment attempts, events, and first the two-Apple-ID encryption test.
++- **Patch 5 (saved carts):** unchanged.
++- **Patch 6 (settings, layout, Square history):** add staff and staff display settings, the shop and receipt settings, the logo, and the shared notices.
++- **New patch 6b:** the shared drawer (shift and ledger entries).
++- **New patch 6c:** audit log (encrypted) and training progress.
++- **Patch 7 (migration):** extend to cover each register’s own local-only data (Q13).
++- **Patch 8:** unchanged.
++
++* **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
++* **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index ecf9bd3..209d458 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync plan
+ 
+-Status: planning only, no code written yet.
++Status: patches 1 to 3 are done; patch 4 onward is not. The decisions of 31 October 2026 (what syncs, what stays local, encryption, secrets) are in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Where this plan and that file disagree, that file wins; sections 5, 7 and 9 below have been updated to match.
+ Suggested location: `dev_docs/CLOUDKIT_SYNC_PLAN.md`
+ Written against the `main` branch as cloned on 2026-10-19.
+ 
+@@ -85,18 +85,35 @@ Imports use create-if-absent so an old import never overwrites a newer edit.
+ 
+ ## 5. What syncs and what stays local
+ 
++Item numbers refer to `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`.
++
+ | Data | Action |
+ |---|---|
+ | Metaobjects: saved carts, layout, sales, rollups, settings | Migrate and sync |
+-| `settings`, shared parts (bundles, cart warnings, adjust perms, staff, receipt profile, inventory prefs) | Sync |
+-| `settings`, device parts (`DEVICE_KEYS`) | Stay local |
++| Shared settings: bundles, cart warnings, adjust perms, fees, cash rounding, Require PIN | Sync (items 5) |
++| Staff, including PIN and badge hashes and salts | Sync (item 1) |
++| Staff display mode, personal theme, accent and tile size | Sync with the staff entry (item 2) |
++| Receipt profile, receipt server URL, shop name, pass server URL, gift claim URL | Sync (items 3, 19, 20) |
++| Logo | Sync as an iCloud asset beside the receipt profile (item 14) |
++| Auto-receipt, smart change, consolidate | Sync (items 21, 23) |
++| Assistant connection settings (address, model name, options) | Sync (O2) |
++| Cash drawer: the shift (including any loan owed back) as one record, each ledger entry as its own append-only record | Sync, one shared drawer (item 6, O3) |
++| Sales, with card fields encrypted | Sync (items 17, 18) |
++| Payment attempts, labelled with the register | Sync (item 9) |
++| Events (the `events.csv` content), one record each, labelled with the register | Sync (item 12) |
++| Notices: cash and refund only | Sync (item 10) |
++| Assistant audit log, encrypted, one file per register per day | Sync (item 13) |
++| Training progress per staff member | Sync (item 15) |
++| Secrets and cashier pass codes (Shopify login, pass, claim and receipt secrets, AI key) | Sync, encrypted, after the encryption test (N1, O4) |
+ | `pos.saved` carts | Sync (unsynced `dirty` carts push from their own device) |
+-| `pos.cart` (the open cart) | Stay local |
+-| `grid` layout | Sync |
+-| `data` (catalogue and customer cache) | Do not migrate; derived from Shopify |
++| `grid` layout | Sync. The grid version counter is only kept during migration (item 27) |
+ | Square history files | Sync as sharded `CKAsset`s with a manifest record |
+-| Theme, tile size, terminal pairing | Probably per-device (to confirm) |
+-| Shopify token, PINs, secure-store items | Stay local for now. Later option: end-to-end encrypted `encryptedValues` fields. |
++| Device parts (`DEVICE_KEYS`), the `cloudkit.backend` flag, inventory screen prefs, the device's own theme, accent, tile size, glass surfaces, item spotlight, theme setup version | Stay local (items 4, 16, 22) |
++| Sync bookkeeping: `drawerVersion`, `drawerPending`, `drawerShiftPending`, `warningListVersion`, `warningListPending` | Stay local (item 7) |
++| Outbox, the other-tills cache (`pos.shared`), local CSV history files | Stay local (items 8, 11, 12) |
++| Catalogue cache, automatic discounts and presets, catalogue and stock timestamps | Stay local (items 24 to 26) |
++| `pos.cart` (the open cart), the Shopify access token, training and demo data | Stay local |
++| `data` (catalogue and customer cache) | Do not migrate; derived from Shopify |
+ 
+ ## 6. First-connection migration
+ 
+@@ -138,7 +155,7 @@ All four are answered (see "Answered by the owner" below). Nothing here blocks p
+ 
+ - [x] Whether the customer data held in sales records raises privacy-policy questions once stored in iCloud. Answered: an in-app note now, policy wording the owner's.
+ - [x] Owner iCloud storage headroom for sales and Square history. Answered: ample.
+-- [x] Whether to use `encryptedValues` for sales and customer fields from the start. Answered: plain fields for now, encryption a later option.
++- [x] Whether to use `encryptedValues` for sales and customer fields from the start. Answered 20 October: plain fields for now. **Replaced 31 October:** the card fields of a tender are encrypted with CloudKit's encrypted fields from the first sales patch, and amounts stay plain (decisions item 17, Q6). The two-Apple-ID test (O4) still has to pass before the encrypted secrets and pass codes are turned on.
+ - [x] Dual-write or cut over in one go. Answered: decided at patch 8.
+ 
+ ### Answered by the owner (20 October 2026, before patch 4)
+@@ -150,9 +167,15 @@ All four are answered (see "Answered by the owner" below). Nothing here blocks p
+ 
+ ### What is and is not in iCloud (for the in-app note)
+ 
+-Written to the owner's iCloud, shared with the registers that joined the shop: the shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings), the grid layout, saved carts, sales records and daily totals, the shared cash drawer, the scanner calibration, the warning list, and the Square history files. A sale record references the Shopify customer by id only. **No customer name, email or phone is written to CloudKit**: those stay in Shopify, and a screen that needs one reads it from Shopify (this till's own cache, or the order for another till's sale). Nothing is field-encrypted, because the fields worth encrypting are not there.
++Updated 31 October 2026 from `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. The 20 October wording above it is superseded.
++
++Written to the owner's iCloud, shared with the registers that joined the shop: the shared settings (bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings), the staff list with PIN and badge hashes and each person's display settings, the receipt profile, logo, shop name and the two server addresses, the grid layout, saved carts, sales records (card details encrypted, amounts plain) and daily totals, payment attempts, events, the shared cash drawer (shift and every ledger entry), cash and refund notices, the assistant's audit log (encrypted), training progress, the scanner calibration, the warning list, the Square history files, and, once the encryption test has passed, the Shopify login, the pass, claim and receipt secrets, the AI key and the cashier pass codes (encrypted). A sale record references the Shopify customer by id only.
++
++**One exception to the customer rule.** No customer name, email or phone is written to CloudKit by the sales sync, but the audit log records what the assistant was sent, and a local model can be sent customer details. The log syncs encrypted and so can contain them. A free-text sale note can also contain a name. The in-app note, the Cloud sync help page and the shop's privacy policy should say so plainly.
++
++Every register in the share can read the encrypted fields, and the invite link is read-write, so anyone holding the link can reach the Shopify client secret. Treat the link like the shop's keys, and turn the share off in iCloud if an iPad is lost.
+ 
+-Never in iCloud: the Shopify token and app credentials, staff PINs and hashes, cashier passes, the AI assistant key, the open cart, the device's own settings (theme, tile size, register name, device mode and its switches), and the training or Demo data. Customer names, emails and phones are on a device only as the Shopify-derived cache and inside that device's own offline sales, which is how a customer can be attached with no connection.
++Never in iCloud: the Shopify access token (each register fetches its own), the open cart, the device's own settings (inventory screen prefs, the iPad's theme, accent, tile size, glass surfaces, item spotlight, register name, device mode and its switches), the sync bookkeeping counters, the outbox, the catalogue cache and Shopify-derived discounts, and the training or Demo data.
+ 
+ ## 8. Risks
+ 
+@@ -167,10 +190,14 @@ Never in iCloud: the Shopify token and app credentials, staff PINs and hashes, c
+ 1. Entitlements, config plugin and Swift module skeleton. **Done and build-verified** (`plugins/withCloudKit.js`, wired into `app.json`): the iCloud container `iCloud.com.aidens3dp.pos` and the CloudKit service entitlement, `CKSharingSupported`, `UIBackgroundModes: [remote-notification]`, and the iOS deployment target raised to 17.0 in both the Podfile and the Xcode project. Verified with a real `expo prebuild` in a throwaway copy: the entitlements file, `Info.plist` and all four build configurations come out right. The native module is also done: `modules/cloudkit-sync/` holds `CloudKitSyncModule.swift` (the device's account status, and whether CloudKit is supported) and the JS bridge (`status.ts` with `index.ts`), which answers `unavailable` in a build that carries no native module. It was verified in a throwaway copy too: `expo-modules-autolinking` listed `cloudkit-sync`, `pod install` integrated the pod, and `xcodebuild` built the `CloudKitSync` target for the simulator. Still the owner's: create the `iCloud.com.aidens3dp.pos` container and turn on iCloud for the App ID. Then patch 2 adds the zone, the share and the account screen.
+ 2. Zone, share creation and acceptance, plus an account-status UI. **Done and build-verified.** `CloudKitSyncModule.swift` gained `getState` (this till's role, worked out from which database holds the `Store` zone), `createZoneAndShare` (opens the zone and makes one zone-wide `CKShare` with `publicPermission = .readWrite`, so the invite link needs no participant list), `acceptShare(url)` and `takePendingInvite`, plus an `onShareJoined` event. `plugins/withCloudKit.js` now also writes `application(_:userDidAcceptCloudKitShareWith:)` into the generated `AppDelegate`, inside the `AppDelegate` class (its braces are matched, because the file carries a second class after it), so a tapped invite link is caught: the module joins at once when the app is running, and a cold launch leaves the link in the box for one tap. The page is `src/screens/CloudSync.tsx`, reached from **Settings ▸ Data ▸ Cloud sync**, for managers and owners, and both actions are switched off in practice mode. It links the registers but sends no records yet. Verified in a throwaway copy: `expo prebuild` put the method inside `AppDelegate`, `pod install` integrated the pod and `xcodebuild` built the `CloudKitSync` target; the text transform has node tests in `tests/cloudkitplugin.test.ts`. The account screen cannot be tested end to end without two iPads (see `dev_docs/DEVICE_TESTS.md` T74). One note for later: iOS 26 deprecates the app-delegate call in favour of the scene one, and this app is not scene based, so if a tapped link does not join there, a scene delegate is the fix.
+ 3. A backend interface wrapped around the current metaobjects code. **Done.** `src/lib/syncBackend.ts` is the seam: the `SharedBackend` interface (ensure, get, put, list, remove, plus an optional detail capability), the row and page shapes, the training block on writes, and the selector that picks a backend (`setBackend`, `activeBackend`, `activeBackendKind`). `src/lib/shopify/metaobjectBackend.ts` is the one implementation that exists today: it wraps the same `metaobjects.ts` calls `sync.ts` used to make by hand, mapping the shop's five shared types (`cart`, `layout`, `sale`, `rollup`, `settings`) onto the metaobject types. `sync.ts`, `Reports.tsx` and the Settings button now go through the seam, so nothing above it imports metaobjects directly and patch 4's CloudKit backend is a drop-in. The training rule (`kvWriteAllowed`) reaches the seam too: reads stay open so a course can teach on real history, writes are refused. `App.tsx` installs the metaobject backend before the first poll. Tests: `tests/syncbackend.test.ts` pins the contract with a fake backend (selector, the missing-backend sentence, the training block, the detail capability).
+-4. The CloudKit backend for sales and rollups
++4. The CloudKit backend for sales and rollups, with encrypted card fields, payment attempts and events (run the two-Apple-ID encryption test first)
+ 5. Saved carts with conflict merging
+-6. Settings, layout and Square history shards
+-7. Migration lease, checkpoints and verification
++6. Settings, layout and Square history shards, plus staff and staff display settings, shop and receipt settings, the logo and the shared cash and refund notices
++   - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
++   - 6c. The audit log (encrypted) and training progress
++   - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
++   - 6e. The owner-only CloudKit export, one zip of JSON files (or fold it into 8)
++7. Migration lease, checkpoints and verification, extended so each register uploads its own local-only data once after joining (events, payment attempts, audit log, training progress)
+ 8. Retire polling and add the rollback flag
+ 
+ The four owner decisions left in section 7 do not block patch 3, which is a code seam with no CloudKit behaviour of its own.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 95ab17d..846ad92 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -169,6 +169,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | ledger-fix | 2026-10-20 | **Not a numbered patch: apply this by hand.** `patches/APPLIED.txt` had no newline after its last line, so when CI appended 0185 the name was glued onto the 0174 line (`0174-…patch0185-…patch`). `scripts/apply-patches.sh` skips a patch only when its name is a whole line, so 0174 and 0185 both counted as unapplied, as did 0175, 0183 and 0184 (never listed). The next run would have tried 0174 first, failed because it is already in the tree, and stopped with "Later patches were not tried". The ledger now lists 0174, 0175, 0183, 0184, 0185 and 0186, each on its own line. The script adds the missing newline before it appends, so a ledger that loses its trailing newline cannot glue two names together again. Tested by running the script in a scratch repo: with the fixed ledger it applies 0 patches, and with the newline stripped and a new patch added, the new name lands on its own line. **It has to be applied by hand and pushed** (`git apply ledger-fix.diff`), because a normal patch would be stopped by the very problem it fixes | your request |
+ | 0187 | 2026-10-20 | Demo mode on the real data (your request: use the real catalogue and real-world data if present, and block only what has consequences or cannot be rolled back). **Demo mode now runs on a copy of the till's own data.** New `src/lib/demoData.ts` builds it: the catalogue with its grid, automatic deals, discount presets, bundles and display settings, the customers, this till's sales, the other tills' history, the daily totals, saved carts, the upload queue, the notifications and the cash drawer. Practice data fills a gap only where a screen would have nothing worth showing, and the catalogue group is all or nothing so practice ids never mix with real ones. Not carried over: the cart being rung up and card attempts (they belong to a sale really happening). Everything is copied (not shared), so even code that edits an object in place cannot reach the real one, and leaving restores the real state exactly. Signed in as the made-up owner with no PIN as before, with the real staff kept in the list. The banner, the home screen intro, the Show fallback and the More row say what is real. Demo mode now will not start while a card payment is in flight or a sale is part paid, the rule training already had. **Why the audit mattered:** with real ids in memory, a write that slipped past the guard would land in Shopify instead of failing on a made-up id. I swept every network call, file write and Keychain write in `src/`. Shopify (`gql`, `getToken`), storage, receipts, the card bridge, the CloudKit seam and the assistant were already guarded. **Four gaps found and closed:** (1) the Square history screen could delete or overwrite the real history files, because only its share button was guarded (`installFromUrl`, `installFromPicked`, `rebuild`, `removeSquareHistory` now stop first; reading stays open); this was already true of the old Demo mode; (2) Backup & transfer ▸ Export put the real Shopify and pass logins into a file and opened the share sheet, and Restore could replace settings (`collectBackup` and `applyBackup` now stop); (3) `requestStaffPass` asked the pass server for a real pass (now stops); (4) a restored backup wrote a logo file (now skipped). Tests: `tests/demodata.test.ts` (11: what is real and what is practice, that no practice id mixes into real data, a copy that shares nothing, outbound settings stay blank, the live store shows the real catalogue and edits are never stored or leaked and leaving restores it exactly, entry blocked mid payment) and `tests/demoguard.test.ts` (5, the permanent audit: every file that fetches or writes must check the guard or be listed with a verified reason, the four Square functions, the backup functions, the CloudKit seam, and the pass request). I broke each protected thing on purpose and confirmed the right test fails. Device test T80. **Decided without you, change any you disagree with:** see `dev_docs/GUESSES.md`. **Not done, and your call:** live Shopify reads (Orders lookups, customer search, a catalogue refresh) are still off, so the demo shows what is already on the iPad; allowing queries but not mutations is possible and I can do it as its own patch. **Found, not mine:** `tests/assistantcontext.test.ts` fails on `origin/main` ("missing tab_today") and `tsc` reports one error in `Staff.tsx`, both from Companion patch 0178 adding the `today` and `scan` tabs; I left them for that series. With my patch the suite is 1445 of 1446 passing, the same one failure as before it | your request |
+ | 0188 | 2026-10-31 | Cash drawer, loans to the drawer (your request: a quick way to mark money you lend the drawer when you pay it in, so you can take the same amount back out at the end). **Paid in now has a "This is a loan to the drawer" switch.** A loan is still an ordinary paid-in, so expected cash adds up as before; the shift just remembers how much of it is owed back (`loanCents`, new pure helpers in `src/lib/drawerLoan.ts`). While a loan is owed the drawer shows it under Paid in, and a **Take loan back** button opens Paid out with the switch on; paying out reduces what is owed and never goes below zero. Closing with a loan still owed asks first, and the Z-report prints "Loan still owed to you". Ledger and CSV events say "Loan to drawer" and "Loan taken back". The shift syncs between registers as before, so a loan shows everywhere. Tests: `tests/drawerloan.test.ts` (7). **Not done, your call:** the AI assistant's cash view and the Daily float report do not mention the loan yet; a loan taken back is an ordinary paid-out, so it is not counted as takings. Device check: put in $50 as a loan, confirm Take loan back appears and offers $50, take $20 back, then close and see the confirm and the Z-report line. | your request |
++| 0189 | 2026-10-31 | CloudKit, the 31 October decisions written into the repo (your request: start on the decisions doc). **Docs and comments only, no behaviour change.** New `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` holds your decisions and open items, rechecked against 0188 (the shared drawer shift now carries the loan owed, and loan events join the events list). `dev_docs/CLOUDKIT_SYNC_PLAN.md`: section 5 rewritten as the full sync and local table, the 20 October `encryptedValues` answer marked replaced, the "what is and is not in iCloud" text rewritten (staff hashes, encrypted card fields and secrets now in, the audit log named as the customer-data exception, the read-write link caveat), and the patch list gained 6b to 6e and the migration extension. `help/settings/cloud-sync.md` no longer says cash is never merged or that each register keeps its own settings (both were already untrue after 0168); `help.json` rebuilt, help:check green. Two `store.ts` comments corrected (smart change is shop-wide, the drawer is shared). **Not done, your call:** the encryption test (O4) waits for a second Apple ID; the audit of code that still assumes "this till's drawer" and the in-app privacy note are for patches 6b and 4. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index a9fdc49..e4a61ed 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "2a2d9e5e",
++ "version": "21a2b644",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1726,7 +1726,7 @@
+     "orders/export",
+     "settings/shopify"
+    ],
+-   "updated": "2026-10-20",
++   "updated": "2026-10-31",
+    "roles": [
+     "manager",
+     "owner"
+@@ -1734,7 +1734,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- Cash stays on the register it was counted on: the drawer, its float and its ledger belong to one till and are never merged.\n- Settings are unchanged: each register keeps its own, and [[settings/backup]] is still how you copy them across.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself | `src/screens/CloudSync.tsx` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index 19df7b8..1f6bd1d 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -5,7 +5,7 @@ parent: settings
+ summary: Set one register up to hold the shop's shared records, then join the others with its invite link.
+ tags: [cloud, icloud, cloudkit, share, registers, sync, invite link, multiple ipads, join, join a shop]
+ related: [settings/backup, orders/export, settings/shopify]
+-updated: 2026-10-20
++updated: 2026-10-31
+ roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.
+@@ -38,8 +38,8 @@ Two things follow from that:
+ 
+ ### What travels
+ - Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.
+-- Cash stays on the register it was counted on: the drawer, its float and its ledger belong to one till and are never merged.
+-- Settings are unchanged: each register keeps its own, and [[settings/backup]] is still how you copy them across.
++- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
++- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
+ 
+ ## Advanced
+ 
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 4ab4a56..cb87c2e 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -25,7 +25,7 @@ import { AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_STEP_UP_MINUTES,
+ export type Settings = {
+   shopName: string; locationId?: string; locationName?: string;
+   registerId: string; registerName: string;
+-  cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), per device like the drawer ledger
++  cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), shop-wide like the shared drawer ledger (CloudKit decisions item 23)
+   theme: 'brand' | 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L' | number;
+   themeSetupVersion: number;
+   glassSurfaces: boolean;
+@@ -78,7 +78,7 @@ type Data = {
+ };
+ type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger;
+   /** Other tills' recent sales and daily totals, pulled from Shopify (see pullSalesHistory). Kept apart from `sales`, which is this
+-   *  till's own live copy and what the cash tools read: a drawer figure must stay this till's. */
++   *  till's own live copy of its sales. The cash drawer itself is one shared drawer for the shop (0168), so cash figures are read from the shared ledger, not from this list alone. */
+   shared: SharedHistory };
+ 
+ export type App = {
