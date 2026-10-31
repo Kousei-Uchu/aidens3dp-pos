@@ -369,3 +369,15 @@ You asked for Demo mode to use the real catalogue and real data where there is s
 - **A copy, not a view.** The demo is a JSON copy of the data taken when it starts, so even code that edits an object in place cannot reach the real one. On a very large catalogue the copy takes a moment.
 
 **What the audit found:** the Square history screen could delete or overwrite the real history files in Demo mode (this was already true of the old Demo mode), Backup & transfer could export the real logins, and the pass request could reach the pass server. All three are now stopped, and `tests/demoguard.test.ts` keeps the list: a new file that fetches or writes must check the guard or be added with a reason.
+
+## CloudKit sale records (0194)
+
+These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **Encrypted by default or not.** Decisions item 17 says encryption is in scope from the first sales patch, and O4 (build behind a switch, test across two Apple IDs first) is your suggestion and not agreed. Guess: the switch exists and defaults to `omit`, so until the test passes the card details are left out of CloudKit, never written plain. Turning on `encrypted` is one argument.
+2. **Which card fields are plain.** Q6 lists what to encrypt. Guess: scheme, card media, local time, tip and surcharge amounts are not on that list and stay plain (amounts have to add up in reports, and the others identify nothing).
+3. **Gift card codes and gift recipients.** The decisions do not mention them. A gift card code can be spent by anyone who reads it, and a recipient's email is someone else's detail. Guess: they go in the encrypted field with the card details, and never plain.
+4. **The sale's own receipt link.** A link to a receipt page can show the whole sale. Guess: encrypted, like the card's receipt link.
+5. **One encrypted field, not many.** Guess: one JSON field, `secure_json`, so the native side handles a single encrypted key per sale.
+6. **A customer reads back with no name.** The sale keeps only the Shopify id. Guess: it returns as `{ id, name: '' }` and the till fills in the name from its own Shopify cache.
+7. **Free-text notes and reasons stay plain** (decisions item 18), a known minor exception for a customer's name.
