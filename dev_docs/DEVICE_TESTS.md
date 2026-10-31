@@ -1162,3 +1162,16 @@ Needs two iPads on the shop's share (T74), both on a build with this patch and t
 5. On iPad B, which has its own `events.csv` history from before it joined, open the app and wait about 30 seconds. Pass: B's older events appear once each, labelled with B's name, and A's events are untouched.
 6. On A, start practice mode (Training) and do a paid in. Pass: no `Event` record, and no new row in `events.csv`.
 7. Switch the CloudKit backend off again from the debug build and do a paid in. Pass: the row is in `events.csv` and nothing new reaches CloudKit.
+
+## T88. Payment attempts reach CloudKit (0199)
+
+Needs two iPads on the shop's share (T74) and a card reader on at least one, both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8). Nothing in this patch has been run on a device.
+
+1. On iPad A, start a card payment and approve it. Pass: within about 30 seconds the CloudKit dashboard (Development) shows one `Attempt` record, status `approved`, labelled with A's register name.
+2. On A, start a card payment and cancel it on the reader. Pass: a second `Attempt` record with status `cancelled`.
+3. On A, make a payment end as unknown (turn the reader's network off right after the card is tapped). Pass: an `Attempt` record with status `unknown` and no `Resolution` record.
+4. On A, resolve it with "Customer was NOT charged". Pass: one `Resolution` record named for that attempt, resolved by A's staff name, and the `Attempt` record still says `unknown`.
+5. Repeat step 3 so there is a new unknown attempt, then resolve it on A and on iPad B within a second of each other (B must hold the same attempt, for example from a debug button). Pass: one `Resolution` record, and the iPad that came second shows a notice naming who resolved it first.
+6. Turn airplane mode on at A and make a payment end as cancelled, then turn it off. Pass: no error shows at A, and within about 30 seconds the `Attempt` record appears once.
+7. Force-quit and reopen A twice. Pass: the number of `Attempt` and `Resolution` records does not change.
+8. Start practice mode (Training) on A and run a practice card payment. Pass: no new `Attempt` record.

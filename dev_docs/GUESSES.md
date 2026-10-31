@@ -400,3 +400,13 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 3. **Events already in the CSV when CloudKit goes live are uploaded.** Guess: yes, by the same first catch-up, since the history is the register's own (Q13). A register that was on Shopify storage first therefore sends its whole `events.csv` the first time CloudKit is the active backend.
 4. **A bad row is skipped, not uploaded.** A row with no time or a kind the app does not know is left out of the upload and left alone in the file.
 5. **Paid in and paid out are now both an event record and a ledger entry.** The ledger entry is the money; the event is the audit line, as in `events.csv` today.
+
+## CloudKit attempt call sites (0199)
+
+These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **The catch-up sends every attempt the register holds.** Guess: once per launch, one read and one write for each (the app never prunes its attempts list). The alternative is a stored marker per attempt, which is one more per-device counter. Say so if the list gets long enough to matter.
+2. **A register never changes its own attempts from CloudKit.** Guess: when another register resolved a payment first, this one keeps its own copy and shows a notice; it does not rewrite its attempt or undo a tender it added. Pulling the shop-wide list is a separate piece.
+3. **The notice is `info`.** Guess: info, which stays local (decisions item 10), rather than `refund` or `cash`, which sync. It says who resolved it and to check the terminal or Zeller dashboard.
+4. **Only who resolved it is recorded, not what they chose.** The decisions say the first resolution wins and do not say the outcome (charged or not charged) is stored. Guess: it is not, so the notice cannot say whether the other register agreed. Adding it is one more field on the resolution record.
+5. **An automatic resolution counts as the register's.** When the reader check settles an unknown payment on its own, there is no person, so the resolution is labelled with the register's name.

@@ -9,7 +9,8 @@ import { buildSale, cardTender, cashTender, paidTotal } from '../lib/saleBuilder
 import { attemptRef, describeEvent, reconcile, startCharge, startRefund, type PaymentResult, type RefundResult } from '../lib/zeller';
 import { getTerminal, checkReader } from '../zellerBridge';
 import { csv } from '../lib/csvStore';
-import { applyLocalStock, drawerChanged, recordSale, recordWarningListEntries, updateSaved } from '../lib/sync';
+import { applyLocalStock, attemptSync, drawerChanged, recordSale, recordWarningListEntries, updateSaved } from '../lib/sync';
+import type { SharedAttempt } from '../lib/eventRecords';
 import { digitsToCents, fmt } from '../lib/money';
 import { equalPlan, firstPlan, isSplit, planAfter, planTarget, type SplitPlan } from '../lib/splitPlan';
 import { uid } from '../lib/ids';
@@ -88,7 +89,13 @@ export default function Pay({ onBack }: { onBack: () => void }) {
 
   // ── card ──
   const attempts = () => useApp.getState().pos.attempts;
-  const setAttempt = (ref: string, p: Partial<Attempt>) => useApp.getState().patchPos({ attempts: attempts().map(a => (a.ref === ref ? { ...a, ...p } : a)) });
+  // Change an attempt here, then tell CloudKit (when it is the active backend). Resolves to the attempt as CloudKit holds it, or null.
+  const setAttempt = (ref: string, p: Partial<Attempt>): Promise<SharedAttempt | null> => {
+    const next = attempts().find(a => a.ref === ref); if (!next) return Promise.resolve(null);
+    const merged = { ...next, ...p };
+    useApp.getState().patchPos({ attempts: attempts().map(a => (a.ref === ref ? merged : a)) });
+    return attemptSync.push(merged);
+  };
   const blockedByUnknown = () => attempts().find(a => a.saleUuid === cart.saleUuid && a.status === 'unknown');
 
   const runCard = async () => {
@@ -99,7 +106,7 @@ export default function Pay({ onBack }: { onBack: () => void }) {
     const ref = attemptRef(uuid, attempts().filter(a => a.saleUuid === uuid).length + 1);
     setCard({ phase: 'waiting', text: 'Starting…', amount });
     const h = startCharge(t, { amountCents: amount, reference: ref }, {
-      onStarted: () => useApp.getState().patchPos({ attempts: [...attempts(), { ref, saleUuid: uuid, amountCents: amount, ts: new Date().toISOString(), status: 'started' }] }),
+      onStarted: () => { const started: Attempt = { ref, saleUuid: uuid, amountCents: amount, ts: new Date().toISOString(), status: 'started' }; useApp.getState().patchPos({ attempts: [...attempts(), started] }); void attemptSync.push(started); },
       onEvent: e => setCard(s => (s.phase === 'waiting' ? { ...s, text: describeEvent(e) } : s)),
     });
     cancelRef.current = h.cancel;
@@ -128,7 +135,12 @@ export default function Pay({ onBack }: { onBack: () => void }) {
   const manualResolve = async (charged: boolean, ref: string, amount: number) => {
     const ok = await confirm(charged ? 'Customer WAS charged?' : 'Customer was NOT charged?', charged ? `Records ${fmt(amount)} as paid by card. Only confirm if you saw it approved on the terminal or Zeller dashboard.` : 'Allows you to charge again. Only confirm if you have checked the terminal or Zeller dashboard.', 'Confirm', !charged);
     if (!ok) return;
-    const who = staffName ?? settings.registerName; setAttempt(ref, { status: 'resolved', resolvedBy: who });
+    const who = staffName ?? settings.registerName;
+    // Any register can resolve an unresolved payment and the first resolution wins (decisions Q10). If another register got there
+    // first, say so: what it chose may not be what was chosen here, so the terminal or Zeller dashboard is the thing to check.
+    void setAttempt(ref, { status: 'resolved', resolvedBy: who }).then(r => {
+      if (r?.status === 'resolved' && r.resolvedBy && r.resolvedBy !== who) useApp.getState().notify({ kind: 'info', title: 'Payment already resolved', body: `${r.resolvedBy} resolved this payment first. Check the terminal or Zeller dashboard that the sale matches what happened.` });
+    });
     void csv.event({ kind: 'unknown_resolved', saleUuid: cart.saleUuid, reference: ref, amountCents: amount, message: charged ? 'resolved: charged' : 'resolved: not charged', staff: who });
     setCard({ phase: 'idle' });
     if (charged) addTender({ id: ref, kind: 'card', amountCents: amount, card: { externalReference: ref }, feeCents: Math.round(amount * settings.fees.cardPresentRate), at: new Date().toISOString() }, cart.saleUuid ?? saleUuid());
