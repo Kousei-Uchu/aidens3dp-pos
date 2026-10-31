@@ -14,6 +14,12 @@ private let cloudKitZoneName = "Store"
 // needing the link pasted again. Written by the AppDelegate method that plugins/withCloudKit.js injects.
 private let cloudKitPendingInviteKey = "cloudkitPendingInvite"
 
+/// The fields kept as CloudKit encrypted values, by record type (decisions item 17). They are never written as plain fields:
+/// copyFields skips them, and they only travel through the separate `encrypted` argument. CKRecord.allKeys() does not list
+/// encrypted values, so recordToDict reads these keys by name.
+private let cloudKitEncryptedKeys: [String: [String]] = ["Sale": ["secure_json"]]
+private let cloudKitNeverPlainKeys: Set<String> = Set(cloudKitEncryptedKeys.values.flatMap { $0 })
+
 // The AppDelegate posts this when iOS hands the app a share link. The module joins on the spot; the AppDelegate cannot,
 // because it does not own the container logic.
 private let cloudKitDidAcceptShareNotification = Notification.Name("cloudkitDidAcceptShare")
@@ -91,8 +97,8 @@ public class CloudKitSyncModule: Module {
     }
 
     // --- Patch 4: sales and rollups ---
-    AsyncFunction("putSale") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
-      try await self.putRecord(recordType: "Sale", recordName: "sale-\(handle)", fields: fields)
+    AsyncFunction("putSale") { (handle: String, fields: [String: Any], encrypted: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Sale", recordName: "sale-\(handle)", fields: fields, encrypted: encrypted)
     }
 
     AsyncFunction("getSale") { (handle: String) async throws -> [String: Any]? in
@@ -329,19 +335,27 @@ public class CloudKitSyncModule: Module {
         else { out[key] = String(describing: v) }
       }
     }
+    // Encrypted values are not in allKeys(). A value this device cannot decrypt comes back nil and is simply absent, so the
+    // record still reads, only without those fields.
+    if let keys = cloudKitEncryptedKeys[record.recordType] {
+      var enc: [String: Any] = [:]
+      for key in keys { if let s = record.encryptedValues[key] as? String { enc[key] = s } }
+      if !enc.isEmpty { out["encrypted"] = enc }
+    }
     return out
   }
 
   /// Create or update the record with this name. It goes through upsertRecord because CloudKit refuses to save a fresh
   /// record over a name that already exists (serverRecordChanged), which made every second write of the same sale,
   /// rollup, cart, settings or layout record fail. Fields not mentioned are left as they were.
-  private func putRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
-    try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields)
+  private func putRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
+    try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields, encrypted: encrypted)
   }
 
   private func copyFields(_ fields: [String: Any], into record: CKRecord) {
     for (k, v) in fields {
-      if k == "id" || k == "recordName" || k == "updatedAt" || k == "createdAt" { continue }
+      if k == "id" || k == "recordName" || k == "updatedAt" || k == "createdAt" || k == "encrypted" { continue }
+      if cloudKitNeverPlainKeys.contains(k) { continue } // an encrypted field is only ever written through `encrypted`
       if let s = v as? String { record[k] = s as CKRecordValue }
       else if let i = v as? Int { record[k] = NSNumber(value: i) }
       else if let d = v as? Double { record[k] = NSNumber(value: d) }
@@ -351,10 +365,19 @@ public class CloudKitSyncModule: Module {
     }
   }
 
+  /// Write the encrypted values. Only the keys listed for the record's type are accepted, and only text, so a mistake in
+  /// JavaScript cannot turn a plain field into an encrypted one or the other way round.
+  private func copyEncrypted(_ encrypted: [String: Any], into record: CKRecord) {
+    let allowed = cloudKitEncryptedKeys[record.recordType] ?? []
+    for (k, v) in encrypted where allowed.contains(k) {
+      if let s = v as? String { record.encryptedValues[k] = s }
+    }
+  }
+
   /// Create the record, or change the one that is there. putRecord above builds a fresh record every time, which CloudKit
   /// refuses for a name that already exists (serverRecordChanged), so anything that is updated in place goes through here:
   /// fetch the current record, change its fields, save, and try again if someone else saved in between.
-  private func upsertRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
+  private func upsertRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
     var lastError: Error?
     for _ in 0..<3 {
@@ -365,6 +388,7 @@ public class CloudKitSyncModule: Module {
         record = makeRecord(recordType: recordType, recordName: recordName)
       }
       copyFields(fields, into: record)
+      copyEncrypted(encrypted, into: record)
       do {
         let saved = try await database().save(record)
         return recordToDict(saved)

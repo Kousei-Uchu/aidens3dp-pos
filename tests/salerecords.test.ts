@@ -117,3 +117,27 @@ test('an unreadable or wrong-version encrypted field is ignored, the sale still 
   assert.equal(saleFromParts(plain, { [SALE_SECURE_FIELD]: 'garbage' })!.totalCents, 3500);
   assert.equal(saleFromParts(plain, { [SALE_SECURE_FIELD]: JSON.stringify({ v: 2, receiptLink: 'x' }) })!.receiptLink, undefined);
 });
+
+// The backend's read and write path, as the native side would hand records back.
+import { saleRowFields, saleWriteFromFields } from '../src/lib/saleRecords';
+import { decodeSaleRow } from '../src/lib/salesHistory';
+
+test('write then read: the seam gets the whole sale back with the card details, through decodeSaleRow', () => {
+  const s = sale();
+  const { plain, encrypted } = saleWriteFromFields({ sale_uuid: s.uuid, receipt_link: s.receiptLink, tenders_json: '[{"r":"ext-1"}]', sale_json: JSON.stringify(s) }, 'encrypted');
+  const record = { recordName: 'sale-u-1', updatedAt: 1, ...plain, encrypted };
+  const back = decodeSaleRow(saleRowFields(record))!;
+  assert.equal(back.tenders[1].card?.panMasked, PAN);
+  assert.equal(back.tenders[2].giftCardCode, 'GIFT-TENDER-55');
+  assert.equal(back.receiptLink, 'https://receipts.example/s/xyz');
+  assert.equal(back.customer?.id, 'gid://shopify/Customer/9');
+  assert.equal(back.customer?.name, '');
+});
+test('write then read in omit mode: the sale reads, with no card details anywhere', () => {
+  const s = sale();
+  const { plain, encrypted } = saleWriteFromFields({ sale_json: JSON.stringify(s) }, 'omit');
+  const row = saleRowFields({ recordName: 'sale-u-1', ...plain, encrypted });
+  const text = JSON.stringify(row);
+  for (const x of SECRETS) assert.equal(text.includes(x), false, `leaks ${x}`);
+  assert.equal(decodeSaleRow(row)!.totalCents, 3500);
+});

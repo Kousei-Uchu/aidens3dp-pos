@@ -25,3 +25,22 @@ test('save() is only called in the helpers that deal with an existing record', (
   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
   assert.deepEqual(callers.sort(), ['putRecordOnce', 'upsertRecord']);
 });
+
+// Encrypted sale fields (decisions item 17). The Swift cannot be built here, so these pin the rules by reading it.
+test('an encrypted key is never written as a plain field, and only listed keys are written as encrypted ones', () => {
+  assert.match(src, /cloudKitEncryptedKeys: \[String: \[String\]\] = \["Sale": \["secure_json"\]\]/);
+  assert.match(body('copyFields'), /cloudKitNeverPlainKeys\.contains\(k\) \{ continue \}/);
+  const e = body('copyEncrypted');
+  assert.match(e, /allowed\.contains\(k\)/); assert.match(e, /record\.encryptedValues\[k\] = s/);
+  assert.doesNotMatch(e, /record\[k\]/);
+});
+test('upsertRecord writes the encrypted values before saving, and putSale passes them', () => {
+  const b = body('upsertRecord');
+  assert.ok(b.indexOf('copyEncrypted(encrypted, into: record)') > b.indexOf('copyFields(fields, into: record)'));
+  assert.ok(b.indexOf('copyEncrypted(encrypted, into: record)') < b.indexOf('.save(record)'));
+  assert.match(src, /AsyncFunction\("putSale"\) \{ \(handle: String, fields: \[String: Any\], encrypted: \[String: Any\]\)/);
+});
+test('recordToDict reads the encrypted values by name and hands them back under `encrypted`', () => {
+  const b = body('recordToDict');
+  assert.match(b, /cloudKitEncryptedKeys\[record\.recordType\]/); assert.match(b, /record\.encryptedValues\[key\]/); assert.match(b, /out\["encrypted"\] = enc/);
+});

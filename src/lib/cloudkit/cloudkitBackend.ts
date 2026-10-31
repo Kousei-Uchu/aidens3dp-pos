@@ -4,8 +4,11 @@
 // backend strips customer PII from sale records and keeps only the Shopify customer
 // id as an opaque reference, because customers live in Shopify (customer data is not synced to CloudKit).
 // The metaobject backend stays live beside this one; cut-over is deferred to patch 8.
+// A sale's card details, gift codes and receipt link go in one encrypted field and are never written plain (saleRecords.ts);
+// whether they are written at all is the card mode below, `omit` until the two-Apple-ID test (decisions O4) has passed.
 import type { BackendListOptions, BackendPage, BackendRow, SharedBackend, SharedType } from '../syncBackend';
 import * as ck from '../../../modules/cloudkit-sync';
+import { saleRecordName, saleRowFields, saleWriteFromFields, type CardMode } from '../saleRecords';
 
 const CLOUDKIT_MISSING = 'CloudKit native module is not available.';
 
@@ -19,32 +22,22 @@ function asRow(recordName: string, f: Record<string, any>): BackendRow {
   const rowF: Record<string, string> = {};
   for (const [k, v] of Object.entries(f)) {
     if (v === null || v === undefined) continue;
-    if (k === 'id' || k === 'recordName' || k === 'updatedAt') continue;
+    if (k === 'id' || k === 'recordName' || k === 'updatedAt' || k === 'encrypted') continue;
     rowF[k] = String(v);
   }
   return { id: recordName, handle: recordName, updatedAt, f: rowF };
 }
 
-function sanitizeSaleFields(fields: Record<string, string | number | undefined | null>): Record<string, string | number | undefined | null> {
-  const out: Record<string, string | number | undefined | null> = {};
-  for (const [k, v] of Object.entries(fields)) {
-    if (v === undefined || v === null) continue;
-    if (k === 'customer' || k === 'customer_json') continue;
-    if (k === 'sale_json' && typeof v === 'string') {
-      try {
-        const obj = JSON.parse(v);
-        if (obj && typeof obj === 'object' && 'customer' in obj) delete obj.customer;
-        if (obj && typeof obj === 'object' && 'customer_json' in obj) delete obj.customer_json;
-        out.sale_json = JSON.stringify(obj);
-      } catch {
-        out.sale_json = v;
-      }
-      continue;
-    }
-    out[k] = v;
-  }
-  return out;
+/** A sale row for the seam: plain fields as strings, and the whole sale rebuilt with whatever encrypted parts could be read. */
+function asSaleRow(recordName: string, f: Record<string, any>): BackendRow {
+  const row = asRow(recordName, f);
+  return { ...row, f: saleRowFields(f) };
 }
+
+let cardMode: CardMode = 'omit';
+/** `encrypted` writes a sale's private parts as a CloudKit encrypted field; `omit` (the default) leaves them out. They are never written plain. */
+export const setSaleCardMode = (mode: CardMode): void => { cardMode = mode; };
+export const saleCardMode = (): CardMode => cardMode;
 
 function handleFromName(recordType: SharedType, handle: string): string {
   if (recordType === 'sale') return handle.replace(/^sale-/, '');
@@ -59,13 +52,18 @@ export const cloudkitBackend: SharedBackend = {
     ensureNative();
   },
 
+  /** A CloudKit record has no field definition to add, so the whole sale can always be written. */
+  async detailReady(): Promise<boolean> {
+    return true;
+  },
+
   async get(type: SharedType, handle: string): Promise<BackendRow | null> {
     ensureNative();
     if (type === 'sale') {
       const h = handle.startsWith('sale-') ? handle.slice(5) : handle;
       const rec = await ck.getSale(h);
       if (!rec) return null;
-      return asRow(`sale-${h}`, rec);
+      return asSaleRow(saleRecordName(h), rec);
     }
     if (type === 'rollup') {
       const h = handle.startsWith('rollup-') ? handle.slice(7) : handle;
@@ -104,9 +102,9 @@ export const cloudkitBackend: SharedBackend = {
     ensureNative();
     if (type === 'sale') {
       const h = handle.startsWith('sale-') ? handle.slice(5) : handle;
-      const clean = sanitizeSaleFields(fields);
-      const rec = await ck.putSale(h, clean as any);
-      return asRow(`sale-${h}`, rec);
+      const { plain, encrypted } = saleWriteFromFields(fields, cardMode);
+      const rec = await ck.putSale(h, plain, encrypted);
+      return asSaleRow(saleRecordName(h), rec);
     }
     if (type === 'rollup') {
       const h = handle.startsWith('rollup-') ? handle.slice(7) : handle;
@@ -140,7 +138,7 @@ export const cloudkitBackend: SharedBackend = {
     ensureNative();
     if (type === 'sale') {
       const res = await ck.listSales(options.first ?? 100, options.after ?? null);
-      const rows = (res.rows ?? []).map(r => asRow(r.recordName ?? '', r));
+      const rows = (res.rows ?? []).map(r => asSaleRow(r.recordName ?? '', r));
       return { rows, next: res.next ?? null };
     }
     if (type === 'rollup') {
