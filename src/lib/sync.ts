@@ -13,7 +13,8 @@ import { buildWarningListEntries, mergeWarningList } from './warningList';
 import { isTraining } from './trainingGuard';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
-import { getShared, listShared, putShared, detailReadyShared } from './syncBackend';
+import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
+import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
 import { createGiftCard } from './shopify/giftcards';
@@ -349,6 +350,9 @@ export function drawerChanged(shift = false) {
   void pushDrawer();
 }
 
+/** The CloudKit module as the drawer's native interface. Loaded on demand so a build or test without it never imports it. */
+const cloudDrawerNative = async (): Promise<DrawerNative> => (await import('../../modules/cloudkit-sync')) as unknown as DrawerNative;
+
 const drawerOn = (): boolean => { const x = st().settings; return featureOn(x.appMode, x.registerFeatures, 'cashDrawer'); };
 
 export async function pushDrawer() {
@@ -359,6 +363,17 @@ export async function pushDrawer() {
   s.patchSettings({ drawerPending: true });
   if (!hasCreds()) return;
   const pos = st().pos;
+  if (activeBackendKind() === 'cloudkit') { // 6b: the drawer is records in the shop's CloudKit zone, not one settings blob
+    try {
+      const out = await pushCloudDrawer(await cloudDrawerNative(), { shift: pos.shift, ledger: pos.ledger, version: st().settings.drawerVersion ?? 0, shiftPending: !!st().settings.drawerShiftPending });
+      st().patchPos({ ledger: out.ledger, shift: out.shift });
+      st().patchSettings({ drawerVersion: out.version, drawerPending: false, drawerShiftPending: false });
+    } catch (error) {
+      st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Drawer not uploaded: ${String((error as Error)?.message ?? error)}` } });
+      throw error;
+    }
+    return;
+  }
   let shift = pos.shift; let ledger = pos.ledger;
   let version = (st().settings.drawerVersion ?? 0) + 1;
   try {
@@ -385,6 +400,18 @@ export async function pushDrawer() {
 
 async function pullDrawer() {
   if (isTraining() || !drawerOn() || st().settings.drawerPending) return; // our unsent change wins until it is pushed
+  if (activeBackendKind() === 'cloudkit') {
+    const remote = await pullCloudDrawerState(await cloudDrawerNative()); if (!remote) return;
+    const local = st().pos; const have = st().settings.drawerVersion ?? 0; const first = !have;
+    // The ledger is always taken (a sale on another register adds entries without moving the shift version). The shift follows
+    // the shared one only when it is newer, except that on a first look an open drawer here stays open, as with the old drawer.
+    const follow = remote.shift && remote.version > have && !(first && local.shift.open && !remote.shift.open);
+    const shift = follow ? remote.shift! : local.shift;
+    st().patchPos({ shift, ledger: remote.ledger });
+    st().patchSettings({ drawerVersion: Math.max(have, follow ? remote.version : have), ...(shift !== remote.shift && first && local.shift.open ? { drawerPending: true, drawerShiftPending: true } : {}) });
+    if (shift !== remote.shift && first && local.shift.open) void pushDrawer().catch(() => {});
+    return;
+  }
   const row = await getShared('settings', 'drawer'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v <= (st().settings.drawerVersion ?? 0)) return;

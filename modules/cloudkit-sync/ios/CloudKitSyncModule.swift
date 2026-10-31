@@ -174,6 +174,36 @@ public class CloudKitSyncModule: Module {
     AsyncFunction("getMigration") { () async throws -> [String: Any]? in
       try await self.getRecord(recordType: "Migration", recordName: "migration-v1")
     }
+
+    // Patch 6b: the shared cash drawer. The shift and the checkpoint are single records that are updated in place; each
+    // ledger entry is its own record, written once and never changed.
+    AsyncFunction("putDrawerShift") { (fields: [String: Any]) async throws -> [String: Any] in
+      try await self.upsertRecord(recordType: "DrawerShift", recordName: "drawer-shift", fields: fields)
+    }
+
+    AsyncFunction("getDrawerShift") { () async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "DrawerShift", recordName: "drawer-shift")
+    }
+
+    AsyncFunction("putLedgerEntry") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecordOnce(recordType: "LedgerEntry", recordName: "ledger-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("listLedgerEntries") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "LedgerEntry", limit: limit, after: after)
+    }
+
+    AsyncFunction("listLedgerSince") { (since: Double, limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listCreatedSince(recordType: "LedgerEntry", since: since, limit: limit, after: after)
+    }
+
+    AsyncFunction("putDrawerCheckpoint") { (fields: [String: Any]) async throws -> [String: Any] in
+      try await self.upsertRecord(recordType: "DrawerCheckpoint", recordName: "drawer-checkpoint", fields: fields)
+    }
+
+    AsyncFunction("getDrawerCheckpoint") { () async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "DrawerCheckpoint", recordName: "drawer-checkpoint")
+    }
   }
 
   // --- The container and the zone it shares ---------------------------------
@@ -290,7 +320,7 @@ public class CloudKitSyncModule: Module {
   }
 
   private func recordToDict(_ record: CKRecord) -> [String: Any] {
-    var out: [String: Any] = ["id": record.recordID.recordName, "recordName": record.recordID.recordName, "updatedAt": record.modificationDate?.timeIntervalSince1970 ?? 0]
+    var out: [String: Any] = ["id": record.recordID.recordName, "recordName": record.recordID.recordName, "updatedAt": record.modificationDate?.timeIntervalSince1970 ?? 0, "createdAt": record.creationDate?.timeIntervalSince1970 ?? 0]
     for key in record.allKeys() {
       if let v = record[key] {
         if let s = v as? String { out[key] = s }
@@ -317,6 +347,65 @@ public class CloudKitSyncModule: Module {
     return recordToDict(saved)
   }
 
+  private func copyFields(_ fields: [String: Any], into record: CKRecord) {
+    for (k, v) in fields {
+      if k == "id" || k == "recordName" || k == "updatedAt" || k == "createdAt" { continue }
+      if let s = v as? String { record[k] = s as CKRecordValue }
+      else if let i = v as? Int { record[k] = NSNumber(value: i) }
+      else if let d = v as? Double { record[k] = NSNumber(value: d) }
+      else if let b = v as? Bool { record[k] = NSNumber(value: b) }
+      else if v is NSNull { continue }
+      else { record[k] = String(describing: v) as CKRecordValue }
+    }
+  }
+
+  /// Create the record, or change the one that is there. putRecord above builds a fresh record every time, which CloudKit
+  /// refuses for a name that already exists (serverRecordChanged), so anything that is updated in place goes through here:
+  /// fetch the current record, change its fields, save, and try again if someone else saved in between.
+  private func upsertRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
+    let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+    var lastError: Error?
+    for _ in 0..<3 {
+      let record: CKRecord
+      do {
+        record = try await database().record(for: id)
+      } catch let error as CKError where error.code == .unknownItem {
+        record = makeRecord(recordType: recordType, recordName: recordName)
+      }
+      copyFields(fields, into: record)
+      do {
+        let saved = try await database().save(record)
+        return recordToDict(saved)
+      } catch let error as CKError where error.code == .serverRecordChanged {
+        lastError = error
+      }
+    }
+    throw lastError ?? NSError(domain: CKErrorDomain, code: CKError.Code.serverRecordChanged.rawValue)
+  }
+
+  /// Write a record that must never change once it exists (a ledger entry). If it is already there, hand back the stored
+  /// one untouched, so a retry or a second register uploading the same entry is harmless.
+  private func putRecordOnce(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
+    let record = makeRecord(recordType: recordType, recordName: recordName)
+    copyFields(fields, into: record)
+    do {
+      let saved = try await database().save(record)
+      return recordToDict(saved)
+    } catch let error as CKError where error.code == .serverRecordChanged {
+      let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+      return recordToDict(try await database().record(for: id))
+    }
+  }
+
+  /// Records of a type created after `since` (seconds since 1970), oldest first. Reads on the creation time, which
+  /// CloudKit sets itself, so a record uploaded late by an offline iPad is found by the checkpoint logic in JavaScript.
+  private func listCreatedSince(recordType: String, since: Double, limit: Int, after: String?) async throws -> [String: Any] {
+    let date = Date(timeIntervalSince1970: since)
+    let query = CKQuery(recordType: recordType, predicate: NSPredicate(format: "creationDate > %@", date as NSDate))
+    query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
+    return try await runQuery(query, limit: limit, after: after)
+  }
+
   private func getRecord(recordType: String, recordName: String) async throws -> [String: Any]? {
     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
     do {
@@ -331,6 +420,10 @@ public class CloudKitSyncModule: Module {
   private func listRecords(recordType: String, limit: Int, after: String?) async throws -> [String: Any] {
     let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
+    return try await runQuery(query, limit: limit, after: after)
+  }
+
+  private func runQuery(_ query: CKQuery, limit: Int, after: String?) async throws -> [String: Any] {
     let db = database()
     var rows: [[String: Any]] = []
     var cursor: CKQueryOperation.Cursor? = nil

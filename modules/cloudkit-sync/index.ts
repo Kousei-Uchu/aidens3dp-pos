@@ -145,3 +145,35 @@ export async function getMigration(): Promise<Record<string, any> | null> {
   if (!native?.getMigration) return null;
   return native.getMigration();
 }
+
+// Patch 6b: the shared cash drawer. The names match DrawerNative in src/lib/cloudkit/drawerCloud.ts, so this module
+// can be handed to it as it is.
+type Page = { rows: Record<string, any>[]; next: string | null };
+export async function putDrawerShift(fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putDrawerShift) throw new Error(CLOUDKIT_MISSING);
+  return native.putDrawerShift(fields);
+}
+export async function getDrawerShift(): Promise<Record<string, any> | null> {
+  if (!native?.getDrawerShift) return null;
+  return native.getDrawerShift();
+}
+export async function putLedgerEntry(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putLedgerEntry) throw new Error(CLOUDKIT_MISSING);
+  return native.putLedgerEntry(handle, fields);
+}
+export async function listLedgerEntries(limit = 100, after?: string | null): Promise<Page> {
+  if (!native?.listLedgerEntries) return { rows: [], next: null };
+  return native.listLedgerEntries(limit, after ?? null);
+}
+export async function listLedgerSince(since: number, limit = 100, after?: string | null): Promise<Page> {
+  if (!native?.listLedgerSince) return { rows: [], next: null };
+  return native.listLedgerSince(since, limit, after ?? null);
+}
+export async function putDrawerCheckpoint(fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putDrawerCheckpoint) throw new Error(CLOUDKIT_MISSING);
+  return native.putDrawerCheckpoint(fields);
+}
+export async function getDrawerCheckpoint(): Promise<Record<string, any> | null> {
+  if (!native?.getDrawerCheckpoint) return null;
+  return native.getDrawerCheckpoint();
+}
