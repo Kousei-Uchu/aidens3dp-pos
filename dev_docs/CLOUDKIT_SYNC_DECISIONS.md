@@ -131,6 +131,7 @@ All fourteen questions are answered. The numbers are the same as before.
 - **O1.** All training modules can be reset. Owners can reset anyone’s progress, and managers can reset progress for lower roles.
 - **O2.** Yes. The assistant’s connection settings (address, model name, options) sync along with the AI key, so a new register works straight away.
 - **O3.** CloudKit keeps every drawer ledger entry. The app loads the latest 1000.
+  - Working assumption from patch 0191, to be confirmed: a `drawer-checkpoint` record holds the counts at a point in time and the server stamp of the newest entry it covers, written when a shift opens or closes. A register replays only entries stamped after it, so the counts do not depend on the 1000 loaded. The stamp is CloudKit's creation time, not the entry's `ts`, so an entry an offline register uploads late is still counted.
 - **O4.** Deferred. There is no second Apple ID or device to test with right now. My suggestion, not yet agreed: build the encrypted fields behind a switch, and run the cross-Apple-ID test before turning on the encrypted secrets and pass codes (patch 6d).
 - **O5.** The export is one zip of JSON files containing everything stored in CloudKit. Because it includes the secrets, the zip is as sensitive as the Shopify login itself. Keep it owner-only.
 
