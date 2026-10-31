@@ -1,0 +1,147 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index ac6ef42..c13c719 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -131,6 +131,7 @@ All fourteen questions are answered. The numbers are the same as before.
+ - **O1.** All training modules can be reset. Owners can reset anyone’s progress, and managers can reset progress for lower roles.
+ - **O2.** Yes. The assistant’s connection settings (address, model name, options) sync along with the AI key, so a new register works straight away.
+ - **O3.** CloudKit keeps every drawer ledger entry. The app loads the latest 1000.
++  - Working assumption from patch 0191, to be confirmed: a `drawer-checkpoint` record holds the counts at a point in time and the server stamp of the newest entry it covers, written when a shift opens or closes. A register replays only entries stamped after it, so the counts do not depend on the 1000 loaded. The stamp is CloudKit's creation time, not the entry's `ts`, so an entry an offline register uploads late is still counted.
+ - **O4.** Deferred. There is no second Apple ID or device to test with right now. My suggestion, not yet agreed: build the encrypted fields behind a switch, and run the cross-Apple-ID test before turning on the encrypted secrets and pass codes (patch 6d).
+ - **O5.** The export is one zip of JSON files containing everything stored in CloudKit. Because it includes the secrets, the zip is as sensitive as the Shopify login itself. Keep it owner-only.
+ 
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 9c16e4a..6215b7e 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -171,6 +171,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0188 | 2026-10-31 | Cash drawer, loans to the drawer (your request: a quick way to mark money you lend the drawer when you pay it in, so you can take the same amount back out at the end). **Paid in now has a "This is a loan to the drawer" switch.** A loan is still an ordinary paid-in, so expected cash adds up as before; the shift just remembers how much of it is owed back (`loanCents`, new pure helpers in `src/lib/drawerLoan.ts`). While a loan is owed the drawer shows it under Paid in, and a **Take loan back** button opens Paid out with the switch on; paying out reduces what is owed and never goes below zero. Closing with a loan still owed asks first, and the Z-report prints "Loan still owed to you". Ledger and CSV events say "Loan to drawer" and "Loan taken back". The shift syncs between registers as before, so a loan shows everywhere. Tests: `tests/drawerloan.test.ts` (7). **Not done, your call:** the AI assistant's cash view and the Daily float report do not mention the loan yet; a loan taken back is an ordinary paid-out, so it is not counted as takings. Device check: put in $50 as a loan, confirm Take loan back appears and offers $50, take $20 back, then close and see the confirm and the Z-report line. | your request |
+ | 0189 | 2026-10-31 | CloudKit, the 31 October decisions written into the repo (your request: start on the decisions doc). **Docs and comments only, no behaviour change.** New `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` holds your decisions and open items, rechecked against 0188 (the shared drawer shift now carries the loan owed, and loan events join the events list). `dev_docs/CLOUDKIT_SYNC_PLAN.md`: section 5 rewritten as the full sync and local table, the 20 October `encryptedValues` answer marked replaced, the "what is and is not in iCloud" text rewritten (staff hashes, encrypted card fields and secrets now in, the audit log named as the customer-data exception, the read-write link caveat), and the patch list gained 6b to 6e and the migration extension. `help/settings/cloud-sync.md` no longer says cash is never merged or that each register keeps its own settings (both were already untrue after 0168); `help.json` rebuilt, help:check green. Two `store.ts` comments corrected (smart change is shop-wide, the drawer is shared). **Not done, your call:** the encryption test (O4) waits for a second Apple ID; the audit of code that still assumes "this till's drawer" and the in-app privacy note are for patches 6b and 4. | your request |
+ | 0190 | 2026-10-31 | CloudKit 6b, first half: **the shared drawer as records, pure code only** (your request: next). New `src/lib/drawerRecords.ts`: the shift is one record `drawer-shift` (open, float, paid in and out, openedAt, staff, and the 0188 loan owed, with a version), each ledger entry is its own record `ledger-<id>` written once and never edited, and the counts are not stored but replayed from the entries oldest first (ties by id) so every iPad gets the same counts. A record that cannot be read is skipped, duplicates by id count once, and `entriesToUpload` says which local entries CloudKit lacks. Tests: `tests/drawerrecords.test.ts` (11). **Nothing calls it yet and no native code changed**, so there is no behaviour change; the Swift and backend wiring is the second half and needs a Mac build. **Found, your call (decisions item 6 and O3):** CloudKit keeps every entry but the app loads the newest 1000, and counts replayed from only those would be wrong once the drawer has more than 1000 entries, because the counts are a running total. `ledgerFromEntries` takes a `base` (the counts just before the oldest entry loaded) for this. Options: a checkpoint record that stores the counts at a point, or replay everything. I recommend the checkpoint, written when the shift opens or closes. Not tried on a real iPad. | your request |
++| 0191 | 2026-10-31 | CloudKit 6b, first half continued: **the drawer checkpoint, pure code only** (your request: continue). New `src/lib/drawerCheckpoint.ts` settles the open point from 0190 on my recommendation, which you have not explicitly confirmed: one record `drawer-checkpoint` holds the counts at a point in time and the server stamp of the newest entry it covers; a register replays only entries stamped after it, so counts stay right past 1000 entries. It uses CloudKit's creation stamp, not the entry's `ts`, because an iPad that was offline uploads entries late with an old `ts` and those must still count. A checkpoint only moves forward, an unreadable one falls back to replaying everything, and `makeCheckpoint` is meant to be called when a shift opens or closes. Tests: `tests/drawercheckpoint.test.ts` (7). Decisions O3 gained a note. **Still nothing calls this and no native code changed.** The stamp has to come from the native module (CloudKit's record creation date), which `CloudKitSyncModule.swift` does not return yet. Not tried on a real iPad. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/drawerCheckpoint.ts b/src/lib/drawerCheckpoint.ts
+new file mode 100644
+index 0000000..05cbcc4
+--- /dev/null
++++ b/src/lib/drawerCheckpoint.ts
+@@ -0,0 +1,57 @@
++// Location: src/lib/drawerCheckpoint.ts
++// CloudKit sync, patch 6b (pure half, part 2): the drawer checkpoint.
++// The drawer counts are a running total, so replaying only the newest 1000 entries gives the wrong answer once the
++// drawer has more history than that. A checkpoint is one small record (`drawer-checkpoint`) holding the counts at a
++// point in time plus the server stamp of the newest entry it covers. A register reads the checkpoint, then replays only
++// the entries stamped after it. The stamp is CloudKit's own creation time for the record, NOT the entry's `ts`, because
++// a register that was offline uploads entries late, with an old `ts`, and those must still be counted.
++// No React, no store, no native code. Tested in tests/drawercheckpoint.test.ts. Decisions: item 6, O3.
++import { cleanCounts, type CashLedger, type Counts, type LedgerEntry } from './cashLedger';
++import { ledgerFromEntries } from './drawerRecords';
++
++export const CHECKPOINT_RECORD = 'drawer-checkpoint';
++
++/** An entry as CloudKit returned it: the entry plus the server's creation stamp (ISO text, sorts as time). */
++export type StampedEntry = { entry: LedgerEntry; stamp: string };
++export type Checkpoint = { counts: Counts; asOfStamp: string };
++
++export function checkpointToFields(c: Checkpoint): Record<string, string> {
++  return { counts: JSON.stringify(cleanCounts(c.counts)), asOfStamp: c.asOfStamp };
++}
++/** Null when the record is unreadable, so a bad checkpoint falls back to replaying everything instead of breaking. */
++export function checkpointFromFields(f: Record<string, unknown>): Checkpoint | null {
++  if (typeof f.counts !== 'string' || typeof f.asOfStamp !== 'string' || !f.asOfStamp) return null;
++  try {
++    const counts = JSON.parse(f.counts);
++    if (!counts || typeof counts !== 'object' || Array.isArray(counts)) return null;
++    return { counts: cleanCounts(counts as Counts), asOfStamp: f.asOfStamp };
++  } catch { return null; }
++}
++
++/** The newest stamp among the entries, or '' for none. */
++export const newestStamp = (all: StampedEntry[]): string => all.reduce((m, s) => (s.stamp > m ? s.stamp : m), '');
++
++/**
++ * The shared ledger from what CloudKit holds. With a checkpoint, only entries stamped after it are replayed on top of
++ * its counts; without one (none written yet, or unreadable), every entry given is replayed from empty. `history` is the
++ * entries to show (the newest 1000 are enough, and may be older than the checkpoint); the counts never depend on how
++ * many of them were loaded.
++ */
++export function ledgerFromRemote(checkpoint: Checkpoint | null, replay: StampedEntry[], history: LedgerEntry[] = []): CashLedger {
++  const after = checkpoint ? replay.filter(s => s.stamp > checkpoint.asOfStamp) : replay;
++  const counted = ledgerFromEntries(after.map(s => s.entry), checkpoint ? checkpoint.counts : {});
++  const shown = ledgerFromEntries([...history, ...after.map(s => s.entry)]);
++  return { counts: counted.counts, entries: shown.entries };
++}
++
++/**
++ * The checkpoint to write now, from the ledger as it stands and every stamped entry it covers. Null when there is nothing
++ * to cover. Written when a shift opens or closes, when nobody is mid-sale, so no entry is in flight behind its stamp.
++ */
++export function makeCheckpoint(ledger: CashLedger, covered: StampedEntry[]): Checkpoint | null {
++  const asOfStamp = newestStamp(covered);
++  return asOfStamp ? { counts: cleanCounts(ledger.counts), asOfStamp } : null;
++}
++
++/** A checkpoint only ever moves forward: never replace one with an older one, whichever register wrote it. */
++export const shouldReplaceCheckpoint = (existing: Checkpoint | null, candidate: Checkpoint): boolean => !existing || candidate.asOfStamp > existing.asOfStamp;
+diff --git a/tests/drawercheckpoint.test.ts b/tests/drawercheckpoint.test.ts
+new file mode 100644
+index 0000000..b88a5a9
+--- /dev/null
++++ b/tests/drawercheckpoint.test.ts
+@@ -0,0 +1,54 @@
++// Location: tests/drawercheckpoint.test.ts
++// CloudKit patch 6b, part 2: the drawer checkpoint. Pins that counts stay right past 1000 entries, that an entry
++// uploaded late by an offline register (old `ts`, new server stamp) is still counted, and that a checkpoint never goes back.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { checkpointFromFields, checkpointToFields, ledgerFromRemote, makeCheckpoint, newestStamp, shouldReplaceCheckpoint, type StampedEntry } from '../src/lib/drawerCheckpoint';
++import { ledgerFromEntries } from '../src/lib/drawerRecords';
++import type { LedgerEntry } from '../src/lib/cashLedger';
++
++const en = (id: string, ts: string, kind: LedgerEntry['kind'], delta: Record<string, number>): LedgerEntry => ({ id, ts, kind, delta });
++const st = (entry: LedgerEntry, stamp: string): StampedEntry => ({ entry, stamp });
++
++test('a checkpoint round trips, and an unreadable one is null', () => {
++  const c = { counts: { '2000': 3, '500': 0 }, asOfStamp: '2026-10-31T09:00:00.000Z' };
++  assert.deepEqual(checkpointFromFields(checkpointToFields(c)), { counts: { '2000': 3 }, asOfStamp: c.asOfStamp });
++  assert.equal(checkpointFromFields({ counts: '{bad', asOfStamp: 'x' }), null);
++  assert.equal(checkpointFromFields({ counts: '[]', asOfStamp: 'x' }), null);
++  assert.equal(checkpointFromFields({ counts: '{}', asOfStamp: '' }), null);
++});
++test('with no checkpoint every entry is replayed', () => {
++  const a = st(en('a', '2026-10-31T09:00:00Z', 'open', { '2000': 2 }), 's1'), b = st(en('b', '2026-10-31T10:00:00Z', 'sale_in', { '500': 1 }), 's2');
++  assert.deepEqual(ledgerFromRemote(null, [a, b]).counts, { '2000': 2, '500': 1 });
++});
++test('with a checkpoint only later entries are replayed on top of its counts', () => {
++  const old = st(en('a', '2026-10-31T09:00:00Z', 'open', { '2000': 2 }), 's1'), fresh = st(en('b', '2026-10-31T10:00:00Z', 'sale_in', { '500': 1 }), 's3');
++  const out = ledgerFromRemote({ counts: { '2000': 2 }, asOfStamp: 's2' }, [old, fresh], [old.entry]);
++  assert.deepEqual(out.counts, { '2000': 2, '500': 1 }); // the old entry is not counted twice
++  assert.deepEqual(out.entries.map(x => x.id), ['b', 'a']);
++});
++test('an entry an offline register uploads late is counted even though its ts is old', () => {
++  const late = st(en('late', '2026-10-31T08:00:00Z', 'sale_in', { '1000': 1 }), 's9'); // ts before the checkpoint, stamp after it
++  assert.deepEqual(ledgerFromRemote({ counts: { '2000': 1 }, asOfStamp: 's5' }, [late]).counts, { '2000': 1, '1000': 1 });
++});
++test('counts stay right when history is longer than the 1000 the app loads', () => {
++  const all = Array.from({ length: 1500 }, (_, i) => st(en(`e${i}`, new Date(Date.UTC(2026, 9, 1, 0, 0, i)).toISOString(), 'sale_in', { '500': 1 }), `s${String(i).padStart(5, '0')}`));
++  const truth = ledgerFromEntries(all.map(s => s.entry)).counts; // { '500': 1500 }
++  const cp = makeCheckpoint({ counts: ledgerFromEntries(all.slice(0, 1400).map(s => s.entry)).counts, entries: [] }, all.slice(0, 1400));
++  const newest1000 = all.slice(500).map(s => s.entry);
++  const out = ledgerFromRemote(cp, all.slice(1400), newest1000);
++  assert.deepEqual(out.counts, truth);
++  assert.equal(out.entries.length, 1000);
++});
++test('makeCheckpoint covers up to the newest stamp, and is null when nothing is covered', () => {
++  assert.equal(makeCheckpoint({ counts: {}, entries: [] }, []), null);
++  const covered = [st(en('a', 't', 'open', { '500': 1 }), 's1'), st(en('b', 't', 'paid_in', { '500': 1 }), 's7')];
++  assert.equal(newestStamp(covered), 's7');
++  assert.deepEqual(makeCheckpoint({ counts: { '500': 2 }, entries: [] }, covered), { counts: { '500': 2 }, asOfStamp: 's7' });
++});
++test('a checkpoint never goes backwards', () => {
++  const now = { counts: {}, asOfStamp: 's5' };
++  assert.equal(shouldReplaceCheckpoint(null, now), true);
++  assert.equal(shouldReplaceCheckpoint(now, { counts: {}, asOfStamp: 's4' }), false);
++  assert.equal(shouldReplaceCheckpoint(now, { counts: {}, asOfStamp: 's6' }), true);
++});
