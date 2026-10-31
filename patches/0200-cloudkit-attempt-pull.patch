@@ -1,0 +1,433 @@
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index e30fcb1..9d17231 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1175,3 +1175,16 @@ Needs two iPads on the shop's share (T74) and a card reader on at least one, bot
+ 6. Turn airplane mode on at A and make a payment end as cancelled, then turn it off. Pass: no error shows at A, and within about 30 seconds the `Attempt` record appears once.
+ 7. Force-quit and reopen A twice. Pass: the number of `Attempt` and `Resolution` records does not change.
+ 8. Start practice mode (Training) on A and run a practice card payment. Pass: no new `Attempt` record.
++
++## T89. Payment attempts read back from CloudKit (0200)
++
++Needs two iPads on the shop's share (T74), both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8), and a card reader on iPad A. Nothing in this patch has been run on a device.
++
++1. On iPad A, make a card payment end as unknown (turn the reader's network off right after the card is tapped). Wait about 30 seconds, then on iPad B open Support and diagnostics. Pass: a section "Card payments waiting (all registers)" lists the payment, "no result yet", with A's register name.
++2. On A, start a card payment and leave it on the reader without tapping a card. Pass: within about 30 seconds B lists it as "in progress". Cancel it on the reader, wait again, and Pass: it leaves B's list.
++3. Force-quit A in the middle of a charge (card not yet tapped), reopen it, and wait more than 5 minutes. Pass: B lists it as "stopped part way", and it stays listed.
++4. With the unknown payment from step 1 still open, resolve it on A with "Customer was NOT charged". Wait about 30 seconds. Pass: it leaves B's list, and B shows no notice (A resolved its own payment).
++5. Repeat step 1 so A has a new unknown payment. This time let B resolve it (from a debug build, since B has no resolve button yet). Wait about 30 seconds. Pass: A shows the notice "Card payment resolved on another register" naming B's staff, A's Pay screen no longer blocks charging that sale, and the attempt on A's Diagnostics reads "resolved by" B's staff. A second notice does not appear after another 30 seconds.
++6. Turn airplane mode on at B, wait through two polls, then turn it off. Pass: no error shows at B, B's list keeps its last contents while offline, and refreshes within about 30 seconds of reconnecting.
++7. Force-quit and reopen B. Pass: the section is absent until the first poll (or Sync now), then lists the same payments as before.
++8. Start practice mode (Training) on B. Pass: the section does not change and no notice appears while it runs.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index d25d90b..c2e0d5e 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -410,3 +410,15 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
+ 3. **The notice is `info`.** Guess: info, which stays local (decisions item 10), rather than `refund` or `cash`, which sync. It says who resolved it and to check the terminal or Zeller dashboard.
+ 4. **Only who resolved it is recorded, not what they chose.** The decisions say the first resolution wins and do not say the outcome (charged or not charged) is stored. Guess: it is not, so the notice cannot say whether the other register agreed. Adding it is one more field on the resolution record.
+ 5. **An automatic resolution counts as the register's.** When the reader check settles an unknown payment on its own, there is no person, so the resolution is labelled with the register's name.
++
++## CloudKit attempt pull (0200)
++
++These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
++
++1. **This changes guess 2 of 0199 in one case.** Guess: if another register resolved a payment that this register still shows as "no result yet", this register now marks its own copy resolved (with that register's name) and shows the notice. 0199 said it would only show a notice when both registers resolved at once, and that case is unchanged: a register that resolved the payment itself is never rewritten. The reason for the change is that this register's Pay screen refuses to charge the sale again while an attempt is `unknown`, so without it the sale stays blocked after someone has already settled it elsewhere.
++2. **Only an `unknown` attempt takes another register's resolution.** A `started` attempt may be a charge still running on this register's reader, so a resolution from elsewhere does not clear it.
++3. **Taking over a resolution does not add a card tender.** If the other register chose "customer WAS charged", this register's cart is not given a card payment, because only the register holding the sale can add a tender to it. The notice says to check the terminal or Zeller dashboard, which is the same advice as 0199. The decisions do not store whether the payment was charged (0199 guess 4), so the notice cannot say more.
++4. **The shop-wide list is not saved.** Guess: it lives in memory and is refilled on the first poll after launch (about 25 seconds, or at once with Sync now). The alternative is a saved cache like `pos.shared`, which would show the last list offline but needs a migration and can show a payment as waiting after it was resolved. The list is only for looking at, so memory is enough.
++5. **The Diagnostics list is read only.** The decisions say any register can resolve a payment (Q10), but a resolution has to say whether the customer was charged, and for another register's sale that choice only means something at the register holding the sale. Guess: show the list now and leave a resolve button for later, once it is decided what "charged" means from a register that has no cart for the sale.
++6. **A `started` attempt older than 5 minutes is labelled "stopped part way".** It uses the same 5 minute window as `paymentActive` and stays in the list, so a manager can see a charge that never finished instead of it saying "in progress" for ever.
++7. **The section is on Diagnostics, not a new screen, and only shows once CloudKit has sent attempts.** A register still on Shopify storage never sees an empty section.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 975aedc..f6018c4 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -180,6 +180,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0197 | 2026-10-31 | CloudKit patch 4, last piece: **events and payment attempts reach CloudKit through the native module** (your request: continue). `CloudKitSyncModule.swift` gained `putEvent` and `putResolution` (both `putRecordOnce`, so an event is never changed and the first resolution stays), `putAttempt` (`upsertRecord`), and `getAttempt`, `getResolution`, `listEvents`, `listAttempts`, `listResolutions`; the bridge in `modules/cloudkit-sync/` carries them. New `src/lib/cloudkit/eventCloud.ts` is the transport, with the native module passed in like the drawer's: `pushCloudEvents` uploads the events CloudKit lacks (each once, safe to repeat, and also the one-off upload of a register's own history after it joins, Q13), `pullCloudEvents` reads every register's, `pushCloudAttempt` writes an attempt whose status only moves forward and that keeps the register that first wrote it, then writes the resolution once and **hands back the winning one, so a register that lost the race is told who resolved it**, and `pullCloudAttempts` reads every attempt with its resolution. `pageAll` in `drawerCloud.ts` is now exported so both share it. Tests: `tests/eventcloud.test.ts` (10, on an in-memory fake: upload once, two registers kept, 450 events across pages, a bad record skipped, status never backwards, first resolution wins and is reported, sales do not mix) and 2 more Swift pins in `cloudkitswift.test.ts` (9). Checked: `tsc --noEmit` clean, full suite passes. **Not checked: the Swift is uncompiled and untried, and the app does not call any of this yet.** **Still to do, so patch 4 is not finished:** the call sites. `csvStore.event` must set an event's time once and pass the same one to the CSV and to the id; `Pay.tsx` `setAttempt` must call `pushCloudAttempt`; both only when the CloudKit backend is active, and not in practice mode. **Known gap, your call:** the status check and the write are two calls, so two registers changing one attempt in the same instant could still write an older status; the resolution cannot be raced this way. A server-side compare would close it and is a bigger change. Dashboard steps: the `Event`, `Attempt` and `Resolution` types need `modificationDate` sortable and queryable, and the schema has to be deployed to production. Device test T86. | your request |
+ | 0198 | 2026-10-31 | CloudKit patch 4, call sites for events (your request: continue, returned as a patch). **Every event written to `events.csv` is now also written to CloudKit, once, when the CloudKit backend is the active one.** `csvStore.event` sets the event's time once and uses that one time for the CSV row and for the id (the id is made from the row), then tells a sink, `setEventSink`, which `sync.ts` points at the upload; nothing is sent in practice mode. New `src/lib/cloudkit/eventSync.ts` decides when: a single event goes up straight away with no listing (`pushCloudEvent`, new in `eventCloud.ts`, a write-once record so repeating it is safe), and a **catch-up** reads `events.csv` back (new `src/lib/eventsCsvParse.ts`, which reads quoted fields and line breaks and gives each row the id it was written with) and uploads whatever CloudKit lacks. The catch-up runs once per launch, which is the one-off upload of a register's own history after it joins (Q13), and again after any live upload fails; `pollShared` runs it. Events made before the first catch-up wait for it. Nothing is stored for this: the CSV is the record and CloudKit is the copy. Tests: `tests/eventscsv.test.ts` (6: every kind round-trips with the same id, awkward text, zero and negative amounts, header and bad rows skipped) and `tests/eventsync.test.ts` (7: nothing sent when inactive, in practice mode or with no register id; history uploaded once; no duplicates after a failure; csvStore sets the time once, pinned from the source). I broke the one-time stamp, the catch-up reset and the quote handling on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Still to do for patch 4:** the payment attempt call site in `Pay.tsx` (`setAttempt` to `pushCloudAttempt`), which is 0199. Device test T87. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit event call sites'. | your request |
+ | 0199 | 2026-10-31 | CloudKit patch 4, call sites for payment attempts (your request: next). **Every change to a card payment attempt in `Pay.tsx` is now also written to CloudKit, when the CloudKit backend is the active one.** `setAttempt` changes the app's own copy first and then calls `attemptSync.push` (so the app never waits on CloudKit), and `onStarted` pushes the new attempt the same way. New `src/lib/cloudkit/attemptSync.ts`, built like the events one: a push goes up straight away through `pushCloudAttempt` (status only moves forward, the first register to write an attempt stays on it, and a resolution is a write-once record), and a **catch-up** sends every attempt this register holds, once per launch (the one-off upload after joining, Q13) and again after any failed push; `pollShared` runs it. Nothing is sent in practice mode, before the register has an id, or when CloudKit is not the active backend, and a failure never throws. **If another register resolved the same payment first** (Q10), `manualResolve` now shows an info notice naming who, because what they chose may not be what was chosen here; the notice is local, per decisions item 10. Tests: `tests/attemptsync.test.ts` (8: nothing sent when inactive, in practice mode or with no register id; first launch sends once; status never backwards; two registers resolving, first wins and the second is told; failure then catch-up leaves one record; source pins that the app is changed before CloudKit is told, that both attempt writers push, and that the notice is there). I broke the order of the two steps, the catch-up reset, the practice-mode guard and the notice on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Not built, so patch 4's payment side is only half-way:** nothing pulls attempts back (`pullCloudAttempts` is not called), so no manager screen shows unresolved payments shop-wide yet and a register's own list is never changed from CloudKit. Device test T88. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit attempt call sites'. | your request |
++| 0200 | 2026-10-31 | CloudKit patch 4, pull side for payment attempts (your request: continue, returned as a patch). **Every register now reads every register's card payment attempts back from CloudKit, keeps the shop-wide list, and picks up a payment another register resolved.** `createAttemptSync` gained `pull`, which `pollShared` calls right after the catch-up (so a register's own attempts go up before it reads), outside practice mode and only when CloudKit is the active backend. It never throws, and a failed read leaves everything as it was. Two effects: the shop-wide list goes into a new in-memory store field, `sharedAttempts` (never saved, CloudKit is the record), and **a payment that still shows "no result yet" here, and that another register has resolved, is marked resolved here with that register's name and a local `info` notice** (decisions Q10, item 10). The pure rules are in new `src/lib/attemptShared.ts`: `applyRemoteResolutions` (changes only an `unknown` attempt, never a `started` one, since that charge may still be running on this reader), `resolvedElsewhereNotice`, and `unresolvedRows`. **Diagnostics now has a "Card payments waiting (all registers)" section** once CloudKit has sent attempts: amount, whether it is in progress, has no result yet or stopped part way (a `started` attempt older than 5 minutes, the same window `paymentActive` uses), the register's name and the time. It is read only. Tests: `tests/attemptpull.test.ts` (16: the resolve rules, the notice, the rows, a pull across two registers, no repeat notice, own resolutions silent, nothing read when inactive or in practice mode, a failed read, a change made during the read is kept, and source pins on the poll, the store and Diagnostics); `tests/attemptsync.test.ts` only gained the three new dependencies in its helper. I broke each rule on purpose (a `started` attempt resolving, both guards in `pull`, reading the local list before the await, the poll call, notices for own resolutions, the Diagnostics condition, the stale label) and confirmed each fails a test; one first attempt at the guard mutation hit a different line, so it was redone on `pull` itself. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Not built:** resolving another register's payment from a different register (the list is read only, see GUESSES 'CloudKit attempt pull'), a pull for events (the combined CSV export is not built yet), and anything for saved carts (patch 5). Device test T89. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit attempt pull'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/attemptShared.ts b/src/lib/attemptShared.ts
+new file mode 100644
+index 0000000..7f3a4ba
+--- /dev/null
++++ b/src/lib/attemptShared.ts
+@@ -0,0 +1,58 @@
++// Location: src/lib/attemptShared.ts
++// CloudKit sync, patch 4 (pull side): what this register does with the payment attempts it reads back from CloudKit.
++// Two jobs, both pure so they are tested without an iPad (tests/attemptpull.test.ts):
++//   1. If another register resolved a payment that this register still shows as "no result yet", take that resolution over.
++//   2. Turn the shop-wide attempts into the rows the Diagnostics screen shows.
++// Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 9 and Q10 (any register can resolve, the first resolution wins).
++import type { Attempt } from '../state/store';
++import { fmt } from './money';
++import { unresolvedAttempts, type SharedAttempt } from './eventRecords';
++
++const keyOf = (a: { saleUuid: string; ref: string }): string => `${a.saleUuid}|${a.ref}`;
++
++/**
++ * This register's own attempts, with any that another register has resolved marked resolved too.
++ * Only an attempt that is `unknown` (no result yet) is changed. A `started` one is a charge that may still be running on this
++ * register's reader, and a resolution from elsewhere must not clear that. Everything else is already settled.
++ * `list` is the same array that came in when nothing changed, so a caller can tell by identity. `resolved` holds the attempts that changed.
++ */
++export function applyRemoteResolutions(local: Attempt[], cloud: SharedAttempt[]): { list: Attempt[]; resolved: Attempt[] } {
++  const done = new Map<string, SharedAttempt>();
++  for (const c of cloud) if (c.status === 'resolved' && c.resolvedBy) done.set(keyOf(c), c);
++  if (!done.size) return { list: local, resolved: [] };
++  const resolved: Attempt[] = [];
++  const list = local.map(a => {
++    if (a.status !== 'unknown') return a;
++    const c = done.get(keyOf(a)); if (!c) return a;
++    const next: Attempt = { ...a, status: 'resolved', resolvedBy: c.resolvedBy };
++    resolved.push(next); return next;
++  });
++  return { list: resolved.length ? list : local, resolved };
++}
++
++/** The local notice shown when another register resolved a payment that was waiting on this one. The notice stays on this iPad (decisions item 10). */
++export function resolvedElsewhereNotice(a: Attempt): { title: string; body: string } {
++  return {
++    title: 'Card payment resolved on another register',
++    body: `${a.resolvedBy ?? 'Another register'} resolved the ${fmt(a.amountCents)} card payment that was waiting here. Check the terminal or Zeller dashboard that the sale matches what happened.`,
++  };
++}
++
++export type AttemptRow = { key: string; title: string; sub: string };
++
++/** How long a `started` attempt counts as a charge still running. The same window `paymentActive` (screensaver.ts) uses. */
++export const LIVE_WINDOW_MS = 5 * 60_000;
++
++/**
++ * Payments that still need someone, from every register, newest first, as rows for the Diagnostics screen.
++ * A `started` attempt older than the live window is not a charge still running (the register stopped part way, for example
++ * the app closed mid-charge), so it is labelled that way instead of "in progress" for ever.
++ */
++export function unresolvedRows(shared: SharedAttempt[], limit = 8, nowMs = Date.now()): AttemptRow[] {
++  const label = (a: SharedAttempt): string => (a.status !== 'started' ? 'no result yet' : nowMs - Date.parse(a.ts) < LIVE_WINDOW_MS ? 'in progress' : 'stopped part way');
++  return unresolvedAttempts(shared).slice(0, limit).map(a => ({
++    key: `${a.saleUuid}|${a.ref}`,
++    title: `${fmt(a.amountCents)} · ${label(a)}`,
++    sub: `${a.registerName || 'Unnamed register'} · ${new Date(a.ts).toLocaleString()}`,
++  }));
++}
+diff --git a/src/lib/cloudkit/attemptSync.ts b/src/lib/cloudkit/attemptSync.ts
+index 2694f5b..d6e2034 100644
+--- a/src/lib/cloudkit/attemptSync.ts
++++ b/src/lib/cloudkit/attemptSync.ts
+@@ -1,10 +1,12 @@
+ // Location: src/lib/cloudkit/attemptSync.ts
+-// CloudKit sync, patch 4 (call sites): when a payment attempt is uploaded, and when the ones that were missed are caught up.
++// CloudKit sync, patch 4 (call sites): when a payment attempt is uploaded, when the ones that were missed are caught up, and
++// when every register's attempts are read back (0200).
+ // As with events (eventSync.ts), everything the app supplies is passed in, so the rules are tested without an iPad
+ // (tests/attemptsync.test.ts). The app's one instance is made in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 9, Q10, Q13.
+ import type { Attempt } from '../../state/store';
+ import type { SharedAttempt } from '../eventRecords';
+-import { pushCloudAttempt, type EventNative } from './eventCloud';
++import { applyRemoteResolutions } from '../attemptShared';
++import { pullCloudAttempts, pushCloudAttempt, type EventNative } from './eventCloud';
+ 
+ export type AttemptSyncDeps = {
+   /** True only when the CloudKit backend is the one in use. */
+@@ -16,6 +18,12 @@ export type AttemptSyncDeps = {
+   native: () => Promise<EventNative>;
+   /** This register's own attempts, as the app holds them now. */
+   local: () => Attempt[];
++  /** Where the shop-wide list of attempts is kept. It is held in memory only: CloudKit is the record. */
++  setShared: (list: SharedAttempt[]) => void;
++  /** Replace this register's own attempts. Used only when another register resolved one of them. */
++  setLocal: (list: Attempt[]) => void;
++  /** Tell the cashier that another register resolved one of this register's payments. */
++  notifyResolved: (a: Attempt) => void;
+ };
+ 
+ export function createAttemptSync(d: AttemptSyncDeps) {
+@@ -42,6 +50,22 @@ export function createAttemptSync(d: AttemptSyncDeps) {
+         behind = false; return list.length;
+       } catch { return null; }
+     },
++    /**
++     * Read every register's attempts from CloudKit. Keeps the shop-wide list, and if another register resolved a payment that is
++     * still waiting on this one, marks it resolved here and says so (a local notice, decisions item 10). Returns how many attempts
++     * CloudKit holds, or null when nothing was attempted or the read failed. Never throws: the next poll tries again.
++     */
++    async pull(): Promise<number | null> {
++      if (!d.active() || d.training()) return null;
++      try {
++        const all = await pullCloudAttempts(await d.native());
++        d.setShared(all);
++        // Read this register's own list only now, after the await, so a change made while CloudKit was answering is not overwritten.
++        const { list, resolved } = applyRemoteResolutions(d.local(), all);
++        if (resolved.length) { d.setLocal(list); for (const a of resolved) d.notifyResolved(a); }
++        return all.length;
++      } catch { return null; }
++    },
+     isBehind: () => behind,
+   };
+ }
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 58a19e7..9fd5ac8 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -16,6 +16,7 @@ import * as shop from './shopify/catalogue';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
+ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
+ import { createAttemptSync } from './cloudkit/attemptSync';
++import { resolvedElsewhereNotice } from './attemptShared';
+ import { createEventSync } from './cloudkit/eventSync';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+@@ -45,6 +46,9 @@ export const attemptSync = createAttemptSync({
+   who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+   native: async () => (await import('../../modules/cloudkit-sync')) as unknown as EventNative,
+   local: () => st().pos.attempts,
++  setShared: list => st().set({ sharedAttempts: list }),
++  setLocal: list => st().patchPos({ attempts: list }),
++  notifyResolved: a => { const n = resolvedElsewhereNotice(a); st().notify({ kind: 'info', title: n.title, body: n.body }); },
+ });
+ 
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+@@ -173,6 +177,7 @@ export async function pollShared() {
+       if (s.settings.warningListPending) await pushWarningList().catch(() => {});
+       await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
+       await attemptSync.catchUp(); // the same for payment attempts
++      await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
+     }
+     // stock
+     if (s.settings.locationId && s.data.stockSince) {
+diff --git a/src/screens/Diagnostics.tsx b/src/screens/Diagnostics.tsx
+index e071951..f90194b 100644
+--- a/src/screens/Diagnostics.tsx
++++ b/src/screens/Diagnostics.tsx
+@@ -7,12 +7,13 @@ import { checkReader, getTerminal, pairReader } from '../zellerBridge';
+ import { attemptRef, describeEvent, startCharge, startRefund } from '../lib/zeller';
+ import { processOutbox, pollShared } from '../lib/sync';
+ import { fmt } from '../lib/money';
++import { unresolvedRows } from '../lib/attemptShared';
+ import { SPOT } from '../lib/trainingSpots';
+ import { featureOn } from '../lib/appMode';
+ 
+ /** Support / Diagnostics ▸ Zeller: Setup (pairing) and a $1 test purchase (+ refund). */
+ export default function Diagnostics() {
+-  const nav = useNav(); const z = useApp(s => s.zeller); const readerOn = useApp(s => featureOn(s.settings.appMode, s.settings.registerFeatures, 'cardReader')); const sync = useApp(s => s.sync); const outbox = useApp(s => s.pos.outbox); const attempts = useApp(s => s.pos.attempts);
++  const nav = useNav(); const z = useApp(s => s.zeller); const readerOn = useApp(s => featureOn(s.settings.appMode, s.settings.registerFeatures, 'cardReader')); const sync = useApp(s => s.sync); const outbox = useApp(s => s.pos.outbox); const attempts = useApp(s => s.pos.attempts); const sharedAttempts = useApp(s => s.sharedAttempts); const waiting = unresolvedRows(sharedAttempts);
+   const [log, setLog] = useState<string[]>([]); const [busy, setBusy] = useState(false); const [lastRef, setLastRef] = useState<string | null>(null); const add = (m: string) => setLog(l => [`${new Date().toLocaleTimeString()}  ${m}`, ...l].slice(0, 30));
+   const test = async () => {
+     const t = getTerminal(); if (!t) return alertMsg('Reader not started yet'); setBusy(true); const ref = attemptRef(`test-${Date.now()}`, 1); add('Starting $1.00 test…');
+@@ -32,6 +33,8 @@ export default function Diagnostics() {
+       ) : null}
+       <Section title="Sync"><Row title={`Status: ${sync.state}`} sub={sync.error ?? (sync.at ? `Last ${new Date(sync.at).toLocaleTimeString()}` : undefined)} /><Row title={`${outbox.length} sale(s) queued`} last right={<Btn small title="Sync now" spot={SPOT.diagnosticsSync} onPress={() => { void processOutbox(); void pollShared(); }} />} /></Section>
+       <Section title="Card attempts (this device)">{attempts.slice(-8).reverse().map((a, i, arr) => <Row key={a.ref} last={i === arr.length - 1} title={`${fmt(a.amountCents)} · ${a.status}`} sub={`${a.ref}${a.resolvedBy ? ' · resolved by ' + a.resolvedBy : ''}`} />)}{!attempts.length ? <Row title="None yet" last /> : null}</Section>
++      {/* 0200: only once CloudKit has sent the shop's attempts, so a register still on Shopify storage does not show an empty section */}
++      {sharedAttempts.length ? <Section title="Card payments waiting (all registers)">{waiting.map((r, i) => <Row key={r.key} last={i === waiting.length - 1} title={r.title} sub={r.sub} />)}{!waiting.length ? <Row title="None waiting" last /> : null}</Section> : null}
+       {log.length ? <View style={{ padding: 16 }}><Card style={{ padding: 12 }}>{log.map((l, i) => <Txt key={i} size={12} sub>{l}</Txt>)}</Card></View> : null}
+     </Page>
+   );
+diff --git a/src/state/store.ts b/src/state/store.ts
+index cb87c2e..6eb4131 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -9,6 +9,7 @@ import { emptyCart } from '../lib/cartOps';
+ import type { AutoDiscount, BundleConfig, Cart, Collection, Customer, ManualPreset, Notice, SaleRecord, StaffMember, Variant } from '../lib/types';
+ import type { Totals } from '../lib/rollup';
+ import { emptySharedHistory, type SharedHistory } from '../lib/salesHistory';
++import type { SharedAttempt } from '../lib/eventRecords';
+ import { defaultReceiptProfile, type ReceiptProfile } from '../lib/receiptDoc';
+ import { defaultScreensaver, type ScreensaverSettings } from '../lib/screensaver';
+ import { defaultAssistant, normaliseAssistant, type AssistantSettings } from '../lib/assistantConfig';
+@@ -83,7 +84,10 @@ type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; atte
+ 
+ export type App = {
+   ready: boolean; settings: Settings; data: Data; grid: Grid; gridVersion: number; pos: Pos;
+-  sync: SyncState; zeller: ZellerStatus; staffId?: string; unlocked: boolean; lastPinAt?: number; /* when a PIN was last typed (signing in counts), for the Companion step-up PIN; in memory only */ toast?: string; saverPreview?: boolean;
++  sync: SyncState; zeller: ZellerStatus;
++  /** 0200: every register's card payment attempts as CloudKit holds them. In memory only, never saved: CloudKit is the record. */
++  sharedAttempts: SharedAttempt[];
++  staffId?: string; unlocked: boolean; lastPinAt?: number; /* when a PIN was last typed (signing in counts), for the Companion step-up PIN; in memory only */ toast?: string; saverPreview?: boolean;
+   set: (p: Partial<App>) => void;
+   patchSettings: (p: Partial<Settings>) => void;
+   patchData: (p: Partial<Data>) => void;
+@@ -111,7 +115,7 @@ export async function flushPersist(): Promise<void> {
+ 
+ export const useApp = create<App>((set, get) => ({
+   ready: false, settings: defaultSettings(), data: emptyData(), grid: defaultGrid(), gridVersion: 0, pos: emptyPos(),
+-  sync: { state: 'idle' }, zeller: { ready: false, message: 'Reader not set up' }, unlocked: true,
++  sync: { state: 'idle' }, zeller: { ready: false, message: 'Reader not set up' }, sharedAttempts: [], unlocked: true,
+   set: p => set(p),
+   patchSettings: p => { set(s => ({ settings: { ...s.settings, ...p } })); persist('settings', () => get().settings); },
+   patchData: p => { set(s => ({ data: { ...s.data, ...p } })); persist('data', () => get().data); },
+diff --git a/tests/attemptpull.test.ts b/tests/attemptpull.test.ts
+new file mode 100644
+index 0000000..a86dd6f
+--- /dev/null
++++ b/tests/attemptpull.test.ts
+@@ -0,0 +1,151 @@
++// Location: tests/attemptpull.test.ts
++// CloudKit patch 4, pull side: payment attempts read back from CloudKit. The pure rules (which local attempts take another
++// register's resolution, what the notice and the rows say), then the pull itself on an in-memory fake of the native module, then
++// source pins that the poll, the store and the Diagnostics screen are wired to it.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { applyRemoteResolutions, resolvedElsewhereNotice, unresolvedRows } from '../src/lib/attemptShared';
++import { createAttemptSync, type AttemptSyncDeps } from '../src/lib/cloudkit/attemptSync';
++import type { EventNative } from '../src/lib/cloudkit/eventCloud';
++import type { SharedAttempt } from '../src/lib/eventRecords';
++import type { Attempt } from '../src/state/store';
++
++const att = (o: Partial<Attempt> = {}): Attempt => ({ ref: 'ref-1', saleUuid: 's1', amountCents: 2500, ts: '2026-10-31T03:00:00.000Z', status: 'unknown', ...o });
++const shared = (o: Partial<SharedAttempt> = {}): SharedAttempt => ({ ...att(), registerId: 'a', registerName: 'Front', ...o });
++
++// ── the rules ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
++
++test('a payment waiting here that another register resolved is marked resolved, and keeps its note', () => {
++  const local = [att({ note: 'reader dropped' })];
++  const { list, resolved } = applyRemoteResolutions(local, [shared({ status: 'resolved', resolvedBy: 'Sam' })]);
++  assert.equal(list[0].status, 'resolved'); assert.equal(list[0].resolvedBy, 'Sam'); assert.equal(list[0].note, 'reader dropped');
++  assert.equal(resolved.length, 1); assert.equal(local[0].status, 'unknown', 'the input is not changed');
++});
++test('only an unknown attempt is changed: a started one may still be charging, the rest are settled', () => {
++  const cloud = [shared({ status: 'resolved', resolvedBy: 'Sam' })];
++  for (const status of ['started', 'approved', 'declined', 'cancelled', 'resolved'] as const) {
++    const local = [att({ status, resolvedBy: status === 'resolved' ? 'Me' : undefined })];
++    const r = applyRemoteResolutions(local, cloud);
++    assert.equal(r.list, local, `${status} is left alone`); assert.equal(r.resolved.length, 0);
++  }
++});
++test('nothing changes when no resolution matches, and the same list comes back so a caller can tell by identity', () => {
++  const local = [att()];
++  assert.equal(applyRemoteResolutions(local, []).list, local);
++  assert.equal(applyRemoteResolutions(local, [shared({ status: 'unknown' })]).list, local, 'an unresolved copy is not a resolution');
++  assert.equal(applyRemoteResolutions(local, [shared({ ref: 'other', status: 'resolved', resolvedBy: 'Sam' })]).list, local);
++  assert.equal(applyRemoteResolutions(local, [shared({ saleUuid: 's2', status: 'resolved', resolvedBy: 'Sam' })]).list, local, 'the sale must match too');
++});
++test('the notice names who resolved it and the amount', () => {
++  const n = resolvedElsewhereNotice(att({ status: 'resolved', resolvedBy: 'Sam', amountCents: 2500 }));
++  assert.match(n.body, /Sam/); assert.match(n.body, /25\.00/); assert.match(n.body, /terminal or Zeller dashboard/);
++});
++test('the Diagnostics rows show only payments that still need someone, newest first, with the register name', () => {
++  const rows = unresolvedRows([
++    shared({ ref: 'r1', ts: '2026-10-31T01:00:00.000Z', status: 'unknown' }),
++    shared({ ref: 'r2', ts: '2026-10-31T02:00:00.000Z', status: 'started', registerName: 'Back' }),
++    shared({ ref: 'r3', status: 'approved' }), shared({ ref: 'r4', status: 'resolved', resolvedBy: 'Sam' }),
++    shared({ ref: 'r5', ts: '2026-10-31T00:00:00.000Z', status: 'unknown', registerName: '' }),
++  ], 8, Date.parse('2026-10-31T02:01:00.000Z'));
++  assert.deepEqual(rows.map(r => r.key), ['s1|r2', 's1|r1', 's1|r5']);
++  assert.match(rows[0].title, /in progress/); assert.match(rows[1].title, /no result yet/);
++  assert.match(rows[0].sub, /^Back/); assert.match(rows[2].sub, /^Unnamed register/);
++});
++test('a started attempt older than five minutes is shown as stopped part way, not in progress for ever', () => {
++  const at = (ms: number) => unresolvedRows([shared({ status: 'started', ts: '2026-10-31T02:00:00.000Z' })], 8, Date.parse('2026-10-31T02:00:00.000Z') + ms)[0].title;
++  assert.match(at(4 * 60_000), /in progress/); assert.match(at(6 * 60_000), /stopped part way/);
++  assert.match(at(6 * 60_000), /25\.00/, 'it is still listed, since a manager needs to see it');
++});
++test('the rows are capped', () => {
++  const many = Array.from({ length: 20 }, (_, i) => shared({ ref: `r${i}`, ts: `2026-10-31T00:${String(i).padStart(2, '0')}:00.000Z` }));
++  assert.equal(unresolvedRows(many).length, 8); assert.equal(unresolvedRows(many, 3).length, 3);
++});
++
++// ── the pull ────────────────────────────────────────────────────────────────────────────────────────────────────────────────
++
++type Rec = Record<string, any>;
++function zone() { // one shared CloudKit zone that two registers can pull from
++  const attempts = new Map<string, Rec>(), resolutions = new Map<string, Rec>(); let fail = false;
++  const page = (rows: Rec[], after: string | null | undefined, limit: number) => { const from = after ? Number(after) : 0; return { rows: rows.slice(from, from + limit), next: from + limit < rows.length ? String(from + limit) : null }; };
++  const n = {
++    async putAttempt(h: string, f: Rec) { const r = { ...f, recordName: `attempt-${h}` }; attempts.set(h, r); return r; },
++    async getAttempt(h: string) { return attempts.get(h) ?? null; },
++    async listAttempts(limit: number, after?: string | null) { if (fail) throw new Error('offline'); return page([...attempts.values()], after, limit); },
++    async putResolution(h: string, f: Rec) { const had = resolutions.get(h); if (had) return had; const r = { ...f, recordName: `resolve-${h}` }; resolutions.set(h, r); return r; },
++    async getResolution(h: string) { return resolutions.get(h) ?? null; },
++    async listResolutions(limit: number, after?: string | null) { return page([...resolutions.values()], after, limit); },
++  } as unknown as EventNative;
++  return { n, setFail: (v: boolean) => { fail = v; } };
++}
++function reg(z: ReturnType<typeof zone>, id: string, over: Partial<AttemptSyncDeps> = {}) {
++  const state = { local: [] as Attempt[], shared: [] as SharedAttempt[], notices: [] as Attempt[], localSets: 0 };
++  const sync = createAttemptSync({
++    active: () => true, training: () => false, who: () => ({ id, name: `Reg ${id}` }), native: async () => z.n,
++    local: () => state.local, setShared: l => { state.shared = l; }, setLocal: l => { state.local = l; state.localSets++; }, notifyResolved: a => { state.notices.push(a); }, ...over,
++  });
++  return { sync, state };
++}
++
++test('a pull keeps every register\'s attempts in the shop-wide list', async () => {
++  const z = zone(); const a = reg(z, 'a'), b = reg(z, 'b');
++  a.state.local = [att({ ref: 'ra' })]; b.state.local = [att({ ref: 'rb', saleUuid: 's2' })];
++  await a.sync.catchUp(); await b.sync.catchUp();
++  assert.equal(await a.sync.pull(), 2);
++  assert.deepEqual(a.state.shared.map(x => x.registerName).sort(), ['Reg a', 'Reg b']);
++});
++test('another register resolving a payment that waits here: it is marked resolved here, once, with one notice', async () => {
++  const z = zone(); const a = reg(z, 'a'), b = reg(z, 'b');
++  a.state.local = [att()]; await a.sync.catchUp(); await b.sync.catchUp();
++  await b.sync.push(att({ status: 'resolved', resolvedBy: 'Alex' })); // B resolves A's payment (B pushes it under its own name; the first writer's label stays)
++  assert.equal(await a.sync.pull(), 1);
++  assert.equal(a.state.local[0].status, 'resolved'); assert.equal(a.state.local[0].resolvedBy, 'Alex');
++  assert.equal(a.state.notices.length, 1); assert.equal(a.state.notices[0].resolvedBy, 'Alex');
++  await a.sync.pull(); // already resolved here, so a second pull says nothing more
++  assert.equal(a.state.notices.length, 1); assert.equal(a.state.localSets, 1);
++});
++test('a payment this register resolved itself does not raise a notice', async () => {
++  const z = zone(); const a = reg(z, 'a');
++  a.state.local = [att({ status: 'resolved', resolvedBy: 'Sam' })]; await a.sync.catchUp(); await a.sync.pull();
++  assert.equal(a.state.notices.length, 0); assert.equal(a.state.localSets, 0);
++});
++test('nothing is read when CloudKit is not active or in practice mode, and the list is left as it was', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }]) {
++    const z = zone(); const a = reg(z, 'a', over); a.state.shared = [shared()];
++    assert.equal(await a.sync.pull(), null); assert.equal(a.state.shared.length, 1);
++  }
++});
++test('a failed read returns null, never throws, changes nothing, and works again next time', async () => {
++  const z = zone(); const a = reg(z, 'a'); a.state.local = [att()]; await a.sync.catchUp(); await a.sync.pull();
++  z.setFail(true); a.state.shared = [shared({ ref: 'kept' })];
++  assert.equal(await a.sync.pull(), null); assert.equal(a.state.shared[0].ref, 'kept');
++  z.setFail(false); assert.equal(await a.sync.pull(), 1);
++});
++test('a change made while CloudKit is answering is not overwritten', async () => {
++  const z = zone(); const a = reg(z, 'a'); a.state.local = [att()]; await a.sync.catchUp();
++  await z.n.putResolution('s1-ref-1', { ref: 'ref-1', saleUuid: 's1', resolvedBy: 'Alex', registerId: 'b', registerName: 'Reg b' });
++  const slow = reg(z, 'a', { native: async () => { await Promise.resolve(); return z.n; }, local: () => a.state.local, setLocal: l => { a.state.local = l; } });
++  const p = slow.sync.pull(); a.state.local = [att({ note: 'added meanwhile' })]; await p;
++  assert.equal(a.state.local[0].note, 'added meanwhile', 'the list is read after CloudKit answers, so the later note survives');
++  assert.equal(a.state.local[0].status, 'resolved');
++});
++
++// ── the wiring ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
++
++const read = (p: string) => readFileSync(p, 'utf8');
++test('the poll pulls attempts after the catch-up and only outside practice mode', () => {
++  const sync = read('src/lib/sync.ts'); const poll = sync.slice(sync.indexOf('export async function pollShared'), sync.indexOf('// ── the shop-wide sales view'));
++  assert.ok(poll.indexOf('attemptSync.catchUp()') >= 0 && poll.indexOf('attemptSync.catchUp()') < poll.indexOf('attemptSync.pull()'));
++  assert.ok(poll.indexOf('!isTraining()') < poll.indexOf('attemptSync.pull()') && poll.indexOf('attemptSync.pull()') < poll.indexOf('// stock'));
++});
++test('the shop-wide list lives in memory only and a resolved-elsewhere notice stays local', () => {
++  const store = read('src/state/store.ts');
++  assert.match(store, /sharedAttempts: SharedAttempt\[\]/); assert.match(store, /sharedAttempts: \[\]/);
++  assert.equal((store.match(/persist\('[a-z]+'/g) ?? []).every(m => !m.includes('sharedAttempts')), true);
++  assert.doesNotMatch(store.slice(store.indexOf('type Pos = {'), store.indexOf('export type App = {')), /sharedAttempts/, 'not part of the saved pos');
++  const sync = read('src/lib/sync.ts'); assert.match(sync, /notifyResolved: a => \{[^}]*notify\(\{ kind: 'info'/);
++});
++test('Diagnostics shows the all-registers section only once CloudKit has sent attempts', () => {
++  const d = read('src/screens/Diagnostics.tsx');
++  assert.match(d, /sharedAttempts\.length \? <Section title="Card payments waiting \(all registers\)"/); assert.match(d, /unresolvedRows\(sharedAttempts\)/);
++});
+diff --git a/tests/attemptsync.test.ts b/tests/attemptsync.test.ts
+index faaf504..1397b0a 100644
+--- a/tests/attemptsync.test.ts
++++ b/tests/attemptsync.test.ts
+@@ -20,7 +20,7 @@ function shop() { // one shared CloudKit zone, so two registers can be tested ag
+   return { n, attempts, resolutions, calls, failNext: (k: number) => { fail = k; } };
+ }
+ function register(z: ReturnType<typeof shop>, id: string, local: Attempt[] = [], over: Partial<AttemptSyncDeps> = {}) {
+-  return createAttemptSync({ active: () => true, training: () => false, who: () => ({ id, name: `Reg ${id}` }), native: async () => z.n, local: () => local, ...over });
++  return createAttemptSync({ active: () => true, training: () => false, who: () => ({ id, name: `Reg ${id}` }), native: async () => z.n, local: () => local, setShared: () => {}, setLocal: () => {}, notifyResolved: () => {}, ...over });
+ }
+ const att = (o: Partial<Attempt> = {}): Attempt => ({ ref: 'ref-1', saleUuid: 's1', amountCents: 2500, ts: '2026-10-31T03:00:00.000Z', status: 'started', ...o });
+ 
