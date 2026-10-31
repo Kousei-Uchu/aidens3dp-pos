@@ -1,0 +1,485 @@
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 6215b7e..b128e30 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -172,6 +172,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0189 | 2026-10-31 | CloudKit, the 31 October decisions written into the repo (your request: start on the decisions doc). **Docs and comments only, no behaviour change.** New `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` holds your decisions and open items, rechecked against 0188 (the shared drawer shift now carries the loan owed, and loan events join the events list). `dev_docs/CLOUDKIT_SYNC_PLAN.md`: section 5 rewritten as the full sync and local table, the 20 October `encryptedValues` answer marked replaced, the "what is and is not in iCloud" text rewritten (staff hashes, encrypted card fields and secrets now in, the audit log named as the customer-data exception, the read-write link caveat), and the patch list gained 6b to 6e and the migration extension. `help/settings/cloud-sync.md` no longer says cash is never merged or that each register keeps its own settings (both were already untrue after 0168); `help.json` rebuilt, help:check green. Two `store.ts` comments corrected (smart change is shop-wide, the drawer is shared). **Not done, your call:** the encryption test (O4) waits for a second Apple ID; the audit of code that still assumes "this till's drawer" and the in-app privacy note are for patches 6b and 4. | your request |
+ | 0190 | 2026-10-31 | CloudKit 6b, first half: **the shared drawer as records, pure code only** (your request: next). New `src/lib/drawerRecords.ts`: the shift is one record `drawer-shift` (open, float, paid in and out, openedAt, staff, and the 0188 loan owed, with a version), each ledger entry is its own record `ledger-<id>` written once and never edited, and the counts are not stored but replayed from the entries oldest first (ties by id) so every iPad gets the same counts. A record that cannot be read is skipped, duplicates by id count once, and `entriesToUpload` says which local entries CloudKit lacks. Tests: `tests/drawerrecords.test.ts` (11). **Nothing calls it yet and no native code changed**, so there is no behaviour change; the Swift and backend wiring is the second half and needs a Mac build. **Found, your call (decisions item 6 and O3):** CloudKit keeps every entry but the app loads the newest 1000, and counts replayed from only those would be wrong once the drawer has more than 1000 entries, because the counts are a running total. `ledgerFromEntries` takes a `base` (the counts just before the oldest entry loaded) for this. Options: a checkpoint record that stores the counts at a point, or replay everything. I recommend the checkpoint, written when the shift opens or closes. Not tried on a real iPad. | your request |
+ | 0191 | 2026-10-31 | CloudKit 6b, first half continued: **the drawer checkpoint, pure code only** (your request: continue). New `src/lib/drawerCheckpoint.ts` settles the open point from 0190 on my recommendation, which you have not explicitly confirmed: one record `drawer-checkpoint` holds the counts at a point in time and the server stamp of the newest entry it covers; a register replays only entries stamped after it, so counts stay right past 1000 entries. It uses CloudKit's creation stamp, not the entry's `ts`, because an iPad that was offline uploads entries late with an old `ts` and those must still count. A checkpoint only moves forward, an unreadable one falls back to replaying everything, and `makeCheckpoint` is meant to be called when a shift opens or closes. Tests: `tests/drawercheckpoint.test.ts` (7). Decisions O3 gained a note. **Still nothing calls this and no native code changed.** The stamp has to come from the native module (CloudKit's record creation date), which `CloudKitSyncModule.swift` does not return yet. Not tried on a real iPad. | your request |
++| 0192 | 2026-10-31 | CloudKit 6b, second half: **the shared drawer reads and writes CloudKit records** (your request: next). `src/lib/cloudkit/drawerCloud.ts` is the transport: `pushCloudDrawer` uploads the entries CloudKit lacks (each written once), lets the first writer into an empty drawer start it with a checkpoint holding its counts, reads back so counts are the replay of every register's entries, writes the shift (with the 0188 loan) only if this register changed it and otherwise follows a newer shared one, and writes a fresh checkpoint when the drawer opens or closes. `pullCloudDrawerState` always takes the ledger, since a cash sale elsewhere adds entries without moving the shift. The native module is passed in, so `tests/drawercloud.test.ts` (10) runs the whole flow on an in-memory fake: bootstrap, two registers agreeing, an offline register's late entry, retries not doubling, 1200 entries across pages, checkpoint timing. `CloudKitSyncModule.swift` gained `putDrawerShift`, `getDrawerShift`, `putLedgerEntry`, `listLedgerEntries`, `listLedgerSince`, `putDrawerCheckpoint`, `getDrawerCheckpoint`, plus `upsertRecord` (fetch, change, save, retry), `putRecordOnce` and a creation-time query; every returned record now carries `createdAt`. `sync.ts` `pushDrawer` and `pullDrawer` branch to it only when the active backend is CloudKit, which nothing sets until patch 8, so **the Shopify drawer behaves exactly as before**. Checked: full `tsc --noEmit` clean, all 1498 tests pass. **Not checked: the Swift has never been compiled or run, it needs a Mac build (Xcode), and nothing has touched a real CloudKit zone.** **Found:** the existing `putRecord` builds a fresh record every time, which CloudKit refuses for a name that already exists, so a second `putSale`, `putRollup`, `putCart`, `putSettings` or `putLayout` on the same handle will fail with serverRecordChanged; I left it alone and used `upsertRecord` only for the drawer, your call whether the others move to it. Two CloudKit dashboard steps are needed before this works on a real zone: the `LedgerEntry` type needs its `creationDate` and `modificationDate` fields sortable and queryable, and the schema has to be deployed to production. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index 6edd2fb..6944e56 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -145,3 +145,35 @@ export async function getMigration(): Promise<Record<string, any> | null> {
+   if (!native?.getMigration) return null;
+   return native.getMigration();
+ }
++
++// Patch 6b: the shared cash drawer. The names match DrawerNative in src/lib/cloudkit/drawerCloud.ts, so this module
++// can be handed to it as it is.
++type Page = { rows: Record<string, any>[]; next: string | null };
++export async function putDrawerShift(fields: Record<string, any>): Promise<Record<string, any>> {
++  if (!native?.putDrawerShift) throw new Error(CLOUDKIT_MISSING);
++  return native.putDrawerShift(fields);
++}
++export async function getDrawerShift(): Promise<Record<string, any> | null> {
++  if (!native?.getDrawerShift) return null;
++  return native.getDrawerShift();
++}
++export async function putLedgerEntry(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
++  if (!native?.putLedgerEntry) throw new Error(CLOUDKIT_MISSING);
++  return native.putLedgerEntry(handle, fields);
++}
++export async function listLedgerEntries(limit = 100, after?: string | null): Promise<Page> {
++  if (!native?.listLedgerEntries) return { rows: [], next: null };
++  return native.listLedgerEntries(limit, after ?? null);
++}
++export async function listLedgerSince(since: number, limit = 100, after?: string | null): Promise<Page> {
++  if (!native?.listLedgerSince) return { rows: [], next: null };
++  return native.listLedgerSince(since, limit, after ?? null);
++}
++export async function putDrawerCheckpoint(fields: Record<string, any>): Promise<Record<string, any>> {
++  if (!native?.putDrawerCheckpoint) throw new Error(CLOUDKIT_MISSING);
++  return native.putDrawerCheckpoint(fields);
++}
++export async function getDrawerCheckpoint(): Promise<Record<string, any> | null> {
++  if (!native?.getDrawerCheckpoint) return null;
++  return native.getDrawerCheckpoint();
++}
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index bb61b00..db501c6 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -174,6 +174,36 @@ public class CloudKitSyncModule: Module {
+     AsyncFunction("getMigration") { () async throws -> [String: Any]? in
+       try await self.getRecord(recordType: "Migration", recordName: "migration-v1")
+     }
++
++    // Patch 6b: the shared cash drawer. The shift and the checkpoint are single records that are updated in place; each
++    // ledger entry is its own record, written once and never changed.
++    AsyncFunction("putDrawerShift") { (fields: [String: Any]) async throws -> [String: Any] in
++      try await self.upsertRecord(recordType: "DrawerShift", recordName: "drawer-shift", fields: fields)
++    }
++
++    AsyncFunction("getDrawerShift") { () async throws -> [String: Any]? in
++      try await self.getRecord(recordType: "DrawerShift", recordName: "drawer-shift")
++    }
++
++    AsyncFunction("putLedgerEntry") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
++      try await self.putRecordOnce(recordType: "LedgerEntry", recordName: "ledger-\(handle)", fields: fields)
++    }
++
++    AsyncFunction("listLedgerEntries") { (limit: Int, after: String?) async throws -> [String: Any] in
++      try await self.listRecords(recordType: "LedgerEntry", limit: limit, after: after)
++    }
++
++    AsyncFunction("listLedgerSince") { (since: Double, limit: Int, after: String?) async throws -> [String: Any] in
++      try await self.listCreatedSince(recordType: "LedgerEntry", since: since, limit: limit, after: after)
++    }
++
++    AsyncFunction("putDrawerCheckpoint") { (fields: [String: Any]) async throws -> [String: Any] in
++      try await self.upsertRecord(recordType: "DrawerCheckpoint", recordName: "drawer-checkpoint", fields: fields)
++    }
++
++    AsyncFunction("getDrawerCheckpoint") { () async throws -> [String: Any]? in
++      try await self.getRecord(recordType: "DrawerCheckpoint", recordName: "drawer-checkpoint")
++    }
+   }
+ 
+   // --- The container and the zone it shares ---------------------------------
+@@ -290,7 +320,7 @@ public class CloudKitSyncModule: Module {
+   }
+ 
+   private func recordToDict(_ record: CKRecord) -> [String: Any] {
+-    var out: [String: Any] = ["id": record.recordID.recordName, "recordName": record.recordID.recordName, "updatedAt": record.modificationDate?.timeIntervalSince1970 ?? 0]
++    var out: [String: Any] = ["id": record.recordID.recordName, "recordName": record.recordID.recordName, "updatedAt": record.modificationDate?.timeIntervalSince1970 ?? 0, "createdAt": record.creationDate?.timeIntervalSince1970 ?? 0]
+     for key in record.allKeys() {
+       if let v = record[key] {
+         if let s = v as? String { out[key] = s }
+@@ -317,6 +347,65 @@ public class CloudKitSyncModule: Module {
+     return recordToDict(saved)
+   }
+ 
++  private func copyFields(_ fields: [String: Any], into record: CKRecord) {
++    for (k, v) in fields {
++      if k == "id" || k == "recordName" || k == "updatedAt" || k == "createdAt" { continue }
++      if let s = v as? String { record[k] = s as CKRecordValue }
++      else if let i = v as? Int { record[k] = NSNumber(value: i) }
++      else if let d = v as? Double { record[k] = NSNumber(value: d) }
++      else if let b = v as? Bool { record[k] = NSNumber(value: b) }
++      else if v is NSNull { continue }
++      else { record[k] = String(describing: v) as CKRecordValue }
++    }
++  }
++
++  /// Create the record, or change the one that is there. putRecord above builds a fresh record every time, which CloudKit
++  /// refuses for a name that already exists (serverRecordChanged), so anything that is updated in place goes through here:
++  /// fetch the current record, change its fields, save, and try again if someone else saved in between.
++  private func upsertRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
++    let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
++    var lastError: Error?
++    for _ in 0..<3 {
++      let record: CKRecord
++      do {
++        record = try await database().record(for: id)
++      } catch let error as CKError where error.code == .unknownItem {
++        record = makeRecord(recordType: recordType, recordName: recordName)
++      }
++      copyFields(fields, into: record)
++      do {
++        let saved = try await database().save(record)
++        return recordToDict(saved)
++      } catch let error as CKError where error.code == .serverRecordChanged {
++        lastError = error
++      }
++    }
++    throw lastError ?? NSError(domain: CKErrorDomain, code: CKError.Code.serverRecordChanged.rawValue)
++  }
++
++  /// Write a record that must never change once it exists (a ledger entry). If it is already there, hand back the stored
++  /// one untouched, so a retry or a second register uploading the same entry is harmless.
++  private func putRecordOnce(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
++    let record = makeRecord(recordType: recordType, recordName: recordName)
++    copyFields(fields, into: record)
++    do {
++      let saved = try await database().save(record)
++      return recordToDict(saved)
++    } catch let error as CKError where error.code == .serverRecordChanged {
++      let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
++      return recordToDict(try await database().record(for: id))
++    }
++  }
++
++  /// Records of a type created after `since` (seconds since 1970), oldest first. Reads on the creation time, which
++  /// CloudKit sets itself, so a record uploaded late by an offline iPad is found by the checkpoint logic in JavaScript.
++  private func listCreatedSince(recordType: String, since: Double, limit: Int, after: String?) async throws -> [String: Any] {
++    let date = Date(timeIntervalSince1970: since)
++    let query = CKQuery(recordType: recordType, predicate: NSPredicate(format: "creationDate > %@", date as NSDate))
++    query.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: true)]
++    return try await runQuery(query, limit: limit, after: after)
++  }
++
+   private func getRecord(recordType: String, recordName: String) async throws -> [String: Any]? {
+     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+     do {
+@@ -331,6 +420,10 @@ public class CloudKitSyncModule: Module {
+   private func listRecords(recordType: String, limit: Int, after: String?) async throws -> [String: Any] {
+     let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
+     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
++    return try await runQuery(query, limit: limit, after: after)
++  }
++
++  private func runQuery(_ query: CKQuery, limit: Int, after: String?) async throws -> [String: Any] {
+     let db = database()
+     var rows: [[String: Any]] = []
+     var cursor: CKQueryOperation.Cursor? = nil
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index 9024891..5fa547c 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -43,6 +43,14 @@ export type CloudKitSyncNative = {
+   putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+   getRollup?(handle: string): Promise<Record<string, any> | null>;
+   listRollups?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  // Patch 6b: the shared cash drawer
++  putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
++  getDrawerShift?(): Promise<Record<string, any> | null>;
++  putLedgerEntry?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
++  listLedgerEntries?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  listLedgerSince?(since: number, limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  putDrawerCheckpoint?(fields: Record<string, any>): Promise<Record<string, any>>;
++  getDrawerCheckpoint?(): Promise<Record<string, any> | null>;
+   // Patch 5: saved carts
+   putCart?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+   getCart?(handle: string): Promise<Record<string, any> | null>;
+diff --git a/src/lib/cloudkit/drawerCloud.ts b/src/lib/cloudkit/drawerCloud.ts
+new file mode 100644
+index 0000000..ef6ed8c
+--- /dev/null
++++ b/src/lib/cloudkit/drawerCloud.ts
+@@ -0,0 +1,109 @@
++// Location: src/lib/cloudkit/drawerCloud.ts
++// CloudKit sync, patch 6b (transport half): reading and writing the one shared cash drawer as CloudKit records.
++// It joins the pure pieces (drawerRecords.ts, drawerCheckpoint.ts) to a small native interface. The native module is
++// passed in, so the whole flow is tested here with an in-memory fake and no iPad. Nothing reaches this file unless the
++// CloudKit backend is the active one (sync.ts checks), so the Shopify drawer is untouched until cut-over.
++// Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 6, Q12, O3.
++import type { CashLedger, LedgerEntry } from '../cashLedger';
++import type { Shift } from '../../state/store';
++import { checkpointFromFields, checkpointToFields, ledgerFromRemote, makeCheckpoint, newestStamp, shouldReplaceCheckpoint, type Checkpoint, type StampedEntry } from '../drawerCheckpoint';
++import { entriesToUpload, entryFromFields, entryIdFromRecord, entryToFields, shiftFromFields, shiftToFields } from '../drawerRecords';
++
++type Rec = Record<string, any>;
++type Page = { rows: Rec[]; next: string | null };
++
++/** What the drawer needs of the native module. `createdAt` on a returned record is CloudKit's creation time, in seconds. */
++export type DrawerNative = {
++  putDrawerShift(fields: Rec): Promise<Rec>;
++  getDrawerShift(): Promise<Rec | null>;
++  /** Write one ledger entry if it is not there yet. An entry that already exists is returned as it is, never changed. */
++  putLedgerEntry(handle: string, fields: Rec): Promise<Rec>;
++  /** The newest entries first. */
++  listLedgerEntries(limit: number, after?: string | null): Promise<Page>;
++  /** Entries created after `since` (seconds), oldest first. */
++  listLedgerSince(since: number, limit: number, after?: string | null): Promise<Page>;
++  putDrawerCheckpoint(fields: Rec): Promise<Rec>;
++  getDrawerCheckpoint(): Promise<Rec | null>;
++};
++
++export const PAGE_SIZE = 200;
++export const HISTORY_LIMIT = 1000; // the same cap as the local ledger
++const EPOCH_STAMP = '1970-01-01T00:00:00.000Z';
++const toStamp = (seconds: unknown): string => new Date((Number(seconds) || 0) * 1000).toISOString();
++
++async function pageAll(read: (after: string | null) => Promise<Page>, max = Infinity): Promise<Rec[]> {
++  const out: Rec[] = []; let after: string | null = null;
++  for (;;) {
++    const page = await read(after); out.push(...(page.rows ?? []));
++    if (!page.next || out.length >= max) break;
++    after = page.next;
++  }
++  return out;
++}
++function stamped(rows: Rec[]): StampedEntry[] {
++  const out: StampedEntry[] = [];
++  for (const r of rows) {
++    const id = entryIdFromRecord(String(r.recordName ?? '')); const entry = id ? entryFromFields(id, r) : null;
++    if (entry) out.push({ entry, stamp: toStamp(r.createdAt) });
++  }
++  return out;
++}
++
++/** The shared drawer as CloudKit holds it. `replay` is the entries counted on top of the checkpoint, for writing the next one. */
++export type CloudDrawer = { shift: { shift: Shift; version: number } | null; ledger: CashLedger; checkpoint: Checkpoint | null; replay: StampedEntry[]; knownIds: Set<string>; empty: boolean };
++
++export async function pullCloudDrawer(n: DrawerNative): Promise<CloudDrawer> {
++  const cpRec = await n.getDrawerCheckpoint();
++  const checkpoint = cpRec ? checkpointFromFields(cpRec) : null; // an unreadable checkpoint means replay everything
++  const since = checkpoint ? Date.parse(checkpoint.asOfStamp) / 1000 : 0;
++  const replay = stamped(await pageAll(after => n.listLedgerSince(since, PAGE_SIZE, after)));
++  const history = stamped(await pageAll(after => n.listLedgerEntries(PAGE_SIZE, after), HISTORY_LIMIT)).map(s => s.entry).slice(0, HISTORY_LIMIT);
++  const shiftRec = await n.getDrawerShift();
++  const ledger = ledgerFromRemote(checkpoint, replay, history);
++  const knownIds = new Set<string>([...history, ...replay.map(s => s.entry)].map(e => e.id));
++  return { shift: shiftRec ? shiftFromFields(shiftRec) : null, ledger, checkpoint, replay, knownIds, empty: !checkpoint && replay.length === 0 && history.length === 0 };
++}
++
++export type DrawerPush = { shift: Shift; ledger: CashLedger; version: number; shiftPending: boolean };
++
++/**
++ * Send this register's drawer to CloudKit and return what the shared drawer now is.
++ * 1. Upload the ledger entries CloudKit lacks (each is written once, so a retry never doubles one).
++ * 2. First writer into an empty drawer: write a checkpoint holding our counts, so the counts survive without the history.
++ * 3. Read back, so the counts are the replay of everything every register wrote.
++ * 4. The shift: write ours if we changed it (or none exists), otherwise follow a newer shared one.
++ * 5. If the drawer opened or closed, write a fresh checkpoint so counts stay cheap to read.
++ */
++export async function pushCloudDrawer(n: DrawerNative, input: DrawerPush): Promise<{ shift: Shift; version: number; ledger: CashLedger }> {
++  let remote = await pullCloudDrawer(n);
++  const saved: StampedEntry[] = [];
++  for (const e of entriesToUpload(input.ledger.entries, remote.knownIds)) {
++    const rec = await n.putLedgerEntry(e.id, entryToFields(e));
++    saved.push({ entry: e as LedgerEntry, stamp: toStamp(rec.createdAt) });
++  }
++  if (remote.empty && (saved.length > 0 || Object.keys(input.ledger.counts).length > 0)) {
++    await n.putDrawerCheckpoint(checkpointToFields({ counts: input.ledger.counts, asOfStamp: newestStamp(saved) || EPOCH_STAMP }));
++  }
++  if (saved.length > 0 || remote.empty) remote = await pullCloudDrawer(n);
++
++  const rs = remote.shift; let shift = input.shift; let version = Math.max(input.version, rs?.version ?? 0);
++  let wroteShift = false;
++  if (input.shiftPending || !rs) { version += 1; await n.putDrawerShift(shiftToFields(shift, version)); wroteShift = true; }
++  else if (rs.version > input.version) { shift = rs.shift; version = rs.version; }
++
++  if (wroteShift && (!rs || rs.shift.open !== shift.open)) {
++    const cp = makeCheckpoint(remote.ledger, remote.replay);
++    if (cp && shouldReplaceCheckpoint(remote.checkpoint, cp)) await n.putDrawerCheckpoint(checkpointToFields(cp));
++  }
++  return { shift, version, ledger: remote.ledger };
++}
++
++/**
++ * What a pull brings in: the shared shift and ledger, or null when nothing has been shared yet. The ledger is always read,
++ * not only when the shift version moved, because a cash sale on another register adds entries without touching the shift.
++ */
++export async function pullCloudDrawerState(n: DrawerNative): Promise<{ shift: Shift | null; version: number; ledger: CashLedger } | null> {
++  const remote = await pullCloudDrawer(n);
++  if (remote.empty && !remote.shift) return null;
++  return { shift: remote.shift?.shift ?? null, version: remote.shift?.version ?? 0, ledger: remote.ledger };
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 492c565..ef58c7d 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -13,7 +13,8 @@ import { buildWarningListEntries, mergeWarningList } from './warningList';
+ import { isTraining } from './trainingGuard';
+ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+-import { getShared, listShared, putShared, detailReadyShared } from './syncBackend';
++import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
++import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+ import { createOrderForSale } from './shopify/orders';
+ import { createGiftCard } from './shopify/giftcards';
+@@ -349,6 +350,9 @@ export function drawerChanged(shift = false) {
+   void pushDrawer();
+ }
+ 
++/** The CloudKit module as the drawer's native interface. Loaded on demand so a build or test without it never imports it. */
++const cloudDrawerNative = async (): Promise<DrawerNative> => (await import('../../modules/cloudkit-sync')) as unknown as DrawerNative;
++
+ const drawerOn = (): boolean => { const x = st().settings; return featureOn(x.appMode, x.registerFeatures, 'cashDrawer'); };
+ 
+ export async function pushDrawer() {
+@@ -359,6 +363,17 @@ export async function pushDrawer() {
+   s.patchSettings({ drawerPending: true });
+   if (!hasCreds()) return;
+   const pos = st().pos;
++  if (activeBackendKind() === 'cloudkit') { // 6b: the drawer is records in the shop's CloudKit zone, not one settings blob
++    try {
++      const out = await pushCloudDrawer(await cloudDrawerNative(), { shift: pos.shift, ledger: pos.ledger, version: st().settings.drawerVersion ?? 0, shiftPending: !!st().settings.drawerShiftPending });
++      st().patchPos({ ledger: out.ledger, shift: out.shift });
++      st().patchSettings({ drawerVersion: out.version, drawerPending: false, drawerShiftPending: false });
++    } catch (error) {
++      st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Drawer not uploaded: ${String((error as Error)?.message ?? error)}` } });
++      throw error;
++    }
++    return;
++  }
+   let shift = pos.shift; let ledger = pos.ledger;
+   let version = (st().settings.drawerVersion ?? 0) + 1;
+   try {
+@@ -385,6 +400,18 @@ export async function pushDrawer() {
+ 
+ async function pullDrawer() {
+   if (isTraining() || !drawerOn() || st().settings.drawerPending) return; // our unsent change wins until it is pushed
++  if (activeBackendKind() === 'cloudkit') {
++    const remote = await pullCloudDrawerState(await cloudDrawerNative()); if (!remote) return;
++    const local = st().pos; const have = st().settings.drawerVersion ?? 0; const first = !have;
++    // The ledger is always taken (a sale on another register adds entries without moving the shift version). The shift follows
++    // the shared one only when it is newer, except that on a first look an open drawer here stays open, as with the old drawer.
++    const follow = remote.shift && remote.version > have && !(first && local.shift.open && !remote.shift.open);
++    const shift = follow ? remote.shift! : local.shift;
++    st().patchPos({ shift, ledger: remote.ledger });
++    st().patchSettings({ drawerVersion: Math.max(have, follow ? remote.version : have), ...(shift !== remote.shift && first && local.shift.open ? { drawerPending: true, drawerShiftPending: true } : {}) });
++    if (shift !== remote.shift && first && local.shift.open) void pushDrawer().catch(() => {});
++    return;
++  }
+   const row = await getShared('settings', 'drawer'); if (!row) return;
+   const v = Number(row.f.version) || 0;
+   if (v <= (st().settings.drawerVersion ?? 0)) return;
+diff --git a/tests/drawercloud.test.ts b/tests/drawercloud.test.ts
+new file mode 100644
+index 0000000..ca46ed0
+--- /dev/null
++++ b/tests/drawercloud.test.ts
+@@ -0,0 +1,105 @@
++// Location: tests/drawercloud.test.ts
++// CloudKit patch 6b, transport half: the shared drawer pushed and pulled through an in-memory fake of the native module.
++// Pins first-writer bootstrap, two registers agreeing, an offline register's late entry, idempotent retries, paging,
++// the shift (including the 0188 loan), and that a checkpoint is written on open/close only.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { pullCloudDrawer, pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from '../src/lib/cloudkit/drawerCloud';
++import { entryToFields } from '../src/lib/drawerRecords';
++import type { CashLedger, LedgerEntry } from '../src/lib/cashLedger';
++import type { Shift } from '../src/state/store';
++
++type Rec = Record<string, any>;
++function fake() {
++  let clock = 1_000_000; const entries: Rec[] = []; let shift: Rec | null = null; let cp: Rec | null = null; const calls = { cpWrites: 0, entryWrites: 0, shiftWrites: 0 };
++  const page = (rows: Rec[], after: string | null | undefined, limit: number) => { const from = after ? Number(after) : 0; const next = from + limit < rows.length ? String(from + limit) : null; return { rows: rows.slice(from, from + limit), next }; };
++  const n: DrawerNative = {
++    async putDrawerShift(f) { calls.shiftWrites++; shift = { ...f, recordName: 'drawer-shift' }; return shift; },
++    async getDrawerShift() { return shift; },
++    async putLedgerEntry(handle, f) { const name = `ledger-${handle}`; const had = entries.find(r => r.recordName === name); if (had) return had; calls.entryWrites++; clock += 1; const r = { ...f, recordName: name, createdAt: clock }; entries.push(r); return r; },
++    async listLedgerEntries(limit, after) { return page([...entries].reverse(), after, limit); },
++    async listLedgerSince(since, limit, after) { return page(entries.filter(r => r.createdAt > since), after, limit); },
++    async putDrawerCheckpoint(f) { calls.cpWrites++; cp = { ...f, recordName: 'drawer-checkpoint' }; return cp; },
++    async getDrawerCheckpoint() { return cp; },
++  };
++  return { n, calls, entries };
++}
++const e = (id: string, ts: string, kind: LedgerEntry['kind'], delta: Record<string, number>): LedgerEntry => ({ id, ts, kind, delta });
++const ledger = (counts: Record<string, number>, entries: LedgerEntry[]): CashLedger => ({ counts, entries: [...entries].sort((a, b) => b.ts.localeCompare(a.ts)) });
++const closed: Shift = { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 };
++const opened: Shift = { open: true, openedAt: '2026-10-31T09:00:00Z', floatCents: 20000, paidInCents: 0, paidOutCents: 0, staff: 'Sam' };
++
++test('nothing shared yet reads as null', async () => { assert.equal(await pullCloudDrawerState(fake().n), null); });
++
++test('the first register to push becomes the starting point, counts included', async () => {
++  const { n } = fake();
++  const mine = ledger({ '2000': 3 }, [e('a', '2026-10-31T09:00:00Z', 'open', { '2000': 3 })]);
++  const out = await pushCloudDrawer(n, { shift: opened, ledger: mine, version: 0, shiftPending: true });
++  assert.deepEqual(out.ledger.counts, { '2000': 3 });
++  assert.equal(out.shift.open, true); assert.equal(out.version, 1);
++  assert.deepEqual((await pullCloudDrawerState(n))?.ledger.counts, { '2000': 3 });
++});
++test('counts held with no history survive the first push', async () => {
++  const { n } = fake();
++  await pushCloudDrawer(n, { shift: closed, ledger: ledger({ '1000': 4 }, []), version: 0, shiftPending: true });
++  assert.deepEqual((await pullCloudDrawerState(n))?.ledger.counts, { '1000': 4 });
++});
++test('two registers end up with the same drawer', async () => {
++  const { n } = fake();
++  const a = await pushCloudDrawer(n, { shift: opened, ledger: ledger({ '2000': 3 }, [e('a', '2026-10-31T09:00:00Z', 'open', { '2000': 3 })]), version: 0, shiftPending: true });
++  // register B takes a cash sale without knowing about A's entries
++  const b = await pushCloudDrawer(n, { shift: closed, ledger: ledger({ '1000': 1 }, [e('b', '2026-10-31T10:00:00Z', 'sale_in', { '1000': 1 })]), version: 0, shiftPending: false });
++  assert.deepEqual(b.ledger.counts, { '2000': 3, '1000': 1 });
++  assert.equal(b.shift.open, true); // B follows A's open drawer, it did not change the shift
++  const again = await pushCloudDrawer(n, { shift: a.shift, ledger: a.ledger, version: a.version, shiftPending: false });
++  assert.deepEqual(again.ledger.counts, b.ledger.counts);
++  assert.deepEqual(again.ledger.entries.map(x => x.id), ['b', 'a']);
++});
++test('pushing again does not double an entry', async () => {
++  const { n, calls } = fake();
++  const l = ledger({ '500': 1 }, [e('a', '2026-10-31T09:00:00Z', 'sale_in', { '500': 1 })]);
++  await pushCloudDrawer(n, { shift: opened, ledger: l, version: 0, shiftPending: true });
++  const out = await pushCloudDrawer(n, { shift: opened, ledger: l, version: 1, shiftPending: false });
++  assert.equal(calls.entryWrites, 1); assert.deepEqual(out.ledger.counts, { '500': 1 });
++});
++test('an entry a register held back offline is still counted after a checkpoint exists', async () => {
++  const { n } = fake();
++  await pushCloudDrawer(n, { shift: opened, ledger: ledger({ '2000': 3 }, [e('a', '2026-10-31T09:00:00Z', 'open', { '2000': 3 })]), version: 0, shiftPending: true });
++  await pushCloudDrawer(n, { shift: closed, ledger: ledger({ '2000': 3 }, [e('a', '2026-10-31T09:00:00Z', 'open', { '2000': 3 })]), version: 1, shiftPending: true }); // close writes a checkpoint
++  const late = e('late', '2026-10-31T08:00:00Z', 'sale_in', { '1000': 2 }); // happened before, uploaded now
++  const out = await pushCloudDrawer(n, { shift: closed, ledger: ledger({ '1000': 2 }, [late]), version: 0, shiftPending: false });
++  assert.deepEqual(out.ledger.counts, { '2000': 3, '1000': 2 });
++});
++test('counts stay right with more entries than one page, and past the 1000 history cap', async () => {
++  const { n } = fake();
++  const many = Array.from({ length: 1200 }, (_, i) => e(`e${i}`, new Date(Date.UTC(2026, 9, 1, 0, 0, i)).toISOString(), 'sale_in', { '500': 1 }));
++  for (let i = 0; i < 1200; i += 400) await pushCloudDrawer(n, { shift: opened, ledger: ledger(i === 0 ? { '500': 400 } : {}, many.slice(i, i + 400)), version: 0, shiftPending: i === 0 }); // a real ledger's counts include its entries
++  const state = await pullCloudDrawerState(n);
++  assert.equal(state?.ledger.counts['500'], 1200);
++  assert.equal(state?.ledger.entries.length, 1000);
++});
++test('the shift carries the loan, and a register that did not change it follows a newer shared one', async () => {
++  const { n } = fake();
++  const loaned: Shift = { ...opened, paidInCents: 5000, loanCents: 5000 };
++  await pushCloudDrawer(n, { shift: loaned, ledger: ledger({}, []), version: 0, shiftPending: true });
++  const other = await pushCloudDrawer(n, { shift: closed, ledger: ledger({}, []), version: 0, shiftPending: false });
++  assert.equal(other.shift.loanCents, 5000);
++  assert.equal(other.version, 1);
++});
++test('a checkpoint is written when the drawer opens or closes, not on every push', async () => {
++  const { n, calls } = fake();
++  await pushCloudDrawer(n, { shift: opened, ledger: ledger({ '500': 1 }, [e('a', '2026-10-31T09:00:00Z', 'open', { '500': 1 })]), version: 0, shiftPending: true });
++  const afterOpen = calls.cpWrites;
++  await pushCloudDrawer(n, { shift: opened, ledger: ledger({ '500': 2 }, [e('b', '2026-10-31T09:30:00Z', 'sale_in', { '500': 1 }), e('a', '2026-10-31T09:00:00Z', 'open', { '500': 1 })]), version: 1, shiftPending: false });
++  assert.equal(calls.cpWrites, afterOpen);
++  await pushCloudDrawer(n, { shift: closed, ledger: ledger({ '500': 2 }, [e('b', '2026-10-31T09:30:00Z', 'sale_in', { '500': 1 }), e('a', '2026-10-31T09:00:00Z', 'open', { '500': 1 })]), version: 2, shiftPending: true });
++  assert.equal(calls.cpWrites, afterOpen + 1);
++});
++test('an unreadable entry record is skipped and the rest still reads', async () => {
++  const { n, entries } = fake();
++  await pushCloudDrawer(n, { shift: opened, ledger: ledger({ '500': 1 }, [e('a', '2026-10-31T09:00:00Z', 'sale_in', { '500': 1 })]), version: 0, shiftPending: true });
++  entries.push({ recordName: 'ledger-bad', createdAt: 2_000_000, ts: 'x', kind: 'nonsense', delta: '{}', ...entryToFields(e('z', 't', 'open', {})), kind2: 1 });
++  entries[entries.length - 1].kind = 'nonsense';
++  const d = await pullCloudDrawer(n);
++  assert.deepEqual(d.ledger.counts, { '500': 1 });
++});
