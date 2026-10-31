@@ -25,7 +25,7 @@ import { AUTO_LOCK_CHOICES, DEFAULT_AUTO_LOCK_MINUTES, DEFAULT_STEP_UP_MINUTES, 
 export type Settings = {
   shopName: string; locationId?: string; locationName?: string;
   registerId: string; registerName: string;
-  cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), per device like the drawer ledger
+  cashRounding: boolean; smartChange: boolean; consolidate: boolean; fees: FeeSettings; // smartChange: weighted change choice (B1c), shop-wide like the shared drawer ledger (CloudKit decisions item 23)
   theme: 'brand' | 'light' | 'dark' | 'system'; accent: string; tileSize: 'S' | 'M' | 'L' | number;
   themeSetupVersion: number;
   glassSurfaces: boolean;
@@ -78,7 +78,7 @@ type Data = {
 };
 type Pos = { saved: SavedCart[]; outbox: OutboxItem[]; sales: SaleRecord[]; attempts: Attempt[]; notices: Notice[]; rollups: Record<string, Totals>; shift: Shift; cart: Cart; ledger: CashLedger;
   /** Other tills' recent sales and daily totals, pulled from Shopify (see pullSalesHistory). Kept apart from `sales`, which is this
-   *  till's own live copy and what the cash tools read: a drawer figure must stay this till's. */
+   *  till's own live copy of its sales. The cash drawer itself is one shared drawer for the shop (0168), so cash figures are read from the shared ledger, not from this list alone. */
   shared: SharedHistory };
 
 export type App = {
