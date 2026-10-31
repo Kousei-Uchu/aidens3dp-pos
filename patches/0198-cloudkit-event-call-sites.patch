@@ -1,0 +1,403 @@
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index a7d61d8..9712217 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1136,3 +1136,15 @@ Needs two iPads on the shop's share (T74), both on a build with this patch. Noth
+ 6. Push the same attempt from B with status `started`. Pass: it stays `unknown`, and A's name stays on it.
+ 7. Resolve the attempt on A and B within a second of each other (two debug buttons, or two quick taps). Pass: the dashboard shows one `Resolution` record, both iPads' pulls show the same person resolved it, and the iPad that came second was told who won.
+ 8. Sign iPad B out of iCloud and try step 5 again. Pass: the push fails with a clear error and does not appear to succeed.
++
++## T87. Events reach CloudKit (0198)
++
++Needs two iPads on the shop's share (T74), both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8). Nothing in this patch has been run on a device.
++
++1. On iPad A, do a paid in of $5 on the cash drawer. Pass: within about 30 seconds the CloudKit dashboard (Development) shows one `Event` record, kind `paid_in`, labelled with A's register name, and `events.csv` on A has the same row.
++2. On A, turn on airplane mode and do a paid out of $2 with a note that contains a comma and quotes, for example `float, "small"`. Pass: no error is shown, `events.csv` has the row, and there is no new `Event` record yet.
++3. Turn airplane mode off and wait about 30 seconds. Pass: exactly one new `Event` record appears for the paid out, with the note unchanged, and the paid in is still one record.
++4. Force-quit and reopen A twice. Pass: the number of `Event` records does not change.
++5. On iPad B, which has its own `events.csv` history from before it joined, open the app and wait about 30 seconds. Pass: B's older events appear once each, labelled with B's name, and A's events are untouched.
++6. On A, start practice mode (Training) and do a paid in. Pass: no `Event` record, and no new row in `events.csv`.
++7. Switch the CloudKit backend off again from the debug build and do a paid in. Pass: the row is in `events.csv` and nothing new reaches CloudKit.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 797ca4a..021b1e2 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -378,3 +378,13 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
+ 2. **A resolution is its own record.** The decisions name only `attempt-<sale uuid>-<reference>` and say the first resolution wins. Guess: resolving writes a second, write-once record `resolve-<sale uuid>-<reference>`, because a write-once record is the one way two registers resolving at the same moment cannot both win.
+ 3. **A resolved attempt's old status.** The app overwrites the status with `resolved`, so the earlier one is lost. Guess: the attempt record keeps `unknown` and the resolution says it was resolved.
+ 4. **Events hold no card or customer detail, so they are not encrypted.** A free-text `message` or `detail` could in principle hold a name, the same minor exception as a sale note (item 18).
++
++## CloudKit event call sites (0198)
++
++These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
++
++1. **No stored marker of what has been uploaded.** Guess: each launch compares `events.csv` with CloudKit once (one listing, then a write for each missing event), and again after a failed upload. The alternative is a "last uploaded" marker in the settings, which is one more per-device counter to keep right. The cost of the guess is that the comparison grows with the history; at a few thousand events it is a few pages.
++2. **Events made before the first catch-up wait for it.** Guess: after a launch, a live event is not sent on its own until the catch-up has run once, so the history goes up in order and the first pass lists CloudKit only once. The catch-up runs on the 25 second poll, so the wait is short.
++3. **Events already in the CSV when CloudKit goes live are uploaded.** Guess: yes, by the same first catch-up, since the history is the register's own (Q13). A register that was on Shopify storage first therefore sends its whole `events.csv` the first time CloudKit is the active backend.
++4. **A bad row is skipped, not uploaded.** A row with no time or a kind the app does not know is left out of the upload and left alone in the file.
++5. **Paid in and paid out are now both an event record and a ledger entry.** The ledger entry is the money; the event is the audit line, as in `events.csv` today.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 59c77c4..f493a74 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -178,6 +178,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0195 | 2026-10-31 | CloudKit patch 4, second half: **sales are written and read as encrypted CloudKit records** (your request: continue). `CloudKitSyncModule.swift`: `putSale` takes a third argument, `encrypted`, written with `record.encryptedValues`; `recordToDict` reads the encrypted keys back by name (CloudKit's `allKeys()` does not list them) and returns them under `encrypted`, absent when this device cannot read them, so the sale still reads. Two guards in the Swift: `copyFields` never writes the encrypted key as a plain field (`cloudKitNeverPlainKeys`), and `copyEncrypted` accepts only the keys listed for that record type (today only a Sale's `secure_json`, text only). `cloudkitBackend.ts`: `put('sale')` goes through `saleWriteFromFields` (the whole sale is rebuilt from `sale_json`, so a customer, the receipt link or a card reference in `tenders_json` cannot ride along beside it) and every sale read through `saleRowFields`, which rebuilds `sale_json` with the card details when the encrypted field was readable. `detailReady` answers true, so `sync.ts` always sends the whole sale. `setSaleCardMode('encrypted' | 'omit')` is the switch; **it is `omit` until you turn it on**, so no card detail is written anywhere yet, plain or encrypted. The old source-reading test in `tests/cloudkitbackend.test.ts` was replaced by tests of what the backend actually sends (the strip it pinned moved into `saleRecords.ts`). Tests: 2 new round trips through `decodeSaleRow` in `tests/salerecords.test.ts` (15), 5 in `cloudkitbackend.test.ts`, 3 more Swift pins in `cloudkitswift.test.ts` (7). **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today.** **Not checked: the Swift has never been compiled or run (it needs a Mac build), and nothing has touched a real zone.** Device test T85 is the two-Apple-ID encryption test (O4), written out step by step; run it before `encrypted` is switched on or patch 6d is built. Dashboard step: a Sale's `secure_json` is an encrypted field, so it needs no index, but the schema has to be deployed to production like the others. | your request |
+ | 0196 | 2026-10-31 | CloudKit patch 4, third piece: **events and payment attempts as records, pure code only** (your request: continue). New `src/lib/eventRecords.ts`. **Events** (the `events.csv` rows): one record each, `event-<id>`, written once and never edited, labelled with the register's id and name. The id is the register id plus a hash of the event's own CSV row, so the same event uploaded twice (a retry, or the one-off upload of a register's history after it joins, Q13) lands on one record, and a row read back from `events.csv` later gets the id it had when it was made. `eventsToUpload` says which events CloudKit lacks, and `eventsCsv` builds the combined CSV on demand (the `events.csv` columns plus the register's name, oldest first, each event once). **Payment attempts:** `attempt-<sale>-<ref>` holds the attempt and its register, and its status only ever moves forward (`furtherStatus`), so a late upload from an offline register cannot undo a newer status. Resolving an unresolved payment is its own record, `resolve-<sale>-<ref>`, written once by whichever register gets there first, so **the first resolution wins by construction** (Q10) with no merge to get wrong; `unresolvedAttempts` is the shop-wide list a manager sees. Tests: `tests/eventrecords.test.ts` (14). I broke the status order and the per-register id on purpose and confirmed each fails a test. **Nothing calls it yet and no native code changed**, so there is no behaviour change. Still to do for patch 4: the Swift and bridge functions for these records (the resolution one must use `putRecordOnce`), and the call sites in `csvStore.event` and `Pay.tsx`. `csvStore.event` fills in the time itself, and the id needs that same time, so the call site has to set it once and pass it to both. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit events and attempts'. | your request |
+ | 0197 | 2026-10-31 | CloudKit patch 4, last piece: **events and payment attempts reach CloudKit through the native module** (your request: continue). `CloudKitSyncModule.swift` gained `putEvent` and `putResolution` (both `putRecordOnce`, so an event is never changed and the first resolution stays), `putAttempt` (`upsertRecord`), and `getAttempt`, `getResolution`, `listEvents`, `listAttempts`, `listResolutions`; the bridge in `modules/cloudkit-sync/` carries them. New `src/lib/cloudkit/eventCloud.ts` is the transport, with the native module passed in like the drawer's: `pushCloudEvents` uploads the events CloudKit lacks (each once, safe to repeat, and also the one-off upload of a register's own history after it joins, Q13), `pullCloudEvents` reads every register's, `pushCloudAttempt` writes an attempt whose status only moves forward and that keeps the register that first wrote it, then writes the resolution once and **hands back the winning one, so a register that lost the race is told who resolved it**, and `pullCloudAttempts` reads every attempt with its resolution. `pageAll` in `drawerCloud.ts` is now exported so both share it. Tests: `tests/eventcloud.test.ts` (10, on an in-memory fake: upload once, two registers kept, 450 events across pages, a bad record skipped, status never backwards, first resolution wins and is reported, sales do not mix) and 2 more Swift pins in `cloudkitswift.test.ts` (9). Checked: `tsc --noEmit` clean, full suite passes. **Not checked: the Swift is uncompiled and untried, and the app does not call any of this yet.** **Still to do, so patch 4 is not finished:** the call sites. `csvStore.event` must set an event's time once and pass the same one to the CSV and to the id; `Pay.tsx` `setAttempt` must call `pushCloudAttempt`; both only when the CloudKit backend is active, and not in practice mode. **Known gap, your call:** the status check and the write are two calls, so two registers changing one attempt in the same instant could still write an older status; the resolution cannot be raced this way. A server-side compare would close it and is a bigger change. Dashboard steps: the `Event`, `Attempt` and `Resolution` types need `modificationDate` sortable and queryable, and the schema has to be deployed to production. Device test T86. | your request |
++| 0198 | 2026-10-31 | CloudKit patch 4, call sites for events (your request: continue, returned as a patch). **Every event written to `events.csv` is now also written to CloudKit, once, when the CloudKit backend is the active one.** `csvStore.event` sets the event's time once and uses that one time for the CSV row and for the id (the id is made from the row), then tells a sink, `setEventSink`, which `sync.ts` points at the upload; nothing is sent in practice mode. New `src/lib/cloudkit/eventSync.ts` decides when: a single event goes up straight away with no listing (`pushCloudEvent`, new in `eventCloud.ts`, a write-once record so repeating it is safe), and a **catch-up** reads `events.csv` back (new `src/lib/eventsCsvParse.ts`, which reads quoted fields and line breaks and gives each row the id it was written with) and uploads whatever CloudKit lacks. The catch-up runs once per launch, which is the one-off upload of a register's own history after it joins (Q13), and again after any live upload fails; `pollShared` runs it. Events made before the first catch-up wait for it. Nothing is stored for this: the CSV is the record and CloudKit is the copy. Tests: `tests/eventscsv.test.ts` (6: every kind round-trips with the same id, awkward text, zero and negative amounts, header and bad rows skipped) and `tests/eventsync.test.ts` (7: nothing sent when inactive, in practice mode or with no register id; history uploaded once; no duplicates after a failure; csvStore sets the time once, pinned from the source). I broke the one-time stamp, the catch-up reset and the quote handling on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Still to do for patch 4:** the payment attempt call site in `Pay.tsx` (`setAttempt` to `pushCloudAttempt`), which is 0199. Device test T87. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit event call sites'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/cloudkit/eventCloud.ts b/src/lib/cloudkit/eventCloud.ts
+index ff38e92..627401a 100644
+--- a/src/lib/cloudkit/eventCloud.ts
++++ b/src/lib/cloudkit/eventCloud.ts
+@@ -5,7 +5,7 @@
+ // csvStore and Pay, and nothing reaches it unless the CloudKit backend is the active one, so today's behaviour is unchanged.
+ // Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md items 9 and 12, Q3, Q10, Q13.
+ import type { Attempt } from '../../state/store';
+-import { attemptFromFields, attemptToFields, eventFromFields, eventIdFromRecord, eventToFields, eventsToUpload, furtherStatus, isOpenStatus, type EventInput, type OpenStatus, type SharedAttempt, type SharedEvent } from '../eventRecords';
++import { attemptFromFields, attemptToFields, eventFromFields, eventId, eventIdFromRecord, eventToFields, eventsToUpload, furtherStatus, isOpenStatus, type EventInput, type OpenStatus, type SharedAttempt, type SharedEvent } from '../eventRecords';
+ import { pageAll, PAGE_SIZE } from './drawerCloud';
+ 
+ type Rec = Record<string, any>;
+@@ -48,6 +48,14 @@ export async function pushCloudEvents(n: EventNative, registerId: string, regist
+   return todo.length;
+ }
+ 
++/**
++ * Upload one event as it happens. No listing first: the event is written once under its own id, so an event already there is left
++ * alone and repeating this is safe. `pushCloudEvents` is the pass that catches up everything this one missed.
++ */
++export async function pushCloudEvent(n: EventNative, registerId: string, registerName: string, e: EventInput): Promise<void> {
++  await n.putEvent(eventId(registerId, e), eventToFields(registerId, registerName, e));
++}
++
+ const handleOf = (a: { saleUuid: string; ref: string }): string => `${a.saleUuid}-${a.ref}`;
+ 
+ /**
+diff --git a/src/lib/cloudkit/eventSync.ts b/src/lib/cloudkit/eventSync.ts
+new file mode 100644
+index 0000000..c25edf4
+--- /dev/null
++++ b/src/lib/cloudkit/eventSync.ts
+@@ -0,0 +1,46 @@
++// Location: src/lib/cloudkit/eventSync.ts
++// CloudKit sync, patch 4 (call sites): when an event is uploaded, and when the ones that were missed are caught up.
++// Everything the app supplies (is CloudKit the active backend, is this practice mode, which register, how to read events.csv, the
++// native module) is passed in, so the rules are tested without an iPad (tests/eventsync.test.ts). The app's one instance is made
++// in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 12, Q3, Q13.
++import type { EventInput } from '../eventRecords';
++import { parseEventsCsv } from '../eventsCsvParse';
++import { pushCloudEvent, pushCloudEvents, type EventNative } from './eventCloud';
++
++export type EventSyncDeps = {
++  /** True only when the CloudKit backend is the one in use. */
++  active: () => boolean;
++  /** True in practice mode, when nothing is ever sent. */
++  training: () => boolean;
++  /** This register's id and name. An empty id means the register is not set up yet, so nothing is sent. */
++  who: () => { id: string; name: string };
++  native: () => Promise<EventNative>;
++  /** The text of `events.csv`, or an empty string when there is none. */
++  readCsv: () => Promise<string>;
++};
++
++export function createEventSync(d: EventSyncDeps) {
++  // Starts true so that each launch uploads the register's own history once (decisions Q13: a register that has just joined).
++  // A failed live upload sets it again. Nothing is stored: the CSV is the record of what happened, CloudKit is the copy.
++  let behind = true;
++  const ready = (): { id: string; name: string } | null => { if (!d.active() || d.training()) return null; const w = d.who(); return w.id ? w : null; };
++  return {
++    /** Upload one event just after it was written to the CSV. Never throws: the CSV already has it, and the catch-up covers a failure. */
++    async upload(e: EventInput): Promise<void> {
++      const w = ready(); if (!w) return;
++      if (behind) return; // a catch-up is due and will send this one with the rest, in order
++      try { await pushCloudEvent(await d.native(), w.id, w.name, e); } catch { behind = true; }
++    },
++    /** Send every event in the CSV that CloudKit lacks, if a catch-up is due. Returns how many were new, or null when nothing was attempted. */
++    async catchUp(): Promise<number | null> {
++      const w = ready(); if (!w || !behind) return null;
++      try {
++        const sent = await pushCloudEvents(await d.native(), w.id, w.name, parseEventsCsv(await d.readCsv()));
++        behind = false; return sent;
++      } catch { return null; }
++    },
++    /** For tests and diagnostics: whether a catch-up is waiting. */
++    isBehind: () => behind,
++  };
++}
++export type EventSync = ReturnType<typeof createEventSync>;
+diff --git a/src/lib/csvStore.ts b/src/lib/csvStore.ts
+index 91471b8..6c01f61 100644
+--- a/src/lib/csvStore.ts
++++ b/src/lib/csvStore.ts
+@@ -5,6 +5,7 @@ import { isTraining } from './trainingGuard';
+ import * as FS from 'expo-file-system/legacy';
+ import { EVENTS_HEADER, LINES_HEADER, SALES_HEADER, eventRow, linesRows, line, salesRow, type EventKind } from './csvFormat';
+ import type { SaleRecord } from './types';
++import type { EventInput } from './eventRecords';
+ 
+ const dir = () => `${FS.documentDirectory ?? ''}pos-data/`;
+ const FILES = { sales: ['sales.csv', SALES_HEADER], lines: ['sale_lines.csv', LINES_HEADER], events: ['events.csv', EVENTS_HEADER] } as const;
+@@ -23,11 +24,28 @@ async function append(which: Which, text: string) {
+   await FS.writeAsStringAsync(path, prev + text);
+ }
+ 
++/**
++ * Something to tell about each event once it is in the CSV (sync.ts sets it, to upload the event to CloudKit). csvStore stays free
++ * of the sync code, and of the native module, so it can be left as it is when CloudKit is not in use.
++ */
++let eventSink: ((e: EventInput) => void) | null = null;
++export const setEventSink = (fn: ((e: EventInput) => void) | null): void => { eventSink = fn; };
++
+ export const csv = {
+   async sale(r: SaleRecord, status = 'complete') {
+     await serial(async () => { await append('sales', salesRow(r, status)); await append('lines', linesRows(r)); });
+   },
+-  async event(e: Parameters<typeof eventRow>[0]) { await serial(() => append('events', eventRow(e))); },
++  async event(e: Parameters<typeof eventRow>[0]) {
++    // The time is set here, once, because the CloudKit id of the event is made from the same row as the CSV line.
++    const full: EventInput = { ...e, ts: e.ts ?? new Date().toISOString() };
++    await serial(() => append('events', eventRow(full)));
++    if (!isTraining()) eventSink?.(full);
++  },
++  /** The text of events.csv, or an empty string when there is none yet. Read-only. */
++  async readEvents(): Promise<string> {
++    const path = dir() + FILES.events[0];
++    return (await FS.getInfoAsync(path)).exists ? FS.readAsStringAsync(path) : '';
++  },
+   async paths(): Promise<string[]> {
+     const out: string[] = [];
+     for (const k of Object.keys(FILES) as Which[]) {
+diff --git a/src/lib/eventsCsvParse.ts b/src/lib/eventsCsvParse.ts
+new file mode 100644
+index 0000000..52bf9cb
+--- /dev/null
++++ b/src/lib/eventsCsvParse.ts
+@@ -0,0 +1,45 @@
++// Location: src/lib/eventsCsvParse.ts
++// CloudKit sync, patch 4 (call sites): read `events.csv` back into events.
++// The id of an event is worked out from its CSV row (eventRecords.ts), so reading a row back has to give the same event, and so
++// the same id, as the one that was written. A message can hold a comma, a quote or a line break, which `q` in csvFormat writes
++// inside quotes, so this reads quoted fields properly rather than splitting on lines. Pure: no file, no store.
++import { EVENT_KINDS, type EventInput } from './eventRecords';
++import { toCents } from './money';
++import type { EventKind } from './csvFormat';
++
++/** Split CSV text into rows of fields. Handles quoted fields, doubled quotes inside them, and line breaks inside quotes. */
++export function csvRows(text: string): string[][] {
++  const rows: string[][] = []; let row: string[] = []; let field = ''; let quoted = false; let touched = false;
++  const endField = () => { row.push(field); field = ''; };
++  const endRow = () => { endField(); rows.push(row); row = []; touched = false; };
++  for (let i = 0; i < text.length; i++) {
++    const c = text[i];
++    if (quoted) {
++      if (c === '"') { if (text[i + 1] === '"') { field += '"'; i++; } else quoted = false; } else field += c;
++    } else if (c === '"') { quoted = true; touched = true; }
++    else if (c === ',') { endField(); touched = true; }
++    else if (c === '\n') endRow();
++    else if (c === '\r') { /* the row ends at the \n that follows */ }
++    else { field += c; touched = true; }
++  }
++  if (touched || field) endRow();
++  return rows;
++}
++
++const opt = (s: string | undefined): string | undefined => (s === undefined || s === '' ? undefined : s);
++
++/** The events in an `events.csv`. The header row is skipped, and a row with no time or a kind this app does not know is left out. */
++export function parseEventsCsv(text: string): EventInput[] {
++  const out: EventInput[] = [];
++  for (const r of csvRows(text)) {
++    const [ts, kind, saleUuid, reference, amount, code, message, staff, detail] = r;
++    if (!ts || ts === 'timestamp_iso' || !EVENT_KINDS.includes(kind as EventKind)) continue;
++    const e: EventInput = { ts, kind: kind as EventKind };
++    if (opt(saleUuid) !== undefined) e.saleUuid = saleUuid; if (opt(reference) !== undefined) e.reference = reference;
++    if (opt(amount) !== undefined) e.amountCents = toCents(amount);
++    if (opt(code) !== undefined) e.code = code; if (opt(message) !== undefined) e.message = message;
++    if (opt(staff) !== undefined) e.staff = staff; if (opt(detail) !== undefined) e.detail = detail;
++    out.push(e);
++  }
++  return out;
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index ef58c7d..92d3867 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -2,7 +2,7 @@
+ // Outbox + polling. Cash and saved carts work offline; sales queue locally and upload later; card needs internet.
+ // Every outbox step is idempotent, so a crash or retry never double-books.
+ import { useApp, currentStaff, type OutboxItem, type SavedCart, type Shift } from '../state/store';
+-import { csv } from './csvStore';
++import { csv, setEventSink } from './csvStore';
+ import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
+ import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
+ import { parseBundleConfig } from './bundles';
+@@ -15,6 +15,8 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
+ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
++import { createEventSync } from './cloudkit/eventSync';
++import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+ import { createOrderForSale } from './shopify/orders';
+ import { createGiftCard } from './shopify/giftcards';
+@@ -26,6 +28,16 @@ import { featureOn } from './appMode';
+ const st = () => useApp.getState();
+ let running = false;
+ 
++// CloudKit patch 4: every event written to events.csv is also written to CloudKit, once, when CloudKit is the active backend.
++const events = createEventSync({
++  active: () => activeBackendKind() === 'cloudkit',
++  training: isTraining,
++  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
++  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as EventNative,
++  readCsv: () => csv.readEvents(),
++});
++setEventSink(e => { void events.upload(e); });
++
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+   const s = st();
+@@ -150,6 +162,7 @@ export async function pollShared() {
+       if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
+       if (s.settings.drawerPending) await pushDrawer().catch(() => {});
+       if (s.settings.warningListPending) await pushWarningList().catch(() => {});
++      await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
+     }
+     // stock
+     if (s.settings.locationId && s.data.stockSince) {
+diff --git a/tests/eventscsv.test.ts b/tests/eventscsv.test.ts
+new file mode 100644
+index 0000000..0fae6d3
+--- /dev/null
++++ b/tests/eventscsv.test.ts
+@@ -0,0 +1,46 @@
++// Location: tests/eventscsv.test.ts
++// CloudKit patch 4, call sites: events.csv read back into events. The whole point is that a row read back gets the same id it had
++// when it was written, so the catch-up upload never makes a second record for an event the live upload already sent.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { csvRows, parseEventsCsv } from '../src/lib/eventsCsvParse';
++import { EVENTS_HEADER, eventRow, line } from '../src/lib/csvFormat';
++import { EVENT_KINDS, eventId, type EventInput } from '../src/lib/eventRecords';
++
++const file = (...rows: EventInput[]) => line([...EVENTS_HEADER]) + rows.map(r => eventRow(r)).join('');
++
++test('every kind of event reads back with the id it was written with', () => {
++  for (const kind of EVENT_KINDS) {
++    const e: EventInput = { ts: '2026-10-31T09:15:30.123Z', kind, saleUuid: 'sale-1', reference: 'ref-9', amountCents: 1250, code: '05', message: 'Do not honour', staff: 'Sam', detail: 'x' };
++    const [back] = parseEventsCsv(file(e));
++    assert.deepEqual(back, e, kind);
++    assert.equal(eventId('reg-a', back), eventId('reg-a', e), kind);
++  }
++});
++test('an event with only a time and a kind reads back the same, and so does one with an amount of zero or a negative one', () => {
++  for (const e of [{ ts: '2026-10-31T01:00:00.000Z', kind: 'no_sale' }, { ts: '2026-10-31T01:00:01.000Z', kind: 'paid_out', amountCents: 0 }, { ts: '2026-10-31T01:00:02.000Z', kind: 'refund_failed', amountCents: -500 }] as EventInput[]) {
++    const [back] = parseEventsCsv(file(e));
++    assert.equal(eventId('r', back), eventId('r', e));
++    assert.equal(back.amountCents, e.amountCents);
++  }
++});
++test('a comma, a quote and a line break in a message survive, and the id is unchanged', () => {
++  const e: EventInput = { ts: '2026-10-31T02:00:00.000Z', kind: 'error', message: 'Reader said "no", twice,\nthen stopped\r\nagain', detail: 'a,b' };
++  const rows = parseEventsCsv(file(e, { ...e, ts: '2026-10-31T02:00:01.000Z', kind: 'void' }));
++  assert.equal(rows.length, 2);
++  assert.equal(rows[0].message, e.message);
++  assert.equal(eventId('r', rows[0]), eventId('r', e));
++});
++test('the header, blank lines, rows with no time and rows of an unknown kind are left out', () => {
++  const good: EventInput = { ts: '2026-10-31T03:00:00.000Z', kind: 'declined', amountCents: 100 };
++  const text = file(good) + '\n' + ',declined,,,,,,,\n2026-10-31T03:00:01.000Z,teleport,,,,,,,\n';
++  assert.deepEqual(parseEventsCsv(text), [good]);
++});
++test('a file with no final newline, and an empty file, read as expected', () => {
++  const e: EventInput = { ts: '2026-10-31T04:00:00.000Z', kind: 'shift_open', staff: 'Sam' };
++  assert.deepEqual(parseEventsCsv(file(e).trimEnd()), [e]);
++  assert.deepEqual(parseEventsCsv(''), []);
++});
++test('csvRows handles quotes and keeps empty fields', () => {
++  assert.deepEqual(csvRows('a,"b ""c"" d",,e\n'), [['a', 'b "c" d', '', 'e']]);
++});
+diff --git a/tests/eventsync.test.ts b/tests/eventsync.test.ts
+new file mode 100644
+index 0000000..74f7dc7
+--- /dev/null
++++ b/tests/eventsync.test.ts
+@@ -0,0 +1,75 @@
++// Location: tests/eventsync.test.ts
++// CloudKit patch 4, call sites: when an event is uploaded and when the ones that were missed are caught up, on an in-memory fake of
++// the native module. Also pins, from the source, that csvStore sets an event's time once for both the CSV row and the upload.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { createEventSync, type EventSyncDeps } from '../src/lib/cloudkit/eventSync';
++import type { EventNative } from '../src/lib/cloudkit/eventCloud';
++import { EVENTS_HEADER, eventRow, line } from '../src/lib/csvFormat';
++import { eventIdFromRecord, type EventInput } from '../src/lib/eventRecords';
++
++type Rec = Record<string, any>;
++function world(over: Partial<EventSyncDeps> = {}, csvText = '') {
++  const events: Rec[] = []; const calls = { writes: 0, lists: 0 }; let failWrites = 0;
++  const n = {
++    async putEvent(h: string, f: Rec) { if (failWrites > 0) { failWrites--; throw new Error('offline'); } const name = `event-${h}`; const had = events.find(r => r.recordName === name); if (had) return had; calls.writes++; const r = { ...f, recordName: name }; events.push(r); return r; },
++    async listEvents(limit: number, after?: string | null) { calls.lists++; const from = after ? Number(after) : 0; return { rows: events.slice(from, from + limit), next: from + limit < events.length ? String(from + limit) : null }; },
++  } as unknown as EventNative;
++  const state = { csv: csvText };
++  const deps: EventSyncDeps = { active: () => true, training: () => false, who: () => ({ id: 'reg-a', name: 'Front' }), native: async () => n, readCsv: async () => state.csv, ...over };
++  return { sync: createEventSync(deps), events, calls, state, failNext: (k: number) => { failWrites = k; } };
++}
++const ev = (n: number, o: Partial<EventInput> = {}): EventInput => ({ ts: `2026-10-31T0${n}:00:00.000Z`, kind: 'declined', reference: `r${n}`, amountCents: 100 * n, ...o });
++const csvOf = (...es: EventInput[]) => line([...EVENTS_HEADER]) + es.map(e => eventRow(e)).join('');
++
++test('nothing is sent when CloudKit is not the active backend, in practice mode, or before the register has an id', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
++    const w = world(over, csvOf(ev(1)));
++    assert.equal(await w.sync.catchUp(), null); await w.sync.upload(ev(2));
++    assert.equal(w.events.length, 0);
++  }
++});
++test('a register that has just joined uploads its own history once, and nothing is written twice', async () => {
++  const w = world({}, csvOf(ev(1), ev(2), ev(3)));
++  assert.equal(await w.sync.catchUp(), 3);
++  assert.equal(w.events.length, 3);
++  assert.equal(await w.sync.catchUp(), null, 'no second pass until something fails');
++  assert.equal(w.calls.writes, 3);
++});
++test('after the catch-up an event is written straight away, with no listing', async () => {
++  const w = world({}, csvOf(ev(1)));
++  await w.sync.catchUp(); const lists = w.calls.lists;
++  await w.sync.upload(ev(2));
++  assert.equal(w.events.length, 2); assert.equal(w.calls.lists, lists);
++  assert.ok(w.events.every(r => r.registerId === 'reg-a' && r.registerName === 'Front'));
++});
++test('an event made before the first catch-up waits for it, and still arrives once', async () => {
++  const w = world({}, csvOf(ev(1), ev(2)));
++  await w.sync.upload(ev(2)); assert.equal(w.events.length, 0);
++  await w.sync.catchUp(); assert.equal(w.events.length, 2);
++});
++test('a live upload that fails is caught up later, and the one already sent is not sent again', async () => {
++  const w = world({}, csvOf(ev(1)));
++  await w.sync.catchUp();
++  w.state.csv = csvOf(ev(1), ev(2), ev(3));
++  await w.sync.upload(ev(2));                // ok
++  w.failNext(1); await w.sync.upload(ev(3)); // fails: the app must not throw
++  assert.equal(w.sync.isBehind(), true); assert.equal(w.events.length, 2);
++  assert.equal(await w.sync.catchUp(), 1);
++  assert.equal(w.events.length, 3); assert.equal(w.calls.writes, 3);
++  assert.equal(new Set(w.events.map(r => eventIdFromRecord(r.recordName))).size, 3);
++});
++test('a failed catch-up reports nothing sent, does not throw, and is tried again', async () => {
++  const w = world({}, csvOf(ev(1)));
++  w.failNext(1); assert.equal(await w.sync.catchUp(), null); assert.equal(w.sync.isBehind(), true);
++  assert.equal(await w.sync.catchUp(), 1);
++});
++
++test('csvStore sets the time once for the CSV row and the upload, and sends nothing in practice mode', () => {
++  const src = readFileSync('src/lib/csvStore.ts', 'utf8');
++  const i = src.indexOf('async event('); assert.ok(i >= 0); const body = src.slice(i, src.indexOf('async readEvents', i));
++  assert.match(body, /ts: e\.ts \?\? new Date\(\)\.toISOString\(\)/);
++  assert.match(body, /eventRow\(full\)/); assert.match(body, /if \(!isTraining\(\)\) eventSink\?\.\(full\)/);
++  assert.equal((body.match(/new Date\(\)/g) ?? []).length, 1, 'the time is made in one place only');
++});
