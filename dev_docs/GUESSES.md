@@ -381,3 +381,12 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 5. **One encrypted field, not many.** Guess: one JSON field, `secure_json`, so the native side handles a single encrypted key per sale.
 6. **A customer reads back with no name.** The sale keeps only the Shopify id. Guess: it returns as `{ id, name: '' }` and the till fills in the name from its own Shopify cache.
 7. **Free-text notes and reasons stay plain** (decisions item 18), a known minor exception for a customer's name.
+
+## CloudKit events and attempts (0196)
+
+These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **Event ids.** The decisions say `event-<id>` and that events have an id, but local events have none (they are CSV rows). Guess: the id is the register id plus a hash of the CSV row, so it is the same however many times the event is uploaded.
+2. **A resolution is its own record.** The decisions name only `attempt-<sale uuid>-<reference>` and say the first resolution wins. Guess: resolving writes a second, write-once record `resolve-<sale uuid>-<reference>`, because a write-once record is the one way two registers resolving at the same moment cannot both win.
+3. **A resolved attempt's old status.** The app overwrites the status with `resolved`, so the earlier one is lost. Guess: the attempt record keeps `unknown` and the resolution says it was resolved.
+4. **Events hold no card or customer detail, so they are not encrypted.** A free-text `message` or `detail` could in principle hold a name, the same minor exception as a sale note (item 18).
