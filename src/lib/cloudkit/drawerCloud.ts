@@ -31,7 +31,7 @@ export const HISTORY_LIMIT = 1000; // the same cap as the local ledger
 const EPOCH_STAMP = '1970-01-01T00:00:00.000Z';
 const toStamp = (seconds: unknown): string => new Date((Number(seconds) || 0) * 1000).toISOString();
 
-async function pageAll(read: (after: string | null) => Promise<Page>, max = Infinity): Promise<Rec[]> {
+export async function pageAll(read: (after: string | null) => Promise<Page>, max = Infinity): Promise<Rec[]> {
   const out: Rec[] = []; let after: string | null = null;
   for (;;) {
     const page = await read(after); out.push(...(page.rows ?? []));

@@ -121,6 +121,42 @@ public class CloudKitSyncModule: Module {
       try await self.listRecords(recordType: "Rollup", limit: limit, after: after)
     }
 
+    // --- Patch 4: events and payment attempts ---
+    // An event is written once and never changed. An attempt is updated in place (its status only moves forward, which the
+    // JavaScript side checks before it writes). A resolution is written once: if one is already there it is handed back
+    // untouched, so the first register to resolve a payment is the one that stays.
+    AsyncFunction("putEvent") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecordOnce(recordType: "Event", recordName: "event-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("listEvents") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Event", limit: limit, after: after)
+    }
+
+    AsyncFunction("putAttempt") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.upsertRecord(recordType: "Attempt", recordName: "attempt-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getAttempt") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Attempt", recordName: "attempt-\(handle)")
+    }
+
+    AsyncFunction("listAttempts") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Attempt", limit: limit, after: after)
+    }
+
+    AsyncFunction("putResolution") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecordOnce(recordType: "Resolution", recordName: "resolve-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("getResolution") { (handle: String) async throws -> [String: Any]? in
+      try await self.getRecord(recordType: "Resolution", recordName: "resolve-\(handle)")
+    }
+
+    AsyncFunction("listResolutions") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Resolution", limit: limit, after: after)
+    }
+
     // --- Patch 5: saved carts ---
     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
