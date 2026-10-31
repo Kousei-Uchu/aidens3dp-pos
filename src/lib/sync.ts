@@ -16,6 +16,7 @@ import * as shop from './shopify/catalogue';
 import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
 import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
 import { createAttemptSync } from './cloudkit/attemptSync';
+import { resolvedElsewhereNotice } from './attemptShared';
 import { createEventSync } from './cloudkit/eventSync';
 import type { EventNative } from './cloudkit/eventCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
@@ -45,6 +46,9 @@ export const attemptSync = createAttemptSync({
   who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
   native: async () => (await import('../../modules/cloudkit-sync')) as unknown as EventNative,
   local: () => st().pos.attempts,
+  setShared: list => st().set({ sharedAttempts: list }),
+  setLocal: list => st().patchPos({ attempts: list }),
+  notifyResolved: a => { const n = resolvedElsewhereNotice(a); st().notify({ kind: 'info', title: n.title, body: n.body }); },
 });
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
@@ -173,6 +177,7 @@ export async function pollShared() {
       if (s.settings.warningListPending) await pushWarningList().catch(() => {});
       await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
       await attemptSync.catchUp(); // the same for payment attempts
+      await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {

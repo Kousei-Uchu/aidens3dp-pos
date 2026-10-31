@@ -20,7 +20,7 @@ function shop() { // one shared CloudKit zone, so two registers can be tested ag
   return { n, attempts, resolutions, calls, failNext: (k: number) => { fail = k; } };
 }
 function register(z: ReturnType<typeof shop>, id: string, local: Attempt[] = [], over: Partial<AttemptSyncDeps> = {}) {
-  return createAttemptSync({ active: () => true, training: () => false, who: () => ({ id, name: `Reg ${id}` }), native: async () => z.n, local: () => local, ...over });
+  return createAttemptSync({ active: () => true, training: () => false, who: () => ({ id, name: `Reg ${id}` }), native: async () => z.n, local: () => local, setShared: () => {}, setLocal: () => {}, notifyResolved: () => {}, ...over });
 }
 const att = (o: Partial<Attempt> = {}): Attempt => ({ ref: 'ref-1', saleUuid: 's1', amountCents: 2500, ts: '2026-10-31T03:00:00.000Z', status: 'started', ...o });
 
