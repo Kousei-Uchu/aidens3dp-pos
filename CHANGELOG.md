@@ -8,6 +8,7 @@ There are no tagged releases yet. The app version is 1.0.0 (`package.json` and `
 
 ### Added
 
+- **Loans to the drawer.** Paid in has a switch to mark the money as a loan, the drawer shows what is owed back, and Take loan back pays it out again. Closing with a loan still owed asks first (0188).
 - **AI assistant** (Help ▸ sparkles button, and More ▸ Settings ▸ AI assistant). It talks to a model you run yourself, reads the help pages and the till's own data, and never changes anything. The connection settings (0148, 0149), the chat screen (0151), the conversation log and its viewer (0152, 0156), the help, screen, link and guide tools (0157 to 0159, 0162), an offline mode (0160), the privacy gate every result passes through (0161), the product, stock and sales tools (0163, 0164), the date and screen tools (0166, 0167), the settings and status tools (0169), the cash drawer, change calculator and cart tools (0172), and the coach that helps in training Checks (0173). It only sends the tools a question is likely to need (0185). It reads sales from every register in the shop, not only the one in your hand.
 - **Training mode.** Show, Info, Guide and Check for 28 task courses, from signing in to refunds, with a virtual Zeller terminal (0065 to 0140, 0183). Going off course is caught and says which course teaches the fix.
 - **In-app help**, 68 pages with a searchable Help screen, depth picker, related pages and a pop-out contents menu (0028 to 0034, 0092).

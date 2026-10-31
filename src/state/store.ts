@@ -70,7 +70,7 @@ export type OutboxItem = {
 export type Attempt = { ref: string; saleUuid: string; amountCents: number; ts: string; status: 'started' | 'approved' | 'declined' | 'cancelled' | 'unknown' | 'resolved'; note?: string; resolvedBy?: string };
 export type SyncState = { state: 'idle' | 'syncing' | 'error' | 'offline'; at?: string; error?: string };
 export type ZellerStatus = { ready: boolean; message?: string };
-export type Shift = { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; staff?: string };
+export type Shift = { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; staff?: string; /** 0188: how much of the paid-in is a loan to the drawer, still to be taken back out (see lib/drawerLoan.ts) */ loanCents?: number };
 
 type Data = {
   variants: Record<string, Variant>; collections: Collection[]; customers: Customer[]; autos: AutoDiscount[]; presets: ManualPreset[];
