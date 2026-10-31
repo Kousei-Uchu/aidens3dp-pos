@@ -1,0 +1,421 @@
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index f73ad05..73c1315 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1124,3 +1124,16 @@ On the phone that is a companion with every feature off, then with some switched
+ 5. Open the assistant and ask where the cash drawer is, with Cash drawer off. Pass: it answers as it would for something it cannot find. Ask how to scan an item. Pass: it points at **Scan** and starts from **Today**. Switch Cash drawer on and ask again. Pass: it now knows the drawer.
+ 6. On a register (till), open Help, Training and the assistant. Pass: every page, course and screen is there as before, and the assistant knows nothing about Today or Scan.
+ 
++
++## T85. Encrypted sale fields across two Apple IDs (CloudKit patch 0195, decisions O4)
++
++Needs two iPads, each signed in to a different Apple ID, both running a build with this patch, the first as the owner of the shop's zone and the second joined through the invite link (T74). Nothing in this patch has been run on a device, and the Swift has not been compiled yet, so a build error is possible first. Run this before `setSaleCardMode('encrypted')` is switched on in a build, and before the encrypted secrets and pass codes (patch 6d) are built.
++
++1. Build and install on both iPads. Pass: the build compiles, and the Cloud sync page (T74) shows the owner on one and a participant on the other.
++2. With the card mode left at `omit`, write one test sale from the owner iPad (a call to the CloudKit backend's `put('sale', ...)` from a debug build, since nothing in the app calls it until patch 8). Open the CloudKit dashboard, Development environment, and look at that Sale record. Pass: the record has `sale_json` and the amounts, and **no** `secure_json`, and the card details appear nowhere in any field.
++3. Switch the card mode to `encrypted` in the debug build and write a second test sale that has a card tender, a gift card code and a receipt link. In the dashboard, open that record. Pass: `secure_json` is shown as encrypted (its value is not readable there), and every other field is the same as step 2 with no card detail in the clear.
++4. On the participant iPad, read that sale back through the backend. Pass: the card tender comes back with its masked number, last four, approval code, retrieval reference, receipt link, response code and transaction references, and the gift card code and the sale's receipt link are there. **This is the answer to O4.** If the card details are missing, record exactly what you saw and do not switch `encrypted` on.
++5. Read the same sale back on the owner iPad. Pass: the same details are there.
++6. Sign the participant iPad out of iCloud (or remove it from the share) and read again. Pass: the read fails or returns nothing, and does not return card details.
++7. Write the same sale record a second time from the participant iPad with a changed note. Pass: it succeeds (no `serverRecordChanged` error), the note changes, and `secure_json` is still readable on the owner iPad.
++8. Check the total of a day's sales on the participant iPad using the plain `total_cents` fields only. Pass: it adds up without reading any encrypted field.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index c2a7414..aa5ee41 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -175,6 +175,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0192 | 2026-10-31 | CloudKit 6b, second half: **the shared drawer reads and writes CloudKit records** (your request: next). `src/lib/cloudkit/drawerCloud.ts` is the transport: `pushCloudDrawer` uploads the entries CloudKit lacks (each written once), lets the first writer into an empty drawer start it with a checkpoint holding its counts, reads back so counts are the replay of every register's entries, writes the shift (with the 0188 loan) only if this register changed it and otherwise follows a newer shared one, and writes a fresh checkpoint when the drawer opens or closes. `pullCloudDrawerState` always takes the ledger, since a cash sale elsewhere adds entries without moving the shift. The native module is passed in, so `tests/drawercloud.test.ts` (10) runs the whole flow on an in-memory fake: bootstrap, two registers agreeing, an offline register's late entry, retries not doubling, 1200 entries across pages, checkpoint timing. `CloudKitSyncModule.swift` gained `putDrawerShift`, `getDrawerShift`, `putLedgerEntry`, `listLedgerEntries`, `listLedgerSince`, `putDrawerCheckpoint`, `getDrawerCheckpoint`, plus `upsertRecord` (fetch, change, save, retry), `putRecordOnce` and a creation-time query; every returned record now carries `createdAt`. `sync.ts` `pushDrawer` and `pullDrawer` branch to it only when the active backend is CloudKit, which nothing sets until patch 8, so **the Shopify drawer behaves exactly as before**. Checked: full `tsc --noEmit` clean, all 1498 tests pass. **Not checked: the Swift has never been compiled or run, it needs a Mac build (Xcode), and nothing has touched a real CloudKit zone.** **Found:** the existing `putRecord` builds a fresh record every time, which CloudKit refuses for a name that already exists, so a second `putSale`, `putRollup`, `putCart`, `putSettings` or `putLayout` on the same handle will fail with serverRecordChanged; I left it alone and used `upsertRecord` only for the drawer, your call whether the others move to it. Two CloudKit dashboard steps are needed before this works on a real zone: the `LedgerEntry` type needs its `creationDate` and `modificationDate` fields sortable and queryable, and the schema has to be deployed to production. | your request |
+ | 0193 | 2026-10-31 | CloudKit: **every record write now updates in place** (your request: next one). The old `putRecord` built a fresh record each time, which CloudKit refuses for a name that exists, so a second `putSale`, `putRollup`, `putCart`, `putSettings`, `putLayout`, `putSquareHistory` or `putMigration` on the same handle would have failed with serverRecordChanged. It now calls `upsertRecord` (fetch, change, save, retry on conflict). Fields a later write leaves out stay as they were, which suits these records; say so if one needs replace-all instead. `tests/cloudkitswift.test.ts` (4) reads the Swift source and pins that only `upsertRecord` and `putRecordOnce` save a record. **The Swift is still uncompiled and untried on a device; this is a read-through check, not a build.** | your request |
+ | 0194 | 2026-10-31 | CloudKit patch 4, first half: **a sale as a CloudKit record, pure code only** (your request: continue on the repo). New `src/lib/saleRecords.ts`: `saleToParts` splits a finished sale into plain fields and one encrypted field, `secure_json`, and `saleFromParts` puts it back together. Plain: who, when, which register, the amounts, kind, tendered and change per tender, and the whole sale as `sale_json` minus its private parts. Encrypted: each card tender's masked number, last four, approval code, retrieval reference, receipt link, response code and transaction references (the list in decisions Q6), plus gift card codes, gift recipients and the sale's receipt link. The customer is never written, only the Shopify id as `customer_gid`, and it reads back as an id with no name for the till to resolve from Shopify. A switch, `CardMode`, is `omit` by default: the private parts are then left out entirely and **never written as plain fields**, which is the safe state until the two-Apple-ID test (O4) has passed; `encrypted` turns them on. The old plain `r` (card reference) in `tenders_json` is gone from the CloudKit shape. A register that cannot read the encrypted field still shows the sale, without the card details. `looksLikeSale` in `salesHistory.ts` is now exported so both decoders share one check. Tests: `tests/salerecords.test.ts` (13: names, no secret or customer detail in any plain field in either mode, amounts plain, round trip, the sale given is not changed, bad and wrong-version records skipped). I broke the customer strip and the card strip on purpose and confirmed the tests fail. **Nothing calls it yet and no native code changed**, so there is no behaviour change; 0195 wires it. Checked: `tsc --noEmit` clean, full suite passes. **Decided without you, change any you disagree with:** see `dev_docs/GUESSES.md`, 'CloudKit sale records'. | your request |
++| 0195 | 2026-10-31 | CloudKit patch 4, second half: **sales are written and read as encrypted CloudKit records** (your request: continue). `CloudKitSyncModule.swift`: `putSale` takes a third argument, `encrypted`, written with `record.encryptedValues`; `recordToDict` reads the encrypted keys back by name (CloudKit's `allKeys()` does not list them) and returns them under `encrypted`, absent when this device cannot read them, so the sale still reads. Two guards in the Swift: `copyFields` never writes the encrypted key as a plain field (`cloudKitNeverPlainKeys`), and `copyEncrypted` accepts only the keys listed for that record type (today only a Sale's `secure_json`, text only). `cloudkitBackend.ts`: `put('sale')` goes through `saleWriteFromFields` (the whole sale is rebuilt from `sale_json`, so a customer, the receipt link or a card reference in `tenders_json` cannot ride along beside it) and every sale read through `saleRowFields`, which rebuilds `sale_json` with the card details when the encrypted field was readable. `detailReady` answers true, so `sync.ts` always sends the whole sale. `setSaleCardMode('encrypted' | 'omit')` is the switch; **it is `omit` until you turn it on**, so no card detail is written anywhere yet, plain or encrypted. The old source-reading test in `tests/cloudkitbackend.test.ts` was replaced by tests of what the backend actually sends (the strip it pinned moved into `saleRecords.ts`). Tests: 2 new round trips through `decodeSaleRow` in `tests/salerecords.test.ts` (15), 5 in `cloudkitbackend.test.ts`, 3 more Swift pins in `cloudkitswift.test.ts` (7). **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today.** **Not checked: the Swift has never been compiled or run (it needs a Mac build), and nothing has touched a real zone.** Device test T85 is the two-Apple-ID encryption test (O4), written out step by step; run it before `encrypted` is switched on or patch 6d is built. Dashboard step: a Sale's `secure_json` is an encrypted field, so it needs no index, but the schema has to be deployed to production like the others. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index 6944e56..3cf462b 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -59,9 +59,9 @@ export function onShareJoined(listener: (payload: { ok: boolean; message: string
+ }
+ 
+ // Patch 4: sales and rollups (CloudKit backend)
+-export async function putSale(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
++export async function putSale(handle: string, fields: Record<string, any>, encrypted: Record<string, any> = {}): Promise<Record<string, any>> {
+   if (!native?.putSale) throw new Error(CLOUDKIT_MISSING);
+-  return native.putSale(handle, fields);
++  return native.putSale(handle, fields, encrypted);
+ }
+ export async function getSale(handle: string): Promise<Record<string, any> | null> {
+   if (!native?.getSale) return null;
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index 37be9d0..5a74095 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -14,6 +14,12 @@ private let cloudKitZoneName = "Store"
+ // needing the link pasted again. Written by the AppDelegate method that plugins/withCloudKit.js injects.
+ private let cloudKitPendingInviteKey = "cloudkitPendingInvite"
+ 
++/// The fields kept as CloudKit encrypted values, by record type (decisions item 17). They are never written as plain fields:
++/// copyFields skips them, and they only travel through the separate `encrypted` argument. CKRecord.allKeys() does not list
++/// encrypted values, so recordToDict reads these keys by name.
++private let cloudKitEncryptedKeys: [String: [String]] = ["Sale": ["secure_json"]]
++private let cloudKitNeverPlainKeys: Set<String> = Set(cloudKitEncryptedKeys.values.flatMap { $0 })
++
+ // The AppDelegate posts this when iOS hands the app a share link. The module joins on the spot; the AppDelegate cannot,
+ // because it does not own the container logic.
+ private let cloudKitDidAcceptShareNotification = Notification.Name("cloudkitDidAcceptShare")
+@@ -91,8 +97,8 @@ public class CloudKitSyncModule: Module {
+     }
+ 
+     // --- Patch 4: sales and rollups ---
+-    AsyncFunction("putSale") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+-      try await self.putRecord(recordType: "Sale", recordName: "sale-\(handle)", fields: fields)
++    AsyncFunction("putSale") { (handle: String, fields: [String: Any], encrypted: [String: Any]) async throws -> [String: Any] in
++      try await self.putRecord(recordType: "Sale", recordName: "sale-\(handle)", fields: fields, encrypted: encrypted)
+     }
+ 
+     AsyncFunction("getSale") { (handle: String) async throws -> [String: Any]? in
+@@ -329,19 +335,27 @@ public class CloudKitSyncModule: Module {
+         else { out[key] = String(describing: v) }
+       }
+     }
++    // Encrypted values are not in allKeys(). A value this device cannot decrypt comes back nil and is simply absent, so the
++    // record still reads, only without those fields.
++    if let keys = cloudKitEncryptedKeys[record.recordType] {
++      var enc: [String: Any] = [:]
++      for key in keys { if let s = record.encryptedValues[key] as? String { enc[key] = s } }
++      if !enc.isEmpty { out["encrypted"] = enc }
++    }
+     return out
+   }
+ 
+   /// Create or update the record with this name. It goes through upsertRecord because CloudKit refuses to save a fresh
+   /// record over a name that already exists (serverRecordChanged), which made every second write of the same sale,
+   /// rollup, cart, settings or layout record fail. Fields not mentioned are left as they were.
+-  private func putRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
+-    try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields)
++  private func putRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
++    try await upsertRecord(recordType: recordType, recordName: recordName, fields: fields, encrypted: encrypted)
+   }
+ 
+   private func copyFields(_ fields: [String: Any], into record: CKRecord) {
+     for (k, v) in fields {
+-      if k == "id" || k == "recordName" || k == "updatedAt" || k == "createdAt" { continue }
++      if k == "id" || k == "recordName" || k == "updatedAt" || k == "createdAt" || k == "encrypted" { continue }
++      if cloudKitNeverPlainKeys.contains(k) { continue } // an encrypted field is only ever written through `encrypted`
+       if let s = v as? String { record[k] = s as CKRecordValue }
+       else if let i = v as? Int { record[k] = NSNumber(value: i) }
+       else if let d = v as? Double { record[k] = NSNumber(value: d) }
+@@ -351,10 +365,19 @@ public class CloudKitSyncModule: Module {
+     }
+   }
+ 
++  /// Write the encrypted values. Only the keys listed for the record's type are accepted, and only text, so a mistake in
++  /// JavaScript cannot turn a plain field into an encrypted one or the other way round.
++  private func copyEncrypted(_ encrypted: [String: Any], into record: CKRecord) {
++    let allowed = cloudKitEncryptedKeys[record.recordType] ?? []
++    for (k, v) in encrypted where allowed.contains(k) {
++      if let s = v as? String { record.encryptedValues[k] = s }
++    }
++  }
++
+   /// Create the record, or change the one that is there. putRecord above builds a fresh record every time, which CloudKit
+   /// refuses for a name that already exists (serverRecordChanged), so anything that is updated in place goes through here:
+   /// fetch the current record, change its fields, save, and try again if someone else saved in between.
+-  private func upsertRecord(recordType: String, recordName: String, fields: [String: Any]) async throws -> [String: Any] {
++  private func upsertRecord(recordType: String, recordName: String, fields: [String: Any], encrypted: [String: Any] = [:]) async throws -> [String: Any] {
+     let id = CKRecord.ID(recordName: recordName, zoneID: storeZoneID)
+     var lastError: Error?
+     for _ in 0..<3 {
+@@ -365,6 +388,7 @@ public class CloudKitSyncModule: Module {
+         record = makeRecord(recordType: recordType, recordName: recordName)
+       }
+       copyFields(fields, into: record)
++      copyEncrypted(encrypted, into: record)
+       do {
+         let saved = try await database().save(record)
+         return recordToDict(saved)
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index 5fa547c..0e4e24d 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -37,7 +37,8 @@ export type CloudKitSyncNative = {
+   takePendingInvite(): Promise<string | null>;
+   addListener?(event: 'onShareJoined', listener: (payload: { ok: boolean; message: string }) => void): { remove(): void };
+   // Patch 4: sales and rollups
+-  putSale?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
++  /** `encrypted` holds the fields stored as CloudKit encrypted values (a sale's `secure_json`); the record it returns carries the ones this device could read under `encrypted`. */
++  putSale?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
+   getSale?(handle: string): Promise<Record<string, any> | null>;
+   listSales?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+   putRollup?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+diff --git a/src/lib/cloudkit/cloudkitBackend.ts b/src/lib/cloudkit/cloudkitBackend.ts
+index ea96c87..c758ce9 100644
+--- a/src/lib/cloudkit/cloudkitBackend.ts
++++ b/src/lib/cloudkit/cloudkitBackend.ts
+@@ -4,8 +4,11 @@
+ // backend strips customer PII from sale records and keeps only the Shopify customer
+ // id as an opaque reference, because customers live in Shopify (customer data is not synced to CloudKit).
+ // The metaobject backend stays live beside this one; cut-over is deferred to patch 8.
++// A sale's card details, gift codes and receipt link go in one encrypted field and are never written plain (saleRecords.ts);
++// whether they are written at all is the card mode below, `omit` until the two-Apple-ID test (decisions O4) has passed.
+ import type { BackendListOptions, BackendPage, BackendRow, SharedBackend, SharedType } from '../syncBackend';
+ import * as ck from '../../../modules/cloudkit-sync';
++import { saleRecordName, saleRowFields, saleWriteFromFields, type CardMode } from '../saleRecords';
+ 
+ const CLOUDKIT_MISSING = 'CloudKit native module is not available.';
+ 
+@@ -19,33 +22,23 @@ function asRow(recordName: string, f: Record<string, any>): BackendRow {
+   const rowF: Record<string, string> = {};
+   for (const [k, v] of Object.entries(f)) {
+     if (v === null || v === undefined) continue;
+-    if (k === 'id' || k === 'recordName' || k === 'updatedAt') continue;
++    if (k === 'id' || k === 'recordName' || k === 'updatedAt' || k === 'encrypted') continue;
+     rowF[k] = String(v);
+   }
+   return { id: recordName, handle: recordName, updatedAt, f: rowF };
+ }
+ 
+-function sanitizeSaleFields(fields: Record<string, string | number | undefined | null>): Record<string, string | number | undefined | null> {
+-  const out: Record<string, string | number | undefined | null> = {};
+-  for (const [k, v] of Object.entries(fields)) {
+-    if (v === undefined || v === null) continue;
+-    if (k === 'customer' || k === 'customer_json') continue;
+-    if (k === 'sale_json' && typeof v === 'string') {
+-      try {
+-        const obj = JSON.parse(v);
+-        if (obj && typeof obj === 'object' && 'customer' in obj) delete obj.customer;
+-        if (obj && typeof obj === 'object' && 'customer_json' in obj) delete obj.customer_json;
+-        out.sale_json = JSON.stringify(obj);
+-      } catch {
+-        out.sale_json = v;
+-      }
+-      continue;
+-    }
+-    out[k] = v;
+-  }
+-  return out;
++/** A sale row for the seam: plain fields as strings, and the whole sale rebuilt with whatever encrypted parts could be read. */
++function asSaleRow(recordName: string, f: Record<string, any>): BackendRow {
++  const row = asRow(recordName, f);
++  return { ...row, f: saleRowFields(f) };
+ }
+ 
++let cardMode: CardMode = 'omit';
++/** `encrypted` writes a sale's private parts as a CloudKit encrypted field; `omit` (the default) leaves them out. They are never written plain. */
++export const setSaleCardMode = (mode: CardMode): void => { cardMode = mode; };
++export const saleCardMode = (): CardMode => cardMode;
++
+ function handleFromName(recordType: SharedType, handle: string): string {
+   if (recordType === 'sale') return handle.replace(/^sale-/, '');
+   if (recordType === 'rollup') return handle.replace(/^rollup-/, '');
+@@ -59,13 +52,18 @@ export const cloudkitBackend: SharedBackend = {
+     ensureNative();
+   },
+ 
++  /** A CloudKit record has no field definition to add, so the whole sale can always be written. */
++  async detailReady(): Promise<boolean> {
++    return true;
++  },
++
+   async get(type: SharedType, handle: string): Promise<BackendRow | null> {
+     ensureNative();
+     if (type === 'sale') {
+       const h = handle.startsWith('sale-') ? handle.slice(5) : handle;
+       const rec = await ck.getSale(h);
+       if (!rec) return null;
+-      return asRow(`sale-${h}`, rec);
++      return asSaleRow(saleRecordName(h), rec);
+     }
+     if (type === 'rollup') {
+       const h = handle.startsWith('rollup-') ? handle.slice(7) : handle;
+@@ -104,9 +102,9 @@ export const cloudkitBackend: SharedBackend = {
+     ensureNative();
+     if (type === 'sale') {
+       const h = handle.startsWith('sale-') ? handle.slice(5) : handle;
+-      const clean = sanitizeSaleFields(fields);
+-      const rec = await ck.putSale(h, clean as any);
+-      return asRow(`sale-${h}`, rec);
++      const { plain, encrypted } = saleWriteFromFields(fields, cardMode);
++      const rec = await ck.putSale(h, plain, encrypted);
++      return asSaleRow(saleRecordName(h), rec);
+     }
+     if (type === 'rollup') {
+       const h = handle.startsWith('rollup-') ? handle.slice(7) : handle;
+@@ -140,7 +138,7 @@ export const cloudkitBackend: SharedBackend = {
+     ensureNative();
+     if (type === 'sale') {
+       const res = await ck.listSales(options.first ?? 100, options.after ?? null);
+-      const rows = (res.rows ?? []).map(r => asRow(r.recordName ?? '', r));
++      const rows = (res.rows ?? []).map(r => asSaleRow(r.recordName ?? '', r));
+       return { rows, next: res.next ?? null };
+     }
+     if (type === 'rollup') {
+diff --git a/src/lib/saleRecords.ts b/src/lib/saleRecords.ts
+index e3ee50d..85a0ba3 100644
+--- a/src/lib/saleRecords.ts
++++ b/src/lib/saleRecords.ts
+@@ -124,3 +124,42 @@ export function saleFromParts(plain: Record<string, unknown>, encrypted?: Record
+   }
+   return sale;
+ }
++
++/**
++ * What the CloudKit backend writes for a `put('sale')`, from the row fields the shared-state seam hands it. When the row
++ * carries the whole sale (`sale_json`), everything is rebuilt from that sale by `saleToParts`, so nothing the row also
++ * carries (a customer, the receipt link, a card reference inside `tenders_json`) can slip through beside it. A row with no
++ * readable whole sale keeps its own fields, minus those same private ones.
++ */
++export function saleWriteFromFields(fields: Record<string, string | number | undefined | null>, mode: CardMode = 'omit'): SaleParts {
++  const sale = parseObject(fields.sale_json);
++  if (sale && looksLikeSale(sale)) return saleToParts(sale as SaleRecord, mode);
++  const plain: Fields = {};
++  for (const [k, v] of Object.entries(fields)) {
++    if (v === undefined || v === null) continue;
++    if (k === 'customer' || k === 'customer_json' || k === 'receipt_link' || k === 'sale_json' || k === SALE_SECURE_FIELD) continue;
++    if (k === 'tenders_json') {
++      try { const list: unknown = JSON.parse(String(v)); if (Array.isArray(list)) plain[k] = JSON.stringify(list.map(t => { const { r: _ref, ...rest } = (t ?? {}) as Record<string, unknown>; return rest; })); } catch { /* dropped */ }
++      continue;
++    }
++    plain[k] = v;
++  }
++  return { plain, encrypted: {} };
++}
++
++/**
++ * The row fields the seam gets back for a sale record the native side returned (`encrypted` holds the encrypted fields it
++ * could read, none when it could not). Plain fields come back as strings, and `sale_json` is rebuilt with the private parts
++ * and the customer id when they are there, so `decodeSaleRow` and the shop-wide views read it as they read a metaobject row.
++ */
++export function saleRowFields(rec: Record<string, unknown>): Record<string, string> {
++  const out: Record<string, string> = {};
++  for (const [k, v] of Object.entries(rec ?? {})) {
++    if (v === null || v === undefined || k === 'id' || k === 'recordName' || k === 'updatedAt' || k === 'encrypted' || k === SALE_SECURE_FIELD) continue;
++    out[k] = String(v);
++  }
++  const enc = rec?.encrypted && typeof rec.encrypted === 'object' ? (rec.encrypted as Record<string, unknown>) : undefined;
++  const sale = saleFromParts(rec ?? {}, enc);
++  if (sale) out.sale_json = JSON.stringify(sale);
++  return out;
++}
+diff --git a/tests/cloudkitbackend.test.ts b/tests/cloudkitbackend.test.ts
+index 03719ea..c57daa7 100644
+--- a/tests/cloudkitbackend.test.ts
++++ b/tests/cloudkitbackend.test.ts
+@@ -1,20 +1,46 @@
+ // Location: tests/cloudkitbackend.test.ts
+-// CloudKit sync plan, patch 4: customer PII must never reach CloudKit.
+-// Only the Shopify customer id as an opaque reference may remain; names/emails/phones must be stripped.
++// CloudKit sync plan, patch 4: customer PII must never reach CloudKit, and a sale's private parts are never written plain.
++// Only the Shopify customer id as an opaque reference may remain. These used to read the backend's source for the strip;
++// the strip now lives in saleRecords.ts (tests/salerecords.test.ts covers it in full), so these check what the backend sends.
+ import { test } from 'node:test';
+ import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { saleWriteFromFields, saleRowFields, SALE_SECURE_FIELD } from '../src/lib/saleRecords';
+ 
+-test('cloudkit backend strips customer PII from sale fields', async () => {
+-  const fs = await import('node:fs');
+-  const src = fs.readFileSync('src/lib/cloudkit/cloudkitBackend.ts', 'utf8');
+-  assert.match(src, /customer['"]\s*\|\|\s*k\s*===\s*['"]customer_json['"]/);
+-  assert.match(src, /delete obj\.customer/);
+-  assert.match(src, /delete obj\.customer_json/);
++const rowFields = (): Record<string, string | number> => ({
++  sale_uuid: 'u-1', register_id: 'r', ts: '2026-10-31T03:00:00.000Z', entry_type: 'sale', total_cents: 500, customer_gid: 'gid://shopify/Customer/9',
++  receipt_link: 'https://receipts.example/s/xyz', tenders_json: JSON.stringify([{ k: 'card', a: 500, r: 'ext-ref-1' }]), customer_json: '{"name":"Jane"}', customer: 'Jane',
+ });
+ 
+-test('cloudkit backend keeps only opaque customer id references allowed', async () => {
+-  const fs = await import('node:fs');
+-  const src = fs.readFileSync('src/lib/cloudkit/cloudkitBackend.ts', 'utf8');
++test('a row with no whole sale loses its customer, receipt link and card reference, and keeps the rest', () => {
++  const { plain, encrypted } = saleWriteFromFields(rowFields(), 'encrypted');
++  assert.deepEqual(encrypted, {});
++  for (const k of ['customer', 'customer_json', 'receipt_link']) assert.equal(k in plain, false, k);
++  assert.equal(plain.customer_gid, 'gid://shopify/Customer/9');
++  assert.equal(plain.total_cents, 500);
++  assert.deepEqual(JSON.parse(String(plain.tenders_json)), [{ k: 'card', a: 500 }]);
++});
++test('an unreadable sale_json is dropped rather than sent as it is', () => {
++  const { plain } = saleWriteFromFields({ ...rowFields(), sale_json: '{not json' });
++  assert.equal('sale_json' in plain, false);
++});
++test('a row cannot smuggle an encrypted field in as a plain one', () => {
++  const { plain } = saleWriteFromFields({ ...rowFields(), [SALE_SECURE_FIELD]: '{"v":1}' }, 'encrypted');
++  assert.equal(SALE_SECURE_FIELD in plain, false);
++});
++test('reading a record back never prints the encrypted object as a field', () => {
++  const f = saleRowFields({ recordName: 'sale-u-1', total_cents: 500, encrypted: { [SALE_SECURE_FIELD]: '{"v":1}' } });
++  assert.equal(f.total_cents, '500');
++  assert.equal('encrypted' in f, false);
++  assert.equal(SALE_SECURE_FIELD in f, false);
++});
++
++test('the backend sends sales through the sale record helpers, defaults to omit, and reports detail as ready', () => {
++  const src = readFileSync('src/lib/cloudkit/cloudkitBackend.ts', 'utf8');
++  assert.match(src, /saleWriteFromFields\(fields, cardMode\)/);
++  assert.match(src, /ck\.putSale\(h, plain, encrypted\)/);
++  assert.match(src, /let cardMode: CardMode = 'omit'/);
++  assert.match(src, /async detailReady\(\)/);
+   assert.ok(src.includes('customers live in Shopify'));
+   assert.ok(src.includes('opaque reference'));
+ });
+diff --git a/tests/cloudkitswift.test.ts b/tests/cloudkitswift.test.ts
+index 0f53650..b51552c 100644
+--- a/tests/cloudkitswift.test.ts
++++ b/tests/cloudkitswift.test.ts
+@@ -25,3 +25,22 @@ test('save() is only called in the helpers that deal with an existing record', (
+   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
+   assert.deepEqual(callers.sort(), ['putRecordOnce', 'upsertRecord']);
+ });
++
++// Encrypted sale fields (decisions item 17). The Swift cannot be built here, so these pin the rules by reading it.
++test('an encrypted key is never written as a plain field, and only listed keys are written as encrypted ones', () => {
++  assert.match(src, /cloudKitEncryptedKeys: \[String: \[String\]\] = \["Sale": \["secure_json"\]\]/);
++  assert.match(body('copyFields'), /cloudKitNeverPlainKeys\.contains\(k\) \{ continue \}/);
++  const e = body('copyEncrypted');
++  assert.match(e, /allowed\.contains\(k\)/); assert.match(e, /record\.encryptedValues\[k\] = s/);
++  assert.doesNotMatch(e, /record\[k\]/);
++});
++test('upsertRecord writes the encrypted values before saving, and putSale passes them', () => {
++  const b = body('upsertRecord');
++  assert.ok(b.indexOf('copyEncrypted(encrypted, into: record)') > b.indexOf('copyFields(fields, into: record)'));
++  assert.ok(b.indexOf('copyEncrypted(encrypted, into: record)') < b.indexOf('.save(record)'));
++  assert.match(src, /AsyncFunction\("putSale"\) \{ \(handle: String, fields: \[String: Any\], encrypted: \[String: Any\]\)/);
++});
++test('recordToDict reads the encrypted values by name and hands them back under `encrypted`', () => {
++  const b = body('recordToDict');
++  assert.match(b, /cloudKitEncryptedKeys\[record\.recordType\]/); assert.match(b, /record\.encryptedValues\[key\]/); assert.match(b, /out\["encrypted"\] = enc/);
++});
+diff --git a/tests/salerecords.test.ts b/tests/salerecords.test.ts
+index fe6067b..44ee67b 100644
+--- a/tests/salerecords.test.ts
++++ b/tests/salerecords.test.ts
+@@ -117,3 +117,27 @@ test('an unreadable or wrong-version encrypted field is ignored, the sale still
+   assert.equal(saleFromParts(plain, { [SALE_SECURE_FIELD]: 'garbage' })!.totalCents, 3500);
+   assert.equal(saleFromParts(plain, { [SALE_SECURE_FIELD]: JSON.stringify({ v: 2, receiptLink: 'x' }) })!.receiptLink, undefined);
+ });
++
++// The backend's read and write path, as the native side would hand records back.
++import { saleRowFields, saleWriteFromFields } from '../src/lib/saleRecords';
++import { decodeSaleRow } from '../src/lib/salesHistory';
++
++test('write then read: the seam gets the whole sale back with the card details, through decodeSaleRow', () => {
++  const s = sale();
++  const { plain, encrypted } = saleWriteFromFields({ sale_uuid: s.uuid, receipt_link: s.receiptLink, tenders_json: '[{"r":"ext-1"}]', sale_json: JSON.stringify(s) }, 'encrypted');
++  const record = { recordName: 'sale-u-1', updatedAt: 1, ...plain, encrypted };
++  const back = decodeSaleRow(saleRowFields(record))!;
++  assert.equal(back.tenders[1].card?.panMasked, PAN);
++  assert.equal(back.tenders[2].giftCardCode, 'GIFT-TENDER-55');
++  assert.equal(back.receiptLink, 'https://receipts.example/s/xyz');
++  assert.equal(back.customer?.id, 'gid://shopify/Customer/9');
++  assert.equal(back.customer?.name, '');
++});
++test('write then read in omit mode: the sale reads, with no card details anywhere', () => {
++  const s = sale();
++  const { plain, encrypted } = saleWriteFromFields({ sale_json: JSON.stringify(s) }, 'omit');
++  const row = saleRowFields({ recordName: 'sale-u-1', ...plain, encrypted });
++  const text = JSON.stringify(row);
++  for (const x of SECRETS) assert.equal(text.includes(x), false, `leaks ${x}`);
++  assert.equal(decodeSaleRow(row)!.totalCents, 3500);
++});

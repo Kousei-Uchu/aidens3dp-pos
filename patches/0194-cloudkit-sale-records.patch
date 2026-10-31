@@ -1,0 +1,302 @@
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 7c4c84d..205efe9 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -369,3 +369,15 @@ You asked for Demo mode to use the real catalogue and real data where there is s
+ - **A copy, not a view.** The demo is a JSON copy of the data taken when it starts, so even code that edits an object in place cannot reach the real one. On a very large catalogue the copy takes a moment.
+ 
+ **What the audit found:** the Square history screen could delete or overwrite the real history files in Demo mode (this was already true of the old Demo mode), Backup & transfer could export the real logins, and the pass request could reach the pass server. All three are now stopped, and `tests/demoguard.test.ts` keeps the list: a new file that fetches or writes must check the guard or be added with a reason.
++
++## CloudKit sale records (0194)
++
++These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
++
++1. **Encrypted by default or not.** Decisions item 17 says encryption is in scope from the first sales patch, and O4 (build behind a switch, test across two Apple IDs first) is your suggestion and not agreed. Guess: the switch exists and defaults to `omit`, so until the test passes the card details are left out of CloudKit, never written plain. Turning on `encrypted` is one argument.
++2. **Which card fields are plain.** Q6 lists what to encrypt. Guess: scheme, card media, local time, tip and surcharge amounts are not on that list and stay plain (amounts have to add up in reports, and the others identify nothing).
++3. **Gift card codes and gift recipients.** The decisions do not mention them. A gift card code can be spent by anyone who reads it, and a recipient's email is someone else's detail. Guess: they go in the encrypted field with the card details, and never plain.
++4. **The sale's own receipt link.** A link to a receipt page can show the whole sale. Guess: encrypted, like the card's receipt link.
++5. **One encrypted field, not many.** Guess: one JSON field, `secure_json`, so the native side handles a single encrypted key per sale.
++6. **A customer reads back with no name.** The sale keeps only the Shopify id. Guess: it returns as `{ id, name: '' }` and the till fills in the name from its own Shopify cache.
++7. **Free-text notes and reasons stay plain** (decisions item 18), a known minor exception for a customer's name.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index aadde22..c2a7414 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -174,6 +174,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0191 | 2026-10-31 | CloudKit 6b, first half continued: **the drawer checkpoint, pure code only** (your request: continue). New `src/lib/drawerCheckpoint.ts` settles the open point from 0190 on my recommendation, which you have not explicitly confirmed: one record `drawer-checkpoint` holds the counts at a point in time and the server stamp of the newest entry it covers; a register replays only entries stamped after it, so counts stay right past 1000 entries. It uses CloudKit's creation stamp, not the entry's `ts`, because an iPad that was offline uploads entries late with an old `ts` and those must still count. A checkpoint only moves forward, an unreadable one falls back to replaying everything, and `makeCheckpoint` is meant to be called when a shift opens or closes. Tests: `tests/drawercheckpoint.test.ts` (7). Decisions O3 gained a note. **Still nothing calls this and no native code changed.** The stamp has to come from the native module (CloudKit's record creation date), which `CloudKitSyncModule.swift` does not return yet. Not tried on a real iPad. | your request |
+ | 0192 | 2026-10-31 | CloudKit 6b, second half: **the shared drawer reads and writes CloudKit records** (your request: next). `src/lib/cloudkit/drawerCloud.ts` is the transport: `pushCloudDrawer` uploads the entries CloudKit lacks (each written once), lets the first writer into an empty drawer start it with a checkpoint holding its counts, reads back so counts are the replay of every register's entries, writes the shift (with the 0188 loan) only if this register changed it and otherwise follows a newer shared one, and writes a fresh checkpoint when the drawer opens or closes. `pullCloudDrawerState` always takes the ledger, since a cash sale elsewhere adds entries without moving the shift. The native module is passed in, so `tests/drawercloud.test.ts` (10) runs the whole flow on an in-memory fake: bootstrap, two registers agreeing, an offline register's late entry, retries not doubling, 1200 entries across pages, checkpoint timing. `CloudKitSyncModule.swift` gained `putDrawerShift`, `getDrawerShift`, `putLedgerEntry`, `listLedgerEntries`, `listLedgerSince`, `putDrawerCheckpoint`, `getDrawerCheckpoint`, plus `upsertRecord` (fetch, change, save, retry), `putRecordOnce` and a creation-time query; every returned record now carries `createdAt`. `sync.ts` `pushDrawer` and `pullDrawer` branch to it only when the active backend is CloudKit, which nothing sets until patch 8, so **the Shopify drawer behaves exactly as before**. Checked: full `tsc --noEmit` clean, all 1498 tests pass. **Not checked: the Swift has never been compiled or run, it needs a Mac build (Xcode), and nothing has touched a real CloudKit zone.** **Found:** the existing `putRecord` builds a fresh record every time, which CloudKit refuses for a name that already exists, so a second `putSale`, `putRollup`, `putCart`, `putSettings` or `putLayout` on the same handle will fail with serverRecordChanged; I left it alone and used `upsertRecord` only for the drawer, your call whether the others move to it. Two CloudKit dashboard steps are needed before this works on a real zone: the `LedgerEntry` type needs its `creationDate` and `modificationDate` fields sortable and queryable, and the schema has to be deployed to production. | your request |
+ | 0193 | 2026-10-31 | CloudKit: **every record write now updates in place** (your request: next one). The old `putRecord` built a fresh record each time, which CloudKit refuses for a name that exists, so a second `putSale`, `putRollup`, `putCart`, `putSettings`, `putLayout`, `putSquareHistory` or `putMigration` on the same handle would have failed with serverRecordChanged. It now calls `upsertRecord` (fetch, change, save, retry on conflict). Fields a later write leaves out stay as they were, which suits these records; say so if one needs replace-all instead. `tests/cloudkitswift.test.ts` (4) reads the Swift source and pins that only `upsertRecord` and `putRecordOnce` save a record. **The Swift is still uncompiled and untried on a device; this is a read-through check, not a build.** | your request |
++| 0194 | 2026-10-31 | CloudKit patch 4, first half: **a sale as a CloudKit record, pure code only** (your request: continue on the repo). New `src/lib/saleRecords.ts`: `saleToParts` splits a finished sale into plain fields and one encrypted field, `secure_json`, and `saleFromParts` puts it back together. Plain: who, when, which register, the amounts, kind, tendered and change per tender, and the whole sale as `sale_json` minus its private parts. Encrypted: each card tender's masked number, last four, approval code, retrieval reference, receipt link, response code and transaction references (the list in decisions Q6), plus gift card codes, gift recipients and the sale's receipt link. The customer is never written, only the Shopify id as `customer_gid`, and it reads back as an id with no name for the till to resolve from Shopify. A switch, `CardMode`, is `omit` by default: the private parts are then left out entirely and **never written as plain fields**, which is the safe state until the two-Apple-ID test (O4) has passed; `encrypted` turns them on. The old plain `r` (card reference) in `tenders_json` is gone from the CloudKit shape. A register that cannot read the encrypted field still shows the sale, without the card details. `looksLikeSale` in `salesHistory.ts` is now exported so both decoders share one check. Tests: `tests/salerecords.test.ts` (13: names, no secret or customer detail in any plain field in either mode, amounts plain, round trip, the sale given is not changed, bad and wrong-version records skipped). I broke the customer strip and the card strip on purpose and confirmed the tests fail. **Nothing calls it yet and no native code changed**, so there is no behaviour change; 0195 wires it. Checked: `tsc --noEmit` clean, full suite passes. **Decided without you, change any you disagree with:** see `dev_docs/GUESSES.md`, 'CloudKit sale records'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/saleRecords.ts b/src/lib/saleRecords.ts
+new file mode 100644
+index 0000000..e3ee50d
+--- /dev/null
++++ b/src/lib/saleRecords.ts
+@@ -0,0 +1,126 @@
++// Location: src/lib/saleRecords.ts
++// CloudKit sync, patch 4 (pure half): how one finished sale is laid out as a CloudKit record.
++// A sale becomes plain fields (amounts, who, when, the sale itself without its private parts) and, when the switch allows it,
++// one encrypted field `secure_json` holding what must not sit readable in iCloud: the card details of each card tender
++// (masked number, last four, approval code, retrieval reference, receipt link, response code, transaction references), gift
++// card codes and recipients, and the sale's receipt link. Amounts, kind, tendered and change stay plain so reports can add
++// them up (decisions item 17, Q6). The customer is never written: only the Shopify customer id stays, as `customer_gid`
++// (plan section 7, 20 October). No React, no store, no native module, so it is tested on its own (tests/salerecords.test.ts).
++// Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md items 17, 18, Q6, O4.
++import type { CardInfo, GiftRecipient, SaleRecord } from './types';
++import { looksLikeSale } from './salesHistory';
++
++export const saleRecordName = (uuid: string): string => `sale-${uuid}`;
++export const saleUuidFromRecord = (name: string): string | null => (name.startsWith('sale-') && name.length > 5 ? name.slice(5) : null);
++
++/** The one encrypted field a sale record carries. */
++export const SALE_SECURE_FIELD = 'secure_json';
++
++/**
++ * What to do with the private parts of a sale.
++ * - `encrypted`: write them in `secure_json` as a CloudKit encrypted field.
++ * - `omit`: leave them out altogether. They are never written as plain fields. This is the safe setting until the
++ *   two-Apple-ID encryption test (decisions O4) has shown a participant on another Apple ID can read encrypted fields.
++ */
++export type CardMode = 'encrypted' | 'omit';
++
++type Fields = Record<string, string | number>;
++export type SaleParts = { plain: Fields; encrypted: Fields };
++
++/** The card fields that are encrypted. Everything else on a card (scheme, media, local time, tip, surcharge) stays plain. */
++export const SECRET_CARD_KEYS = ['panMasked', 'last4', 'approvalCode', 'rrn', 'receiptLink', 'responseCode', 'transactionUuid', 'externalReference'] as const;
++type SecretCardKey = (typeof SECRET_CARD_KEYS)[number];
++
++/** The private parts, keyed so they can be put back on the right tender or line. `v` is the layout version. */
++type Secure = {
++  v: 1;
++  cards?: Record<string, Partial<Pick<CardInfo, SecretCardKey>>>; // by tender id
++  gifts?: Record<string, string>; // gift card code by tender id
++  lines?: Record<string, { giftCardCode?: string; giftRecipient?: GiftRecipient }>; // by line position
++  receiptLink?: string;
++};
++
++const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
++const put = (f: Fields, k: string, v: string | number | undefined | null): void => { if (v !== undefined && v !== null && v !== '') f[k] = v; };
++
++/**
++ * Splits a sale into what CloudKit holds plainly and what it holds encrypted. The sale passed in is not changed.
++ * The plain `sale_json` is the whole sale minus its private parts and minus the customer, so a register that cannot read
++ * the encrypted field still shows the sale, only without the card details.
++ */
++export function saleToParts(sale: SaleRecord, mode: CardMode = 'omit'): SaleParts {
++  const body = clone(sale) as SaleRecord & { customer?: unknown };
++  const secure: Secure = { v: 1 };
++
++  delete body.customer; // the customer lives in Shopify; only the id goes into customer_gid below
++  if (body.receiptLink) { secure.receiptLink = body.receiptLink; delete body.receiptLink; }
++
++  for (const t of body.tenders ?? []) {
++    if (t.card) {
++      const secret: Partial<Pick<CardInfo, SecretCardKey>> = {};
++      for (const k of SECRET_CARD_KEYS) { if (t.card[k] !== undefined && t.card[k] !== '') secret[k] = t.card[k]; delete t.card[k]; }
++      if (Object.keys(secret).length) (secure.cards ??= {})[t.id] = secret;
++      if (!Object.keys(t.card).length) delete t.card;
++    }
++    if (t.giftCardCode) { (secure.gifts ??= {})[t.id] = t.giftCardCode; delete t.giftCardCode; }
++  }
++  (body.lines ?? []).forEach((l, i) => {
++    const p: { giftCardCode?: string; giftRecipient?: GiftRecipient } = {};
++    if (l.giftCardCode) p.giftCardCode = l.giftCardCode;
++    if (l.giftRecipient) p.giftRecipient = l.giftRecipient;
++    if (Object.keys(p).length) (secure.lines ??= {})[String(i)] = p;
++    delete l.giftCardCode; delete l.giftRecipient;
++  });
++
++  const plain: Fields = {};
++  put(plain, 'sale_uuid', sale.uuid); put(plain, 'entry_type', sale.type); put(plain, 'refund_of', sale.refundOf); put(plain, 'ts', sale.ts);
++  put(plain, 'register_id', sale.registerId); put(plain, 'register_name', sale.registerName); put(plain, 'employee', sale.staff);
++  put(plain, 'order_gid', sale.orderGid); put(plain, 'order_name', sale.orderName); put(plain, 'customer_gid', sale.customer?.id);
++  put(plain, 'items_cents', sale.itemsCents); put(plain, 'discounts_cents', sale.discountCents); put(plain, 'net_cents', sale.netCents);
++  put(plain, 'tip_cents', sale.tipCents); put(plain, 'total_cents', sale.totalCents); put(plain, 'cogs_cents', sale.cogsCents);
++  put(plain, 'fees_cents', sale.feesCents); put(plain, 'rounding_cents', sale.roundingCents); plain.status = 'complete';
++  // Kind, amount, tendered and change in the clear, so a report can add the cash and the card up. No references here.
++  plain.tenders_json = JSON.stringify((sale.tenders ?? []).map(t => ({ id: t.id, k: t.kind, a: t.amountCents, t: t.tenderedCents, c: t.changeCents })));
++  plain.lines_json = JSON.stringify((sale.lines ?? []).map(l => ({ v: l.variantId, q: l.qty, n: l.netCents })));
++  plain.sale_json = JSON.stringify(body);
++
++  const hasSecure = !!(secure.cards || secure.gifts || secure.lines || secure.receiptLink);
++  const encrypted: Fields = mode === 'encrypted' && hasSecure ? { [SALE_SECURE_FIELD]: JSON.stringify(secure) } : {};
++  return { plain, encrypted };
++}
++
++const parseObject = (s: unknown): Record<string, unknown> | null => {
++  if (typeof s !== 'string' || !s) return null;
++  try { const v: unknown = JSON.parse(s); return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null; } catch { return null; }
++};
++
++/**
++ * The sale a record holds, with its private parts put back when the encrypted field could be read. Null for a record that
++ * is not a readable sale, so one bad record cannot break a list. A customer comes back as the Shopify id with no name:
++ * the till resolves the name from its own Shopify cache, as the shop-wide sales view already does.
++ */
++export function saleFromParts(plain: Record<string, unknown>, encrypted?: Record<string, unknown>): SaleRecord | null {
++  const body = parseObject(plain?.sale_json);
++  if (!body || !looksLikeSale(body)) return null;
++  const sale = body as SaleRecord;
++  const gid = plain.customer_gid;
++  if (typeof gid === 'string' && gid) sale.customer = { id: gid, name: '' };
++
++  const secure = parseObject(encrypted?.[SALE_SECURE_FIELD]) as Secure | null;
++  if (secure && secure.v === 1) {
++    if (typeof secure.receiptLink === 'string') sale.receiptLink = secure.receiptLink;
++    for (const t of sale.tenders) {
++      const c = secure.cards?.[t.id];
++      if (c && typeof c === 'object') t.card = { ...(t.card ?? {}), ...c };
++      const g = secure.gifts?.[t.id];
++      if (typeof g === 'string' && g) t.giftCardCode = g;
++    }
++    sale.lines.forEach((l, i) => {
++      const p = secure.lines?.[String(i)];
++      if (!p || typeof p !== 'object') return;
++      if (typeof p.giftCardCode === 'string' && p.giftCardCode) l.giftCardCode = p.giftCardCode;
++      if (p.giftRecipient && typeof p.giftRecipient.email === 'string') l.giftRecipient = p.giftRecipient;
++    });
++  }
++  return sale;
++}
+diff --git a/src/lib/salesHistory.ts b/src/lib/salesHistory.ts
+index b09f87b..94b9d90 100644
+--- a/src/lib/salesHistory.ts
++++ b/src/lib/salesHistory.ts
+@@ -20,7 +20,7 @@ export type SharedHistory = { sales: SaleRecord[]; rollups: Record<string, Total
+ export const emptySharedHistory = (): SharedHistory => ({ sales: [], rollups: {} });
+ 
+ /** True when a decoded row looks like a whole sale record, so a bad or half-written row never reaches the tools. */
+-function looksLikeSale(v: unknown): v is SaleRecord {
++export function looksLikeSale(v: unknown): v is SaleRecord {
+   const x = v as SaleRecord;
+   return !!x && typeof x.uuid === 'string' && (x.type === 'sale' || x.type === 'refund') && typeof x.ts === 'string'
+     && typeof x.registerId === 'string' && Array.isArray(x.lines) && Array.isArray(x.tenders);
+diff --git a/tests/salerecords.test.ts b/tests/salerecords.test.ts
+new file mode 100644
+index 0000000..fe6067b
+--- /dev/null
++++ b/tests/salerecords.test.ts
+@@ -0,0 +1,119 @@
++// Location: tests/salerecords.test.ts
++// CloudKit patch 4 (pure half): a sale as a CloudKit record. Pins the names, that the customer's details and the card and gift
++// secrets never appear in a plain field, that the secrets come back when the encrypted field can be read, that the `omit`
++// setting leaves them out rather than writing them plain, and that a bad record is skipped.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { saleFromParts, saleRecordName, saleToParts, saleUuidFromRecord, SALE_SECURE_FIELD, SECRET_CARD_KEYS } from '../src/lib/saleRecords';
++import type { SaleRecord } from '../src/lib/types';
++
++const PAN = 'XXXXXXXXXXXX4242';
++const sale = (): SaleRecord => ({
++  uuid: 'u-1', type: 'sale', ts: '2026-10-31T03:00:00.000Z', registerId: 'reg-a', registerName: 'Front till', staff: 'Sam',
++  customer: { id: 'gid://shopify/Customer/9', name: 'Jane Citizen', email: 'jane@example.com', phone: '0400111222' },
++  lines: [
++    { variantId: 'v1', title: 'Benchy', qty: 2, baseUnitCents: 500, grossCents: 1000, discountCents: 0, netCents: 1000, costCents: 300, discountLabels: [], kind: 'item' },
++    { title: 'Gift card', qty: 1, baseUnitCents: 2500, grossCents: 2500, discountCents: 0, netCents: 2500, costCents: 0, discountLabels: [], kind: 'gift_card', giftCardCode: 'GIFT-SECRET-77', giftRecipient: { email: 'friend@example.com', name: 'Friend', message: 'Happy birthday' } },
++  ],
++  itemsCents: 3500, discountCents: 0, netCents: 3500, tipCents: 0, totalCents: 3500, cogsCents: 300, feesCents: 40, roundingCents: 0,
++  tenders: [
++    { id: 't-cash', kind: 'cash', amountCents: 1000, tenderedCents: 1000, changeCents: 0, at: '2026-10-31T03:00:01.000Z' },
++    { id: 't-card', kind: 'card', amountCents: 2500, at: '2026-10-31T03:00:02.000Z', feeCents: 40, feeRate: 0.016,
++      card: { transactionUuid: 'txn-1', externalReference: 'ext-1', approvalCode: '123456', scheme: 'Visa', panMasked: PAN, last4: '4242', rrn: 'RRN-9', receiptLink: 'https://pay.example/r/abc', responseCode: '00', cardMedia: 'chip', timestampLocal: '31/10 14:00', tipAmount: 0, surchargeAmount: 40 } },
++    { id: 't-gift', kind: 'gift_card', amountCents: 0, at: '2026-10-31T03:00:03.000Z', giftCardId: 'gc1', giftCardCode: 'GIFT-TENDER-55' },
++  ],
++  deals: [], note: 'for the open day', receiptLink: 'https://receipts.example/s/xyz', orderGid: 'gid://shopify/Order/1', orderName: '#1001',
++});
++const everything = (p: Record<string, unknown>): string => JSON.stringify(p);
++const SECRETS = [PAN, '4242', '123456', 'RRN-9', 'https://pay.example/r/abc', 'txn-1', 'ext-1', 'GIFT-SECRET-77', 'GIFT-TENDER-55', 'friend@example.com', 'https://receipts.example/s/xyz'];
++const PII = ['Jane Citizen', 'jane@example.com', '0400111222'];
++
++test('record names are deterministic and reversible', () => {
++  assert.equal(saleRecordName('u-1'), 'sale-u-1');
++  assert.equal(saleUuidFromRecord('sale-u-1'), 'u-1');
++  assert.equal(saleUuidFromRecord('sale-'), null);
++  assert.equal(saleUuidFromRecord('ledger-u-1'), null);
++});
++test('the secret card fields are the ones the decisions list', () => {
++  assert.deepEqual([...SECRET_CARD_KEYS].sort(), ['approvalCode', 'externalReference', 'last4', 'panMasked', 'responseCode', 'receiptLink', 'rrn', 'transactionUuid'].sort());
++});
++test('no secret and no customer detail is ever in a plain field, in any mode', () => {
++  for (const mode of ['encrypted', 'omit'] as const) {
++    const { plain } = saleToParts(sale(), mode);
++    const text = everything(plain);
++    for (const s of SECRETS) assert.equal(text.includes(s), false, `${mode}: plain fields leak ${s}`);
++    for (const s of PII) assert.equal(text.includes(s), false, `${mode}: plain fields leak ${s}`);
++  }
++});
++test('amounts, kind, tendered and change stay plain so reports can add them up', () => {
++  const { plain } = saleToParts(sale(), 'encrypted');
++  assert.equal(plain.total_cents, 3500); assert.equal(plain.fees_cents, 40); assert.equal(plain.register_name, 'Front till'); assert.equal(plain.employee, 'Sam');
++  assert.deepEqual(JSON.parse(String(plain.tenders_json)), [
++    { id: 't-cash', k: 'cash', a: 1000, t: 1000, c: 0 }, { id: 't-card', k: 'card', a: 2500 }, { id: 't-gift', k: 'gift_card', a: 0 },
++  ]);
++  const body = JSON.parse(String(plain.sale_json));
++  assert.equal(body.tenders[1].amountCents, 2500);
++  assert.equal(body.tenders[1].card.scheme, 'Visa'); // not a secret field, stays plain
++  assert.equal(body.tenders[1].card.surchargeAmount, 40);
++});
++test('only the Shopify customer id remains, and a note is kept as written', () => {
++  const { plain } = saleToParts(sale(), 'encrypted');
++  assert.equal(plain.customer_gid, 'gid://shopify/Customer/9');
++  assert.equal('customer' in JSON.parse(String(plain.sale_json)), false);
++  assert.equal(JSON.parse(String(plain.sale_json)).note, 'for the open day');
++});
++test('encrypted mode puts the secrets in one encrypted field, and nothing else there', () => {
++  const { encrypted } = saleToParts(sale(), 'encrypted');
++  assert.deepEqual(Object.keys(encrypted), [SALE_SECURE_FIELD]);
++  const text = String(encrypted[SALE_SECURE_FIELD]);
++  for (const s of SECRETS) assert.ok(text.includes(s), `missing ${s}`);
++  for (const s of PII) assert.equal(text.includes(s), false);
++  assert.equal(text.includes('"amountCents"'), false);
++});
++test('omit mode writes no encrypted field and the secrets go nowhere', () => {
++  const { plain, encrypted } = saleToParts(sale(), 'omit');
++  assert.deepEqual(encrypted, {});
++  assert.equal(everything(plain).includes('GIFT-SECRET-77'), false);
++  assert.equal(saleToParts(sale()).encrypted[SALE_SECURE_FIELD], undefined); // omit is the default
++});
++test('the sale round trips with the encrypted field, apart from the customer name', () => {
++  const s = sale();
++  const { plain, encrypted } = saleToParts(s, 'encrypted');
++  const back = saleFromParts(plain, encrypted)!;
++  assert.deepEqual(back.customer, { id: 'gid://shopify/Customer/9', name: '' });
++  const expected = { ...s, customer: { id: 'gid://shopify/Customer/9', name: '' } };
++  assert.deepEqual(back, expected);
++});
++test('without the encrypted field the sale still reads, minus its secrets', () => {
++  const { plain } = saleToParts(sale(), 'encrypted');
++  const back = saleFromParts(plain)!;
++  assert.equal(back.totalCents, 3500);
++  assert.equal(back.tenders[1].card?.panMasked, undefined);
++  assert.equal(back.tenders[1].card?.scheme, 'Visa');
++  assert.equal(back.tenders[2].giftCardCode, undefined);
++  assert.equal(back.lines[1].giftCardCode, undefined);
++  assert.equal(back.receiptLink, undefined);
++});
++test('a sale with no secrets and no customer has no encrypted field and no customer', () => {
++  const s: SaleRecord = { ...sale(), customer: undefined, receiptLink: undefined, lines: [sale().lines[0]], tenders: [sale().tenders[0]] };
++  const { plain, encrypted } = saleToParts(s, 'encrypted');
++  assert.deepEqual(encrypted, {});
++  assert.equal('customer_gid' in plain, false);
++  assert.equal(saleFromParts(plain, encrypted)!.customer, undefined);
++});
++test('the sale given is not changed', () => {
++  const s = sale(); const before = JSON.stringify(s);
++  saleToParts(s, 'encrypted');
++  assert.equal(JSON.stringify(s), before);
++});
++test('a bad record is skipped, not thrown', () => {
++  assert.equal(saleFromParts({}), null);
++  assert.equal(saleFromParts({ sale_json: 'not json' }), null);
++  assert.equal(saleFromParts({ sale_json: '[]' }), null);
++  assert.equal(saleFromParts({ sale_json: JSON.stringify({ uuid: 'x' }) }), null);
++});
++test('an unreadable or wrong-version encrypted field is ignored, the sale still reads', () => {
++  const { plain } = saleToParts(sale(), 'encrypted');
++  assert.equal(saleFromParts(plain, { [SALE_SECURE_FIELD]: 'garbage' })!.totalCents, 3500);
++  assert.equal(saleFromParts(plain, { [SALE_SECURE_FIELD]: JSON.stringify({ v: 2, receiptLink: 'x' }) })!.receiptLink, undefined);
++});
