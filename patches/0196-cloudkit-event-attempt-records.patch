@@ -1,0 +1,264 @@
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 205efe9..fdcdf4e 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -381,3 +381,12 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
+ 5. **One encrypted field, not many.** Guess: one JSON field, `secure_json`, so the native side handles a single encrypted key per sale.
+ 6. **A customer reads back with no name.** The sale keeps only the Shopify id. Guess: it returns as `{ id, name: '' }` and the till fills in the name from its own Shopify cache.
+ 7. **Free-text notes and reasons stay plain** (decisions item 18), a known minor exception for a customer's name.
++
++## CloudKit events and attempts (0196)
++
++These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
++
++1. **Event ids.** The decisions say `event-<id>` and that events have an id, but local events have none (they are CSV rows). Guess: the id is the register id plus a hash of the CSV row, so it is the same however many times the event is uploaded.
++2. **A resolution is its own record.** The decisions name only `attempt-<sale uuid>-<reference>` and say the first resolution wins. Guess: resolving writes a second, write-once record `resolve-<sale uuid>-<reference>`, because a write-once record is the one way two registers resolving at the same moment cannot both win.
++3. **A resolved attempt's old status.** The app overwrites the status with `resolved`, so the earlier one is lost. Guess: the attempt record keeps `unknown` and the resolution says it was resolved.
++4. **Events hold no card or customer detail, so they are not encrypted.** A free-text `message` or `detail` could in principle hold a name, the same minor exception as a sale note (item 18).
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index aa5ee41..dae4f9d 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -176,6 +176,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0193 | 2026-10-31 | CloudKit: **every record write now updates in place** (your request: next one). The old `putRecord` built a fresh record each time, which CloudKit refuses for a name that exists, so a second `putSale`, `putRollup`, `putCart`, `putSettings`, `putLayout`, `putSquareHistory` or `putMigration` on the same handle would have failed with serverRecordChanged. It now calls `upsertRecord` (fetch, change, save, retry on conflict). Fields a later write leaves out stay as they were, which suits these records; say so if one needs replace-all instead. `tests/cloudkitswift.test.ts` (4) reads the Swift source and pins that only `upsertRecord` and `putRecordOnce` save a record. **The Swift is still uncompiled and untried on a device; this is a read-through check, not a build.** | your request |
+ | 0194 | 2026-10-31 | CloudKit patch 4, first half: **a sale as a CloudKit record, pure code only** (your request: continue on the repo). New `src/lib/saleRecords.ts`: `saleToParts` splits a finished sale into plain fields and one encrypted field, `secure_json`, and `saleFromParts` puts it back together. Plain: who, when, which register, the amounts, kind, tendered and change per tender, and the whole sale as `sale_json` minus its private parts. Encrypted: each card tender's masked number, last four, approval code, retrieval reference, receipt link, response code and transaction references (the list in decisions Q6), plus gift card codes, gift recipients and the sale's receipt link. The customer is never written, only the Shopify id as `customer_gid`, and it reads back as an id with no name for the till to resolve from Shopify. A switch, `CardMode`, is `omit` by default: the private parts are then left out entirely and **never written as plain fields**, which is the safe state until the two-Apple-ID test (O4) has passed; `encrypted` turns them on. The old plain `r` (card reference) in `tenders_json` is gone from the CloudKit shape. A register that cannot read the encrypted field still shows the sale, without the card details. `looksLikeSale` in `salesHistory.ts` is now exported so both decoders share one check. Tests: `tests/salerecords.test.ts` (13: names, no secret or customer detail in any plain field in either mode, amounts plain, round trip, the sale given is not changed, bad and wrong-version records skipped). I broke the customer strip and the card strip on purpose and confirmed the tests fail. **Nothing calls it yet and no native code changed**, so there is no behaviour change; 0195 wires it. Checked: `tsc --noEmit` clean, full suite passes. **Decided without you, change any you disagree with:** see `dev_docs/GUESSES.md`, 'CloudKit sale records'. | your request |
+ | 0195 | 2026-10-31 | CloudKit patch 4, second half: **sales are written and read as encrypted CloudKit records** (your request: continue). `CloudKitSyncModule.swift`: `putSale` takes a third argument, `encrypted`, written with `record.encryptedValues`; `recordToDict` reads the encrypted keys back by name (CloudKit's `allKeys()` does not list them) and returns them under `encrypted`, absent when this device cannot read them, so the sale still reads. Two guards in the Swift: `copyFields` never writes the encrypted key as a plain field (`cloudKitNeverPlainKeys`), and `copyEncrypted` accepts only the keys listed for that record type (today only a Sale's `secure_json`, text only). `cloudkitBackend.ts`: `put('sale')` goes through `saleWriteFromFields` (the whole sale is rebuilt from `sale_json`, so a customer, the receipt link or a card reference in `tenders_json` cannot ride along beside it) and every sale read through `saleRowFields`, which rebuilds `sale_json` with the card details when the encrypted field was readable. `detailReady` answers true, so `sync.ts` always sends the whole sale. `setSaleCardMode('encrypted' | 'omit')` is the switch; **it is `omit` until you turn it on**, so no card detail is written anywhere yet, plain or encrypted. The old source-reading test in `tests/cloudkitbackend.test.ts` was replaced by tests of what the backend actually sends (the strip it pinned moved into `saleRecords.ts`). Tests: 2 new round trips through `decodeSaleRow` in `tests/salerecords.test.ts` (15), 5 in `cloudkitbackend.test.ts`, 3 more Swift pins in `cloudkitswift.test.ts` (7). **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today.** **Not checked: the Swift has never been compiled or run (it needs a Mac build), and nothing has touched a real zone.** Device test T85 is the two-Apple-ID encryption test (O4), written out step by step; run it before `encrypted` is switched on or patch 6d is built. Dashboard step: a Sale's `secure_json` is an encrypted field, so it needs no index, but the schema has to be deployed to production like the others. | your request |
++| 0196 | 2026-10-31 | CloudKit patch 4, third piece: **events and payment attempts as records, pure code only** (your request: continue). New `src/lib/eventRecords.ts`. **Events** (the `events.csv` rows): one record each, `event-<id>`, written once and never edited, labelled with the register's id and name. The id is the register id plus a hash of the event's own CSV row, so the same event uploaded twice (a retry, or the one-off upload of a register's history after it joins, Q13) lands on one record, and a row read back from `events.csv` later gets the id it had when it was made. `eventsToUpload` says which events CloudKit lacks, and `eventsCsv` builds the combined CSV on demand (the `events.csv` columns plus the register's name, oldest first, each event once). **Payment attempts:** `attempt-<sale>-<ref>` holds the attempt and its register, and its status only ever moves forward (`furtherStatus`), so a late upload from an offline register cannot undo a newer status. Resolving an unresolved payment is its own record, `resolve-<sale>-<ref>`, written once by whichever register gets there first, so **the first resolution wins by construction** (Q10) with no merge to get wrong; `unresolvedAttempts` is the shop-wide list a manager sees. Tests: `tests/eventrecords.test.ts` (14). I broke the status order and the per-register id on purpose and confirmed each fails a test. **Nothing calls it yet and no native code changed**, so there is no behaviour change. Still to do for patch 4: the Swift and bridge functions for these records (the resolution one must use `putRecordOnce`), and the call sites in `csvStore.event` and `Pay.tsx`. `csvStore.event` fills in the time itself, and the id needs that same time, so the call site has to set it once and pass it to both. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit events and attempts'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/eventRecords.ts b/src/lib/eventRecords.ts
+new file mode 100644
+index 0000000..604045f
+--- /dev/null
++++ b/src/lib/eventRecords.ts
+@@ -0,0 +1,118 @@
++// Location: src/lib/eventRecords.ts
++// CloudKit sync, patch 4 (pure half): events and payment attempts as CloudKit records.
++//
++// Events are the rows of `events.csv` (declined and unknown payments, voids, overrides, errors, paid in and out, shift opens and
++// closes, no-sales, cancelled and failed refunds, staff switches). Each becomes one record, written once and never edited, named
++// by an id worked out from the row itself, so the same event uploaded twice (a retry, or the one-off upload of a register's own
++// history after it joins) lands on the same record. The local CSV stays as it is; the shared copy is these records, and
++// `eventsCsv` builds a combined CSV from them on demand (decisions item 12, Q3).
++//
++// A payment attempt changes status over time, so it is two kinds of record: `attempt-<sale>-<ref>`, whose status only moves forward,
++// and `resolve-<sale>-<ref>`, written once by whichever register resolves an unresolved payment first (decisions item 9, Q10).
++// Because the resolution is its own write-once record, "the first resolution wins" holds by construction, with no merge needed.
++// No React, no store, no native module: tested on its own (tests/eventrecords.test.ts).
++import { EVENTS_HEADER, eventRow, line, type EventKind } from './csvFormat';
++import { toDecimal } from './money';
++import type { Attempt } from '../state/store';
++
++type Fields = Record<string, string | number>;
++
++// ── Events ───────────────────────────────────────────────────────────────────────────────────────────────────────────────
++
++export const EVENT_KINDS: readonly EventKind[] = ['declined', 'unknown_payment', 'unknown_resolved', 'void', 'override', 'error', 'paid_in', 'paid_out', 'shift_open', 'shift_close', 'no_sale', 'cancelled', 'refund_failed', 'staff_switch'];
++/** An event as csvStore writes it, but with the time always set: the id is worked out from the time, so it must be the one written to the CSV. */
++export type EventInput = { ts: string; kind: EventKind; saleUuid?: string; reference?: string; amountCents?: number; code?: string; message?: string; staff?: string; detail?: string };
++/** An event as read back: who made it is part of it. */
++export type SharedEvent = EventInput & { id: string; registerId: string; registerName: string };
++
++/** A 53-bit string hash (cyrb53). Not a secret, only a stable short name for the same text. */
++function hash53(text: string): string {
++  let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
++  for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
++  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
++  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
++  return (4294967296 * (2097151 & h2) + (h1 >>> 0)).toString(16).padStart(14, '0');
++}
++
++/**
++ * The id of an event: this register plus a hash of its CSV row. The row already holds the time, kind, sale, reference, amount, code,
++ * message, staff and detail, so the same row gives the same id whether it was just made or read back from `events.csv` later, and
++ * two registers never share an id because the register id is part of it.
++ */
++export const eventId = (registerId: string, e: EventInput): string => `${registerId}-${hash53(eventRow(e))}`;
++export const eventRecordName = (id: string): string => `event-${id}`;
++export const eventIdFromRecord = (name: string): string | null => (name.startsWith('event-') && name.length > 6 ? name.slice(6) : null);
++
++/** The event as record fields, labelled with the register that made it. Nothing here is encrypted: events hold no card or customer detail. */
++export function eventToFields(registerId: string, registerName: string, e: EventInput): Fields {
++  const f: Fields = { ts: e.ts, kind: e.kind, registerId, registerName };
++  if (e.saleUuid) f.saleUuid = e.saleUuid; if (e.reference) f.reference = e.reference; if (e.amountCents !== undefined) f.amountCents = e.amountCents;
++  if (e.code) f.code = e.code; if (e.message) f.message = e.message; if (e.staff) f.staff = e.staff; if (e.detail) f.detail = e.detail;
++  return f;
++}
++/** Null for a record that is not a readable event, so one bad record cannot break the list. */
++export function eventFromFields(id: string, f: Record<string, unknown>): SharedEvent | null {
++  if (!id || typeof f.ts !== 'string' || typeof f.kind !== 'string' || !EVENT_KINDS.includes(f.kind as EventKind) || typeof f.registerId !== 'string') return null;
++  const e: SharedEvent = { id, ts: f.ts, kind: f.kind as EventKind, registerId: f.registerId, registerName: typeof f.registerName === 'string' ? f.registerName : '' };
++  for (const k of ['saleUuid', 'reference', 'code', 'message', 'staff', 'detail'] as const) if (typeof f[k] === 'string' && f[k]) e[k] = f[k] as string;
++  if (typeof f.amountCents === 'number' && Number.isFinite(f.amountCents)) e.amountCents = Math.round(f.amountCents);
++  return e;
++}
++
++const oldestFirst = (a: { ts: string; id: string }, b: { ts: string; id: string }): number => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id);
++/** Events this register holds that CloudKit does not (by id), oldest first: what is still to upload. */
++export function eventsToUpload(registerId: string, local: EventInput[], remoteIds: Set<string>): { id: string; event: EventInput }[] {
++  const seen = new Set<string>(); const out: { id: string; event: EventInput }[] = [];
++  for (const event of local) { const id = eventId(registerId, event); if (!remoteIds.has(id) && !seen.has(id)) { seen.add(id); out.push({ id, event }); } }
++  return out.sort((a, b) => oldestFirst({ ts: a.event.ts, id: a.id }, { ts: b.event.ts, id: b.id }));
++}
++
++/** The combined CSV of every register's events, oldest first, duplicates by id once: the `events.csv` columns plus the register's name. */
++export function eventsCsv(events: SharedEvent[]): string {
++  const byId = new Map<string, SharedEvent>(); for (const e of events) if (e?.id && !byId.has(e.id)) byId.set(e.id, e);
++  const rows = Array.from(byId.values()).sort(oldestFirst).map(e => line([e.ts, e.kind, e.saleUuid, e.reference, e.amountCents === undefined ? '' : toDecimal(e.amountCents), e.code, e.message, e.staff, e.detail, e.registerName]));
++  return line([...EVENTS_HEADER, 'register']) + rows.join('');
++}
++
++// ── Payment attempts ─────────────────────────────────────────────────────────────────────────────────────────────────────
++
++export const attemptRecordName = (saleUuid: string, ref: string): string => `attempt-${saleUuid}-${ref}`;
++export const resolutionRecordName = (saleUuid: string, ref: string): string => `resolve-${saleUuid}-${ref}`;
++export type SharedAttempt = Attempt & { registerId: string; registerName: string; resolvedAt?: string };
++
++type Open = Exclude<Attempt['status'], 'resolved'>;
++const OPEN: readonly Open[] = ['started', 'unknown', 'cancelled', 'declined', 'approved'];
++/** How far along an attempt is. A status only ever moves to a higher number, so a late upload from an offline register cannot undo a newer one. */
++const RANK: Record<Open, number> = { started: 0, unknown: 1, cancelled: 2, declined: 2, approved: 2 };
++/** The status to keep when two copies of an attempt meet: the further along one, and the one already stored when they tie. */
++export const furtherStatus = (stored: Open, incoming: Open): Open => (RANK[incoming] > RANK[stored] ? incoming : stored);
++
++/**
++ * An attempt as its two records' fields. A resolved attempt writes its open status as `unknown` (it was unresolved until someone
++ * resolved it) and adds the resolution fields, which are written once.
++ */
++export function attemptToFields(registerId: string, registerName: string, a: Attempt): { attempt: Fields; resolution?: Fields } {
++  const open: Open = a.status === 'resolved' ? 'unknown' : a.status;
++  const attempt: Fields = { ref: a.ref, saleUuid: a.saleUuid, amountCents: a.amountCents, ts: a.ts, status: open, registerId, registerName };
++  if (a.note) attempt.note = a.note;
++  if (a.status !== 'resolved') return { attempt };
++  const resolution: Fields = { ref: a.ref, saleUuid: a.saleUuid, resolvedBy: a.resolvedBy ?? registerName, resolvedAt: new Date().toISOString(), registerId, registerName };
++  return { attempt, resolution };
++}
++
++/** The attempt as read back, with its resolution if one was written. Null for a record that is not a readable attempt. */
++export function attemptFromFields(f: Record<string, unknown>, resolution?: Record<string, unknown> | null): SharedAttempt | null {
++  if (typeof f.ref !== 'string' || typeof f.saleUuid !== 'string' || typeof f.ts !== 'string' || typeof f.registerId !== 'string') return null;
++  if (typeof f.amountCents !== 'number' || !Number.isFinite(f.amountCents) || !OPEN.includes(f.status as Open)) return null;
++  const a: SharedAttempt = { ref: f.ref, saleUuid: f.saleUuid, amountCents: Math.round(f.amountCents), ts: f.ts, status: f.status as Open, registerId: f.registerId, registerName: typeof f.registerName === 'string' ? f.registerName : '' };
++  if (typeof f.note === 'string' && f.note) a.note = f.note;
++  if (resolution && typeof resolution.resolvedBy === 'string' && resolution.resolvedBy) {
++    a.status = 'resolved'; a.resolvedBy = resolution.resolvedBy;
++    if (typeof resolution.resolvedAt === 'string') a.resolvedAt = resolution.resolvedAt;
++  }
++  return a;
++}
++
++/** Attempts that still need someone, shop-wide: started or unknown and not resolved, newest first. */
++export const unresolvedAttempts = (list: SharedAttempt[]): SharedAttempt[] =>
++  list.filter(a => a.status === 'started' || a.status === 'unknown').sort((a, b) => b.ts.localeCompare(a.ts));
+diff --git a/tests/eventrecords.test.ts b/tests/eventrecords.test.ts
+new file mode 100644
+index 0000000..2849693
+--- /dev/null
++++ b/tests/eventrecords.test.ts
+@@ -0,0 +1,105 @@
++// Location: tests/eventrecords.test.ts
++// CloudKit patch 4 (pure half): events and payment attempts as records. Pins that an event's id is stable and per register, that
++// the same event uploaded twice is one record, that a bad record is skipped, that the combined CSV carries the register, that an
++// attempt's status only moves forward, and that a resolution is its own write-once record, so the first resolver is the one kept.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { attemptFromFields, attemptRecordName, attemptToFields, eventFromFields, eventId, eventIdFromRecord, eventRecordName, eventsCsv, eventsToUpload, eventToFields, furtherStatus, resolutionRecordName, unresolvedAttempts, EVENT_KINDS, type EventInput, type SharedAttempt } from '../src/lib/eventRecords';
++import { EVENTS_HEADER, eventRow } from '../src/lib/csvFormat';
++import type { Attempt } from '../src/state/store';
++
++const ev = (o: Partial<EventInput> = {}): EventInput => ({ ts: '2026-10-31T03:00:00.000Z', kind: 'declined', saleUuid: 's1', reference: 'ref-1', amountCents: 1250, code: '05', message: 'Do not honour', staff: 'Sam', detail: 'visa, "chip"', ...o });
++
++test('the kinds match the CSV kinds', () => {
++  assert.equal(EVENT_KINDS.length, 14);
++  assert.ok(EVENT_KINDS.includes('staff_switch') && EVENT_KINDS.includes('refund_failed') && EVENT_KINDS.includes('paid_in'));
++});
++test('an event id is stable, per register, and the same for the same row', () => {
++  assert.equal(eventId('reg-a', ev()), eventId('reg-a', ev()));
++  assert.notEqual(eventId('reg-a', ev()), eventId('reg-b', ev()));
++  assert.notEqual(eventId('reg-a', ev()), eventId('reg-a', ev({ amountCents: 1251 })));
++  assert.notEqual(eventId('reg-a', ev()), eventId('reg-a', ev({ ts: '2026-10-31T03:00:00.001Z' })));
++  assert.match(eventId('reg-a', ev()), /^reg-a-[0-9a-f]{14}$/);
++});
++test('the id is worked out from the CSV row, so a row read back later gives the same id', () => {
++  const e = ev();
++  const rebuilt: EventInput = { ts: e.ts, kind: e.kind, saleUuid: e.saleUuid, reference: e.reference, amountCents: 1250, code: e.code, message: e.message, staff: e.staff, detail: e.detail };
++  assert.equal(eventRow(e), eventRow(rebuilt));
++  assert.equal(eventId('r', e), eventId('r', rebuilt));
++});
++test('record names are deterministic and reversible', () => {
++  assert.equal(eventRecordName('reg-a-abc'), 'event-reg-a-abc');
++  assert.equal(eventIdFromRecord('event-reg-a-abc'), 'reg-a-abc');
++  assert.equal(eventIdFromRecord('event-'), null);
++  assert.equal(eventIdFromRecord('ledger-x'), null);
++  assert.equal(attemptRecordName('s1', 'ref-1'), 'attempt-s1-ref-1');
++  assert.equal(resolutionRecordName('s1', 'ref-1'), 'resolve-s1-ref-1');
++});
++test('an event round trips with the register that made it, and a zero amount is kept', () => {
++  const e = ev({ amountCents: 0 });
++  const id = eventId('reg-a', e);
++  const back = eventFromFields(id, eventToFields('reg-a', 'Front till', e))!;
++  assert.deepEqual(back, { ...e, id, registerId: 'reg-a', registerName: 'Front till' });
++  const bare = eventFromFields('x', eventToFields('r', 'R', { ts: 't', kind: 'no_sale' }))!;
++  assert.deepEqual(bare, { id: 'x', ts: 't', kind: 'no_sale', registerId: 'r', registerName: 'R' });
++});
++test('a bad event record is skipped', () => {
++  assert.equal(eventFromFields('x', {}), null);
++  assert.equal(eventFromFields('x', { ts: 't', kind: 'not_a_kind', registerId: 'r' }), null);
++  assert.equal(eventFromFields('x', { ts: 't', kind: 'void' }), null);
++  assert.equal(eventFromFields('', { ts: 't', kind: 'void', registerId: 'r' }), null);
++});
++test('only events CloudKit lacks are uploaded, once each, oldest first', () => {
++  const a = ev({ ts: '2026-10-31T01:00:00.000Z', reference: 'a' }), b = ev({ ts: '2026-10-31T02:00:00.000Z', reference: 'b' }), c = ev({ ts: '2026-10-31T00:00:00.000Z', reference: 'c' });
++  const have = new Set([eventId('r', b)]);
++  const up = eventsToUpload('r', [a, b, c, a], have);
++  assert.deepEqual(up.map(u => u.event.reference), ['c', 'a']);
++  assert.equal(up[0].id, eventId('r', c));
++});
++test('the combined CSV has the events columns plus the register, oldest first, each event once', () => {
++  const mk = (reg: string, name: string, e: EventInput) => eventFromFields(eventId(reg, e), eventToFields(reg, name, e))!;
++  const e1 = mk('a', 'Front', ev({ ts: '2026-10-31T02:00:00.000Z', reference: 'late' })), e2 = mk('b', 'Back', ev({ ts: '2026-10-31T01:00:00.000Z', reference: 'early', amountCents: 500 }));
++  const rows = eventsCsv([e1, e2, e1]).trimEnd().split('\n');
++  assert.equal(rows[0], [...EVENTS_HEADER, 'register'].join(','));
++  assert.equal(rows.length, 3);
++  assert.match(rows[1], /early/); assert.match(rows[1], /5\.00/); assert.match(rows[1], /Back$/);
++  assert.match(rows[2], /late/); assert.match(rows[2], /Front$/);
++  assert.equal(eventsCsv([]).trimEnd(), [...EVENTS_HEADER, 'register'].join(','));
++});
++
++const att = (o: Partial<Attempt> = {}): Attempt => ({ ref: 'ref-1', saleUuid: 's1', amountCents: 2500, ts: '2026-10-31T03:00:00.000Z', status: 'started', ...o });
++test('an open attempt is one record with the register, and no resolution', () => {
++  const { attempt, resolution } = attemptToFields('reg-a', 'Front till', att({ status: 'declined', note: 'n' }));
++  assert.equal(resolution, undefined);
++  const back = attemptFromFields(attempt)!;
++  assert.deepEqual(back, { ...att({ status: 'declined', note: 'n' }), registerId: 'reg-a', registerName: 'Front till' });
++});
++test('a resolved attempt writes an open status and a separate resolution, and reads back as resolved', () => {
++  const { attempt, resolution } = attemptToFields('reg-b', 'Back till', att({ status: 'resolved', resolvedBy: 'Sam' }));
++  assert.equal(attempt.status, 'unknown');
++  assert.equal(resolution!.resolvedBy, 'Sam');
++  const back = attemptFromFields(attempt, resolution)!;
++  assert.equal(back.status, 'resolved'); assert.equal(back.resolvedBy, 'Sam'); assert.equal(back.registerName, 'Back till');
++  assert.equal(attemptFromFields(attempt)!.status, 'unknown'); // no resolution record yet: still open
++});
++test('a resolution with no name falls back to the register that wrote it', () => {
++  const { resolution } = attemptToFields('reg-b', 'Back till', att({ status: 'resolved' }));
++  assert.equal(resolution!.resolvedBy, 'Back till');
++});
++test('an attempt status only moves forward, and ties keep the stored one', () => {
++  assert.equal(furtherStatus('started', 'unknown'), 'unknown');
++  assert.equal(furtherStatus('unknown', 'approved'), 'approved');
++  assert.equal(furtherStatus('approved', 'started'), 'approved'); // a late upload cannot undo it
++  assert.equal(furtherStatus('unknown', 'started'), 'unknown');
++  assert.equal(furtherStatus('declined', 'approved'), 'declined');
++});
++test('a bad attempt record is skipped', () => {
++  assert.equal(attemptFromFields({}), null);
++  assert.equal(attemptFromFields({ ref: 'r', saleUuid: 's', ts: 't', registerId: 'x', amountCents: 5, status: 'resolved' }), null); // resolved is never stored on the attempt itself
++  assert.equal(attemptFromFields({ ref: 'r', saleUuid: 's', ts: 't', registerId: 'x', amountCents: 'five', status: 'started' }), null);
++});
++test('the shop-wide unresolved list holds started and unknown attempts only, newest first', () => {
++  const mk = (ref: string, status: Attempt['status'], ts: string): SharedAttempt => ({ ...att({ ref, status, ts }), registerId: 'r', registerName: 'R' });
++  const list = unresolvedAttempts([mk('a', 'approved', '2026-10-31T05:00:00Z'), mk('b', 'unknown', '2026-10-31T01:00:00Z'), mk('c', 'started', '2026-10-31T02:00:00Z'), mk('d', 'resolved', '2026-10-31T06:00:00Z'), mk('e', 'declined', '2026-10-31T07:00:00Z')]);
++  assert.deepEqual(list.map(a => a.ref), ['c', 'b']);
++});
