@@ -73,3 +73,51 @@ test('csvStore sets the time once for the CSV row and the upload, and sends noth
   assert.match(body, /eventRow\(full\)/); assert.match(body, /if \(!isTraining\(\)\) eventSink\?\.\(full\)/);
   assert.equal((body.match(/new Date\(\)/g) ?? []).length, 1, 'the time is made in one place only');
 });
+
+// ── The combined CSV (0201) ──────────────────────────────────────────────────────────────────────────────────────────────
+// Two registers share one fake CloudKit. Register B's events are written straight into the fake, as if B had uploaded them.
+function twoRegisters(csvA: string) {
+  const a = world({}, csvA);
+  const putB = async (e: EventInput) => { const { eventId, eventToFields } = await import('../src/lib/eventRecords'); a.events.push({ ...eventToFields('reg-b', 'Back', e), recordName: `event-${eventId('reg-b', e)}` }); };
+  return { ...a, putB };
+}
+test('the combined CSV holds every register\'s events, oldest first, each once, with the register\'s name', async () => {
+  const w = twoRegisters(csvOf(ev(1), ev(3)));
+  await w.putB(ev(2, { kind: 'void', reference: 'rb' }));
+  const text = await w.sync.exportCsv();
+  assert.ok(text);
+  const rows = text!.trim().split('\n');
+  assert.equal(rows.length, 4, 'a header and three events');
+  assert.match(rows[0], /,register$/);
+  assert.deepEqual(rows.slice(1).map(r => r.split(',')[0]), [ev(1).ts, ev(2).ts, ev(3).ts], 'oldest first');
+  assert.deepEqual(rows.slice(1).map(r => r.split(',').pop()), ['Front', 'Back', 'Front']);
+});
+test('exporting first sends this register\'s own history, so the file is not missing events made here', async () => {
+  const w = world({}, csvOf(ev(1), ev(2)));
+  assert.equal(w.sync.isBehind(), true);
+  const text = await w.sync.exportCsv();
+  assert.equal(w.events.length, 2); assert.equal(w.sync.isBehind(), false);
+  assert.equal(text!.trim().split('\n').length, 3);
+});
+test('exporting twice gives the same file and writes nothing more', async () => {
+  const w = world({}, csvOf(ev(1), ev(2)));
+  const one = await w.sync.exportCsv(); const writes = w.calls.writes; const two = await w.sync.exportCsv();
+  assert.equal(one, two); assert.equal(w.calls.writes, writes);
+});
+test('no file is made when CloudKit is not the active backend, in practice mode, or before the register has an id', async () => {
+  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
+    const w = world(over, csvOf(ev(1)));
+    assert.equal(await w.sync.exportCsv(), null); assert.equal(w.events.length, 0); assert.equal(w.calls.lists, 0);
+  }
+});
+test('a CloudKit read that fails is reported to the person who asked, not hidden', async () => {
+  const w = world({ native: async () => { throw new Error('iCloud is not reachable'); } }, csvOf(ev(1)));
+  await assert.rejects(w.sync.exportCsv(), /iCloud is not reachable/);
+});
+test('the Cloud sync page offers the export only when CloudKit is the backend, and keeps it off in practice mode', () => {
+  const screen = readFileSync('src/screens/CloudSync.tsx', 'utf8');
+  assert.match(screen, /activeBackendKind\(\) === 'cloudkit'/);
+  assert.match(screen, /spot=\{SPOT\.cloudSyncEvents\}[^>]*disabled=\{practice\}/);
+  assert.match(screen, /eventSync\.exportCsv\(\)/);
+  assert.match(readFileSync('src/lib/sync.ts', 'utf8'), /export const eventSync = events;/);
+});

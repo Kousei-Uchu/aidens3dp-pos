@@ -422,3 +422,14 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 5. **The Diagnostics list is read only.** The decisions say any register can resolve a payment (Q10), but a resolution has to say whether the customer was charged, and for another register's sale that choice only means something at the register holding the sale. Guess: show the list now and leave a resolve button for later, once it is decided what "charged" means from a register that has no cart for the sale.
 6. **A `started` attempt older than 5 minutes is labelled "stopped part way".** It uses the same 5 minute window as `paymentActive` and stays in the list, so a manager can see a charge that never finished instead of it saying "in progress" for ever.
 7. **The section is on Diagnostics, not a new screen, and only shows once CloudKit has sent attempts.** A register still on Shopify storage never sees an empty section.
+
+## CloudKit events export (0201)
+
+These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **The export is a button on the Cloud sync page.** The decisions say "build a combined CSV from them on demand" (item 12, Q3) and do not say where. Guess: Cloud sync, because it is about iCloud and is already for managers and owners. The alternative is the Export questions (Reports and Settings ▸ Data), which would make it a table beside the others.
+2. **It is shown only when CloudKit is the backend in use.** Until patch 8 nothing sets that, so no till sees the button yet. It is not shown on a register still on Shopify storage, because there is nothing in iCloud to build it from.
+3. **Exporting sends this register's own history first.** If the launch catch-up has not run yet, the export runs it, so the file is not missing events made on this iPad. If that catch-up fails, the export carries on with what CloudKit holds rather than refusing.
+4. **A failed read says so.** The poll hides CloudKit errors; this one shows them, because a person asked for the file.
+5. **One file, one CSV.** The `events.csv` columns plus a `register` column holding the register's name (two registers with the same name look alike; the id is not in the file). Say so if you want the id too.
+6. **No pull for the app itself.** Nothing else reads the shared events (no screen shows other registers' events), so events are read only when the file is asked for, not on the poll.

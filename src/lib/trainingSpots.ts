@@ -193,6 +193,7 @@ export const SPOT = {
   cloudSyncSetup: 'cloudsync.setup',   // the Set up this till button
   cloudSyncShare: 'cloudsync.share',   // the Share the invite link button
   cloudSyncJoin: 'cloudsync.join',     // the Join button
+  cloudSyncEvents: 'cloudsync.events', // the Export all events button
   // Set up this device, and the device mode itself (Companion plan, patch 0176)
   setupModeRegister: 'setup.mode.register',     // the "A register" choice on the setup screen
   setupModeCompanion: 'setup.mode.companion',   // the "A companion" choice

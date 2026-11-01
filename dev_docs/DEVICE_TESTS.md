@@ -1188,3 +1188,15 @@ Needs two iPads on the shop's share (T74), both on a build with this patch and t
 6. Turn airplane mode on at B, wait through two polls, then turn it off. Pass: no error shows at B, B's list keeps its last contents while offline, and refreshes within about 30 seconds of reconnecting.
 7. Force-quit and reopen B. Pass: the section is absent until the first poll (or Sync now), then lists the same payments as before.
 8. Start practice mode (Training) on B. Pass: the section does not change and no notice appears while it runs.
+
+## T90. One CSV of every register's events (0201)
+
+Needs two iPads on the shop's share (T74), both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8). Nothing in this patch has been run on a device.
+
+1. On iPad A and iPad B, make a few events: a no-sale on A, a paid in on B, a void on A. Open **Settings ▸ Data ▸ Cloud sync** on A. Pass: an **Events from every register** section with **Export all events** is there. On a till still on Shopify storage the section is absent.
+2. On A, tap **Export all events** and save the file to Files. Pass: a CSV named `events-all-registers-<date>.csv` whose columns are the `events.csv` columns plus `register`, with the events from both iPads oldest first, each once, and each row naming its register.
+3. Tap it again straight away. Pass: the same rows, nothing doubled.
+4. On B, make one more event, wait about 30 seconds, then export on A. Pass: the new event is in the file.
+5. Turn airplane mode on at A and tap **Export all events**. Pass: a message says the file could not be made, and nothing is shared. Turn it off and tap again. Pass: the file is made.
+6. Compare A's own `events.csv` in Files with before. Pass: unchanged apart from any events made since.
+7. Start practice mode (Training) and open the page. Pass: the button is greyed out.

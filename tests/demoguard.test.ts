@@ -73,7 +73,7 @@ test('CloudKit is only reached through the sync seam, whose writes check the gua
   const callers = walk('src').filter(f => !/^src\/lib\/(cloudkit|shopify\/metaobjectBackend)/.test(f) && f !== 'src/lib/syncBackend.ts' && /\.put\(/.test(read(f)));
   assert.deepEqual(callers, [], 'only the seam may call a backend\'s put()');
   const screen = read('src/screens/CloudSync.tsx');
-  for (const spot of ['cloudSyncSetup', 'cloudSyncShare', 'cloudSyncJoin']) assert.match(screen, new RegExp(`spot=\\{SPOT\\.${spot}\\}[^>]*practice`), `the ${spot} button is off while practising`);
+  for (const spot of ['cloudSyncSetup', 'cloudSyncShare', 'cloudSyncJoin', 'cloudSyncEvents']) assert.match(screen, new RegExp(`spot=\\{SPOT\\.${spot}\\}[^>]*practice`), `the ${spot} button is off while practising`);
 });
 
 test('the pass server request is stopped by the guard, before anything is sent', async () => {

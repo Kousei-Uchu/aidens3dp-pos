@@ -4,10 +4,14 @@
 // the door and says which side of it this till is on.
 import React, { useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
+import * as FS from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Btn, Field, Page, Txt, alertMsg } from '../ui/kit';
 import { useNav } from '../ui/nav';
 import { SPOT } from '../lib/trainingSpots';
 import { isTraining } from '../lib/trainingGuard';
+import { activeBackendKind } from '../lib/syncBackend';
+import { eventSync } from '../lib/sync';
 import {
   acceptShare,
   accountLine,
@@ -70,6 +74,24 @@ export default function CloudSync() {
     catch (e: any) { alertMsg('Could not share the link', e?.message ?? String(e), 'settings/cloud-sync'); }
   };
 
+  // The combined events file (decisions item 12, Q3): every register's events, built from CloudKit when asked for. It is only
+  // offered once CloudKit is the backend in use, because until then there is nothing in CloudKit to build it from.
+  const exportEvents = async () => {
+    setBusy(true); setMsg('');
+    try {
+      const text = await eventSync.exportCsv();
+      if (text === null) throw new Error('Cloud sync is not switched on for this till.');
+      if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available on this device.');
+      const name = `events-all-registers-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.csv`;
+      await FS.makeDirectoryAsync(FS.cacheDirectory ?? '', { intermediates: true }).catch(() => {});
+      const path = `${FS.cacheDirectory}${name}`;
+      await FS.writeAsStringAsync(path, text);
+      await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: name, UTI: 'public.comma-separated-values-text' });
+      setMsg(`Made ${name} from the events every register has sent to iCloud.`);
+    } catch (e: any) { alertMsg('Could not make the events file', e?.message ?? String(e), 'settings/cloud-sync'); }
+    setBusy(false);
+  };
+
   return (
     <Page title="Cloud sync" onBack={nav.pop} helpId="settings/cloud-sync">
       <View style={{ padding: 16, gap: 10 }}>
@@ -105,6 +127,14 @@ export default function CloudSync() {
             <Txt size={13} sub>Paste the invite link from the till that set the shop up.</Txt>
             <Field kind="code" label="Invite link" value={link} onChangeText={setLink} placeholder="https://www.icloud.com/share/..." />
             <Btn title="Join" icon="cloud-download-outline" spot={SPOT.cloudSyncJoin} busy={busy} disabled={!link.trim() || practice} onPress={() => void join(link)} />
+          </>
+        ) : null}
+
+        {role !== 'none' && activeBackendKind() === 'cloudkit' ? (
+          <>
+            <Txt weight="600" style={{ marginTop: 6 }}>Events from every register</Txt>
+            <Txt size={13} sub>Makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes and the rest, from every register, oldest first. Each till's own events.csv stays as it is.</Txt>
+            <Btn title="Export all events" icon="document-text-outline" spot={SPOT.cloudSyncEvents} busy={busy} disabled={practice} onPress={() => void exportEvents()} />
           </>
         ) : null}
 

@@ -41,6 +41,9 @@ Two things follow from that:
 - The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
 - The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
 
+### One file of every register's events
+Once sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.
+
 ## Advanced
 
 ### How a register is linked
@@ -56,7 +59,7 @@ flowchart TD
 
 | Job | Where |
 |---|---|
-| The page itself | `src/screens/CloudSync.tsx` |
+| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |
 | The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |
 | The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |
 | The iCloud container and the share link handler | `plugins/withCloudKit.js` |

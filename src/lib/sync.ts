@@ -39,6 +39,8 @@ const events = createEventSync({
   readCsv: () => csv.readEvents(),
 });
 setEventSink(e => { void events.upload(e); });
+/** The same instance, for the Cloud sync page's export of every register's events. */
+export const eventSync = events;
 // CloudKit patch 4: payment attempts the same way. Pay.tsx calls `attemptSync.push` after each change to an attempt.
 export const attemptSync = createAttemptSync({
   active: () => activeBackendKind() === 'cloudkit',
