@@ -16,7 +16,7 @@ Open **More ▸ Settings ▸ Payments** to choose cash rounding, Smart change an
 **Cash rounding (5c)** rounds the amount due in cash to the nearest five cents. It applies to the cash amount only; card payments are not rounded by this setting. The setting is on by default.
 
 ### Smart change
-Turn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only. For how the choice is calculated, see [[cash/smart-change]].
+Turn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only until Cloud sync is switched on, and then to every register, because the drawer is shared too. For how the choice is calculated, see [[cash/smart-change]].
 
 ### Card fee rates and the terminal
 Set **Card-present fee %** and **Keyed / card-not-present fee %** to match the rates you use. They are estimates for reports; the Zeller SDK does not return the actual fee. A card refund does not return the original fee.

@@ -1,9 +1,11 @@
 // Location: tests/assistantsettings.test.ts
-// The rules around the assistant settings: never shared between registers, travel in backups (key included), role gate.
+// The rules around the assistant settings: shared between registers only as the connection and only on CloudKit (0205), travel in backups (key included), role gate.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { pickShared } from '../src/lib/sharedSettings';
+import { defaultSettings } from '../src/state/store';
 import { buildBackup, decryptBackup, encryptBackup, mergeSettings, validateBackup } from '../src/lib/backupFile';
 import { defaultAssistant, normaliseAssistant } from '../src/lib/assistantConfig';
 import { actingRole, canEditAdjustPerms } from '../src/lib/adjustPerms';
@@ -12,12 +14,15 @@ const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id', shop
 const assistant = { ...defaultAssistant(), baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama3.1:8b', contextSize: 32000, endpointMode: 'local' as const };
 const KEY = 'sk-test-BACKUPKEY-1234';
 
-test('the assistant settings are never part of the shared settings that go to other registers', () => {
-  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'lib', 'sync.ts'), 'utf8');
-  const pushLine = src.split('\n').find(l => l.includes('const shared = {')); assert.ok(pushLine, 'pushSharedSettings builds an explicit list');
-  const stillLine = src.split('\n').find(l => l.includes('const stillMatches')); assert.ok(stillLine);
-  for (const l of [pushLine!, stillLine!]) assert.ok(!/assistant/i.test(l), l);
-  assert.ok(!/assistant/i.test(src.slice(src.indexOf('export async function pushSharedSettings'), src.indexOf('export const bundleConfig'))), 'nothing about the assistant between pushSharedSettings and pullSettings');
+// 0205 (decisions O2) replaced the old rule that the assistant was never shared. On Shopify it still is not. On CloudKit the connection
+// (address, model name, options) is shared so a new register works at once; the key follows in patch 6d, and the log cap and the data gate stay local.
+test('the assistant is not shared through Shopify, and through CloudKit only as its connection, never the key, the log cap or the data gate', () => {
+  const shop = pickShared(defaultSettings(), 'metaobject'); assert.ok(!('assistant' in shop));
+  const cloud = pickShared(defaultSettings(), 'cloudkit'); assert.ok('assistant' in cloud);
+  const shared = Object.keys(cloud.assistant as object);
+  for (const k of ['logCapMB', 'gate', 'apiKey', 'key', 'assistantKey']) assert.ok(!shared.includes(k), k);
+  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'lib', 'sharedSettings.ts'), 'utf8');
+  assert.ok(!/assistantKey|apiKey/.test(src), 'the shared settings code never touches the key');
 });
 
 test('the settings object has no place for a key, and a stray key field is dropped', () => {

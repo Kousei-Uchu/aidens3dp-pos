@@ -461,3 +461,16 @@ These fill gaps in the plan ("saved carts with conflict merging") and `dev_docs/
 5. **The soft lock (`locked_by`, `locked_at`) is not built.** The plan mentions it and nothing in the code writes it. Say if you want it.
 6. **Deleted carts stay in the store as records and the pull reads up to 1000.** Nothing removes them (CloudKit `remove` is not implemented, and the Shopify path never calls it). Past 1000 records the oldest are not read. A tidy-up that drops deleted carts older than a month would fix it.
 7. **Both backends get the same change.** Saved carts go through the shared-state seam, so the Shopify path changes too. I judged that safer than a second code path.
+
+## Shared settings (0205)
+
+These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (items 2, 3, 19 to 21, 23, O2). Each is a guess, change any you disagree with.
+
+1. **The assistant's log cap and data gate stay on each iPad.** O2 says the connection settings sync ("address, model name, options"). The log cap is that iPad's disk, and the gate decides what data a model may be sent, so I did not let one iPad loosen it for all. Syncing the gate is a one-word change in `assistantShared`.
+2. **With no base, the shop's value wins.** `sharedBase` is empty on a register's first CloudKit push, so nothing can be told apart; the shop's value wins per key and staff lists are joined. A single unsent local edit made in that moment could be lost.
+3. **A removed staff member stays removed.** Removing someone ends their PIN, so a late edit elsewhere never brings them back. Same rule as carts (0204).
+4. **Only staff merges inside a key.** Fees, receipt details, cart warnings and the assistant connection are one value each, so if two registers edit different fields of one of them, the later writer takes the whole key.
+5. **Auto-receipt is shared but has no screen.** Nothing in the app edits it today, so sharing it changes nothing yet.
+6. **Edits are sent 1.5 s after typing stops**, by a watcher, instead of each screen calling the push. Receipt fields save on every keystroke, and a watcher also covers screens added later.
+7. **Shopify reads now go through the whitelist.** The seven keys behave as before, but a record with extra or wrongly typed keys is no longer spread into the settings.
+8. **Shop name is shared but not pushed at connect time.** Connecting Shopify sets it on that register; the watcher then sends it like any other edit once CloudKit is active.

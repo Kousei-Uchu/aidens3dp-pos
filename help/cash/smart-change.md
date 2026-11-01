@@ -83,8 +83,8 @@ The weights are chosen to put stock first and speed second. They are a short lis
 ### When history is thin
 Until there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.
 
-### The learned profile is per iPad
-The profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].
+### The learned profile is per iPad, the switch is shared
+The **Smart change** switch (and **Consolidate identical items**) is one setting for the whole shop once Cloud sync is on, matching the one shared drawer; before that, each iPad has its own. The profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].
 
 ## Advanced
 

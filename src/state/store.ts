@@ -39,6 +39,8 @@ export type Settings = {
   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
+  /** 0205: the shared settings as this register and the shop last agreed them (JSON text), the base for merging edits made on two registers. Per device bookkeeping, like sharedVersion; never shared. See lib/sharedSettings.ts. */
+  sharedBase?: string;
   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
@@ -48,7 +50,7 @@ export type Settings = {
   // The warning list (a warning set to "Add to the list"): shared between registers, so the list carries the same lines
   // everywhere. `warningListVersion` is the shared record's version we last saw; `warningListPending` an unsent change.
   warningList?: WarningList; warningListVersion?: number; warningListPending?: boolean;
-  assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
+  assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. The connection part (not the log cap or the data gate) is shared once CloudKit is the backend (0205, decisions O2); the API key is in the Keychain and follows in patch 6d.
   // Companion plan (0176): what this device is. Per device, like the register name, so a backup never moves a mode to
   // another till. A register has every feature; `registerFeatures` is what a companion is allowed to keep.
   appMode: DeviceMode; registerFeatures: RegisterFeatures; setupDone: boolean;
