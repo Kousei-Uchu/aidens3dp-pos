@@ -1200,3 +1200,12 @@ Needs two iPads on the shop's share (T74), both on a build with this patch and t
 5. Turn airplane mode on at A and tap **Export all events**. Pass: a message says the file could not be made, and nothing is shared. Turn it off and tap again. Pass: the file is made.
 6. Compare A's own `events.csv` in Files with before. Pass: unchanged apart from any events made since.
 7. Start practice mode (Training) and open the page. Pass: the button is greyed out.
+
+## T91. The iCloud note on the Cloud sync page (0202)
+
+No second iPad needed. Nothing in this patch has been run on a device.
+
+1. Open **Settings ▸ Data ▸ Cloud sync** on a till that has not set up or joined. Pass: below the buttons, **What is kept in iCloud** lists nine blocks (shop settings, staff, sales, payments and events, cash drawer, layout and carts, notices and training, the assistant's log, and logins and secrets marked "later"), then two warnings (customer names, the invite link), then **What is never kept in iCloud**.
+2. Read it on an iPhone and an iPad. Pass: nothing is cut off, and the page scrolls to the end with the **Check again** button reachable.
+3. Open the help page from the page's help button. Pass: the section "What is and is not kept in iCloud" says the same in short.
+4. Pass check on honesty: the wording says nothing is sent before sync is switched on, and the secrets block says "Only after the encryption test".
