@@ -30,7 +30,7 @@ async function readRawFiles(): Promise<RawHistoryFile[]> {
 export async function collectExportInput(): Promise<ExportInput> {
   const s = useApp.getState();
   // The sales and day totals other tills shared (pos.shared, filled by pullSalesHistory), so an export covers the whole shop.
-  // This till's own copy wins a clash. Cash stays this till's: it reads the shift and ledger below, not sales.
+  // This till's own copy wins a clash. Cash is the shop's one shared drawer: it reads the shift and ledger below, not sales.
   const shared = s.pos.shared ?? { sales: [], rollups: {} };
   const rollups: ExportInput['rollups'] = { ...shared.rollups, ...s.pos.rollups };
   try {

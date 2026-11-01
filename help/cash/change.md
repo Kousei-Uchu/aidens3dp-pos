@@ -126,7 +126,7 @@ flowchart TD
 
 ### Reading the code for a fault
 - **The big button is greyed and the box says Can't make change, but the drawer has it.** The record is out of date. `planChange` only sees `pos.ledger.counts`. Use **The drawer has it**, then fix the record.
-- **The box says No cash in the ledger.** `ledgerEmpty` is true: the record has no cash at all. It was never opened or counted on this iPad, or the saved copy could not be read. Open the drawer, or use **Correct contents**.
+- **The box says No cash in the ledger.** `ledgerEmpty` is true: the record has no cash at all. It was never opened or counted, or the saved copy could not be read. Open the drawer, or use **Correct contents**.
 - **The suggestion includes a note the drawer does not have.** The record is too high. The denominations may have been entered incorrectly, or cash may have moved without being recorded.
 - **No Ask for less option appears.** `handBackOptions` found no part of the handover that covers the bill and has makeable change, or hit its 600-parts limit when many different notes were handed over.
 - **No Part in cash option appears.** `partCashOption` needs more handed over than the bill, and no 5c-step amount below the bill works, or one was already chosen.

@@ -2,6 +2,7 @@
 // Takes the snapshot the assistant's cash and cart tools read (patch 0172). The only file that connects them to the store; everything
 // the tools do with it is in assistantCash.ts. It only reads: the drawer ledger, the shift and the cart are copied by reference into a
 // plain `CashState` and the tools never get anything they could call to change them. Nothing here goes to Shopify or the card reader.
+import { allSales } from './salesHistory';
 import { useApp } from '../state/store';
 import { isTraining } from './trainingGuard';
 import { priceCart } from './pricing';
@@ -26,7 +27,7 @@ export function takeCashState(now: number = Date.now()): CashState | null {
     const warnings = matchCartWarnings(cart, st.cartWarnings, { variants, collectionsOfProduct });
     return {
       now, rounding: !!st.cashRounding,
-      drawer: { shift: s.pos.shift, ledger: s.pos.ledger, sales: s.pos.sales, prices: Object.values(variants).map((v: Variant) => v.priceCents) },
+      drawer: { shift: s.pos.shift, ledger: s.pos.ledger, sales: allSales(s.pos.sales, s.pos.shared?.sales ?? []), prices: Object.values(variants).map((v: Variant) => v.priceCents) },
       cart: { cart, priced, warnings },
     };
   } catch { return null; }

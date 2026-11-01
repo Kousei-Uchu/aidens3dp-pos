@@ -45,7 +45,7 @@ Tap **Show another way**, or tap **I'll give different notes and coins**. Smart 
 ## Deep
 
 ### What it is, and is not
-It is a small statistical model that reads your own sales history, not a neural network or anything that phones home. Every number comes from the drawer record and the item library on this iPad, and the scoring is a short sum you can read below.
+It is a small statistical model that reads your own sales history, not a neural network or anything that phones home. Every number comes from the shared drawer record, the shop's sales and the item library, and the scoring is a short sum you can read below.
 
 ### What it learns from
 Each time, the POS rebuilds a **profile** from three things:
@@ -84,7 +84,7 @@ The weights are chosen to put stock first and speed second. They are a short lis
 Until there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.
 
 ### The learned profile is per iPad
-The profile is built from this iPad's own ledger, so each register learns from its own sales. Nothing is shared between registers. See [[cash]].
+The profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].
 
 ## Advanced
 
@@ -107,7 +107,7 @@ flowchart TD
 | Job | Where |
 |---|---|
 | The switch and the note under it | `Settings` ▸ Payments in `src/screens/Settings.tsx` (`SmartChangeNote`) |
-| Building the profile for this iPad | `useCashProfile` in `src/state/cashProfile.ts` |
+| Building the profile | `useCashProfile` in `src/state/cashProfile.ts` |
 | History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |
 | The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |
 | The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |

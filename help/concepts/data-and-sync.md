@@ -12,7 +12,7 @@ The register stores working data on this iPad and uses Shopify as the shared sto
 ## Basic
 
 ### What lives where
-- **On this iPad:** the current cart, local Transactions history, saved carts, cash-drawer ledger, catalogue snapshot, register preferences and queued uploads.
+- **On this iPad:** the current cart, local Transactions history, saved carts, catalogue snapshot, register preferences and queued uploads.
 - **In Shopify:** the product catalogue and available stock, customer records, completed Shopify orders, and shared POS data such as sale history, staff and shared settings.
 - **On the Zeller terminal:** its pairing and terminal state. Pairing is device-specific and must be set up again if the app is reinstalled or moved to another iPad.
 
@@ -29,7 +29,7 @@ When a sale finishes, the POS writes it to local history and the outbox. The out
 An order can therefore be visible in local Transactions while its Shopify order is still pending. The outbox and the CSV history export are separate records; deleting or exporting one does not repair the other.
 
 ### Register-specific versus shared settings
-The register ID and name, display preferences, cash drawer ledger, screensaver, inventory view and some device state belong to this iPad. Staff, display modes saved on staff, and selected operational settings are shared between registers through Shopify. A settings backup can transfer configuration, but it is not the same as the live sale queue or the catalogue.
+The register ID and name, display preferences, screensaver, inventory view and some device state belong to this iPad. The cash drawer is the exception: it is one drawer for the whole shop, shared between registers. Staff, display modes saved on staff, and selected operational settings are shared between registers through Shopify. A settings backup can transfer configuration, but it is not the same as the live sale queue or the catalogue.
 
 If a shared-settings upload fails, the register keeps the pending change locally and retries from its foreground sync poll (about every 25 seconds). A remote settings pull will not replace that pending local change. Once the upload succeeds, other open registers can receive it on their next poll.
 

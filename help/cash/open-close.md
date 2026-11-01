@@ -13,7 +13,7 @@ This page covers the jobs on the **Cash drawer** screen (More ▸ Cash drawer): 
 ## Basic
 
 ### Opening the drawer
-1. Go to More ▸ Cash drawer. If it says **No drawer open on this register.**, tap **Open drawer with float**.
+1. Go to More ▸ Cash drawer. If it says **No drawer open.**, tap **Open drawer with float**.
 2. The **Opening float** sheet opens. The line under the title says what the drawer held last time (*Carried over from last time: $…*), and the pad already shows those notes and coins.
 3. Tap **Add** or **Remove** and the notes and coins until the pad matches what you are really putting in the drawer. The big number is your float.
 4. Tap **Confirm**.
@@ -63,7 +63,7 @@ At the end of the day:
 
 Confirm closes the drawer straight away and does not ask again, so be sure of your count first. Then:
 - The iPad's share sheet opens with the **Z-report**, a short text summary. Send it to yourself by email or Messages, or save it to Files. **This is the only copy the app gives you**, so do it now.
-- The drawer shows **No drawer open on this register.** again.
+- The drawer shows **No drawer open.** again, on every register.
 - The notes and coins you counted become what the record says is in the drawer, and the next opening starts from them.
 
 ### The Z-report
@@ -140,10 +140,10 @@ The pad's starting point (`base`) is the ledger's counts for **Opening float** a
 - **Paid in** records the entered counts and adds the total to `paidInCents`. **Paid out** records the same counts as negatives and adds the total to `paidOutCents`, after the `shortfall` check against the ledger. Both write an event with the reason.
 - **Close** records `diffCounts(entered, ledger.counts)` as `close`, so afterwards the ledger holds exactly the counted notes and coins, then resets the shift to closed with all totals at 0, writes `shift_close`, and opens the share sheet.
 
-Expected is `floatCents + cash + paidInCents - paidOutCents`, with `cash` from `cashSince(shift.openedAt, registerId, sales)`: cash tenders on this register's sales from this iPad since the drawer opened, a sale adding amount plus rounding and a refund subtracting its amount. Difference is counted minus expected.
+Expected is `floatCents + cash + paidInCents - paidOutCents`, with `cash` from `ledgerCashSince(ledger, shift.openedAt)`: the entries in the shared ledger that belong to a sale (cash received, change given, a cash refund, a cancelled part-sale) since the drawer opened, from every register, in physical cash. Difference is counted minus expected.
 
 ### Reading the code for a fault
-- **Expected is wrong by exactly one sale.** That sale is before `openedAt`, from another register, or paid by card or gift card. Only cash tenders on this register count.
+- **Expected is wrong by exactly one sale.** That sale is before `openedAt`, was paid by card or gift card, or its cash was not tapped on the change screen so the ledger never saw it. Cash from every register counts.
 - **The Opening float pad is empty.** The ledger was empty. It was never opened or counted on this iPad, or the saved copy could not be read.
 - **You closed but cannot find the Z-report.** The share sheet was dismissed, and the text is not stored. The shift resets as soon as you confirm, whatever happens to the share sheet. The events line still has the counted amount, and the expected amount and difference in cents.
 - **Tests.** `tests/cashledger.test.ts` covers the pad, applying entries, the history cap and reading saved data. The shift sums (Expected, Difference) and the Z-report text are written inside `Drawer` and have no test of their own.

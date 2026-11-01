@@ -98,7 +98,7 @@ If the customer hands over less than is due, the payment is recorded as the amou
 - **Part in cash** looks for the largest cash amount below the bill, in 5c steps, whose change can be made. Example: the drawer has one $20, the customer hands you a $50 for a $37 bill. The $13 change cannot be made, but $30 in cash works ($20 change from the drawer), leaving $7 for card.
 
 ### The record can drift
-The record is only as good as what is tapped. It lives on each iPad separately. See [[cash]]. Count & close and Correct contents are the ways it gets reset or corrected.
+The record is only as good as what is tapped. It is one shared record for the shop, so a slip made on one iPad is seen on all of them. See [[cash]]. Count & close and Correct contents are the ways it gets reset or corrected.
 
 ## Advanced
 
