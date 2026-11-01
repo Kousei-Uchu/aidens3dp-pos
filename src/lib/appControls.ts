@@ -187,6 +187,7 @@ export const SPOT_SCREEN: Record<string, string> = {
   [SPOT.cloudSyncSetup]: 'page_cloud_sync',
   [SPOT.cloudSyncShare]: 'page_cloud_sync',
   [SPOT.cloudSyncJoin]: 'page_cloud_sync',
+  [SPOT.cloudSyncEvents]: 'page_cloud_sync',
   // Setup and the device mode (Companion plan, patch 0176)
   [SPOT.setupModeRegister]: 'page_setup',
   [SPOT.setupModeCompanion]: 'page_setup',
