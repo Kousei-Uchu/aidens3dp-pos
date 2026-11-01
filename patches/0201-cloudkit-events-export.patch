@@ -1,0 +1,317 @@
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 9d17231..1b8480d 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1188,3 +1188,15 @@ Needs two iPads on the shop's share (T74), both on a build with this patch and t
+ 6. Turn airplane mode on at B, wait through two polls, then turn it off. Pass: no error shows at B, B's list keeps its last contents while offline, and refreshes within about 30 seconds of reconnecting.
+ 7. Force-quit and reopen B. Pass: the section is absent until the first poll (or Sync now), then lists the same payments as before.
+ 8. Start practice mode (Training) on B. Pass: the section does not change and no notice appears while it runs.
++
++## T90. One CSV of every register's events (0201)
++
++Needs two iPads on the shop's share (T74), both on a build with this patch and the CloudKit backend switched on from a debug build (nothing sets it until patch 8). Nothing in this patch has been run on a device.
++
++1. On iPad A and iPad B, make a few events: a no-sale on A, a paid in on B, a void on A. Open **Settings ▸ Data ▸ Cloud sync** on A. Pass: an **Events from every register** section with **Export all events** is there. On a till still on Shopify storage the section is absent.
++2. On A, tap **Export all events** and save the file to Files. Pass: a CSV named `events-all-registers-<date>.csv` whose columns are the `events.csv` columns plus `register`, with the events from both iPads oldest first, each once, and each row naming its register.
++3. Tap it again straight away. Pass: the same rows, nothing doubled.
++4. On B, make one more event, wait about 30 seconds, then export on A. Pass: the new event is in the file.
++5. Turn airplane mode on at A and tap **Export all events**. Pass: a message says the file could not be made, and nothing is shared. Turn it off and tap again. Pass: the file is made.
++6. Compare A's own `events.csv` in Files with before. Pass: unchanged apart from any events made since.
++7. Start practice mode (Training) and open the page. Pass: the button is greyed out.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index c2e0d5e..f05c187 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -422,3 +422,14 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
+ 5. **The Diagnostics list is read only.** The decisions say any register can resolve a payment (Q10), but a resolution has to say whether the customer was charged, and for another register's sale that choice only means something at the register holding the sale. Guess: show the list now and leave a resolve button for later, once it is decided what "charged" means from a register that has no cart for the sale.
+ 6. **A `started` attempt older than 5 minutes is labelled "stopped part way".** It uses the same 5 minute window as `paymentActive` and stays in the list, so a manager can see a charge that never finished instead of it saying "in progress" for ever.
+ 7. **The section is on Diagnostics, not a new screen, and only shows once CloudKit has sent attempts.** A register still on Shopify storage never sees an empty section.
++
++## CloudKit events export (0201)
++
++These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
++
++1. **The export is a button on the Cloud sync page.** The decisions say "build a combined CSV from them on demand" (item 12, Q3) and do not say where. Guess: Cloud sync, because it is about iCloud and is already for managers and owners. The alternative is the Export questions (Reports and Settings ▸ Data), which would make it a table beside the others.
++2. **It is shown only when CloudKit is the backend in use.** Until patch 8 nothing sets that, so no till sees the button yet. It is not shown on a register still on Shopify storage, because there is nothing in iCloud to build it from.
++3. **Exporting sends this register's own history first.** If the launch catch-up has not run yet, the export runs it, so the file is not missing events made on this iPad. If that catch-up fails, the export carries on with what CloudKit holds rather than refusing.
++4. **A failed read says so.** The poll hides CloudKit errors; this one shows them, because a person asked for the file.
++5. **One file, one CSV.** The `events.csv` columns plus a `register` column holding the register's name (two registers with the same name look alike; the id is not in the file). Say so if you want the id too.
++6. **No pull for the app itself.** Nothing else reads the shared events (no screen shows other registers' events), so events are read only when the file is asked for, not on the poll.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index f6018c4..99465f9 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -181,6 +181,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0198 | 2026-10-31 | CloudKit patch 4, call sites for events (your request: continue, returned as a patch). **Every event written to `events.csv` is now also written to CloudKit, once, when the CloudKit backend is the active one.** `csvStore.event` sets the event's time once and uses that one time for the CSV row and for the id (the id is made from the row), then tells a sink, `setEventSink`, which `sync.ts` points at the upload; nothing is sent in practice mode. New `src/lib/cloudkit/eventSync.ts` decides when: a single event goes up straight away with no listing (`pushCloudEvent`, new in `eventCloud.ts`, a write-once record so repeating it is safe), and a **catch-up** reads `events.csv` back (new `src/lib/eventsCsvParse.ts`, which reads quoted fields and line breaks and gives each row the id it was written with) and uploads whatever CloudKit lacks. The catch-up runs once per launch, which is the one-off upload of a register's own history after it joins (Q13), and again after any live upload fails; `pollShared` runs it. Events made before the first catch-up wait for it. Nothing is stored for this: the CSV is the record and CloudKit is the copy. Tests: `tests/eventscsv.test.ts` (6: every kind round-trips with the same id, awkward text, zero and negative amounts, header and bad rows skipped) and `tests/eventsync.test.ts` (7: nothing sent when inactive, in practice mode or with no register id; history uploaded once; no duplicates after a failure; csvStore sets the time once, pinned from the source). I broke the one-time stamp, the catch-up reset and the quote handling on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Still to do for patch 4:** the payment attempt call site in `Pay.tsx` (`setAttempt` to `pushCloudAttempt`), which is 0199. Device test T87. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit event call sites'. | your request |
+ | 0199 | 2026-10-31 | CloudKit patch 4, call sites for payment attempts (your request: next). **Every change to a card payment attempt in `Pay.tsx` is now also written to CloudKit, when the CloudKit backend is the active one.** `setAttempt` changes the app's own copy first and then calls `attemptSync.push` (so the app never waits on CloudKit), and `onStarted` pushes the new attempt the same way. New `src/lib/cloudkit/attemptSync.ts`, built like the events one: a push goes up straight away through `pushCloudAttempt` (status only moves forward, the first register to write an attempt stays on it, and a resolution is a write-once record), and a **catch-up** sends every attempt this register holds, once per launch (the one-off upload after joining, Q13) and again after any failed push; `pollShared` runs it. Nothing is sent in practice mode, before the register has an id, or when CloudKit is not the active backend, and a failure never throws. **If another register resolved the same payment first** (Q10), `manualResolve` now shows an info notice naming who, because what they chose may not be what was chosen here; the notice is local, per decisions item 10. Tests: `tests/attemptsync.test.ts` (8: nothing sent when inactive, in practice mode or with no register id; first launch sends once; status never backwards; two registers resolving, first wins and the second is told; failure then catch-up leaves one record; source pins that the app is changed before CloudKit is told, that both attempt writers push, and that the notice is there). I broke the order of the two steps, the catch-up reset, the practice-mode guard and the notice on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Not built, so patch 4's payment side is only half-way:** nothing pulls attempts back (`pullCloudAttempts` is not called), so no manager screen shows unresolved payments shop-wide yet and a register's own list is never changed from CloudKit. Device test T88. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit attempt call sites'. | your request |
+ | 0200 | 2026-10-31 | CloudKit patch 4, pull side for payment attempts (your request: continue, returned as a patch). **Every register now reads every register's card payment attempts back from CloudKit, keeps the shop-wide list, and picks up a payment another register resolved.** `createAttemptSync` gained `pull`, which `pollShared` calls right after the catch-up (so a register's own attempts go up before it reads), outside practice mode and only when CloudKit is the active backend. It never throws, and a failed read leaves everything as it was. Two effects: the shop-wide list goes into a new in-memory store field, `sharedAttempts` (never saved, CloudKit is the record), and **a payment that still shows "no result yet" here, and that another register has resolved, is marked resolved here with that register's name and a local `info` notice** (decisions Q10, item 10). The pure rules are in new `src/lib/attemptShared.ts`: `applyRemoteResolutions` (changes only an `unknown` attempt, never a `started` one, since that charge may still be running on this reader), `resolvedElsewhereNotice`, and `unresolvedRows`. **Diagnostics now has a "Card payments waiting (all registers)" section** once CloudKit has sent attempts: amount, whether it is in progress, has no result yet or stopped part way (a `started` attempt older than 5 minutes, the same window `paymentActive` uses), the register's name and the time. It is read only. Tests: `tests/attemptpull.test.ts` (16: the resolve rules, the notice, the rows, a pull across two registers, no repeat notice, own resolutions silent, nothing read when inactive or in practice mode, a failed read, a change made during the read is kept, and source pins on the poll, the store and Diagnostics); `tests/attemptsync.test.ts` only gained the three new dependencies in its helper. I broke each rule on purpose (a `started` attempt resolving, both guards in `pull`, reading the local list before the await, the poll call, notices for own resolutions, the Diagnostics condition, the stale label) and confirmed each fails a test; one first attempt at the guard mutation hit a different line, so it was redone on `pull` itself. Checked: `tsc --noEmit` clean, full suite passes. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **Not built:** resolving another register's payment from a different register (the list is read only, see GUESSES 'CloudKit attempt pull'), a pull for events (the combined CSV export is not built yet), and anything for saved carts (patch 5). Device test T89. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit attempt pull'. | your request |
++| 0201 | 2026-10-31 | CloudKit patch 4, events read back and the combined CSV (your request: continue on the repo, returned as a patch). **A manager or owner can now export one CSV of every register's events.** `createEventSync` gained `exportCsv`: it sends this register's own history first if a catch-up is due, reads every register's events from CloudKit (`pullCloudEvents`) and builds the file with the existing `eventsCsv` (the `events.csv` columns plus a `register` column, oldest first, each event once). It returns null outside CloudKit, in practice mode or before the register has an id, and it throws when CloudKit cannot be read, so the person who asked is told. `sync.ts` exports the one instance as `eventSync`. The Cloud sync page has an **Export all events** button (new spot `cloudsync.events`, registered on the nav graph, off in practice mode) shown only when CloudKit is the active backend, which writes the CSV to the cache and opens the share sheet. Each iPad's own `events.csv` is not touched. Help page `settings/cloud-sync` updated and `help.json` rebuilt. Tests: 6 new in `tests/eventsync.test.ts` (two registers merged oldest first with names, own history sent first, repeat export identical with no new writes, nothing made when inactive or practising, a failed read reported, and source pins on the page); `tests/demoguard.test.ts` now also checks the new button is off in practice. I removed the history catch-up and the activity guard on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, 1592 of 1592 tests pass, `help:check` green. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **With this, patch 4's code is complete.** What still gates turning it on: the two-Apple-ID encryption test (O4), `setSaleCardMode('encrypted')`, and a Mac build of the Swift. **Not done:** the in-app "what is and is not in iCloud" note (decisions: due with patch 4), and the audit of code that still assumes "this till's drawer". Device test T90. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit events export'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index e4a61ed..17089f4 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "21a2b644",
++ "version": "54aa8bff",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1734,8 +1734,8 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.",
+-    "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself | `src/screens/CloudSync.tsx` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.",
++    "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+   {
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index 1f6bd1d..ec32442 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -41,6 +41,9 @@ Two things follow from that:
+ - The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
+ - The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
+ 
++### One file of every register's events
++Once sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.
++
+ ## Advanced
+ 
+ ### How a register is linked
+@@ -56,7 +59,7 @@ flowchart TD
+ 
+ | Job | Where |
+ |---|---|
+-| The page itself | `src/screens/CloudSync.tsx` |
++| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |
+ | The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |
+ | The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |
+ | The iCloud container and the share link handler | `plugins/withCloudKit.js` |
+diff --git a/src/lib/appControls.ts b/src/lib/appControls.ts
+index a230f11..b0f7ff7 100644
+--- a/src/lib/appControls.ts
++++ b/src/lib/appControls.ts
+@@ -187,6 +187,7 @@ export const SPOT_SCREEN: Record<string, string> = {
+   [SPOT.cloudSyncSetup]: 'page_cloud_sync',
+   [SPOT.cloudSyncShare]: 'page_cloud_sync',
+   [SPOT.cloudSyncJoin]: 'page_cloud_sync',
++  [SPOT.cloudSyncEvents]: 'page_cloud_sync',
+   // Setup and the device mode (Companion plan, patch 0176)
+   [SPOT.setupModeRegister]: 'page_setup',
+   [SPOT.setupModeCompanion]: 'page_setup',
+diff --git a/src/lib/cloudkit/eventSync.ts b/src/lib/cloudkit/eventSync.ts
+index c25edf4..aef532a 100644
+--- a/src/lib/cloudkit/eventSync.ts
++++ b/src/lib/cloudkit/eventSync.ts
+@@ -3,9 +3,9 @@
+ // Everything the app supplies (is CloudKit the active backend, is this practice mode, which register, how to read events.csv, the
+ // native module) is passed in, so the rules are tested without an iPad (tests/eventsync.test.ts). The app's one instance is made
+ // in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 12, Q3, Q13.
+-import type { EventInput } from '../eventRecords';
++import { eventsCsv, type EventInput } from '../eventRecords';
+ import { parseEventsCsv } from '../eventsCsvParse';
+-import { pushCloudEvent, pushCloudEvents, type EventNative } from './eventCloud';
++import { pullCloudEvents, pushCloudEvent, pushCloudEvents, type EventNative } from './eventCloud';
+ 
+ export type EventSyncDeps = {
+   /** True only when the CloudKit backend is the one in use. */
+@@ -24,6 +24,14 @@ export function createEventSync(d: EventSyncDeps) {
+   // A failed live upload sets it again. Nothing is stored: the CSV is the record of what happened, CloudKit is the copy.
+   let behind = true;
+   const ready = (): { id: string; name: string } | null => { if (!d.active() || d.training()) return null; const w = d.who(); return w.id ? w : null; };
++  /** Send every event in the CSV that CloudKit lacks, if a catch-up is due. Returns how many were new, or null when nothing was attempted. */
++  async function catchUp(): Promise<number | null> {
++    const w = ready(); if (!w || !behind) return null;
++    try {
++      const sent = await pushCloudEvents(await d.native(), w.id, w.name, parseEventsCsv(await d.readCsv()));
++      behind = false; return sent;
++    } catch { return null; }
++  }
+   return {
+     /** Upload one event just after it was written to the CSV. Never throws: the CSV already has it, and the catch-up covers a failure. */
+     async upload(e: EventInput): Promise<void> {
+@@ -31,13 +39,17 @@ export function createEventSync(d: EventSyncDeps) {
+       if (behind) return; // a catch-up is due and will send this one with the rest, in order
+       try { await pushCloudEvent(await d.native(), w.id, w.name, e); } catch { behind = true; }
+     },
+-    /** Send every event in the CSV that CloudKit lacks, if a catch-up is due. Returns how many were new, or null when nothing was attempted. */
+-    async catchUp(): Promise<number | null> {
+-      const w = ready(); if (!w || !behind) return null;
+-      try {
+-        const sent = await pushCloudEvents(await d.native(), w.id, w.name, parseEventsCsv(await d.readCsv()));
+-        behind = false; return sent;
+-      } catch { return null; }
++    catchUp,
++    /**
++     * The combined CSV of every register's events, built from CloudKit on demand (decisions item 12, Q3): the `events.csv` columns
++     * plus the register's name, oldest first. This register's own history is sent first if a catch-up is due, so the file is not
++     * missing events made here. Returns null when CloudKit is not the active backend or in practice mode. Unlike the poll this
++     * throws when CloudKit cannot be read, because someone asked for the file and must be told it could not be made.
++     */
++    async exportCsv(): Promise<string | null> {
++      if (!ready()) return null;
++      await catchUp();
++      return eventsCsv(await pullCloudEvents(await d.native()));
+     },
+     /** For tests and diagnostics: whether a catch-up is waiting. */
+     isBehind: () => behind,
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 9fd5ac8..22354de 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -39,6 +39,8 @@ const events = createEventSync({
+   readCsv: () => csv.readEvents(),
+ });
+ setEventSink(e => { void events.upload(e); });
++/** The same instance, for the Cloud sync page's export of every register's events. */
++export const eventSync = events;
+ // CloudKit patch 4: payment attempts the same way. Pay.tsx calls `attemptSync.push` after each change to an attempt.
+ export const attemptSync = createAttemptSync({
+   active: () => activeBackendKind() === 'cloudkit',
+diff --git a/src/lib/trainingSpots.ts b/src/lib/trainingSpots.ts
+index 8c0f409..9c46bbe 100644
+--- a/src/lib/trainingSpots.ts
++++ b/src/lib/trainingSpots.ts
+@@ -193,6 +193,7 @@ export const SPOT = {
+   cloudSyncSetup: 'cloudsync.setup',   // the Set up this till button
+   cloudSyncShare: 'cloudsync.share',   // the Share the invite link button
+   cloudSyncJoin: 'cloudsync.join',     // the Join button
++  cloudSyncEvents: 'cloudsync.events', // the Export all events button
+   // Set up this device, and the device mode itself (Companion plan, patch 0176)
+   setupModeRegister: 'setup.mode.register',     // the "A register" choice on the setup screen
+   setupModeCompanion: 'setup.mode.companion',   // the "A companion" choice
+diff --git a/src/screens/CloudSync.tsx b/src/screens/CloudSync.tsx
+index db3847c..7c4a23b 100644
+--- a/src/screens/CloudSync.tsx
++++ b/src/screens/CloudSync.tsx
+@@ -4,10 +4,14 @@
+ // the door and says which side of it this till is on.
+ import React, { useEffect, useState } from 'react';
+ import { Share, View } from 'react-native';
++import * as FS from 'expo-file-system/legacy';
++import * as Sharing from 'expo-sharing';
+ import { Btn, Field, Page, Txt, alertMsg } from '../ui/kit';
+ import { useNav } from '../ui/nav';
+ import { SPOT } from '../lib/trainingSpots';
+ import { isTraining } from '../lib/trainingGuard';
++import { activeBackendKind } from '../lib/syncBackend';
++import { eventSync } from '../lib/sync';
+ import {
+   acceptShare,
+   accountLine,
+@@ -70,6 +74,24 @@ export default function CloudSync() {
+     catch (e: any) { alertMsg('Could not share the link', e?.message ?? String(e), 'settings/cloud-sync'); }
+   };
+ 
++  // The combined events file (decisions item 12, Q3): every register's events, built from CloudKit when asked for. It is only
++  // offered once CloudKit is the backend in use, because until then there is nothing in CloudKit to build it from.
++  const exportEvents = async () => {
++    setBusy(true); setMsg('');
++    try {
++      const text = await eventSync.exportCsv();
++      if (text === null) throw new Error('Cloud sync is not switched on for this till.');
++      if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available on this device.');
++      const name = `events-all-registers-${new Date().toISOString().slice(0, 16).replace(/[-:T]/g, '')}.csv`;
++      await FS.makeDirectoryAsync(FS.cacheDirectory ?? '', { intermediates: true }).catch(() => {});
++      const path = `${FS.cacheDirectory}${name}`;
++      await FS.writeAsStringAsync(path, text);
++      await Sharing.shareAsync(path, { mimeType: 'text/csv', dialogTitle: name, UTI: 'public.comma-separated-values-text' });
++      setMsg(`Made ${name} from the events every register has sent to iCloud.`);
++    } catch (e: any) { alertMsg('Could not make the events file', e?.message ?? String(e), 'settings/cloud-sync'); }
++    setBusy(false);
++  };
++
+   return (
+     <Page title="Cloud sync" onBack={nav.pop} helpId="settings/cloud-sync">
+       <View style={{ padding: 16, gap: 10 }}>
+@@ -108,6 +130,14 @@ export default function CloudSync() {
+           </>
+         ) : null}
+ 
++        {role !== 'none' && activeBackendKind() === 'cloudkit' ? (
++          <>
++            <Txt weight="600" style={{ marginTop: 6 }}>Events from every register</Txt>
++            <Txt size={13} sub>Makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes and the rest, from every register, oldest first. Each till's own events.csv stays as it is.</Txt>
++            <Btn title="Export all events" icon="document-text-outline" spot={SPOT.cloudSyncEvents} busy={busy} disabled={practice} onPress={() => void exportEvents()} />
++          </>
++        ) : null}
++
+         {practice ? <Txt size={13} sub>Cloud sync cannot be changed while training is on.</Txt> : null}
+         {msg ? <Txt size={13} sub>{msg}</Txt> : null}
+         <Btn title="Check again" kind="ghost" busy={busy} onPress={() => void refresh()} />
+diff --git a/tests/demoguard.test.ts b/tests/demoguard.test.ts
+index dc39586..d235c8f 100644
+--- a/tests/demoguard.test.ts
++++ b/tests/demoguard.test.ts
+@@ -73,7 +73,7 @@ test('CloudKit is only reached through the sync seam, whose writes check the gua
+   const callers = walk('src').filter(f => !/^src\/lib\/(cloudkit|shopify\/metaobjectBackend)/.test(f) && f !== 'src/lib/syncBackend.ts' && /\.put\(/.test(read(f)));
+   assert.deepEqual(callers, [], 'only the seam may call a backend\'s put()');
+   const screen = read('src/screens/CloudSync.tsx');
+-  for (const spot of ['cloudSyncSetup', 'cloudSyncShare', 'cloudSyncJoin']) assert.match(screen, new RegExp(`spot=\\{SPOT\\.${spot}\\}[^>]*practice`), `the ${spot} button is off while practising`);
++  for (const spot of ['cloudSyncSetup', 'cloudSyncShare', 'cloudSyncJoin', 'cloudSyncEvents']) assert.match(screen, new RegExp(`spot=\\{SPOT\\.${spot}\\}[^>]*practice`), `the ${spot} button is off while practising`);
+ });
+ 
+ test('the pass server request is stopped by the guard, before anything is sent', async () => {
+diff --git a/tests/eventsync.test.ts b/tests/eventsync.test.ts
+index 74f7dc7..3e175dd 100644
+--- a/tests/eventsync.test.ts
++++ b/tests/eventsync.test.ts
+@@ -73,3 +73,51 @@ test('csvStore sets the time once for the CSV row and the upload, and sends noth
+   assert.match(body, /eventRow\(full\)/); assert.match(body, /if \(!isTraining\(\)\) eventSink\?\.\(full\)/);
+   assert.equal((body.match(/new Date\(\)/g) ?? []).length, 1, 'the time is made in one place only');
+ });
++
++// ── The combined CSV (0201) ──────────────────────────────────────────────────────────────────────────────────────────────
++// Two registers share one fake CloudKit. Register B's events are written straight into the fake, as if B had uploaded them.
++function twoRegisters(csvA: string) {
++  const a = world({}, csvA);
++  const putB = async (e: EventInput) => { const { eventId, eventToFields } = await import('../src/lib/eventRecords'); a.events.push({ ...eventToFields('reg-b', 'Back', e), recordName: `event-${eventId('reg-b', e)}` }); };
++  return { ...a, putB };
++}
++test('the combined CSV holds every register\'s events, oldest first, each once, with the register\'s name', async () => {
++  const w = twoRegisters(csvOf(ev(1), ev(3)));
++  await w.putB(ev(2, { kind: 'void', reference: 'rb' }));
++  const text = await w.sync.exportCsv();
++  assert.ok(text);
++  const rows = text!.trim().split('\n');
++  assert.equal(rows.length, 4, 'a header and three events');
++  assert.match(rows[0], /,register$/);
++  assert.deepEqual(rows.slice(1).map(r => r.split(',')[0]), [ev(1).ts, ev(2).ts, ev(3).ts], 'oldest first');
++  assert.deepEqual(rows.slice(1).map(r => r.split(',').pop()), ['Front', 'Back', 'Front']);
++});
++test('exporting first sends this register\'s own history, so the file is not missing events made here', async () => {
++  const w = world({}, csvOf(ev(1), ev(2)));
++  assert.equal(w.sync.isBehind(), true);
++  const text = await w.sync.exportCsv();
++  assert.equal(w.events.length, 2); assert.equal(w.sync.isBehind(), false);
++  assert.equal(text!.trim().split('\n').length, 3);
++});
++test('exporting twice gives the same file and writes nothing more', async () => {
++  const w = world({}, csvOf(ev(1), ev(2)));
++  const one = await w.sync.exportCsv(); const writes = w.calls.writes; const two = await w.sync.exportCsv();
++  assert.equal(one, two); assert.equal(w.calls.writes, writes);
++});
++test('no file is made when CloudKit is not the active backend, in practice mode, or before the register has an id', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
++    const w = world(over, csvOf(ev(1)));
++    assert.equal(await w.sync.exportCsv(), null); assert.equal(w.events.length, 0); assert.equal(w.calls.lists, 0);
++  }
++});
++test('a CloudKit read that fails is reported to the person who asked, not hidden', async () => {
++  const w = world({ native: async () => { throw new Error('iCloud is not reachable'); } }, csvOf(ev(1)));
++  await assert.rejects(w.sync.exportCsv(), /iCloud is not reachable/);
++});
++test('the Cloud sync page offers the export only when CloudKit is the backend, and keeps it off in practice mode', () => {
++  const screen = readFileSync('src/screens/CloudSync.tsx', 'utf8');
++  assert.match(screen, /activeBackendKind\(\) === 'cloudkit'/);
++  assert.match(screen, /spot=\{SPOT\.cloudSyncEvents\}[^>]*disabled=\{practice\}/);
++  assert.match(screen, /eventSync\.exportCsv\(\)/);
++  assert.match(readFileSync('src/lib/sync.ts', 'utf8'), /export const eventSync = events;/);
++});
