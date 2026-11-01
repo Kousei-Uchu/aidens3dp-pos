@@ -442,3 +442,10 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 2. **It describes the design, not what is built today.** Several parts (saved carts, shop settings, staff, the audit log) are not yet sent. The intro says nothing is sent before sync is switched on, and the secrets block says "later". Guess: better to say all of it now than to edit the note every patch.
 3. **Wording is in `src/lib/icloudNote.ts`, pinned by a test.** The test checks the points the decisions require, not exact sentences, so you can reword freely.
 4. **The privacy policy is not touched.** The help page says it is yours to update.
+
+## Drawer audit (0203)
+
+1. **The "typical day" is the whole shop's.** The smart-change profile and the assistant's float judgement now size their horizon from this register's sales plus the sales the other registers shared. Guess: the ledger holds every register's cash, so a day measured on one register's sales was too short. The alternative is leaving it per register.
+2. **Smart change and consolidate are still described as per iPad.** Decisions item 23 makes them shop-wide, but nothing syncs them until patch 6a. The Settings text and the help say "this register only" today, which is true. They need changing when 6a lands, not before.
+3. **`cashSince` keeps its `registerId` branch.** Nothing calls it with an id any more, but removing it changes an exported function the tests may use. Say if you want it removed.
+4. **The "stale comment in the store" is already fixed.** The decisions mention one; the store comments already say the drawer is shared.

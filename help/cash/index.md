@@ -20,7 +20,7 @@ There are two separate records, and the screen shows both:
 Money is Australian: $100, $50, $20, $10 and $5 notes, and $2, $1, 50c, 20c, 10c and 5c coins.
 
 ### What you see on the screen
-- **No drawer open on this register.** with **Open drawer with float**, when there is no shift. Otherwise a card with **Float**, **Cash sales** (*Net of cash refunds*), **Paid in**, **Paid out** and **Expected in drawer**, and the buttons **Paid in**, **Paid out** and **Count & close (Z-report)**.
+- **No drawer open.** (with a line saying it is one drawer shared with every register) with **Open drawer with float**, when there is no shift. Otherwise a card with **Float**, **Cash sales** (*Net of cash refunds*), **Paid in**, **Paid out** and **Expected in drawer**, and the buttons **Paid in**, **Paid out** and **Count & close (Z-report)**.
 - **Notes and coins in the drawer:** a row for every note and coin with how many the ledger holds (× 3) and what that comes to, and **Total in the drawer**.
 - **Correct contents** and **Daily float report** buttons.
 - **Cash history:** the 15 most recent entries, newest first. Each says what happened, who was signed in, when, which notes and coins, and the reason if one was given. Money that came out shows with a minus sign (for example **-$15.00**).
@@ -38,7 +38,7 @@ You rarely have to touch the ledger, because most of it happens as you work:
 A cash sale updates the ledger whether or not a drawer is open. The shift figures, though, only count sales made **after** you opened the drawer, so open it at the start of the day.
 
 ### Each iPad has its own
-The ledger and the shift live on the iPad you are using. Another iPad has its own, and they are not added together. They are also not in the backup file. If you use two registers, each one needs its own drawer opened and counted.
+There is one drawer for the whole shop. The shift and the ledger are shared between registers, so a drawer opened on one iPad is open on all of them and a cash sale on any iPad counts in it. They are not in the backup file. If you use two registers, open and count the drawer once, not once per iPad.
 
 ### Keeping it honest
 The ledger is only as right as what is tapped and confirmed. If the denominations entered do not match the cash physically exchanged, or cash is taken out without telling the POS, the ledger will drift away from the real drawer. Two things put it right:
@@ -57,7 +57,7 @@ The shift figures are plain sums of dollars: float, plus cash sales, plus paid i
 
 ### How Expected is worked out
 **Expected in drawer** = Float + Cash sales + Paid in − Paid out.
-- **Cash sales** only counts cash payments, from this register, made since you opened the drawer. Card and gift card payments are not counted.
+- **Cash sales** only counts cash payments, from every register, made since you opened the drawer. Card and gift card payments are not counted.
 - For a sale it adds what was applied to the bill **plus any cash rounding**, which is the cash the customer really paid net of change. It does **not** add the notes handed over, because the change went back out.
 - For a refund it subtracts the cash that was paid back.
 
@@ -123,7 +123,7 @@ An entry's `delta` is what moved: positive for money that went in, negative for 
 `patchPos` changes the in-memory state and saves the whole `pos` slice a moment later (a 400 ms delay that restarts on every change). On load, `readLedger` throws away anything it cannot read and starts with an empty ledger, so a damaged saved ledger shows an empty drawer rather than breaking the screen. The backup file holds settings and the grid only: it carries neither the shift nor the ledger.
 
 ### Reading the code for a fault
-- **The drawer shows no notes but money is in it.** The ledger is empty: it was never opened or counted on this iPad, or the saved copy could not be read. Open the drawer or use **Correct contents**.
+- **The drawer shows no notes but money is in it.** The ledger is empty: it was never opened or counted, or the saved copy could not be read. Open the drawer or use **Correct contents**.
 - **Expected is lower than it should be.** Cash sales only count from `shift.openedAt`. A sale made before the drawer was opened is not in it.
 - **Expected looks too high after a refund.** A refund only subtracts cash tenders. A refund paid to the card does not.
 - **The two iPads disagree.** They should: each has its own `pos.ledger` and `pos.shift`.

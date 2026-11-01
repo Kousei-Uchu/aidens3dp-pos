@@ -57,7 +57,7 @@ export const drawerDayModule: TrainingModule = {
         id: 'drawer-closed',
         nodes: [
           { id: 'bar', kind: 'bar', x: 0, y: 0, w: 640, h: 40, label: 'Cash drawer', sub: 'Practice data' },
-          { id: 'msg', kind: 'text', x: 40, y: 80, w: 560, h: 40, label: 'No drawer open on this register.', size: 13, align: 'center' },
+          { id: 'msg', kind: 'text', x: 40, y: 80, w: 560, h: 40, label: 'No drawer open.', size: 13, align: 'center' },
           { id: 'open-btn', kind: 'button', x: 170, y: 140, w: 300, h: 50, label: 'Open drawer with float' },
         ],
       },

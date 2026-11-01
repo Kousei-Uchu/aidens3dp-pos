@@ -27,7 +27,7 @@ Go to **More ▸ Cash drawer** and tap **Daily float report**. If the drawer is 
 If the suggestion is right and you have physically taken the money out, tap **I took this out: record it**. Confirm the prompt. Do not record it before the cash has actually left the drawer. Tap **Close** to leave without changing the ledger.
 
 ### Where the cash history comes from
-The report uses sales on this register and its own drawer ledger. It does not combine cash from other iPads. Cash sales or change you chose not to track can make the ledger differ from the sales total. Correct it or count and close the drawer if needed: [[cash/open-close]].
+The report uses the shop's one shared drawer ledger, so cash taken on any iPad is in it. Cash sales or change you chose not to track can make the ledger differ from the sales total. Correct it or count and close the drawer if needed: [[cash/open-close]].
 
 ## Deep
 
@@ -49,7 +49,7 @@ The report does not move money automatically. After you confirm that cash was re
 ### Calculation and ledger write
 ```mermaid
 flowchart TD
-  A[Read this register ledger and cash sales] --> B[Choose period since open or today]
+  A[Read the shared drawer ledger and cash sales] --> B[Choose period since open or today]
   B --> C[Recommend notes to bank and float to keep]
   C --> D{Cash physically removed}
   D -->|no| E[Close without changing ledger]

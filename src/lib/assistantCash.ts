@@ -31,7 +31,7 @@ import type { AssistantTool } from './assistantTools';
 export type DrawerIn = {
   shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number };
   ledger: CashLedger;
-  /** Sales and refunds on this till, for how long a "typical day" is when the float is judged. */
+  /** Sales and refunds from every register (the drawer is shared, 0203), for how long a "typical day" is when the float is judged. */
   sales: readonly { ts: string; type: string; tenders?: readonly { kind: string }[] }[];
   /** Every item price in the catalogue, in cents, for the same reason. */
   prices: readonly number[];

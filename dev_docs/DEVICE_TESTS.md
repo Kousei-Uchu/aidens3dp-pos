@@ -1209,3 +1209,14 @@ No second iPad needed. Nothing in this patch has been run on a device.
 2. Read it on an iPhone and an iPad. Pass: nothing is cut off, and the page scrolls to the end with the **Check again** button reachable.
 3. Open the help page from the page's help button. Pass: the section "What is and is not kept in iCloud" says the same in short.
 4. Pass check on honesty: the wording says nothing is sent before sync is switched on, and the secrets block says "Only after the encryption test".
+
+## T92. One shared drawer, as the help now says (0203)
+
+Needs two iPads on the same shop, Smart change on at both. Nothing in this patch has been run on a device.
+
+1. With no shift open, open **More ▸ Cash drawer** on iPad A. Pass: it says **No drawer open.** and that this is one drawer shared with every register. Open it with a float.
+2. On iPad B, open the drawer screen. Pass: the drawer is open there too, with the same float.
+3. Take a cash sale on A and one on B, tapping the notes and coins each time. Pass: **Cash sales** and **Expected in drawer** on either iPad include both sales.
+4. Make most of the day's cash sales on B, then on A (the quiet one) open **Daily float report**. Pass: the report says it was played against a typical day of the shop's cash sales, and it does not suggest a tiny float because A alone has taken few sales.
+5. Ask the assistant on A "does the float look right?". Pass: the answer reflects the shop's whole day, not just A's sales.
+6. Read the Cash help pages (index, open and close, float report, smart change). Pass: none says each iPad has its own drawer or that cash is not added together.
