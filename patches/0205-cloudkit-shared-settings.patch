@@ -1,0 +1,611 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index 209d458..98c8bb9 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -193,6 +193,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+ 4. The CloudKit backend for sales and rollups, with encrypted card fields, payment attempts and events (run the two-Apple-ID encryption test first)
+ 5. Saved carts with conflict merging
+ 6. Settings, layout and Square history shards, plus staff and staff display settings, shop and receipt settings, the logo and the shared cash and refund notices
++   - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, the cash and refund notices, layout and Square history shards.
+    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
+    - 6c. The audit log (encrypted) and training progress
+    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 33d135f..780eaae 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1232,3 +1232,17 @@ Needs two iPads on the same shop. Works on the Shopify backend today and on Clou
+ 5. Save a cart on A, wait for B to show it, then edit it on B in airplane mode, delete it on A (online), and reconnect B. Pass: the cart stays deleted.
+ 6. Save more than 100 carts, delete most of them, and save one new one. Pass: the new cart reaches the other iPad (the old code only read the first 100 records).
+ 7. Pay for a sale opened from a saved cart on A. Pass: the cart disappears from B as well.
++
++## T94. Shared settings on two registers (0205)
++
++Needs two iPads on the same shop. The new settings only travel once CloudKit is the active backend (patch 8), so until then run steps 1 and 2 on Shopify to confirm nothing changed, and the rest after the switch. Nothing in this patch has been run on a device.
++
++1. On Shopify storage, change fees on iPad A. Pass: B shows the same fees within about 30 seconds, as before.
++2. On A, change the shop name and the Smart change switch. Pass: B does not change (these stay per iPad on Shopify).
++3. After the switch to CloudKit, rename the shop on A. Pass: B shows the new name within about 30 seconds, and A's theme and register name are not copied to B.
++4. Type a receipt ABN on A one digit at a time. Pass: B receives it once, a moment after you stop typing, not once per digit.
++5. Turn Smart change on at A. Pass: it is on at B, and on B the cash screen plans change the smart way.
++6. Set the AI assistant address and model on A. Pass: B shows them; B's log size and data rules are unchanged.
++7. Airplane mode on both. On A change the shop name. On B change Cash rounding. Reconnect both. Pass: both iPads end with the new name and the new rounding.
++8. Airplane mode on both. Add a staff member on A and a different one on B. Reconnect. Pass: both people exist on both iPads and can sign in with their PINs.
++9. Airplane mode on both. Remove a staff member on A and rename the same person on B. Reconnect. Pass: the person is gone from both.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index d3c8ad5..ff964aa 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -461,3 +461,16 @@ These fill gaps in the plan ("saved carts with conflict merging") and `dev_docs/
+ 5. **The soft lock (`locked_by`, `locked_at`) is not built.** The plan mentions it and nothing in the code writes it. Say if you want it.
+ 6. **Deleted carts stay in the store as records and the pull reads up to 1000.** Nothing removes them (CloudKit `remove` is not implemented, and the Shopify path never calls it). Past 1000 records the oldest are not read. A tidy-up that drops deleted carts older than a month would fix it.
+ 7. **Both backends get the same change.** Saved carts go through the shared-state seam, so the Shopify path changes too. I judged that safer than a second code path.
++
++## Shared settings (0205)
++
++These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (items 2, 3, 19 to 21, 23, O2). Each is a guess, change any you disagree with.
++
++1. **The assistant's log cap and data gate stay on each iPad.** O2 says the connection settings sync ("address, model name, options"). The log cap is that iPad's disk, and the gate decides what data a model may be sent, so I did not let one iPad loosen it for all. Syncing the gate is a one-word change in `assistantShared`.
++2. **With no base, the shop's value wins.** `sharedBase` is empty on a register's first CloudKit push, so nothing can be told apart; the shop's value wins per key and staff lists are joined. A single unsent local edit made in that moment could be lost.
++3. **A removed staff member stays removed.** Removing someone ends their PIN, so a late edit elsewhere never brings them back. Same rule as carts (0204).
++4. **Only staff merges inside a key.** Fees, receipt details, cart warnings and the assistant connection are one value each, so if two registers edit different fields of one of them, the later writer takes the whole key.
++5. **Auto-receipt is shared but has no screen.** Nothing in the app edits it today, so sharing it changes nothing yet.
++6. **Edits are sent 1.5 s after typing stops**, by a watcher, instead of each screen calling the push. Receipt fields save on every keystroke, and a watcher also covers screens added later.
++7. **Shopify reads now go through the whitelist.** The seven keys behave as before, but a record with extra or wrongly typed keys is no longer spread into the settings.
++8. **Shop name is shared but not pushed at connect time.** Connecting Shopify sets it on that register; the watcher then sends it like any other edit once CloudKit is active.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index f702deb..b458d63 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -185,6 +185,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0202 | 2026-11-02 | CloudKit, the in-app note on what is and is not in iCloud (your request: next). **The Cloud sync page now says what is stored, what is never stored and the two things a shop might not expect.** The wording is data in new `src/lib/icloudNote.ts`: nine kept blocks (shop settings, staff with PIN and badge hashes, sales with card details encrypted and amounts plain, payment attempts and events, the one shared drawer, layout and carts, notices and training progress, the assistant's log encrypted, and the logins and secrets marked as coming only after the encryption test), a never-kept list (Shopify token, open cart, per-iPad settings, outbox and counters, caches, Training and Demo data), and two warnings (the assistant's log and a sale note can hold customer names; the invite link is a read-write key). The page shows it under the buttons to anyone who can open it. Help page `settings/cloud-sync` gained a short matching section and `help.json` was rebuilt. Tests: `tests/icloudnote.test.ts` (6). I changed the sale-note warning on purpose and confirmed a test fails. Checked: `tsc --noEmit` clean, 1598 of 1598 tests pass, `help:check` green. **No behaviour change and nothing is sent.** Not done: the shop's privacy policy and App Store privacy details, which stay yours. Device test T91. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit iCloud note'. | your request |
+ | 0203 | 2026-11-02 | CloudKit, the audit of code that still assumed "this till's drawer" (decisions item 6; your request: continue). **Found one behaviour gap and a lot of stale wording.** Expected cash and the float report already read the shared ledger (`ledgerCashSince`), so those agree. The gap: the smart-change profile (`cashProfile.ts`) and the assistant's drawer snapshot (`assistantCashIO.ts`) sized their "typical day" from this register's sales alone while the ledger holds every register's cash, so a quiet register planned for too short a day. Both now use `allSales(pos.sales, pos.shared.sales)`. Wording fixed: the Cash help pages (index, open and close, float report, smart change, change, pay/cash) and `concepts/data-and-sync` said each iPad has its own drawer, that cash is not added together, and quoted a `cashSince(..., registerId, ...)` that is no longer used; the practice drawer screen said "No drawer open on this register." where the real screen says "No drawer open."; three code comments updated. `help.json` rebuilt. Tests: `tests/shopdrawer.test.ts` (6: the horizon grows with the shop's sales, no double count, source pins on both readers and on Drawer, no help page claims a per-iPad drawer, the practice string). I put the profile back to this register's sales on purpose and confirmed a test fails. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Not changed on purpose:** Smart change and consolidate stay described as per iPad until patch 6a syncs them. The decisions' stale store comment was already fixed. Device test T92. **Decided without you:** see `dev_docs/GUESSES.md`, 'Drawer audit'. | your request |
+ | 0204 | 2026-11-02 | CloudKit patch 5, saved carts with conflict merging (your request: continue). **Saved carts already went through the shared-state seam (cart put, get and list exist in the backend and the Swift), so this patch fixes how they merge rather than adding a transport.** New pure `src/lib/savedMerge.ts`: `parseSavedRow` (a record it cannot read is skipped, where one bad record used to abort the whole pull), `mergeSaved` and `applyPulled`. The rules: a delete wins over an edit (a late save used to bring a deleted cart back); a cart not changed here takes the shared copy when it is the same version or newer; a cart changed here and untouched elsewhere is sent; a cart changed on both sides is merged in three parts (name and note, assignment, contents) against `base`, the content both sides last agreed on, and a part both changed takes the later edit. `sync.ts`: `pullSaved` reads every page (it read only the first 100, and deleted carts stay as records, so open carts could be past it), `pushSaved` reads each cart back and merges before writing, runs one at a time, and no longer marks a cart clean if it was edited again while being sent; edits stamp `updatedAt`. `SavedCart` gains optional `updatedAt` and `base`. The Shopify path gets the same code. `help/sales/saved-carts.md` rewritten where it said the last sender wins. Tests: `tests/savedmerge.test.ts` (11: parsing, each rule, the three-way cases, the pull, source pins on the wiring). I broke the delete rule and the three-way rule on purpose and confirmed each fails a test; a change to the same-version shortcut did not, because the three-way gives the same answer. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Nothing sets the CloudKit backend until patch 8; on Shopify storage this changes saved cart behaviour today. The Swift is unchanged and untried.** **Not done:** the soft lock, an atomic compare-and-set in the Swift, and tidying deleted carts. Device test T93. **Decided without you:** see `dev_docs/GUESSES.md`, 'Saved carts'. | your request |
++| 0205 | 2026-11-02 | CloudKit patch 6a, first piece: **the wider set of shared settings, read safely and merged between registers** (your request: continue on the repo, returned as a patch). New pure `src/lib/sharedSettings.ts`. **Two key sets:** on Shopify the shared record is exactly the original seven keys, as before; on CloudKit it also carries the shop name, the receipt details, the pass and gift claim server addresses, auto-receipt, smart change, consolidate, and the assistant's connection (address, model name, options), per decisions items 3, 19 to 21, 23 and O2. Staff already carried each person's display mode, theme, accent and tile size, so item 2 needed nothing more. **Reading is now safe on both backends:** `parseShared` takes only the backend's own keys, type checks each, drops a staff entry that is not a real person, and never fills in a missing key, so an older build that never wrote the new keys cannot reset them (before, `pullSettings` spread whatever JSON arrived into the settings). **Merging:** `pushSharedSettings` on CloudKit reads the shop's record first and joins it with this register's edits against `sharedBase`, what both last agreed (new device-only setting, in `DEVICE_KEYS`): a setting only the shop changed is taken, a setting changed here is kept, and **staff is merged person by person**, so people added on two registers both stay and a removed person stays removed. Without this, widening the set would have let a stale register undo another's shop-name or fee edit. **Sending:** a small watcher in `sync.ts` sends the CloudKit-only settings 1.5 s after typing stops (receipt fields save per keystroke), skips practice mode, Shopify and an unsent retry, and cannot echo: after a push or a pull the base equals what the register holds. **Not shared, on purpose:** the assistant's log cap and its data gate, the API key and pass codes (patch 6d), the logo, notices (their own patches), and everything per device. No native code changed; the existing `putSettings` and `getSettings` carry it. Wording: Smart change in Settings and two help pages, and the Cloud sync help page, say what is shared and how edits join. Tests: `tests/sharedsettings.test.ts` (15); `tests/assistantsettings.test.ts` had a test pinning the old rule that the assistant is never shared, rewritten to the new one. I broke the removal rule, the keep-ours rule, the key whitelist and the assistant strip on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, 1630 of 1630 tests pass, `help:check` green. **Nothing sets the CloudKit backend until patch 8, so the Shopify path is the only live one; its record is the same seven keys, now read through the whitelist.** Device test T94. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared settings'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/cash/smart-change.md b/help/cash/smart-change.md
+index 756ccae..1891349 100644
+--- a/help/cash/smart-change.md
++++ b/help/cash/smart-change.md
+@@ -83,8 +83,8 @@ The weights are chosen to put stock first and speed second. They are a short lis
+ ### When history is thin
+ Until there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.
+ 
+-### The learned profile is per iPad
+-The profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].
++### The learned profile is per iPad, the switch is shared
++The **Smart change** switch (and **Consolidate identical items**) is one setting for the whole shop once Cloud sync is on, matching the one shared drawer; before that, each iPad has its own. The profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].
+ 
+ ## Advanced
+ 
+diff --git a/help/help.json b/help/help.json
+index 3adf8f3..c11c030 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "8f5f3973",
++ "version": "4a9cdaf5",
+  "pages": [
+   {
+    "id": "cash",
+@@ -221,7 +221,7 @@
+    "lead": "**Smart change** chooses which notes and coins to give as change so the drawer is still well stocked for the next customers, instead of just using the fewest pieces. It is off until you turn it on.",
+    "sections": {
+     "basic": "### Turning it on\nSettings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.\n\nWith it off, nothing changes: change is the fewest pieces, and Check change still judges \"worth it?\" using a spread of typical change amounts.\n\n### What you will notice\n- **On the Give change screen** (cash sales and cash refunds), under **Take from the drawer**, a line says why that choice was made. For example: *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* If the quickest way is also the best, it says *Quickest way, and it keeps the drawer well stocked.*\n- **Show another way** steps through the next best choices. The button then reads **Show the next way**, and finally **Back to the suggested way**. While you are on another choice the line says *Another way to make the same change.*\n- **In Check change**, the amber \"may not be worth it\" warning is based on your own usual change amounts, and it compares giving the change with asking for card, so it never warns about a shortage you already had. See [[cash/check-change]].\n\nYou can always ignore the suggestion and tap what you really give. See [[cash/change]].\nThe [[cash/float-report|Daily float report]] also uses the learned profile to choose what to bank and what float to leave, even when this switch is off.\n\n### What it never does\nIt **never** decides whether change can be made. If exact change is possible without Smart change, it is possible with it, and the other way round. It only chooses between the ways that are already exact.\n\n### What the line under the switch says\n| Line | What it means |\n|---|---|\n| *no history or item prices to learn from yet, so it picks the fewest pieces* | Nothing to go on. It behaves as if it were off. |\n| *No tracked cash sales yet, so it is guessing from your item prices.* | It assumes customers pay a bill with the next note up, and works out the change from your item library. |\n| *learned from your recent cash sales (about N counted, newest weigh most)* | It has real sales to learn from. |\n| *learned from about N recent cash sales plus your item prices* | A mix of both, and real sales take over as they build up. |\n\n### Helping it learn\nIt learns from denomination-recorded cash sales where you tapped what the customer handed over and confirmed the change (**Gave this**). Cancellation entries are excluded from demand learning. Give it a few days of cash sales. See [[pay/cash]].\n\n### When a suggestion feels wrong\nTap **Show another way**, or tap **I'll give different notes and coins**. Smart change is advice. If it keeps suggesting something you dislike, turn it off in Settings ▸ Payments.",
+-    "deep": "### What it is, and is not\nIt is a small statistical model that reads your own sales history, not a neural network or anything that phones home. Every number comes from the shared drawer record, the shop's sales and the item library, and the scoring is a short sum you can read below.\n\n### What it learns from\nEach time, the POS rebuilds a **profile** from three things:\n1. **The drawer history.** Which change amounts you actually give ($8.00, $13.00…), how many of each note and coin that used, and what customers actually hand over. Newer sales count more: a sale 14 days old counts half as much as one today.\n2. **The item library.** A customer buying a $12 item usually pays with a $20, so $8.00 back is likely. This is used while there are few real sales, and its weight fades as real sales build up, reaching equal weight at about 8 recent sales.\n3. **The sales list.** Used only to size how far ahead to plan: about half an average cash-sale day (counting the last 28 days), kept between 4 and 12 sales, or 6 when there is nothing to go on.\n\nCash sales with recorded denominations inform the model. Cancellation reversals, cash refunds, and cash drawer adjustments are not treated as customer change demand.\n\n### How a choice is scored\nFor every exact way of making the change, the POS imagines the drawer **after** giving it, and gives that a score. Higher is better:\n\n**100 × coverage − 40 × depth − 0.5 × pieces**\n\n- **Coverage** is the share of your usual change amounts that the drawer could still make exactly. 100% means you could still make all of them.\n- **Depth** is how far each note and coin is below what the next few sales are expected to use. 0 is well stocked and 1 is out. Notes and coins used more often count more. Half of what customers usually hand over is counted as on hand, because it can be given back again.\n- **Pieces** is a small push towards fewer pieces, so it only decides near-ties.\n\nThe best-scoring way is shown, and the next three are kept for **Show another way**.\n\n### A worked example\nSuppose your library has one item, at $12.00, and no sales have been tracked yet. The profile guesses that $8.00 of change is the most common (70%), followed by $38.00 (30%).\n\nThe drawer record holds 10 × $1, 10 × $2, 2 × $5, 3 × $10 and 2 × $20, and $8.00 is owed.\n\n| Way | Pieces | Score |\n|---|---|---|\n| 1 × $5, 1 × $2, 1 × $1 (fewest pieces) | 3 | about 89.2 |\n| 4 × $2 | 4 | about 90.6 |\n\nBoth keep full coverage, so it comes down to depth. The first uses one of only two $5 notes, and the profile expects $5 notes to be needed. So Smart change suggests 4 × $2 and says *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* The runner-up choices, 3 × $2 + 2 × $1, 2 × $2 + 4 × $1 and the $5 way, follow behind.\n\nThe weights are chosen to put stock first and speed second. They are a short list in the code if you ever want to tune them.\n\n### When history is thin\nUntil there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.\n\n### The learned profile is per iPad\nThe profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].",
++    "deep": "### What it is, and is not\nIt is a small statistical model that reads your own sales history, not a neural network or anything that phones home. Every number comes from the shared drawer record, the shop's sales and the item library, and the scoring is a short sum you can read below.\n\n### What it learns from\nEach time, the POS rebuilds a **profile** from three things:\n1. **The drawer history.** Which change amounts you actually give ($8.00, $13.00…), how many of each note and coin that used, and what customers actually hand over. Newer sales count more: a sale 14 days old counts half as much as one today.\n2. **The item library.** A customer buying a $12 item usually pays with a $20, so $8.00 back is likely. This is used while there are few real sales, and its weight fades as real sales build up, reaching equal weight at about 8 recent sales.\n3. **The sales list.** Used only to size how far ahead to plan: about half an average cash-sale day (counting the last 28 days), kept between 4 and 12 sales, or 6 when there is nothing to go on.\n\nCash sales with recorded denominations inform the model. Cancellation reversals, cash refunds, and cash drawer adjustments are not treated as customer change demand.\n\n### How a choice is scored\nFor every exact way of making the change, the POS imagines the drawer **after** giving it, and gives that a score. Higher is better:\n\n**100 × coverage − 40 × depth − 0.5 × pieces**\n\n- **Coverage** is the share of your usual change amounts that the drawer could still make exactly. 100% means you could still make all of them.\n- **Depth** is how far each note and coin is below what the next few sales are expected to use. 0 is well stocked and 1 is out. Notes and coins used more often count more. Half of what customers usually hand over is counted as on hand, because it can be given back again.\n- **Pieces** is a small push towards fewer pieces, so it only decides near-ties.\n\nThe best-scoring way is shown, and the next three are kept for **Show another way**.\n\n### A worked example\nSuppose your library has one item, at $12.00, and no sales have been tracked yet. The profile guesses that $8.00 of change is the most common (70%), followed by $38.00 (30%).\n\nThe drawer record holds 10 × $1, 10 × $2, 2 × $5, 3 × $10 and 2 × $20, and $8.00 is owed.\n\n| Way | Pieces | Score |\n|---|---|---|\n| 1 × $5, 1 × $2, 1 × $1 (fewest pieces) | 3 | about 89.2 |\n| 4 × $2 | 4 | about 90.6 |\n\nBoth keep full coverage, so it comes down to depth. The first uses one of only two $5 notes, and the profile expects $5 notes to be needed. So Smart change suggests 4 × $2 and says *1 more piece to count, but keeps 1 more $5 and 1 more $1 in the drawer for upcoming change.* The runner-up choices, 3 × $2 + 2 × $1, 2 × $2 + 4 × $1 and the $5 way, follow behind.\n\nThe weights are chosen to put stock first and speed second. They are a short list in the code if you ever want to tune them.\n\n### When history is thin\nUntil there are sales to learn from, the guess is rough: it assumes bills are paid with the next note up. Real sales then pull it towards how your customers really pay, so it improves on its own. If you take little cash, it plans for fewer upcoming sales (as few as 4), so the suggestions stay close to the plain way.\n\n### The learned profile is per iPad, the switch is shared\nThe **Smart change** switch (and **Consolidate identical items**) is one setting for the whole shop once Cloud sync is on, matching the one shared drawer; before that, each iPad has its own. The profile is built from the shared drawer ledger and the shop's sales, this iPad's and those the other registers shared, so a quiet register plans for the same day the drawer sees. The profile itself is worked out on each iPad and is not sent anywhere. See [[cash]].",
+     "advanced": "### From history to a suggestion\n```mermaid\nflowchart TD\n  A[useCashProfile in cashProfile.ts] --> B{Smart change on}\n  B -->|no| C[null so planChange is used]\n  B -->|yes| D[buildProfile from ledger entries and item prices]\n  D --> E[CashProfile: amounts needPerSale inPerSale horizon confidence]\n  E --> F[planChangeSmart pool owed profile]\n  F --> G[planChange first: is exact change possible]\n  G -->|no| H[return impossible unchanged]\n  G -->|yes| I[findCombinationsLimited collects exact ways up to the search limit]\n  I --> J[scoreAfter up to 400: quickest baseline plus spread sample]\n  J --> K[best plus 3 alternatives plus explainChoice]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| The switch and the note under it | `Settings` ▸ Payments in `src/screens/Settings.tsx` (`SmartChangeNote`) |\n| Building the profile | `useCashProfile` in `src/state/cashProfile.ts` |\n| History and prices into a profile | `buildProfile`, `fromLedger`, `fromPrices`, `horizonFrom` in `src/lib/changeScore.ts` |\n| The score | `scoreAfter`, `coverage`, `depth`, `SCORE_WEIGHTS` in `src/lib/changeScore.ts` |\n| The suggestion and the reason line | `planChangeSmart`, `explainChoice` in `src/lib/changeScore.ts` |\n| The warning in Check change | `judgeChoices` in `src/lib/changeImpact.ts` |\n| The line under the switch | `profileNote` in `src/lib/changeScore.ts` |\n| The Give change screen and Show another way | `GiveCash` in `src/screens/CashSheet.tsx` |\n\n### The numbers\n| Name | Value | What it does |\n|---|---|---|\n| `SCORE_WEIGHTS` | coverage 100, depth 40, piece 0.5 | the weights in the score |\n| Half-life | 14 days | a sale this old counts half |\n| Confidence point | 8 recent change sales | history and the item-price guess count equally |\n| Horizon | 4 to 12, default 6 | how many upcoming sales to plan for |\n| Amounts kept | 60 | the most usual change amounts in a profile |\n| Candidates scored | 400 | keeps the quickest options and samples across the full piece-count/search range |\n| Alternatives kept | 3 | for Show another way |\n| Prior notes | $5, $10, $20, $50, $100 | which notes a customer is assumed to pay with |\n| Prior change from | $20 and smaller | note and coin sizes the guess builds change from |\n\n### What counts as history\n`fromLedger` only reads entries that carry a sale id. A `sale_change` entry counts as a change given if all its amounts are negative and its note does not start with *Sale cancelled*. A `sale_in` entry counts towards what customers hand over. Other kinds (`refund_out`, `paid_out`, `adjust` and so on) are skipped. The ledger keeps only the newest 1,000 entries, so very old sales fall out anyway.\n\n### Falling back to the plain answer\n`planChangeSmart` always runs `planChange` first and returns its answer if it is not exact, so the plain and smart paths can never disagree on whether change can be made. If the profile is unusable (no amounts), or the exhaustive search is cut short before finding any exact option, it returns the plain answer with `smart: false`. A truncated search with some exact options is marked as truncated in the UI; the smart pick is then best among the options found. To keep scoring bounded on large drawers, it scores at most 400 options: the quickest baseline and a deterministic spread across the full range, rather than only the first 400 quickest combinations.\n\n### Reading the code for a fault\n- **Show another way is missing.** Smart change is off, or there is only one exact way, or the search was cut short.\n- **The reason line is missing.** `smart` is false: the profile has no amounts yet, so the plain answer is shown.\n- **It keeps suggesting a large number of pieces.** The profile says those coins are needed. Check the line under the switch for the source, and the Cash history for the sales it learned from.\n- **Suggestions do not change after many sales.** Only denomination-recorded cash sales count; `fromLedger` ignores cancellation and refund entries.\n- **Two iPads suggest different things.** They should: each builds its own profile from its own ledger.\n- **Tests.** `tests/changescore.test.ts` covers the profile, the score, 60 random drawers where the smart plan is exact exactly when the plain one is, and a mutation check that the stock-keeping test fails without the depth weight. `tests/changeimpact.test.ts` covers the worth-it check."
+    }
+   },
+@@ -1734,7 +1734,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+@@ -1798,7 +1798,7 @@
+    ],
+    "lead": "Open **More ▸ Settings ▸ Payments** to choose cash rounding, Smart change and the fee rates used in POS estimates. Reader setup is in **Support & diagnostics**.",
+    "sections": {
+-    "basic": "### Cash rounding\n**Cash rounding (5c)** rounds the amount due in cash to the nearest five cents. It applies to the cash amount only; card payments are not rounded by this setting. The setting is on by default.\n\n### Smart change\nTurn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only. For how the choice is calculated, see [[cash/smart-change]].\n\n### Card fee rates and the terminal\nSet **Card-present fee %** and **Keyed / card-not-present fee %** to match the rates you use. They are estimates for reports; the Zeller SDK does not return the actual fee. A card refund does not return the original fee.\n\nTo pair or check the reader, tap **Reader & pairing**. In **Support & diagnostics**, use **Setup (pair terminal)**. Card payments need a network connection and a paired terminal. The **Automatic cash tender machine** option is still under construction and disabled; cash notes and coins are handled by hand.",
++    "basic": "### Cash rounding\n**Cash rounding (5c)** rounds the amount due in cash to the nearest five cents. It applies to the cash amount only; card payments are not rounded by this setting. The setting is on by default.\n\n### Smart change\nTurn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only until Cloud sync is switched on, and then to every register, because the drawer is shared too. For how the choice is calculated, see [[cash/smart-change]].\n\n### Card fee rates and the terminal\nSet **Card-present fee %** and **Keyed / card-not-present fee %** to match the rates you use. They are estimates for reports; the Zeller SDK does not return the actual fee. A card refund does not return the original fee.\n\nTo pair or check the reader, tap **Reader & pairing**. In **Support & diagnostics**, use **Setup (pair terminal)**. Card payments need a network connection and a paired terminal. The **Automatic cash tender machine** option is still under construction and disabled; cash notes and coins are handled by hand.",
+     "deep": "### What each choice affects\n- Cash rounding applies to the amount due on a cash tender, not card or gift-card amounts.\n- Smart change is a per-register preference and works with the drawer's note-and-coin counts and sales history.\n- Card fee rates are stored as shared settings and are used to estimate fees. Changing a rate does not change the amount charged by Zeller.\n- Reader pairing is device-specific. If you reinstall the app, pair the terminal again.\n\nThe default estimates are **1.4%** for card-present and **1.7%** for keyed/card-not-present. Adjust them if your actual rate differs.",
+     "advanced": "### Payment settings and reader path\n```mermaid\nflowchart TD\n  A[Choose rounding or fee estimates] --> B[Save payment settings]\n  C[Open Reader and pairing] --> D[Support and diagnostics]\n  D --> E[Setup pair terminal]\n  E --> F[Check reader before taking card payment]\n```\n\n| Job | Where |\n|---|---|\n| Payments section | `src/screens/Settings.tsx` |\n| Default fee rates and rate selection | `DEFAULT_FEES`, `feeRate` in `src/lib/fees.ts` |\n| Cash rounding | `cashRounding` in `src/lib/cashSale.ts` |\n| Reader pairing and test purchase controls | `src/screens/Diagnostics.tsx` |\n| Zeller payment request and results | `src/lib/zeller.ts`, `src/screens/Pay.tsx` |\n\nThe fee estimates are recorded with sales for reporting; they are not a quote from the terminal. The Settings footer explains that actual card fees are not provided by the Zeller SDK."
+    }
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index ec73c83..57ed257 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -39,7 +39,8 @@ Two things follow from that:
+ ### What travels
+ - Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.
+ - The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.
+-- The shared settings (staff, bundles, fees, cash rounding, Require PIN, adjust permissions and cart warnings) are the same on every register. How each iPad looks (theme, accent, tile size, screensaver) and its register name stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
++- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.
++- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.
+ 
+ ### One file of every register's events
+ Once sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.
+diff --git a/help/settings/payments.md b/help/settings/payments.md
+index 00cfb0f..e628db0 100644
+--- a/help/settings/payments.md
++++ b/help/settings/payments.md
+@@ -16,7 +16,7 @@ Open **More ▸ Settings ▸ Payments** to choose cash rounding, Smart change an
+ **Cash rounding (5c)** rounds the amount due in cash to the nearest five cents. It applies to the cash amount only; card payments are not rounded by this setting. The setting is on by default.
+ 
+ ### Smart change
+-Turn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only. For how the choice is calculated, see [[cash/smart-change]].
++Turn on **Smart change** to choose notes and coins that leave the drawer better stocked for later sales. It applies to this register only until Cloud sync is switched on, and then to every register, because the drawer is shared too. For how the choice is calculated, see [[cash/smart-change]].
+ 
+ ### Card fee rates and the terminal
+ Set **Card-present fee %** and **Keyed / card-not-present fee %** to match the rates you use. They are estimates for reports; the Zeller SDK does not return the actual fee. A card refund does not return the original fee.
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index 08d1c10..442e283 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
++export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
+ 
+ export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+diff --git a/src/lib/sharedSettings.ts b/src/lib/sharedSettings.ts
+new file mode 100644
+index 0000000..f857265
+--- /dev/null
++++ b/src/lib/sharedSettings.ts
+@@ -0,0 +1,156 @@
++// Location: src/lib/sharedSettings.ts
++// CloudKit patch 6a (0205): which settings are shared between registers, how a shared settings record is read safely,
++// and how two registers' edits are merged. Pure code, no store and no network, so the node tests pin every rule.
++//
++// Two key sets exist because the shop is moving from Shopify to CloudKit (decisions items 1 to 3, 5, 19 to 21, 23 and O2):
++//   - `metaobject` is the original seven keys and nothing else. The Shopify path behaves exactly as it did before.
++//   - `cloudkit` is those seven plus the shop name, the receipt details, the two server addresses, auto-receipt, smart change,
++//     consolidate and the assistant's connection settings.
++// Not in either set, on purpose: secrets and cashier pass codes (patch 6d, after the encryption test), the logo (its own patch),
++// notices, and everything per device (decisions items 4, 16, 22, 24 to 26).
++import { normaliseAssistant, type AssistantSettings } from './assistantConfig';
++import { defaultReceiptProfile, type ReceiptProfile } from './receiptDoc';
++import { DEFAULT_FEES } from './fees';
++import type { StaffMember } from './types';
++import type { Settings } from '../state/store';
++
++export type SharedKind = 'metaobject' | 'cloudkit';
++export type SharedPayload = Record<string, unknown>;
++
++export const SHOPIFY_KEYS = ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings'] as const;
++export const CLOUD_EXTRA_KEYS = ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant'] as const;
++export const CLOUD_KEYS = [...SHOPIFY_KEYS, ...CLOUD_EXTRA_KEYS] as const;
++export const sharedKeys = (kind: SharedKind): readonly string[] => (kind === 'cloudkit' ? CLOUD_KEYS : SHOPIFY_KEYS);
++
++const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === 'object' && !Array.isArray(x);
++const ROLES = ['cashier', 'manager', 'owner'];
++
++/** Stable text for a value: object keys sorted, so two equal settings always compare equal whatever order they were built in. */
++export function canon(x: unknown): string {
++  const walk = (v: unknown): unknown => {
++    if (Array.isArray(v)) return v.map(walk);
++    if (isObj(v)) { const o: Record<string, unknown> = {}; for (const k of Object.keys(v).sort()) if (v[k] !== undefined) o[k] = walk(v[k]); return o; }
++    return v;
++  };
++  return JSON.stringify(walk(x));
++}
++export const samePayload = (a: SharedPayload, b: SharedPayload): boolean => canon(a) === canon(b);
++
++/** The assistant's connection settings as shared. The audit log cap is this iPad's disk, and the data gate stays local (see GUESSES, 0205). */
++function assistantShared(a: AssistantSettings): Omit<AssistantSettings, 'logCapMB' | 'gate'> {
++  const { logCapMB: _cap, gate: _gate, ...rest } = a; return rest;
++}
++
++/** What this register would send, for the key set of the active backend. */
++export function pickShared(s: Settings, kind: SharedKind): SharedPayload {
++  const out: SharedPayload = {};
++  for (const k of sharedKeys(kind)) {
++    const v = (s as Record<string, unknown>)[k];
++    if (k === 'cartWarnings') out[k] = v ?? [];
++    else if (k === 'assistant') out[k] = assistantShared(normaliseAssistant(v));
++    else if (v !== undefined) out[k] = v;
++  }
++  return out;
++}
++
++const str = (x: unknown): x is string => typeof x === 'string';
++const bool = (x: unknown): x is boolean => typeof x === 'boolean';
++const validStaff = (m: unknown): m is StaffMember => isObj(m) && str(m.id) && m.id !== '' && str(m.name) && str(m.role) && ROLES.includes(m.role) && str(m.salt) && str(m.pinHash);
++
++function readReceipt(x: unknown): ReceiptProfile | undefined {
++  if (!isObj(x)) return undefined;
++  const d = defaultReceiptProfile(); const out: Record<string, unknown> = { ...d };
++  for (const k of Object.keys(d) as (keyof ReceiptProfile)[]) { const v = x[k]; if (typeof v === typeof d[k]) out[k] = v; }
++  return out as ReceiptProfile;
++}
++function readFees(x: unknown) {
++  if (!isObj(x)) return undefined;
++  const num = (v: unknown, d: number) => (typeof v === 'number' && Number.isFinite(v) && v >= 0 && v < 1 ? v : d);
++  return { ...DEFAULT_FEES, ...x, cardPresentRate: num(x.cardPresentRate, DEFAULT_FEES.cardPresentRate), keyedRate: num(x.keyedRate, DEFAULT_FEES.keyedRate), refundReturnsFee: bool(x.refundReturnsFee) ? x.refundReturnsFee : DEFAULT_FEES.refundReturnsFee };
++}
++
++/**
++ * Reads a shared settings record's JSON. Only keys of this backend's set are taken, and each is type checked, so a bad or hostile
++ * record can neither add a key nor put the wrong kind of value in one. A key that is missing or invalid is left out, never
++ * defaulted, so a register on an older build (which never wrote the newer keys) does not reset them. Null when it is not an object.
++ */
++export function parseShared(json: string | undefined | null, kind: SharedKind): SharedPayload | null {
++  let raw: unknown; try { raw = JSON.parse(json ?? ''); } catch { return null; }
++  if (!isObj(raw)) return null;
++  const out: SharedPayload = {}; const allowed = sharedKeys(kind);
++  for (const k of allowed) {
++    if (!(k in raw)) continue; const v = raw[k];
++    switch (k) {
++      case 'staff': if (Array.isArray(v)) out[k] = v.filter(validStaff); break;
++      case 'bundlesJson': case 'shopName': case 'passServerUrl': case 'giftClaimUrl': if (str(v)) out[k] = v; break;
++      case 'cashRounding': case 'requirePin': case 'smartChange': case 'consolidate': if (bool(v)) out[k] = v; break;
++      case 'autoReceipt': if (v === 'ask' || v === 'none') out[k] = v; break;
++      case 'fees': { const f = readFees(v); if (f) out[k] = f; break; }
++      case 'adjustPerms': if (isObj(v)) out[k] = v; break;
++      case 'cartWarnings': if (Array.isArray(v)) out[k] = v; break;
++      case 'receipt': { const r = readReceipt(v); if (r) out[k] = r; break; }
++      case 'assistant': if (isObj(v)) out[k] = assistantShared(normaliseAssistant(v)); break;
++    }
++  }
++  return out;
++}
++
++/** The settings patch for a payload read from the shop. The assistant keeps this iPad's own log cap and data gate. */
++export function applyShared(p: SharedPayload, current: Settings): Partial<Settings> {
++  const out: Record<string, unknown> = { ...p };
++  if (isObj(p.assistant)) out.assistant = { ...normaliseAssistant(p.assistant), logCapMB: current.assistant.logCapMB, gate: current.assistant.gate };
++  return out as Partial<Settings>;
++}
++
++/** The base kept from the last time this register and the shop agreed, as saved text. Null when there is none or it cannot be read. */
++export function readBase(text: string | undefined | null): SharedPayload | null {
++  if (!text) return null; try { const x = JSON.parse(text); return isObj(x) ? x : null; } catch { return null; }
++}
++
++/**
++ * Whether a shared setting was edited here since this register last agreed with the shop. Only CloudKit asks: its extra keys have
++ * many edit points (a field per keystroke), so a watcher sends them instead of every screen remembering to. After a push or a pull
++ * the base is exactly what this register holds, so the answer is false and two registers can never send each other's changes back.
++ */
++export const needsSending = (s: Settings, kind: SharedKind): boolean => kind === 'cloudkit' && canon(pickShared(s, kind)) !== canon(readBase(s.sharedBase) ?? {});
++
++/**
++ * Staff, merged person by person (by id) against `base`, the list both sides last agreed on.
++ *  - A person only one side changed takes that side's version; changed on both, this register's (the one sending) wins.
++ *  - A person removed on either side stays removed: removing someone is a safety act (it ends their PIN), so a late edit never brings them back.
++ *  - A person added on either side is kept.
++ *  - With no base, nothing can be told to be a removal, so the two lists are joined and the shop's version of a person wins.
++ */
++export function mergeStaff(base: StaffMember[] | null, local: StaffMember[], remote: StaffMember[]): StaffMember[] {
++  const byId = (a: StaffMember[]) => new Map(a.map(m => [m.id, m]));
++  const b = base ? byId(base) : null; const l = byId(local); const r = byId(remote);
++  const out: StaffMember[] = []; const seen = new Set<string>();
++  const take = (id: string) => {
++    if (seen.has(id)) return; seen.add(id);
++    const lm = l.get(id); const rm = r.get(id); const bm = b?.get(id);
++    if (lm && rm) { out.push(bm && canon(lm) !== canon(bm) ? lm : bm && canon(rm) !== canon(bm) ? rm : (b ? lm : rm)); return; }
++    if (b && bm) return; // one side removed a person both once had: stays removed
++    out.push((lm ?? rm)!);
++  };
++  for (const m of remote) take(m.id); for (const m of local) take(m.id);
++  return out;
++}
++
++/**
++ * Merges this register's settings with the shop's, key by key, against `base` (what both last agreed on).
++ *  - A key only the shop changed takes the shop's value; a key this register changed keeps this register's (also when both changed).
++ *  - A key only one side has is kept.
++ *  - Staff is merged person by person (mergeStaff). Everything else is one value, so the later writer wins the whole key.
++ *  - With no base nothing can be told apart, so the shop's value wins (the first push after a register joins must not undo what others set).
++ */
++export function mergeShared(base: SharedPayload | null, local: SharedPayload, remote: SharedPayload): SharedPayload {
++  const out: SharedPayload = {};
++  for (const k of new Set([...Object.keys(local), ...Object.keys(remote)])) {
++    const inL = k in local; const inR = k in remote;
++    if (!inR) { out[k] = local[k]; continue; }
++    if (!inL) { out[k] = remote[k]; continue; }
++    if (k === 'staff') { out[k] = mergeStaff(Array.isArray(base?.staff) ? (base!.staff as StaffMember[]) : null, local[k] as StaffMember[], remote[k] as StaffMember[]); continue; }
++    out[k] = base && k in base && canon(local[k]) !== canon(base[k]) ? local[k] : remote[k];
++  }
++  return out;
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 7be288f..cad7580 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -15,6 +15,7 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+ import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
+ import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
++import { applyShared, canon, mergeShared, needsSending, parseShared, pickShared, readBase, samePayload, type SharedKind } from './sharedSettings';
+ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
+ import { createAttemptSync } from './cloudkit/attemptSync';
+ import { resolvedElsewhereNotice } from './attemptShared';
+@@ -325,27 +326,56 @@ async function pullLayout() {
+   const v = Number(row.f.version) || 0;
+   if (v > st().gridVersion) { try { st().setGrid(parseGrid(row.f.layout_json).grid, v); } catch { /* ignore a bad layout */ } }
+ }
++/** Which set of settings is shared: the original seven on Shopify, the wider set on CloudKit (0205, lib/sharedSettings.ts). */
++const sharedKind = (): SharedKind => (activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject');
++// 0205: the settings only CloudKit shares (shop name, receipt details, server addresses, auto-receipt, smart change, consolidate,
++// assistant connection) are edited in many places, some a field per keystroke. Rather than every screen remembering to send them, this
++// watches the store and sends once typing has paused. It does nothing on Shopify (those settings stay per device there), in practice
++// mode, or while an earlier send is waiting to be retried (the poll does that).
++let settingsTimer: ReturnType<typeof setTimeout> | undefined;
++export const SETTINGS_SEND_DELAY_MS = 1500;
++useApp.subscribe(state => {
++  if (sharedKind() !== 'cloudkit' || isTraining() || state.settings.sharedSettingsPending || !needsSending(state.settings, 'cloudkit')) return;
++  if (settingsTimer) clearTimeout(settingsTimer);
++  settingsTimer = setTimeout(() => { settingsTimer = undefined; const s = st().settings; if (!s.sharedSettingsPending && needsSending(s, 'cloudkit')) void pushSharedSettings().catch(() => {}); }, SETTINGS_SEND_DELAY_MS);
++  (settingsTimer as { unref?: () => void }).unref?.();
++});
+ export async function pushSharedSettings() {
++  const kind = sharedKind();
+   const snapshot = st().settings;
+-  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms, cartWarnings: snapshot.cartWarnings ?? [] };
++  const shared = pickShared(snapshot, kind);
+   st().patchSettings({ sharedSettingsPending: true });
+   if (!hasCreds()) return;
+-  const version = snapshot.sharedVersion + 1;
++  let version = snapshot.sharedVersion + 1; let outgoing = shared;
+   try {
+-    await putShared('settings', 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(shared) });
++    if (kind === 'cloudkit') { // another register may have written since we last looked: merge their edits in rather than overwrite them
++      const remote = await getShared('settings', 'shared'); const remoteV = Number(remote?.f.version) || 0;
++      if (remote && remoteV > snapshot.sharedVersion) outgoing = mergeShared(readBase(snapshot.sharedBase), shared, parseShared(remote.f.settings_json, kind) ?? {});
++      version = Math.max(snapshot.sharedVersion, remoteV) + 1;
++    }
++    await putShared('settings', 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(outgoing) });
+   } catch (error) {
+     st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Shared settings not uploaded: ${String((error as Error)?.message ?? error)}` } });
+     throw error;
+   }
+   const current = st().settings;
+-  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms, cartWarnings: current.cartWarnings ?? [] });
++  if (kind === 'cloudkit') {
++    // What was merged in is taken here too, except for keys edited while the upload ran; those stay as typed and are sent again.
++    const next = mergeShared(shared, pickShared(current, kind), outgoing);
++    st().patchSettings({ ...applyShared(next, current), sharedVersion: version, sharedBase: canon(outgoing), sharedSettingsPending: !samePayload(next, outgoing) });
++    return;
++  }
++  const stillMatches = samePayload(shared, pickShared(current, kind));
+   st().patchSettings({ sharedVersion: version, sharedSettingsPending: !stillMatches });
+ }
+ async function pullSettings() {
+   if (st().settings.sharedSettingsPending) return;
+   const row = await getShared('settings', 'shared'); if (!row) return;
+   const v = Number(row.f.version) || 0;
+-  if (v > st().settings.sharedVersion) { try { st().patchSettings({ ...JSON.parse(row.f.settings_json), sharedVersion: v }); } catch {} }
++  if (v <= st().settings.sharedVersion) return;
++  const kind = sharedKind(); const parsed = parseShared(row.f.settings_json, kind); if (!parsed) return; // an unreadable record changes nothing
++  st().patchSettings({ ...applyShared(parsed, st().settings), sharedVersion: v });
++  if (kind === 'cloudkit') st().patchSettings({ sharedBase: canon(pickShared(st().settings, kind)) });
+ }
+ // ── scanner calibration (Settings ▸ Hardware ▸ Calibrate) ──────────────────────────────────────────
+ // Its own record in the pos_settings metaobject (handle `scanner`), so it never collides with the shared settings above and needs no new definition.
+diff --git a/src/screens/Settings.tsx b/src/screens/Settings.tsx
+index 8194d32..3ceedb8 100644
+--- a/src/screens/Settings.tsx
++++ b/src/screens/Settings.tsx
+@@ -68,7 +68,7 @@ export default function Settings({ open }: { open?: Sub } = {}) {
+       {sub === 'display' ? <DisplaySettings /> : null}
+       {sub === 'payments' ? <Section footer="Fees are estimated from these rates - the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
+         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
+-        <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
++        <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only, until Cloud sync is on; then every register." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
+         {s.smartChange ? <SmartChangeNote /> : null}
+         <Toggle label="Automatic cash tender machine" sub="Under Construction. Notes and coins are entered and given by hand for now." value={false} disabled={!TENDER_MACHINE_READY} onChange={() => {}} />
+         <View style={{ padding: 16 }}><Field kind="decimal" label="Card-present fee %" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 76d7ada..3eb9f76 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -39,6 +39,8 @@ export type Settings = {
+   helpDepth: Depth; // Help screen: how much detail to show (Basic, Deep or Advanced), remembered
+   adjustPerms: AdjustPerms; // A16.9: which roles may NOT set which price adjustments (only explicit false is stored; shared to every register)
+   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
++  /** 0205: the shared settings as this register and the shop last agreed them (JSON text), the base for merging edits made on two registers. Per device bookkeeping, like sharedVersion; never shared. See lib/sharedSettings.ts. */
++  sharedBase?: string;
+   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
+   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
+@@ -48,7 +50,7 @@ export type Settings = {
+   // The warning list (a warning set to "Add to the list"): shared between registers, so the list carries the same lines
+   // everywhere. `warningListVersion` is the shared record's version we last saw; `warningListPending` an unsent change.
+   warningList?: WarningList; warningListVersion?: number; warningListPending?: boolean;
+-  assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. Per register: never in pushSharedSettings. The API key is in the Keychain.
++  assistant: AssistantSettings; // Settings ▸ AI assistant: model address and options. The connection part (not the log cap or the data gate) is shared once CloudKit is the backend (0205, decisions O2); the API key is in the Keychain and follows in patch 6d.
+   // Companion plan (0176): what this device is. Per device, like the register name, so a backup never moves a mode to
+   // another till. A register has every feature; `registerFeatures` is what a companion is allowed to keep.
+   appMode: DeviceMode; registerFeatures: RegisterFeatures; setupDone: boolean;
+diff --git a/tests/assistantsettings.test.ts b/tests/assistantsettings.test.ts
+index 8c310a3..7c65f7b 100644
+--- a/tests/assistantsettings.test.ts
++++ b/tests/assistantsettings.test.ts
+@@ -1,9 +1,11 @@
+ // Location: tests/assistantsettings.test.ts
+-// The rules around the assistant settings: never shared between registers, travel in backups (key included), role gate.
++// The rules around the assistant settings: shared between registers only as the connection and only on CloudKit (0205), travel in backups (key included), role gate.
+ import test from 'node:test';
+ import assert from 'node:assert/strict';
+ import fs from 'node:fs';
+ import path from 'node:path';
++import { pickShared } from '../src/lib/sharedSettings';
++import { defaultSettings } from '../src/state/store';
+ import { buildBackup, decryptBackup, encryptBackup, mergeSettings, validateBackup } from '../src/lib/backupFile';
+ import { defaultAssistant, normaliseAssistant } from '../src/lib/assistantConfig';
+ import { actingRole, canEditAdjustPerms } from '../src/lib/adjustPerms';
+@@ -12,12 +14,15 @@ const creds = { shopifyDomain: 'shop.myshopify.com', shopifyClientId: 'id', shop
+ const assistant = { ...defaultAssistant(), baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama3.1:8b', contextSize: 32000, endpointMode: 'local' as const };
+ const KEY = 'sk-test-BACKUPKEY-1234';
+ 
+-test('the assistant settings are never part of the shared settings that go to other registers', () => {
+-  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'lib', 'sync.ts'), 'utf8');
+-  const pushLine = src.split('\n').find(l => l.includes('const shared = {')); assert.ok(pushLine, 'pushSharedSettings builds an explicit list');
+-  const stillLine = src.split('\n').find(l => l.includes('const stillMatches')); assert.ok(stillLine);
+-  for (const l of [pushLine!, stillLine!]) assert.ok(!/assistant/i.test(l), l);
+-  assert.ok(!/assistant/i.test(src.slice(src.indexOf('export async function pushSharedSettings'), src.indexOf('export const bundleConfig'))), 'nothing about the assistant between pushSharedSettings and pullSettings');
++// 0205 (decisions O2) replaced the old rule that the assistant was never shared. On Shopify it still is not. On CloudKit the connection
++// (address, model name, options) is shared so a new register works at once; the key follows in patch 6d, and the log cap and the data gate stay local.
++test('the assistant is not shared through Shopify, and through CloudKit only as its connection, never the key, the log cap or the data gate', () => {
++  const shop = pickShared(defaultSettings(), 'metaobject'); assert.ok(!('assistant' in shop));
++  const cloud = pickShared(defaultSettings(), 'cloudkit'); assert.ok('assistant' in cloud);
++  const shared = Object.keys(cloud.assistant as object);
++  for (const k of ['logCapMB', 'gate', 'apiKey', 'key', 'assistantKey']) assert.ok(!shared.includes(k), k);
++  const src = fs.readFileSync(path.join(import.meta.dirname, '..', 'src', 'lib', 'sharedSettings.ts'), 'utf8');
++  assert.ok(!/assistantKey|apiKey/.test(src), 'the shared settings code never touches the key');
+ });
+ 
+ test('the settings object has no place for a key, and a stray key field is dropped', () => {
+diff --git a/tests/sharedsettings.test.ts b/tests/sharedsettings.test.ts
+new file mode 100644
+index 0000000..a40b26e
+--- /dev/null
++++ b/tests/sharedsettings.test.ts
+@@ -0,0 +1,135 @@
++// Location: tests/sharedsettings.test.ts
++// CloudKit patch 6a (0205): the wider set of shared settings, how a record is read safely, and how two registers' edits merge.
++// The rules are in src/lib/sharedSettings.ts; the wiring is in src/lib/sync.ts.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { CLOUD_EXTRA_KEYS, CLOUD_KEYS, SHOPIFY_KEYS, applyShared, canon, mergeShared, mergeStaff, needsSending, parseShared, pickShared, readBase, sharedKeys } from '../src/lib/sharedSettings';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++import { defaultSettings, type Settings } from '../src/state/store';
++import type { StaffMember } from '../src/lib/types';
++
++const person = (id: string, o: Partial<StaffMember> = {}): StaffMember => ({ id, name: `Person ${id}`, role: 'cashier', salt: 's', pinHash: 'h', ...o });
++const mk = (o: Partial<Settings> = {}): Settings => ({ ...defaultSettings(), ...o });
++const rec = (p: Record<string, unknown>) => JSON.stringify(p);
++
++test('Shopify shares exactly the original seven keys, CloudKit those plus eight more', () => {
++  assert.deepEqual([...SHOPIFY_KEYS], ['staff', 'bundlesJson', 'fees', 'cashRounding', 'requirePin', 'adjustPerms', 'cartWarnings']);
++  assert.deepEqual([...CLOUD_EXTRA_KEYS], ['shopName', 'receipt', 'passServerUrl', 'giftClaimUrl', 'autoReceipt', 'smartChange', 'consolidate', 'assistant']);
++  assert.equal(CLOUD_KEYS.length, 15); assert.deepEqual([...sharedKeys('metaobject')], [...SHOPIFY_KEYS]); assert.deepEqual([...sharedKeys('cloudkit')], [...CLOUD_KEYS]);
++});
++
++test('what a register sends: the Shopify record is unchanged, the CloudKit one carries the new keys and never a device or secret key', () => {
++  const s = mk({ shopName: 'Aiden', smartChange: true, passServerUrl: 'https://pass.example', registerName: 'Till 2', theme: 'dark', accent: '#ff0000', inventory: { ...defaultSettings().inventory } });
++  assert.deepEqual(Object.keys(pickShared(s, 'metaobject')).sort(), [...SHOPIFY_KEYS].sort());
++  const c = pickShared(s, 'cloudkit'); assert.deepEqual(Object.keys(c).sort(), [...CLOUD_KEYS].sort());
++  assert.equal(c.shopName, 'Aiden'); assert.equal(c.smartChange, true);
++  for (const k of ['registerId', 'registerName', 'theme', 'accent', 'tileSize', 'inventory', 'screensaver', 'appMode', 'sharedVersion', 'sharedBase', 'drawerVersion', 'locationId', 'scannerCal']) assert.ok(!(k in c), k);
++  assert.ok(!/secret|apikey|key/i.test(Object.keys(c).join(',')));
++});
++
++test('the assistant is shared as its connection only: the log cap and the data gate stay on the iPad', () => {
++  const s = mk(); s.assistant = { ...s.assistant, baseUrl: 'http://192.168.1.20:11434/v1', model: 'llama', logCapMB: 50 };
++  const a = pickShared(s, 'cloudkit').assistant as Record<string, unknown>;
++  assert.equal(a.baseUrl, 'http://192.168.1.20:11434/v1'); assert.equal(a.model, 'llama');
++  assert.ok(!('logCapMB' in a)); assert.ok(!('gate' in a));
++  const mine = mk(); mine.assistant = { ...mine.assistant, logCapMB: 77 };
++  const patch = applyShared({ assistant: a }, mine) as { assistant: Settings['assistant'] };
++  assert.equal(patch.assistant.baseUrl, 'http://192.168.1.20:11434/v1'); assert.equal(patch.assistant.logCapMB, 77); assert.deepEqual(patch.assistant.gate, mine.assistant.gate);
++});
++
++test('reading a record takes only this backend\'s keys, checks each type and never fills in a missing key', () => {
++  const json = rec({ shopName: 'X', smartChange: true, cashRounding: false, evil: 1, registerId: 'stolen', staff: [person('a')], theme: 'dark' });
++  assert.deepEqual(parseShared(json, 'metaobject'), { cashRounding: false, staff: [person('a')] });
++  assert.deepEqual(parseShared(json, 'cloudkit'), { shopName: 'X', smartChange: true, cashRounding: false, staff: [person('a')] });
++  assert.deepEqual(parseShared(rec({ cashRounding: 'yes', requirePin: 1, bundlesJson: 5, autoReceipt: 'sometimes', staff: 'x', fees: 3, receipt: [] }), 'cloudkit'), {});
++  assert.equal(parseShared('{not json', 'cloudkit'), null); assert.equal(parseShared('[1]', 'cloudkit'), null); assert.equal(parseShared(undefined, 'cloudkit'), null); assert.equal(parseShared('"x"', 'cloudkit'), null);
++});
++
++test('a staff entry that is not a real person is dropped, so a bad record cannot add a login', () => {
++  const good = person('ok'); const odd = [good, { id: 'b', name: 'B', role: 'god', salt: 's', pinHash: 'h' }, { id: '', name: 'C', role: 'owner', salt: 's', pinHash: 'h' }, { id: 'd', name: 'D', role: 'owner' }, null, 7];
++  assert.deepEqual(parseShared(rec({ staff: odd }), 'cloudkit')!.staff, [good]);
++  const rich = person('p', { badgeSalt: 'bs', badgeHash: 'bh', ui: { mode: 'simple' } as any, preferences: { theme: 'dark', accent: '#123456', tileSize: 'L' } });
++  assert.deepEqual(parseShared(rec({ staff: [rich] }), 'cloudkit')!.staff, [rich]); // display mode, theme, accent and tile size travel with the person (decisions item 2)
++});
++
++test('fees and the receipt details are read with their defaults filled, and bad numbers fall back', () => {
++  const p = parseShared(rec({ fees: { cardPresentRate: 0.02, keyedRate: 'x', refundReturnsFee: true }, receipt: { name: 'Shop', abn: 5, gstRegistered: true, extra: 'no' } }), 'cloudkit')!;
++  assert.deepEqual(p.fees, { cardPresentRate: 0.02, keyedRate: 0.017, refundReturnsFee: true });
++  const r = p.receipt as Record<string, unknown>; assert.equal(r.name, 'Shop'); assert.equal(r.abn, ''); assert.equal(r.gstRegistered, true); assert.equal(r.serverUrl, ''); assert.ok(!('extra' in r));
++});
++
++test('merge: a key only the shop changed takes the shop\'s value, a key edited here keeps ours, also when both changed', () => {
++  const base = { shopName: 'Old', smartChange: false, cashRounding: true };
++  assert.deepEqual(mergeShared(base, { shopName: 'Old', smartChange: false, cashRounding: true }, { shopName: 'Shop', smartChange: true, cashRounding: true }), { shopName: 'Shop', smartChange: true, cashRounding: true });
++  assert.deepEqual(mergeShared(base, { shopName: 'Mine', smartChange: false, cashRounding: true }, { shopName: 'Old', smartChange: true, cashRounding: true }), { shopName: 'Mine', smartChange: true, cashRounding: true });
++  assert.equal(mergeShared(base, { shopName: 'Mine' }, { shopName: 'Theirs' }).shopName, 'Mine');
++});
++
++test('merge: a key only one side has is kept, and with no base the shop\'s value wins', () => {
++  assert.deepEqual(mergeShared({}, { a: 1 }, { b: 2 }), { a: 1, b: 2 });
++  assert.equal(mergeShared(null, { shopName: 'Mine' }, { shopName: 'Theirs' }).shopName, 'Theirs');
++  assert.equal(mergeShared({ x: 1 }, { shopName: 'Mine' }, { shopName: 'Theirs' }).shopName, 'Theirs'); // a key the base never had is no evidence of an edit here
++});
++
++test('merge: key order and undefined never look like a change', () => {
++  assert.equal(canon({ b: 1, a: { d: 1, c: undefined } }), canon({ a: { d: 1 }, b: 1 }));
++  // the same fees written in another key order are not an edit here, so the shop's new value is taken
++  const merged = mergeShared({ fees: { a: 1, b: 2 } }, { fees: { b: 2, a: 1 } }, { fees: { a: 9, b: 2 } });
++  assert.deepEqual(merged.fees, { a: 9, b: 2 });
++});
++
++test('staff merge: people added on two registers both stay, an edit to one person and a new person do not collide', () => {
++  const base = [person('a'), person('b')];
++  const mine = [person('a', { name: 'A edited' }), person('b'), person('c')];
++  const theirs = [person('a'), person('b', { role: 'manager' }), person('d')];
++  const out = mergeStaff(base, mine, theirs);
++  assert.deepEqual(out.map(m => m.id).sort(), ['a', 'b', 'c', 'd']);
++  assert.equal(out.find(m => m.id === 'a')!.name, 'A edited'); assert.equal(out.find(m => m.id === 'b')!.role, 'manager');
++});
++
++test('staff merge: a person removed on either side stays removed, even if the other side edited them', () => {
++  const base = [person('a'), person('b')];
++  assert.deepEqual(mergeStaff(base, [person('a'), person('b', { name: 'edited' })], [person('a')]).map(m => m.id), ['a']); // removed there, edited here
++  assert.deepEqual(mergeStaff(base, [person('a')], [person('a'), person('b', { name: 'edited' })]).map(m => m.id), ['a']); // removed here, edited there
++});
++
++test('staff merge: changed on both sides keeps the sender\'s version, and with no base the lists are joined with the shop\'s version of a person', () => {
++  const base = [person('a')];
++  assert.equal(mergeStaff(base, [person('a', { name: 'Mine' })], [person('a', { name: 'Theirs' })])[0].name, 'Mine');
++  const joined = mergeStaff(null, [person('a', { name: 'Mine' }), person('x')], [person('a', { name: 'Theirs' }), person('y')]);
++  assert.deepEqual(joined.map(m => m.id).sort(), ['a', 'x', 'y']); assert.equal(joined.find(m => m.id === 'a')!.name, 'Theirs');
++});
++
++test('two registers: a stale one pushing its own edit does not undo a setting the other changed', () => {
++  const agreed = mk({ shopName: 'Aiden', cashRounding: true }); const base = pickShared(agreed, 'cloudkit');
++  const a = mk({ ...agreed, shopName: 'Aiden 3D' }); // register A renamed the shop and pushed
++  const b = mk({ ...agreed, cashRounding: false, staff: [person('new')] }); // register B, which never saw that, changed rounding and added a person
++  const merged = mergeShared(base, pickShared(b, 'cloudkit'), pickShared(a, 'cloudkit'));
++  assert.equal(merged.shopName, 'Aiden 3D'); assert.equal(merged.cashRounding, false); assert.deepEqual((merged.staff as StaffMember[]).map(m => m.id), ['new']);
++});
++
++test('no echo: after a register takes the shop\'s record it has nothing to send, and an edit makes it send', () => {
++  const remote = mk({ shopName: 'Shop', smartChange: true, passServerUrl: 'https://p.example', staff: [person('a', { preferences: { theme: 'dark' } })], assistant: { ...defaultSettings().assistant, model: 'm', baseUrl: 'http://10.0.0.5:11434/v1' } });
++  let here = mk({ registerName: 'Till 3' });
++  here = { ...here, ...applyShared(parseShared(JSON.stringify(pickShared(remote, 'cloudkit')), 'cloudkit')!, here) };
++  here.sharedBase = canon(pickShared(here, 'cloudkit'));
++  assert.equal(needsSending(here, 'cloudkit'), false); assert.equal(here.shopName, 'Shop'); assert.equal(here.registerName, 'Till 3');
++  assert.equal(needsSending({ ...here, shopName: 'Shop 2' }, 'cloudkit'), true);
++  assert.equal(needsSending({ ...here, receipt: { ...here.receipt, abn: '12' } }, 'cloudkit'), true);
++  assert.equal(needsSending({ ...here, theme: 'dark', accent: '#000000', registerName: 'x' }, 'cloudkit'), false); // this iPad's own look and name are never sent
++  assert.equal(needsSending({ ...mk(), shopName: 'Unsent' }, 'metaobject'), false); // Shopify has no watcher
++  assert.equal(readBase('nope'), null); assert.equal(readBase(undefined), null);
++});
++
++test('source pins: the push merges on CloudKit only, pulls take only known keys, and the new base is a device key', () => {
++  const sync = readFileSync('src/lib/sync.ts', 'utf8');
++  const push = sync.slice(sync.indexOf('export async function pushSharedSettings'), sync.indexOf('async function pullSettings'));
++  assert.ok(/pickShared\(snapshot, kind\)/.test(push) && /kind === 'cloudkit'/.test(push) && /mergeShared\(/.test(push), 'push picks by backend and merges on CloudKit');
++  assert.ok(push.indexOf("getShared('settings', 'shared')") < push.indexOf("putShared('settings', 'shared'"), 'the shop\'s record is read before ours is written');
++  const pull = sync.slice(sync.indexOf('async function pullSettings'), sync.indexOf('// ── scanner calibration'));
++  assert.ok(/parseShared\(/.test(pull) && /applyShared\(/.test(pull) && !/JSON\.parse\(row\.f\.settings_json\)/.test(pull), 'pull reads through the whitelist, not a raw spread');
++  assert.ok(/useApp\.subscribe\(/.test(sync) && /needsSending\(/.test(sync) && /isTraining\(\)/.test(sync.slice(sync.indexOf('useApp.subscribe('), sync.indexOf('useApp.subscribe(') + 400)), 'the watcher exists and skips practice mode');
++  assert.ok((DEVICE_KEYS as readonly string[]).includes('sharedBase'));
++  const store = readFileSync('src/state/store.ts', 'utf8'); assert.ok(/sharedBase\?: string/.test(store));
++});
