@@ -13,7 +13,8 @@ import { buildWarningListEntries, mergeWarningList } from './warningList';
 import { isTraining } from './trainingGuard';
 import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
-import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
+import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
+import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
 import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
 import { createAttemptSync } from './cloudkit/attemptSync';
 import { resolvedElsewhereNotice } from './attemptShared';
@@ -253,56 +254,63 @@ export async function pullSalesHistory(force = false): Promise<void> {
 const cartFields = (c: SavedCart) => ({
   cart_uuid: c.id, name: c.name, note: c.note, customer_json: c.cart.customer ? JSON.stringify(c.cart.customer) : '', employee: c.employee, register_id: st().settings.registerId,
   status: c.status === 'void' ? 'void' : c.assignedTo ? `assigned:${c.assignedTo}` : 'open', lines_json: JSON.stringify(c.cart.lines), discount_json: c.cart.discount ? JSON.stringify(c.cart.discount) : '',
-  created_at: c.ts, updated_at: new Date().toISOString(), version: (c.version ?? 0) + 1,
+  created_at: c.ts, updated_at: c.updatedAt ?? new Date().toISOString(), version: (c.version ?? 0) + 1,
 });
 export function saveCartLocal(c: Omit<SavedCart, 'dirty' | 'status'> & { status?: SavedCart['status'] }) {
-  const s = st(); const rec: SavedCart = { status: 'open', ...c, dirty: true };
+  const s = st(); const rec: SavedCart = { status: 'open', ...c, dirty: true, updatedAt: new Date().toISOString() };
   s.patchPos({ saved: [rec, ...s.pos.saved.filter(x => x.id !== rec.id)] });
   void pushSaved();
 }
 export const updateSaved = (id: string, p: Partial<SavedCart>) => {
-  st().patchPos({ saved: st().pos.saved.map(c => (c.id === id ? { ...c, ...p, dirty: true } : c)) }); void pushSaved();
+  st().patchPos({ saved: st().pos.saved.map(c => (c.id === id ? { ...c, ...p, dirty: true, updatedAt: new Date().toISOString() } : c)) }); void pushSaved();
 };
+let pushingSaved = false; let pushSavedAgain = false;
+/**
+ * Send the saved carts changed here. Each is read back first and merged with any change another register made since (savedMerge.ts),
+ * so a save does not overwrite their edit, and a cart they deleted is not brought back. One run at a time: a call made while one is
+ * going asks for another pass when it ends.
+ */
 export async function pushSaved() {
   if (!hasCreds()) return;
-  for (const c of st().pos.saved.filter(x => x.dirty)) {
-    try {
-      const row = await putShared('cart', c.id, cartFields(c));
-      st().patchPos({ saved: st().pos.saved.map(x => (x.id === c.id ? { ...x, dirty: false, remoteId: row.id, version: Number(row.f.version) || 1 } : x)) });
-    } catch (e) { if (isNetworkError(e)) return; }
-  }
-  // void carts that have synced can be dropped locally
-  st().patchPos({ saved: st().pos.saved.filter(x => !(x.status === 'void' && !x.dirty)) });
-}
-async function pullSaved() {
-  const { rows } = await listShared('cart', { first: 100 });
-  const local = st().pos.saved; const byId = new Map(local.map(c => [c.id, c]));
-  const next: SavedCart[] = [...local];
-  for (const r of rows) {
-    const id = r.f.cart_uuid || r.handle; const mine = byId.get(id);
-    if (mine?.dirty) continue; // our unsent change wins until pushed
-    const status = r.f.status === 'void' ? 'void' : 'open';
-    if (status === 'void') { const i = next.findIndex(c => c.id === id); if (i >= 0) next.splice(i, 1); continue; }
-    const cart: Cart = { id, lines: JSON.parse(r.f.lines_json || '[]'), discount: r.f.discount_json ? JSON.parse(r.f.discount_json) : undefined, customer: r.f.customer_json ? JSON.parse(r.f.customer_json) : undefined };
-    const remoteVersion = Number(r.f.version) || 1;
-    const rec: SavedCart = { id, name: r.f.name, note: r.f.note || undefined, cart, ts: r.f.created_at || r.updatedAt, employee: r.f.employee || undefined, status: 'open',
-      assignedTo: r.f.status?.startsWith('assigned:') ? r.f.status.slice(9) : undefined, remoteId: r.id, version: remoteVersion };
-    const i = next.findIndex(c => c.id === id);
-    if (i >= 0) {
-      const cur = next[i];
-      // Conflict merge for carts: merge by field when both changed
-      if ((cur.version ?? 0) < remoteVersion && !cur.dirty) {
-        next[i] = rec;
-      } else if ((cur.version ?? 0) === remoteVersion && !cur.dirty) {
-        next[i] = rec;
-      } else {
-        // If versions diverged and neither is dirty in the usual sense, prefer remote if newer by time
-        if ((cur.version ?? 0) < remoteVersion) next[i] = rec;
+  if (pushingSaved) { pushSavedAgain = true; return; }
+  pushingSaved = true;
+  try {
+    do {
+      pushSavedAgain = false;
+      for (const c of st().pos.saved.filter(x => x.dirty)) {
+        try {
+          let send = c;
+          if ((c.version ?? 0) > 0) {
+            const row = await getShared('cart', c.id); const remote = row ? parseSavedRow(row) : null;
+            if (remote) {
+              const m = mergeSaved(c, remote);
+              if (!m.cart) { st().patchPos({ saved: st().pos.saved.filter(x => x.id !== c.id) }); continue; }
+              if (!m.push) { st().patchPos({ saved: st().pos.saved.map(x => (x.id === c.id ? m.cart! : x)) }); continue; }
+              send = m.cart;
+            }
+          }
+          const row = await putShared('cart', c.id, cartFields(send));
+          const version = Number(row.f.version) || 1; const base = baseOf(send);
+          // If the cart was changed again while this was being sent, it stays unsent; only the version it is based on moves on.
+          st().patchPos({ saved: st().pos.saved.map(x => (x.id !== c.id ? x : baseOf(x) === base && x.status === send.status ? { ...x, dirty: false, remoteId: row.id, version, base } : { ...x, remoteId: row.id, version, base })) });
+        } catch (e) { if (isNetworkError(e)) return; }
       }
-    } else next.push(rec);
+      // void carts that have synced can be dropped locally
+      st().patchPos({ saved: st().pos.saved.filter(x => !(x.status === 'void' && !x.dirty)) });
+    } while (pushSavedAgain);
+  } finally { pushingSaved = false; }
+}
+const MAX_CART_PAGES = 10; // 1000 carts, open and deleted
+async function pullSaved() {
+  // Every page, not just the newest 100: deleted carts stay in the store as records, so the open ones can be past the first page.
+  const rows: BackendRow[] = []; let after: string | null = null;
+  for (let page = 0; page < MAX_CART_PAGES; page++) {
+    const r = await listShared('cart', { first: 100, after }); rows.push(...r.rows);
+    if (!r.next) break; after = r.next;
   }
-  // carts deleted remotely (not in the newest 100 AND not dirty) are left alone - no destructive guesses.
-  st().patchPos({ saved: next.sort((a, b) => b.ts.localeCompare(a.ts)) });
+  const { next, push } = applyPulled(st().pos.saved, rows);
+  st().patchPos({ saved: next });
+  if (push) void pushSaved();
 }
 
 // ── layout + shared settings ─────────────────────────────────────────────────────────────────────
