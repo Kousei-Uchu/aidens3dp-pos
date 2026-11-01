@@ -61,7 +61,8 @@ export const defaultSettings = (): Settings => ({
   appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false, autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, stepUpMinutes: DEFAULT_STEP_UP_MINUTES,
 });
 
-export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
+export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number;
+  /** When this register last changed it, and the content both sides last agreed on, for merging a cart two registers changed (0204, savedMerge.ts). */ updatedAt?: string; base?: string };
 export type OutboxItem = {
   id: string; sale: SaleRecord; queuedAt: string;
   done: { receipt?: boolean; receiptFinal?: boolean; order?: boolean; giftCards?: boolean; entry?: boolean; rollup?: boolean; stock?: boolean };

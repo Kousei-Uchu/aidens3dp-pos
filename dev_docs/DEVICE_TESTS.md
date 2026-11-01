@@ -1220,3 +1220,15 @@ Needs two iPads on the same shop, Smart change on at both. Nothing in this patch
 4. Make most of the day's cash sales on B, then on A (the quiet one) open **Daily float report**. Pass: the report says it was played against a typical day of the shop's cash sales, and it does not suggest a tiny float because A alone has taken few sales.
 5. Ask the assistant on A "does the float look right?". Pass: the answer reflects the shop's whole day, not just A's sales.
 6. Read the Cash help pages (index, open and close, float report, smart change). Pass: none says each iPad has its own drawer or that cash is not added together.
+
+## T93. Saved carts changed on two registers (0204)
+
+Needs two iPads on the same shop. Works on the Shopify backend today and on CloudKit once patch 8 turns it on, so run it on whichever is live, and again after the switch. Nothing in this patch has been run on a device.
+
+1. Save a cart with two items on iPad A. Pass: it appears on B within about 30 seconds.
+2. Put both iPads in airplane mode. On A rename the cart. On B assign it to a staff member. Turn both back on and wait about a minute. Pass: on both iPads the cart has the new name and is assigned.
+3. In airplane mode again, change the items on both iPads (add something on A, remove something on B), then reconnect A first and B a minute later. Pass: both end up with the same cart, the one changed last, and nothing crashes.
+4. In airplane mode, delete the cart on A and rename it on B. Reconnect both. Pass: the cart is gone from both and does not come back.
+5. Save a cart on A, wait for B to show it, then edit it on B in airplane mode, delete it on A (online), and reconnect B. Pass: the cart stays deleted.
+6. Save more than 100 carts, delete most of them, and save one new one. Pass: the new cart reaches the other iPad (the old code only read the first 100 records).
+7. Pay for a sale opened from a saved cart on A. Pass: the cart disappears from B as well.

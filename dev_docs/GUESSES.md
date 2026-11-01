@@ -449,3 +449,15 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 2. **Smart change and consolidate are still described as per iPad.** Decisions item 23 makes them shop-wide, but nothing syncs them until patch 6a. The Settings text and the help say "this register only" today, which is true. They need changing when 6a lands, not before.
 3. **`cashSince` keeps its `registerId` branch.** Nothing calls it with an id any more, but removing it changes an exported function the tests may use. Say if you want it removed.
 4. **The "stale comment in the store" is already fixed.** The decisions mention one; the store comments already say the drawer is shared.
+
+## Saved carts (0204)
+
+These fill gaps in the plan ("saved carts with conflict merging") and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` ("Patch 5: unchanged"). Each is a guess, change any you disagree with.
+
+1. **A delete wins over an edit, both ways.** A cart deleted on one register is removed from the other even if it had an unsent change, and a delete made here is sent over someone else's edit. Guess: a deleted cart is usually a sold or abandoned one, and bringing it back was a bug in the old code. The alternative is last-writer-wins.
+2. **Three parts, not three-way by field.** The merge judges the name and note together, the assignment, and the contents (items, discount, customer) as three parts. Two registers editing different items in the same cart count as one part changed on both sides, so the later edit wins and the other's items are lost. A per-item merge would keep both but is much more code.
+3. **"Later" is the time of the last edit on that register's clock.** Two iPads with clocks minutes apart could pick the wrong winner. A tie goes to the shared copy.
+4. **A save first reads the cart back.** One extra read per changed cart. This narrows the overwrite window to a moment but does not close it, because there is no atomic compare-and-set. Closing it needs a change tag check in the Swift, which I did not touch.
+5. **The soft lock (`locked_by`, `locked_at`) is not built.** The plan mentions it and nothing in the code writes it. Say if you want it.
+6. **Deleted carts stay in the store as records and the pull reads up to 1000.** Nothing removes them (CloudKit `remove` is not implemented, and the Shopify path never calls it). Past 1000 records the oldest are not read. A tidy-up that drops deleted carts older than a month would fix it.
+7. **Both backends get the same change.** Saved carts go through the shared-state seam, so the Shopify path changes too. I judged that safer than a second code path.

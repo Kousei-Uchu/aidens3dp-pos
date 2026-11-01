@@ -62,7 +62,7 @@ Deleting marks the cart as void. Other registers drop it at their next check. Th
 - **Cart with items:** the saved lines are added. If **Consolidate identical items** is on, the same item combines into one line, except lines that have been changed (a changed price, a discount, a note or an adjustment), which stay separate. Your current cart's customer and discount are kept, and the saved cart's are used only if the current cart has none. If any line in the merged cart has a price adjustment, the whole order price is dropped.
 
 ### Two registers, one cart
-There is no lock on a saved cart. If two registers change the same one at nearly the same moment, the one that sends last wins. For a shop with a few registers this is rare, but it is a good reason to **Open** a cart rather than edit it in two places.
+There is no lock on a saved cart, but two registers changing the same one no longer overwrite each other. Before a register sends a change it reads the cart back and merges: a rename and an assignment made on different registers are both kept, and if both changed the same part (the items, the name and note, or who it is assigned to) the later change wins. A cart deleted on one register stays deleted: a late save from another register does not bring it back, and a delete is kept over someone else's edit. It is still a good habit to **Open** a cart rather than edit it in two places.
 
 ## Advanced
 
@@ -95,15 +95,16 @@ flowchart TD
 | Removing a used cart | the `savedFrom` check in `Pay.tsx` |
 | Search filter | the `carts` results in `Checkout.tsx` |
 | The 25 second tick | `App.tsx` (`pollShared`, `pushSaved`) |
+| Merging two registers' changes | `mergeSaved` in `src/lib/savedMerge.ts` |
 
 A saved cart stores `lines_json`, `discount_json` and `customer_json` along with the name, note, employee, register and a `version`. `SaveCartSheet` strips the cart's own name and `orderAdjust` before saving, which is why a whole order price does not survive. Assigning writes the status as `assigned:` followed by the staff id, and `pullSaved` reads it back. Nothing else reads that field.
 
-`pullSaved` asks for up to 100 carts. A cart that is deleted elsewhere and is not in that list is left alone, because the code does not guess about deletions. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet.
+`pullSaved` reads every page of carts (up to 1000, open and deleted together, since a deleted cart stays in the store as a record) and hands them to `applyPulled` in `src/lib/savedMerge.ts`, which skips a record it cannot read instead of stopping. `pushSaved` reads each cart back with `getShared` and runs `mergeSaved` before it writes, one run at a time. A cart keeps `base`, the content both sides last agreed on, and `updatedAt`, when it was last changed here, so the merge can tell which side changed which part. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet. The same code serves the Shopify and CloudKit backends.
 
 ### Reading the code for a fault
 - **A cart saved on one register is missing on another.** On the saving register, look for **not synced**: it is still `dirty`. Otherwise check the other register's sync strip, and that Settings ▸ Shopify ▸ **Set up shared storage** was run (it creates `pos_saved_cart`).
-- **A deleted cart came back.** The register that still had it was offline with its own copy marked dirty, and sent it on reconnecting.
+- **A deleted cart came back.** Before 0204 this happened when a register that was offline with its own edit sent it on reconnecting. Now a delete from another register wins over an unsent edit, so if it still happens, check `status` in the stored record.
 - **Saved, but the whole order price is gone.** Working as designed (see `SaveCartSheet`).
 - **A saved cart is still listed after the sale was paid.** The sale was made from a merged cart, not an opened one: only `openSavedCart` into an empty cart sets `savedFrom`. Delete the saved cart by hand.
 - **Merge made two lines of the same item.** One had a changed price, discount, note or adjustment, so `mergeCarts` keeps them apart.
-- **Tests.** There is no test for the saved cart sync itself. `mergeCarts` is covered in `tests/itemadjust.test.ts` and `tests/lineadjust.test.ts`.
+- **Tests.** The merge rules and the reading of records are in `tests/savedmerge.test.ts`. `mergeCarts` is covered in `tests/itemadjust.test.ts` and `tests/lineadjust.test.ts`.
