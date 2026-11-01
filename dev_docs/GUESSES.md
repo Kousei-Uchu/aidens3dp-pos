@@ -433,3 +433,12 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
 4. **A failed read says so.** The poll hides CloudKit errors; this one shows them, because a person asked for the file.
 5. **One file, one CSV.** The `events.csv` columns plus a `register` column holding the register's name (two registers with the same name look alike; the id is not in the file). Say so if you want the id too.
 6. **No pull for the app itself.** Nothing else reads the shared events (no screen shows other registers' events), so events are read only when the file is asked for, not on the poll.
+
+## CloudKit iCloud note (0202)
+
+These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **The note is on the Cloud sync page, shown to everyone who can open it, before and after joining.** Guess: a person should read what is stored before they set up or join. The alternative is showing it only after joining, or a confirm step before **Set up this till** and **Join**.
+2. **It describes the design, not what is built today.** Several parts (saved carts, shop settings, staff, the audit log) are not yet sent. The intro says nothing is sent before sync is switched on, and the secrets block says "later". Guess: better to say all of it now than to edit the note every patch.
+3. **Wording is in `src/lib/icloudNote.ts`, pinned by a test.** The test checks the points the decisions require, not exact sentences, so you can reword freely.
+4. **The privacy policy is not touched.** The help page says it is yours to update.

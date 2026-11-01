@@ -12,6 +12,7 @@ import { SPOT } from '../lib/trainingSpots';
 import { isTraining } from '../lib/trainingGuard';
 import { activeBackendKind } from '../lib/syncBackend';
 import { eventSync } from '../lib/sync';
+import { ICLOUD_NOTE_INTRO, ICLOUD_WARNINGS, IN_ICLOUD, NOT_IN_ICLOUD } from '../lib/icloudNote';
 import {
   acceptShare,
   accountLine,
@@ -137,6 +138,13 @@ export default function CloudSync() {
             <Btn title="Export all events" icon="document-text-outline" spot={SPOT.cloudSyncEvents} busy={busy} disabled={practice} onPress={() => void exportEvents()} />
           </>
         ) : null}
+
+        <Txt weight="600" style={{ marginTop: 14 }}>What is kept in iCloud</Txt>
+        <Txt size={13} sub>{ICLOUD_NOTE_INTRO}</Txt>
+        {IN_ICLOUD.map(b => <Txt key={b.title} size={13}><Txt size={13} weight="600">{b.title}. </Txt>{b.text}</Txt>)}
+        {ICLOUD_WARNINGS.map(b => <Txt key={b.title} size={13}><Txt size={13} weight="600">{b.title}. </Txt>{b.text}</Txt>)}
+        <Txt weight="600" style={{ marginTop: 6 }}>What is never kept in iCloud</Txt>
+        {NOT_IN_ICLOUD.map(t => <Txt key={t} size={13} sub>{`\u2022 ${t}`}</Txt>)}
 
         {practice ? <Txt size={13} sub>Cloud sync cannot be changed while training is on.</Txt> : null}
         {msg ? <Txt size={13} sub>{msg}</Txt> : null}

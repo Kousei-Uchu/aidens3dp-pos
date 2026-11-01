@@ -44,6 +44,15 @@ Two things follow from that:
 ### One file of every register's events
 Once sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.
 
+### What is and is not kept in iCloud
+The Cloud sync page lists this in full under **What is kept in iCloud**. In short:
+- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.
+- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.
+- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.
+- **The invite link is a key.** Anyone who holds it can read and write the shop records.
+
+Your shop's own privacy policy and App Store privacy details are yours to update.
+
 ## Advanced
 
 ### How a register is linked
@@ -60,6 +69,7 @@ flowchart TD
 | Job | Where |
 |---|---|
 | The page itself, and the all-events export | `src/screens/CloudSync.tsx` |
+| The wording of the iCloud note | `src/lib/icloudNote.ts` |
 | The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |
 | The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |
 | The iCloud container and the share link handler | `plugins/withCloudKit.js` |
