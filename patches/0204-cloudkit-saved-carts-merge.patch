@@ -1,0 +1,425 @@
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index bd4fe7b..33d135f 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1220,3 +1220,15 @@ Needs two iPads on the same shop, Smart change on at both. Nothing in this patch
+ 4. Make most of the day's cash sales on B, then on A (the quiet one) open **Daily float report**. Pass: the report says it was played against a typical day of the shop's cash sales, and it does not suggest a tiny float because A alone has taken few sales.
+ 5. Ask the assistant on A "does the float look right?". Pass: the answer reflects the shop's whole day, not just A's sales.
+ 6. Read the Cash help pages (index, open and close, float report, smart change). Pass: none says each iPad has its own drawer or that cash is not added together.
++
++## T93. Saved carts changed on two registers (0204)
++
++Needs two iPads on the same shop. Works on the Shopify backend today and on CloudKit once patch 8 turns it on, so run it on whichever is live, and again after the switch. Nothing in this patch has been run on a device.
++
++1. Save a cart with two items on iPad A. Pass: it appears on B within about 30 seconds.
++2. Put both iPads in airplane mode. On A rename the cart. On B assign it to a staff member. Turn both back on and wait about a minute. Pass: on both iPads the cart has the new name and is assigned.
++3. In airplane mode again, change the items on both iPads (add something on A, remove something on B), then reconnect A first and B a minute later. Pass: both end up with the same cart, the one changed last, and nothing crashes.
++4. In airplane mode, delete the cart on A and rename it on B. Reconnect both. Pass: the cart is gone from both and does not come back.
++5. Save a cart on A, wait for B to show it, then edit it on B in airplane mode, delete it on A (online), and reconnect B. Pass: the cart stays deleted.
++6. Save more than 100 carts, delete most of them, and save one new one. Pass: the new cart reaches the other iPad (the old code only read the first 100 records).
++7. Pay for a sale opened from a saved cart on A. Pass: the cart disappears from B as well.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 70be5b4..d3c8ad5 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -449,3 +449,15 @@ These fill gaps in `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, chang
+ 2. **Smart change and consolidate are still described as per iPad.** Decisions item 23 makes them shop-wide, but nothing syncs them until patch 6a. The Settings text and the help say "this register only" today, which is true. They need changing when 6a lands, not before.
+ 3. **`cashSince` keeps its `registerId` branch.** Nothing calls it with an id any more, but removing it changes an exported function the tests may use. Say if you want it removed.
+ 4. **The "stale comment in the store" is already fixed.** The decisions mention one; the store comments already say the drawer is shared.
++
++## Saved carts (0204)
++
++These fill gaps in the plan ("saved carts with conflict merging") and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` ("Patch 5: unchanged"). Each is a guess, change any you disagree with.
++
++1. **A delete wins over an edit, both ways.** A cart deleted on one register is removed from the other even if it had an unsent change, and a delete made here is sent over someone else's edit. Guess: a deleted cart is usually a sold or abandoned one, and bringing it back was a bug in the old code. The alternative is last-writer-wins.
++2. **Three parts, not three-way by field.** The merge judges the name and note together, the assignment, and the contents (items, discount, customer) as three parts. Two registers editing different items in the same cart count as one part changed on both sides, so the later edit wins and the other's items are lost. A per-item merge would keep both but is much more code.
++3. **"Later" is the time of the last edit on that register's clock.** Two iPads with clocks minutes apart could pick the wrong winner. A tie goes to the shared copy.
++4. **A save first reads the cart back.** One extra read per changed cart. This narrows the overwrite window to a moment but does not close it, because there is no atomic compare-and-set. Closing it needs a change tag check in the Swift, which I did not touch.
++5. **The soft lock (`locked_by`, `locked_at`) is not built.** The plan mentions it and nothing in the code writes it. Say if you want it.
++6. **Deleted carts stay in the store as records and the pull reads up to 1000.** Nothing removes them (CloudKit `remove` is not implemented, and the Shopify path never calls it). Past 1000 records the oldest are not read. A tidy-up that drops deleted carts older than a month would fix it.
++7. **Both backends get the same change.** Saved carts go through the shared-state seam, so the Shopify path changes too. I judged that safer than a second code path.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 606d0d2..f702deb 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -184,6 +184,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0201 | 2026-10-31 | CloudKit patch 4, events read back and the combined CSV (your request: continue on the repo, returned as a patch). **A manager or owner can now export one CSV of every register's events.** `createEventSync` gained `exportCsv`: it sends this register's own history first if a catch-up is due, reads every register's events from CloudKit (`pullCloudEvents`) and builds the file with the existing `eventsCsv` (the `events.csv` columns plus a `register` column, oldest first, each event once). It returns null outside CloudKit, in practice mode or before the register has an id, and it throws when CloudKit cannot be read, so the person who asked is told. `sync.ts` exports the one instance as `eventSync`. The Cloud sync page has an **Export all events** button (new spot `cloudsync.events`, registered on the nav graph, off in practice mode) shown only when CloudKit is the active backend, which writes the CSV to the cache and opens the share sheet. Each iPad's own `events.csv` is not touched. Help page `settings/cloud-sync` updated and `help.json` rebuilt. Tests: 6 new in `tests/eventsync.test.ts` (two registers merged oldest first with names, own history sent first, repeat export identical with no new writes, nothing made when inactive or practising, a failed read reported, and source pins on the page); `tests/demoguard.test.ts` now also checks the new button is off in practice. I removed the history catch-up and the activity guard on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, 1592 of 1592 tests pass, `help:check` green. **Nothing sets the CloudKit backend until patch 8, so no behaviour changes today, and the Swift is still uncompiled and untried.** **With this, patch 4's code is complete.** What still gates turning it on: the two-Apple-ID encryption test (O4), `setSaleCardMode('encrypted')`, and a Mac build of the Swift. **Not done:** the in-app "what is and is not in iCloud" note (decisions: due with patch 4), and the audit of code that still assumes "this till's drawer". Device test T90. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit events export'. | your request |
+ | 0202 | 2026-11-02 | CloudKit, the in-app note on what is and is not in iCloud (your request: next). **The Cloud sync page now says what is stored, what is never stored and the two things a shop might not expect.** The wording is data in new `src/lib/icloudNote.ts`: nine kept blocks (shop settings, staff with PIN and badge hashes, sales with card details encrypted and amounts plain, payment attempts and events, the one shared drawer, layout and carts, notices and training progress, the assistant's log encrypted, and the logins and secrets marked as coming only after the encryption test), a never-kept list (Shopify token, open cart, per-iPad settings, outbox and counters, caches, Training and Demo data), and two warnings (the assistant's log and a sale note can hold customer names; the invite link is a read-write key). The page shows it under the buttons to anyone who can open it. Help page `settings/cloud-sync` gained a short matching section and `help.json` was rebuilt. Tests: `tests/icloudnote.test.ts` (6). I changed the sale-note warning on purpose and confirmed a test fails. Checked: `tsc --noEmit` clean, 1598 of 1598 tests pass, `help:check` green. **No behaviour change and nothing is sent.** Not done: the shop's privacy policy and App Store privacy details, which stay yours. Device test T91. **Decided without you:** see `dev_docs/GUESSES.md`, 'CloudKit iCloud note'. | your request |
+ | 0203 | 2026-11-02 | CloudKit, the audit of code that still assumed "this till's drawer" (decisions item 6; your request: continue). **Found one behaviour gap and a lot of stale wording.** Expected cash and the float report already read the shared ledger (`ledgerCashSince`), so those agree. The gap: the smart-change profile (`cashProfile.ts`) and the assistant's drawer snapshot (`assistantCashIO.ts`) sized their "typical day" from this register's sales alone while the ledger holds every register's cash, so a quiet register planned for too short a day. Both now use `allSales(pos.sales, pos.shared.sales)`. Wording fixed: the Cash help pages (index, open and close, float report, smart change, change, pay/cash) and `concepts/data-and-sync` said each iPad has its own drawer, that cash is not added together, and quoted a `cashSince(..., registerId, ...)` that is no longer used; the practice drawer screen said "No drawer open on this register." where the real screen says "No drawer open."; three code comments updated. `help.json` rebuilt. Tests: `tests/shopdrawer.test.ts` (6: the horizon grows with the shop's sales, no double count, source pins on both readers and on Drawer, no help page claims a per-iPad drawer, the practice string). I put the profile back to this register's sales on purpose and confirmed a test fails. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Not changed on purpose:** Smart change and consolidate stay described as per iPad until patch 6a syncs them. The decisions' stale store comment was already fixed. Device test T92. **Decided without you:** see `dev_docs/GUESSES.md`, 'Drawer audit'. | your request |
++| 0204 | 2026-11-02 | CloudKit patch 5, saved carts with conflict merging (your request: continue). **Saved carts already went through the shared-state seam (cart put, get and list exist in the backend and the Swift), so this patch fixes how they merge rather than adding a transport.** New pure `src/lib/savedMerge.ts`: `parseSavedRow` (a record it cannot read is skipped, where one bad record used to abort the whole pull), `mergeSaved` and `applyPulled`. The rules: a delete wins over an edit (a late save used to bring a deleted cart back); a cart not changed here takes the shared copy when it is the same version or newer; a cart changed here and untouched elsewhere is sent; a cart changed on both sides is merged in three parts (name and note, assignment, contents) against `base`, the content both sides last agreed on, and a part both changed takes the later edit. `sync.ts`: `pullSaved` reads every page (it read only the first 100, and deleted carts stay as records, so open carts could be past it), `pushSaved` reads each cart back and merges before writing, runs one at a time, and no longer marks a cart clean if it was edited again while being sent; edits stamp `updatedAt`. `SavedCart` gains optional `updatedAt` and `base`. The Shopify path gets the same code. `help/sales/saved-carts.md` rewritten where it said the last sender wins. Tests: `tests/savedmerge.test.ts` (11: parsing, each rule, the three-way cases, the pull, source pins on the wiring). I broke the delete rule and the three-way rule on purpose and confirmed each fails a test; a change to the same-version shortcut did not, because the three-way gives the same answer. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Nothing sets the CloudKit backend until patch 8; on Shopify storage this changes saved cart behaviour today. The Swift is unchanged and untried.** **Not done:** the soft lock, an atomic compare-and-set in the Swift, and tidying deleted carts. Device test T93. **Decided without you:** see `dev_docs/GUESSES.md`, 'Saved carts'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index 9737af3..3adf8f3 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "c115fe41",
++ "version": "8f5f3973",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1466,8 +1466,8 @@
+    "lead": "A saved cart is a sale put on hold: the items, the customer and a name, kept so you can come back to it. Every register sees the same saved carts.",
+    "sections": {
+     "basic": "### Saving a cart\n1. Put the items in the cart (add a customer if you like).\n2. Tap **⋯** on the cart and choose **Save cart**.\n3. Give it a name, such as *Sam, holding for Friday*, and add a note if you want. If you leave the name blank it uses the customer's name, or \"Cart\" with the time.\n4. Tap **Save to Saved carts**. The cart is now empty and ready for the next customer.\n\nYou cannot save an empty cart (\"Cart is empty\"), or a cart that has had part of its payment taken (\"Payment in progress\").\n\n### Finding and opening one\nOpen **More ▸ Saved carts**, or tap the **Saved carts** tile on the Quick Menu. Each row shows the name, how many items, the total, the customer, and any note. You can also type a name, note or customer in the Checkout search box and pick the **Saved carts** filter.\n\n```screen\ntitle: Saved carts\ninput: Search | friday\nrow: Sam, holding for Friday | 3 items · $28.50\ntext: For Aiden · Note: call when ready\nrow: Walk-in order | 1 item · $12.50\nbutton: Open\nbutton: Assign → Aiden\nprimary: Delete\nnote: Tap a saved cart to open, assign or delete it.\n```\n\nTap a cart to see what is in it, then:\n- **Open**: if your cart is empty the saved cart goes straight in. If it already has items you are asked **Merge Carts?**, and choosing **Merge** adds the saved items to what is already there.\n- **Assign → name**: marks the cart as meant for that staff member. Their name appears on the row. It is a label only: anyone can still open it.\n- **Delete**: asks \"Delete saved cart?\" first. It is removed from every register.\n\nOn the list you can also **swipe a row** to delete it. You are asked to confirm, and the row slides back if you say no.\n\n### Good to know\n- Opening a saved cart does not use it up. It stays in the list until the sale made from it is paid, then it is removed for you.\n- A **whole order price** is not kept in a saved cart. The Save cart sheet warns you, and the cart comes back at its normal total.\n- A row that says **not synced** has not reached the other registers yet. It sends as soon as the register is online.",
+-    "deep": "### How carts are shared\nSaved carts are kept in your Shopify store, so any register can open them. A register sends its changes straight away, and every register checks for new or changed carts about every 25 seconds while the app is open. The cart you saved a moment ago may take up to that long to appear on another register.\n\nIf a register is offline, the cart is kept on that register (marked **not synced**) and sent when the connection returns. Until then, that register's copy wins over anything newer that arrives for the same cart, so your own unsent change is never overwritten.\n\n### Deleting\nDeleting marks the cart as void. Other registers drop it at their next check. There is no \"undo\", and nothing is asked a second time on the other registers.\n\n### Open into an empty cart, or merge\n- **Empty cart:** the saved items, customer and cart discount replace it. Any half-made payment details are cleared, so a saved cart can never bring a payment with it.\n- **Cart with items:** the saved lines are added. If **Consolidate identical items** is on, the same item combines into one line, except lines that have been changed (a changed price, a discount, a note or an adjustment), which stay separate. Your current cart's customer and discount are kept, and the saved cart's are used only if the current cart has none. If any line in the merged cart has a price adjustment, the whole order price is dropped.\n\n### Two registers, one cart\nThere is no lock on a saved cart. If two registers change the same one at nearly the same moment, the one that sends last wins. For a shop with a few registers this is rare, but it is a good reason to **Open** a cart rather than edit it in two places.",
+-    "advanced": "### From Save cart to another register\n```mermaid\nflowchart TD\n  A[Save cart sheet: SaveCartSheet in sheets.tsx] --> B[saveCartLocal in sync.ts: dirty true]\n  B --> C[pushSaved: meta.upsert to pos_saved_cart]\n  C -->|sent| D[dirty false, remoteId and version stored]\n  C -->|offline| E[stays dirty, App.tsx 25 s tick retries]\n  F[pollShared every 25 s] --> G[pullSaved: meta.list first 100]\n  G -->|local copy dirty| H[keep local]\n  G -->|status void| I[remove locally]\n  G -->|open| J[replace or add local copy]\n  K[Open: openSavedCart in savedOps.ts] --> L{current cart empty?}\n  L -->|yes| M[setCart with savedFrom set]\n  L -->|no| N[confirm Merge Carts then mergeCarts in cartOps.ts]\n  M --> O[Pay.tsx on a paid sale: updateSaved savedFrom void]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Save sheet (clears the cart after saving) | `SaveCartSheet` in `src/screens/sheets.tsx`; its `onSaved` empties the cart in `CartPane.tsx` and `GuidedCheckout.tsx` |\n| The list, Open, Assign, Delete, swipe | `src/screens/SavedCarts.tsx` (`SavedCarts`, `SwipeRow` in `src/ui/SwipeRow.tsx`) |\n| Open, delete, assign | `openSavedCart`, `deleteSavedCart`, `assignSavedCart` in `src/lib/savedOps.ts` |\n| Saving and syncing | `saveCartLocal`, `updateSaved`, `pushSaved`, `pullSaved`, `cartFields` in `src/lib/sync.ts` |\n| The stored shape | `SavedCart` in `src/state/store.ts`; the `pos_saved_cart` definition in `src/lib/shopify/metaobjects.ts` (`ensureDefinitions`, reached through `ensureShared` in `src/lib/syncBackend.ts`) |\n| Merging | `mergeCarts` in `src/lib/cartOps.ts` |\n| Removing a used cart | the `savedFrom` check in `Pay.tsx` |\n| Search filter | the `carts` results in `Checkout.tsx` |\n| The 25 second tick | `App.tsx` (`pollShared`, `pushSaved`) |\n\nA saved cart stores `lines_json`, `discount_json` and `customer_json` along with the name, note, employee, register and a `version`. `SaveCartSheet` strips the cart's own name and `orderAdjust` before saving, which is why a whole order price does not survive. Assigning writes the status as `assigned:` followed by the staff id, and `pullSaved` reads it back. Nothing else reads that field.\n\n`pullSaved` asks for up to 100 carts. A cart that is deleted elsewhere and is not in that list is left alone, because the code does not guess about deletions. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet.\n\n### Reading the code for a fault\n- **A cart saved on one register is missing on another.** On the saving register, look for **not synced**: it is still `dirty`. Otherwise check the other register's sync strip, and that Settings ▸ Shopify ▸ **Set up shared storage** was run (it creates `pos_saved_cart`).\n- **A deleted cart came back.** The register that still had it was offline with its own copy marked dirty, and sent it on reconnecting.\n- **Saved, but the whole order price is gone.** Working as designed (see `SaveCartSheet`).\n- **A saved cart is still listed after the sale was paid.** The sale was made from a merged cart, not an opened one: only `openSavedCart` into an empty cart sets `savedFrom`. Delete the saved cart by hand.\n- **Merge made two lines of the same item.** One had a changed price, discount, note or adjustment, so `mergeCarts` keeps them apart.\n- **Tests.** There is no test for the saved cart sync itself. `mergeCarts` is covered in `tests/itemadjust.test.ts` and `tests/lineadjust.test.ts`."
++    "deep": "### How carts are shared\nSaved carts are kept in your Shopify store, so any register can open them. A register sends its changes straight away, and every register checks for new or changed carts about every 25 seconds while the app is open. The cart you saved a moment ago may take up to that long to appear on another register.\n\nIf a register is offline, the cart is kept on that register (marked **not synced**) and sent when the connection returns. Until then, that register's copy wins over anything newer that arrives for the same cart, so your own unsent change is never overwritten.\n\n### Deleting\nDeleting marks the cart as void. Other registers drop it at their next check. There is no \"undo\", and nothing is asked a second time on the other registers.\n\n### Open into an empty cart, or merge\n- **Empty cart:** the saved items, customer and cart discount replace it. Any half-made payment details are cleared, so a saved cart can never bring a payment with it.\n- **Cart with items:** the saved lines are added. If **Consolidate identical items** is on, the same item combines into one line, except lines that have been changed (a changed price, a discount, a note or an adjustment), which stay separate. Your current cart's customer and discount are kept, and the saved cart's are used only if the current cart has none. If any line in the merged cart has a price adjustment, the whole order price is dropped.\n\n### Two registers, one cart\nThere is no lock on a saved cart, but two registers changing the same one no longer overwrite each other. Before a register sends a change it reads the cart back and merges: a rename and an assignment made on different registers are both kept, and if both changed the same part (the items, the name and note, or who it is assigned to) the later change wins. A cart deleted on one register stays deleted: a late save from another register does not bring it back, and a delete is kept over someone else's edit. It is still a good habit to **Open** a cart rather than edit it in two places.",
++    "advanced": "### From Save cart to another register\n```mermaid\nflowchart TD\n  A[Save cart sheet: SaveCartSheet in sheets.tsx] --> B[saveCartLocal in sync.ts: dirty true]\n  B --> C[pushSaved: meta.upsert to pos_saved_cart]\n  C -->|sent| D[dirty false, remoteId and version stored]\n  C -->|offline| E[stays dirty, App.tsx 25 s tick retries]\n  F[pollShared every 25 s] --> G[pullSaved: meta.list first 100]\n  G -->|local copy dirty| H[keep local]\n  G -->|status void| I[remove locally]\n  G -->|open| J[replace or add local copy]\n  K[Open: openSavedCart in savedOps.ts] --> L{current cart empty?}\n  L -->|yes| M[setCart with savedFrom set]\n  L -->|no| N[confirm Merge Carts then mergeCarts in cartOps.ts]\n  M --> O[Pay.tsx on a paid sale: updateSaved savedFrom void]\n```\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Save sheet (clears the cart after saving) | `SaveCartSheet` in `src/screens/sheets.tsx`; its `onSaved` empties the cart in `CartPane.tsx` and `GuidedCheckout.tsx` |\n| The list, Open, Assign, Delete, swipe | `src/screens/SavedCarts.tsx` (`SavedCarts`, `SwipeRow` in `src/ui/SwipeRow.tsx`) |\n| Open, delete, assign | `openSavedCart`, `deleteSavedCart`, `assignSavedCart` in `src/lib/savedOps.ts` |\n| Saving and syncing | `saveCartLocal`, `updateSaved`, `pushSaved`, `pullSaved`, `cartFields` in `src/lib/sync.ts` |\n| The stored shape | `SavedCart` in `src/state/store.ts`; the `pos_saved_cart` definition in `src/lib/shopify/metaobjects.ts` (`ensureDefinitions`, reached through `ensureShared` in `src/lib/syncBackend.ts`) |\n| Merging | `mergeCarts` in `src/lib/cartOps.ts` |\n| Removing a used cart | the `savedFrom` check in `Pay.tsx` |\n| Search filter | the `carts` results in `Checkout.tsx` |\n| The 25 second tick | `App.tsx` (`pollShared`, `pushSaved`) |\n| Merging two registers' changes | `mergeSaved` in `src/lib/savedMerge.ts` |\n\nA saved cart stores `lines_json`, `discount_json` and `customer_json` along with the name, note, employee, register and a `version`. `SaveCartSheet` strips the cart's own name and `orderAdjust` before saving, which is why a whole order price does not survive. Assigning writes the status as `assigned:` followed by the staff id, and `pullSaved` reads it back. Nothing else reads that field.\n\n`pullSaved` reads every page of carts (up to 1000, open and deleted together, since a deleted cart stays in the store as a record) and hands them to `applyPulled` in `src/lib/savedMerge.ts`, which skips a record it cannot read instead of stopping. `pushSaved` reads each cart back with `getShared` and runs `mergeSaved` before it writes, one run at a time. A cart keeps `base`, the content both sides last agreed on, and `updatedAt`, when it was last changed here, so the merge can tell which side changed which part. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet. The same code serves the Shopify and CloudKit backends.\n\n### Reading the code for a fault\n- **A cart saved on one register is missing on another.** On the saving register, look for **not synced**: it is still `dirty`. Otherwise check the other register's sync strip, and that Settings ▸ Shopify ▸ **Set up shared storage** was run (it creates `pos_saved_cart`).\n- **A deleted cart came back.** Before 0204 this happened when a register that was offline with its own edit sent it on reconnecting. Now a delete from another register wins over an unsent edit, so if it still happens, check `status` in the stored record.\n- **Saved, but the whole order price is gone.** Working as designed (see `SaveCartSheet`).\n- **A saved cart is still listed after the sale was paid.** The sale was made from a merged cart, not an opened one: only `openSavedCart` into an empty cart sets `savedFrom`. Delete the saved cart by hand.\n- **Merge made two lines of the same item.** One had a changed price, discount, note or adjustment, so `mergeCarts` keeps them apart.\n- **Tests.** The merge rules and the reading of records are in `tests/savedmerge.test.ts`. `mergeCarts` is covered in `tests/itemadjust.test.ts` and `tests/lineadjust.test.ts`."
+    },
+    "figures": [
+     "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Saved carts</span></div><div class=\"sf-body\"><div class=\"sf-input\"><span class=\"sf-label\">Search</span><span class=\"sf-value\">friday</span></div><div class=\"sf-row\"><span class=\"sf-label\">Sam, holding for Friday</span><span class=\"sf-value\">3 items · $28.50</span></div><div class=\"sf-text\">For Aiden · Note: call when ready</div><div class=\"sf-row\"><span class=\"sf-label\">Walk-in order</span><span class=\"sf-value\">1 item · $12.50</span></div><div class=\"sf-button\">Open</div><div class=\"sf-button\">Assign → Aiden</div><div class=\"sf-button sf-primary\">Delete</div></div></div><figcaption class=\"sf-note\">Tap a saved cart to open, assign or delete it.</figcaption></figure>"
+diff --git a/help/sales/saved-carts.md b/help/sales/saved-carts.md
+index 34f45a7..007ff90 100644
+--- a/help/sales/saved-carts.md
++++ b/help/sales/saved-carts.md
+@@ -62,7 +62,7 @@ Deleting marks the cart as void. Other registers drop it at their next check. Th
+ - **Cart with items:** the saved lines are added. If **Consolidate identical items** is on, the same item combines into one line, except lines that have been changed (a changed price, a discount, a note or an adjustment), which stay separate. Your current cart's customer and discount are kept, and the saved cart's are used only if the current cart has none. If any line in the merged cart has a price adjustment, the whole order price is dropped.
+ 
+ ### Two registers, one cart
+-There is no lock on a saved cart. If two registers change the same one at nearly the same moment, the one that sends last wins. For a shop with a few registers this is rare, but it is a good reason to **Open** a cart rather than edit it in two places.
++There is no lock on a saved cart, but two registers changing the same one no longer overwrite each other. Before a register sends a change it reads the cart back and merges: a rename and an assignment made on different registers are both kept, and if both changed the same part (the items, the name and note, or who it is assigned to) the later change wins. A cart deleted on one register stays deleted: a late save from another register does not bring it back, and a delete is kept over someone else's edit. It is still a good habit to **Open** a cart rather than edit it in two places.
+ 
+ ## Advanced
+ 
+@@ -95,15 +95,16 @@ flowchart TD
+ | Removing a used cart | the `savedFrom` check in `Pay.tsx` |
+ | Search filter | the `carts` results in `Checkout.tsx` |
+ | The 25 second tick | `App.tsx` (`pollShared`, `pushSaved`) |
++| Merging two registers' changes | `mergeSaved` in `src/lib/savedMerge.ts` |
+ 
+ A saved cart stores `lines_json`, `discount_json` and `customer_json` along with the name, note, employee, register and a `version`. `SaveCartSheet` strips the cart's own name and `orderAdjust` before saving, which is why a whole order price does not survive. Assigning writes the status as `assigned:` followed by the staff id, and `pullSaved` reads it back. Nothing else reads that field.
+ 
+-`pullSaved` asks for up to 100 carts. A cart that is deleted elsewhere and is not in that list is left alone, because the code does not guess about deletions. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet.
++`pullSaved` reads every page of carts (up to 1000, open and deleted together, since a deleted cart stays in the store as a record) and hands them to `applyPulled` in `src/lib/savedMerge.ts`, which skips a record it cannot read instead of stopping. `pushSaved` reads each cart back with `getShared` and runs `mergeSaved` before it writes, one run at a time. A cart keeps `base`, the content both sides last agreed on, and `updatedAt`, when it was last changed here, so the merge can tell which side changed which part. The `locked_by` and `locked_at` fields exist in the Shopify definition but nothing writes them yet. The same code serves the Shopify and CloudKit backends.
+ 
+ ### Reading the code for a fault
+ - **A cart saved on one register is missing on another.** On the saving register, look for **not synced**: it is still `dirty`. Otherwise check the other register's sync strip, and that Settings ▸ Shopify ▸ **Set up shared storage** was run (it creates `pos_saved_cart`).
+-- **A deleted cart came back.** The register that still had it was offline with its own copy marked dirty, and sent it on reconnecting.
++- **A deleted cart came back.** Before 0204 this happened when a register that was offline with its own edit sent it on reconnecting. Now a delete from another register wins over an unsent edit, so if it still happens, check `status` in the stored record.
+ - **Saved, but the whole order price is gone.** Working as designed (see `SaveCartSheet`).
+ - **A saved cart is still listed after the sale was paid.** The sale was made from a merged cart, not an opened one: only `openSavedCart` into an empty cart sets `savedFrom`. Delete the saved cart by hand.
+ - **Merge made two lines of the same item.** One had a changed price, discount, note or adjustment, so `mergeCarts` keeps them apart.
+-- **Tests.** There is no test for the saved cart sync itself. `mergeCarts` is covered in `tests/itemadjust.test.ts` and `tests/lineadjust.test.ts`.
++- **Tests.** The merge rules and the reading of records are in `tests/savedmerge.test.ts`. `mergeCarts` is covered in `tests/itemadjust.test.ts` and `tests/lineadjust.test.ts`.
+diff --git a/src/lib/savedMerge.ts b/src/lib/savedMerge.ts
+new file mode 100644
+index 0000000..efc2e91
+--- /dev/null
++++ b/src/lib/savedMerge.ts
+@@ -0,0 +1,89 @@
++// Location: src/lib/savedMerge.ts
++// CloudKit patch 5 (saved carts with conflict merging). Pure code: how a saved cart read from the shared store is turned into a
++// SavedCart, and what happens when this register and another have both changed the same cart. It serves both backends, since saved
++// carts go through the shared-state seam, so the metaobject path gets the same fixes.
++//
++// The rules, in the order they apply (guesses 1 to 4 in dev_docs/GUESSES.md, 'Saved carts'):
++//  1. A deleted (void) cart stays deleted. A void from another register beats an unsent edit here, so a cart that was sold or thrown
++//     away is not brought back by a late save. A delete made here is sent over any edit another register made.
++//  2. A cart nobody here has changed takes the shared copy when that is the same version or newer.
++//  3. A cart changed here that nobody else has touched since we last saw it is just sent.
++//  4. A cart changed both here and elsewhere is merged in three groups, each judged against `base` (what both sides last agreed):
++//     the name and note, who it is assigned to, and the contents (lines, discount, customer). A group only one side changed takes
++//     that side's change. A group both changed takes the later edit (`updatedAt`), the shared copy on a tie.
++import type { SavedCart } from '../state/store';
++import type { Cart } from './types';
++import type { BackendRow } from './syncBackend';
++
++type Groups = { info: string; assign: string; contents: string };
++const j = (v: unknown): string => JSON.stringify(v ?? null);
++
++/** A cart's content as three comparable strings. Undefined parts drop out of JSON, so a cart and its read-back copy compare equal. */
++export function groupsOf(c: SavedCart): Groups {
++  return { info: j([c.name, c.note ?? null]), assign: j(c.assignedTo ?? null), contents: j([c.cart.lines, c.cart.discount ?? null, c.cart.customer ?? null]) };
++}
++/** What `SavedCart.base` holds: the content both sides last agreed on. */
++export const baseOf = (c: SavedCart): string => JSON.stringify(groupsOf(c));
++
++function parseBase(s: string | undefined): Groups | null {
++  if (!s) return null;
++  try { const g = JSON.parse(s); return g && typeof g.info === 'string' && typeof g.assign === 'string' && typeof g.contents === 'string' ? g : null; } catch { return null; }
++}
++
++function withGroups(c: SavedCart, g: Groups): SavedCart {
++  const [name, note] = JSON.parse(g.info); const [lines, discount, customer] = JSON.parse(g.contents);
++  return { ...c, name: name ?? '', note: note ?? undefined, assignedTo: JSON.parse(g.assign) ?? undefined, cart: { ...c.cart, lines: lines ?? [], discount: discount ?? undefined, customer: customer ?? undefined } };
++}
++
++/** A shared row as a SavedCart, or null when it cannot be read. One bad record must not stop the others coming in. */
++export function parseSavedRow(row: BackendRow): SavedCart | null {
++  try {
++    const f = row.f; const id = f.cart_uuid || String(row.handle ?? '').replace(/^cart-/, ''); if (!id) return null;
++    const lines = f.lines_json ? JSON.parse(f.lines_json) : []; if (!Array.isArray(lines)) return null;
++    const cart: Cart = { id, lines, discount: f.discount_json ? JSON.parse(f.discount_json) : undefined, customer: f.customer_json ? JSON.parse(f.customer_json) : undefined };
++    return {
++      id, name: f.name ?? '', note: f.note || undefined, cart, ts: f.created_at || row.updatedAt, employee: f.employee || undefined,
++      status: f.status === 'void' ? 'void' : 'open', assignedTo: f.status?.startsWith('assigned:') ? f.status.slice(9) : undefined,
++      remoteId: row.id, version: Number(f.version) || 1, updatedAt: f.updated_at || row.updatedAt,
++    };
++  } catch { return null; }
++}
++
++export type Merged = {
++  /** What to keep here, or null to drop the cart from this register. */
++  cart: SavedCart | null;
++  /** Whether the kept cart still has to be sent. */
++  push: boolean;
++};
++
++const clean = (c: SavedCart): SavedCart => ({ ...c, dirty: false, base: baseOf(c) });
++
++export function mergeSaved(local: SavedCart | undefined, remote: SavedCart): Merged {
++  if (remote.status === 'void') return { cart: null, push: false };                                   // rule 1
++  if (!local) return { cart: clean(remote), push: false };
++  const lv = local.version ?? 0, rv = remote.version ?? 0;
++  if (local.status === 'void') return local.dirty ? { cart: { ...local, version: Math.max(lv, rv) }, push: true } : { cart: null, push: false };
++  if (!local.dirty) return rv >= lv ? { cart: clean(remote), push: false } : { cart: local, push: false }; // rule 2
++  if (rv <= lv) return { cart: local, push: true };                                                    // rule 3
++  const base = parseBase(local.base); const l = groupsOf(local); const r = groupsOf(remote);          // rule 4
++  const lt = Date.parse(local.updatedAt ?? '') || 0; const rt = Date.parse(remote.updatedAt ?? '') || 0;
++  const pick = (k: keyof Groups): string =>
++    l[k] === r[k] ? l[k] : base && l[k] === base[k] ? r[k] : base && r[k] === base[k] ? l[k] : lt > rt ? l[k] : r[k];
++  const merged = withGroups({ ...remote }, { info: pick('info'), assign: pick('assign'), contents: pick('contents') });
++  if (baseOf(merged) === baseOf(remote)) return { cart: clean(remote), push: false };                  // everything here was already there
++  return { cart: { ...merged, dirty: true, version: rv, base: baseOf(remote), updatedAt: local.updatedAt ?? remote.updatedAt }, push: true };
++}
++
++/** The saved carts here after reading the shared list, newest first, and whether any still need sending. */
++export function applyPulled(local: SavedCart[], rows: BackendRow[]): { next: SavedCart[]; push: boolean } {
++  const next = [...local]; let push = false;
++  for (const row of rows) {
++    const remote = parseSavedRow(row); if (!remote) continue;
++    const i = next.findIndex(c => c.id === remote.id);
++    const m = mergeSaved(i >= 0 ? next[i] : undefined, remote);
++    if (!m.cart) { if (i >= 0) next.splice(i, 1); continue; }
++    if (m.push) push = true;
++    if (i >= 0) next[i] = m.cart; else next.push(m.cart);
++  }
++  return { next: next.sort((a, b) => b.ts.localeCompare(a.ts)), push };
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 22354de..7be288f 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -13,7 +13,8 @@ import { buildWarningListEntries, mergeWarningList } from './warningList';
+ import { isTraining } from './trainingGuard';
+ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
+ import * as shop from './shopify/catalogue';
+-import { activeBackendKind, getShared, listShared, putShared, detailReadyShared } from './syncBackend';
++import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
++import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
+ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
+ import { createAttemptSync } from './cloudkit/attemptSync';
+ import { resolvedElsewhereNotice } from './attemptShared';
+@@ -253,56 +254,63 @@ export async function pullSalesHistory(force = false): Promise<void> {
+ const cartFields = (c: SavedCart) => ({
+   cart_uuid: c.id, name: c.name, note: c.note, customer_json: c.cart.customer ? JSON.stringify(c.cart.customer) : '', employee: c.employee, register_id: st().settings.registerId,
+   status: c.status === 'void' ? 'void' : c.assignedTo ? `assigned:${c.assignedTo}` : 'open', lines_json: JSON.stringify(c.cart.lines), discount_json: c.cart.discount ? JSON.stringify(c.cart.discount) : '',
+-  created_at: c.ts, updated_at: new Date().toISOString(), version: (c.version ?? 0) + 1,
++  created_at: c.ts, updated_at: c.updatedAt ?? new Date().toISOString(), version: (c.version ?? 0) + 1,
+ });
+ export function saveCartLocal(c: Omit<SavedCart, 'dirty' | 'status'> & { status?: SavedCart['status'] }) {
+-  const s = st(); const rec: SavedCart = { status: 'open', ...c, dirty: true };
++  const s = st(); const rec: SavedCart = { status: 'open', ...c, dirty: true, updatedAt: new Date().toISOString() };
+   s.patchPos({ saved: [rec, ...s.pos.saved.filter(x => x.id !== rec.id)] });
+   void pushSaved();
+ }
+ export const updateSaved = (id: string, p: Partial<SavedCart>) => {
+-  st().patchPos({ saved: st().pos.saved.map(c => (c.id === id ? { ...c, ...p, dirty: true } : c)) }); void pushSaved();
++  st().patchPos({ saved: st().pos.saved.map(c => (c.id === id ? { ...c, ...p, dirty: true, updatedAt: new Date().toISOString() } : c)) }); void pushSaved();
+ };
++let pushingSaved = false; let pushSavedAgain = false;
++/**
++ * Send the saved carts changed here. Each is read back first and merged with any change another register made since (savedMerge.ts),
++ * so a save does not overwrite their edit, and a cart they deleted is not brought back. One run at a time: a call made while one is
++ * going asks for another pass when it ends.
++ */
+ export async function pushSaved() {
+   if (!hasCreds()) return;
+-  for (const c of st().pos.saved.filter(x => x.dirty)) {
+-    try {
+-      const row = await putShared('cart', c.id, cartFields(c));
+-      st().patchPos({ saved: st().pos.saved.map(x => (x.id === c.id ? { ...x, dirty: false, remoteId: row.id, version: Number(row.f.version) || 1 } : x)) });
+-    } catch (e) { if (isNetworkError(e)) return; }
+-  }
+-  // void carts that have synced can be dropped locally
+-  st().patchPos({ saved: st().pos.saved.filter(x => !(x.status === 'void' && !x.dirty)) });
++  if (pushingSaved) { pushSavedAgain = true; return; }
++  pushingSaved = true;
++  try {
++    do {
++      pushSavedAgain = false;
++      for (const c of st().pos.saved.filter(x => x.dirty)) {
++        try {
++          let send = c;
++          if ((c.version ?? 0) > 0) {
++            const row = await getShared('cart', c.id); const remote = row ? parseSavedRow(row) : null;
++            if (remote) {
++              const m = mergeSaved(c, remote);
++              if (!m.cart) { st().patchPos({ saved: st().pos.saved.filter(x => x.id !== c.id) }); continue; }
++              if (!m.push) { st().patchPos({ saved: st().pos.saved.map(x => (x.id === c.id ? m.cart! : x)) }); continue; }
++              send = m.cart;
++            }
++          }
++          const row = await putShared('cart', c.id, cartFields(send));
++          const version = Number(row.f.version) || 1; const base = baseOf(send);
++          // If the cart was changed again while this was being sent, it stays unsent; only the version it is based on moves on.
++          st().patchPos({ saved: st().pos.saved.map(x => (x.id !== c.id ? x : baseOf(x) === base && x.status === send.status ? { ...x, dirty: false, remoteId: row.id, version, base } : { ...x, remoteId: row.id, version, base })) });
++        } catch (e) { if (isNetworkError(e)) return; }
++      }
++      // void carts that have synced can be dropped locally
++      st().patchPos({ saved: st().pos.saved.filter(x => !(x.status === 'void' && !x.dirty)) });
++    } while (pushSavedAgain);
++  } finally { pushingSaved = false; }
+ }
++const MAX_CART_PAGES = 10; // 1000 carts, open and deleted
+ async function pullSaved() {
+-  const { rows } = await listShared('cart', { first: 100 });
+-  const local = st().pos.saved; const byId = new Map(local.map(c => [c.id, c]));
+-  const next: SavedCart[] = [...local];
+-  for (const r of rows) {
+-    const id = r.f.cart_uuid || r.handle; const mine = byId.get(id);
+-    if (mine?.dirty) continue; // our unsent change wins until pushed
+-    const status = r.f.status === 'void' ? 'void' : 'open';
+-    if (status === 'void') { const i = next.findIndex(c => c.id === id); if (i >= 0) next.splice(i, 1); continue; }
+-    const cart: Cart = { id, lines: JSON.parse(r.f.lines_json || '[]'), discount: r.f.discount_json ? JSON.parse(r.f.discount_json) : undefined, customer: r.f.customer_json ? JSON.parse(r.f.customer_json) : undefined };
+-    const remoteVersion = Number(r.f.version) || 1;
+-    const rec: SavedCart = { id, name: r.f.name, note: r.f.note || undefined, cart, ts: r.f.created_at || r.updatedAt, employee: r.f.employee || undefined, status: 'open',
+-      assignedTo: r.f.status?.startsWith('assigned:') ? r.f.status.slice(9) : undefined, remoteId: r.id, version: remoteVersion };
+-    const i = next.findIndex(c => c.id === id);
+-    if (i >= 0) {
+-      const cur = next[i];
+-      // Conflict merge for carts: merge by field when both changed
+-      if ((cur.version ?? 0) < remoteVersion && !cur.dirty) {
+-        next[i] = rec;
+-      } else if ((cur.version ?? 0) === remoteVersion && !cur.dirty) {
+-        next[i] = rec;
+-      } else {
+-        // If versions diverged and neither is dirty in the usual sense, prefer remote if newer by time
+-        if ((cur.version ?? 0) < remoteVersion) next[i] = rec;
+-      }
+-    } else next.push(rec);
++  // Every page, not just the newest 100: deleted carts stay in the store as records, so the open ones can be past the first page.
++  const rows: BackendRow[] = []; let after: string | null = null;
++  for (let page = 0; page < MAX_CART_PAGES; page++) {
++    const r = await listShared('cart', { first: 100, after }); rows.push(...r.rows);
++    if (!r.next) break; after = r.next;
+   }
+-  // carts deleted remotely (not in the newest 100 AND not dirty) are left alone - no destructive guesses.
+-  st().patchPos({ saved: next.sort((a, b) => b.ts.localeCompare(a.ts)) });
++  const { next, push } = applyPulled(st().pos.saved, rows);
++  st().patchPos({ saved: next });
++  if (push) void pushSaved();
+ }
+ 
+ // ── layout + shared settings ─────────────────────────────────────────────────────────────────────
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 6eb4131..76d7ada 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -61,7 +61,8 @@ export const defaultSettings = (): Settings => ({
+   appMode: 'register', registerFeatures: { ...DEFAULT_FEATURES }, setupDone: false, autoLockMinutes: DEFAULT_AUTO_LOCK_MINUTES, stepUpMinutes: DEFAULT_STEP_UP_MINUTES,
+ });
+ 
+-export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number };
++export type SavedCart = { id: string; name: string; note?: string; cart: Cart; ts: string; employee?: string; status: 'open' | 'void'; assignedTo?: string; dirty?: boolean; remoteId?: string; version?: number;
++  /** When this register last changed it, and the content both sides last agreed on, for merging a cart two registers changed (0204, savedMerge.ts). */ updatedAt?: string; base?: string };
+ export type OutboxItem = {
+   id: string; sale: SaleRecord; queuedAt: string;
+   done: { receipt?: boolean; receiptFinal?: boolean; order?: boolean; giftCards?: boolean; entry?: boolean; rollup?: boolean; stock?: boolean };
+diff --git a/tests/savedmerge.test.ts b/tests/savedmerge.test.ts
+new file mode 100644
+index 0000000..c07c345
+--- /dev/null
++++ b/tests/savedmerge.test.ts
+@@ -0,0 +1,87 @@
++// Location: tests/savedmerge.test.ts
++// CloudKit patch 5 (0204): saved carts with conflict merging. The rules are in src/lib/savedMerge.ts.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { applyPulled, baseOf, mergeSaved, parseSavedRow } from '../src/lib/savedMerge';
++import type { SavedCart } from '../src/state/store';
++
++const line = (id: string, qty = 1) => ({ id, variantId: id, qty }) as any;
++const mk = (id: string, o: Partial<SavedCart> = {}): SavedCart => ({ id, name: 'Cart', cart: { id, lines: [line('a')] } as any, ts: '2026-11-01T00:00:00Z', status: 'open', version: 1, updatedAt: '2026-11-01T01:00:00Z', ...o });
++const row = (c: SavedCart, over: Record<string, string> = {}) => ({
++  id: `cart-${c.id}`, handle: `cart-${c.id}`, updatedAt: c.updatedAt ?? c.ts,
++  f: { cart_uuid: c.id, name: c.name, note: c.note ?? '', status: c.status === 'void' ? 'void' : c.assignedTo ? `assigned:${c.assignedTo}` : 'open', lines_json: JSON.stringify(c.cart.lines),
++    discount_json: '', customer_json: '', employee: '', created_at: c.ts, updated_at: c.updatedAt ?? '', version: String(c.version ?? 1), ...over },
++});
++/** What a register holds after it last saw `c` on the shared store, then changed it. */
++const edited = (c: SavedCart, p: Partial<SavedCart>): SavedCart => ({ ...c, ...p, dirty: true, base: baseOf(c) });
++
++test('a shared row becomes a saved cart, with who it is assigned to', () => {
++  const c = parseSavedRow(row(mk('c1', { name: 'Sam', note: 'pickup', assignedTo: 'Casey', version: 4 })))!;
++  assert.equal(c.id, 'c1'); assert.equal(c.name, 'Sam'); assert.equal(c.note, 'pickup'); assert.equal(c.assignedTo, 'Casey'); assert.equal(c.version, 4); assert.equal(c.status, 'open'); assert.equal(c.cart.lines.length, 1);
++});
++test('a row with unreadable contents is skipped, not thrown, and a row without cart_uuid takes its id from the record name', () => {
++  assert.equal(parseSavedRow(row(mk('c1'), { lines_json: '{not json' })), null);
++  assert.equal(parseSavedRow(row(mk('c1'), { lines_json: '{"a":1}' })), null);
++  assert.equal(parseSavedRow(row(mk('c9'), { cart_uuid: '' }))!.id, 'c9');
++});
++
++test('rule 1: a delete from another register beats an unsent edit here, and a delete made here beats their edit', () => {
++  const base = mk('c1');
++  assert.deepEqual(mergeSaved(edited(base, { name: 'Renamed' }), mk('c1', { status: 'void', version: 2 })), { cart: null, push: false });
++  const mine = edited(base, { status: 'void' }); const m = mergeSaved(mine, mk('c1', { name: 'Theirs', version: 3 }));
++  assert.equal(m.push, true); assert.equal(m.cart!.status, 'void'); assert.equal(m.cart!.version, 3);
++  assert.deepEqual(mergeSaved({ ...base, status: 'void', dirty: false }, mk('c1', { version: 2 })), { cart: null, push: false });
++});
++test('rule 2: a cart not changed here takes the shared copy when it is the same version or newer, and keeps its own when older', () => {
++  const here = mk('c1', { version: 3 });
++  assert.equal(mergeSaved(here, mk('c1', { name: 'New', version: 4 })).cart!.name, 'New');
++  assert.equal(mergeSaved(here, mk('c1', { name: 'Same', version: 3 })).cart!.name, 'Same');
++  assert.equal(mergeSaved(here, mk('c1', { name: 'Old', version: 2 })).cart!.name, 'Cart');
++  const m = mergeSaved(undefined, mk('c2')); assert.equal(m.push, false); assert.equal(m.cart!.dirty, false); assert.ok(m.cart!.base);
++});
++test('rule 3: a cart changed here that nobody else touched is just sent', () => {
++  const mine = edited(mk('c1', { version: 2 }), { name: 'Mine' });
++  const m = mergeSaved(mine, mk('c1', { version: 2 })); assert.equal(m.push, true); assert.equal(m.cart!.name, 'Mine'); assert.equal(m.cart!.version, 2);
++});
++test('rule 4: a rename here and an assignment elsewhere are both kept', () => {
++  const synced = mk('c1', { version: 2 });
++  const mine = edited(synced, { name: 'Renamed', updatedAt: '2026-11-01T03:00:00Z' });
++  const theirs = mk('c1', { version: 3, assignedTo: 'Casey', updatedAt: '2026-11-01T02:00:00Z' });
++  const m = mergeSaved(mine, theirs);
++  assert.equal(m.cart!.name, 'Renamed'); assert.equal(m.cart!.assignedTo, 'Casey'); assert.equal(m.push, true); assert.equal(m.cart!.dirty, true);
++  assert.equal(m.cart!.version, 3, 'sent as version 4'); assert.equal(m.cart!.base, baseOf(theirs));
++});
++test('rule 4: lines changed on both sides take the later edit, and the shared copy on a tie', () => {
++  const synced = mk('c1', { version: 2 });
++  const newer = (t: string) => edited(synced, { cart: { ...synced.cart, lines: [line('a'), line('b')] }, updatedAt: t });
++  const theirs = mk('c1', { version: 3, cart: { id: 'c1', lines: [line('a', 5)] } as any, updatedAt: '2026-11-01T02:00:00Z' });
++  assert.equal(mergeSaved(newer('2026-11-01T03:00:00Z'), theirs).cart!.cart.lines.length, 2, 'mine is later');
++  assert.equal(mergeSaved(newer('2026-11-01T01:30:00Z'), theirs).cart!.cart.lines[0].qty, 5, 'theirs is later');
++  assert.equal(mergeSaved(newer('2026-11-01T02:00:00Z'), theirs).cart!.cart.lines[0].qty, 5, 'a tie goes to the shared copy');
++});
++test('rule 4: with nothing already agreed (an older cart), both changed means the later edit wins', () => {
++  const mine = { ...mk('c1', { version: 2, name: 'Mine', updatedAt: '2026-11-01T05:00:00Z' }), dirty: true };
++  assert.equal(mergeSaved(mine, mk('c1', { version: 3, name: 'Theirs', updatedAt: '2026-11-01T04:00:00Z' })).cart!.name, 'Mine');
++});
++test('rule 4: when the merge leaves nothing the shared copy lacks, there is nothing to send', () => {
++  const synced = mk('c1', { version: 2 }); const mine = edited(synced, { name: 'Same' });
++  const m = mergeSaved(mine, mk('c1', { version: 3, name: 'Same' })); assert.equal(m.push, false); assert.equal(m.cart!.dirty, false); assert.equal(m.cart!.version, 3);
++});
++
++test('applyPulled: bad rows are skipped, deleted carts leave the list, others come in newest first, and it says when something is left to send', () => {
++  const keep = mk('keep', { ts: '2026-11-01T00:00:00Z' }); const gone = mk('gone'); const newer = mk('new', { ts: '2026-11-02T00:00:00Z' });
++  const out = applyPulled([keep, gone], [row(mk('gone', { status: 'void', version: 2 })), row(newer), row(mk('bad'), { lines_json: 'x' })]);
++  assert.deepEqual(out.next.map(c => c.id), ['new', 'keep']); assert.equal(out.push, false);
++  const pending = applyPulled([edited(mk('k', { version: 2 }), { name: 'Mine' })], [row(mk('k', { version: 2 }))]);
++  assert.equal(pending.push, true); assert.equal(pending.next[0].name, 'Mine');
++});
++
++test('sync.ts reads every page of carts, reads a cart back before sending it, sends one run at a time, and stamps the edit time', () => {
++  const s = readFileSync('src/lib/sync.ts', 'utf8');
++  assert.match(s, /MAX_CART_PAGES/); assert.match(s, /listShared\('cart', \{ first: 100, after \}\)/); assert.match(s, /if \(!r\.next\) break/);
++  assert.match(s, /getShared\('cart', c\.id\)/); assert.match(s, /mergeSaved\(c, remote\)/);
++  assert.match(s, /if \(pushingSaved\) \{ pushSavedAgain = true; return; \}/);
++  assert.match(s, /updated_at: c\.updatedAt \?\? new Date\(\)\.toISOString\(\)/);
++  assert.match(s, /applyPulled\(st\(\)\.pos\.saved, rows\)/);
++});
