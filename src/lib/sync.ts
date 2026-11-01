@@ -15,6 +15,7 @@ import { hasCreds, isNetworkError, ShopifyUserError } from './shopify/client';
 import * as shop from './shopify/catalogue';
 import { activeBackendKind, getShared, listShared, putShared, detailReadyShared, type BackendRow } from './syncBackend';
 import { applyPulled, baseOf, mergeSaved, parseSavedRow } from './savedMerge';
+import { applyShared, canon, mergeShared, needsSending, parseShared, pickShared, readBase, samePayload, type SharedKind } from './sharedSettings';
 import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './cloudkit/drawerCloud';
 import { createAttemptSync } from './cloudkit/attemptSync';
 import { resolvedElsewhereNotice } from './attemptShared';
@@ -325,27 +326,56 @@ async function pullLayout() {
   const v = Number(row.f.version) || 0;
   if (v > st().gridVersion) { try { st().setGrid(parseGrid(row.f.layout_json).grid, v); } catch { /* ignore a bad layout */ } }
 }
+/** Which set of settings is shared: the original seven on Shopify, the wider set on CloudKit (0205, lib/sharedSettings.ts). */
+const sharedKind = (): SharedKind => (activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject');
+// 0205: the settings only CloudKit shares (shop name, receipt details, server addresses, auto-receipt, smart change, consolidate,
+// assistant connection) are edited in many places, some a field per keystroke. Rather than every screen remembering to send them, this
+// watches the store and sends once typing has paused. It does nothing on Shopify (those settings stay per device there), in practice
+// mode, or while an earlier send is waiting to be retried (the poll does that).
+let settingsTimer: ReturnType<typeof setTimeout> | undefined;
+export const SETTINGS_SEND_DELAY_MS = 1500;
+useApp.subscribe(state => {
+  if (sharedKind() !== 'cloudkit' || isTraining() || state.settings.sharedSettingsPending || !needsSending(state.settings, 'cloudkit')) return;
+  if (settingsTimer) clearTimeout(settingsTimer);
+  settingsTimer = setTimeout(() => { settingsTimer = undefined; const s = st().settings; if (!s.sharedSettingsPending && needsSending(s, 'cloudkit')) void pushSharedSettings().catch(() => {}); }, SETTINGS_SEND_DELAY_MS);
+  (settingsTimer as { unref?: () => void }).unref?.();
+});
 export async function pushSharedSettings() {
+  const kind = sharedKind();
   const snapshot = st().settings;
-  const shared = { staff: snapshot.staff, bundlesJson: snapshot.bundlesJson, fees: snapshot.fees, cashRounding: snapshot.cashRounding, requirePin: snapshot.requirePin, adjustPerms: snapshot.adjustPerms, cartWarnings: snapshot.cartWarnings ?? [] };
+  const shared = pickShared(snapshot, kind);
   st().patchSettings({ sharedSettingsPending: true });
   if (!hasCreds()) return;
-  const version = snapshot.sharedVersion + 1;
+  let version = snapshot.sharedVersion + 1; let outgoing = shared;
   try {
-    await putShared('settings', 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(shared) });
+    if (kind === 'cloudkit') { // another register may have written since we last looked: merge their edits in rather than overwrite them
+      const remote = await getShared('settings', 'shared'); const remoteV = Number(remote?.f.version) || 0;
+      if (remote && remoteV > snapshot.sharedVersion) outgoing = mergeShared(readBase(snapshot.sharedBase), shared, parseShared(remote.f.settings_json, kind) ?? {});
+      version = Math.max(snapshot.sharedVersion, remoteV) + 1;
+    }
+    await putShared('settings', 'shared', { settings_key: 'shared', version, settings_json: JSON.stringify(outgoing) });
   } catch (error) {
     st().set({ sync: { state: isNetworkError(error) ? 'offline' : 'error', at: st().sync.at, error: `Shared settings not uploaded: ${String((error as Error)?.message ?? error)}` } });
     throw error;
   }
   const current = st().settings;
-  const stillMatches = JSON.stringify(shared) === JSON.stringify({ staff: current.staff, bundlesJson: current.bundlesJson, fees: current.fees, cashRounding: current.cashRounding, requirePin: current.requirePin, adjustPerms: current.adjustPerms, cartWarnings: current.cartWarnings ?? [] });
+  if (kind === 'cloudkit') {
+    // What was merged in is taken here too, except for keys edited while the upload ran; those stay as typed and are sent again.
+    const next = mergeShared(shared, pickShared(current, kind), outgoing);
+    st().patchSettings({ ...applyShared(next, current), sharedVersion: version, sharedBase: canon(outgoing), sharedSettingsPending: !samePayload(next, outgoing) });
+    return;
+  }
+  const stillMatches = samePayload(shared, pickShared(current, kind));
   st().patchSettings({ sharedVersion: version, sharedSettingsPending: !stillMatches });
 }
 async function pullSettings() {
   if (st().settings.sharedSettingsPending) return;
   const row = await getShared('settings', 'shared'); if (!row) return;
   const v = Number(row.f.version) || 0;
-  if (v > st().settings.sharedVersion) { try { st().patchSettings({ ...JSON.parse(row.f.settings_json), sharedVersion: v }); } catch {} }
+  if (v <= st().settings.sharedVersion) return;
+  const kind = sharedKind(); const parsed = parseShared(row.f.settings_json, kind); if (!parsed) return; // an unreadable record changes nothing
+  st().patchSettings({ ...applyShared(parsed, st().settings), sharedVersion: v });
+  if (kind === 'cloudkit') st().patchSettings({ sharedBase: canon(pickShared(st().settings, kind)) });
 }
 // ── scanner calibration (Settings ▸ Hardware ▸ Calibrate) ──────────────────────────────────────────
 // Its own record in the pos_settings metaobject (handle `scanner`), so it never collides with the shared settings above and needs no new definition.

@@ -1232,3 +1232,17 @@ Needs two iPads on the same shop. Works on the Shopify backend today and on Clou
 5. Save a cart on A, wait for B to show it, then edit it on B in airplane mode, delete it on A (online), and reconnect B. Pass: the cart stays deleted.
 6. Save more than 100 carts, delete most of them, and save one new one. Pass: the new cart reaches the other iPad (the old code only read the first 100 records).
 7. Pay for a sale opened from a saved cart on A. Pass: the cart disappears from B as well.
+
+## T94. Shared settings on two registers (0205)
+
+Needs two iPads on the same shop. The new settings only travel once CloudKit is the active backend (patch 8), so until then run steps 1 and 2 on Shopify to confirm nothing changed, and the rest after the switch. Nothing in this patch has been run on a device.
+
+1. On Shopify storage, change fees on iPad A. Pass: B shows the same fees within about 30 seconds, as before.
+2. On A, change the shop name and the Smart change switch. Pass: B does not change (these stay per iPad on Shopify).
+3. After the switch to CloudKit, rename the shop on A. Pass: B shows the new name within about 30 seconds, and A's theme and register name are not copied to B.
+4. Type a receipt ABN on A one digit at a time. Pass: B receives it once, a moment after you stop typing, not once per digit.
+5. Turn Smart change on at A. Pass: it is on at B, and on B the cash screen plans change the smart way.
+6. Set the AI assistant address and model on A. Pass: B shows them; B's log size and data rules are unchanged.
+7. Airplane mode on both. On A change the shop name. On B change Cash rounding. Reconnect both. Pass: both iPads end with the new name and the new rounding.
+8. Airplane mode on both. Add a staff member on A and a different one on B. Reconnect. Pass: both people exist on both iPads and can sign in with their PINs.
+9. Airplane mode on both. Remove a staff member on A and rename the same person on B. Reconnect. Pass: the person is gone from both.

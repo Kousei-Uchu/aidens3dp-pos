@@ -68,7 +68,7 @@ export default function Settings({ open }: { open?: Sub } = {}) {
       {sub === 'display' ? <DisplaySettings /> : null}
       {sub === 'payments' ? <Section footer="Fees are estimated from these rates - the Zeller SDK doesn’t report fees. Card refunds don’t return the original fee.">
         <Toggle label="Cash rounding (5c)" sub="Applies to the cash amount due only" value={s.cashRounding} onChange={v => { patch({ cashRounding: v }); void pushSharedSettings().catch(() => {}); }} />
-        <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
+        <Toggle label="Smart change" sub="Choose the notes and coins that leave the drawer best stocked for the next sales, not just the fewest pieces. This register only, until Cloud sync is on; then every register." value={s.smartChange} onChange={v => patch({ smartChange: v })} />
         {s.smartChange ? <SmartChangeNote /> : null}
         <Toggle label="Automatic cash tender machine" sub="Under Construction. Notes and coins are entered and given by hand for now." value={false} disabled={!TENDER_MACHINE_READY} onChange={() => {}} />
         <View style={{ padding: 16 }}><Field kind="decimal" label="Card-present fee %" defaultValue={String(s.fees.cardPresentRate * 100)} onEndEditing={e => { const n = parseFloat(e.nativeEvent.text); if (!isNaN(n)) { patch({ fees: { ...s.fees, cardPresentRate: n / 100 } }); void pushSharedSettings().catch(() => {}); } }} />

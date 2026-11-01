@@ -193,6 +193,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
 4. The CloudKit backend for sales and rollups, with encrypted card fields, payment attempts and events (run the two-Apple-ID encryption test first)
 5. Saved carts with conflict merging
 6. Settings, layout and Square history shards, plus staff and staff display settings, shop and receipt settings, the logo and the shared cash and refund notices
+   - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, the cash and refund notices, layout and Square history shards.
    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
    - 6c. The audit log (encrypted) and training progress
    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
