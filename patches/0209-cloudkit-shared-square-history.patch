@@ -1,0 +1,1278 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index 8789305..f4f076e 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync: decisions, status and roadmap
+ 
+-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0208
++Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0209
+ 
+ This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+ 
+@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ ### In one paragraph
+ 
+-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0208 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first four pieces of patch 6a (the wider shared settings, the cash and refund notices, the logo, and the grid layout), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0209 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+ 
+ ### Three things gate turning CloudKit on
+ 
+@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the
+ 
+ ## Part 2. What has been built, and where we are going
+ 
+-### 2.1 Patch ledger, 0188 to 0208
++### 2.1 Patch ledger, 0188 to 0209
+ 
+ All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
+ 
+@@ -51,6 +51,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 0206 | 2 Nov | **6a, second piece: the cash and refund notices** (`noticeShared.ts`, `cloudkit/noticeCloud.ts`, `cloudkit/noticeSync.ts`). Each is a write-once `notice-<register>-<id>` record, sent when raised and caught up once per launch, and taken in by the other registers unread, labelled **From** the register that raised it. Reading or clearing stays per iPad (a device-only `noticesSeen` list stops a cleared one returning). A week's age limit, 50 at a time. T95. | Swift uncompiled. Inactive until patch 8. |
+ | 0207 | 2 Nov | **6a, third piece: the logo** (`logoShared.ts`, `cloudkit/logoCloud.ts`, `cloudkit/logoSync.ts`, `logoFiles.ts`). The uploaded logo image (Settings ▸ Screensaver & display) is one `logo-current` record with the image as a CloudKit asset and plain fields (hash, type, size, who, when). Each poll compares this register's logo with the shop's against a device-only `logoBase`: a change made here is sent, a change made elsewhere is taken, a removal goes both ways, and a downloaded image is checked against its hash before it replaces anything. The https link stays per device. T96. | Swift uncompiled. Inactive until patch 8. |
+ | 0208 | 2 Nov | **6a, fourth piece: the grid layout** (`gridMerge.ts`, `reconcileLayout` in `sync.ts`). On CloudKit two registers' layout edits are joined page by page against a device-only `gridBase` instead of the last writer replacing the whole grid, and the version counter is no longer used to tell what is newer (item 27). A layout edited offline is sent at the next poll. No native code changed (layout already went through `putLayout` and `getLayout`). T97. | Inactive until patch 8. On Shopify the counter is unchanged. |
++| 0209 | 2 Nov | **6a, fifth and last piece: the Square history months** (`squareHistoryShared.ts`, `cloudkit/squareCloud.ts`, `cloudkit/squareSync.ts`, `squareHistorySyncIO.ts`). The imported history is shared one month at a time: each month file is one `squareshard-<month>-<id>` record with the packed file as a CloudKit asset, and one `square-manifest` record lists them. Each register compares every month with the shop's against a device-only `squareBase` (the file hash here and the shared id both last agreed on), so a month is sent, taken, or removed on both sides, and a month is only deleted on a register that had not changed it since. The manifest is replaced only if it is still at the change tag that was read, so two registers writing at once cannot drop each other's months. **The copy in iCloud has every customer's name, email and phone removed**, because the history files hold them and the plan says none reach CloudKit. Swift: four new functions, uncompiled. T98. | Inactive until patch 8. |
+ 
+ ### 2.2 Build status of each decision
+ 
+@@ -81,7 +82,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 21 | Auto-receipt | Shared (0205), but **no screen edits it today**, so sharing it changes nothing yet. |
+ | 22, 24, 25, 26 | Local | Nothing to build. |
+ | 23 | Smart change and consolidate | Shared (0205). Settings and help text still need to say “shop-wide” once CloudKit is live (0203 left them as “this register only” on purpose). |
+-| 27 | Grid version counter | Built (0208) for CloudKit: joined by page against `gridBase`, no counter. The Shopify path still uses it. Square history shards are still to do. |
++| 27 | Grid version counter | Built (0208) for CloudKit: joined by page against `gridBase`, no counter. The Shopify path still uses it. |
+ | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
+ | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
+ | N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
+@@ -98,7 +99,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 1 to 3 | Entitlements and Swift module, zone and share and account screen, backend seam | Done before 31 October. |
+ | 4 | Sales and rollups with encrypted card fields, payment attempts, events | **Code complete** (0194 to 0201). Gated on the Swift build, T85 and the `encrypted` switch. |
+ | 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
+-| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Four pieces done** (0205 settings, 0206 notices, 0207 logo, 0208 layout). **Still to do:** Square history shards. |
++| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Done** (0205 settings, 0206 notices, 0207 logo, 0208 layout, 0209 Square history months). Swift uncompiled. |
+ | 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
+ | 6c | Audit log (encrypted) and training progress | Not started. |
+ | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
+@@ -106,7 +107,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
+ 
+-**Next up:** finish 6a (Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
++**Next up:** 6c (the audit log and training progress), then 7, with 6d and 6e after the encryption test and 8 last.
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -124,6 +125,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The iCloud note is shown to everyone who can open the page, before and after joining, and describes the design rather than what is sent today (0202).
+ - The smart-change “typical day” now uses the whole shop’s sales (0203).
+ - The grid layout is joined by page, not by tile: two registers editing the same page, the later sender keeps the whole page. A page removed on either side stays removed (0208).
++- The Square history in iCloud has customer name, email and phone removed, so a register that took it from iCloud shows those sales without a customer name. Removing the history on one register removes it everywhere, and a month the shop and this register both changed keeps the one with more sales (0209).
+ - The shared logo is the uploaded screensaver image only. A register that has just joined takes the shop's logo over its own, and keeps its own if the shop removed theirs (0207).
+ - Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
+ - A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
+@@ -138,6 +140,8 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - “Later” in the cart merge uses each iPad’s own clock.
+ - Event catch-up cost grows with the history, which is a few pages at a few thousand events.
+ - The Daily float report and the assistant’s cash view do not mention loans yet (0188).
++- Square history: a ticket name or line note a cashier typed is not scrubbed (the same minor exception as a note on a sale), and the history months that were replaced stay in iCloud as unused shard records, because nothing deletes them yet (0209).
++- Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
+ 
+ **CloudKit dashboard steps needed before it works on a real zone:**
+ 
+@@ -145,9 +149,10 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
+ - The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
+ - A Sale’s `secure_json` is an encrypted field and needs no index.
++- The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo) and T97 (shared layout).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history).
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index e6ad36e..92117fc 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -107,7 +107,7 @@ Item numbers refer to `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`.
+ | Secrets and cashier pass codes (Shopify login, pass, claim and receipt secrets, AI key) | Sync, encrypted, after the encryption test (N1, O4) |
+ | `pos.saved` carts | Sync (unsynced `dirty` carts push from their own device) |
+ | `grid` layout | Sync. The grid version counter is only kept during migration (item 27) |
+-| Square history files | Sync as sharded `CKAsset`s with a manifest record |
++| Square history files | Sync as sharded `CKAsset`s with a manifest record (built in 0209, with customer name, email and phone removed from the copy) |
+ | Device parts (`DEVICE_KEYS`), the `cloudkit.backend` flag, inventory screen prefs, the device's own theme, accent, tile size, glass surfaces, item spotlight, theme setup version | Stay local (items 4, 16, 22) |
+ | Sync bookkeeping: `drawerVersion`, `drawerPending`, `drawerShiftPending`, `warningListVersion`, `warningListPending` | Stay local (item 7) |
+ | Outbox, the other-tills cache (`pos.shared`), local CSV history files | Stay local (items 8, 11, 12) |
+@@ -196,7 +196,8 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+    - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, layout and Square history shards.
+    - 6a, second piece **done in code (0206)**: the cash and refund notices shared between registers, in `src/lib/noticeShared.ts` and `src/lib/cloudkit/noticeSync.ts`. Write-once `Notice` records, unread on arrival, reading and clearing stay per iPad.
+    - 6a, third piece **done in code (0207)**: the uploaded logo image, one `logo-current` record with a CloudKit asset, reconciled each poll against a device-only `logoBase` (`src/lib/logoShared.ts`, `src/lib/cloudkit/logoSync.ts`). Still to do for 6: layout and Square history shards.
+-   - 6a, fourth piece **done in code (0208)**: the grid layout joined page by page against a device-only `gridBase` on CloudKit (`src/lib/gridMerge.ts`), no version counter. Still to do for 6: Square history shards.
++   - 6a, fourth piece **done in code (0208)**: the grid layout joined page by page against a device-only `gridBase` on CloudKit (`src/lib/gridMerge.ts`), no version counter.
++   - 6a, fifth piece **done in code (0209)**: the Square history months, one `squareshard-<month>-<id>` record each with a CloudKit asset and one `square-manifest` record, reconciled each poll against a device-only `squareBase` (`src/lib/squareHistoryShared.ts`, `src/lib/cloudkit/squareSync.ts`). The copy in iCloud has customer name, email and phone removed. This finishes 6a.
+    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
+    - 6c. The audit log (encrypted) and training progress
+    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 4d2eab8..d55108a 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1286,3 +1286,19 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8),
+ 6. Airplane mode on A. Edit the grid, then reconnect and make no further edit. Pass: B receives the change at the next poll without any button.
+ 7. Join a new register C whose grid has a page of its own. Pass: C keeps that page and gains the shop's pages, and the shop gains C's page.
+ 8. Practice mode on A, edit the grid. Pass: nothing reaches B.
++
++## T98. Shared Square history on two registers (0209)
++
++Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then, and the Swift has never been compiled. Nothing in this patch has been run on a device. Until the switch, confirm only that importing, re-matching and **Delete imported Square history** (Settings ▸ Square history) behave as before, and that the delete message does not mention iCloud.
++
++1. Import the Square history on A. Pass: within about 30 seconds B has the same months, shows them in Reports as Square (old) and in Transactions, and A did not download anything.
++2. In Transactions on B, search for the name of a customer who bought in an imported month. Pass: B finds nothing for that name, and A finds it. No customer name, email or phone shows on B.
++3. In iCloud's CloudKit dashboard open a `squareshard-` record and its asset. Pass: no customer name, email or phone is in the file.
++4. Import on A a newer export that has one month changed. Pass: B shows the new month's sales and keeps the others.
++5. Airplane mode on both. On A import a month B lacks. On B import a different month A lacks. Reconnect both. Pass: both end with both months.
++6. Join a new register C with no history. Pass: C gains every month without a QR code.
++7. On A tap **Delete imported Square history**. Pass: the message says it also removes it from iCloud and the other registers, and after confirming B and C lose the history and their Square (old) report rows go.
++8. Import on A again. Pass: B and C get it back.
++9. Airplane mode on B. On A delete the history. On B re-import one month, then reconnect B. Pass: the month B re-imported survives on both and the rest is gone.
++10. Practice mode on A, and import or delete. Pass: nothing reaches B.
++11. With the shop's `square-manifest` record edited by hand to hold text that is not a month list, wait for a poll on B. Pass: B's history is untouched.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 9745187..b0149ab 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -514,3 +514,18 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
+ 6. **No base joins instead of replacing.** A register that has just joined keeps its own pages the shop lacks and takes the shop's version of pages both have.
+ 7. **A layout the shop holds that cannot be read is overwritten** by this register's, which repairs it. The alternative was to leave it alone.
+ 8. **An edit made while a send is running is kept**, and sent at the next poll.
++
++## Shared Square history (0209)
++
++These fill gaps in the plan (patch 6a, "Square history structure and size") and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
++
++1. **Customer name, email and phone are removed from the copy in iCloud.** The history files hold them (the importer keeps Square's customer on each sale) and the plan says none reach CloudKit, so shipping the files as they are would have broken that rule. The Square customer id stays. The alternatives were to send the files whole, or to encrypt them. The cost of removing is that a register that took the history from iCloud has no names to search by, and it needs a second id per month (below). If you want the names on every register, say so and the answer is an encrypted asset, which waits on the encryption test (O4).
++2. **Ticket names and line notes are not scrubbed.** A cashier can type a name there. It is the same known minor exception as a note on a sale (decisions item 18).
++3. **Each month has two ids.** `hash` is the register's own file and `sid` the copy in iCloud, because they are different bytes. `squareBase` holds the pair both last agreed on, so a pulled month is not mistaken for a change and sent back.
++4. **A shard is named by month and shared id and never rewritten.** The manifest points at exact versions, so a reader can never pair a manifest with a half-updated file. The cost is that an old version stays in iCloud as an unused record. Nothing deletes them yet.
++5. **The manifest is a compare-and-set.** It is written only if it is still at the change tag that was read, and the pass is repeated (up to three times) if another register wrote first. A real compare is cheap here because there is one small manifest. Saved carts still have no such compare.
++6. **Both registers changed the same month: the one with more sales wins, a tie keeps this register's.** The same rule on both sides, so they settle on one. A register that only knows a month's file name counts it as 0 sales.
++7. **Removing the history removes it everywhere.** It is a deliberate action, the confirmation now says so when iCloud sync is on, and the manifest and a base that both sides agreed on guard against a stray deletion: a month is never deleted on a register that changed it since, and never deleted when there was no agreed base. The alternative was to keep a removal local, which would let the shop's copy come straight back.
++8. **An unreadable manifest is left alone.** Reading it as empty would look like every month had been removed. It needs fixing by hand or by a later patch.
++9. **Month files over 8 MB are neither sent nor taken in.** A busy month is a few hundred KB packed, so this only guards against a damaged file.
++10. **The stored manifest is rewritten after a month is taken in or removed**, from the files now on the iPad, then the rollups are rebuilt exactly as an import does. Its total sales and refunds are approximate until the next import, and nothing reads them (the meta is rebuilt from the files).
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 493136a..6c743a4 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -189,6 +189,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0206 | 2026-11-02 | CloudKit patch 6a, second piece: **the cash and refund notices, shared between registers** (your request: continue on the repo, returned as patches; decisions item 10, Q2). New pure `src/lib/noticeShared.ts`: only `cash` and `refund` are shared (the other six describe one iPad). A notice is one write-once `notice-<register id>-<notice id>` record holding kind, title, body, route, time and the register's id and name, with no card or customer detail. **Sending:** `notify` in the store now hands each notice it adds to a sink (`setNoticeSink`, set in `sync.ts`), the same hook pattern as the events sink, so a cash or refund notice goes to CloudKit when raised, and a catch-up once per launch sends this register's unread ones CloudKit lacks. **Taking in:** the poll reads every register's notices (`cloudkit/noticeSync.ts`, `noticeCloud.ts`) and adds the new ones unread with a new optional `Notice.from` (the register's name), shown as a **From** line on the Notifications list. **Reading and clearing stay per iPad:** nothing about reading is sent, and a device-only `noticesSeen` list (new, in `DEVICE_KEYS`) remembers which records were taken in, so a notice cleared here never returns. Own notices are never taken back, a notice older than 7 days is neither sent nor shown, a kind this device does not hold is skipped (`noticeAllowed`), a repeat of an unread notice is skipped, at most 50 arrive per read, and practice mode sends and takes in nothing. Notices come in through `patchPos`, not `notify`, so they are never sent back. Native: `putNotice` (write once) and `listNotices` added to the Swift module, its TypeScript wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. The decisions doc is replaced with the 2 November version (Part 1 and 2 added, items 1 to 27 kept) and updated for this patch. Tests: `tests/noticeshared.test.ts` (12) and `tests/noticesync.test.ts` (17: the transport and call sites on a fake native module, plus source pins for the sink, the poll, the Swift and the device-only key). I broke the seen rule, the own-notice rule, the kind list, the age rule, the per-read limit and the read filter on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is unchanged in how it writes and still untried on a Mac.** **Not done:** the logo, layout and Square history shards (the rest of 6a). Device test T95. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared notices'. | your request |
+ | 0207 | 2026-11-02 | CloudKit patch 6a, third piece: **the logo, shared between registers** (your request: continue on the repo, returned as a patch; decisions item 14). New pure `src/lib/logoShared.ts`: the image is the one uploaded under Settings ▸ Screensaver & display (`screensaver.logoFile`), which is the only logo image the app stores. It is one `logo-current` record with the image as a CloudKit asset and plain fields (content hash, type, size, who and when); a removal is the same record with `removed` set and no asset. **How registers agree:** each keeps a device-only `logoBase` (new, in `DEVICE_KEYS`), the hash both it and the shop last agreed on. `decideLogo` compares this register's image, the shop's and the base: same on both is nothing; a change made here is sent (this register wins when both changed); a change made only on the shop is taken, or removes the local file if the shop removed it; a register with no base takes the shop's image, except that it keeps and sends its own when the shop removed theirs. **Running:** `cloudkit/logoSync.ts` does one reconcile per poll (`sync.ts`, after the notices, outside practice mode); `cloudkit/logoCloud.ts` is the transport; `logoFiles.ts` does the file work and is loaded on demand. The shop's fields are read without the image, which is downloaded only when it changed; a downloaded image is installed only if its hash matches the record, an over-700 KB image is never sent, and a failed run changes nothing and moves no base. **Native:** `putLogo`, `getLogo` (fields only, `desiredKeys`) and `downloadLogo` added to the Swift module, its wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. Docs: decisions doc, plan, guesses and device tests updated. Tests: `tests/logoshared.test.ts` (12) and `tests/logosync.test.ts` (17: the rules, the transport and call site on a fake native module and file system, source pins for the poll, the lazy file import, the device-only key and the Swift). I broke the base rule and the hash check on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is untried on a Mac.** **Not done:** layout and Square history shards (the rest of 6a); the receipt still shows the fixed shop logo link, not the shared image. Device test T96. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared logo'. | your request |
+ | 0208 | 2026-11-02 | CloudKit patch 6a, fourth piece: **the grid layout, joined between registers** (your request: next; decisions item 27). The layout already travelled through the seam (`putLayout`, `getLayout`), but with a version counter and the whole grid replaced by whichever register wrote last, so two registers editing at once lost one's changes, and an edit made offline was only sent if another edit followed. New pure `src/lib/gridMerge.ts`: `mergeGrid` joins two grids page by page (by page id) against `base`, what both last agreed on (a page only one side changed is taken; both changed: the sender's; a page added on either is kept; a page removed on either stays removed; the sender's page order if it moved pages, else the shop's); `planLayout` decides same, take, send or merge; `adoptAfterSend` keeps an edit made while a send was running. A device-only `gridBase` (new, in `DEVICE_KEYS`) holds the agreed layout, so on CloudKit **the version counter is no longer used to tell what is newer**, as item 27 says. `sync.ts`: `pushLayout` and `pullLayout` both call one `reconcileLayout` on CloudKit (one at a time, skipped in practice mode), so the poll also sends an offline edit. **The Shopify path is unchanged**, still on the counter. Native: no change. Help: `help/sales/grid.md` has a new section and corrected fault-finding; `help.json` rebuilt. Tests: `tests/gridmerge.test.ts` (16: each merge rule, the plan, the race, two registers settling on one grid, source pins). I broke the removal rule and the base comparison on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing today.** **Not done:** per-tile merging (tiles have no ids) and Square history shards (the last of 6a). Device test T97. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared layout'. | your request |
++| 0209 | 2026-11-02 | CloudKit patch 6a, fifth and last piece: **the imported Square history, shared between registers one month at a time** (your request: continue on the repo up to 0208, returned as patches; decisions Part 2.3, plan "Square history structure and size"). Until now the history reached another register only by the QR code over Wi-Fi or by copying files. New pure `src/lib/squareHistoryShared.ts`: `decideMonth` and `planSquare` decide, month by month, nothing, send, take, remove here, remove on the shop or forget, from this register's file hash, the shop's shared id and `squareBase` (device only, new, in `DEVICE_KEYS`), so a month changed here is told from one changed elsewhere (a delete only reaches a side that had not changed the month, and never happens without an agreed base; both changed: more sales wins, a tie keeps this register's); `stripCustomers` makes the copy for iCloud; `packStable` packs it the same way every time (the existing `packJson` stamps the time into the gzip header); `manifestToFields` and `manifestFromFields` read the manifest safely, dropping one bad month without hiding the rest, and an unreadable manifest is left alone. `src/lib/cloudkit/squareCloud.ts` and `squareSync.ts` (run once per poll, never throws): shards are uploaded first, then the manifest is replaced only if it is still at the change tag that was read (another register writing first means nothing is overwritten and the pass repeats), a download is checked against its shared id before it replaces anything, and the base moves only for months really agreed. `src/lib/squareHistorySyncIO.ts` is the file work (hash cache by name, size and time; pack; install; remove; then rewrite the stored manifest and rebuild the rollups as an import does). Native: `putSquareShard`, `getSquareManifest`, `putSquareManifest` (returns `changed` instead of overwriting) and `downloadSquareShard`; each shard is a `squareshard-<month>-<id>` record with a CloudKit asset, written once. The Swift has not been compiled. `SquareHistory.tsx`: when iCloud is on, the delete confirmation says it removes the history everywhere. In-app iCloud note: says customer details are removed from the history. **I found that the history files hold customer names, emails and phones, which the plan says never reach CloudKit, so the copy sent has them removed; see GUESSES 1 for the cost and the alternative.** Help: `orders/square-history.md` and `settings/cloud-sync.md` have new sections; `help.json` rebuilt. Tests: `tests/squareshared.test.ts` (15) and `tests/squaresync.test.ts` (18: two registers settling, no customer details in anything stored, a lost manifest write, a bad download, an unreadable manifest, removal both ways, source pins); `tests/cloudkitswift.test.ts` pin updated. I broke six rules on purpose (delete without a base, no stripping, no change tag, unreadable not stopped, no download check, base advanced on a lost write) and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing today** except the wording of the in-app note. This finishes 6a. **Not done:** deleting replaced shard versions from iCloud, and names on a register that took the history from iCloud. Device test T98. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared Square history'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index 2b3028d..532ce1b 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "007e2cde",
++ "version": "a3d511c9",
+  "pages": [
+   {
+    "id": "cash",
+@@ -965,12 +965,12 @@
+     "orders",
+     "orders/reports"
+    ],
+-   "updated": "2026-10-17",
++   "updated": "2026-11-02",
+    "lead": "Square history is a one-time, read-only import of old Square sales and refunds. It never changes Shopify items, stock or customers.",
+    "sections": {
+-    "basic": "### Export from Square\nOn a PC, follow `tools/square-history/README.md`: create a Square developer app, put its production access token in the local `.env`, then run the export script. Choose a date range with `--from` and `--to`, or omit them to export the available history. Keep the script running while the iPad imports.\n\n### Import to each iPad\nOn the iPad, open **Settings ▸ Square history** and either:\n1. Tap **Scan QR from PC** while the PC and iPad are on the same Wi-Fi.\n2. Type the address printed by the script and tap **Import from address**.\n3. Copy the files from the PC's `out` folder to the iPad and tap **Pick files**.\n\nThe import shows how many sales and refunds were loaded and how many item lines matched a Shopify variant. After import, the PC script can be stopped. Repeat the import on each register that needs this history.\n\n### Copy history from one register to another\nOnce one register has the history, the others do not need the PC. On the register that has it, open **Settings ▸ Square history** and tap **Show QR for another register**. On the other register, open **Settings ▸ Square history**, tap **Scan QR from PC** and scan that code. Both registers must be on the same Wi-Fi.\n\nThe code is a single small address, not the data itself, so it scans easily. The sharing register shows how many registers it has sent to. Keep its page open until the other register says it is done, then tap **Stop sharing**. Sharing also stops by itself after 10 minutes, or if the app leaves the screen. The other register links the history to its own Shopify catalogue, so each register's matches and report numbers are built on that register.\n\n### Find the imported records\nImported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.\n\nIf you refresh the Shopify catalogue, tap **Re-match to Shopify catalogue** in Settings ▸ Square history. Use **Delete imported Square history** to remove it from this iPad.",
++    "basic": "### Export from Square\nOn a PC, follow `tools/square-history/README.md`: create a Square developer app, put its production access token in the local `.env`, then run the export script. Choose a date range with `--from` and `--to`, or omit them to export the available history. Keep the script running while the iPad imports.\n\n### Import to each iPad\nOn the iPad, open **Settings ▸ Square history** and either:\n1. Tap **Scan QR from PC** while the PC and iPad are on the same Wi-Fi.\n2. Type the address printed by the script and tap **Import from address**.\n3. Copy the files from the PC's `out` folder to the iPad and tap **Pick files**.\n\nThe import shows how many sales and refunds were loaded and how many item lines matched a Shopify variant. After import, the PC script can be stopped. Repeat the import on each register that needs this history.\n\n### Copy history from one register to another\nOnce one register has the history, the others do not need the PC. On the register that has it, open **Settings ▸ Square history** and tap **Show QR for another register**. On the other register, open **Settings ▸ Square history**, tap **Scan QR from PC** and scan that code. Both registers must be on the same Wi-Fi.\n\nThe code is a single small address, not the data itself, so it scans easily. The sharing register shows how many registers it has sent to. Keep its page open until the other register says it is done, then tap **Stop sharing**. Sharing also stops by itself after 10 minutes, or if the app leaves the screen. The other register links the history to its own Shopify catalogue, so each register's matches and report numbers are built on that register.\n\n### Shared through iCloud\nOnce iCloud sync is switched on (Settings ▸ Cloud sync), you do not need the QR code. Import on one register and the others take the months in by themselves a little later, then link them to their own catalogue. Import a newer export and it replaces the month on the others. **Delete imported Square history** removes it from iCloud and from every other register too, and the confirmation says so. A month that one register changed after the other removed it is kept, never deleted unseen.\n\nThe copy in iCloud does not hold any customer's name, email or phone. The register that imported keeps its full files. Registers that took the history from iCloud show those sales without a customer name, so searching Transactions by customer name only finds them on the register that imported. If you want names on every register, use the QR code route above, which copies the full files. Until iCloud sync is switched on, nothing here changes.\n\n### Find the imported records\nImported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.\n\nIf you refresh the Shopify catalogue, tap **Re-match to Shopify catalogue** in Settings ▸ Square history. Use **Delete imported Square history** to remove it from this iPad.",
+     "deep": "### What is imported and matched\nCompleted sales and refunds are included. Square variations link to Shopify variants by SKU first, then UPC/barcode. A match gets Shopify's item name, cost and category for reports. An unmatched line stays a custom Square line, with Square's category. The import also carries over Square's tender details, discounts, tips, fees and customer names on their sales; it does not create Shopify customer records.\n\n### Where the files live\nHistory is stored compressed in monthly files under the app's `Documents/square-history/` folder. Reports use a small daily rollup file; Transactions reads the detailed monthly files. Re-match rebuilds the links and report rollups from those local files without contacting Square.\n\n### Connection and import problems\n- **Timed out / could not reach the PC:** use the same Wi-Fi, leave the export script running, check the local-network permission in iOS Settings, or transfer the output files and use **Pick files**.\n- **No matching SKU:** refresh Shopify catalogue, then re-match. A missing match does not lose the sale; it remains a custom line.\n- **Wrong or incomplete date range:** rerun the PC export with the desired dates and import the resulting files.\n- **Share with another register does not start:** the register must already have imported history, and must be on Wi-Fi. If a file is reported missing, import again first.\n- **The other register cannot reach the sharing register:** both must be on the same Wi-Fi (not a guest network that separates devices), the sharing page must still be open, and Local Network must be allowed for the app in iOS Settings on both.\n- The PC script serves only the export folder while it runs. Stop it when import is done. A sharing register does the same job: it serves only the imported files behind a random key, and only while its Square history page is open.",
+-    "advanced": "### Import path\n```mermaid\nflowchart TD\n  A[PC reads Square history] --> B[Write compressed monthly exports]\n  B --> C[Serve manifest by QR or copy files]\n  C --> D[Install files on this iPad]\n  D --> E[Link SKU then barcode to Shopify catalogue]\n  E --> F[Build report rollups and transaction records]\n  F --> G[Read only history]\n```\n\n| Job | Where |\n|---|---|\n| PC export | `tools/square-history/export.ts` |\n| PC setup and use | `tools/square-history/README.md` |\n| Share to another register (server, QR address, file serving) | `startShare` in `src/lib/squareShareIO.ts` |\n| Share rules (address, key, routing, progress) | `answerRequest`, `shareUrl`, `shareStatus` in `src/lib/squareShare.ts` |\n| Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |\n| Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |\n| SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |\n| Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |\n\nWhen a register shares, it takes the place of the PC script: `startShare` opens a small read-only web server on the Wi-Fi, picks a random key, and returns an address of the same shape the PC script prints, so the receiving register's scanner and `installFromUrl` need no changes. Only `manifest.json` and the files the manifest lists can be fetched, and a wrong key or file name is a plain 404.\n\nThe manifest is checked before file names are used. Each month is compressed separately so detailed history can be loaded without expanding the entire export at once."
++    "advanced": "### Import path\n```mermaid\nflowchart TD\n  A[PC reads Square history] --> B[Write compressed monthly exports]\n  B --> C[Serve manifest by QR or copy files]\n  C --> D[Install files on this iPad]\n  D --> E[Link SKU then barcode to Shopify catalogue]\n  E --> F[Build report rollups and transaction records]\n  F --> G[Read only history]\n```\n\n| Job | Where |\n|---|---|\n| PC export | `tools/square-history/export.ts` |\n| PC setup and use | `tools/square-history/README.md` |\n| Share to another register (server, QR address, file serving) | `startShare` in `src/lib/squareShareIO.ts` |\n| Share rules (address, key, routing, progress) | `answerRequest`, `shareUrl`, `shareStatus` in `src/lib/squareShare.ts` |\n| Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |\n| Sharing months through iCloud (rules, then the file work) | `decideMonth`, `stripCustomers` in `src/lib/squareHistoryShared.ts`; `createSquareSync` in `src/lib/cloudkit/squareSync.ts`; `src/lib/squareHistorySyncIO.ts` |\n| Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |\n| SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |\n| Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |\n\nWhen a register shares, it takes the place of the PC script: `startShare` opens a small read-only web server on the Wi-Fi, picks a random key, and returns an address of the same shape the PC script prints, so the receiving register's scanner and `installFromUrl` need no changes. Only `manifest.json` and the files the manifest lists can be fetched, and a wrong key or file name is a plain 404.\n\nThe manifest is checked before file names are used. Each month is compressed separately so detailed history can be loaded without expanding the entire export at once."
+    }
+   },
+   {
+@@ -1734,7 +1734,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+diff --git a/help/orders/square-history.md b/help/orders/square-history.md
+index 8480983..c629a03 100644
+--- a/help/orders/square-history.md
++++ b/help/orders/square-history.md
+@@ -5,7 +5,7 @@ parent: orders
+ summary: Export old Square sales on a PC, import them onto each register (from the PC or from another register), and understand how they appear in Reports and Transactions.
+ tags: [Square, history, import, export, QR, PC, share, copy, another register, Wi-Fi, SKU, barcode, reports, transactions, read only]
+ related: [orders, orders/reports]
+-updated: 2026-10-17
++updated: 2026-11-02
+ ---
+ Square history is a one-time, read-only import of old Square sales and refunds. It never changes Shopify items, stock or customers.
+ 
+@@ -27,6 +27,11 @@ Once one register has the history, the others do not need the PC. On the registe
+ 
+ The code is a single small address, not the data itself, so it scans easily. The sharing register shows how many registers it has sent to. Keep its page open until the other register says it is done, then tap **Stop sharing**. Sharing also stops by itself after 10 minutes, or if the app leaves the screen. The other register links the history to its own Shopify catalogue, so each register's matches and report numbers are built on that register.
+ 
++### Shared through iCloud
++Once iCloud sync is switched on (Settings ▸ Cloud sync), you do not need the QR code. Import on one register and the others take the months in by themselves a little later, then link them to their own catalogue. Import a newer export and it replaces the month on the others. **Delete imported Square history** removes it from iCloud and from every other register too, and the confirmation says so. A month that one register changed after the other removed it is kept, never deleted unseen.
++
++The copy in iCloud does not hold any customer's name, email or phone. The register that imported keeps its full files. Registers that took the history from iCloud show those sales without a customer name, so searching Transactions by customer name only finds them on the register that imported. If you want names on every register, use the QR code route above, which copies the full files. Until iCloud sync is switched on, nothing here changes.
++
+ ### Find the imported records
+ Imported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.
+ 
+@@ -68,6 +73,7 @@ flowchart TD
+ | Share to another register (server, QR address, file serving) | `startShare` in `src/lib/squareShareIO.ts` |
+ | Share rules (address, key, routing, progress) | `answerRequest`, `shareUrl`, `shareStatus` in `src/lib/squareShare.ts` |
+ | Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |
++| Sharing months through iCloud (rules, then the file work) | `decideMonth`, `stripCustomers` in `src/lib/squareHistoryShared.ts`; `createSquareSync` in `src/lib/cloudkit/squareSync.ts`; `src/lib/squareHistorySyncIO.ts` |
+ | Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |
+ | SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |
+ | Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index f13d60d..d29a5bc 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -53,11 +53,14 @@ Reading or clearing a notice only affects the iPad you do it on. It is never sen
+ ### The logo on every register
+ Once sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.
+ 
++### Square history on every register
++Once sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.
++
+ ### What is and is not kept in iCloud
+ The Cloud sync page lists this in full under **What is kept in iCloud**. In short:
+ - **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.
+ - **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.
+-- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.
++- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.
+ - **The invite link is a key.** Anyone who holds it can read and write the shop records.
+ 
+ Your shop's own privacy policy and App Store privacy details are yours to update.
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index 00c1258..e9e92c5 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -222,6 +222,23 @@ export async function downloadLogo(): Promise<string | null> {
+   if (!native?.downloadLogo) return null;
+   return native.downloadLogo();
+ }
++// Patch 6a: the shared Square history. The names match SquareNative in src/lib/cloudkit/squareCloud.ts.
++export async function putSquareShard(handle: string, fields: Record<string, any>, filePath: string): Promise<Record<string, any>> {
++  if (!native?.putSquareShard) throw new Error(CLOUDKIT_MISSING);
++  return native.putSquareShard(handle, fields, filePath);
++}
++export async function getSquareManifest(): Promise<Record<string, any> | null> {
++  if (!native?.getSquareManifest) return null;
++  return native.getSquareManifest();
++}
++export async function putSquareManifest(fields: Record<string, any>, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }> {
++  if (!native?.putSquareManifest) throw new Error(CLOUDKIT_MISSING);
++  return native.putSquareManifest(fields, expectedTag);
++}
++export async function downloadSquareShard(handle: string): Promise<string | null> {
++  if (!native?.downloadSquareShard) return null;
++  return native.downloadSquareShard(handle);
++}
+ export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+   if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
+   return native.putResolution(handle, fields);
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index 1125180..f4aa7cc 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -183,6 +183,26 @@ public class CloudKitSyncModule: Module {
+       try await self.downloadLogoFile()
+     }
+ 
++    // --- Patch 6a: the shared Square history ---
++    // One `square-manifest` record lists the months. Each month is its own `squareshard-<month>-<id>` record with the packed file as a
++    // CKAsset. A shard is written once and never changed, because its name holds the id of its content. Only the manifest is ever replaced,
++    // and only if it is still at the change tag the caller read (the call returns `changed` instead of overwriting another register's write).
++    AsyncFunction("putSquareShard") { (handle: String, fields: [String: Any], filePath: String) async throws -> [String: Any] in
++      try await self.putSquareShardOnce(handle: handle, fields: fields, filePath: filePath)
++    }
++
++    AsyncFunction("getSquareManifest") { () async throws -> [String: Any]? in
++      try await self.getSquareManifestFields()
++    }
++
++    AsyncFunction("putSquareManifest") { (fields: [String: Any], expectedTag: String?) async throws -> [String: Any] in
++      try await self.putSquareManifest(fields: fields, expectedTag: expectedTag)
++    }
++
++    AsyncFunction("downloadSquareShard") { (handle: String) async throws -> String? in
++      try await self.downloadSquareShardFile(handle: handle)
++    }
++
+     // --- Patch 5: saved carts ---
+     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
+@@ -439,6 +459,89 @@ public class CloudKitSyncModule: Module {
+     var out = recordToDict(record); out.removeValue(forKey: "asset"); return out
+   }
+ 
++  // --- Patch 6a helpers: the Square history shards -------------------------------------------------------
++
++  private var squareManifestID: CKRecord.ID { CKRecord.ID(recordName: "square-manifest", zoneID: storeZoneID) }
++
++  /// A shard handle is `<YYYY-MM>-<id>`. Checked here as well as in JavaScript, because it becomes part of a record name and a file name.
++  private func validShardHandle(_ handle: String) -> Bool {
++    handle.range(of: "^[0-9]{4}-[0-9]{2}-[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil
++  }
++
++  /// Write one month's shard. If the name is taken, the stored one is handed back untouched (the name holds the content's id, so it is the same file).
++  private func putSquareShardOnce(handle: String, fields: [String: Any], filePath: String) async throws -> [String: Any] {
++    guard validShardHandle(handle) else { throw NSError(domain: CKErrorDomain, code: CKError.Code.invalidArguments.rawValue) }
++    let name = "squareshard-\(handle)"
++    let record = makeRecord(recordType: "SquareShard", recordName: name)
++    copyFields(fields, into: record)
++    let url = filePath.hasPrefix("file://") ? (URL(string: filePath) ?? URL(fileURLWithPath: filePath)) : URL(fileURLWithPath: filePath)
++    record["asset"] = CKAsset(fileURL: url)
++    do {
++      let saved = try await database().save(record)
++      return squareDict(saved)
++    } catch let error as CKError where error.code == .serverRecordChanged {
++      let id = CKRecord.ID(recordName: name, zoneID: storeZoneID)
++      return squareDict(try await database().record(for: id))
++    }
++  }
++
++  /// The manifest's plain fields and CloudKit's change tag for it. Null when there is none.
++  private func getSquareManifestFields() async throws -> [String: Any]? {
++    let results = try await database().records(for: [squareManifestID])
++    guard let result = results[squareManifestID] else { return nil }
++    switch result {
++    case .success(let record):
++      var out = squareDict(record)
++      out["tag"] = record.recordChangeTag ?? ""
++      return out
++    case .failure(let error):
++      if let ck = error as? CKError, ck.code == .unknownItem { return nil }
++      throw error
++    }
++  }
++
++  /// Replace the manifest only if it is still the one the caller read. `expectedTag` is that record's change tag, or empty or nil when
++  /// the caller saw no manifest. If another register wrote in between, nothing is written and `changed` is true.
++  private func putSquareManifest(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
++    var found: CKRecord? = nil
++    do { found = try await database().record(for: squareManifestID) }
++    catch let error as CKError where error.code == .unknownItem { found = nil }
++    let expected = expectedTag ?? ""
++    let record: CKRecord
++    if let current = found {
++      guard !expected.isEmpty, current.recordChangeTag == expected else { return ["changed": true] }
++      record = current
++    } else {
++      if !expected.isEmpty { return ["changed": true] }
++      record = makeRecord(recordType: "SquareManifest", recordName: "square-manifest")
++    }
++    copyFields(fields, into: record)
++    do {
++      let saved = try await database().save(record)
++      return ["changed": false, "tag": saved.recordChangeTag ?? ""]
++    } catch let error as CKError where error.code == .serverRecordChanged {
++      return ["changed": true]
++    }
++  }
++
++  /// Fetch one shard with its asset and copy the file to a temporary path the JavaScript side can read. Null when it is not there.
++  private func downloadSquareShardFile(handle: String) async throws -> String? {
++    guard validShardHandle(handle) else { return nil }
++    let id = CKRecord.ID(recordName: "squareshard-\(handle)", zoneID: storeZoneID)
++    let record: CKRecord
++    do { record = try await database().record(for: id) }
++    catch let error as CKError where error.code == .unknownItem { return nil }
++    guard let asset = record["asset"] as? CKAsset, let source = asset.fileURL else { return nil }
++    let dest = FileManager.default.temporaryDirectory.appendingPathComponent("square-shard-\(UUID().uuidString).json.gz")
++    try FileManager.default.copyItem(at: source, to: dest)
++    return dest.path
++  }
++
++  /// recordToDict without the asset, which would otherwise come back as the text of the object.
++  private func squareDict(_ record: CKRecord) -> [String: Any] {
++    var out = recordToDict(record); out.removeValue(forKey: "asset"); return out
++  }
++
+   // --- Patch 4 helpers -------------------------------------------------------
+ 
+   private func database() -> CKDatabase {
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index e940e78..1aac01f 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -59,6 +59,11 @@ export type CloudKitSyncNative = {
+   putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
+   getLogo?(): Promise<Record<string, any> | null>;
+   downloadLogo?(): Promise<string | null>;
++  // Patch 6a: the shared Square history (one shard record per month with an asset, and one manifest record)
++  putSquareShard?(handle: string, fields: Record<string, any>, filePath: string): Promise<Record<string, any>>;
++  getSquareManifest?(): Promise<Record<string, any> | null>;
++  putSquareManifest?(fields: Record<string, any>, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }>;
++  downloadSquareShard?(handle: string): Promise<string | null>;
+   // Patch 6b: the shared cash drawer
+   putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
+   getDrawerShift?(): Promise<Record<string, any> | null>;
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index dbd15e6..7007aac 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'logoBase', 'gridBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
++export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'logoBase', 'squareBase', 'gridBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
+ 
+ export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+diff --git a/src/lib/cloudkit/squareCloud.ts b/src/lib/cloudkit/squareCloud.ts
+new file mode 100644
+index 0000000..57618ce
+--- /dev/null
++++ b/src/lib/cloudkit/squareCloud.ts
+@@ -0,0 +1,33 @@
++// Location: src/lib/cloudkit/squareCloud.ts
++// CloudKit sync, patch 6a (Square history shards, transport half): the month files and their manifest written to and read from CloudKit.
++// It joins the pure rules (squareHistoryShared.ts) to a small native interface. The native module is passed in, so the flow is tested with an
++// in-memory fake and no iPad (tests/squaresync.test.ts). Nothing reaches it unless the CloudKit backend is the active one.
++import { manifestFromFields, manifestToFields, shardHandle, shardToFields, type RemoteSquare, type ShardEntry, type ShardMeta } from '../squareHistoryShared';
++
++type Rec = Record<string, any>;
++
++/** What the history needs of the native module. */
++export type SquareNative = {
++  /** Write one month's shard once. A shard is named by month and shared id, so a second write of the same name changes nothing. `filePath` is the packed copy to attach. */
++  putSquareShard(handle: string, fields: Rec, filePath: string): Promise<Rec>;
++  /** The manifest's plain fields plus `tag` (CloudKit's change tag for the record), or null when there is none. */
++  getSquareManifest(): Promise<Rec | null>;
++  /** Write the manifest only if it is still at `expectedTag` (null when it should not exist yet). `changed` is true when someone else wrote first and nothing was written. */
++  putSquareManifest(fields: Rec, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }>;
++  /** Download one shard to a temporary file and return its path, or null when it is not there. */
++  downloadSquareShard(handle: string): Promise<string | null>;
++};
++
++export const readCloudSquare = async (n: SquareNative): Promise<RemoteSquare> => manifestFromFields(await n.getSquareManifest());
++
++export async function uploadShard(n: SquareNative, registerId: string, registerName: string, e: ShardEntry, path: string, ts: string): Promise<void> {
++  await n.putSquareShard(shardHandle(e.month, e.sid), shardToFields(e, registerId, registerName, ts), path);
++}
++
++/** Replace the manifest. False means another register wrote first, and nothing was changed. */
++export async function writeCloudManifest(n: SquareNative, entries: Record<string, ShardEntry>, meta: ShardMeta, registerId: string, registerName: string, expectedTag: string | null, ts: string): Promise<boolean> {
++  const r = await n.putSquareManifest(manifestToFields(entries, meta, registerId, registerName, ts), expectedTag);
++  return !r.changed;
++}
++
++export const downloadCloudShard = (n: SquareNative, e: ShardEntry): Promise<string | null> => n.downloadSquareShard(shardHandle(e.month, e.sid));
+diff --git a/src/lib/cloudkit/squareSync.ts b/src/lib/cloudkit/squareSync.ts
+new file mode 100644
+index 0000000..b7ec462
+--- /dev/null
++++ b/src/lib/cloudkit/squareSync.ts
+@@ -0,0 +1,121 @@
++// Location: src/lib/cloudkit/squareSync.ts
++// CloudKit sync, patch 6a (Square history shards, call site): one reconcile per poll that sends this register's months, takes the shop's,
++// and carries a removal. Everything the app supplies is passed in, so the rules are tested without an iPad (tests/squaresync.test.ts).
++// The app's one instance is made in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_PLAN.md and dev_docs/CLOUDKIT_SYNC_DECISIONS.md (0209).
++import { MAX_SHARD_BYTES, parseBase, planSquare, serializeBase, type LocalMonth, type ShardEntry, type ShardMeta, type SquareBase } from '../squareHistoryShared';
++import { downloadCloudShard, readCloudSquare, uploadShard, writeCloudManifest, type SquareNative } from './squareCloud';
++
++export type SquareSyncDeps = {
++  /** True only when the CloudKit backend is the one in use. */
++  active: () => boolean;
++  /** True in practice mode, when nothing is ever sent or taken in. */
++  training: () => boolean;
++  who: () => { id: string; name: string };
++  native: () => Promise<SquareNative>;
++  /** The month files on this iPad, each hashed (the app caches the hash per file). */
++  listLocal: () => Promise<LocalMonth[]>;
++  /** Pack this register's month with the customer details taken out, into a temporary file, and say how it hashes. Null when the month cannot be read. */
++  prepare: (month: string) => Promise<{ path: string; sid: string; bytes: number } | null>;
++  /** Hash and size of a downloaded file, or null when it cannot be read. */
++  inspect: (path: string) => Promise<{ sid: string; bytes: number } | null>;
++  /** Put a downloaded month in place as this register's file for it. */
++  install: (month: string, tempPath: string) => Promise<void>;
++  removeLocal: (month: string) => Promise<void>;
++  /** Called once after months were taken in or removed here: rewrite the stored manifest and rebuild the rollups. `sales` is the record count per month. */
++  finish: (meta: ShardMeta, sales: Record<string, number>) => Promise<void>;
++  /** The device-only base, as stored text. */
++  base: () => string | undefined;
++  setBase: (text: string) => void;
++  now?: () => string;
++};
++
++export type SquareResult = { pushed: string[]; pulled: string[]; removedHere: string[]; removedShop: string[]; failed: string[] };
++const empty = (): SquareResult => ({ pushed: [], pulled: [], removedHere: [], removedShop: [], failed: [] });
++const ATTEMPTS = 3;
++
++export function createSquareSync(d: SquareSyncDeps) {
++  const now = d.now ?? (() => new Date().toISOString());
++  let running = false;
++
++  /** One pass. Returns null to say "someone else wrote the manifest first, read it again". */
++  async function pass(n: SquareNative, w: { id: string; name: string }, out: SquareResult): Promise<SquareResult | null | 'stop'> {
++    const remote = await readCloudSquare(n);
++    if (remote.kind === 'unreadable') return 'stop'; // reading it as empty would look like every month had been removed
++    const entries = remote.kind === 'manifest' ? remote.entries : {};
++    const meta: ShardMeta = remote.kind === 'manifest' ? remote.meta : { locations: [] };
++    const local = await d.listLocal(); const lm = new Map(local.map(m => [m.month, m] as const));
++    const base: SquareBase = parseBase(d.base());
++    const plan = planSquare(local, entries, base);
++    if (!plan.length) return out;
++
++    const next: Record<string, ShardEntry> = { ...entries }; let manifestChanged = false;
++    const baseNow: SquareBase = { ...base }; const baseAfterManifest: SquareBase = {}; const dropAfterManifest: string[] = [];
++    let localChanged = false; const pushed: string[] = []; const removedShop: string[] = [];
++
++    for (const { month, action } of plan) {
++      try {
++        if (action === 'forget') { delete baseNow[month]; continue; }
++        if (action === 'push') {
++          const mine = lm.get(month)!; if (mine.bytes > MAX_SHARD_BYTES) continue; // never sent, and the shop's is not allowed to replace it unseen either
++          const prep = await d.prepare(month); if (!prep || prep.bytes > MAX_SHARD_BYTES) { out.failed.push(month); continue; }
++          const was = entries[month];
++          if (!was || was.sid !== prep.sid) {
++            const e: ShardEntry = { month, sid: prep.sid, bytes: prep.bytes, sales: mine.sales };
++            await uploadShard(n, w.id, w.name, e, prep.path, now()); next[month] = e; manifestChanged = true;
++          }
++          baseAfterManifest[month] = { l: mine.hash, s: prep.sid }; pushed.push(month); continue;
++        }
++        if (action === 'removeRemote') { delete next[month]; manifestChanged = true; dropAfterManifest.push(month); removedShop.push(month); continue; }
++        if (action === 'pull') {
++          const e = entries[month]; if (e.bytes > MAX_SHARD_BYTES) continue;
++          const tmp = await downloadCloudShard(n, e); if (!tmp) { out.failed.push(month); continue; }
++          // checked before it replaces anything, so a damaged or swapped file leaves this register's month as it was
++          const got = await d.inspect(tmp); if (!got || got.sid !== e.sid || got.bytes > MAX_SHARD_BYTES) { out.failed.push(month); continue; }
++          await d.install(month, tmp); baseNow[month] = { l: got.sid, s: e.sid }; out.pulled.push(month); localChanged = true; continue;
++        }
++        if (action === 'removeLocal') { await d.removeLocal(month); delete baseNow[month]; out.removedHere.push(month); localChanged = true; }
++      } catch { out.failed.push(month); }
++    }
++
++    if (manifestChanged) {
++      const tag = remote.kind === 'manifest' ? remote.tag || null : null;
++      const ok = await writeCloudManifest(n, next, meta, w.id, w.name, tag, now());
++      if (!ok) { d.setBase(serializeBase(baseNow)); if (localChanged) await d.finish(meta, salesOf(local, entries)); return null; }
++      for (const m of dropAfterManifest) delete baseNow[m];
++    }
++    Object.assign(baseNow, baseAfterManifest); out.pushed.push(...pushed); out.removedShop.push(...removedShop);
++    d.setBase(serializeBase(baseNow));
++    if (localChanged) await d.finish(meta, salesOf(local, entries));
++    return out;
++  }
++
++  return {
++    /**
++     * Compare this register's months with the shop's and act on each (see `decideMonth`). Returns what was done, or null when nothing was
++     * attempted (not active, practice mode, no register id, already running) or it failed. Never throws: the next poll tries again.
++     * The base moves only for a month that was really agreed, and the manifest is written only if it has not changed since it was read.
++     */
++    async run(): Promise<SquareResult | null> {
++      if (!d.active() || d.training() || running) return null;
++      const w = d.who(); if (!w.id) return null;
++      running = true;
++      try {
++        const n = await d.native(); const out = empty();
++        for (let i = 0; i < ATTEMPTS; i++) {
++          const r = await pass(n, w, out);
++          if (r === 'stop') return null;
++          if (r) return r;
++        }
++        return null;
++      } catch { return null; } finally { running = false; }
++    },
++  };
++}
++export type SquareSync = ReturnType<typeof createSquareSync>;
++
++function salesOf(local: LocalMonth[], remote: Record<string, ShardEntry>): Record<string, number> {
++  const out: Record<string, number> = {};
++  for (const e of Object.values(remote)) out[e.month] = e.sales;
++  for (const m of local) if (m.sales) out[m.month] = m.sales;
++  return out;
++}
+diff --git a/src/lib/icloudNote.ts b/src/lib/icloudNote.ts
+index a3ea4c7..e4abde5 100644
+--- a/src/lib/icloudNote.ts
++++ b/src/lib/icloudNote.ts
+@@ -13,7 +13,7 @@ export const IN_ICLOUD: NoteBlock[] = [
+   { title: 'Sales', text: 'Every sale with its lines, tenders, staff name, notes, reasons and price changes, and the daily totals. Card details (the masked number, last four digits, approval code and references) are encrypted. Amounts are not, so reports can add them up. A sale refers to its Shopify customer by id only.' },
+   { title: 'Payments and events', text: 'Card payment attempts, and who resolved each one, and the events log (declined and unknown payments, voids, overrides, paid in and out, shift opens and closes, no-sales, failed refunds, staff switches), each labelled with the till that made it.' },
+   { title: 'Cash drawer', text: 'One drawer for the whole shop: its shift, any loan owed back, and every note and coin movement.' },
+-  { title: 'Layout and carts', text: 'The item grid layout, saved carts and the Square history files.' },
++  { title: 'Layout and carts', text: 'The item grid layout, saved carts and the Square history files. In iCloud the history has each customer\'s name, email and phone taken out.' },
+   { title: 'Notices and training', text: 'Cash and refund notices, and each person\'s training progress (never the practice data).' },
+   { title: 'The assistant\'s log', text: 'Every exchange with the assistant, from every till, encrypted.' },
+   { title: 'Logins and secrets (later)', text: 'Only after the encryption test has passed: the Shopify login, the pass, gift claim and receipt secrets, the assistant\'s key and the cashier pass codes, all encrypted.' },
+diff --git a/src/lib/squareHistoryIO.ts b/src/lib/squareHistoryIO.ts
+index 91fe992..49e1348 100644
+--- a/src/lib/squareHistoryIO.ts
++++ b/src/lib/squareHistoryIO.ts
+@@ -11,6 +11,8 @@ import type { HistSale } from './squareConvert';
+ import { addToRollups, buildLinkIndex, canonicalName, finishRollups, linkSale, linkedStats, packJson, parseManifest, safeName, unpackJson, type SquareManifest } from './squareHistory';
+ 
+ const dir = () => `${FS.documentDirectory ?? ''}square-history/`;
++/** The folder the stored files are in, for the iCloud sharing of the months (squareHistorySyncIO.ts). */
++export const squareHistoryDir = dir;
+ const META_KEY = 'squareHistoryMeta';
+ /** Demo mode and training run on a copy of the till's data, but these files are the real ones on this iPad: installing, re-matching and deleting
+  *  change them for good, so each of the four starts here. Reading the history (loadSquareRollups, loadSquareSales) stays open. */
+diff --git a/src/lib/squareHistoryShared.ts b/src/lib/squareHistoryShared.ts
+new file mode 100644
+index 0000000..f090b4f
+--- /dev/null
++++ b/src/lib/squareHistoryShared.ts
+@@ -0,0 +1,138 @@
++// Location: src/lib/squareHistoryShared.ts
++// CloudKit sync, patch 6a (Square history shards): the imported Square history, shared between registers one month at a time.
++//
++// Decisions (dev_docs/CLOUDKIT_SYNC_PLAN.md, "Square history structure and size"): the shard is the month file the app already keeps
++// (`sales-<YYYY-MM>.json.gz`), one CloudKit asset per month, and one manifest record lists them. No new packing is needed, except for one
++// change this patch makes to the plan: the copy that goes to iCloud has the customer's name, email and phone taken out. The history files
++// hold them (squareConvert.ts keeps `customer` from Square), and the plan says no customer name, email or phone reaches CloudKit.
++// The month files on this iPad are never changed by sending.
++//
++// Two ids per month, because the copy in iCloud is not the same bytes as the file on the iPad:
++//  - `hash` is the hash of this register's own month file.
++//  - `sid` (shared id) is the hash of the copy in iCloud, with the customer details removed.
++// Each register keeps `squareBase` (device only): for every month, the pair (`l`, `s`) both sides last agreed on. A month changed here
++// is told from one changed elsewhere by comparing against it, as the logo and the grid layout do. No React, no files, no native module:
++// tested on its own (tests/squareshared.test.ts).
++import { gzipSync, strToU8 } from 'fflate';
++import { hash53 } from './eventRecords';
++import type { HistSale } from './squareConvert';
++
++export const SQUARE_MANIFEST_RECORD = 'square-manifest';
++/** A month file bigger than this is neither sent nor taken in. A busy month is a few hundred KB packed. */
++export const MAX_SHARD_BYTES = 8_000_000;
++export const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
++export const isMonth = (x: unknown): x is string => typeof x === 'string' && MONTH_RE.test(x);
++export const monthFileName = (month: string): string => `sales-${month}.json.gz`;
++/** The month a stored file holds, or null when the name is not a month file (manifest.json and rollups.json.gz are not). */
++export const monthOfFile = (name: string): string | null => { const m = /^sales-(\d{4}-\d{2})\.json\.gz$/.exec(name); return m && isMonth(m[1]) ? m[1] : null; };
++/** The name of a shard record, without the fixed prefix the native module adds. The id is part of the name, so a shard is never rewritten. */
++export const shardHandle = (month: string, sid: string): string => `${month}-${sid}`;
++const SID_RE = /^[A-Za-z0-9_-]{1,40}$/;
++
++/** What this register holds for one month. `sales` is the number of records in the file (0 when the register only knows the file name). */
++export type LocalMonth = { month: string; hash: string; bytes: number; sales: number };
++/** What the shop's manifest says about one month. */
++export type ShardEntry = { month: string; sid: string; bytes: number; sales: number };
++export type ShardMeta = { createdAt?: string; from?: string; to?: string; locations: string[] };
++/**
++ * The shop's side as read back. `unreadable` is a manifest that exists but cannot be understood: nothing is done on it, because reading it
++ * as empty would look like every month had been removed.
++ */
++export type RemoteSquare = { kind: 'absent' } | { kind: 'unreadable' } | { kind: 'manifest'; tag: string; entries: Record<string, ShardEntry>; meta: ShardMeta };
++
++export type BaseEntry = { l: string; s: string };
++export type SquareBase = Record<string, BaseEntry>;
++
++// ── the copy that goes to iCloud ─────────────────────────────────────────────────────────────────
++/**
++ * Customer name, email and phone removed. The Square customer id stays (it is Square's own opaque id, as a Shopify id is for a sale), so a
++ * sale is still told apart from a walk-in. Free text a cashier typed (an order's ticket name, a line note) is not touched, the same known
++ * minor exception as a note on a sale (decisions item 18).
++ */
++export function stripCustomers(sales: HistSale[]): HistSale[] {
++  return sales.map(s => (s.customer ? { ...s, customer: { id: s.customer.id, name: '' } } : s));
++}
++/** Packed the same way every time. `packJson` in squareHistory.ts stamps the current time into the gzip header, so the same sales would hash differently on every call. */
++export const packStable = (v: unknown): Uint8Array => gzipSync(strToU8(JSON.stringify(v)), { level: 9, mtime: 0 });
++/** A short name for a file's bytes. It is taken over the file's base64 text, so the same file hashes the same on every iPad. */
++export const shardHash = (base64: string): string => hash53(base64);
++
++// ── the manifest record ──────────────────────────────────────────────────────────────────────────
++type Fields = Record<string, string | number | boolean>;
++
++/** The plain fields of the manifest record. The month list is one JSON text, because CloudKit fields are flat. */
++export function manifestToFields(entries: Record<string, ShardEntry>, meta: ShardMeta, registerId: string, registerName: string, ts: string): Fields {
++  const list = Object.values(entries).sort((a, b) => a.month.localeCompare(b.month)).map(e => ({ m: e.month, s: e.sid, b: e.bytes, n: e.sales }));
++  return { files: JSON.stringify(list), count: list.length, locations: JSON.stringify(meta.locations), createdAt: meta.createdAt ?? '', from: meta.from ?? '', to: meta.to ?? '', ts, registerId, registerName };
++}
++/** The plain fields of one shard record. The image is the asset. */
++export const shardToFields = (e: ShardEntry, registerId: string, registerName: string, ts: string): Fields => ({ month: e.month, sid: e.sid, bytes: e.bytes, sales: e.sales, ts, registerId, registerName });
++
++const text = (x: unknown): string | undefined => (typeof x === 'string' && x ? x : undefined);
++
++/** Reads the manifest. Entries that are not understood are dropped one by one, so one bad month cannot hide the rest. */
++export function manifestFromFields(f: Record<string, unknown> | null | undefined): RemoteSquare {
++  if (!f) return { kind: 'absent' };
++  let list: unknown;
++  try { list = JSON.parse(typeof f.files === 'string' ? f.files : 'null'); } catch { return { kind: 'unreadable' }; }
++  if (!Array.isArray(list)) return { kind: 'unreadable' };
++  const entries: Record<string, ShardEntry> = {};
++  for (const x of list) {
++    const e = x as { m?: unknown; s?: unknown; b?: unknown; n?: unknown } | null;
++    if (!e || !isMonth(e.m) || typeof e.s !== 'string' || !SID_RE.test(e.s)) continue;
++    const bytes = Number(e.b); const sales = Number(e.n);
++    if (!Number.isInteger(bytes) || bytes <= 0 || bytes > MAX_SHARD_BYTES || !Number.isInteger(sales) || sales < 0) continue;
++    entries[e.m] = { month: e.m, sid: e.s, bytes, sales };
++  }
++  let locations: string[] = [];
++  try { const l = JSON.parse(typeof f.locations === 'string' ? f.locations : '[]'); if (Array.isArray(l)) locations = l.filter((v): v is string => typeof v === 'string'); } catch { /* the list is optional */ }
++  return { kind: 'manifest', tag: typeof f.tag === 'string' ? f.tag : '', entries, meta: { createdAt: text(f.createdAt), from: text(f.from), to: text(f.to), locations } };
++}
++
++// ── deciding ─────────────────────────────────────────────────────────────────────────────────────
++export type MonthAction = 'none' | 'push' | 'pull' | 'removeRemote' | 'removeLocal' | 'forget';
++
++/**
++ * What to do about one month, given this register's file, the shop's entry and `b` (what both last agreed on; absent when they never have).
++ * "Changed here" means this register's file differs from the base. "Changed there" means the shop's entry does.
++ *  - Neither changed: nothing.
++ *  - Only here: send it. A file deleted here is removed from the shop.
++ *  - Only there: take it. A month the shop removed is deleted here, but only because this register had not changed it since the base.
++ *  - Both: never lose a month that exists on one side. If both have it, the one with more sales wins and a tie keeps this register's.
++ *  - Neither side has it any more but a base is held: forget the base.
++ * A month never seen before cannot be deleted by a guess, because a delete needs a base that both sides agreed on.
++ */
++export function decideMonth(l: LocalMonth | undefined, r: ShardEntry | undefined, b: BaseEntry | undefined): MonthAction {
++  const lc = (l?.hash ?? '') !== (b?.l ?? ''); const rc = (r?.sid ?? '') !== (b?.s ?? '');
++  if (!l && !r) return b ? 'forget' : 'none';
++  if (!lc && !rc) return 'none';
++  if (lc && !rc) return l ? 'push' : 'removeRemote';
++  if (!lc && rc) return r ? 'pull' : 'removeLocal';
++  if (!l) return 'pull';
++  if (!r) return 'push';
++  return r.sales > l.sales ? 'pull' : 'push';
++}
++
++/** Every month that needs something done, oldest first. */
++export function planSquare(local: LocalMonth[], remote: Record<string, ShardEntry>, base: SquareBase): { month: string; action: MonthAction }[] {
++  const lm = new Map(local.map(m => [m.month, m] as const));
++  const months = new Set<string>([...lm.keys(), ...Object.keys(remote), ...Object.keys(base)]);
++  const out: { month: string; action: MonthAction }[] = [];
++  for (const month of [...months].sort()) { const action = decideMonth(lm.get(month), remote[month], base[month]); if (action !== 'none') out.push({ month, action }); }
++  return out;
++}
++
++// ── the device-only base ─────────────────────────────────────────────────────────────────────────
++export function parseBase(text: string | undefined | null): SquareBase {
++  if (!text) return {};
++  try {
++    const raw = JSON.parse(text) as Record<string, unknown>; const out: SquareBase = {};
++    if (!raw || typeof raw !== 'object') return {};
++    for (const [m, v] of Object.entries(raw)) {
++      const e = v as { l?: unknown; s?: unknown } | null;
++      if (isMonth(m) && e && typeof e.l === 'string' && typeof e.s === 'string') out[m] = { l: e.l, s: e.s };
++    }
++    return out;
++  } catch { return {}; }
++}
++export const serializeBase = (b: SquareBase): string => JSON.stringify(Object.fromEntries(Object.entries(b).sort(([a], [c]) => a.localeCompare(c))));
+diff --git a/src/lib/squareHistorySyncIO.ts b/src/lib/squareHistorySyncIO.ts
+new file mode 100644
+index 0000000..c6124ea
+--- /dev/null
++++ b/src/lib/squareHistorySyncIO.ts
+@@ -0,0 +1,83 @@
++// Location: src/lib/squareHistorySyncIO.ts
++// CloudKit sync, patch 6a (Square history shards): the file work on this iPad for the shared months. Lists and hashes the month files,
++// packs the copy that goes to iCloud (customer details removed), checks a downloaded month, and puts it in place the way the importer does
++// (a file in `square-history/`). Kept apart from the pure rules so those run in the node tests; this part needs the iPad's file system.
++// It reads the stored files through squareHistoryIO.ts and changes them only here, and only when sync takes a month in or removes one.
++import * as FS from 'expo-file-system/legacy';
++import type { HistSale } from './squareConvert';
++import { bytesToB64, readStoredFile, rebuild, removeSquareHistory, squareHistoryDir, storedManifest } from './squareHistoryIO';
++import { unpackJson } from './squareHistory';
++import { isTraining } from './trainingGuard';
++import { MAX_SHARD_BYTES, monthFileName, monthOfFile, packStable, shardHash, stripCustomers, type LocalMonth, type ShardMeta } from './squareHistoryShared';
++import type { SquareSyncDeps } from './cloudkit/squareSync';
++
++// The hash is worked out once per file, not on every poll: the cache is keyed by the name, the size and the time it was changed.
++const cache = new Map<string, { size: number; mtime: number; hash: string }>();
++
++async function hashPath(path: string): Promise<string> {
++  return shardHash(await FS.readAsStringAsync(path, { encoding: FS.EncodingType.Base64 }));
++}
++
++export const listLocalMonths: SquareSyncDeps['listLocal'] = async (): Promise<LocalMonth[]> => {
++  const dir = squareHistoryDir();
++  if (!(await FS.getInfoAsync(dir)).exists) return [];
++  const man = await storedManifest(); const sales = new Map((man?.files ?? []).map(f => [f.month, f.sales] as const));
++  const out: LocalMonth[] = [];
++  for (const name of (await FS.readDirectoryAsync(dir)).sort()) {
++    const month = monthOfFile(name); if (!month) continue;
++    const info = await FS.getInfoAsync(dir + name); if (!info.exists || (info.size ?? 0) <= 0) continue;
++    const size = info.size ?? 0; const mtime = Number((info as { modificationTime?: number }).modificationTime ?? 0);
++    if (size > MAX_SHARD_BYTES) { out.push({ month, hash: '', bytes: size, sales: sales.get(month) ?? 0 }); continue; }
++    const hit = cache.get(name); let hash: string;
++    if (hit && hit.size === size && hit.mtime === mtime) hash = hit.hash;
++    else { hash = await hashPath(dir + name); cache.set(name, { size, mtime, hash }); }
++    out.push({ month, hash, bytes: size, sales: sales.get(month) ?? 0 });
++  }
++  return out;
++};
++
++/** Reads this register's month, takes the customer details out, packs it the same way every time and writes it to a temporary file. */
++export const prepareShard: SquareSyncDeps['prepare'] = async month => {
++  try {
++    const sales = unpackJson<HistSale[]>(await readStoredFile(monthFileName(month)));
++    const path = `${FS.cacheDirectory}square-shard-${month}.json.gz`;
++    await FS.writeAsStringAsync(path, bytesToB64(packStable(stripCustomers(sales))), { encoding: FS.EncodingType.Base64 });
++    // hashed from the file as written, by the same read the other registers use to check what they download, so the two always agree
++    const info = await FS.getInfoAsync(path); if (!info.exists) return null;
++    return { path, sid: await hashPath(path), bytes: info.size ?? 0 };
++  } catch { return null; }
++};
++
++export const inspectDownloadedShard: SquareSyncDeps['inspect'] = async path => {
++  try { const info = await FS.getInfoAsync(path); if (!info.exists || (info.size ?? 0) <= 0) return null; return { sid: await hashPath(path), bytes: info.size ?? 0 }; } catch { return null; }
++};
++
++export const installShard: SquareSyncDeps['install'] = async (month, tempPath) => {
++  if (isTraining()) return; // the files are the real ones on this iPad
++  const dir = squareHistoryDir(); await FS.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
++  const to = dir + monthFileName(month);
++  await FS.deleteAsync(to, { idempotent: true }); await FS.copyAsync({ from: tempPath, to });
++  cache.delete(monthFileName(month)); await FS.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
++};
++
++export const removeLocalMonth: SquareSyncDeps['removeLocal'] = async month => {
++  if (isTraining()) return;
++  cache.delete(monthFileName(month)); await FS.deleteAsync(squareHistoryDir() + monthFileName(month), { idempotent: true });
++};
++
++/**
++ * After months were taken in or removed: write the stored manifest to match the files now on this iPad, then relink and rebuild the rollups
++ * exactly as an import does. With no months left the whole history is removed, the same as Delete imported Square history.
++ */
++export const finishSquareChange: SquareSyncDeps['finish'] = async (meta: ShardMeta, sales: Record<string, number>) => {
++  if (isTraining()) return;
++  const dir = squareHistoryDir();
++  const names = (await FS.getInfoAsync(dir)).exists ? (await FS.readDirectoryAsync(dir)).filter(n => monthOfFile(n)).sort() : [];
++  if (!names.length) { await removeSquareHistory(); return; }
++  const files: { name: string; bytes: number; sales: number; month: string }[] = [];
++  for (const name of names) { const month = monthOfFile(name)!; const info = await FS.getInfoAsync(dir + name); files.push({ name, bytes: info.exists ? info.size ?? 0 : 0, sales: sales[month] ?? 0, month }); }
++  const total = files.reduce((a, f) => a + f.sales, 0);
++  const manifest = { v: 1, createdAt: meta.createdAt ?? new Date().toISOString(), from: meta.from, to: meta.to, sales: total, refunds: 0, locations: meta.locations, files };
++  await FS.writeAsStringAsync(dir + 'manifest.json', JSON.stringify(manifest));
++  await rebuild(() => {});
++};
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index e685955..14194b8 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -25,6 +25,8 @@ import { createNoticeSync } from './cloudkit/noticeSync';
+ import type { NoticeNative } from './cloudkit/noticeCloud';
+ import { createLogoSync } from './cloudkit/logoSync';
+ import type { LogoNative } from './cloudkit/logoCloud';
++import { createSquareSync } from './cloudkit/squareSync';
++import type { SquareNative } from './cloudkit/squareCloud';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+ import { createOrderForSale } from './shopify/orders';
+@@ -92,6 +94,25 @@ const logoSync = createLogoSync({
+   setBase: h => { if ((st().settings.logoBase ?? null) !== h) st().patchSettings({ logoBase: h }); },
+ });
+ 
++// CloudKit patch 6a: the imported Square history is shared one month at a time (plan, "Square history structure and size"). Once per poll
++// this register's month files are compared with the shop's: a month changed here is sent (with customer names, emails and phones taken
++// out), a month changed elsewhere is taken, and a removal goes both ways. `squareBase` is what both last agreed on, month by month.
++// The file work lives in squareHistorySyncIO.ts and is loaded on demand, so this file still imports in the node tests.
++const squareSync = createSquareSync({
++  active: () => activeBackendKind() === 'cloudkit',
++  training: isTraining,
++  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
++  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as SquareNative,
++  listLocal: async () => (await import('./squareHistorySyncIO')).listLocalMonths(),
++  prepare: async m => (await import('./squareHistorySyncIO')).prepareShard(m),
++  inspect: async p => (await import('./squareHistorySyncIO')).inspectDownloadedShard(p),
++  install: async (m, p) => (await import('./squareHistorySyncIO')).installShard(m, p),
++  removeLocal: async m => (await import('./squareHistorySyncIO')).removeLocalMonth(m),
++  finish: async (meta, sales) => (await import('./squareHistorySyncIO')).finishSquareChange(meta, sales),
++  base: () => st().settings.squareBase,
++  setBase: t => { if ((st().settings.squareBase ?? '') !== t) st().patchSettings({ squareBase: t }); },
++});
++
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+   const s = st();
+@@ -222,6 +243,7 @@ export async function pollShared() {
+       await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
+       await noticeSync.pull(); // and take in the ones other registers raised
+       await logoSync.run(); // the logo image, both ways (never throws)
++      await squareSync.run(); // the Square history months, both ways (never throws)
+     }
+     // stock
+     if (s.settings.locationId && s.data.stockSince) {
+diff --git a/src/screens/SquareHistory.tsx b/src/screens/SquareHistory.tsx
+index 01ba4fc..1b49925 100644
+--- a/src/screens/SquareHistory.tsx
++++ b/src/screens/SquareHistory.tsx
+@@ -9,6 +9,7 @@ import { Btn, Field, Row, Section, Txt, alertMsg, confirm } from '../ui/kit';
+ import { CameraScanner } from './Scanner';
+ import { QR } from '../ui/QR';
+ import { isManifestUrl } from '../lib/squareHistory';
++import { activeBackendKind } from '../lib/syncBackend';
+ import { installFromPicked, installFromUrl, rebuild, removeSquareHistory, squareMeta, type SquareMeta } from '../lib/squareHistoryIO';
+ import { startShare, type ShareEnd, type ShareHandle } from '../lib/squareShareIO';
+ import { isTraining } from '../lib/trainingGuard';
+@@ -82,7 +83,7 @@ export function SquareHistorySettings() {
+       {meta ? <ShareSection /> : null}
+       {meta ? <Section title="Maintenance" footer="Re-match after you refresh the catalogue from Shopify, so new SKUs link up. This only re-reads the files already on this device.">
+         <Row icon="refresh-outline" title="Re-match to Shopify catalogue" onPress={() => !busy && void run(() => rebuild(setBusy))} />
+-        <Row icon="trash-outline" title="Delete imported Square history" danger last onPress={async () => { if (await confirm('Delete Square history?', 'Removes the imported files from this iPad. You can import again from the PC.', 'Delete', true)) { await removeSquareHistory(); setMeta(null); } }} />
++        <Row icon="trash-outline" title="Delete imported Square history" danger last onPress={async () => { if (await confirm('Delete Square history?', (activeBackendKind() === 'cloudkit' ? 'Removes the imported files from this iPad, and from iCloud and every other register, because the history is shared. You can import again from the PC.' : 'Removes the imported files from this iPad. You can import again from the PC.'), 'Delete', true)) { await removeSquareHistory(); setMeta(null); } }} />
+       </Section> : null}
+       <CameraScanner visible={scan} title="Scan the QR code on your PC or another register" onClose={() => setScan(false)} onScan={code => { if (!isManifestUrl(code)) return null; setScan(false); void fromUrl(code); return 'Found it'; }} />
+     </>
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 01cb9fb..64ae6a5 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -45,6 +45,8 @@ export type Settings = {
+   noticesSeen?: string[];
+   /** Device only: the hash of the uploaded logo image this register and the shop last agreed on, so a change made here can be told from one made elsewhere (0207). '' means they agreed there is no logo. */
+   logoBase?: string;
++  /** Device only: for each month of imported Square history, the file hash here and the shared id in iCloud that this register and the shop last agreed on, as JSON text, so a month changed here can be told from one changed elsewhere (0209). */
++  squareBase?: string;
+   /** Device only: the grid layout (canonical text) this register and the shop last agreed on, the base for joining two registers' edits on CloudKit (0208). Never shared. See lib/gridMerge.ts. */
+   gridBase?: string;
+   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+diff --git a/tests/cloudkitswift.test.ts b/tests/cloudkitswift.test.ts
+index f621809..e300d86 100644
+--- a/tests/cloudkitswift.test.ts
++++ b/tests/cloudkitswift.test.ts
+@@ -23,8 +23,9 @@ test('putRecordOnce hands back the stored record when the name is taken, and nev
+ });
+ test('save() is only called in the helpers that deal with an existing record', () => {
+   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
+-  // putLogo (0207) is the one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
+-  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'upsertRecord']);
++  // putLogo (0207) is one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
++  // putSquareShardOnce and putSquareManifest (0209) are the others: a shard is written once and handed back if the name is taken, and the manifest is compared with its change tag first.
++  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'putSquareManifest', 'putSquareShardOnce', 'upsertRecord']);
+   assert.match(body('putLogo'), /database\(\)\.record\(for: logoRecordID\)[\s\S]*\.save\(record\)[\s\S]*serverRecordChanged/);
+ });
+ 
+diff --git a/tests/squareshared.test.ts b/tests/squareshared.test.ts
+new file mode 100644
+index 0000000..4eaa3ab
+--- /dev/null
++++ b/tests/squareshared.test.ts
+@@ -0,0 +1,96 @@
++// Location: tests/squareshared.test.ts
++// CloudKit patch 6a, Square history shards: the pure rules (what leaves the iPad, how the manifest reads back, and what to do about each month).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { gunzipSync, strFromU8 } from 'fflate';
++import type { HistSale } from '../src/lib/squareConvert';
++import {
++  decideMonth, manifestFromFields, manifestToFields, monthFileName, monthOfFile, packStable, parseBase, planSquare, serializeBase, shardHandle, stripCustomers,
++  type LocalMonth, type ShardEntry,
++} from '../src/lib/squareHistoryShared';
++
++const sale = (uuid: string, customer?: { id: string; name: string; email?: string; phone?: string }): HistSale => ({ uuid, type: 'sale', ts: '2025-03-04T01:00:00.000Z', registerId: 'square', registerName: 'Square', customer, lines: [], tenders: [], source: 'square', squareOrderId: 'o' } as unknown as HistSale);
++const lm = (month: string, hash: string, sales = 10): LocalMonth => ({ month, hash, bytes: 100, sales });
++const re = (month: string, sid: string, sales = 10): ShardEntry => ({ month, sid, bytes: 90, sales });
++
++test('the copy for iCloud has no customer name, email or phone, and keeps the sale otherwise', () => {
++  const out = stripCustomers([sale('a', { id: 'square:C1', name: 'Jo Citizen', email: 'jo@example.com', phone: '0400 000 000' }), sale('b')]);
++  assert.deepEqual(out[0].customer, { id: 'square:C1', name: '' });
++  assert.equal(out[1].customer, undefined);
++  assert.equal(out[0].uuid, 'a');
++  const text = JSON.stringify(out); assert.ok(!/Jo Citizen|jo@example|0400/.test(text));
++});
++test('stripping does not change the sales it was given', () => {
++  const input = [sale('a', { id: 'square:C1', name: 'Jo', email: 'j@x.au' })];
++  stripCustomers(input); assert.equal(input[0].customer?.name, 'Jo'); assert.equal(input[0].customer?.email, 'j@x.au');
++});
++test('packing is the same every time, so the same sales always hash the same', async () => {
++  const a = packStable([sale('a')]); await new Promise(r => setTimeout(r, 1100)); const b = packStable([sale('a')]);
++  assert.deepEqual(Array.from(a), Array.from(b));
++  assert.deepEqual(JSON.parse(strFromU8(gunzipSync(a))), JSON.parse(JSON.stringify([sale('a')])));
++});
++
++test('names: month files are told from the manifest and the rollups, and a shard is named by month and id', () => {
++  assert.equal(monthFileName('2025-03'), 'sales-2025-03.json.gz');
++  assert.equal(monthOfFile('sales-2025-03.json.gz'), '2025-03');
++  for (const n of ['manifest.json', 'rollups.json.gz', 'sales-2025-13.json.gz', 'sales-2025-03 2.json.gz', '../sales-2025-03.json.gz']) assert.equal(monthOfFile(n), null, n);
++  assert.equal(shardHandle('2025-03', 'abc123'), '2025-03-abc123');
++});
++
++test('the manifest round trips, and one bad month does not hide the others', () => {
++  const entries = { '2025-03': re('2025-03', 'aaa', 5), '2025-04': re('2025-04', 'bbb', 7) };
++  const f = manifestToFields(entries, { createdAt: 'c', from: '2025-03-01', to: '2025-04-30', locations: ['Shop'] }, 'reg-a', 'Front', 't');
++  const back = manifestFromFields({ ...f, tag: 'T1' });
++  assert.equal(back.kind, 'manifest'); if (back.kind !== 'manifest') return;
++  assert.deepEqual(back.entries, entries); assert.equal(back.tag, 'T1'); assert.deepEqual(back.meta, { createdAt: 'c', from: '2025-03-01', to: '2025-04-30', locations: ['Shop'] });
++  const dirty = manifestFromFields({ files: JSON.stringify([{ m: '2025-03', s: 'ok', b: 10, n: 1 }, { m: 'nope', s: 'ok', b: 10, n: 1 }, { m: '2025-05', s: '../x', b: 10, n: 1 }, { m: '2025-06', s: 'ok', b: -4, n: 1 }, { m: '2025-07', s: 'ok', b: 10, n: 1.5 }]) });
++  assert.equal(dirty.kind, 'manifest'); if (dirty.kind === 'manifest') assert.deepEqual(Object.keys(dirty.entries), ['2025-03']);
++});
++test('no record is absent, and a record that cannot be understood is unreadable, never empty', () => {
++  assert.deepEqual(manifestFromFields(null), { kind: 'absent' });
++  assert.deepEqual(manifestFromFields({ files: 'not json' }), { kind: 'unreadable' });
++  assert.deepEqual(manifestFromFields({}), { kind: 'unreadable' });
++  assert.deepEqual(manifestFromFields({ files: '{"a":1}' }), { kind: 'unreadable' });
++});
++
++test('decideMonth: nothing changed means nothing to do', () => assert.equal(decideMonth(lm('2025-03', 'h1'), re('2025-03', 's1'), { l: 'h1', s: 's1' }), 'none'));
++test('decideMonth: a month only this register has is sent, and a month only the shop has is taken', () => {
++  assert.equal(decideMonth(lm('2025-03', 'h1'), undefined, undefined), 'push');
++  assert.equal(decideMonth(undefined, re('2025-03', 's1'), undefined), 'pull');
++});
++test('decideMonth: a change on one side only goes to the other', () => {
++  assert.equal(decideMonth(lm('2025-03', 'h2'), re('2025-03', 's1'), { l: 'h1', s: 's1' }), 'push');
++  assert.equal(decideMonth(lm('2025-03', 'h1'), re('2025-03', 's2'), { l: 'h1', s: 's1' }), 'pull');
++});
++test('decideMonth: a removal is only carried to a side that had not changed the month', () => {
++  assert.equal(decideMonth(undefined, re('2025-03', 's1'), { l: 'h1', s: 's1' }), 'removeRemote');
++  assert.equal(decideMonth(lm('2025-03', 'h1'), undefined, { l: 'h1', s: 's1' }), 'removeLocal');
++  assert.equal(decideMonth(lm('2025-03', 'h2'), undefined, { l: 'h1', s: 's1' }), 'push'); // the shop removed it, but this register changed it since
++  assert.equal(decideMonth(undefined, re('2025-03', 's2'), { l: 'h1', s: 's1' }), 'pull'); // deleted here, but the shop changed it since
++});
++test('decideMonth: with no base a month is never deleted on a guess', () => {
++  assert.equal(decideMonth(lm('2025-03', 'h1'), undefined, undefined), 'push');
++  assert.equal(decideMonth(undefined, re('2025-03', 's1'), undefined), 'pull');
++});
++test('decideMonth: both sides changed the same month, the one with more sales wins and a tie keeps this register\'s', () => {
++  const b = { l: 'h1', s: 's1' };
++  assert.equal(decideMonth(lm('2025-03', 'h2', 5), re('2025-03', 's2', 9), b), 'pull');
++  assert.equal(decideMonth(lm('2025-03', 'h2', 9), re('2025-03', 's2', 5), b), 'push');
++  assert.equal(decideMonth(lm('2025-03', 'h2', 7), re('2025-03', 's2', 7), b), 'push');
++  assert.equal(decideMonth(lm('2025-03', 'h2', 5), re('2025-03', 's2', 9), undefined), 'pull'); // a register that has just joined
++});
++test('decideMonth: a month that is gone from both sides is forgotten', () => {
++  assert.equal(decideMonth(undefined, undefined, { l: 'h1', s: 's1' }), 'forget');
++  assert.equal(decideMonth(undefined, undefined, undefined), 'none');
++});
++test('planSquare lists only months with something to do, oldest first', () => {
++  const plan = planSquare([lm('2025-05', 'h5'), lm('2025-03', 'h3')], { '2025-04': re('2025-04', 's4'), '2025-03': re('2025-03', 's3') }, { '2025-03': { l: 'h3', s: 's3' } });
++  assert.deepEqual(plan, [{ month: '2025-04', action: 'pull' }, { month: '2025-05', action: 'push' }]);
++});
++
++test('the base reads back, and bad text gives an empty base instead of an error', () => {
++  const b = { '2025-04': { l: 'x', s: 'y' }, '2025-03': { l: 'a', s: 'b' } };
++  assert.deepEqual(parseBase(serializeBase(b)), b);
++  assert.equal(serializeBase(b), '{"2025-03":{"l":"a","s":"b"},"2025-04":{"l":"x","s":"y"}}');
++  for (const bad of [undefined, '', 'nope', 'null', '[]', '{"2025-03":5,"bad":{"l":"a","s":"b"}}']) assert.deepEqual(parseBase(bad as string | undefined), {});
++});
+diff --git a/tests/squaresync.test.ts b/tests/squaresync.test.ts
+new file mode 100644
+index 0000000..7f24473
+--- /dev/null
++++ b/tests/squaresync.test.ts
+@@ -0,0 +1,205 @@
++// Location: tests/squaresync.test.ts
++// CloudKit patch 6a, Square history shards: the transport and the call site on an in-memory fake of the native module and the file system,
++// plus source pins for the wiring that cannot be run without an iPad (the poll, the Swift, the module's exports, the device-only key).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { createSquareSync, type SquareSyncDeps } from '../src/lib/cloudkit/squareSync';
++import type { SquareNative } from '../src/lib/cloudkit/squareCloud';
++import { parseBase, shardHash, stripCustomers, type LocalMonth } from '../src/lib/squareHistoryShared';
++import type { HistSale } from '../src/lib/squareConvert';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++
++type Rec = Record<string, any>;
++const NOW = '2026-11-02T10:00:00.000Z';
++const read = (p: string) => readFileSync(p, 'utf8');
++
++const sales = (month: string, n: number, withCustomer = true): string => JSON.stringify(Array.from({ length: n }, (_, i) => ({ uuid: `${month}-${i}`, type: 'sale', ts: `${month}-04T01:00:00.000Z`, customer: withCustomer ? { id: `square:C${i}`, name: `Person ${i}`, email: `p${i}@example.com`, phone: '0400 000 000' } : undefined, lines: [], tenders: [] })));
++// One shared "disk" of temporary files is fine: each register's own month files live in its own map.
++const tmp = new Map<string, string>();
++
++function cloud() {
++  const st = { manifest: null as { fields: Rec; tag: number } | null, shards: new Map<string, { fields: Rec; content: string }>() };
++  const calls = { shardPuts: 0, manifestPuts: 0, downloads: 0, gets: 0 }; let fail = false; let nextTag = 1; let beforeNextManifestPut: (() => void) | null = null; let tmpN = 0;
++  const native: SquareNative = {
++    async putSquareShard(handle, f, path) { if (fail) throw new Error('offline'); calls.shardPuts++; if (!st.shards.has(handle)) st.shards.set(handle, { fields: { ...f }, content: tmp.get(path)! }); return f; },
++    async getSquareManifest() { if (fail) throw new Error('offline'); calls.gets++; return st.manifest ? { ...st.manifest.fields, tag: String(st.manifest.tag) } : null; },
++    async putSquareManifest(f, expected) {
++      if (fail) throw new Error('offline'); if (beforeNextManifestPut) { const fn = beforeNextManifestPut; beforeNextManifestPut = null; fn(); }
++      const cur = st.manifest; if (cur ? String(cur.tag) !== expected : !!expected) return { changed: true };
++      calls.manifestPuts++; st.manifest = { fields: { ...f }, tag: nextTag++ }; return { changed: false, tag: String(st.manifest.tag) };
++    },
++    async downloadSquareShard(handle) { if (fail) throw new Error('offline'); calls.downloads++; const s = st.shards.get(handle); if (!s) return null; const p = `/tmp/dl-${tmpN++}.json.gz`; tmp.set(p, s.content); return p; },
++  };
++  return { st, native, calls, setFail: (b: boolean) => { fail = b; }, onNextManifestPut: (fn: () => void) => { beforeNextManifestPut = fn; } };
++}
++
++function register(c: ReturnType<typeof cloud>, id: string, name: string, over: Partial<SquareSyncDeps> = {}) {
++  const me = { disk: new Map<string, string>(), base: undefined as string | undefined, finished: 0, lastSales: {} as Record<string, number>, n: 0 };
++  const deps: SquareSyncDeps = {
++    active: () => true, training: () => false, who: () => ({ id, name }), native: async () => c.native,
++    listLocal: async (): Promise<LocalMonth[]> => [...me.disk.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([month, t]) => ({ month, hash: shardHash(t), bytes: t.length, sales: (JSON.parse(t) as unknown[]).length })),
++    prepare: async month => { const t = me.disk.get(month); if (t === undefined) return null; const out = JSON.stringify(stripCustomers(JSON.parse(t) as HistSale[])); const p = `/tmp/up-${id}-${me.n++}.json.gz`; tmp.set(p, out); return { path: p, sid: shardHash(out), bytes: out.length }; },
++    inspect: async p => { const t = tmp.get(p); return t === undefined ? null : { sid: shardHash(t), bytes: t.length }; },
++    install: async (month, p) => { me.disk.set(month, tmp.get(p)!); },
++    removeLocal: async month => { me.disk.delete(month); },
++    finish: async (_m, s) => { me.finished++; me.lastSales = s; },
++    base: () => me.base, setBase: t => { me.base = t; }, now: () => NOW, ...over,
++  };
++  return { sync: createSquareSync(deps), me };
++}
++const settle = async (...rs: ReturnType<typeof register>[]) => { for (let i = 0; i < 4; i++) for (const r of rs) await r.sync.run(); };
++
++test('nothing happens when CloudKit is not active, in practice mode, or before the register has an id', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
++    const c = cloud(); const a = register(c, 'reg-a', 'Front', over); a.me.disk.set('2025-03', sales('2025-03', 2));
++    assert.equal(await a.sync.run(), null); assert.equal(c.calls.gets, 0); assert.equal(c.calls.shardPuts, 0);
++  }
++});
++
++test('a month imported on one register reaches the other, and neither sends it again', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 3)); a.me.disk.set('2025-04', sales('2025-04', 2));
++  const r = await a.sync.run(); assert.deepEqual(r?.pushed, ['2025-03', '2025-04']);
++  assert.equal(c.calls.shardPuts, 2); assert.equal(c.calls.manifestPuts, 1);
++  const rb = await b.sync.run(); assert.deepEqual(rb?.pulled, ['2025-03', '2025-04']); assert.equal(b.me.finished, 1);
++  assert.deepEqual(b.me.lastSales, { '2025-03': 3, '2025-04': 2 });
++  const puts = { s: c.calls.shardPuts, m: c.calls.manifestPuts, d: c.calls.downloads };
++  await settle(a, b);
++  assert.deepEqual({ s: c.calls.shardPuts, m: c.calls.manifestPuts, d: c.calls.downloads }, puts);
++  assert.equal(a.me.finished, 0);
++});
++
++test('no customer name, email or phone ever reaches the shop, and the sender keeps its own full copy', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const full = sales('2025-03', 2); a.me.disk.set('2025-03', full);
++  await a.sync.run();
++  const stored = JSON.stringify([...c.st.shards.values()]) + JSON.stringify(c.st.manifest);
++  assert.ok(!/Person \d|@example\.com|0400/.test(stored));
++  assert.equal(a.me.disk.get('2025-03'), full);
++  assert.ok(/Person 0/.test(full));
++});
++
++test('the receiving register gets the shop\'s copy, and it counts as agreed, so it is not sent back', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); await a.sync.run(); await b.sync.run();
++  assert.ok(!/Person/.test(b.me.disk.get('2025-03')!));
++  const before = c.calls.manifestPuts; await b.sync.run(); await a.sync.run(); assert.equal(c.calls.manifestPuts, before);
++  assert.deepEqual(parseBase(b.me.base)['2025-03'].l, parseBase(b.me.base)['2025-03'].s);
++});
++
++test('a re-import on one register replaces the month on the other', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); await settle(a, b);
++  a.me.disk.set('2025-03', sales('2025-03', 5)); await settle(a, b);
++  assert.equal((JSON.parse(b.me.disk.get('2025-03')!) as unknown[]).length, 5);
++});
++
++test('two registers that hold the same import settle without any download or second upload', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 4)); b.me.disk.set('2025-03', sales('2025-03', 4));
++  await a.sync.run(); const puts = c.calls.shardPuts; await b.sync.run();
++  assert.equal(c.calls.shardPuts, puts); assert.equal(c.calls.downloads, 0); assert.equal(b.me.finished, 0);
++  assert.ok(b.me.disk.get('2025-03')!.includes('Person 0'), 'b keeps its own full copy');
++});
++
++test('a register that joins with different months keeps its own and gains the shop\'s', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); b.me.disk.set('2025-05', sales('2025-05', 2));
++  await settle(a, b);
++  for (const r of [a, b]) assert.deepEqual([...r.me.disk.keys()].sort(), ['2025-03', '2025-05']);
++  assert.deepEqual(Object.keys(JSON.parse(c.st.manifest!.fields.files).reduce((o: Rec, e: Rec) => ({ ...o, [e.m]: 1 }), {})).sort(), ['2025-03', '2025-05']);
++});
++
++test('both registers changed the same month: the one with more sales wins on both', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); await settle(a, b);
++  a.me.disk.set('2025-03', sales('2025-03', 4)); b.me.disk.set('2025-03', sales('2025-03', 9));
++  await settle(a, b);
++  for (const r of [a, b]) assert.equal((JSON.parse(r.me.disk.get('2025-03')!) as unknown[]).length, 9);
++});
++
++test('deleting the history on one register removes it from the shop and the other register', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); a.me.disk.set('2025-04', sales('2025-04', 2)); await settle(a, b);
++  a.me.disk.clear(); const r = await a.sync.run(); assert.deepEqual(r?.removedShop, ['2025-03', '2025-04']);
++  const rb = await b.sync.run(); assert.deepEqual(rb?.removedHere, ['2025-03', '2025-04']); assert.equal(b.me.disk.size, 0); assert.ok(b.me.finished >= 2);
++  assert.deepEqual(parseBase(b.me.base), {});
++});
++
++test('a month the shop removed is not deleted here if this register changed it since', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); await settle(a, b);
++  a.me.disk.clear(); await a.sync.run();
++  b.me.disk.set('2025-03', sales('2025-03', 6)); await settle(a, b);
++  assert.equal((JSON.parse(a.me.disk.get('2025-03')!) as unknown[]).length, 6);
++});
++
++test('a register is never made to delete a month on a guess: with an empty shop it sends, and with a full shop it takes', async () => {
++  const c = cloud(); const b = register(c, 'reg-b', 'Back'); b.me.disk.set('2025-03', sales('2025-03', 2));
++  await b.sync.run(); assert.ok(c.st.manifest); assert.equal(b.me.disk.size, 1);
++  const y = register(c, 'reg-y', 'Y'); await y.sync.run(); assert.equal(y.me.disk.size, 1);
++});
++
++test('when another register writes the manifest first, nothing is overwritten and the pass is repeated', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); b.me.disk.set('2025-05', sales('2025-05', 2));
++  await a.sync.run(); await b.sync.run(); // both now know both months
++  a.me.disk.set('2025-06', sales('2025-06', 1)); b.me.disk.set('2025-07', sales('2025-07', 1));
++  let interrupted = false;
++  c.onNextManifestPut(() => { if (interrupted) return; interrupted = true; // b writes in the middle of a's write
++    const man = JSON.parse(c.st.manifest!.fields.files) as Rec[]; man.push({ m: '2025-07', s: shardHash(JSON.stringify(stripCustomers(JSON.parse(b.me.disk.get('2025-07')!)))), b: 10, n: 1 });
++    const body = JSON.stringify(stripCustomers(JSON.parse(b.me.disk.get('2025-07')!))); c.st.shards.set(`2025-07-${shardHash(body)}`, { fields: {}, content: body });
++    c.st.manifest = { fields: { ...c.st.manifest!.fields, files: JSON.stringify(man) }, tag: 999 }; });
++  await a.sync.run(); assert.ok(interrupted, 'the other register wrote in the middle of this one'); await settle(a, b);
++  const listed = (JSON.parse(c.st.manifest!.fields.files) as Rec[]).map(e => e.m).sort();
++  assert.deepEqual(listed, ['2025-03', '2025-05', '2025-06', '2025-07']);
++  for (const r of [a, b]) assert.deepEqual([...r.me.disk.keys()].sort(), listed);
++});
++
++test('a manifest that cannot be read is left alone: no month is removed or sent', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); a.me.disk.set('2025-03', sales('2025-03', 2)); await a.sync.run();
++  c.st.manifest!.fields.files = 'garbage'; const before = { m: c.calls.manifestPuts, s: c.calls.shardPuts };
++  assert.equal(await a.sync.run(), null); assert.equal(a.me.disk.size, 1); assert.deepEqual({ m: c.calls.manifestPuts, s: c.calls.shardPuts }, before);
++});
++
++test('a download that does not match its shared id is thrown away and the month is left as it was', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.me.disk.set('2025-03', sales('2025-03', 2)); await a.sync.run();
++  const [h] = [...c.st.shards.keys()]; c.st.shards.get(h)!.content = '[]';
++  const r = await b.sync.run(); assert.deepEqual(r?.failed, ['2025-03']); assert.equal(b.me.disk.size, 0); assert.equal(b.me.base, '{}');
++  assert.equal(parseBase(b.me.base)['2025-03'], undefined);
++});
++
++test('a failure is not thrown and changes nothing, and the next poll finishes the job', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); a.me.disk.set('2025-03', sales('2025-03', 2));
++  c.setFail(true); assert.equal(await a.sync.run(), null); assert.equal(a.me.base, undefined);
++  c.setFail(false); assert.deepEqual((await a.sync.run())?.pushed, ['2025-03']);
++});
++
++test('a month that cannot be packed is skipped and reported, and the others still go', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front', { prepare: async m => (m === '2025-03' ? null : { path: (tmp.set('/tmp/ok', '[]'), '/tmp/ok'), sid: 'okid', bytes: 2 }) });
++  a.me.disk.set('2025-03', sales('2025-03', 1)); a.me.disk.set('2025-04', sales('2025-04', 1));
++  const r = await a.sync.run(); assert.deepEqual(r?.failed, ['2025-03']); assert.deepEqual(r?.pushed, ['2025-04']);
++});
++
++test('the wiring: the poll runs it, the key is device only, the module exports it, and the Swift only writes a shard once', () => {
++  const sync = read('src/lib/sync.ts');
++  assert.match(sync, /createSquareSync\(\{/); assert.match(sync, /await squareSync\.run\(\)/);
++  assert.match(sync, /activeBackendKind\(\) === 'cloudkit'/);
++  assert.ok((DEVICE_KEYS as readonly string[]).includes('squareBase')); assert.match(read('src/state/store.ts'), /squareBase\?: string/);
++  assert.ok(!/squareBase/.test(read('src/lib/sharedSettings.ts')));
++  const idx = read('modules/cloudkit-sync/index.ts'); const status = read('modules/cloudkit-sync/status.ts');
++  for (const f of ['putSquareShard', 'getSquareManifest', 'putSquareManifest', 'downloadSquareShard']) { assert.match(idx, new RegExp(`export async function ${f}\\(`)); assert.match(status, new RegExp(`${f}\\?\\(`)); }
++  const swift = read('modules/cloudkit-sync/ios/CloudKitSyncModule.swift');
++  for (const f of ['putSquareShard', 'getSquareManifest', 'putSquareManifest', 'downloadSquareShard']) assert.match(swift, new RegExp(`AsyncFunction\\("${f}"\\)`));
++  const body = (name: string): string => { const i = swift.indexOf(`private func ${name}(`); assert.ok(i >= 0, name); const n = swift.indexOf('\n  private func ', i + 10); return swift.slice(i, n < 0 ? undefined : n); };
++  assert.match(body('putSquareShardOnce'), /serverRecordChanged/); assert.match(body('putSquareShardOnce'), /\.record\(for: id\)/);
++  const m = body('putSquareManifest'); assert.match(m, /recordChangeTag == expected/); assert.match(m, /"changed": true/); assert.match(m, /serverRecordChanged/);
++  assert.match(body('validShardHandle'), /\[0-9\]\{4\}-\[0-9\]\{2\}-/);
++});
++test('the source never sends a customer\'s details: the copy is made by stripCustomers and only the transport writes a shard', () => {
++  const io = read('src/lib/squareHistorySyncIO.ts');
++  assert.match(io, /packStable\(stripCustomers\(/);
++  assert.ok(!/uploadShard|putSquareShard/.test(io));
++  assert.match(read('src/lib/cloudkit/squareSync.ts'), /await d\.prepare\(month\)[\s\S]*uploadShard\(n, w\.id, w\.name, e, prep\.path/);
++});
