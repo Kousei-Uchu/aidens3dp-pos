@@ -1,0 +1,698 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index f4f076e..d76bfc2 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync: decisions, status and roadmap
+ 
+-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0209
++Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0210
+ 
+ This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+ 
+@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ ### In one paragraph
+ 
+-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0209 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0210 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+ 
+ ### Three things gate turning CloudKit on
+ 
+@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the
+ 
+ ## Part 2. What has been built, and where we are going
+ 
+-### 2.1 Patch ledger, 0188 to 0209
++### 2.1 Patch ledger, 0188 to 0210
+ 
+ All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
+ 
+@@ -52,6 +52,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 0207 | 2 Nov | **6a, third piece: the logo** (`logoShared.ts`, `cloudkit/logoCloud.ts`, `cloudkit/logoSync.ts`, `logoFiles.ts`). The uploaded logo image (Settings ▸ Screensaver & display) is one `logo-current` record with the image as a CloudKit asset and plain fields (hash, type, size, who, when). Each poll compares this register's logo with the shop's against a device-only `logoBase`: a change made here is sent, a change made elsewhere is taken, a removal goes both ways, and a downloaded image is checked against its hash before it replaces anything. The https link stays per device. T96. | Swift uncompiled. Inactive until patch 8. |
+ | 0208 | 2 Nov | **6a, fourth piece: the grid layout** (`gridMerge.ts`, `reconcileLayout` in `sync.ts`). On CloudKit two registers' layout edits are joined page by page against a device-only `gridBase` instead of the last writer replacing the whole grid, and the version counter is no longer used to tell what is newer (item 27). A layout edited offline is sent at the next poll. No native code changed (layout already went through `putLayout` and `getLayout`). T97. | Inactive until patch 8. On Shopify the counter is unchanged. |
+ | 0209 | 2 Nov | **6a, fifth and last piece: the Square history months** (`squareHistoryShared.ts`, `cloudkit/squareCloud.ts`, `cloudkit/squareSync.ts`, `squareHistorySyncIO.ts`). The imported history is shared one month at a time: each month file is one `squareshard-<month>-<id>` record with the packed file as a CloudKit asset, and one `square-manifest` record lists them. Each register compares every month with the shop's against a device-only `squareBase` (the file hash here and the shared id both last agreed on), so a month is sent, taken, or removed on both sides, and a month is only deleted on a register that had not changed it since. The manifest is replaced only if it is still at the change tag that was read, so two registers writing at once cannot drop each other's months. **The copy in iCloud has every customer's name, email and phone removed**, because the history files hold them and the plan says none reach CloudKit. Swift: four new functions, uncompiled. T98. | Inactive until patch 8. |
++| 0210 | 2 Nov | **6c, first half: training progress** (`trainingShared.ts`, `cloudkit/trainingSync.ts`, merge rules in `trainingProgress.ts`). One `training-<staff id>-<module id>` record per person per module, read and joined with this register's once per poll, and only the records that differ are written back. Work from two registers is kept (stages from either, earliest finish). A reset counts up an `epoch`, and the higher count wins whole, so a reset beats older work on another register. Owners reset anyone and managers reset cashiers (O1), from a new section on **More ▸ Training**. Nothing is sent during a practice run. Swift: two new functions, uncompiled. T99. | Inactive until patch 8. |
+ 
+ ### 2.2 Build status of each decision
+ 
+@@ -73,7 +74,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
+ | 13 | Assistant audit log syncs, encrypted | **Not built** (6c). |
+ | 14 | Logo syncs as an iCloud asset | Built (0207): the uploaded image, as a CKAsset on one record. The receipt and the screens that show the business logo still use the fixed shop link (see GUESSES, 0207). Swift uncompiled. |
+-| 15 | Training progress syncs; owners and managers can reset | **Not built** (6c). |
++| 15 | Training progress syncs; owners and managers can reset | Built (0210): joined per person per module, reset by `epoch`, reset screen on More ▸ Training. Swift uncompiled. |
+ | 16 | `cloudkit.backend` flag local | The app already reads an AsyncStorage `cloudkit.backend` value at start-up, but nothing sets the CloudKit backend. The rollback flag proper arrives with patch 8. |
+ | 17 | Card fields encrypted, amounts plain | Built behind the `omit` switch (0194, 0195). Cross-Apple-ID test (O4, T85) not run. |
+ | 18 | Staff name, notes, reasons and price adjustments on sales sync | Built (0194). Free-text notes stay plain, the known minor exception. |
+@@ -86,7 +87,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
+ | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
+ | N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
+-| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Audit log and training progress not yet. The migration lease and verification (patch 7) are not built. |
++| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Training progress is joined at every poll (0210), so it needs no separate upload. Audit log not yet. The migration lease and verification (patch 7) are not built. |
+ | O2 | Assistant connection settings sync | Built (0205). The log cap and data gate stay per iPad, and the API key waits for 6d. |
+ | O3 | CloudKit keeps every ledger entry; app loads the latest 1000 | Built with the checkpoint (0191, 0192). |
+ 
+@@ -101,13 +102,13 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
+ | 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Done** (0205 settings, 0206 notices, 0207 logo, 0208 layout, 0209 Square history months). Swift uncompiled. |
+ | 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
+-| 6c | Audit log (encrypted) and training progress | Not started. |
++| 6c | Audit log (encrypted) and training progress | **Training progress done** (0210). **Still to do:** the audit log. |
+ | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
+ | 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | Not started. |
+ | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
+ 
+-**Next up:** 6c (the audit log and training progress), then 7, with 6d and 6e after the encryption test and 8 last.
++**Next up:** 6c second half (the audit log), then 7, with 6d and 6e after the encryption test and 8 last.
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -143,16 +144,17 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - Square history: a ticket name or line note a cashier typed is not scrubbed (the same minor exception as a note on a sale), and the history months that were replaced stay in iCloud as unused shard records, because nothing deletes them yet (0209).
+ - Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
+ 
++- Training progress: two registers writing the same person's module in the same instant could lose one mark until the next poll, which joins them again. A reset cannot be lost this way, because the higher reset count always wins (0210).
+ **CloudKit dashboard steps needed before it works on a real zone:**
+ 
+ - The `Logo` type is fetched by its record name only, so it needs no index. Its `asset` field must be an Asset and `bytes` and `removed` Int(64).
+ - The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
+-- The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
++- The `Event`, `Attempt`, `Resolution`, `Notice` and `Training` types need `modificationDate` sortable and queryable.
+ - A Sale’s `secure_json` is an encrypted field and needs no index.
+ - The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) and T99 (shared training progress).
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index 92117fc..2d56ee7 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -200,6 +200,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+    - 6a, fifth piece **done in code (0209)**: the Square history months, one `squareshard-<month>-<id>` record each with a CloudKit asset and one `square-manifest` record, reconciled each poll against a device-only `squareBase` (`src/lib/squareHistoryShared.ts`, `src/lib/cloudkit/squareSync.ts`). The copy in iCloud has customer name, email and phone removed. This finishes 6a.
+    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
+    - 6c. The audit log (encrypted) and training progress
++     - 6c, first half **done in code (0210)**: training progress, one `training-<staff id>-<module id>` record per person per module, joined each poll (`src/lib/trainingShared.ts`, `src/lib/cloudkit/trainingSync.ts`), reset by a count that wins whole.
+    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
+    - 6e. The owner-only CloudKit export, one zip of JSON files (or fold it into 8)
+ 7. Migration lease, checkpoints and verification, extended so each register uploads its own local-only data once after joining (events, payment attempts, audit log, training progress)
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index d55108a..7cf748b 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1302,3 +1302,15 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8),
+ 9. Airplane mode on B. On A delete the history. On B re-import one month, then reconnect B. Pass: the month B re-imported survives on both and the rest is gone.
+ 10. Practice mode on A, and import or delete. Pass: nothing reaches B.
+ 11. With the shop's `square-manifest` record edited by hand to hold text that is not a month list, wait for a poll on B. Pass: B's history is untouched.
++
++## T99. Shared training progress on two registers (0210)
++
++Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then, and the Swift has never been compiled. Until the switch, confirm only that **More ▸ Training** shows the new **Reset someone's progress** section to an owner (everyone) and a manager (cashiers only) and not to a cashier, and that a reset clears the ticks on that iPad.
++
++1. On A, signed in as Casey, finish a course. Pass: within about 30 seconds Casey's tick shows on B.
++2. On A do the Info stage of one course as Casey, and on B the Show stage of the same course. Pass: both iPads end with both stages marked.
++3. As owner on A, reset Casey's finished course. Pass: B clears it too, and Casey can take it again.
++4. Airplane mode on B. On A reset the course. On B do a stage of it, then reconnect. Pass: the course ends reset on both, with B's stage gone.
++5. As a manager, open the reset section. Pass: only cashiers are listed. As a cashier, there is no section.
++6. Start a practice run on A and finish a stage. Pass: nothing reaches B until the run is over, then it does at the next poll.
++7. Check in the CloudKit dashboard that a `training-` record holds only ids, stage names, a finish time, counts and the register name.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index b0149ab..d9334ce 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -529,3 +529,16 @@ These fill gaps in the plan (patch 6a, "Square history structure and size") and
+ 8. **An unreadable manifest is left alone.** Reading it as empty would look like every month had been removed. It needs fixing by hand or by a later patch.
+ 9. **Month files over 8 MB are neither sent nor taken in.** A busy month is a few hundred KB packed, so this only guards against a damaged file.
+ 10. **The stored manifest is rewritten after a month is taken in or removed**, from the files now on the iPad, then the rollups are rebuilt exactly as an import does. Its total sales and refunds are approximate until the next import, and nothing reads them (the meta is rebuilt from the files).
++
++## Shared training progress (0210)
++
++These fill gaps in the plan (patch 6c) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 15, O1). Each is a guess, change any you disagree with.
++
++1. **Progress is joined, not replaced.** Stages from either register are kept, the earliest finish stands, and the larger run count supplies hints and time. The alternative was last writer wins, which loses work done on two iPads.
++2. **A reset is a count that wins whole.** Each full reset adds one to a per-module `epoch`, and the higher count beats any older work. The alternative, a reset time, would depend on each iPad's clock.
++3. **A reset also takes the tick away.** The old `resetModule` keeps the tick until the person finishes again, so the new reset is separate (`resetModuleFully`), and the old one is unchanged.
++4. **Managers reset cashiers only, not other managers or themselves.** Owners reset anyone, themselves included. Read from O1: "managers can reset progress for lower roles".
++5. **The reset lives on More ▸ Training**, below the courses, for anyone who may reset someone. It lists people by name, with one reset per course and a reset-all.
++6. **Nothing is sent during a practice run.** Marks made then are kept on the iPad and sent at the next poll after the run.
++7. **A person's id is checked before it becomes a record name.** An id with a slash or other odd character is never sent. The shared record used when no staff are set up (`_shared`) does sync.
++8. **A removed staff member's progress is not tidied**, in iCloud or on the iPads.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 6c743a4..94f3669 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -190,6 +190,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0207 | 2026-11-02 | CloudKit patch 6a, third piece: **the logo, shared between registers** (your request: continue on the repo, returned as a patch; decisions item 14). New pure `src/lib/logoShared.ts`: the image is the one uploaded under Settings ▸ Screensaver & display (`screensaver.logoFile`), which is the only logo image the app stores. It is one `logo-current` record with the image as a CloudKit asset and plain fields (content hash, type, size, who and when); a removal is the same record with `removed` set and no asset. **How registers agree:** each keeps a device-only `logoBase` (new, in `DEVICE_KEYS`), the hash both it and the shop last agreed on. `decideLogo` compares this register's image, the shop's and the base: same on both is nothing; a change made here is sent (this register wins when both changed); a change made only on the shop is taken, or removes the local file if the shop removed it; a register with no base takes the shop's image, except that it keeps and sends its own when the shop removed theirs. **Running:** `cloudkit/logoSync.ts` does one reconcile per poll (`sync.ts`, after the notices, outside practice mode); `cloudkit/logoCloud.ts` is the transport; `logoFiles.ts` does the file work and is loaded on demand. The shop's fields are read without the image, which is downloaded only when it changed; a downloaded image is installed only if its hash matches the record, an over-700 KB image is never sent, and a failed run changes nothing and moves no base. **Native:** `putLogo`, `getLogo` (fields only, `desiredKeys`) and `downloadLogo` added to the Swift module, its wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. Docs: decisions doc, plan, guesses and device tests updated. Tests: `tests/logoshared.test.ts` (12) and `tests/logosync.test.ts` (17: the rules, the transport and call site on a fake native module and file system, source pins for the poll, the lazy file import, the device-only key and the Swift). I broke the base rule and the hash check on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is untried on a Mac.** **Not done:** layout and Square history shards (the rest of 6a); the receipt still shows the fixed shop logo link, not the shared image. Device test T96. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared logo'. | your request |
+ | 0208 | 2026-11-02 | CloudKit patch 6a, fourth piece: **the grid layout, joined between registers** (your request: next; decisions item 27). The layout already travelled through the seam (`putLayout`, `getLayout`), but with a version counter and the whole grid replaced by whichever register wrote last, so two registers editing at once lost one's changes, and an edit made offline was only sent if another edit followed. New pure `src/lib/gridMerge.ts`: `mergeGrid` joins two grids page by page (by page id) against `base`, what both last agreed on (a page only one side changed is taken; both changed: the sender's; a page added on either is kept; a page removed on either stays removed; the sender's page order if it moved pages, else the shop's); `planLayout` decides same, take, send or merge; `adoptAfterSend` keeps an edit made while a send was running. A device-only `gridBase` (new, in `DEVICE_KEYS`) holds the agreed layout, so on CloudKit **the version counter is no longer used to tell what is newer**, as item 27 says. `sync.ts`: `pushLayout` and `pullLayout` both call one `reconcileLayout` on CloudKit (one at a time, skipped in practice mode), so the poll also sends an offline edit. **The Shopify path is unchanged**, still on the counter. Native: no change. Help: `help/sales/grid.md` has a new section and corrected fault-finding; `help.json` rebuilt. Tests: `tests/gridmerge.test.ts` (16: each merge rule, the plan, the race, two registers settling on one grid, source pins). I broke the removal rule and the base comparison on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing today.** **Not done:** per-tile merging (tiles have no ids) and Square history shards (the last of 6a). Device test T97. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared layout'. | your request |
+ | 0209 | 2026-11-02 | CloudKit patch 6a, fifth and last piece: **the imported Square history, shared between registers one month at a time** (your request: continue on the repo up to 0208, returned as patches; decisions Part 2.3, plan "Square history structure and size"). Until now the history reached another register only by the QR code over Wi-Fi or by copying files. New pure `src/lib/squareHistoryShared.ts`: `decideMonth` and `planSquare` decide, month by month, nothing, send, take, remove here, remove on the shop or forget, from this register's file hash, the shop's shared id and `squareBase` (device only, new, in `DEVICE_KEYS`), so a month changed here is told from one changed elsewhere (a delete only reaches a side that had not changed the month, and never happens without an agreed base; both changed: more sales wins, a tie keeps this register's); `stripCustomers` makes the copy for iCloud; `packStable` packs it the same way every time (the existing `packJson` stamps the time into the gzip header); `manifestToFields` and `manifestFromFields` read the manifest safely, dropping one bad month without hiding the rest, and an unreadable manifest is left alone. `src/lib/cloudkit/squareCloud.ts` and `squareSync.ts` (run once per poll, never throws): shards are uploaded first, then the manifest is replaced only if it is still at the change tag that was read (another register writing first means nothing is overwritten and the pass repeats), a download is checked against its shared id before it replaces anything, and the base moves only for months really agreed. `src/lib/squareHistorySyncIO.ts` is the file work (hash cache by name, size and time; pack; install; remove; then rewrite the stored manifest and rebuild the rollups as an import does). Native: `putSquareShard`, `getSquareManifest`, `putSquareManifest` (returns `changed` instead of overwriting) and `downloadSquareShard`; each shard is a `squareshard-<month>-<id>` record with a CloudKit asset, written once. The Swift has not been compiled. `SquareHistory.tsx`: when iCloud is on, the delete confirmation says it removes the history everywhere. In-app iCloud note: says customer details are removed from the history. **I found that the history files hold customer names, emails and phones, which the plan says never reach CloudKit, so the copy sent has them removed; see GUESSES 1 for the cost and the alternative.** Help: `orders/square-history.md` and `settings/cloud-sync.md` have new sections; `help.json` rebuilt. Tests: `tests/squareshared.test.ts` (15) and `tests/squaresync.test.ts` (18: two registers settling, no customer details in anything stored, a lost manifest write, a bad download, an unreadable manifest, removal both ways, source pins); `tests/cloudkitswift.test.ts` pin updated. I broke six rules on purpose (delete without a base, no stripping, no change tag, unreadable not stopped, no download check, base advanced on a lost write) and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing today** except the wording of the in-app note. This finishes 6a. **Not done:** deleting replaced shard versions from iCloud, and names on a register that took the history from iCloud. Device test T98. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared Square history'. | your request |
++| 0210 | 2026-11-02 | CloudKit patch 6c, first half: **training progress follows the person across registers, and owners and managers can reset it** (your request: next; decisions item 15, O1). Progress was local only. `trainingProgress.ts`: `mergeModule` and `mergeProgress` join two registers' marks (stages from either, earliest finish, larger run count with its hints and time, the same whichever way round); a new optional `epoch` on a module counts resets and the higher count wins whole; `resetModuleFully` and `resetAllFully` clear the tick too (the old `resetModule` is unchanged); `canResetProgress` (owner anyone, manager cashiers only, cashier nobody). `trainingShared.ts` is the record shape (`training-<staff id>-<module id>`, ids checked before they become a name). `cloudkit/trainingSync.ts` runs once per poll: reads every record, joins with the local progress, keeps the join here (read again just before so a mark made meanwhile is kept) and writes back only the records that differ; nothing during a practice run; never throws. `trainingSession.ts`: `adoptProgress` and `resetProgress`. **More ▸ Training** has a new Reset someone's progress section for whoever may reset. Native: `putTraining` and `listTraining` (Swift uncompiled). Help: `staff/training.md` and `settings/cloud-sync.md`; `help.json` rebuilt. Tests: `tests/trainingsync.test.ts` (17: merge, order-independence, resets winning online and offline, who may reset, records, two registers settling, a mark made mid-poll, failure, unsafe ids, wiring pins). I broke four rules on purpose (reset not winning, a manager resetting managers, the stale overwrite, running in practice mode) and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so only the reset section changes anything today.** **Not done:** the audit log, the second half of 6c. Device test T99. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared training progress'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index 532ce1b..48e5d96 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "a3d511c9",
++ "version": "68a0ab45",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1734,7 +1734,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### Square history on every register\nOnce sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.\n\n### Training progress on every register\nOnce sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id, and the Square history in iCloud has customer names, emails and phones removed. The assistant's log can still contain names a local model was sent, and a sale's note or a Square ticket name can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+@@ -2110,10 +2110,10 @@
+     "pay",
+     "fix"
+    ],
+-   "updated": "2026-10-12",
++   "updated": "2026-11-02",
+    "lead": "Open **More → Training** to learn a POS task. Courses can be started in any order.",
+    "sections": {
+-    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen (\"Hint 2 of 4\") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your ticks are always saved under you, even while the practice till is signed in as Casey or Morgan. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\nThe moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.\n\n### Courses so far\n- **How training works**: a five minute tour of the six parts.\n- **Sign in, lock and switch staff**: sign in with a PIN or a cashier pass, hand the till to a colleague from the grid, and lock it when you step away. Practice uses two practice people, **Casey** (a cashier, PIN 1234) and **Morgan** (a manager, PIN 2468, with a cashier pass). They exist only inside practice. When a step asks you to scan a pass, a drawn practice pass appears with a **Scan this pass** button, because a camera cannot scan a pass that is not real.\n\n- **Build a cart**: add items by tapping tiles, add more of the same, and take an item out by swiping its line to the left and tapping Remove.\n- **Customers and notes**: attach a customer by picking or searching, create one who is not on the list (made on this iPad only in practice), put a note on a line with Done, and take the customer off with the small x.\n- **Take cash and give change**: tap the notes and coins the customer hands over, fix a slip with Undo, read Short, Exact or Change, give the change the screen shows, and handle cash rounding and a drawer that cannot make change. Practice uses its own drawer, never your real ledger.\n- **Change a price**: change the price of one item (one unit, or all of it in the cart), one whole line, or the whole order for this sale only, take each off again, give a reason, and check the adjustments before payment, including a price that changed after you set it.\n- **Scan items**: open the camera, scan items into the cart, read the green and red messages, add an item by hand when its label will not read, and send a customer's gift card to Charge. Practice uses a window of drawn barcodes in place of the camera.\n\nMore courses are added one at a time, most important first.\n\n### Progress\nCompletion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.",
++    "basic": "### How a course works\nEach course has six parts:\n1. **Info** is an animated visual explanation of what the task is for and when you need it. Pictures build up one step at a time, in the same style as Show, and you move on with **Next**.\n2. **Show** is an animated demonstration of the whole job, drawn as a simplified copy of the till. The picture zooms in on a control, a pointer taps it, the screen responds, and a note points out what changed. You watch at your own pace: **Next** goes on, **Back** returns, **Replay** plays the current step again. Nothing moves on until you say, and you do not have to do anything yourself.\n3. **Guide** opens the real POS interface with practice data. The rest of the screen dims while a bright ring and a short prompt point to the relevant control. Tap the highlighted controls or Next when a step is informational.\n4. **Check 1** asks you to complete the task without the arrows, with practice data.\n5. **Check 2** repeats the task with a realistic customer-side problem to recover from.\n6. **Done** recaps what you can do and marks the course complete.\n\nIn the Guide and the Checks, if you wander off the path (a wrong item, a discount you did not need, the wrong screen, a window you did not need) the app says what happened, rings the control that puts it right and points at it. In the Guide the dimming lifts while you are off course, so you can tap whatever puts it right. If you have not finished the course that teaches the fix, the card also lists the steps and names the course. If you have, tap the small **?** on the card (or **Hint**) for the steps. If it cannot be undone with a tap, or you are still stuck, tap **Start this part again**; **Start again** on the bar does the same at any time. Tap **Hint** for a pointer. Each hint appears in a small card at the top of the screen (\"Hint 2 of 4\") and in the bar at the bottom, and pulses once so you can see it arrived. On the main screen the card fades after a few seconds and the bar keeps the text; inside a window it stays until you tap its **x**. Each hint becomes more specific; after the last hint, the app highlights the answer. If you tap Hint again after that, the card pulses again so you know the tap was heard. Pages in Training slide in as the old one drifts away, and starting or leaving practice fades through the page colour instead of cutting. Training uses a separate practice register state. Your ticks are always saved under you, even while the practice till is signed in as Casey or Morgan. Your live cart and sales are restored when you leave; practice changes are not saved, sent to Shopify, or charged to the reader.\n\nThe moving cursor shows how to do each thing: a tap, a double or triple tap, a press and hold, a swipe or a scroll. In the Guide only the ringed spot works. Everything else is dimmed and cannot be tapped, and a swipe step does not let a tap open the line underneath. If you open a window while fixing a mistake, the card talks about that window (for example the minus button) instead of telling you to close it.\n\n### Courses so far\n- **How training works**: a five minute tour of the six parts.\n- **Sign in, lock and switch staff**: sign in with a PIN or a cashier pass, hand the till to a colleague from the grid, and lock it when you step away. Practice uses two practice people, **Casey** (a cashier, PIN 1234) and **Morgan** (a manager, PIN 2468, with a cashier pass). They exist only inside practice. When a step asks you to scan a pass, a drawn practice pass appears with a **Scan this pass** button, because a camera cannot scan a pass that is not real.\n\n- **Build a cart**: add items by tapping tiles, add more of the same, and take an item out by swiping its line to the left and tapping Remove.\n- **Customers and notes**: attach a customer by picking or searching, create one who is not on the list (made on this iPad only in practice), put a note on a line with Done, and take the customer off with the small x.\n- **Take cash and give change**: tap the notes and coins the customer hands over, fix a slip with Undo, read Short, Exact or Change, give the change the screen shows, and handle cash rounding and a drawer that cannot make change. Practice uses its own drawer, never your real ledger.\n- **Change a price**: change the price of one item (one unit, or all of it in the cart), one whole line, or the whole order for this sale only, take each off again, give a reason, and check the adjustments before payment, including a price that changed after you set it.\n- **Scan items**: open the camera, scan items into the cart, read the green and red messages, add an item by hand when its label will not read, and send a customer's gift card to Charge. Practice uses a window of drawn barcodes in place of the camera.\n\nMore courses are added one at a time, most important first.\n\n### Progress\nCompletion and stage progress are saved for the signed-in staff member, or shared on the device when nobody is signed in. With iCloud sync on they follow the person to every register (see below). You can revisit completed stages or repeat a course.\n\n### Resetting someone's progress\nOwners can reset anyone's training progress, and managers can reset cashiers'. Open **More → Training**, find **Reset someone's progress**, tap the person, then reset one course or all of them. The ticks are cleared so they can take the course again. Cashiers cannot reset anyone's.\n\n### Progress on every register\nOnce iCloud sync is on (Settings ▸ Cloud sync), a person's progress follows them to every register: finish a course on one iPad and the tick shows on the others a little later. If the same person worked on different courses on two registers, both are kept. A reset beats older work from another register, so a course you reset stays reset. Only the marks are shared (which steps, when finished, hints used and time), never the practice data. Practice runs never send anything while they are running.",
+     "deep": "Info and Show are each a list of steps over a few mock screens or diagrams. Each step can zoom the camera, move a pointer to tap a control, change what is on screen, and settle with a ring and a note. Course scenes, spotlight targets, Guide steps, Checks, recovery injections and hint ladders are declared separately from the shared runner. The Guide and Checks swap in fixture products, customers, cart, drawer and settings while the actual Checkout screens remain mounted. A guard blocks app persistence, CSV writes, Shopify calls and receipt uploads; card payments use a pretend terminal. The original app state is restored on exit.",
+     "advanced": "| Job | Where |\n|---|---|\n| Course definitions and authoring rules | `src/training/modules/`, `src/training/README.md` |\n| Course schema and validation | `src/lib/trainingModule.ts` |\n| Course runner | `src/screens/TrainingRun.tsx` |\n| Info and Show: what each step looks like, and how it is drawn | `src/lib/trainingDemo.ts`, `src/ui/DemoView.tsx` |\n| Real-screen spotlight, dock and layer routing | `src/ui/TrainingHost.tsx`, `src/ui/TrainingOverlay.tsx`, `src/ui/TrainingLayer.tsx`, `src/ui/Spot.tsx` |\n| Practice staff, practice pass and the sign-in course | `src/lib/trainingSandbox.ts` (`practiceStaff`), `src/lib/trainingPass.ts`, `src/ui/PracticePass.tsx`, `src/training/modules/sign-in.ts` |\n| Practice state and side-effect barriers | `src/state/trainingSession.ts`, `src/lib/trainingSandbox.ts`, `src/lib/trainingGuard.ts` |\n| Per-staff progress | `src/lib/trainingProgress.ts`, `src/state/trainingSession.ts` |\n| Page changes (new page slides in while the old one drifts away) and the dip to the page colour when practice starts or ends | `src/ui/RouteTransition.tsx`, `src/ui/Veil.tsx`, `src/lib/motion.ts` |\n\nA course can ask for practice staff (`practiceStaff` on the course). The practice till then replaces the staff list with Casey and Morgan (built in `practiceStaff()`, with PINs hashed the same way as real ones), requires sign-in and starts signed in as Casey. A Check goal can start signed in as either, or on the Sign in screen (`staff` injection), and can cancel Morgan's pass (`pass` injection). The Scan pass window draws the practice pass while training is on (`src/ui/PracticePass.tsx`, `src/lib/trainingPass.ts`). Courses without `practiceStaff` keep the real staff list, and a `staff` injection can never lock the real till.\n\nThe starter course, **How training works**, is an engine demonstration. **Sign in, lock and switch staff** and **Build a cart** are the first task courses. More task-specific courses and device validation remain to be done. Keep each course's targets checked against the current UI spots; tests validate referenced spots and fixture IDs."
+    }
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index d29a5bc..cf0a3d2 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -56,6 +56,9 @@ Once sync is switched on, the logo image you upload under **Settings ▸ Screens
+ ### Square history on every register
+ Once sync is switched on, imported Square history is shared one month at a time. Import it on one iPad and the others take the months in a little later, with no QR code or PC. A newer import of a month replaces it everywhere, and **Delete imported Square history** removes it from iCloud and every register, which the confirmation says. If two registers changed the same month, the one with more sales is kept on both. A month is only ever deleted on a register that had not changed it since the last time it agreed with the shop. The copy in iCloud has every customer's name, email and phone taken out, so a register that took the history from iCloud shows those sales without a customer name; the register that imported keeps its full files. Practice mode never sends or takes in history.
+ 
++### Training progress on every register
++Once sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.
++
+ ### What is and is not kept in iCloud
+ The Cloud sync page lists this in full under **What is kept in iCloud**. In short:
+ - **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.
+diff --git a/help/staff/training.md b/help/staff/training.md
+index 5b07280..a41ec55 100644
+--- a/help/staff/training.md
++++ b/help/staff/training.md
+@@ -5,7 +5,7 @@ parent: staff
+ summary: Learn app tasks through animated explanations, a process walkthrough, a spotlighted real interface and safe practice.
+ tags: [training, lessons, practice, learning, checkout, scenarios, tutorial]
+ related: [staff, sales, sales/scanners, pay, fix]
+-updated: 2026-10-12
++updated: 2026-11-02
+ ---
+ Open **More → Training** to learn a POS task. Courses can be started in any order.
+ 
+@@ -37,7 +37,13 @@ The moving cursor shows how to do each thing: a tap, a double or triple tap, a p
+ More courses are added one at a time, most important first.
+ 
+ ### Progress
+-Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
++Completion and stage progress are saved for the signed-in staff member, or shared on the device when nobody is signed in. With iCloud sync on they follow the person to every register (see below). You can revisit completed stages or repeat a course.
++
++### Resetting someone's progress
++Owners can reset anyone's training progress, and managers can reset cashiers'. Open **More → Training**, find **Reset someone's progress**, tap the person, then reset one course or all of them. The ticks are cleared so they can take the course again. Cashiers cannot reset anyone's.
++
++### Progress on every register
++Once iCloud sync is on (Settings ▸ Cloud sync), a person's progress follows them to every register: finish a course on one iPad and the tick shows on the others a little later. If the same person worked on different courses on two registers, both are kept. A reset beats older work from another register, so a course you reset stays reset. Only the marks are shared (which steps, when finished, hints used and time), never the practice data. Practice runs never send anything while they are running.
+ 
+ ## Deep
+ 
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index e9e92c5..bb66fd2 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -209,6 +209,15 @@ export async function listNotices(limit = 100, after?: string | null): Promise<P
+   if (!native?.listNotices) return { rows: [], next: null };
+   return native.listNotices(limit, after ?? null);
+ }
++// Patch 6c: training progress. The names match TrainingNative in src/lib/cloudkit/trainingSync.ts.
++export async function putTraining(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
++  if (!native?.putTraining) throw new Error(CLOUDKIT_MISSING);
++  return native.putTraining(handle, fields);
++}
++export async function listTraining(limit = 200, after?: string | null): Promise<Page> {
++  if (!native?.listTraining) return { rows: [], next: null };
++  return native.listTraining(limit, after ?? null);
++}
+ // Patch 6a: the shared logo. The names match LogoNative in src/lib/cloudkit/logoCloud.ts.
+ export async function putLogo(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>> {
+   if (!native?.putLogo) throw new Error(CLOUDKIT_MISSING);
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index f4aa7cc..660fe8c 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -168,6 +168,16 @@ public class CloudKitSyncModule: Module {
+       try await self.listRecords(recordType: "Notice", limit: limit, after: after)
+     }
+ 
++    // --- Patch 6c: training progress ---
++    // One record per person per module, changed in place (a new mark or a reset). The JavaScript side joins before it writes.
++    AsyncFunction("putTraining") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
++      try await self.putRecord(recordType: "Training", recordName: "training-\(handle)", fields: fields)
++    }
++
++    AsyncFunction("listTraining") { (limit: Int, after: String?) async throws -> [String: Any] in
++      try await self.listRecords(recordType: "Training", limit: limit, after: after)
++    }
++
+     // --- Patch 6a: the shared logo ---
+     // One record, `logo-current`, with the image as a CKAsset. A removal clears the asset and sets `removed`. The fields are read without
+     // downloading the image, so the poll never pulls it down unless it has changed; `downloadLogo` fetches it on its own.
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index 1aac01f..e555eca 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -55,6 +55,9 @@ export type CloudKitSyncNative = {
+   listResolutions?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+   putNotice?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+   listNotices?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  // Patch 6c: training progress (one record per person per module)
++  putTraining?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
++  listTraining?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+   // Patch 6a: the shared logo (one record with an image asset)
+   putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
+   getLogo?(): Promise<Record<string, any> | null>;
+diff --git a/src/lib/cloudkit/trainingSync.ts b/src/lib/cloudkit/trainingSync.ts
+new file mode 100644
+index 0000000..15d9dde
+--- /dev/null
++++ b/src/lib/cloudkit/trainingSync.ts
+@@ -0,0 +1,57 @@
++// Location: src/lib/cloudkit/trainingSync.ts
++// CloudKit sync, patch 6c (training progress, transport and call site): once per poll, read every person's progress from the shop, join it
++// with this register's, keep the joined result here, and write back only the records that differ. The app supplies the local progress, so the
++// rules are tested without an iPad (tests/trainingsync.test.ts). The app's one instance is made in sync.ts. Decisions: item 15, O1.
++import { mergeModule, mergeProgress, sameModule, type Progress } from '../trainingProgress';
++import { progressFromRecords, trainingHandle, trainingToFields } from '../trainingShared';
++import { pageAll, PAGE_SIZE } from './drawerCloud';
++
++type Rec = Record<string, any>;
++export type TrainingNative = {
++  /** Create or change one person's record for one module. */
++  putTraining(handle: string, fields: Rec): Promise<Rec>;
++  listTraining(limit: number, after?: string | null): Promise<{ rows: Rec[]; next: string | null }>;
++};
++export type TrainingSyncDeps = {
++  active: () => boolean;
++  /** True in practice mode. Marks made there are kept here but sent later, never during the practice. */
++  training: () => boolean;
++  who: () => { id: string; name: string };
++  native: () => Promise<TrainingNative>;
++  /** This register's progress, loaded from the device. */
++  getLocal: () => Promise<Progress>;
++  /** Replace this register's progress. Called with the join of the shop's and whatever is here at that moment. */
++  setLocal: (p: Progress) => Promise<void>;
++  now?: () => string;
++};
++export type TrainingResult = { taken: number; sent: number };
++
++export function createTrainingSync(d: TrainingSyncDeps) {
++  const now = d.now ?? (() => new Date().toISOString());
++  let running = false;
++  return {
++    /** Never throws: the next poll tries again. Returns null when nothing was attempted or it failed. */
++    async run(): Promise<TrainingResult | null> {
++      if (!d.active() || d.training() || running) return null;
++      const w = d.who(); if (!w.id) return null;
++      running = true;
++      try {
++        const n = await d.native();
++        const remote = progressFromRecords(await pageAll(after => n.listTraining(PAGE_SIZE, after)));
++        const local = await d.getLocal();
++        const joined = mergeProgress(local, remote);
++        let taken = 0;
++        for (const [who, mods] of Object.entries(joined.by)) for (const [id, m] of Object.entries(mods)) if (!sameModule(local.by[who]?.[id], m)) taken++;
++        if (taken) { await d.setLocal(mergeProgress(await d.getLocal(), remote)); } // read again: a mark made while this ran is kept
++        let sent = 0;
++        for (const [who, mods] of Object.entries(joined.by)) for (const [id, m] of Object.entries(mods)) {
++          if (sameModule(remote.by[who]?.[id], m)) continue;
++          let h: string; try { h = trainingHandle(who, id); } catch { continue; }
++          await n.putTraining(h, trainingToFields(who, id, mergeModule(remote.by[who]?.[id], m) ?? m, w.id, w.name, now())); sent++;
++        }
++        return { taken, sent };
++      } catch { return null; } finally { running = false; }
++    },
++  };
++}
++export type TrainingSync = ReturnType<typeof createTrainingSync>;
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index 14194b8..542b462 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -26,6 +26,8 @@ import type { NoticeNative } from './cloudkit/noticeCloud';
+ import { createLogoSync } from './cloudkit/logoSync';
+ import type { LogoNative } from './cloudkit/logoCloud';
+ import { createSquareSync } from './cloudkit/squareSync';
++import { createTrainingSync } from './cloudkit/trainingSync';
++import type { TrainingNative } from './cloudkit/trainingSync';
+ import type { SquareNative } from './cloudkit/squareCloud';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+@@ -113,6 +115,17 @@ const squareSync = createSquareSync({
+   setBase: t => { if ((st().settings.squareBase ?? '') !== t) st().patchSettings({ squareBase: t }); },
+ });
+ 
++// CloudKit patch 6c: training progress follows the person across registers (decisions item 15). Once per poll the shop's marks are joined with
++// this register's and the differences are written back. Nothing is sent during a practice run. The session store is loaded on demand.
++const trainingSync = createTrainingSync({
++  active: () => activeBackendKind() === 'cloudkit',
++  training: isTraining,
++  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
++  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as TrainingNative,
++  getLocal: async () => { const t = (await import('../state/trainingSession')).useTraining.getState(); await t.loadProgress(); return (await import('../state/trainingSession')).useTraining.getState().progress; },
++  setLocal: async p => (await import('../state/trainingSession')).useTraining.getState().adoptProgress(p),
++});
++
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+   const s = st();
+@@ -244,6 +257,7 @@ export async function pollShared() {
+       await noticeSync.pull(); // and take in the ones other registers raised
+       await logoSync.run(); // the logo image, both ways (never throws)
+       await squareSync.run(); // the Square history months, both ways (never throws)
++      await trainingSync.run(); // training marks, both ways (never throws)
+     }
+     // stock
+     if (s.settings.locationId && s.data.stockSince) {
+diff --git a/src/lib/trainingProgress.ts b/src/lib/trainingProgress.ts
+index b7c0e68..1e40bd2 100644
+--- a/src/lib/trainingProgress.ts
++++ b/src/lib/trainingProgress.ts
+@@ -2,7 +2,7 @@
+ // Who has finished which module. Stored on this device only, keyed by staff id. Pure; the store reads and writes it.
+ import { STAGES, type Stage } from './trainingModule';
+ 
+-export type ModProg = { stages: Stage[]; done?: string; hints: number; secs: number; runs: number };
++export type ModProg = { stages: Stage[]; done?: string; hints: number; secs: number; runs: number; /** How many times this person's progress in this module has been reset by a manager or owner (0209+: 0210). Absent means never. */ epoch?: number };
+ export type Progress = { v: 1; by: Record<string, Record<string, ModProg>> };
+ /** With no staff set up there is one shared record. */
+ export const SHARED_KEY = '_shared';
+@@ -18,7 +18,7 @@ export function readProgress(raw: unknown): Progress {
+     for (const [id, m] of Object.entries(mods as Record<string, any>)) {
+       if (!m || typeof m !== 'object') continue;
+       const stages = (Array.isArray(m.stages) ? m.stages : []).filter((s: unknown): s is Stage => STAGES.includes(s as Stage));
+-      out.by[who][id] = { stages: [...new Set<Stage>(stages)], done: typeof m.done === 'string' ? m.done : undefined, hints: Number.isFinite(m.hints) ? m.hints : 0, secs: Number.isFinite(m.secs) ? m.secs : 0, runs: Number.isFinite(m.runs) ? m.runs : 0 };
++      out.by[who][id] = { stages: [...new Set<Stage>(stages)], done: typeof m.done === 'string' ? m.done : undefined, hints: Number.isFinite(m.hints) ? m.hints : 0, secs: Number.isFinite(m.secs) ? m.secs : 0, runs: Number.isFinite(m.runs) ? m.runs : 0, ...(Number.isInteger(m.epoch) && m.epoch > 0 ? { epoch: m.epoch } : {}) };
+     }
+   }
+   return out;
+@@ -44,3 +44,36 @@ export function nextSuggested(mods: readonly { id: string; suggestedFirst?: bool
+   const open = mods.filter(m => m.id !== exceptId && !isComplete(p, who, m.id));
+   return (open.find(m => m.suggestedFirst) ?? open[0])?.id;
+ }
++
++// ── sharing between registers (CloudKit patch 6c, decisions items 15 and O1) ──────────────────────
++export const epochOf = (m: ModProg | undefined): number => m?.epoch ?? 0;
++const sameMod = (a: ModProg, b: ModProg): boolean => a.stages.join() === b.stages.join() && a.done === b.done && a.hints === b.hints && a.secs === b.secs && a.runs === b.runs && epochOf(a) === epochOf(b);
++export const sameModule = (a: ModProg | undefined, b: ModProg | undefined): boolean => (!a || !b ? a === b : sameMod(a, b));
++
++/**
++ * Two registers' record of one person in one module. A reset is deliberate and later than the work it wipes, so the higher reset count wins whole.
++ * With the same count the work from both is kept: stages from either, the earliest finish, and the larger run count with its hints and time.
++ */
++export function mergeModule(a: ModProg | undefined, b: ModProg | undefined): ModProg | undefined {
++  if (!a || !b) return a ?? b;
++  const ea = epochOf(a), eb = epochOf(b); if (ea !== eb) return ea > eb ? a : b;
++  const stages = STAGES.filter(s => a.stages.includes(s) || b.stages.includes(s));
++  const done = [a.done, b.done].filter((d): d is string => !!d).sort()[0];
++  // The side with more runs supplies hints and time. With the same count the larger of each is kept, so the answer does not depend on the order.
++  const lead = b.runs > a.runs ? b : a.runs > b.runs ? a : undefined;
++  return { stages, ...(done ? { done } : {}), hints: lead ? lead.hints : Math.max(a.hints, b.hints), secs: lead ? lead.secs : Math.max(a.secs, b.secs), runs: Math.max(a.runs, b.runs), ...(ea > 0 ? { epoch: ea } : {}) };
++}
++export function mergeProgress(a: Progress, b: Progress): Progress {
++  const out = emptyProgress();
++  for (const who of new Set([...Object.keys(a.by), ...Object.keys(b.by)])) {
++    for (const id of new Set([...Object.keys(a.by[who] ?? {}), ...Object.keys(b.by[who] ?? {})])) {
++      const m = mergeModule(a.by[who]?.[id], b.by[who]?.[id]); if (m) (out.by[who] ??= {})[id] = m;
++    }
++  }
++  return out;
++}
++/** A full reset (the tick too), unlike `resetModule`, which keeps the tick. The reset count goes up so the other registers take it over the old work. */
++export const resetModuleFully = (p: Progress, who: string, id: string): Progress => { const m = p.by[who]?.[id]; return m ? put(p, who, id, { stages: [], hints: 0, secs: 0, runs: 0, epoch: epochOf(m) + 1 }) : p; };
++export const resetAllFully = (p: Progress, who: string): Progress => Object.keys(p.by[who] ?? {}).reduce((q, id) => resetModuleFully(q, who, id), p);
++/** Owners reset anyone's progress. Managers reset roles below manager only. Cashiers reset nobody's. */
++export const canResetProgress = (actor: 'cashier' | 'manager' | 'owner', target: 'cashier' | 'manager' | 'owner'): boolean => actor === 'owner' || (actor === 'manager' && target === 'cashier');
+diff --git a/src/lib/trainingShared.ts b/src/lib/trainingShared.ts
+new file mode 100644
+index 0000000..71b08d4
+--- /dev/null
++++ b/src/lib/trainingShared.ts
+@@ -0,0 +1,30 @@
++// Location: src/lib/trainingShared.ts
++// CloudKit sync, patch 6c (training progress): one record per person per module, `training-<staff id>-<module id>`, so progress follows the
++// person across iPads (decisions item 15). Pure: no React, no files, no native module (tests/trainingshared.test.ts). The merge rules are in
++// trainingProgress.ts. Training and demo data are never sent, only these marks.
++import { STAGES, type Stage } from './trainingModule';
++import { epochOf, type ModProg, type Progress } from './trainingProgress';
++
++const ID_RE = /^[A-Za-z0-9_.-]{1,64}$/;
++export const isTrainingId = (x: unknown): x is string => typeof x === 'string' && ID_RE.test(x);
++/** The part of the record name after `training-`. Both ids are checked, so the name cannot be bent into another one. */
++export const trainingHandle = (who: string, module: string): string => { if (!isTrainingId(who) || !isTrainingId(module)) throw new Error('Bad training id.'); return `${who}-${module}`; };
++
++type Fields = Record<string, string | number>;
++export function trainingToFields(who: string, module: string, m: ModProg, registerId: string, registerName: string, ts: string): Fields {
++  return { who, module, stages: m.stages.join(','), done: m.done ?? '', hints: m.hints, secs: m.secs, runs: m.runs, epoch: epochOf(m), ts, registerId, registerName };
++}
++/** One record read back, or null when it is not a readable progress record. */
++export function trainingFromFields(f: Record<string, unknown>): { who: string; module: string; mod: ModProg } | null {
++  if (!isTrainingId(f.who) || !isTrainingId(f.module)) return null;
++  const n = (x: unknown): number => (Number.isFinite(Number(x)) && Number(x) >= 0 ? Math.floor(Number(x)) : 0);
++  const listed = typeof f.stages === 'string' ? f.stages.split(',') : [];
++  const stages = STAGES.filter((s): s is Stage => listed.includes(s));
++  const epoch = n(f.epoch);
++  return { who: f.who, module: f.module, mod: { stages, done: typeof f.done === 'string' && f.done ? f.done : undefined, hints: n(f.hints), secs: n(f.secs), runs: n(f.runs), ...(epoch > 0 ? { epoch } : {}) } };
++}
++export function progressFromRecords(rows: Record<string, unknown>[]): Progress {
++  const out: Progress = { v: 1, by: {} };
++  for (const r of rows) { const t = trainingFromFields(r); if (t) (out.by[t.who] ??= {})[t.module] = t.mod; }
++  return out;
++}
+diff --git a/src/screens/Training.tsx b/src/screens/Training.tsx
+index a58619c..46036a1 100644
+--- a/src/screens/Training.tsx
++++ b/src/screens/Training.tsx
+@@ -1,9 +1,9 @@
+ // Location: src/screens/Training.tsx
+ // More > Training: every course, with a dot per stage and a big green tick once both Checks are passed. Courses are never locked.
+-import React, { useMemo, useEffect } from 'react';
++import React, { useMemo, useEffect, useState } from 'react';
+ import { Pressable, View } from 'react-native';
+ import { Ionicons } from '@expo/vector-icons';
+-import { Card, Page, Txt } from '../ui/kit';
++import { Card, Page, Txt, confirm } from '../ui/kit';
+ import { useTheme } from '../ui/theme';
+ import { Enter } from '../ui/Motion';
+ import { stagger } from '../lib/motion';
+@@ -13,7 +13,7 @@ import { useTraining } from '../state/trainingSession';
+ import { useDemo } from '../state/demoSession';
+ import { MODULES } from '../training';
+ import { STAGES, STAGE_LABEL, type Stage } from '../lib/trainingModule';
+-import { isComplete, staffKey, stagesDone } from '../lib/trainingProgress';
++import { canResetProgress, completedCount, isComplete, staffKey, stagesDone } from '../lib/trainingProgress';
+ import { moduleAvailable } from '../lib/appMode';
+ import { canOpenStage, startRun } from '../lib/trainingRun';
+ 
+@@ -27,6 +27,9 @@ export default function Training() {
+   // A companion lists the courses for what it holds (the register courses are the Till training group); the count follows the list.
+   const devMode = useApp(st => st.settings.appMode); const devFeatures = useApp(st => st.settings.registerFeatures);
+   const shown = useMemo(() => MODULES.filter(m => moduleAvailable(devMode, devFeatures, m)), [devMode, devFeatures]);
++  // Owners reset anyone's progress and managers reset cashiers' (decisions item 15, O1). The reset reaches the other registers with iCloud sync.
++  const staff = useApp(st => st.settings.staff); const me = staff.find(x => x.id === staffId);
++  const resettable = me ? staff.filter(x => canResetProgress(me.role, x.role)) : []; const [openWho, setOpenWho] = useState<string | null>(null);
+   const n = shown.filter(m => progress.by[who]?.[m.id]?.done).length;
+   return (
+     <Page title="Training" onBack={nav.pop}>
+@@ -60,6 +63,21 @@ export default function Training() {
+           <Txt sub>Try the card terminal on its own: ask it for a payment, tap or insert a card, key a PIN, and see every screen it can show.</Txt>
+           <Pressable onPress={() => nav.push('terminalPlay')} accessibilityRole="button" style={{ backgroundColor: c.fill, borderRadius: 999, paddingVertical: 13, alignItems: 'center' }}><Txt weight="700">Open</Txt></Pressable>
+         </Card></Enter>
++        {resettable.length ? <Enter delay={stagger(shown.length + 3, 120)} distance={18}><Card style={{ padding: 16, gap: 10 }}>
++          <Txt size={17} weight="700">Reset someone's progress</Txt>
++          <Txt size={13} sub>Wipes the ticks so they can take a course again. With iCloud sync on, it clears on every register.</Txt>
++          {resettable.map(x => { const fin = completedCount(progress, x.id); const isOpen = openWho === x.id; return (
++            <View key={x.id} style={{ gap: 6 }}>
++              <Pressable onPress={() => setOpenWho(isOpen ? null : x.id)} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 }}>
++                <Txt weight="700" style={{ flex: 1 }}>{x.name}</Txt><Txt size={13} sub>{fin} finished</Txt><Ionicons name={isOpen ? 'chevron-up' : 'chevron-down'} size={16} color={c.sub} /></Pressable>
++              {isOpen ? <View style={{ gap: 6 }}>
++                {shown.filter(m => progress.by[x.id]?.[m.id]).map(m => (
++                  <Pressable key={m.id} onPress={async () => { if (await confirm('Reset this course?', `${x.name}'s progress in "${m.title}" will be cleared.`, 'Reset', true)) useTraining.getState().resetProgress(x.id, m.id); }} accessibilityRole="button" style={{ flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, backgroundColor: c.fill }}>
++                    <Txt size={13} style={{ flex: 1 }}>{m.title}</Txt><Txt size={13} weight="700" color={c.bad}>Reset</Txt></Pressable>))}
++                <Pressable onPress={async () => { if (await confirm('Reset all courses?', `All of ${x.name}'s training progress will be cleared.`, 'Reset all', true)) { useTraining.getState().resetProgress(x.id, null); setOpenWho(null); } }} accessibilityRole="button" style={{ paddingVertical: 10, alignItems: 'center', borderRadius: 999, backgroundColor: c.fill }}><Txt weight="700" color={c.bad}>Reset all courses</Txt></Pressable>
++              </View> : null}
++            </View>); })}
++        </Card></Enter> : null}
+       </View>
+     </Page>
+   );
+diff --git a/src/state/trainingSession.ts b/src/state/trainingSession.ts
+index 05cb985..07e412d 100644
+--- a/src/state/trainingSession.ts
++++ b/src/state/trainingSession.ts
+@@ -14,7 +14,7 @@ import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
+ import { getModule } from '../training';
+ import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
+ import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
+-import { completeModule, emptyProgress, readProgress, recordStage, staffKey, type Progress } from '../lib/trainingProgress';
++import { completeModule, emptyProgress, readProgress, recordStage, resetAllFully, resetModuleFully, staffKey, type Progress } from '../lib/trainingProgress';
+ import type { Gesture, Injection, Stage } from '../lib/trainingModule';
+ import { setGate } from '../lib/trainingGate';
+ import type { Rect } from '../lib/trainingGeometry';
+@@ -45,6 +45,10 @@ type Sess = {
+   /** Goes up each time the person asks "how do I do this?" while off course, so the card opens its steps. */
+   howNonce: number; openHow: () => void;
+   loadProgress: () => Promise<void>;
++  /** Replace the stored progress with a joined one from another register (CloudKit sync). */
++  adoptProgress: (p: Progress) => Promise<void>;
++  /** A manager or owner wipes one person's progress in one module, or in all of them (`moduleId` null). The caller checks the role. */
++  resetProgress: (staffId: string, moduleId: string | null) => void;
+   begin: (moduleId: string, stage?: Stage) => void;
+   setRun: (r: Run) => void;
+   startPractice: () => Promise<string | null>;   // returns a message when it cannot start
+@@ -92,6 +96,8 @@ export const useTraining = create<Sess>((set, get) => ({
+     if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts(); } // restore first, then drop the guard
+     set({ sandbox: false, view: null });
+   },
++  adoptProgress: async p => { set({ progress: p }); await kvSet(TRAINING_PROGRESS_KEY, p); },
++  resetProgress: (staffId, moduleId) => { const p = moduleId ? resetModuleFully(get().progress, staffId, moduleId) : resetAllFully(get().progress, staffId); set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p); },
+   completeStage: () => {
+     const run = get().run; if (!run) return null; const who = staffKey(realStaffId());
+     let p = recordStage(get().progress, who, run.moduleId, run.stage);
+diff --git a/tests/trainingsync.test.ts b/tests/trainingsync.test.ts
+new file mode 100644
+index 0000000..bafb73c
+--- /dev/null
++++ b/tests/trainingsync.test.ts
+@@ -0,0 +1,118 @@
++// Location: tests/trainingsync.test.ts
++// CloudKit patch 6c, training progress: the merge rules, the record shape, who may reset, and two registers settling on an in-memory fake.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { canResetProgress, completeModule, emptyProgress, mergeModule, mergeProgress, readProgress, recordStage, resetAllFully, resetModuleFully, type Progress } from '../src/lib/trainingProgress';
++import { progressFromRecords, trainingFromFields, trainingHandle, trainingToFields } from '../src/lib/trainingShared';
++import { createTrainingSync, type TrainingNative } from '../src/lib/cloudkit/trainingSync';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++
++const T = new Date('2026-11-02T10:00:00.000Z');
++const finish = (p: Progress, who: string, id: string, at = T): Progress => completeModule(recordStage(recordStage(p, who, id, 'check1'), who, id, 'check2'), who, id, { hints: 2, secs: 90 }, at);
++
++test('work done on two registers is kept from both, and the earliest finish stands', () => {
++  const a = recordStage(emptyProgress(), 'u1', 'cash', 'info'); const b = finish(recordStage(emptyProgress(), 'u1', 'cash', 'show'), 'u1', 'cash', T);
++  const m = mergeProgress(a, b).by.u1.cash; assert.deepEqual(m.stages, ['info', 'show', 'check1', 'check2', 'gratify'].filter(s => m.stages.includes(s as any)));
++  assert.ok(m.stages.includes('info') && m.stages.includes('show') && m.stages.includes('check2')); assert.equal(m.done, T.toISOString());
++  const later = finish(emptyProgress(), 'u1', 'cash', new Date('2026-12-01T00:00:00Z'));
++  assert.equal(mergeProgress(later, b).by.u1.cash.done, T.toISOString());
++});
++test('merging is the same whichever way round, and joining the same thing twice changes nothing', () => {
++  const a = finish(emptyProgress(), 'u1', 'cash'); const b = recordStage(emptyProgress(), 'u1', 'refund', 'info');
++  assert.deepEqual(mergeProgress(a, b), mergeProgress(b, a)); assert.deepEqual(mergeProgress(mergeProgress(a, b), b), mergeProgress(a, b));
++});
++test('a reset beats older work from another register, and work after the reset is kept', () => {
++  const done = finish(emptyProgress(), 'u1', 'cash'); const reset = resetModuleFully(done, 'u1', 'cash');
++  assert.deepEqual(reset.by.u1.cash, { stages: [], hints: 0, secs: 0, runs: 0, epoch: 1 });
++  assert.deepEqual(mergeProgress(done, reset).by.u1.cash, reset.by.u1.cash);
++  const again = recordStage(reset, 'u1', 'cash', 'info'); assert.deepEqual(mergeProgress(reset, again).by.u1.cash.stages, ['info']);
++  assert.equal(mergeProgress(done, again).by.u1.cash.epoch, 1);
++});
++test('a full reset clears the tick, unlike the old resetModule, and only touches that person', () => {
++  const p = finish(finish(emptyProgress(), 'u1', 'cash'), 'u2', 'cash');
++  const r = resetAllFully(p, 'u1'); assert.equal(r.by.u1.cash.done, undefined); assert.ok(r.by.u2.cash.done);
++  assert.equal(resetModuleFully(p, 'u1', 'nothing'), p);
++});
++test('who may reset: owners anyone, managers only cashiers, cashiers nobody', () => {
++  for (const t of ['cashier', 'manager', 'owner'] as const) { assert.equal(canResetProgress('owner', t), true); assert.equal(canResetProgress('cashier', t), false); }
++  assert.equal(canResetProgress('manager', 'cashier'), true); assert.equal(canResetProgress('manager', 'manager'), false); assert.equal(canResetProgress('manager', 'owner'), false);
++});
++test('the reset count survives being stored and read back, and an unreset module reads as before', () => {
++  const p = resetModuleFully(finish(emptyProgress(), 'u1', 'cash'), 'u1', 'cash'); assert.equal(readProgress(JSON.parse(JSON.stringify(p))).by.u1.cash.epoch, 1);
++  assert.equal('epoch' in readProgress(JSON.parse(JSON.stringify(finish(emptyProgress(), 'u1', 'cash')))).by.u1.cash, false);
++});
++test('a record round trips, and one that is not readable is dropped, not thrown', () => {
++  const m = finish(emptyProgress(), 'u1', 'cash').by.u1.cash; const f = trainingToFields('u1', 'cash', m, 'reg-a', 'Front', 't');
++  assert.deepEqual(trainingFromFields(f), { who: 'u1', module: 'cash', mod: m });
++  assert.equal(trainingFromFields({ ...f, who: '../x' }), null); assert.equal(trainingFromFields({}), null);
++  assert.deepEqual(trainingFromFields({ ...f, stages: 'bogus,info', hints: -3 })?.mod, { stages: ['info'], done: m.done, hints: 0, secs: m.secs, runs: m.runs });
++  assert.deepEqual(progressFromRecords([f, { who: 5 }]).by.u1.cash, m);
++  assert.equal(trainingHandle('u1', 'cash'), 'u1-cash'); assert.throws(() => trainingHandle('u/1', 'cash'));
++});
++
++type Rec = Record<string, any>;
++function cloud() {
++  const rows = new Map<string, Rec>(); const calls = { puts: 0 }; let fail = false;
++  const native: TrainingNative = {
++    async putTraining(h, f) { if (fail) throw new Error('offline'); calls.puts++; rows.set(h, { ...f, recordName: `training-${h}` }); return f; },
++    async listTraining() { if (fail) throw new Error('offline'); return { rows: [...rows.values()].map(r => ({ ...r })), next: null }; },
++  };
++  return { native, rows, calls, setFail: (b: boolean) => { fail = b; } };
++}
++function register(c: ReturnType<typeof cloud>, id: string, over: Partial<Parameters<typeof createTrainingSync>[0]> = {}) {
++  const me = { p: emptyProgress() as Progress };
++  const sync = createTrainingSync({ active: () => true, training: () => false, who: () => ({ id, name: id }), native: async () => c.native, getLocal: async () => me.p, setLocal: async p => { me.p = p; }, now: () => 't', ...over });
++  return { me, sync };
++}
++const settle = async (...rs: ReturnType<typeof register>[]) => { for (let i = 0; i < 3; i++) for (const r of rs) await r.sync.run(); };
++
++test('nothing happens when CloudKit is not active, in practice mode, or before the register has an id', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
++    const c = cloud(); const a = register(c, 'a', over); a.me.p = finish(emptyProgress(), 'u1', 'cash'); assert.equal(await a.sync.run(), null); assert.equal(c.calls.puts, 0);
++  }
++});
++test('a tick earned on one register shows on the other, and settled registers write nothing more', async () => {
++  const c = cloud(); const a = register(c, 'a'); const b = register(c, 'b'); a.me.p = finish(emptyProgress(), 'u1', 'cash');
++  assert.deepEqual(await a.sync.run(), { taken: 0, sent: 1 }); assert.deepEqual(await b.sync.run(), { taken: 1, sent: 0 });
++  assert.ok(b.me.p.by.u1.cash.done); const puts = c.calls.puts; await settle(a, b); assert.equal(c.calls.puts, puts);
++});
++test('marks earned on both registers join, and neither is lost', async () => {
++  const c = cloud(); const a = register(c, 'a'); const b = register(c, 'b');
++  a.me.p = recordStage(emptyProgress(), 'u1', 'cash', 'info'); b.me.p = recordStage(emptyProgress(), 'u1', 'cash', 'show'); await settle(a, b);
++  for (const r of [a, b]) assert.deepEqual(r.me.p.by.u1.cash.stages, ['info', 'show']);
++});
++test('a reset made on one register clears the other, even though it still held the old tick', async () => {
++  const c = cloud(); const a = register(c, 'a'); const b = register(c, 'b'); a.me.p = finish(emptyProgress(), 'u1', 'cash'); await settle(a, b);
++  a.me.p = resetModuleFully(a.me.p, 'u1', 'cash'); await settle(a, b);
++  for (const r of [a, b]) assert.equal(r.me.p.by.u1.cash.done, undefined);
++});
++test('a reset made while the other register was offline wins when it comes back', async () => {
++  const c = cloud(); const a = register(c, 'a'); const b = register(c, 'b'); a.me.p = recordStage(emptyProgress(), 'u1', 'cash', 'info'); await settle(a, b);
++  a.me.p = resetModuleFully(a.me.p, 'u1', 'cash'); await a.sync.run(); b.me.p = recordStage(b.me.p, 'u1', 'cash', 'show'); await settle(a, b);
++  for (const r of [a, b]) assert.deepEqual(r.me.p.by.u1.cash.stages, []);
++});
++test('a mark made while a poll is running is kept', async () => {
++  const c = cloud(); const b = register(c, 'b'); b.me.p = finish(emptyProgress(), 'u2', 'cash'); await b.sync.run();
++  const me = { p: emptyProgress() as Progress }; let reads = 0;
++  const a = createTrainingSync({ active: () => true, training: () => false, who: () => ({ id: 'a', name: 'a' }), native: async () => c.native, now: () => 't',
++    getLocal: async () => { const p = me.p; if (++reads === 1) me.p = recordStage(me.p, 'u1', 'cash', 'info'); return p; }, // a mark lands after the first read
++    setLocal: async p => { me.p = p; } });
++  await a.run(); assert.ok(me.p.by.u2.cash.done, 'the shop\'s mark was taken'); assert.deepEqual(me.p.by.u1.cash.stages, ['info'], 'the mark made meanwhile was kept');
++});
++test('a failure is not thrown and changes nothing; the next poll finishes', async () => {
++  const c = cloud(); const a = register(c, 'a'); a.me.p = finish(emptyProgress(), 'u1', 'cash'); c.setFail(true); assert.equal(await a.sync.run(), null); c.setFail(false); assert.deepEqual(await a.sync.run(), { taken: 0, sent: 1 });
++});
++test('a person with an unsafe id is never written under a bent name', async () => {
++  const c = cloud(); const a = register(c, 'a'); a.me.p = finish(emptyProgress(), '../evil', 'cash'); const r = await a.sync.run(); assert.equal(r?.sent, 0); assert.equal(c.calls.puts, 0);
++});
++test('mergeModule keeps the larger run count with its own hints and time', () => {
++  const m = mergeModule({ stages: ['info'], hints: 1, secs: 10, runs: 1 }, { stages: [], hints: 5, secs: 50, runs: 3 })!; assert.deepEqual([m.hints, m.secs, m.runs], [5, 50, 3]);
++});
++test('the wiring: the poll runs it, the session store has the actions, the Swift and module export it, and the screen checks the role', () => {
++  const sync = readFileSync('src/lib/sync.ts', 'utf8'); assert.match(sync, /await trainingSync\.run\(\)/); assert.match(sync, /createTrainingSync\(\{/);
++  const ts = readFileSync('src/state/trainingSession.ts', 'utf8'); assert.match(ts, /adoptProgress: async/); assert.match(ts, /resetProgress: \(staffId, moduleId\)/);
++  for (const f of ['putTraining', 'listTraining']) { assert.match(readFileSync('modules/cloudkit-sync/index.ts', 'utf8'), new RegExp(`export async function ${f}\\(`)); assert.match(readFileSync('modules/cloudkit-sync/ios/CloudKitSyncModule.swift', 'utf8'), new RegExp(`AsyncFunction\\("${f}"\\)`)); }
++  assert.match(readFileSync('src/screens/Training.tsx', 'utf8'), /canResetProgress\(me\.role, x\.role\)/);
++  assert.ok(!(DEVICE_KEYS as readonly string[]).includes('training.progress.v1'));
++});
