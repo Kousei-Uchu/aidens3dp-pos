@@ -542,3 +542,18 @@ These fill gaps in the plan (patch 6c) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
 6. **Nothing is sent during a practice run.** Marks made then are kept on the iPad and sent at the next poll after the run.
 7. **A person's id is checked before it becomes a record name.** An id with a slash or other odd character is never sent. The shared record used when no staff are set up (`_shared`) does sync.
 8. **A removed staff member's progress is not tidied**, in iCloud or on the iPads.
+
+## Shared audit log (0211)
+
+These fill gaps in the plan (patch 6c) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 13, Q4, N2). Each is a guess, change any you disagree with.
+
+1. **One record per event, not one per register per day.** The notes suggested `audit-<register id>-<date>`, but a busy day of tool results can pass CloudKit's 1 MB record limit and a day file would be rewritten on every message. Records are `audit-<register id>-<event id>`, each written once.
+2. **The whole event is encrypted, and four labels are plain**: register id and name, day and time, and kind (ask, error, offline). The staff member's name is inside the encrypted part. The labels let the shop count and order records without reading them.
+3. **Nothing is written until the encrypted switch is on, and it is the same switch as the sales' card details** (`setSaleCardMode`). The content can hold customer names, so it must never be written plain, and writing only labels would be useless. The alternative was a second switch. One flip after T85 turns both on.
+4. **Purge lines stay local.** They describe this iPad's own folder. Coach lines logged in a practice run are sent, marked practice, after the run ends.
+5. **The shop's copy is never trimmed, and clearing or purging a local log does not touch it.** The cap on the viewer's page is about this iPad's storage. There is no screen to delete the shared copy yet; the owner-only export (6e) and a later clean-up patch can cover it.
+6. **A very large event is shrunk to fit.** Tool results go first, then the text of earlier messages the model was sent, then the question and reply are clipped. The name, arguments and success of each tool call are kept, and the line says what was cut.
+7. **The viewer reads the other registers on demand, not at every poll.** **All registers** fetches the newest 500 from iCloud when the manager opens it or applies a filter. Older ones are not reachable from the viewer yet. This keeps a poll from downloading and decrypting the whole log.
+8. **A catch-up lists labels only** (the Swift asks CloudKit for just the plain fields), so it never downloads the log itself. It runs once per launch, like events.
+9. **A conversation this iPad cannot decrypt is counted, not listed.** The viewer says how many could not be read.
+10. **The manager's viewer is the only place the shared copy is read.** The assistant itself does not read other registers' conversations.

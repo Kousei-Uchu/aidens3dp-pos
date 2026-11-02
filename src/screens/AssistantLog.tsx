@@ -15,9 +15,15 @@ import { isTraining } from '../lib/trainingGuard';
 import { assistantLog } from '../lib/assistantLogIO';
 import type { LogEvent } from '../lib/assistantLog';
 import { DEFAULT_LOG_CAP_MB } from '../lib/assistantConfig';
+import { activeBackendKind } from '../lib/syncBackend';
+import { auditSync } from '../lib/sync';
 import { useCanEditAssistant } from './AssistantSettings';
 
 type Filter = 'all' | 'errors' | 'practice' | 'remote';
+/** This iPad's own log, or this iPad's plus what the other registers sent to iCloud (patch 0211). */
+type Scope = 'this' | 'all';
+/** A line from another register, as the viewer shows it. */
+type Shown = LogEvent & { register?: string };
 const FILTERS: { v: Filter; label: string }[] = [
   { v: 'all', label: 'All' },
   { v: 'errors', label: 'Errors' },
@@ -30,6 +36,8 @@ const fmtTime = (ms: number): string => {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 };
+
+const fmtDay = (ms: number): string => fmtTime(ms).slice(0, 10);
 
 const fmtBytes = (n: number): string => {
   if (n < 1024) return `${n} B`;
@@ -48,7 +56,9 @@ export function AssistantLogViewer() {
   const [staffFilter, setStaffFilter] = useState('');
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
-  const [events, setEvents] = useState<LogEvent[]>([]);
+  const [scope, setScope] = useState<Scope>('this');
+  const [unreadable, setUnreadable] = useState(0);
+  const [events, setEvents] = useState<Shown[]>([]);
   const [bad, setBad] = useState(0);
   const [status, setStatus] = useState<{ bytes: number; capBytes: number; percent: number; warn: boolean; purgedThrough?: string; purgedEvents: number } | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -58,7 +68,21 @@ export function AssistantLogViewer() {
   const load = useCallback(async () => {
     const range = dateFrom || dateTo ? { from: dateFrom || undefined, to: dateTo || undefined } : undefined;
     const r = await assistantLog.events(range);
-    let list = r.events;
+    let list: Shown[] = r.events;
+    let hidden = 0;
+    if (scope === 'all' && activeBackendKind() === 'cloudkit') {
+      try {
+        const others = (await auditSync.others()) ?? [];
+        const have = new Set(list.map(e => e.id));
+        for (const o of others) {
+          if (!o.event) { hidden++; continue; }
+          if (have.has(o.event.id)) continue;
+          list.push({ ...o.event, register: o.registerName || o.registerId });
+        }
+        list = list.filter(e => (!dateFrom || fmtDay(e.at) >= dateFrom) && (!dateTo || fmtDay(e.at) <= dateTo)).sort((a, b) => a.at - b.at);
+      } catch { setNote('The other registers\' conversations could not be read from iCloud. This iPad\'s own log is shown.'); }
+    }
+    setUnreadable(hidden);
     if (filter === 'errors') list = list.filter(e => e.kind === 'error');
     else if (filter === 'practice') list = list.filter(e => e.practice);
     else if (filter === 'remote') list = list.filter(e => e.endpoint?.scope === 'remote');
@@ -69,7 +93,7 @@ export function AssistantLogViewer() {
     setEvents(list);
     setBad(r.bad);
     setStatus(await assistantLog.status());
-  }, [dateFrom, dateTo, filter, staffFilter]);
+  }, [dateFrom, dateTo, filter, staffFilter, scope]);
 
   useEffect(() => { if (allowed) void load(); }, [allowed, load]);
 
@@ -124,6 +148,7 @@ export function AssistantLogViewer() {
 
           <Section title="Filters" footer="Narrow down what the log shows.">
             <View style={{ padding: 12, gap: 10 }}>
+              {activeBackendKind() === 'cloudkit' ? <Segmented value={scope} onChange={v => setScope(v)} options={[{ v: 'this', label: 'This iPad' }, { v: 'all', label: 'All registers' }]} /> : null}
               <Segmented value={filter} onChange={v => setFilter(v)} options={FILTERS} />
               <Field kind="search" label="Staff member" placeholder="Name or ID" value={staffFilter} onChangeText={setStaffFilter} />
               <Field kind="text" label="From date (YYYY-MM-DD)" placeholder="2026-01-01" value={dateFrom} onChangeText={setDateFrom} />
@@ -132,7 +157,7 @@ export function AssistantLogViewer() {
             </View>
           </Section>
 
-          <Section title={`Conversations (${events.length})`} footer="Tap a conversation to see what was sent to the model.">
+          <Section title={`Conversations (${events.length})`} footer={unreadable ? `Tap a conversation to see what was sent to the model. ${unreadable} from other registers could not be read on this iPad.` : 'Tap a conversation to see what was sent to the model.'}>
             {events.length === 0 ? (
               <View style={{ padding: 12 }}><Txt size={13} sub>No conversations found.</Txt></View>
             ) : (
@@ -142,7 +167,7 @@ export function AssistantLogViewer() {
                   return (
                     <View key={e.id}>
                       <Row
-                        title={`${e.staff.name} · ${fmtTime(e.at)}`}
+                        title={`${e.staff.name}${e.register ? ` · ${e.register}` : ''} · ${fmtTime(e.at)}`}
                         sub={e.kind === 'error' ? `Error: ${e.error?.kind ?? 'unknown'}` : e.kind === 'offline' ? `Offline search: ${e.user?.text?.slice(0, 60) ?? ''}` : e.user?.text?.slice(0, 80) ?? ''}
                         onPress={() => setOpenId(open ? null : e.id)}
                         icon={e.kind === 'error' ? 'alert-circle-outline' : e.kind === 'offline' ? 'search-outline' : e.practice ? 'school-outline' : 'chatbubble-outline'}

@@ -27,6 +27,9 @@ import { createLogoSync } from './cloudkit/logoSync';
 import type { LogoNative } from './cloudkit/logoCloud';
 import { createSquareSync } from './cloudkit/squareSync';
 import { createTrainingSync } from './cloudkit/trainingSync';
+import { createAuditSync } from './cloudkit/auditSync';
+import type { AuditNative } from './cloudkit/auditCloud';
+import { setAuditHook } from './auditHook';
 import type { TrainingNative } from './cloudkit/trainingSync';
 import type { SquareNative } from './cloudkit/squareCloud';
 import type { EventNative } from './cloudkit/eventCloud';
@@ -125,6 +128,19 @@ const trainingSync = createTrainingSync({
   getLocal: async () => { const t = (await import('../state/trainingSession')).useTraining.getState(); await t.loadProgress(); return (await import('../state/trainingSession')).useTraining.getState().progress; },
   setLocal: async p => (await import('../state/trainingSession')).useTraining.getState().adoptProgress(p),
 });
+
+// CloudKit patch 6c: the assistant's audit log is shared, encrypted (decisions item 13, Q4, N2). Each event is handed over as it is logged; the poll sends
+// any that were missed, and a register's own log is sent once after it joins (Q13). Nothing is sent until the encrypted switch is on (`mode`).
+// The log files are read on demand, so this file still imports in the node tests. The manager's viewer reads the other registers through `auditSync.others`.
+export const auditSync = createAuditSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as AuditNative,
+  mode: async () => (await import('./cloudkit/cloudkitBackend')).saleCardMode(),
+  readLocal: async () => (await (await import('./assistantLogIO')).assistantLog.events()).events,
+});
+setAuditHook(e => { void auditSync.upload(e); });
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
@@ -258,6 +274,7 @@ export async function pollShared() {
       await logoSync.run(); // the logo image, both ways (never throws)
       await squareSync.run(); // the Square history months, both ways (never throws)
       await trainingSync.run(); // training marks, both ways (never throws)
+      await auditSync.catchUp(); // assistant log events the live upload missed, encrypted (never throws)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {

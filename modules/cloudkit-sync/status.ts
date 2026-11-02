@@ -58,6 +58,10 @@ export type CloudKitSyncNative = {
   // Patch 6c: training progress (one record per person per module)
   putTraining?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   listTraining?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 6c: the shared audit log (one record per event, content in one encrypted field)
+  putAudit?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
+  listAuditIndex?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  listAudit?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   // Patch 6a: the shared logo (one record with an image asset)
   putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
   getLogo?(): Promise<Record<string, any> | null>;

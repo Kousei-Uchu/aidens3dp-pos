@@ -5,7 +5,7 @@ parent: settings/assistant
 summary: Chat with the Help assistant: what it can and cannot do, asking about products, stock, sales, orders, deals, customers, gift cards how the till is doing, the cash drawer, the sale in progress and cash sums, what is kept, and what is hidden before anything is sent.
 tags: [AI, assistant, cash drawer, change, split payment, float, cart, charge, chatbot, chat, ask, history, log, audit, privacy, practice mode, coach, training, hint, sales, orders, deals, customers, gift cards, report, products, stock, inventory, price, status, sync, queue, card reader, not working]
 related: [settings/assistant, settings/backup]
-updated: 2026-10-19
+updated: 2026-11-02
 ---
 Open **Help** and tap the sparkles button at the top. For now only an owner can see it, or a manager when the team has no owner. It is not on the sign in screen, because your chat history belongs to you and the till needs to know who you are. Set up the model first: see [[settings/assistant]].
 
@@ -69,7 +69,7 @@ Your messages and its replies are kept on this iPad, for you only. Each person w
 Before anything leaves the iPad, email addresses, Australian and international phone numbers, card numbers and keys or tokens are replaced with a tag such as [email address]. A line under your message says what was hidden. This happens on every model, local or remote, and it also runs again over older messages each time you ask something new. Shop data the assistant is later given goes through a stricter check first, set in **What the assistant may see** in [[settings/assistant]].
 
 ### The conversation log
-Every question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It stays on this iPad, is not shared with other registers and is not in Backup & transfer. There is no screen to read it yet. The manager's viewer, with export and clear, comes in the next patch.
+Every question you send and every answer or error is also written to a log on this iPad, so the manager can see what was asked and what the model was sent. A line under the chat says so. The log is separate from your chat history: clearing your history with the bin does not touch it. It keeps what was sent after the hiding described above, so a card number you typed is not in it, and it never holds the API key. It is not in Backup & transfer. The manager's viewer (Settings ▸ AI assistant ▸ conversation log) shows it, with export and clear. Once iCloud sync is on, each conversation is also sent to iCloud, encrypted, so the viewer can show every register's conversations under **All registers**. Clearing the log on this iPad does not remove the copy in iCloud.
 
 If a message cannot be added to the log (the iPad is out of space, for example), you still get your answer. A red line under the chat says *This conversation could not be added to the log. Tell a manager.*
 

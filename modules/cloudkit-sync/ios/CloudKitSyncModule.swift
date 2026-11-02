@@ -17,7 +17,7 @@ private let cloudKitPendingInviteKey = "cloudkitPendingInvite"
 /// The fields kept as CloudKit encrypted values, by record type (decisions item 17). They are never written as plain fields:
 /// copyFields skips them, and they only travel through the separate `encrypted` argument. CKRecord.allKeys() does not list
 /// encrypted values, so recordToDict reads these keys by name.
-private let cloudKitEncryptedKeys: [String: [String]] = ["Sale": ["secure_json"]]
+private let cloudKitEncryptedKeys: [String: [String]] = ["Sale": ["secure_json"], "Audit": ["secure_json"]]
 private let cloudKitNeverPlainKeys: Set<String> = Set(cloudKitEncryptedKeys.values.flatMap { $0 })
 
 // The AppDelegate posts this when iOS hands the app a share link. The module joins on the spot; the AppDelegate cannot,
@@ -176,6 +176,21 @@ public class CloudKitSyncModule: Module {
 
     AsyncFunction("listTraining") { (limit: Int, after: String?) async throws -> [String: Any] in
       try await self.listRecords(recordType: "Training", limit: limit, after: after)
+    }
+
+    // --- Patch 6c: the shared audit log ---
+    // One record per logged event. The whole event is in the encrypted `secure_json`; the plain fields are labels (register, day, time, kind).
+    // `listAuditIndex` asks CloudKit for the labels only, so a catch-up never downloads or decrypts the log itself.
+    AsyncFunction("putAudit") { (handle: String, fields: [String: Any], encrypted: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Audit", recordName: "audit-\(handle)", fields: fields, encrypted: encrypted)
+    }
+
+    AsyncFunction("listAuditIndex") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Audit", limit: limit, after: after, desiredKeys: ["registerId", "registerName", "at", "day", "kind"])
+    }
+
+    AsyncFunction("listAudit") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Audit", limit: limit, after: after)
     }
 
     // --- Patch 6a: the shared logo ---
@@ -673,13 +688,15 @@ public class CloudKitSyncModule: Module {
     }
   }
 
-  private func listRecords(recordType: String, limit: Int, after: String?) async throws -> [String: Any] {
+  private func listRecords(recordType: String, limit: Int, after: String?, desiredKeys: [String]? = nil) async throws -> [String: Any] {
     let query = CKQuery(recordType: recordType, predicate: NSPredicate(value: true))
     query.sortDescriptors = [NSSortDescriptor(key: "modificationDate", ascending: false)]
-    return try await runQuery(query, limit: limit, after: after)
+    return try await runQuery(query, limit: limit, after: after, desiredKeys: desiredKeys)
   }
 
-  private func runQuery(_ query: CKQuery, limit: Int, after: String?) async throws -> [String: Any] {
+  /// `desiredKeys` limits which fields CloudKit sends back (nil means all). Encrypted values are left out when it is set, so a caller that only needs
+  /// labels never downloads or decrypts the content.
+  private func runQuery(_ query: CKQuery, limit: Int, after: String?, desiredKeys: [String]? = nil) async throws -> [String: Any] {
     let db = database()
     var rows: [[String: Any]] = []
     var cursor: CKQueryOperation.Cursor? = nil
@@ -690,9 +707,9 @@ public class CloudKitSyncModule: Module {
     }
     var results: (matchResults: [(CKRecord.ID, Result<CKRecord, Error>)], queryCursor: CKQueryOperation.Cursor?)
     if let c = cursor {
-      results = try await db.records(continuingMatchFrom: c, resultsLimit: limit)
+      results = try await db.records(continuingMatchFrom: c, desiredKeys: desiredKeys, resultsLimit: limit)
     } else {
-      results = try await db.records(matching: query, inZoneWith: storeZoneID, resultsLimit: limit)
+      results = try await db.records(matching: query, inZoneWith: storeZoneID, desiredKeys: desiredKeys, resultsLimit: limit)
     }
     for (_, res) in results.matchResults {
       if case .success(let record) = res {

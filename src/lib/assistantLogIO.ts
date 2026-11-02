@@ -1,11 +1,13 @@
 // Location: src/lib/assistantLogIO.ts
 // Device side of the assistant's audit log (patch 0152). The files live in the app's Library/Application Support folder, next
 // to Documents and not inside it, so Files.app cannot see them (Documents is shared on purpose, see app.json). The only way
-// out is the viewer's Export log (patch 0153). Nothing here is synced or put in a backup file.
+// out is the viewer's Export log (patch 0153). The folder is never put in a backup file. From patch 0211 each event is also handed to the
+// CloudKit audit sync (auditHook.ts), which sends it encrypted when CloudKit is the active backend; the files here stay the safety copy.
 import * as FS from 'expo-file-system/legacy';
 import { b64ToBytes, bytesToB64 } from './squareHistoryIO';
 import { isTraining } from './trainingGuard';
 import { createLogStore, logDirFromDocuments, type LogFs, type LogSink } from './assistantLog';
+import { fireAuditHook } from './auditHook';
 import { useApp } from '../state/store';
 
 const dir = (): string => { const d = logDirFromDocuments(FS.documentDirectory); if (!d) throw new Error('This device has no app folder for the log.'); return d; };
@@ -46,6 +48,6 @@ const fs: LogFs = {
 /** The one log for this iPad. The cap comes from the manager's setting (patch 0153). */
 export const assistantLog = createLogStore(fs, { capBytes: () => { const s = useApp.getState().settings.assistant; return (s.logCapMB || 200) * 1024 * 1024; } });
 /** Practice mode never writes anything real, so nothing is logged there (sending is blocked in practice mode anyway). */
-export const logSink: LogSink = async (e, prompt) => { if (isTraining()) return; await assistantLog.append(e, prompt); };
+export const logSink: LogSink = async (e, prompt) => { if (isTraining()) return; await assistantLog.append(e, prompt); fireAuditHook(e); };
 /** The practice coach (patch 0173, plan 3.7) is logged too, marked as practice, so the manager can see where trainees needed help. The log is a device-only folder and is no part of the practice data, so this is the one sink that does not stop in practice mode. */
-export const coachLogSink: LogSink = async (e, prompt) => { await assistantLog.append(e, prompt); };
+export const coachLogSink: LogSink = async (e, prompt) => { await assistantLog.append(e, prompt); fireAuditHook(e); };
