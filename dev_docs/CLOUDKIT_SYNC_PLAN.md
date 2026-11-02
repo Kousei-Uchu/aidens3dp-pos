@@ -195,6 +195,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
 6. Settings, layout and Square history shards, plus staff and staff display settings, shop and receipt settings, the logo and the shared cash and refund notices
    - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, layout and Square history shards.
    - 6a, second piece **done in code (0206)**: the cash and refund notices shared between registers, in `src/lib/noticeShared.ts` and `src/lib/cloudkit/noticeSync.ts`. Write-once `Notice` records, unread on arrival, reading and clearing stay per iPad.
+   - 6a, third piece **done in code (0207)**: the uploaded logo image, one `logo-current` record with a CloudKit asset, reconciled each poll against a device-only `logoBase` (`src/lib/logoShared.ts`, `src/lib/cloudkit/logoSync.ts`). Still to do for 6: layout and Square history shards.
    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
    - 6c. The audit log (encrypted) and training progress
    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes

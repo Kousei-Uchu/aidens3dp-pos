@@ -43,6 +43,8 @@ export type Settings = {
   sharedBase?: string;
   /** Device only: the names of the shared cash and refund notices this register has already taken in, so a cleared one never comes back (0206). */
   noticesSeen?: string[];
+  /** Device only: the hash of the uploaded logo image this register and the shop last agreed on, so a change made here can be told from one made elsewhere (0207). '' means they agreed there is no logo. */
+  logoBase?: string;
   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,

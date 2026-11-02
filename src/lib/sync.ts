@@ -22,6 +22,8 @@ import { resolvedElsewhereNotice } from './attemptShared';
 import { createEventSync } from './cloudkit/eventSync';
 import { createNoticeSync } from './cloudkit/noticeSync';
 import type { NoticeNative } from './cloudkit/noticeCloud';
+import { createLogoSync } from './cloudkit/logoSync';
+import type { LogoNative } from './cloudkit/logoCloud';
 import type { EventNative } from './cloudkit/eventCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
@@ -72,6 +74,22 @@ const noticeSync = createNoticeSync({
   allowed: kind => noticeAllowed(st().settings.appMode, st().settings.registerFeatures, kind),
 });
 setNoticeSink(n => { void noticeSync.upload(n); });
+
+// CloudKit patch 6a: the uploaded logo image is shared (decisions item 14). Once per poll this register's logo is compared with the shop's:
+// a change made here is sent, a change made elsewhere is taken, and a removal goes both ways. `logoBase` is the hash both last agreed on.
+// The file work lives in logoFiles.ts and is loaded on demand, so this file still imports in the node tests.
+const logoSync = createLogoSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as LogoNative,
+  readLocal: async () => (await import('./logoFiles')).readLocalLogo(),
+  inspect: async p => (await import('./logoFiles')).inspectDownloadedLogo(p),
+  install: async (p, t) => (await import('./logoFiles')).installDownloadedLogo(p, t),
+  clear: async () => (await import('./logoFiles')).clearLocalLogo(),
+  base: () => st().settings.logoBase ?? null,
+  setBase: h => { if ((st().settings.logoBase ?? null) !== h) st().patchSettings({ logoBase: h }); },
+});
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
@@ -202,6 +220,7 @@ export async function pollShared() {
       await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
       await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
       await noticeSync.pull(); // and take in the ones other registers raised
+      await logoSync.run(); // the logo image, both ways (never throws)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {

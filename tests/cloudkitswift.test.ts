@@ -23,7 +23,9 @@ test('putRecordOnce hands back the stored record when the name is taken, and nev
 });
 test('save() is only called in the helpers that deal with an existing record', () => {
   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
-  assert.deepEqual(callers.sort(), ['putRecordOnce', 'upsertRecord']);
+  // putLogo (0207) is the one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
+  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'upsertRecord']);
+  assert.match(body('putLogo'), /database\(\)\.record\(for: logoRecordID\)[\s\S]*\.save\(record\)[\s\S]*serverRecordChanged/);
 });
 
 // Encrypted sale fields (decisions item 17). The Swift cannot be built here, so these pin the rules by reading it.

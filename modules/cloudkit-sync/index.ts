@@ -209,6 +209,19 @@ export async function listNotices(limit = 100, after?: string | null): Promise<P
   if (!native?.listNotices) return { rows: [], next: null };
   return native.listNotices(limit, after ?? null);
 }
+// Patch 6a: the shared logo. The names match LogoNative in src/lib/cloudkit/logoCloud.ts.
+export async function putLogo(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>> {
+  if (!native?.putLogo) throw new Error(CLOUDKIT_MISSING);
+  return native.putLogo(fields, filePath);
+}
+export async function getLogo(): Promise<Record<string, any> | null> {
+  if (!native?.getLogo) return null;
+  return native.getLogo();
+}
+export async function downloadLogo(): Promise<string | null> {
+  if (!native?.downloadLogo) return null;
+  return native.downloadLogo();
+}
 export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
   if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
   return native.putResolution(handle, fields);

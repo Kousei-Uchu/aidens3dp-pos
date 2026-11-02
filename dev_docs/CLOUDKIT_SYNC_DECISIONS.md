@@ -1,6 +1,6 @@
 # CloudKit sync: decisions, status and roadmap
 
-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patch 0206
+Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 and 0207
 
 This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
 
@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
 
 ### In one paragraph
 
-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0206 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first two pieces of patch 6a (the wider shared settings, and the cash and refund notices), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0207 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first three pieces of patch 6a (the wider shared settings, the cash and refund notices, and the logo), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
 
 ### Three things gate turning CloudKit on
 
@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the 
 
 ## Part 2. What has been built, and where we are going
 
-### 2.1 Patch ledger, 0188 to 0206
+### 2.1 Patch ledger, 0188 to 0207
 
 All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
 
@@ -49,6 +49,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 0204 | 2 Nov | **Patch 5, saved carts with conflict merging** (`savedMerge.ts`): a delete beats an edit, three-part merge (name and note, assignment, contents) against a shared base, one bad record no longer aborts the pull, the pull reads every page. T93. | **Live today on Shopify too**, because carts already ran through the seam. |
 | 0205 | 2 Nov | **6a, first piece.** The wider shared settings (`sharedSettings.ts`): shop name, receipt details, the two server addresses, auto-receipt, smart change, consolidate and the assistant connection, read safely and merged per key, with staff merged person by person. A 1.5 s watcher sends edits. T94. | On Shopify the record is still the original seven keys, now read through a whitelist. The new keys are CloudKit only. |
 | 0206 | 2 Nov | **6a, second piece: the cash and refund notices** (`noticeShared.ts`, `cloudkit/noticeCloud.ts`, `cloudkit/noticeSync.ts`). Each is a write-once `notice-<register>-<id>` record, sent when raised and caught up once per launch, and taken in by the other registers unread, labelled **From** the register that raised it. Reading or clearing stays per iPad (a device-only `noticesSeen` list stops a cleared one returning). A week's age limit, 50 at a time. T95. | Swift uncompiled. Inactive until patch 8. |
+| 0207 | 2 Nov | **6a, third piece: the logo** (`logoShared.ts`, `cloudkit/logoCloud.ts`, `cloudkit/logoSync.ts`, `logoFiles.ts`). The uploaded logo image (Settings ▸ Screensaver & display) is one `logo-current` record with the image as a CloudKit asset and plain fields (hash, type, size, who, when). Each poll compares this register's logo with the shop's against a device-only `logoBase`: a change made here is sent, a change made elsewhere is taken, a removal goes both ways, and a downloaded image is checked against its hash before it replaces anything. The https link stays per device. T96. | Swift uncompiled. Inactive until patch 8. |
 
 ### 2.2 Build status of each decision
 
@@ -69,7 +70,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 11 | `pos.shared` becomes a CloudKit-fed cache | Not yet. Happens at cut-over. |
 | 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
 | 13 | Assistant audit log syncs, encrypted | **Not built** (6c). |
-| 14 | Logo syncs as an iCloud asset | **Not built** (6a). |
+| 14 | Logo syncs as an iCloud asset | Built (0207): the uploaded image, as a CKAsset on one record. The receipt and the screens that show the business logo still use the fixed shop link (see GUESSES, 0207). Swift uncompiled. |
 | 15 | Training progress syncs; owners and managers can reset | **Not built** (6c). |
 | 16 | `cloudkit.backend` flag local | The app already reads an AsyncStorage `cloudkit.backend` value at start-up, but nothing sets the CloudKit backend. The rollback flag proper arrives with patch 8. |
 | 17 | Card fields encrypted, amounts plain | Built behind the `omit` switch (0194, 0195). Cross-Apple-ID test (O4, T85) not run. |
@@ -96,7 +97,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 | 1 to 3 | Entitlements and Swift module, zone and share and account screen, backend seam | Done before 31 October. |
 | 4 | Sales and rollups with encrypted card fields, payment attempts, events | **Code complete** (0194 to 0201). Gated on the Swift build, T85 and the `encrypted` switch. |
 | 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
-| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Two pieces done** (0205 settings, 0206 notices). **Still to do:** the logo, layout, Square history shards. |
+| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Three pieces done** (0205 settings, 0206 notices, 0207 logo). **Still to do:** layout, Square history shards. |
 | 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
 | 6c | Audit log (encrypted) and training progress | Not started. |
 | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
@@ -104,7 +105,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
 | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
 
-**Next up:** finish 6a (the logo, then layout and Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
+**Next up:** finish 6a (layout, then Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
 
 ### 2.4 Open items and things to confirm
 
@@ -121,6 +122,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 - The events export is a button on the Cloud sync page, with a register name column and not the id (0201).
 - The iCloud note is shown to everyone who can open the page, before and after joining, and describes the design rather than what is sent today (0202).
 - The smart-change “typical day” now uses the whole shop’s sales (0203).
+- The shared logo is the uploaded screensaver image only. A register that has just joined takes the shop's logo over its own, and keeps its own if the shop removed theirs (0207).
 - Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
 - A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
 - The assistant’s log cap and data gate stay per iPad. With no merge base the shop’s value wins (0205).
@@ -137,12 +139,13 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 
 **CloudKit dashboard steps needed before it works on a real zone:**
 
+- The `Logo` type is fetched by its record name only, so it needs no index. Its `asset` field must be an Asset and `bytes` and `removed` Int(64).
 - The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
 - The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
 - A Sale’s `secure_json` is an encrypted field and needs no index.
 - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
 
-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) and T95 (shared notices).
+**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) and T96 (shared logo).
 
 **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
 
