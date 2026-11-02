@@ -572,3 +572,20 @@ These fill gaps in the plan (patch 7, section 6 steps 2 to 5). Each is a guess, 
 8. **`done` needs a `verified` flag and the last phase.** `completeMigration` throws otherwise, so a bug in the runner cannot make every register switch to an empty CloudKit zone.
 9. **A write that comes back without a change tag counts as not held.** Without the tag the next checked write could not be made, so carrying on would risk two holders.
 10. **The old unconditional `putMigration` is gone.** Nothing used it, and it would have let an iPad overwrite the lease.
+
+## Migration import runner (0213)
+
+These fill gaps in the plan (patch 7, section 6 steps 3 and 6). Each is a guess, change any you disagree with.
+
+1. **A page is 100 rows, and each page is one lease write.** That write is the progress record and the heartbeat, so a run that is working never goes two minutes without one (a page of 100 puts is far shorter). The plan's "about 100" is the number used. The constant is `IMPORT_PAGE`.
+2. **The cursor holds the count.** A takeover carries on counting from the stored number rather than from zero, so the phase's final count is right even when two iPads did the work. A cursor that cannot be read means the start of the phase, which is safe because every copy is idempotent.
+3. **Rows are keyed by their own field, not by Shopify's handle.** Shopify lowercases and rewrites a handle (a rollup key `A|2026-11-01` becomes `a-2026-11-01`), but the app looks records up by the original key. The handle is only the last resort.
+4. **A row with no usable key is skipped and not counted.** One damaged row should not stop the shop moving. The count check has to leave the same rows out of Shopify's side.
+5. **Higher version wins for settings and layout, Shopify wins a tie.** This is plan section 6 step 6, using the row's `version` field (the plan said `sharedVersion`, which no row has). A CloudKit row that is kept still counts as imported.
+6. **Saved carts, sales and rollups are plain upserts with no version check.** That is only safe because other registers do not write to CloudKit until the import is done (plan step 5). The queueing is not built yet.
+7. **The drawer's counts become a starting checkpoint, written after the entries.** Shopify keeps the counts and only the latest 1000 entries, so replaying the entries alone would lose the older cash. The checkpoint is stamped with the newest entry's CloudKit creation time and is never replaced by a repeat of the phase.
+8. **Ledger entries go in oldest first.** A stop part way then leaves the older history in place and a repeat writes only the rest.
+9. **A drawer row with entries but no readable shift writes a closed drawer.** The alternative was dropping the entries.
+10. **The runner stops after rollups and does not call `completeMigration`.** Only the count check may do that, so a bug here cannot switch every register to a half-filled zone.
+11. **Any error other than losing the lease is written as `failed`**, including a lost network. The next owner iPad (or this one after a relaunch) takes over at once with no two-minute wait, and carries on from the stored phase and cursor.
+12. **The Swift is untouched.** The runner uses only calls that already exist (`putLedgerEntry`, the checkpoint and shift writes, the seam's list, get and put).
