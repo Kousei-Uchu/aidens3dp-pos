@@ -209,6 +209,15 @@ export async function listNotices(limit = 100, after?: string | null): Promise<P
   if (!native?.listNotices) return { rows: [], next: null };
   return native.listNotices(limit, after ?? null);
 }
+// Patch 6c: training progress. The names match TrainingNative in src/lib/cloudkit/trainingSync.ts.
+export async function putTraining(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putTraining) throw new Error(CLOUDKIT_MISSING);
+  return native.putTraining(handle, fields);
+}
+export async function listTraining(limit = 200, after?: string | null): Promise<Page> {
+  if (!native?.listTraining) return { rows: [], next: null };
+  return native.listTraining(limit, after ?? null);
+}
 // Patch 6a: the shared logo. The names match LogoNative in src/lib/cloudkit/logoCloud.ts.
 export async function putLogo(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>> {
   if (!native?.putLogo) throw new Error(CLOUDKIT_MISSING);

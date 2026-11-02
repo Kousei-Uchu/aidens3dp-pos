@@ -1302,3 +1302,15 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8), 
 9. Airplane mode on B. On A delete the history. On B re-import one month, then reconnect B. Pass: the month B re-imported survives on both and the rest is gone.
 10. Practice mode on A, and import or delete. Pass: nothing reaches B.
 11. With the shop's `square-manifest` record edited by hand to hold text that is not a month list, wait for a poll on B. Pass: B's history is untouched.
+
+## T99. Shared training progress on two registers (0210)
+
+Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then, and the Swift has never been compiled. Until the switch, confirm only that **More ▸ Training** shows the new **Reset someone's progress** section to an owner (everyone) and a manager (cashiers only) and not to a cashier, and that a reset clears the ticks on that iPad.
+
+1. On A, signed in as Casey, finish a course. Pass: within about 30 seconds Casey's tick shows on B.
+2. On A do the Info stage of one course as Casey, and on B the Show stage of the same course. Pass: both iPads end with both stages marked.
+3. As owner on A, reset Casey's finished course. Pass: B clears it too, and Casey can take it again.
+4. Airplane mode on B. On A reset the course. On B do a stage of it, then reconnect. Pass: the course ends reset on both, with B's stage gone.
+5. As a manager, open the reset section. Pass: only cashiers are listed. As a cashier, there is no section.
+6. Start a practice run on A and finish a stage. Pass: nothing reaches B until the run is over, then it does at the next poll.
+7. Check in the CloudKit dashboard that a `training-` record holds only ids, stage names, a finish time, counts and the register name.

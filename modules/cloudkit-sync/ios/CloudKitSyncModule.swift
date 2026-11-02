@@ -168,6 +168,16 @@ public class CloudKitSyncModule: Module {
       try await self.listRecords(recordType: "Notice", limit: limit, after: after)
     }
 
+    // --- Patch 6c: training progress ---
+    // One record per person per module, changed in place (a new mark or a reset). The JavaScript side joins before it writes.
+    AsyncFunction("putTraining") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecord(recordType: "Training", recordName: "training-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("listTraining") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Training", limit: limit, after: after)
+    }
+
     // --- Patch 6a: the shared logo ---
     // One record, `logo-current`, with the image as a CKAsset. A removal clears the asset and sets `removed`. The fields are read without
     // downloading the image, so the poll never pulls it down unless it has changed; `downloadLogo` fetches it on its own.

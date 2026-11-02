@@ -2,7 +2,7 @@
 // Who has finished which module. Stored on this device only, keyed by staff id. Pure; the store reads and writes it.
 import { STAGES, type Stage } from './trainingModule';
 
-export type ModProg = { stages: Stage[]; done?: string; hints: number; secs: number; runs: number };
+export type ModProg = { stages: Stage[]; done?: string; hints: number; secs: number; runs: number; /** How many times this person's progress in this module has been reset by a manager or owner (0209+: 0210). Absent means never. */ epoch?: number };
 export type Progress = { v: 1; by: Record<string, Record<string, ModProg>> };
 /** With no staff set up there is one shared record. */
 export const SHARED_KEY = '_shared';
@@ -18,7 +18,7 @@ export function readProgress(raw: unknown): Progress {
     for (const [id, m] of Object.entries(mods as Record<string, any>)) {
       if (!m || typeof m !== 'object') continue;
       const stages = (Array.isArray(m.stages) ? m.stages : []).filter((s: unknown): s is Stage => STAGES.includes(s as Stage));
-      out.by[who][id] = { stages: [...new Set<Stage>(stages)], done: typeof m.done === 'string' ? m.done : undefined, hints: Number.isFinite(m.hints) ? m.hints : 0, secs: Number.isFinite(m.secs) ? m.secs : 0, runs: Number.isFinite(m.runs) ? m.runs : 0 };
+      out.by[who][id] = { stages: [...new Set<Stage>(stages)], done: typeof m.done === 'string' ? m.done : undefined, hints: Number.isFinite(m.hints) ? m.hints : 0, secs: Number.isFinite(m.secs) ? m.secs : 0, runs: Number.isFinite(m.runs) ? m.runs : 0, ...(Number.isInteger(m.epoch) && m.epoch > 0 ? { epoch: m.epoch } : {}) };
     }
   }
   return out;
@@ -44,3 +44,36 @@ export function nextSuggested(mods: readonly { id: string; suggestedFirst?: bool
   const open = mods.filter(m => m.id !== exceptId && !isComplete(p, who, m.id));
   return (open.find(m => m.suggestedFirst) ?? open[0])?.id;
 }
+
+// ── sharing between registers (CloudKit patch 6c, decisions items 15 and O1) ──────────────────────
+export const epochOf = (m: ModProg | undefined): number => m?.epoch ?? 0;
+const sameMod = (a: ModProg, b: ModProg): boolean => a.stages.join() === b.stages.join() && a.done === b.done && a.hints === b.hints && a.secs === b.secs && a.runs === b.runs && epochOf(a) === epochOf(b);
+export const sameModule = (a: ModProg | undefined, b: ModProg | undefined): boolean => (!a || !b ? a === b : sameMod(a, b));
+
+/**
+ * Two registers' record of one person in one module. A reset is deliberate and later than the work it wipes, so the higher reset count wins whole.
+ * With the same count the work from both is kept: stages from either, the earliest finish, and the larger run count with its hints and time.
+ */
+export function mergeModule(a: ModProg | undefined, b: ModProg | undefined): ModProg | undefined {
+  if (!a || !b) return a ?? b;
+  const ea = epochOf(a), eb = epochOf(b); if (ea !== eb) return ea > eb ? a : b;
+  const stages = STAGES.filter(s => a.stages.includes(s) || b.stages.includes(s));
+  const done = [a.done, b.done].filter((d): d is string => !!d).sort()[0];
+  // The side with more runs supplies hints and time. With the same count the larger of each is kept, so the answer does not depend on the order.
+  const lead = b.runs > a.runs ? b : a.runs > b.runs ? a : undefined;
+  return { stages, ...(done ? { done } : {}), hints: lead ? lead.hints : Math.max(a.hints, b.hints), secs: lead ? lead.secs : Math.max(a.secs, b.secs), runs: Math.max(a.runs, b.runs), ...(ea > 0 ? { epoch: ea } : {}) };
+}
+export function mergeProgress(a: Progress, b: Progress): Progress {
+  const out = emptyProgress();
+  for (const who of new Set([...Object.keys(a.by), ...Object.keys(b.by)])) {
+    for (const id of new Set([...Object.keys(a.by[who] ?? {}), ...Object.keys(b.by[who] ?? {})])) {
+      const m = mergeModule(a.by[who]?.[id], b.by[who]?.[id]); if (m) (out.by[who] ??= {})[id] = m;
+    }
+  }
+  return out;
+}
+/** A full reset (the tick too), unlike `resetModule`, which keeps the tick. The reset count goes up so the other registers take it over the old work. */
+export const resetModuleFully = (p: Progress, who: string, id: string): Progress => { const m = p.by[who]?.[id]; return m ? put(p, who, id, { stages: [], hints: 0, secs: 0, runs: 0, epoch: epochOf(m) + 1 }) : p; };
+export const resetAllFully = (p: Progress, who: string): Progress => Object.keys(p.by[who] ?? {}).reduce((q, id) => resetModuleFully(q, who, id), p);
+/** Owners reset anyone's progress. Managers reset roles below manager only. Cashiers reset nobody's. */
+export const canResetProgress = (actor: 'cashier' | 'manager' | 'owner', target: 'cashier' | 'manager' | 'owner'): boolean => actor === 'owner' || (actor === 'manager' && target === 'cashier');

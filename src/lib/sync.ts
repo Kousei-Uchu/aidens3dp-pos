@@ -26,6 +26,8 @@ import type { NoticeNative } from './cloudkit/noticeCloud';
 import { createLogoSync } from './cloudkit/logoSync';
 import type { LogoNative } from './cloudkit/logoCloud';
 import { createSquareSync } from './cloudkit/squareSync';
+import { createTrainingSync } from './cloudkit/trainingSync';
+import type { TrainingNative } from './cloudkit/trainingSync';
 import type { SquareNative } from './cloudkit/squareCloud';
 import type { EventNative } from './cloudkit/eventCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
@@ -111,6 +113,17 @@ const squareSync = createSquareSync({
   finish: async (meta, sales) => (await import('./squareHistorySyncIO')).finishSquareChange(meta, sales),
   base: () => st().settings.squareBase,
   setBase: t => { if ((st().settings.squareBase ?? '') !== t) st().patchSettings({ squareBase: t }); },
+});
+
+// CloudKit patch 6c: training progress follows the person across registers (decisions item 15). Once per poll the shop's marks are joined with
+// this register's and the differences are written back. Nothing is sent during a practice run. The session store is loaded on demand.
+const trainingSync = createTrainingSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as TrainingNative,
+  getLocal: async () => { const t = (await import('../state/trainingSession')).useTraining.getState(); await t.loadProgress(); return (await import('../state/trainingSession')).useTraining.getState().progress; },
+  setLocal: async p => (await import('../state/trainingSession')).useTraining.getState().adoptProgress(p),
 });
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
@@ -244,6 +257,7 @@ export async function pollShared() {
       await noticeSync.pull(); // and take in the ones other registers raised
       await logoSync.run(); // the logo image, both ways (never throws)
       await squareSync.run(); // the Square history months, both ways (never throws)
+      await trainingSync.run(); // training marks, both ways (never throws)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {

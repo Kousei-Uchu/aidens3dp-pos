@@ -5,7 +5,7 @@ parent: staff
 summary: Learn app tasks through animated explanations, a process walkthrough, a spotlighted real interface and safe practice.
 tags: [training, lessons, practice, learning, checkout, scenarios, tutorial]
 related: [staff, sales, sales/scanners, pay, fix]
-updated: 2026-10-12
+updated: 2026-11-02
 ---
 Open **More → Training** to learn a POS task. Courses can be started in any order.
 
@@ -37,7 +37,13 @@ The moving cursor shows how to do each thing: a tap, a double or triple tap, a p
 More courses are added one at a time, most important first.
 
 ### Progress
-Completion and stage progress are saved on this device for the signed-in staff member, or shared on the device when nobody is signed in. You can revisit completed stages or repeat a course.
+Completion and stage progress are saved for the signed-in staff member, or shared on the device when nobody is signed in. With iCloud sync on they follow the person to every register (see below). You can revisit completed stages or repeat a course.
+
+### Resetting someone's progress
+Owners can reset anyone's training progress, and managers can reset cashiers'. Open **More → Training**, find **Reset someone's progress**, tap the person, then reset one course or all of them. The ticks are cleared so they can take the course again. Cashiers cannot reset anyone's.
+
+### Progress on every register
+Once iCloud sync is on (Settings ▸ Cloud sync), a person's progress follows them to every register: finish a course on one iPad and the tick shows on the others a little later. If the same person worked on different courses on two registers, both are kept. A reset beats older work from another register, so a course you reset stays reset. Only the marks are shared (which steps, when finished, hints used and time), never the practice data. Practice runs never send anything while they are running.
 
 ## Deep
 
