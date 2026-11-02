@@ -1,8 +1,154 @@
-# CloudKit sync: decisions and open items
+# CloudKit sync: decisions, status and roadmap
 
-Aiden’s 3D Printing POS · 31 October 2026 · written against `main` at commit 9f855c2 (patch 0181)
+Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patch 0206
 
-Rechecked on 31 October 2026 against `main` at 50af9e2 (patch 0188). Nothing here changed except the shared drawer shift (item 6) and the events list (item 12), which now carry the loan to the drawer added by 0188.
+This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+
+Tags used throughout: **Sync** (goes to iCloud and is shared between registers), **Local** (stays on the device), **Open** (not settled yet).
+
+## Part 1. Where we are
+
+### In one paragraph
+
+Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0206 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first two pieces of patch 6a (the wider shared settings, and the cash and refund notices), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+
+### Three things gate turning CloudKit on
+
+1. **The Swift has never been compiled or run.** Every patch since 0192 says so. It needs a Mac build in Xcode, and nothing has touched a real CloudKit zone.
+2. **The two-Apple-ID encryption test (O4, device test T85).** Waits for a second Apple ID and iPad. Until it passes, sale card details are not written at all (the `omit` switch, below), and the encrypted secrets and pass codes (patch 6d) are not built.
+3. **Patch 8**, which retires polling, adds the rollback flag and cuts over. Until then the CloudKit backend is selected by nothing.
+
+### The card-field switch
+
+`setSaleCardMode('encrypted' | 'omit')` (0194, 0195) defaults to **omit**. In that state the card details of a sale are left out of CloudKit entirely and are never written as plain fields. Turning on `encrypted` is one argument, and it should only be turned on after T85 passes. This is the build-behind-a-switch approach suggested under O4. It is still your suggestion-from-me rather than something you have explicitly agreed, so it is listed in Part 2 under things to confirm.
+
+## Part 2. What has been built, and where we are going
+
+### 2.1 Patch ledger, 0188 to 0206
+
+All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
+
+| Patch | Date | What it did | Status |
+|---|---|---|---|
+| 0188 | 31 Oct | **Loans to the drawer.** Paid in has a loan switch, the shift remembers `loanCents` owed back, Take loan back, a confirm on closing with a loan owed, Z-report line. | Live today (not CloudKit-dependent). The assistant’s cash view and the daily float report do not mention the loan yet. |
+| 0189 | 31 Oct | The 31 October decisions written into the repo: `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`, plan section 5 rewritten, help page and two store comments corrected. | Docs and comments only. |
+| 0190 | 31 Oct | **6b first half.** The drawer as records (`src/lib/drawerRecords.ts`): shift as `drawer-shift`, each ledger entry as `ledger-<id>`, counts replayed from entries oldest first. | Pure code. |
+| 0191 | 31 Oct | **Drawer checkpoint** (`src/lib/drawerCheckpoint.ts`): `drawer-checkpoint` holds counts at a point and the server stamp of the newest entry it covers, so counts stay right past 1000 entries. | Pure code. Working assumption, not yet confirmed by you. |
+| 0192 | 31 Oct | **6b second half.** The drawer transport (`drawerCloud.ts`) and the Swift functions for the shift, ledger entries and checkpoint; `upsertRecord`, `putRecordOnce`. `sync.ts` branches to it only when the CloudKit backend is active. | Swift uncompiled. |
+| 0193 | 31 Oct | **Every record write updates in place** (`upsertRecord`). Fixes a bug that would have made a second write of the same sale, rollup, cart, settings, layout, Square history or migration record fail. | Swift uncompiled. Fields a later write leaves out stay as they were. |
+| 0194 | 31 Oct | **4, first half.** A sale as a CloudKit record (`saleRecords.ts`): plain fields, one encrypted `secure_json`, customer never written (only the Shopify id), `CardMode` switch defaulting to `omit`. | Pure code. |
+| 0195 | 31 Oct | **4, second half.** `putSale` with encrypted values in the Swift; the backend reads encrypted keys back by name and still shows the sale when this device cannot read them. Two Swift guards keep encrypted keys out of plain fields. Device test T85 written out. | Swift uncompiled. Card mode is `omit`. |
+| 0196 | 31 Oct | **4, third piece.** Events and payment attempts as records (`eventRecords.ts`): `event-<id>` (register id plus a hash of the CSV row), `attempt-<sale>-<ref>` (status only moves forward), `resolve-<sale>-<ref>` (write-once, so the first resolution wins by construction). Combined CSV builder. | Pure code. |
+| 0197 | 31 Oct | Events and attempts through the native module (`eventCloud.ts`, `putEvent`, `putResolution`, `putAttempt` and the readers). Device test T86. | Swift uncompiled. |
+| 0198 | 31 Oct | **Event call sites.** Every `events.csv` row is also written to CloudKit once, with one timestamp shared by the row and the id. A once-per-launch catch-up uploads whatever CloudKit lacks, which is the one-off upload after joining (Q13). T87. | Inactive until patch 8. |
+| 0199 | 31 Oct | **Attempt call sites** in `Pay.tsx`. The app changes its own copy first, then tells CloudKit. A catch-up sends every attempt the register holds. If another register resolved the same payment first, an info notice names who. T88. | Inactive until patch 8. |
+| 0200 | 31 Oct | **Attempt pull.** Every register reads all registers’ attempts into an in-memory `sharedAttempts`; an `unknown` attempt another register resolved is marked resolved here with a local info notice. Diagnostics gained “Card payments waiting (all registers)”, read only. T89. | Inactive until patch 8. |
+| 0201 | 31 Oct | **Events read back and the combined CSV.** Cloud sync page has an **Export all events** button (managers and owners, off in practice mode, shown only when CloudKit is active). T90. | With this, patch 4’s code is complete. |
+| 0202 | 2 Nov | **The in-app iCloud note** on the Cloud sync page (`icloudNote.ts`): nine kept blocks, a never-kept list, two warnings. Help page updated. T91. | No behaviour change, nothing is sent. |
+| 0203 | 2 Nov | **Drawer audit** (item 6). Found one real gap: smart change and the assistant’s drawer snapshot sized the “typical day” from this register’s sales only. They now use every register’s. Stale “each iPad has its own drawer” wording fixed across the Cash help pages. T92. | Live today. |
+| 0204 | 2 Nov | **Patch 5, saved carts with conflict merging** (`savedMerge.ts`): a delete beats an edit, three-part merge (name and note, assignment, contents) against a shared base, one bad record no longer aborts the pull, the pull reads every page. T93. | **Live today on Shopify too**, because carts already ran through the seam. |
+| 0205 | 2 Nov | **6a, first piece.** The wider shared settings (`sharedSettings.ts`): shop name, receipt details, the two server addresses, auto-receipt, smart change, consolidate and the assistant connection, read safely and merged per key, with staff merged person by person. A 1.5 s watcher sends edits. T94. | On Shopify the record is still the original seven keys, now read through a whitelist. The new keys are CloudKit only. |
+| 0206 | 2 Nov | **6a, second piece: the cash and refund notices** (`noticeShared.ts`, `cloudkit/noticeCloud.ts`, `cloudkit/noticeSync.ts`). Each is a write-once `notice-<register>-<id>` record, sent when raised and caught up once per launch, and taken in by the other registers unread, labelled **From** the register that raised it. Reading or clearing stays per iPad (a device-only `noticesSeen` list stops a cleared one returning). A week's age limit, 50 at a time. T95. | Swift uncompiled. Inactive until patch 8. |
+
+### 2.2 Build status of each decision
+
+“Built” means the code exists and is tested; none of it is live on CloudKit until patch 8.
+
+| Item | Decision | Build status |
+|---|---|---|
+| 1 | Staff with PIN and badge hashes sync | Built (0205), merged person by person. A removed person stays removed. |
+| 2 | Staff display settings sync | Built. They already travelled with the staff entry, so nothing more was needed. |
+| 3 | Receipt profile and receipt server URL sync | Built (0205). The receipt secret waits for 6d. |
+| 4 | Inventory prefs local | Nothing to build. |
+| 5 | Fees, cash rounding, Require PIN sync | Already in the original seven shared keys. |
+| 6 | One shared drawer | Built (0190 to 0192), audited (0203). Swift uncompiled. |
+| 7 | Bookkeeping fields local | Nothing to build. `sharedBase` was added as a new device-only key in `DEVICE_KEYS` (0205). |
+| 8 | Outbox local; another register can create a missing Shopify order (Q11) | Outbox unchanged. **The “find sales with no Shopify order and create it” recovery is not built.** |
+| 9 | Payment attempts sync with the register name; first resolution wins | Built (0196 to 0200). **Resolving another register’s payment from a different register is not built** (the shop-wide list is read only). |
+| 10 | Cash and refund notices sync | Built (0206). Reading or dismissing stays per iPad. Swift uncompiled. |
+| 11 | `pos.shared` becomes a CloudKit-fed cache | Not yet. Happens at cut-over. |
+| 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
+| 13 | Assistant audit log syncs, encrypted | **Not built** (6c). |
+| 14 | Logo syncs as an iCloud asset | **Not built** (6a). |
+| 15 | Training progress syncs; owners and managers can reset | **Not built** (6c). |
+| 16 | `cloudkit.backend` flag local | The app already reads an AsyncStorage `cloudkit.backend` value at start-up, but nothing sets the CloudKit backend. The rollback flag proper arrives with patch 8. |
+| 17 | Card fields encrypted, amounts plain | Built behind the `omit` switch (0194, 0195). Cross-Apple-ID test (O4, T85) not run. |
+| 18 | Staff name, notes, reasons and price adjustments on sales sync | Built (0194). Free-text notes stay plain, the known minor exception. |
+| 19 | Shop name | Built (0205). |
+| 20 | Pass and gift claim URLs | Built (0205). Secrets wait for 6d. |
+| 21 | Auto-receipt | Shared (0205), but **no screen edits it today**, so sharing it changes nothing yet. |
+| 22, 24, 25, 26 | Local | Nothing to build. |
+| 23 | Smart change and consolidate | Shared (0205). Settings and help text still need to say “shop-wide” once CloudKit is live (0203 left them as “this register only” on purpose). |
+| 27 | Grid version counter | Not built. Layout and Square history shards are still to do. |
+| N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
+| N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
+| N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
+| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Audit log and training progress not yet. The migration lease and verification (patch 7) are not built. |
+| O2 | Assistant connection settings sync | Built (0205). The log cap and data gate stay per iPad, and the API key waits for 6d. |
+| O3 | CloudKit keeps every ledger entry; app loads the latest 1000 | Built with the checkpoint (0191, 0192). |
+
+### 2.3 Where we are going
+
+The patch plan from the 31 October doc, updated with what has landed. Patches are small, one concern each, and the order below is the working order.
+
+| Patch | Scope | Status |
+|---|---|---|
+| 1 to 3 | Entitlements and Swift module, zone and share and account screen, backend seam | Done before 31 October. |
+| 4 | Sales and rollups with encrypted card fields, payment attempts, events | **Code complete** (0194 to 0201). Gated on the Swift build, T85 and the `encrypted` switch. |
+| 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
+| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Two pieces done** (0205 settings, 0206 notices). **Still to do:** the logo, layout, Square history shards. |
+| 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
+| 6c | Audit log (encrypted) and training progress | Not started. |
+| 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
+| 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | Not started. |
+| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
+| 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
+
+**Next up:** finish 6a (the logo, then layout and Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
+
+### 2.4 Open items and things to confirm
+
+**Still open from the decisions:** only **O4**, the cross-Apple-ID encryption test, which waits for a second device.
+
+**Working assumptions I made that you have not explicitly confirmed.** Each is written up in `dev_docs/GUESSES.md` under the patch number. Say if you disagree with any:
+
+- The card-field switch defaults to `omit` (0194).
+- The drawer checkpoint record and its use of CloudKit’s creation stamp (0191).
+- Gift card codes, gift recipients and the sale’s own receipt link go in the encrypted field with the card details (0194).
+- Events and attempts are not encrypted, and a resolution is its own write-once record (0196).
+- Events catch up once per launch by comparing `events.csv` with CloudKit, rather than keeping an “uploaded up to here” marker (0198).
+- Another register’s resolution only takes over an `unknown` attempt, never a `started` one, and it does not add a card tender (0200).
+- The events export is a button on the Cloud sync page, with a register name column and not the id (0201).
+- The iCloud note is shown to everyone who can open the page, before and after joining, and describes the design rather than what is sent today (0202).
+- The smart-change “typical day” now uses the whole shop’s sales (0203).
+- Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
+- A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
+- The assistant’s log cap and data gate stay per iPad. With no merge base the shop’s value wins (0205).
+
+**Known gaps and risks:**
+
+- Swift has never been compiled or run. Expect a build error or two on the first Mac build.
+- Two registers changing the same attempt in the same instant could still write an older status (the status check and the write are two calls). The resolution cannot be raced this way. A server-side compare would close it.
+- Saved cart saves read back and merge first, which narrows the overwrite window but does not close it, because there is no atomic compare-and-set. The soft lock is not built, and deleted carts are never tidied (the pull reads up to 1000 records).
+- Two registers editing different items in one saved cart count as one part changed on both sides, so the later edit wins. Two registers editing different fields of fees, receipt details, cart warnings or the assistant connection also lose to the later writer, because each is one value.
+- “Later” in the cart merge uses each iPad’s own clock.
+- Event catch-up cost grows with the history, which is a few pages at a few thousand events.
+- The Daily float report and the assistant’s cash view do not mention loans yet (0188).
+
+**CloudKit dashboard steps needed before it works on a real zone:**
+
+- The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
+- The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
+- A Sale’s `secure_json` is an encrypted field and needs no index.
+- The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+
+**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) and T95 (shared notices).
+
+**Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+
+## Part 3. Decisions (carried over in full from 31 October)
+
+The rest of this document is the 31 October decisions doc. It has been edited only where patch 0188 (the loan) and patch 0191 (the checkpoint) changed a line, and where the “suggested patch placement” has been replaced by the real plan in Part 2.3. The original proposal is kept in place at the end.
 
 ## What this is
 
@@ -131,7 +277,7 @@ All fourteen questions are answered. The numbers are the same as before.
 - **O1.** All training modules can be reset. Owners can reset anyone’s progress, and managers can reset progress for lower roles.
 - **O2.** Yes. The assistant’s connection settings (address, model name, options) sync along with the AI key, so a new register works straight away.
 - **O3.** CloudKit keeps every drawer ledger entry. The app loads the latest 1000.
-  - Working assumption from patch 0191, to be confirmed: a `drawer-checkpoint` record holds the counts at a point in time and the server stamp of the newest entry it covers, written when a shift opens or closes. A register replays only entries stamped after it, so the counts do not depend on the 1000 loaded. The stamp is CloudKit's creation time, not the entry's `ts`, so an entry an offline register uploads late is still counted.
+  - Working assumption from patch 0191, to be confirmed: a `drawer-checkpoint` record holds the counts at a point in time and the server stamp of the newest entry it covers, written when a shift opens or closes. A register replays only entries stamped after it, so the counts do not depend on the 1000 loaded. The stamp is CloudKit’s creation time, not the entry’s `ts`, so an entry an offline register uploads late is still counted.
 - **O4.** Deferred. There is no second Apple ID or device to test with right now. My suggestion, not yet agreed: build the encrypted fields behind a switch, and run the cross-Apple-ID test before turning on the encrypted secrets and pass codes (patch 6d).
 - **O5.** The export is one zip of JSON files containing everything stored in CloudKit. Because it includes the secrets, the zip is as sensitive as the Shopify login itself. Keep it owner-only.
 
@@ -156,7 +302,9 @@ Only the encryption test (O4), which waits for a second device.
 5. `help/settings/cloud-sync.md`: fix “cash stays on the register it was counted on” and “each register keeps its own settings”.
 6. Store comments for `smartChange` and the sales and drawer split need updating.
 
-## Suggested patch placement (proposal, not agreed)
+## Suggested patch placement (the 31 October proposal, kept for the record)
+
+Superseded by the patch plan and status in Part 2.3, which is what is being followed. The proposal as written on 31 October:
 
 - **Patch 4 (sales and rollups):** sale records with encrypted card fields, payment attempts, events, and first the two-Apple-ID encryption test.
 - **Patch 5 (saved carts):** unchanged.
@@ -166,5 +314,5 @@ Only the encryption test (O4), which waits for a second device.
 - **Patch 7 (migration):** extend to cover each register’s own local-only data (Q13).
 - **Patch 8:** unchanged.
 
-* **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
-* **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.
+- **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
+- **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.

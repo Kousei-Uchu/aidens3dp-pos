@@ -1,7 +1,7 @@
 // Location: src/lib/sync.ts
 // Outbox + polling. Cash and saved carts work offline; sales queue locally and upload later; card needs internet.
 // Every outbox step is idempotent, so a crash or retry never double-books.
-import { useApp, currentStaff, type OutboxItem, type SavedCart, type Shift } from '../state/store';
+import { useApp, currentStaff, setNoticeSink, type OutboxItem, type SavedCart, type Shift } from '../state/store';
 import { csv, setEventSink } from './csvStore';
 import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
 import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
@@ -20,6 +20,8 @@ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './clou
 import { createAttemptSync } from './cloudkit/attemptSync';
 import { resolvedElsewhereNotice } from './attemptShared';
 import { createEventSync } from './cloudkit/eventSync';
+import { createNoticeSync } from './cloudkit/noticeSync';
+import type { NoticeNative } from './cloudkit/noticeCloud';
 import type { EventNative } from './cloudkit/eventCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
@@ -27,7 +29,7 @@ import { createGiftCard } from './shopify/giftcards';
 import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
 import { adjustStock } from './shopify/inventory';
 import type { BundleConfig, Cart, SaleRecord } from './types';
-import { featureOn } from './appMode';
+import { featureOn, noticeAllowed } from './appMode';
 
 const st = () => useApp.getState();
 let running = false;
@@ -54,6 +56,22 @@ export const attemptSync = createAttemptSync({
   setLocal: list => st().patchPos({ attempts: list }),
   notifyResolved: a => { const n = resolvedElsewhereNotice(a); st().notify({ kind: 'info', title: n.title, body: n.body }); },
 });
+
+// CloudKit patch 6a: cash and refund notices are shared with the other registers (decisions item 10). A notice raised here is handed over by
+// `notify` through the store's sink; the poll sends any that were missed and takes in the ones other registers raised. Reading or clearing
+// one stays on this iPad: `noticesSeen` remembers what was taken in, so a cleared notice does not return.
+const noticeSync = createNoticeSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as NoticeNative,
+  local: () => st().pos.notices,
+  setLocal: list => st().patchPos({ notices: list }),
+  seen: () => st().settings.noticesSeen ?? [],
+  setSeen: names => st().patchSettings({ noticesSeen: names }),
+  allowed: kind => noticeAllowed(st().settings.appMode, st().settings.registerFeatures, kind),
+});
+setNoticeSink(n => { void noticeSync.upload(n); });
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
@@ -182,6 +200,8 @@ export async function pollShared() {
       await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
       await attemptSync.catchUp(); // the same for payment attempts
       await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
+      await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
+      await noticeSync.pull(); // and take in the ones other registers raised
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {
