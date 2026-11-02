@@ -1,0 +1,695 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index 9ad581e..fef175d 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync: decisions, status and roadmap
+ 
+-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0212
++Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0213
+ 
+ This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+ 
+@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ ### In one paragraph
+ 
+-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0212 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they start patch 7 with the migration lease (0212). **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0213 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they start patch 7 with the migration lease (0212) and the import runner (0213). **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+ 
+ ### Three things gate turning CloudKit on
+ 
+@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the
+ 
+ ## Part 2. What has been built, and where we are going
+ 
+-### 2.1 Patch ledger, 0188 to 0212
++### 2.1 Patch ledger, 0188 to 0213
+ 
+ All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
+ 
+@@ -55,6 +55,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 0210 | 2 Nov | **6c, first half: training progress** (`trainingShared.ts`, `cloudkit/trainingSync.ts`, merge rules in `trainingProgress.ts`). One `training-<staff id>-<module id>` record per person per module, read and joined with this register's once per poll, and only the records that differ are written back. Work from two registers is kept (stages from either, earliest finish). A reset counts up an `epoch`, and the higher count wins whole, so a reset beats older work on another register. Owners reset anyone and managers reset cashiers (O1), from a new section on **More ▸ Training**. Nothing is sent during a practice run. Swift: two new functions, uncompiled. T99. | Inactive until patch 8. |
+ | 0211 | 2 Nov | **6c, second half: the audit log** (`auditShared.ts`, `cloudkit/auditCloud.ts`, `cloudkit/auditSync.ts`, `auditHook.ts`). Each assistant log event is one `audit-<register id>-<event id>` record, written once by the register that made it. The whole event is in one encrypted `secure_json` field; only the register, day, time and kind are plain. **Nothing is sent until the encrypted switch is on**: it follows `setSaleCardMode`, so one flip after T85 turns on sales' card details and the audit log together. Each launch sends the register's own log once (Q13); the log's append hands each new event over live. A manager can choose **All registers** in the conversation log viewer to read the others' events. The local log stays the safety copy and is unchanged. Swift: three new functions and an `Audit` entry in the encrypted-key list, uncompiled. T100. | Inactive until patch 8, and sends nothing until the switch is on. |
+ | 0212 | 2 Nov | **Patch 7, first piece: the migration lease** (`migrationLease.ts`, `cloudkit/migrationCloud.ts`). One `migration-v1` record says which owner iPad is running the one-off import, which of six phases (settings, drawer, layout, carts, sales, rollups) it is in, a cursor inside the phase, and the counts imported so far. Every write is checked against CloudKit's change tag, so two owner iPads that both try to start cannot both win, and an iPad that has been replaced finds out on its next write and stops. A holder that has not written for two minutes is replaced and the new holder carries on from the stored phase and cursor. Quiet is judged on the watcher's own clock (how long a tag has stayed the newest one it can see), so a wrong clock on any iPad cannot make a live holder look dead. Only the owner can run it, a participant only waits and sees `done`. `done` can only be written from the last phase and with a `verified` flag. The old unconditional `putMigration` was removed. Swift: `putMigrationIfUnchanged` and a `getMigration` that returns the change tag, uncompiled. T101. | Inactive until patch 8. Nothing calls it yet: the import runner is the next piece. |
++| 0213 | 2 Nov | **Patch 7, second piece: the import runner** (`migrationImport.ts`, `cloudkit/migrationRun.ts`). Under the lease, `runMigration` copies Shopify into CloudKit one phase at a time, in the lease's order: settings, drawer, layout, saved carts, sales, rollups. Shopify lists are read 100 rows at a time and each page is followed by a lease write that carries the page cursor and the running count, so it is also the heartbeat and a takeover carries on from the next page with the right count. Every copy is an upsert or a write-once record, so repeating the tail of a phase does nothing twice. Rows are keyed by their own field (`sale_uuid`, `cart_uuid`, `rollup_key`, `settings_key`), not by Shopify's rewritten handle, and a row with no usable key is skipped and not counted. Settings and layout already in CloudKit keep their version if it is strictly higher (plan section 6, step 6). **The drawer** is turned from Shopify's one blob into a write-once record per ledger entry (oldest first, in chunks), a starting checkpoint holding the shop's counts (because Shopify's counts are not always the replay of its latest 1000 entries), and `drawer-shift`. A runner that has been replaced stops at its next lease write and writes nothing more, and never marks the new holder's run failed; any other error is written as `failed` so the next owner iPad carries on at once. The runner stops after the last phase **without** marking the import done: the count check and `completeMigration` are the next piece, so nothing can switch over on the strength of this alone. Pure code, no native changes. | Inactive until patch 8. Nothing calls it yet: the count check and the "Setting up sync" screen are next. |
+ 
+ ### 2.2 Build status of each decision
+ 
+@@ -89,7 +90,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
+ | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
+ | N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
+-| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Training progress is joined at every poll (0210), so it needs no separate upload. The audit log's catch-up (0211) is the one-off upload and waits for the encrypted switch. So every kind of local-only data already has its one-off upload. The migration lease is built (0212); the import and verification (patch 7, rest) are not. |
++| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Training progress is joined at every poll (0210), so it needs no separate upload. The audit log's catch-up (0211) is the one-off upload and waits for the encrypted switch. So every kind of local-only data already has its one-off upload. The migration lease (0212) and the import runner (0213) are built; the count check and the "Setting up sync" screen (patch 7, rest) are not. |
+ | O2 | Assistant connection settings sync | Built (0205). The log cap and data gate stay per iPad, and the API key waits for 6d. |
+ | O3 | CloudKit keeps every ledger entry; app loads the latest 1000 | Built with the checkpoint (0191, 0192). |
+ 
+@@ -107,10 +108,10 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 6c | Audit log (encrypted) and training progress | **Done** (0210 training progress, 0211 audit log). Swift uncompiled. |
+ | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
+ | 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | Not started. |
+-| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Started.** The lease is built (0212). The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: the import runner with its phases and checkpoints, the count check, and the "Setting up sync" screen. |
++| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Started.** The lease (0212) and the import runner with its phases and checkpoints (0213) are built. The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: the count check that marks the import done, the real Shopify and CloudKit wiring, and the "Setting up sync" screen. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
+ 
+-**Next up:** the rest of patch 7 (the import runner with its phases and checkpoints, then the count check), then 6d and 6e after the encryption test, and 8 last. Two smaller leftovers can go at any point: resolving another register's payment from a different register (item 9) and the "find sales with no Shopify order and create it" recovery (item 8).
++**Next up:** the rest of patch 7 (the count check and `completeMigration`, the wiring, then the "Setting up sync" screen), then 6d and 6e after the encryption test, and 8 last. Two smaller leftovers can go at any point: resolving another register's payment from a different register (item 9) and the "find sales with no Shopify order and create it" recovery (item 8).
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -146,6 +147,8 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - Square history: a ticket name or line note a cashier typed is not scrubbed (the same minor exception as a note on a sale), and the history months that were replaced stay in iCloud as unused shard records, because nothing deletes them yet (0209).
+ - Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
+ 
++- Import runner (0213): a Shopify row with no usable key, or with a field the CloudKit backend cannot write, is skipped or fails the run; a skipped row is not counted, so the count check (next piece) has to apply the same rule to Shopify's side. A kept CloudKit settings or layout row with a higher version still counts as imported.
++- Import runner (0213): saved carts, sales and rollups are copied with a plain upsert and no version check, which is safe only because other registers queue their writes until the import is done (plan section 6, step 5). That queueing is not built yet; it comes with patch 8.
+ - Training progress: two registers writing the same person's module in the same instant could lose one mark until the next poll, which joins them again. A reset cannot be lost this way, because the higher reset count always wins (0210).
+ **CloudKit dashboard steps needed before it works on a real zone:**
+ 
+@@ -156,7 +159,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress) and T100 (shared audit log).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213) is written but needs the wiring from the next piece.
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index 34d2950..24226a6 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -206,6 +206,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+    - 6e. The owner-only CloudKit export, one zip of JSON files (or fold it into 8)
+ 7. Migration lease, checkpoints and verification, extended so each register uploads its own local-only data once after joining (events, payment attempts, audit log, training progress)
+    - 7, first piece **done in code (0212)**: the lease. One `migration-v1` record, written only against CloudKit's change tag, with six phases (settings, drawer, layout, carts, sales, rollups), a cursor and per-phase counts (`src/lib/migrationLease.ts`, `src/lib/cloudkit/migrationCloud.ts`). Square history is not a phase: it is not in Shopify, and each register already shares its months at every poll (0209).
++   - 7, second piece **done in code (0213)**: the import runner. `runMigration` claims the lease and copies Shopify into CloudKit phase by phase, a page at a time, each page a lease write that carries the cursor and count (`src/lib/migrationImport.ts`, `src/lib/cloudkit/migrationRun.ts`). It stops after rollups without marking the run done. Still to do: the count check and `completeMigration`, the wiring to the real Shopify and CloudKit backends, and the "Setting up sync" screen.
+    - The one-off uploads of local-only data are already covered by the catch-ups (0198, 0199, 0211) and the training poll (0210).
+ 8. Retire polling and add the rollback flag
+ 
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 9a00af8..ece8a7b 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1344,3 +1344,18 @@ Needs two iPads on the **owner's** Apple ID (A and B), both on a build that carr
+ 8. On P (not the owner) call `claim()` at any time. Pass: it returns `wait` with `why: 'owner'` and never writes. After B finishes (call `finishPhase` through the six phases, then `completeMigration(..., true)`), P returns `done`.
+ 9. Call `completeMigration(..., false)`. Pass: it throws and the record is unchanged.
+ 10. Call `failMigration` on the holder, then `claim()` on the other owner iPad. Pass: it takes over at once (no two-minute wait), and `error` is empty again.
++
++## T102. The import runner against the real shop (0213)
++
++Needs the owner's iPad (A), a second iPad on the owner's Apple ID (B), a Shopify shop with real shared records (a few settings rows, a drawer with entries, a layout, a few saved carts, at least 250 sales and a few rollups), and a build with the Swift from 0212. There is still no screen and nothing calls the runner, so a developer builds a throwaway button that calls `runMigration` with the metaobject backend as the source, the CloudKit backend as the target and the CloudKit module as the drawer (the wiring is the next piece). Do this against the **Development** CloudKit environment first, with a fresh zone and no `migration-v1` record.
++
++1. On A press the button. Pass: it returns `finished`. The dashboard `Migration` record shows `status` running, phase `rollups`, and counts for all six phases. No record is marked done.
++2. Compare the counts with Shopify: settings rows (not counting `drawer`), layout, saved carts, sales and rollups each match the number of Shopify rows. The drawer count is the number of ledger entries.
++3. In the dashboard open a few sales, carts and rollups. Pass: the keys are the app's own (`sale-<uuid>`, `cart-<uuid>`, `rollup-<register>|<date>`), not Shopify's lowercased handles, and a sale has no customer name, email or phone and, while the card mode is `omit`, no card fields.
++4. Pass: the drawer has one `ledger-<id>` record per entry, one `drawer-checkpoint` holding the same counts as the Shopify drawer, and `drawer-shift` with the same open or closed state, float, paid in, paid out and loan owed. Read the drawer on a register and check its expected cash matches what Shopify's register showed.
++5. Press the button again on A. Pass: it returns `finished` again and writes no new ledger entry records (the dashboard record count does not change).
++6. Delete the zone's records, then press the button and force quit A while sales are importing. Relaunch A and press it. Pass: it resumes at once, the sales count in the dashboard ends equal to Shopify's, and no sale appears twice.
++7. Repeat step 6 but on B instead of relaunching A. Pass: B waits about two minutes, then takes over and finishes, with A's lease replaced and the counts right.
++8. Start the run on A, and while it is running delete the `Migration` record in the dashboard and press the button on B. Pass: A stops at its next page and writes nothing more, B starts again from the first phase and finishes.
++9. Turn off Wi-Fi on A during sales. Pass: the record shows `failed` with a reason, and turning Wi-Fi on and pressing the button carries on from the stored page.
++10. Make the Shopify settings row's version lower than one you write by hand into CloudKit first. Pass: the CloudKit row is kept and the count still includes it.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index a59d078..f6511b0 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -572,3 +572,20 @@ These fill gaps in the plan (patch 7, section 6 steps 2 to 5). Each is a guess,
+ 8. **`done` needs a `verified` flag and the last phase.** `completeMigration` throws otherwise, so a bug in the runner cannot make every register switch to an empty CloudKit zone.
+ 9. **A write that comes back without a change tag counts as not held.** Without the tag the next checked write could not be made, so carrying on would risk two holders.
+ 10. **The old unconditional `putMigration` is gone.** Nothing used it, and it would have let an iPad overwrite the lease.
++
++## Migration import runner (0213)
++
++These fill gaps in the plan (patch 7, section 6 steps 3 and 6). Each is a guess, change any you disagree with.
++
++1. **A page is 100 rows, and each page is one lease write.** That write is the progress record and the heartbeat, so a run that is working never goes two minutes without one (a page of 100 puts is far shorter). The plan's "about 100" is the number used. The constant is `IMPORT_PAGE`.
++2. **The cursor holds the count.** A takeover carries on counting from the stored number rather than from zero, so the phase's final count is right even when two iPads did the work. A cursor that cannot be read means the start of the phase, which is safe because every copy is idempotent.
++3. **Rows are keyed by their own field, not by Shopify's handle.** Shopify lowercases and rewrites a handle (a rollup key `A|2026-11-01` becomes `a-2026-11-01`), but the app looks records up by the original key. The handle is only the last resort.
++4. **A row with no usable key is skipped and not counted.** One damaged row should not stop the shop moving. The count check has to leave the same rows out of Shopify's side.
++5. **Higher version wins for settings and layout, Shopify wins a tie.** This is plan section 6 step 6, using the row's `version` field (the plan said `sharedVersion`, which no row has). A CloudKit row that is kept still counts as imported.
++6. **Saved carts, sales and rollups are plain upserts with no version check.** That is only safe because other registers do not write to CloudKit until the import is done (plan step 5). The queueing is not built yet.
++7. **The drawer's counts become a starting checkpoint, written after the entries.** Shopify keeps the counts and only the latest 1000 entries, so replaying the entries alone would lose the older cash. The checkpoint is stamped with the newest entry's CloudKit creation time and is never replaced by a repeat of the phase.
++8. **Ledger entries go in oldest first.** A stop part way then leaves the older history in place and a repeat writes only the rest.
++9. **A drawer row with entries but no readable shift writes a closed drawer.** The alternative was dropping the entries.
++10. **The runner stops after rollups and does not call `completeMigration`.** Only the count check may do that, so a bug here cannot switch every register to a half-filled zone.
++11. **Any error other than losing the lease is written as `failed`**, including a lost network. The next owner iPad (or this one after a relaunch) takes over at once with no two-minute wait, and carries on from the stored phase and cursor.
++12. **The Swift is untouched.** The runner uses only calls that already exist (`putLedgerEntry`, the checkpoint and shift writes, the seam's list, get and put).
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 44e7281..1804ecc 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -193,6 +193,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0210 | 2026-11-02 | CloudKit patch 6c, first half: **training progress follows the person across registers, and owners and managers can reset it** (your request: next; decisions item 15, O1). Progress was local only. `trainingProgress.ts`: `mergeModule` and `mergeProgress` join two registers' marks (stages from either, earliest finish, larger run count with its hints and time, the same whichever way round); a new optional `epoch` on a module counts resets and the higher count wins whole; `resetModuleFully` and `resetAllFully` clear the tick too (the old `resetModule` is unchanged); `canResetProgress` (owner anyone, manager cashiers only, cashier nobody). `trainingShared.ts` is the record shape (`training-<staff id>-<module id>`, ids checked before they become a name). `cloudkit/trainingSync.ts` runs once per poll: reads every record, joins with the local progress, keeps the join here (read again just before so a mark made meanwhile is kept) and writes back only the records that differ; nothing during a practice run; never throws. `trainingSession.ts`: `adoptProgress` and `resetProgress`. **More ▸ Training** has a new Reset someone's progress section for whoever may reset. Native: `putTraining` and `listTraining` (Swift uncompiled). Help: `staff/training.md` and `settings/cloud-sync.md`; `help.json` rebuilt. Tests: `tests/trainingsync.test.ts` (17: merge, order-independence, resets winning online and offline, who may reset, records, two registers settling, a mark made mid-poll, failure, unsafe ids, wiring pins). I broke four rules on purpose (reset not winning, a manager resetting managers, the stale overwrite, running in practice mode) and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so only the reset section changes anything today.** **Not done:** the audit log, the second half of 6c. Device test T99. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared training progress'. | your request |
+ | 0211 | 2026-11-02 | CloudKit patch 6c, second half: **the assistant's audit log is shared between registers, encrypted** (your request: continue; decisions item 13, Q4, N2). `auditShared.ts` is the record shape: one `audit-<register id>-<event id>` record per logged event, the whole event in one encrypted `secure_json`, plain labels only (register id and name, day, time, kind), a size guard that shrinks a too-big event in steps and says what was cut, and `auditToParts` returns nothing in `omit` mode, for purge lines and for ids that cannot be record names. `cloudkit/auditCloud.ts` and `cloudkit/auditSync.ts` send each event as it is logged (through `auditHook.ts`, so the log does not import the sync code), catch up what was missed once per launch from a labels-only listing (the one-off upload of Q13), wait for a practice run to end, and read the other registers' newest events for the manager. **The encrypted switch is `setSaleCardMode`, so nothing is sent until it is turned on after T85.** The conversation log viewer has **This iPad / All registers** while CloudKit is active, with the register's name on each line and a count of conversations that could not be read. The local log, its cap and Clear are unchanged, and the shared copy is never trimmed by them. Native: `putAudit`, `listAuditIndex` (labels only, through a new `desiredKeys` argument on `listRecords` and `runQuery`) and `listAudit`, and `Audit` in the encrypted-key list (Swift uncompiled). Help: `settings/ask-assistant.md` (the stale 'no screen yet' line is fixed) and `settings/cloud-sync.md`. Tests: `tests/auditsync.test.ts` (14). Device check: `dev_docs/DEVICE_TESTS.md` T100. Guesses: `dev_docs/GUESSES.md`, 0211. |
+ | 0212 | 2026-11-02 | CloudKit patch 7, first piece: **the migration lease** (your request: continue the decisions doc; the doc's next step after 6a and 6c, which 0206 to 0211 finished). `migrationLease.ts` is the rules with no storage and no clock: the record's shape (status, holder, one of six phases, a cursor, per-phase counts, a layout version), a reader that tells a missing record from one written by a newer build or a damaged one, and `decideMigration` (start, resume, take over, wait, done). Only the owner runs the import, a participant only waits and sees `done`. A holder that has not written for two minutes is replaced, judged by how long the watcher has seen the same change tag on its own clock, so a wrong clock on any iPad cannot make a live holder look dead. `cloudkit/migrationCloud.ts` reads and writes through a native interface passed in, with every write checked against the change tag: a lost race is `lost`, a replaced holder gets null on its next write and must stop, `done` needs the last phase and a `verified` flag, and a write that comes back without a tag counts as not held. `createMigrationWatch` is the one object a screen or the runner will use (`check`, `claim`, `line`, `looksStuck`). Native: `putMigrationIfUnchanged` (same shape as the Square manifest write) and `getMigration` now returns the change tag as `tag`, without changing `recordToDict`; the old unconditional `putMigration` is removed so nothing can bypass the lease (Swift uncompiled). **Nothing calls any of this yet.** Tests: `tests/migrationlease.test.ts` (17), three more Swift pins in `tests/cloudkitswift.test.ts`. Device check: `dev_docs/DEVICE_TESTS.md` T101. Guesses: `dev_docs/GUESSES.md`, 0212. |
++| 0213 | 2026-11-02 | CloudKit patch 7, second piece: **the import runner** (your request: continue on `CLOUDKIT_SYNC_DECISIONS.md` after 0211; the repo was already at 0212, and the doc already covered it, so this takes the doc's "next up"). `migrationImport.ts` is the rules: which Shopify rows each phase copies, the key each is written under (the row's own `sale_uuid`, `cart_uuid`, `rollup_key` or `settings_key`, not Shopify's rewritten handle), the cursor format (Shopify page cursor, position in a list, running count), the drawer row being the drawer phase's and not the settings phase's, and the version rule for settings and layout already in CloudKit (higher wins, Shopify wins a tie). `cloudkit/migrationRun.ts` is `runMigration`: claim the lease, then run each phase from the stored one, 100 rows a page, each page followed by a lease write with the cursor and count. The drawer becomes write-once ledger entry records (oldest first, in chunks), a starting checkpoint with the shop's counts, and `drawer-shift`, through the same `pushCloudDrawer` the app will use. A replaced runner stops without writing; any other error is written as `failed`. It stops after rollups and does not mark the import done (the count check is next). Pure code, no native changes. New `tests/migrationimport.test.ts` (17 tests: keys, cursors, versions, a full six-phase run, drawer counts, chunking, a crash and takeover that copies nothing twice, a quiet holder, a lost lease, a stop, a participant, an unkeyable row). Full suite unchanged apart from the new tests (the 75 failures already on `main` are the same). Guesses in `GUESSES.md` under 0213. |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/src/lib/cloudkit/migrationRun.ts b/src/lib/cloudkit/migrationRun.ts
+new file mode 100644
+index 0000000..c326560
+--- /dev/null
++++ b/src/lib/cloudkit/migrationRun.ts
+@@ -0,0 +1,172 @@
++// Location: src/lib/cloudkit/migrationRun.ts
++// CloudKit sync, patch 7 (import runner, running half): copies the shop's Shopify records into CloudKit, one phase at a time, under the
++// migration lease. The Shopify side (`source`), the CloudKit side (`target`) and the drawer's native interface are all passed in, so the
++// whole run is tested with in-memory fakes (tests/migrationimport.test.ts). Nothing calls this until the count check and the screen land
++// (the next pieces) and CloudKit is switched on (patch 8).
++// How it stays safe:
++// - Every write to the lease is a compare-and-set (migrationCloud.ts), so a runner that was replaced finds out on its next progress write
++//   and stops at once, before copying anything more. It never marks the run failed in that case, because the record is no longer its own.
++// - Every copy is idempotent (an upsert by key, or a write-once record), so repeating the tail of a phase after a crash does no harm.
++// - Each page of rows advances the cursor, which is also the heartbeat. The cursor carries the count, so a takeover carries on counting.
++// Decisions: dev_docs/CLOUDKIT_SYNC_PLAN.md section 6, dev_docs/GUESSES.md under 0213.
++import { MIGRATION_PHASES, type MigrationPhase, type MigrationState } from '../migrationLease';
++import { saveProgress, finishPhase, failMigration, type MigrationNative, type MigrationWatch } from './migrationCloud';
++import {
++  DRAWER_ROW, IMPORT_PAGE, PHASE_TYPE, decodeCursor, encodeCursor, handleFor, importable, readDrawerBlob, readShiftValue, shouldWriteVersioned,
++  type Cursor, type SourceRow,
++} from '../migrationImport';
++import { readLedger, type LedgerEntry } from '../cashLedger';
++import { entryToFields } from '../drawerRecords';
++import { checkpointToFields } from '../drawerCheckpoint';
++import { pushCloudDrawer, type DrawerNative } from './drawerCloud';
++import type { BackendPage, SharedType } from '../syncBackend';
++import type { Shift } from '../../state/store';
++
++/** Where the rows come from: Shopify, through the same seam the app already reads. */
++export type ImportSource = {
++  list(type: SharedType, o: { first: number; after: string | null }): Promise<BackendPage>;
++  get(type: SharedType, handle: string): Promise<SourceRow | null>;
++};
++/** Where they go: CloudKit, through the same seam the app will read once it is switched on. */
++export type ImportTarget = {
++  put(type: SharedType, handle: string, fields: Record<string, string>): Promise<unknown>;
++  get(type: SharedType, handle: string): Promise<SourceRow | null>;
++};
++
++export type RunDeps = {
++  watch: MigrationWatch;
++  native: MigrationNative;
++  source: ImportSource;
++  target: ImportTarget;
++  drawer: DrawerNative;
++  now: () => number;
++  /** Checked between pages. When it returns true the run stops where it is and leaves the lease to lapse, so another iPad can carry on. */
++  shouldStop?: () => boolean;
++  /** For the "Setting up sync" screen: the phase and how many records it has imported so far. */
++  onProgress?: (phase: MigrationPhase, imported: number) => void;
++};
++
++export type RunResult =
++  | { kind: 'finished'; held: MigrationState }
++  | { kind: 'wait'; why: 'owner' | 'busy' | 'newer'; state: MigrationState | null }
++  | { kind: 'done'; state: MigrationState }
++  | { kind: 'lost' }
++  | { kind: 'stopped' }
++  | { kind: 'failed'; phase: MigrationPhase; message: string };
++
++class LeaseLost extends Error { constructor() { super('The import lease was taken over.'); this.name = 'LeaseLost'; } }
++class Stopped extends Error { constructor() { super('stopped'); this.name = 'Stopped'; } }
++
++type Held = { state: MigrationState };
++
++/** Write progress and keep the new state. Throws LeaseLost when someone else wrote the record. */
++async function checkpoint(n: MigrationNative, h: Held, cursor: Cursor): Promise<void> {
++  const next = await saveProgress(n, h.state, { cursor: encodeCursor(cursor) });
++  if (!next) throw new LeaseLost();
++  h.state = next;
++}
++
++/** One page of rows into the target. Returns how many were written. A row with no usable key is skipped, not counted. */
++async function copyPage(phase: MigrationPhase, rows: SourceRow[], d: RunDeps): Promise<number> {
++  const type = PHASE_TYPE[phase]!; let written = 0;
++  for (const row of rows) {
++    if (!importable(phase, row)) continue;
++    const handle = handleFor(phase, row)!;
++    if (phase === 'settings' || phase === 'layout') {
++      // Where both sides already hold the record, the higher version wins and Shopify's wins a tie (plan section 6, step 6).
++      const existing = await d.target.get(type, handle);
++      if (!shouldWriteVersioned(row.f, existing?.f)) { written += 1; continue; }
++    }
++    await d.target.put(type, handle, row.f);
++    written += 1;
++  }
++  return written;
++}
++
++async function runPagedPhase(phase: MigrationPhase, h: Held, d: RunDeps): Promise<number> {
++  const type = PHASE_TYPE[phase]!;
++  let cur = decodeCursor(h.state.cursor);
++  for (;;) {
++    if (d.shouldStop?.()) throw new Stopped();
++    const page = await d.source.list(type, { first: IMPORT_PAGE, after: cur.a });
++    cur = { a: page.next, i: 0, n: cur.n + await copyPage(phase, page.rows, d) };
++    d.onProgress?.(phase, cur.n);
++    if (!page.next) return cur.n;
++    await checkpoint(d.native, h, cur);
++  }
++}
++
++const EPOCH_STAMP = '1970-01-01T00:00:00.000Z';
++
++/**
++ * The counts Shopify held are not always the replay of its entries (it only keeps the latest 1000), so they are written as the starting
++ * checkpoint, stamped with the newest entry just uploaded. A register replays only entries stamped after it. An existing checkpoint is
++ * never replaced here, so repeating the phase after a crash cannot move it.
++ */
++async function ensureStartingCheckpoint(n: DrawerNative, counts: Record<string, number>): Promise<void> {
++  if (!Object.keys(counts).length) return;
++  if (await n.getDrawerCheckpoint()) return;
++  const newest = (await n.listLedgerEntries(1, null)).rows[0];
++  const asOfStamp = newest ? new Date((Number(newest.createdAt) || 0) * 1000).toISOString() : EPOCH_STAMP;
++  await n.putDrawerCheckpoint(checkpointToFields({ counts, asOfStamp }));
++}
++
++/**
++ * The drawer phase. Shopify keeps the shift and the ledger as one blob; here each ledger entry becomes its own write-once record, the
++ * counts become a checkpoint, and the shift becomes `drawer-shift` (all through pushCloudDrawer, the same code the app will use live).
++ * Entries go in chunks first, so a long ledger still beats the heartbeat, and the cursor says how many are done.
++ */
++async function runDrawerPhase(h: Held, d: RunDeps): Promise<number> {
++  const row = await d.source.get('settings', DRAWER_ROW);
++  const blob = readDrawerBlob(row);
++  if (!blob) return 0;
++  const ledger = readLedger(blob.ledger);
++  const shift = readShiftValue(blob.shift);
++  const entries = [...ledger.entries].reverse(); // oldest first, so a stop part way leaves the older history in place
++  let cur = decodeCursor(h.state.cursor);
++  for (let i = cur.i; i < entries.length; i += IMPORT_PAGE) {
++    if (d.shouldStop?.()) throw new Stopped();
++    for (const e of entries.slice(i, i + IMPORT_PAGE) as LedgerEntry[]) await d.drawer.putLedgerEntry(e.id, entryToFields(e));
++    cur = { a: null, i: Math.min(i + IMPORT_PAGE, entries.length), n: cur.n };
++    await checkpoint(d.native, h, cur);
++  }
++  await ensureStartingCheckpoint(d.drawer, ledger.counts);
++  if (shift) {
++    await pushCloudDrawer(d.drawer, { shift: shift as unknown as Shift, ledger, version: Math.max(blob.version, 1), shiftPending: false });
++  } else if (entries.length) {
++    await pushCloudDrawer(d.drawer, { shift: { open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 } as unknown as Shift, ledger, version: 0, shiftPending: false });
++  }
++  d.onProgress?.('drawer', entries.length);
++  return entries.length;
++}
++
++/**
++ * Run (or carry on) the import. Claims the lease, then runs each phase from the stored one to the last, writing progress as it goes.
++ * Stops at `finished` with the last phase's count recorded: checking the counts and marking the run done is the next piece, so no
++ * client can switch over on the strength of this alone. A failure is written to the record (the next owner iPad picks it up at once);
++ * losing the lease is never written, because the record is no longer this iPad's.
++ */
++export async function runMigration(d: RunDeps): Promise<RunResult> {
++  const claim = await d.watch.claim();
++  if (claim.act === 'done') return { kind: 'done', state: claim.state };
++  if (claim.act === 'wait') return { kind: 'wait', why: claim.why, state: claim.state };
++  if (claim.act === 'lost') return { kind: 'lost' };
++  const h: Held = { state: claim.held };
++  let phase = h.state.phase;
++  try {
++    for (;;) {
++      const count = phase === 'drawer' ? await runDrawerPhase(h, d) : await runPagedPhase(phase, h, d);
++      const next = await finishPhase(d.native, h.state, count);
++      if (!next) throw new LeaseLost();
++      h.state = next;
++      if (phase === MIGRATION_PHASES[MIGRATION_PHASES.length - 1]) return { kind: 'finished', held: h.state };
++      phase = h.state.phase;
++    }
++  } catch (e) {
++    if (e instanceof LeaseLost) return { kind: 'lost' };
++    if (e instanceof Stopped) return { kind: 'stopped' };
++    const message = String((e as Error)?.message ?? e);
++    const failed = await failMigration(d.native, h.state, message, d.now()).catch(() => null);
++    return failed ? { kind: 'failed', phase, message } : { kind: 'lost' };
++  }
++}
+diff --git a/src/lib/migrationImport.ts b/src/lib/migrationImport.ts
+new file mode 100644
+index 0000000..f54cf66
+--- /dev/null
++++ b/src/lib/migrationImport.ts
+@@ -0,0 +1,103 @@
++// Location: src/lib/migrationImport.ts
++// CloudKit sync, patch 7 (import runner, rules half): what the one-off import copies from Shopify into CloudKit, and how a row is
++// turned into a CloudKit handle. Pure: no storage, no clock, no native module, so every rule is tested in Node
++// (tests/migrationimport.test.ts). The runner that uses it is cloudkit/migrationRun.ts; the lease is migrationLease.ts.
++// Decisions: dev_docs/CLOUDKIT_SYNC_PLAN.md section 6 (steps 3 and 6), dev_docs/GUESSES.md under 0213.
++import type { MigrationPhase } from './migrationLease';
++import type { SharedType } from './syncBackend';
++
++/** A Shopify row as the seam hands it back. */
++export type SourceRow = { id: string; handle: string; updatedAt: string; f: Record<string, string> };
++
++/** The seam type each paged phase reads. The settings and drawer phases both read `settings`; the drawer phase reads one row of it. */
++export const PHASE_TYPE: Partial<Record<MigrationPhase, SharedType>> = {
++  settings: 'settings', layout: 'layout', carts: 'cart', sales: 'sale', rollups: 'rollup',
++};
++
++/** Rows are written in pages of this many. CloudKit's cap is 400 per operation, so there is plenty of room. */
++export const IMPORT_PAGE = 100;
++/** The settings row that holds the shift and ledger as one blob. It is the drawer phase's, not the settings phase's. */
++export const DRAWER_ROW = 'drawer';
++
++/**
++ * Where to carry on. `a` is the Shopify page cursor (paged phases) and `i` is how far through a list held in memory (the drawer's
++ * entries). `n` is how many records the phase has imported so far, so a takeover carries the count on instead of starting it again.
++ */
++export type Cursor = { a: string | null; i: number; n: number };
++export const START_CURSOR: Cursor = { a: null, i: 0, n: 0 };
++
++export const encodeCursor = (c: Cursor): string => JSON.stringify({ a: c.a, i: c.i, n: c.n });
++
++/** An empty or unreadable cursor means the start of the phase, which is always safe because every write is idempotent. */
++export function decodeCursor(raw: string): Cursor {
++  if (!raw) return { ...START_CURSOR };
++  try {
++    const o = JSON.parse(raw);
++    const a = typeof o?.a === 'string' ? o.a : null;
++    const i = Number.isInteger(o?.i) && o.i >= 0 ? o.i : 0;
++    const n = Number.isInteger(o?.n) && o.n >= 0 ? o.n : 0;
++    return { a, i, n };
++  } catch { return { ...START_CURSOR }; }
++}
++
++/**
++ * The key a row is written under in CloudKit, or null when the row cannot be imported (it has no usable key). The key comes from the
++ * row's own fields where there is one, because Shopify lowercases and rewrites a handle (`handleOf`), so the handle is not always the key
++ * the app looks the record up by. A rollup's key is `register|date`, which Shopify turns into `register-date`.
++ */
++export function handleFor(phase: MigrationPhase, row: SourceRow): string | null {
++  const f = row.f ?? {};
++  const pick = (...vals: Array<string | undefined>): string | null => { for (const v of vals) if (typeof v === 'string' && v.trim()) return v.trim(); return null; };
++  switch (phase) {
++    case 'settings': return pick(f.settings_key, row.handle);
++    case 'layout': return pick(f.layout_key, row.handle);
++    case 'carts': return pick(f.cart_uuid, row.handle);
++    case 'sales': return pick(f.sale_uuid, saleUuidInJson(f.sale_json), row.handle);
++    case 'rollups': return pick(f.rollup_key, row.handle);
++    default: return null;
++  }
++}
++
++function saleUuidInJson(raw: string | undefined): string | undefined {
++  if (!raw) return undefined;
++  try { const o = JSON.parse(raw); return typeof o?.uuid === 'string' ? o.uuid : undefined; } catch { return undefined; }
++}
++
++/** Whether a row in a paged phase is imported. The settings phase leaves the drawer row to the drawer phase. */
++export function importable(phase: MigrationPhase, row: SourceRow): boolean {
++  const h = handleFor(phase, row);
++  if (!h) return false;
++  if (phase === 'settings' && h === DRAWER_ROW) return false;
++  return true;
++}
++
++/** A row's own version counter, 0 when it has none. */
++export const versionOf = (f: Record<string, string> | undefined): number => { const n = Number(f?.version); return Number.isFinite(n) && n > 0 ? n : 0; };
++
++/**
++ * Settings and layout may already exist in CloudKit (an earlier run got that far, or an owner iPad wrote one before the import).
++ * Section 6 step 6: where both exist the higher version wins, and Shopify's is canonical on a tie. So an existing CloudKit row is only
++ * kept when its version is strictly higher.
++ */
++export function shouldWriteVersioned(sourceF: Record<string, string>, existingF: Record<string, string> | null | undefined): boolean {
++  if (!existingF) return true;
++  return versionOf(existingF) <= versionOf(sourceF);
++}
++
++/** The drawer blob, read safely. Null when there is no row or it cannot be read. */
++export function readDrawerBlob(row: SourceRow | null | undefined): { shift: unknown; ledger: unknown; version: number } | null {
++  if (!row?.f?.settings_json) return null;
++  try {
++    const j = JSON.parse(row.f.settings_json);
++    if (!j || typeof j !== 'object') return null;
++    return { shift: j.shift, ledger: j.ledger, version: versionOf(row.f) };
++  } catch { return null; }
++}
++
++/** The shift as the app's Shift, or null when the blob has none or it is not a shift. */
++export function readShiftValue(raw: unknown): { open: boolean; floatCents: number; paidInCents: number; paidOutCents: number; [k: string]: unknown } | null {
++  const s = raw as any;
++  if (!s || typeof s !== 'object' || typeof s.open !== 'boolean') return null;
++  const c = (v: unknown): number => { const n = Number(v); return Number.isFinite(n) ? n : 0; };
++  return { ...s, open: s.open, floatCents: c(s.floatCents), paidInCents: c(s.paidInCents), paidOutCents: c(s.paidOutCents) };
++}
+diff --git a/tests/migrationimport.test.ts b/tests/migrationimport.test.ts
+new file mode 100644
+index 0000000..c1f37fd
+--- /dev/null
++++ b/tests/migrationimport.test.ts
+@@ -0,0 +1,252 @@
++// Location: tests/migrationimport.test.ts
++// CloudKit patch 7, import runner: what is copied, under which key, in what order, and that a crash, a takeover, a lost lease or a
++// stop never loses or doubles anything. Shopify, CloudKit, the drawer and the lease record are all in-memory fakes.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { DRAWER_ROW, IMPORT_PAGE, decodeCursor, encodeCursor, handleFor, importable, readDrawerBlob, readShiftValue, shouldWriteVersioned, versionOf, type SourceRow } from '../src/lib/migrationImport';
++import { createMigrationWatch, type MigrationNative } from '../src/lib/cloudkit/migrationCloud';
++import { runMigration, type ImportSource, type ImportTarget, type RunDeps } from '../src/lib/cloudkit/migrationRun';
++import { pullCloudDrawer, type DrawerNative } from '../src/lib/cloudkit/drawerCloud';
++import { LEASE_MS } from '../src/lib/migrationLease';
++import type { SharedType } from '../src/lib/syncBackend';
++
++type Rec = Record<string, any>;
++const row = (handle: string, f: Record<string, string>): SourceRow => ({ id: `gid-${handle}`, handle, updatedAt: '2026-11-02T00:00:00Z', f });
++
++function fakeLease() {
++  let rec: Rec | null = null; let n = 0; const writes: string[] = [];
++  const native: MigrationNative = {
++    async getMigration() { return rec ? { ...rec } : null; },
++    async putMigrationIfUnchanged(fields, expected) {
++      if (rec) { if (!expected || rec.tag !== expected) return { changed: true }; } else if (expected) return { changed: true };
++      rec = { ...(rec ?? {}), ...fields, tag: `t${++n}` }; writes.push(`${fields.status}/${fields.phase}`); return { changed: false, tag: rec.tag };
++    },
++  };
++  return { native, peek: () => rec, steal: () => { rec = { ...rec!, tag: `t${++n}`, holder: 'thief' }; }, writes };
++}
++
++function fakeDrawer() {
++  let clock = 1_000_000; const entries: Rec[] = []; let shift: Rec | null = null; let cp: Rec | null = null; const calls = { entryWrites: 0 };
++  const page = (rows: Rec[], after: string | null | undefined, limit: number) => { const from = after ? Number(after) : 0; return { rows: rows.slice(from, from + limit), next: from + limit < rows.length ? String(from + limit) : null }; };
++  const n: DrawerNative = {
++    async putDrawerShift(f) { shift = { ...f, recordName: 'drawer-shift' }; return shift; },
++    async getDrawerShift() { return shift; },
++    async putLedgerEntry(h, f) { const name = `ledger-${h}`; const had = entries.find(r => r.recordName === name); if (had) return had; calls.entryWrites++; clock += 1; const r = { ...f, recordName: name, createdAt: clock }; entries.push(r); return r; },
++    async listLedgerEntries(limit, after) { return page([...entries].reverse(), after, limit); },
++    async listLedgerSince(since, limit, after) { return page(entries.filter(r => r.createdAt > since), after, limit); },
++    async putDrawerCheckpoint(f) { cp = { ...f, recordName: 'drawer-checkpoint' }; return cp; },
++    async getDrawerCheckpoint() { return cp; },
++  };
++  return { n, calls, entries, cp: () => cp };
++}
++
++/** Shopify: lists by type, paged by `pageSize` with a numeric cursor. `failOnce` makes the next list of a type throw once. */
++function fakeSource(data: Partial<Record<SharedType, SourceRow[]>>, pageSize = IMPORT_PAGE) {
++  const failOnce = new Set<SharedType>(); const listCalls: string[] = [];
++  const src: ImportSource = {
++    async list(type, o) {
++      listCalls.push(`${type}@${o.after ?? 'start'}`);
++      if (failOnce.delete(type)) throw new Error(`Shopify ${type} unreachable`);
++      const rows = data[type] ?? []; const from = o.after ? Number(o.after) : 0;
++      return { rows: rows.slice(from, from + pageSize), next: from + pageSize < rows.length ? String(from + pageSize) : null };
++    },
++    async get(type, handle) { return (data[type] ?? []).find(r => r.handle === handle || r.f.settings_key === handle) ?? null; },
++  };
++  return { src, failOnce, listCalls };
++}
++
++function fakeTarget(seed: Partial<Record<SharedType, Record<string, SourceRow>>> = {}) {
++  const store: Record<string, Record<string, SourceRow>> = { cart: {}, layout: {}, sale: {}, rollup: {}, settings: {} };
++  for (const [t, rows] of Object.entries(seed)) store[t] = { ...rows };
++  const puts: string[] = [];
++  const tgt: ImportTarget = {
++    async put(type, handle, fields) { puts.push(`${type}:${handle}`); store[type][handle] = row(handle, fields); return null; },
++    async get(type, handle) { return store[type][handle] ?? null; },
++  };
++  return { tgt, store, puts };
++}
++
++const T0 = 1_800_000_000_000;
++function harness(data: Partial<Record<SharedType, SourceRow[]>>, o: { id?: string; owner?: boolean; pageSize?: number; seed?: Partial<Record<SharedType, Record<string, SourceRow>>>; lease?: ReturnType<typeof fakeLease>; clock?: { t: number } } = {}) {
++  const lease = o.lease ?? fakeLease(); const clock = o.clock ?? { t: T0 };
++  const source = fakeSource(data, o.pageSize); const target = fakeTarget(o.seed); const drawer = fakeDrawer();
++  const watch = createMigrationWatch({ native: async () => lease.native, registerId: () => o.id ?? 'A', registerName: () => `Till ${o.id ?? 'A'}`, isOwner: () => o.owner ?? true, now: () => clock.t });
++  const deps: RunDeps = { watch, native: lease.native, source: source.src, target: target.tgt, drawer: drawer.n, now: () => clock.t };
++  return { deps, lease, source, target, drawer, clock };
++}
++
++const sale = (i: number): SourceRow => row(`s${i}`, { sale_uuid: `u${i}`, register_id: 'A', total_cents: String(100 * i), sale_json: JSON.stringify({ uuid: `u${i}`, totalCents: 100 * i }) });
++const sales = (n: number) => Array.from({ length: n }, (_, i) => sale(i + 1));
++const drawerRow = (shift: Rec, ledger: Rec, version = 4): SourceRow => row('drawer', { settings_key: 'drawer', version: String(version), settings_json: JSON.stringify({ shift, ledger }) });
++const ent = (id: string, ts: string, kind = 'sale_in', delta: Rec = { '1000': 1 }) => ({ id, ts, kind, delta });
++
++test('rows are keyed by their own field, not by Shopify\'s rewritten handle', () => {
++  assert.equal(handleFor('rollups', row('a-2026-11-01', { rollup_key: 'A|2026-11-01' })), 'A|2026-11-01');
++  assert.equal(handleFor('carts', row('abc', { cart_uuid: 'ABC-1' })), 'ABC-1');
++  assert.equal(handleFor('sales', row('x', { sale_uuid: 'U1' })), 'U1');
++  assert.equal(handleFor('sales', row('x', { sale_json: '{"uuid":"U2"}' })), 'U2');
++  assert.equal(handleFor('sales', row('fallback', {})), 'fallback');
++  assert.equal(handleFor('settings', row('shared', { settings_key: 'shared' })), 'shared');
++  assert.equal(handleFor('sales', row('', {})), null);
++});
++
++test('the settings phase leaves the drawer row to the drawer phase, and a row with no key is skipped', () => {
++  assert.equal(importable('settings', row('drawer', { settings_key: DRAWER_ROW })), false);
++  assert.equal(importable('settings', row('shared', { settings_key: 'shared' })), true);
++  assert.equal(importable('sales', row('', {})), false);
++});
++
++test('cursors round-trip, and anything unreadable means the start of the phase', () => {
++  assert.deepEqual(decodeCursor(encodeCursor({ a: '100', i: 0, n: 100 })), { a: '100', i: 0, n: 100 });
++  for (const bad of ['', 'nope', '[1]', '{"a":5,"i":-1,"n":1.5}']) assert.deepEqual(decodeCursor(bad), { a: null, i: 0, n: 0 });
++});
++
++test('settings and layout: the higher version wins, Shopify wins a tie, a missing record is written', () => {
++  assert.equal(shouldWriteVersioned({ version: '3' }, null), true);
++  assert.equal(shouldWriteVersioned({ version: '3' }, { version: '3' }), true);
++  assert.equal(shouldWriteVersioned({ version: '3' }, { version: '2' }), true);
++  assert.equal(shouldWriteVersioned({ version: '3' }, { version: '4' }), false);
++  assert.equal(shouldWriteVersioned({}, {}), true);
++  assert.equal(versionOf({ version: 'x' }), 0);
++});
++
++test('the drawer blob and the shift are read safely', () => {
++  assert.equal(readDrawerBlob(null), null);
++  assert.equal(readDrawerBlob(row('drawer', { settings_json: 'not json' })), null);
++  assert.equal(readDrawerBlob(row('drawer', { settings_json: '5' })), null);
++  assert.equal(readDrawerBlob(drawerRow({ open: true }, {}, 7))?.version, 7);
++  assert.equal(readShiftValue({ nope: 1 }), null);
++  assert.deepEqual(readShiftValue({ open: true, floatCents: '500' }), { open: true, floatCents: 500, paidInCents: 0, paidOutCents: 0 });
++});
++
++test('a whole import runs the six phases in order and records each count', async () => {
++  const h = harness({
++    settings: [row('shared', { settings_key: 'shared', version: '2', settings_json: '{}' }), drawerRow({ open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, { counts: { '1000': 2 }, entries: [ent('e2', '2026-11-01T10:00:00Z'), ent('e1', '2026-11-01T09:00:00Z')] })],
++    layout: [row('main', { layout_key: 'main', version: '5', layout_json: '{}' })],
++    cart: [row('c1', { cart_uuid: 'C1' }), row('c2', { cart_uuid: 'C2' })],
++    sale: sales(3), rollup: [row('a-d', { rollup_key: 'A|2026-11-01', totals_json: '{}' })],
++  });
++  const r = await runMigration(h.deps);
++  assert.equal(r.kind, 'finished');
++  if (r.kind === 'finished') {
++    assert.deepEqual(r.held.counts, { settings: 1, drawer: 2, layout: 1, carts: 2, sales: 3, rollups: 1 });
++    assert.equal(r.held.status, 'running', 'marking it done is the count check\'s job, not the runner\'s');
++  }
++  assert.deepEqual(Object.keys(h.target.store.settings), ['shared']);
++  assert.ok(h.target.store.rollup['A|2026-11-01']);
++  assert.deepEqual(Object.keys(h.target.store.cart).sort(), ['C1', 'C2']);
++  assert.ok(h.target.puts.indexOf('settings:shared') < h.target.puts.indexOf('layout:main'));
++  assert.ok(h.target.puts.indexOf('layout:main') < h.target.puts.indexOf('cart:C1'));
++  assert.ok(h.target.puts.indexOf('cart:C2') < h.target.puts.indexOf('sale:u1'));
++  assert.ok(h.target.puts.indexOf('sale:u3') < h.target.puts.indexOf('rollup:A|2026-11-01'));
++});
++
++test('the drawer becomes one record per entry, a starting checkpoint with the shop\'s counts, and the shift', async () => {
++  const h = harness({ settings: [drawerRow({ open: true, openedAt: '2026-11-01T08:00:00Z', floatCents: 20000, paidInCents: 0, paidOutCents: 0, staff: 'Sam' }, { counts: { '1000': 5, '2000': 3 }, entries: [ent('e2', '2026-11-01T10:00:00Z'), ent('e1', '2026-11-01T09:00:00Z')] }, 4)] });
++  assert.equal((await runMigration(h.deps)).kind, 'finished');
++  assert.deepEqual(h.drawer.entries.map(e => e.recordName), ['ledger-e1', 'ledger-e2'], 'oldest first');
++  const cloud = await pullCloudDrawer(h.drawer.n);
++  assert.deepEqual(cloud.ledger.counts, { '1000': 5, '2000': 3 }, 'counts are the shop\'s, not a replay of the two entries');
++  assert.equal(cloud.shift?.shift.open, true); assert.equal(cloud.shift?.shift.staff, 'Sam');
++  assert.ok((cloud.shift?.version ?? 0) >= 4);
++});
++
++test('no drawer row is a drawer phase of zero, not an error', async () => {
++  const h = harness({ settings: [row('shared', { settings_key: 'shared' })] });
++  const r = await runMigration(h.deps);
++  assert.equal(r.kind, 'finished'); if (r.kind === 'finished') assert.equal(r.held.counts.drawer, 0);
++  assert.equal(h.drawer.entries.length, 0); assert.equal(h.drawer.cp(), null);
++});
++
++test('a long ledger goes in chunks, each one a checkpoint, and a repeat of the phase writes nothing twice', async () => {
++  const entries = Array.from({ length: 250 }, (_, i) => ent(`e${String(i).padStart(3, '0')}`, `2026-11-01T${String(Math.floor(i / 60)).padStart(2, '0')}:${String(i % 60).padStart(2, '0')}:00Z`)).reverse();
++  const h = harness({ settings: [drawerRow({ open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, { counts: { '1000': 250 }, entries })] });
++  await runMigration(h.deps);
++  assert.equal(h.drawer.calls.entryWrites, 250);
++  assert.ok(h.lease.writes.length >= 3 + 6, 'a lease write per chunk plus one per phase');
++  const again = harness({ settings: [drawerRow({ open: false, floatCents: 0, paidInCents: 0, paidOutCents: 0 }, { counts: { '1000': 250 }, entries })] });
++  await runMigration(again.deps); await runMigration({ ...again.deps });
++  assert.equal(again.drawer.calls.entryWrites, 250);
++});
++
++test('sales go in pages of the import size, the cursor and count are kept, and every row arrives once', async () => {
++  const total = IMPORT_PAGE * 2 + 30;
++  const h = harness({ sale: sales(total) });
++  const r = await runMigration(h.deps);
++  assert.equal(r.kind, 'finished'); if (r.kind === 'finished') assert.equal(r.held.counts.sales, total);
++  assert.equal(Object.keys(h.target.store.sale).length, total);
++  assert.equal(h.target.puts.filter(p => p.startsWith('sale:')).length, total);
++});
++
++test('a crash part way through sales: the next owner iPad takes over at once, resumes at the stored page and finishes with the right count', async () => {
++  const total = IMPORT_PAGE * 3;
++  const first = harness({ sale: sales(total) });
++  let calls = 0; // the third sales page fails
++  const realList = first.deps.source.list.bind(first.deps.source);
++  first.deps.source = { ...first.deps.source, list: async (t, o) => { if (t === 'sale' && ++calls === 3) throw new Error('Shopify went away'); return realList(t, o); } };
++  const r1 = await runMigration(first.deps);
++  assert.deepEqual(r1, { kind: 'failed', phase: 'sales', message: 'Shopify went away' });
++  assert.equal(first.lease.peek()?.status, 'failed');
++  assert.equal(Object.keys(first.target.store.sale).length, IMPORT_PAGE * 2);
++  // Another owner iPad, same shared lease and same CloudKit.
++  const second = harness({ sale: sales(total) }, { id: 'B', lease: first.lease });
++  second.deps.target = first.deps.target;
++  const r2 = await runMigration(second.deps);
++  assert.equal(r2.kind, 'finished');
++  if (r2.kind === 'finished') { assert.equal(r2.held.counts.sales, total); assert.equal(r2.held.holder, 'B'); }
++  assert.equal(Object.keys(first.target.store.sale).length, total);
++  assert.equal(first.target.puts.filter(p => p.startsWith('sale:')).length, total, 'the pages already copied were not copied again');
++  assert.equal(second.source.listCalls.filter(c => c.startsWith('settings')).length, 0, 'finished phases are not read again');
++});
++
++test('a holder that goes quiet is replaced after the lease, not before', async () => {
++  const lease = fakeLease(); const clock = { t: T0 };
++  const a = harness({ sale: sales(5) }, { id: 'A', lease, clock });
++  a.deps.shouldStop = () => true; // A dies after claiming
++  assert.deepEqual(await runMigration(a.deps), { kind: 'stopped' });
++  const b = harness({ sale: sales(5) }, { id: 'B', lease, clock });
++  b.deps.target = a.deps.target;
++  const early = await runMigration(b.deps);
++  assert.equal(early.kind, 'wait'); if (early.kind === 'wait') assert.equal(early.why, 'busy');
++  clock.t += LEASE_MS + 1;
++  assert.equal((await runMigration(b.deps)).kind, 'finished');
++});
++
++test('a runner that lost the lease stops copying and writes nothing to the lease record', async () => {
++  const total = IMPORT_PAGE * 3; const h = harness({ sale: sales(total) });
++  let seen = 0; const realPut = h.deps.target.put.bind(h.deps.target);
++  h.deps.target = { ...h.deps.target, put: async (t, k, f) => { if (t === 'sale' && ++seen === IMPORT_PAGE + 1) h.lease.steal(); return realPut(t, k, f); } };
++  const r = await runMigration(h.deps);
++  assert.deepEqual(r, { kind: 'lost' });
++  assert.equal(h.lease.peek()?.holder, 'thief'); assert.notEqual(h.lease.peek()?.status, 'failed', 'a replaced runner must not mark the new holder\'s run failed');
++  assert.ok(Object.keys(h.target.store.sale).length <= IMPORT_PAGE * 2, 'it stopped at the next checkpoint');
++});
++
++test('stopping leaves the lease as it was, to lapse', async () => {
++  const h = harness({ sale: sales(IMPORT_PAGE * 2) }); let pages = 0;
++  h.deps.shouldStop = () => ++pages > 5; // let settings, drawer... run, stop during sales
++  assert.deepEqual(await runMigration(h.deps), { kind: 'stopped' });
++  assert.equal(h.lease.peek()?.status, 'running');
++});
++
++test('a participant waits and never writes; a finished import says done', async () => {
++  const p = harness({ sale: sales(2) }, { id: 'P', owner: false });
++  assert.equal((await runMigration(p.deps)).kind, 'wait'); assert.equal(p.lease.writes.length, 0); assert.equal(p.target.puts.length, 0);
++  const lease = fakeLease(); await lease.native.putMigrationIfUnchanged({ v: 1, status: 'done', holder: 'A', holderName: 'A', phase: 'rollups', cursor: '', counts: '{}', startedAt: 1, finishedAt: 2, error: '' }, null);
++  assert.equal((await runMigration(harness({}, { lease }).deps)).kind, 'done');
++});
++
++test('a row that cannot be keyed is skipped and left out of the count; the rest still go', async () => {
++  const h = harness({ cart: [row('c1', { cart_uuid: 'C1' }), row('', {}), row('c3', { cart_uuid: 'C3' })] });
++  const r = await runMigration(h.deps);
++  assert.equal(r.kind, 'finished'); if (r.kind === 'finished') assert.equal(r.held.counts.carts, 2);
++});
++
++test('settings and layout already in CloudKit with a higher version are kept; equal or lower are replaced', async () => {
++  const seed = { settings: { shared: row('shared', { settings_key: 'shared', version: '9', settings_json: '{"new":1}' }) }, layout: { main: row('main', { layout_key: 'main', version: '1', layout_json: '{"old":1}' }) } };
++  const h = harness({ settings: [row('shared', { settings_key: 'shared', version: '4', settings_json: '{"old":1}' })], layout: [row('main', { layout_key: 'main', version: '2', layout_json: '{"shop":1}' })] }, { seed });
++  const r = await runMigration(h.deps);
++  assert.equal(r.kind, 'finished'); if (r.kind === 'finished') assert.equal(r.held.counts.settings, 1, 'a kept row still counts as imported');
++  assert.equal(h.target.store.settings.shared.f.settings_json, '{"new":1}');
++  assert.equal(h.target.store.layout.main.f.layout_json, '{"shop":1}');
++});
