@@ -1273,3 +1273,16 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8), 
 6. Upload a PNG over 700 KB on A. Pass: it works on A, nothing reaches B, and B's logo is unchanged.
 7. Turn practice mode on at A and upload a logo. Pass: nothing reaches B. Turn it off, then upload a logo for real. Pass: B receives that one.
 8. Leave both iPads alone for a few minutes on Wi-Fi with a network monitor on. Pass: the logo image is not downloaded again (only a small record is read each poll).
+
+## T97. Shared grid layout on two registers (0208)
+
+Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then. Nothing in this patch has been run on a device. Until the switch, confirm only that editing the grid and Settings ▸ Grid import / export ▸ Push layout now behave as before.
+
+1. On A add a tile to Home. Pass: B shows it within about 30 seconds.
+2. Airplane mode on both. On A add a page called "Prints". On B add a page called "Parts". Reconnect both. Pass: both iPads end with both pages.
+3. On A add a tile to Home. On B add a different tile to Home, both online. Pass: both end on the same Home page, holding the tile of whichever iPad sent last, and nothing else is lost.
+4. On A remove the "Parts" page while B adds a tile to it. Pass: the page is gone on both.
+5. On A move a page to the front. Pass: B shows the same order.
+6. Airplane mode on A. Edit the grid, then reconnect and make no further edit. Pass: B receives the change at the next poll without any button.
+7. Join a new register C whose grid has a page of its own. Pass: C keeps that page and gains the shop's pages, and the shop gains C's page.
+8. Practice mode on A, edit the grid. Pass: nothing reaches B.

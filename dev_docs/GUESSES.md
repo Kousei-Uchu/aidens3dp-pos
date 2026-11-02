@@ -501,3 +501,16 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
 7. **Checked by content, not by name.** A downloaded image is installed only if its hash matches the record's. A mismatch, an unreadable file or a missing asset changes nothing and is tried again next poll.
 8. **One record, history not kept.** `logo-current` is overwritten each time. Nothing keeps earlier logos.
 9. **The poll reads one small record each time and downloads the image only when it changed.** The hash of this register's file is worked out once per file, not per poll.
+
+## Shared layout (0208)
+
+These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 27). Each is a guess, change any you disagree with.
+
+1. **Merged by page, not by tile.** Tiles have no ids, so two registers editing different tiles of the same page cannot be told apart from two editing the same tile. The page is one value and the later sender keeps the whole page. A per-tile merge would need ids on tiles.
+2. **A removed page stays removed** even if the other register edited it meanwhile, the same rule as saved carts (0204) and staff (0205). The alternative was to keep an edited page.
+3. **Order: the sender's if it moved pages, otherwise the shop's.** A page that is new on one side goes after the others.
+4. **No counter on CloudKit.** The shared layout is told apart from this register's by comparing text with `gridBase`, not by `gridVersion`. The version field is still written (one more than the larger of the two) so a register on Shopify storage would still read it.
+5. **A layout edited offline is sent at the next poll.** Before, an edit made while offline was only sent if another edit followed. The poll now sends whenever this register's grid differs from `gridBase` and the shop's has not changed.
+6. **No base joins instead of replacing.** A register that has just joined keeps its own pages the shop lacks and takes the shop's version of pages both have.
+7. **A layout the shop holds that cannot be read is overwritten** by this register's, which repairs it. The alternative was to leave it alone.
+8. **An edit made while a send is running is kept**, and sent at the next poll.
