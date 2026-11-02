@@ -487,3 +487,17 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
 6. **A device that does not hold the feature skips the kind.** A companion without the drawer takes in no cash notices, the same as `notify` does for its own. The notice is still marked taken in, so it does not appear if the feature is switched on later.
 7. **Notices carry no extra detail.** A shared notice is its kind, title, body, route and time, plus the register's id and name. The title and body can contain a sale's short id or an order name, never a card or customer detail. They are not encrypted.
 8. **The whole list is read each poll.** Notices are read like payment attempts: every record, every poll. Cash and refund notices are rare, so this stays small, but it grows with history. A later patch could read only recent ones.
+
+## Shared logo (0207)
+
+These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 14). Each is a guess, change any you disagree with.
+
+1. **"The logo" is the image uploaded under Settings ▸ Screensaver & display.** It is the only logo image the app stores on a device (`screensaver.logoFile`). The shop's website logo link (`BUSINESS_LOGO_URL`, also the default link) is a constant in the app, and the receipt screen shows that constant, so nothing in the printed receipt changes. Item 14 says a new register should "print the logo"; if you want the receipt to use the shared image, that is a separate small patch to `Receipt.tsx` and `receiptDoc`.
+2. **The https logo link stays per device.** It is a link, not an image, and the screensaver settings as a whole stay per device (the screensaver's own colours and timings are not shared). Only the uploaded image is.
+3. **A register that has just joined takes the shop's image over its own.** With no `logoBase` there is nothing to tell who changed, so the shop's wins, the same rule as shared settings (0205). The exception: if the shop's logo was removed and this register has one, this register's is sent rather than deleted on a guess.
+4. **Both changed: this register wins** (the one running the poll), the same as shared settings. The other register then follows on its next poll.
+5. **A removal is shared.** Removing the uploaded image on one register removes it on the others (the file is deleted there, and the screensaver falls back to the link). The alternative was to keep a removal local.
+6. **700 KB limit, the same as backups.** A larger file is never sent, and while a register holds one the shop's image is not taken over it unseen. Settings does not stop you uploading a larger one today; it only stays on that iPad.
+7. **Checked by content, not by name.** A downloaded image is installed only if its hash matches the record's. A mismatch, an unreadable file or a missing asset changes nothing and is tried again next poll.
+8. **One record, history not kept.** `logo-current` is overwritten each time. Nothing keeps earlier logos.
+9. **The poll reads one small record each time and downloads the image only when it changed.** The hash of this register's file is worked out once per file, not per poll.

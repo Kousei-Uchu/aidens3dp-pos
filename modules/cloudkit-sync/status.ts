@@ -55,6 +55,10 @@ export type CloudKitSyncNative = {
   listResolutions?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   putNotice?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   listNotices?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 6a: the shared logo (one record with an image asset)
+  putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
+  getLogo?(): Promise<Record<string, any> | null>;
+  downloadLogo?(): Promise<string | null>;
   // Patch 6b: the shared cash drawer
   putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
   getDrawerShift?(): Promise<Record<string, any> | null>;

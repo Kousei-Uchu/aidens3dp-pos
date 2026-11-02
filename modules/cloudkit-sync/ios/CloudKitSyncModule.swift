@@ -168,6 +168,21 @@ public class CloudKitSyncModule: Module {
       try await self.listRecords(recordType: "Notice", limit: limit, after: after)
     }
 
+    // --- Patch 6a: the shared logo ---
+    // One record, `logo-current`, with the image as a CKAsset. A removal clears the asset and sets `removed`. The fields are read without
+    // downloading the image, so the poll never pulls it down unless it has changed; `downloadLogo` fetches it on its own.
+    AsyncFunction("putLogo") { (fields: [String: Any], filePath: String?) async throws -> [String: Any] in
+      try await self.putLogo(fields: fields, filePath: filePath)
+    }
+
+    AsyncFunction("getLogo") { () async throws -> [String: Any]? in
+      try await self.getLogoFields()
+    }
+
+    AsyncFunction("downloadLogo") { () async throws -> String? in
+      try await self.downloadLogoFile()
+    }
+
     // --- Patch 5: saved carts ---
     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
@@ -357,6 +372,71 @@ public class CloudKitSyncModule: Module {
     case .temporarilyUnavailable: return "temporarilyUnavailable"
     @unknown default: return "couldNotDetermine"
     }
+  }
+
+  // --- Patch 6a helpers: the logo asset ---------------------------------------------------------------------
+
+  private var logoRecordID: CKRecord.ID { CKRecord.ID(recordName: "logo-current", zoneID: storeZoneID) }
+
+  /// Create or change the logo record. With a file path the image is attached as the asset; without one the asset is cleared (a removal).
+  /// Goes through the same fetch, change, save and retry loop as upsertRecord, because the asset cannot be set through copyFields.
+  private func putLogo(fields: [String: Any], filePath: String?) async throws -> [String: Any] {
+    var lastError: Error?
+    for _ in 0..<3 {
+      let record: CKRecord
+      do {
+        record = try await database().record(for: logoRecordID)
+      } catch let error as CKError where error.code == .unknownItem {
+        record = makeRecord(recordType: "Logo", recordName: "logo-current")
+      }
+      copyFields(fields, into: record)
+      if let filePath, !filePath.isEmpty {
+        let url = filePath.hasPrefix("file://") ? (URL(string: filePath) ?? URL(fileURLWithPath: filePath)) : URL(fileURLWithPath: filePath)
+        record["asset"] = CKAsset(fileURL: url)
+      } else {
+        record["asset"] = nil
+      }
+      do {
+        let saved = try await database().save(record)
+        return logoDict(saved)
+      } catch let error as CKError where error.code == .serverRecordChanged {
+        lastError = error
+      }
+    }
+    throw lastError ?? NSError(domain: CKErrorDomain, code: CKError.Code.serverRecordChanged.rawValue)
+  }
+
+  /// The plain fields only. `desiredKeys` leaves the asset out of the fetch, so no image is downloaded.
+  private func getLogoFields() async throws -> [String: Any]? {
+    let plain = ["hash", "mime", "bytes", "removed", "ts", "registerId", "registerName"]
+    let results = try await database().records(for: [logoRecordID], desiredKeys: plain)
+    guard let result = results[logoRecordID] else { return nil }
+    switch result {
+    case .success(let record): return logoDict(record)
+    case .failure(let error):
+      if let ck = error as? CKError, ck.code == .unknownItem { return nil }
+      throw error
+    }
+  }
+
+  /// Fetch the record with its asset and copy the image to a temporary file the JavaScript side can read. The extension comes from the
+  /// stored type, because the app tells image types apart by it. Null when the record has no image.
+  private func downloadLogoFile() async throws -> String? {
+    let record: CKRecord
+    do { record = try await database().record(for: logoRecordID) }
+    catch let error as CKError where error.code == .unknownItem { return nil }
+    guard let asset = record["asset"] as? CKAsset, let source = asset.fileURL else { return nil }
+    let mime = (record["mime"] as? String) ?? ""
+    let ext = ["image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"][mime] ?? ""
+    if ext.isEmpty { return nil }
+    let dest = FileManager.default.temporaryDirectory.appendingPathComponent("shared-logo-\(UUID().uuidString).\(ext)")
+    try FileManager.default.copyItem(at: source, to: dest)
+    return dest.path
+  }
+
+  /// recordToDict without the asset, which would otherwise come back as the text of the object.
+  private func logoDict(_ record: CKRecord) -> [String: Any] {
+    var out = recordToDict(record); out.removeValue(forKey: "asset"); return out
   }
 
   // --- Patch 4 helpers -------------------------------------------------------

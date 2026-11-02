@@ -1260,3 +1260,16 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8), 
 7. Turn practice mode on at A and raise a cash notice. Pass: nothing reaches B. Turn it off. Pass: still nothing arrives later.
 8. On a register that has just joined, with notices older than a week on the others. Pass: it shows only the recent ones, and not more than 50.
 9. Pass: A never shows its own notice a second time after polling, whether it was read, cleared or left.
+
+## T96. Shared logo on two registers (0207)
+
+Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then. Nothing in this patch has been run on a device. Until the switch, confirm only that uploading and removing a logo under Settings ▸ Screensaver & display behave as before.
+
+1. On A upload a logo (a PNG under 700 KB). Wait for two polls. Pass: the screensaver preview on B shows the same image, without B having uploaded anything.
+2. On A upload a different logo. Pass: B follows within about 30 seconds, and B's old file is gone (Settings ▸ Screensaver & display shows one uploaded image).
+3. On A tap **Remove uploaded image**. Pass: B no longer has an uploaded image, and falls back to the logo link.
+4. Set up C as a new register (or join a fresh iPad) while the shop has a logo and C has its own different upload. Pass: C ends with the shop's logo.
+5. Airplane mode on A and B. Upload a different logo on each. Reconnect A first, then B. Pass: B's logo is on both iPads, and A's earlier one is gone.
+6. Upload a PNG over 700 KB on A. Pass: it works on A, nothing reaches B, and B's logo is unchanged.
+7. Turn practice mode on at A and upload a logo. Pass: nothing reaches B. Turn it off, then upload a logo for real. Pass: B receives that one.
+8. Leave both iPads alone for a few minutes on Wi-Fi with a network monitor on. Pass: the logo image is not downloaded again (only a small record is read each poll).
