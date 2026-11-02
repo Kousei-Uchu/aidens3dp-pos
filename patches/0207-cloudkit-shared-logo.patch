@@ -1,0 +1,912 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index 870c45a..a379329 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync: decisions, status and roadmap
+ 
+-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patch 0206
++Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 and 0207
+ 
+ This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+ 
+@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ ### In one paragraph
+ 
+-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0206 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first two pieces of patch 6a (the wider shared settings, and the cash and refund notices), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0207 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first three pieces of patch 6a (the wider shared settings, the cash and refund notices, and the logo), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+ 
+ ### Three things gate turning CloudKit on
+ 
+@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the
+ 
+ ## Part 2. What has been built, and where we are going
+ 
+-### 2.1 Patch ledger, 0188 to 0206
++### 2.1 Patch ledger, 0188 to 0207
+ 
+ All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
+ 
+@@ -49,6 +49,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 0204 | 2 Nov | **Patch 5, saved carts with conflict merging** (`savedMerge.ts`): a delete beats an edit, three-part merge (name and note, assignment, contents) against a shared base, one bad record no longer aborts the pull, the pull reads every page. T93. | **Live today on Shopify too**, because carts already ran through the seam. |
+ | 0205 | 2 Nov | **6a, first piece.** The wider shared settings (`sharedSettings.ts`): shop name, receipt details, the two server addresses, auto-receipt, smart change, consolidate and the assistant connection, read safely and merged per key, with staff merged person by person. A 1.5 s watcher sends edits. T94. | On Shopify the record is still the original seven keys, now read through a whitelist. The new keys are CloudKit only. |
+ | 0206 | 2 Nov | **6a, second piece: the cash and refund notices** (`noticeShared.ts`, `cloudkit/noticeCloud.ts`, `cloudkit/noticeSync.ts`). Each is a write-once `notice-<register>-<id>` record, sent when raised and caught up once per launch, and taken in by the other registers unread, labelled **From** the register that raised it. Reading or clearing stays per iPad (a device-only `noticesSeen` list stops a cleared one returning). A week's age limit, 50 at a time. T95. | Swift uncompiled. Inactive until patch 8. |
++| 0207 | 2 Nov | **6a, third piece: the logo** (`logoShared.ts`, `cloudkit/logoCloud.ts`, `cloudkit/logoSync.ts`, `logoFiles.ts`). The uploaded logo image (Settings ▸ Screensaver & display) is one `logo-current` record with the image as a CloudKit asset and plain fields (hash, type, size, who, when). Each poll compares this register's logo with the shop's against a device-only `logoBase`: a change made here is sent, a change made elsewhere is taken, a removal goes both ways, and a downloaded image is checked against its hash before it replaces anything. The https link stays per device. T96. | Swift uncompiled. Inactive until patch 8. |
+ 
+ ### 2.2 Build status of each decision
+ 
+@@ -69,7 +70,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 11 | `pos.shared` becomes a CloudKit-fed cache | Not yet. Happens at cut-over. |
+ | 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
+ | 13 | Assistant audit log syncs, encrypted | **Not built** (6c). |
+-| 14 | Logo syncs as an iCloud asset | **Not built** (6a). |
++| 14 | Logo syncs as an iCloud asset | Built (0207): the uploaded image, as a CKAsset on one record. The receipt and the screens that show the business logo still use the fixed shop link (see GUESSES, 0207). Swift uncompiled. |
+ | 15 | Training progress syncs; owners and managers can reset | **Not built** (6c). |
+ | 16 | `cloudkit.backend` flag local | The app already reads an AsyncStorage `cloudkit.backend` value at start-up, but nothing sets the CloudKit backend. The rollback flag proper arrives with patch 8. |
+ | 17 | Card fields encrypted, amounts plain | Built behind the `omit` switch (0194, 0195). Cross-Apple-ID test (O4, T85) not run. |
+@@ -96,7 +97,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 1 to 3 | Entitlements and Swift module, zone and share and account screen, backend seam | Done before 31 October. |
+ | 4 | Sales and rollups with encrypted card fields, payment attempts, events | **Code complete** (0194 to 0201). Gated on the Swift build, T85 and the `encrypted` switch. |
+ | 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
+-| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Two pieces done** (0205 settings, 0206 notices). **Still to do:** the logo, layout, Square history shards. |
++| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Three pieces done** (0205 settings, 0206 notices, 0207 logo). **Still to do:** layout, Square history shards. |
+ | 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
+ | 6c | Audit log (encrypted) and training progress | Not started. |
+ | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
+@@ -104,7 +105,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
+ 
+-**Next up:** finish 6a (the logo, then layout and Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
++**Next up:** finish 6a (layout, then Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -121,6 +122,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The events export is a button on the Cloud sync page, with a register name column and not the id (0201).
+ - The iCloud note is shown to everyone who can open the page, before and after joining, and describes the design rather than what is sent today (0202).
+ - The smart-change “typical day” now uses the whole shop’s sales (0203).
++- The shared logo is the uploaded screensaver image only. A register that has just joined takes the shop's logo over its own, and keeps its own if the shop removed theirs (0207).
+ - Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
+ - A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
+ - The assistant’s log cap and data gate stay per iPad. With no merge base the shop’s value wins (0205).
+@@ -137,12 +139,13 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ 
+ **CloudKit dashboard steps needed before it works on a real zone:**
+ 
++- The `Logo` type is fetched by its record name only, so it needs no index. Its `asset` field must be an Asset and `bytes` and `removed` Int(64).
+ - The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
+ - The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
+ - A Sale’s `secure_json` is an encrypted field and needs no index.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) and T95 (shared notices).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) and T96 (shared logo).
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index 9133e85..24bc2d4 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -195,6 +195,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+ 6. Settings, layout and Square history shards, plus staff and staff display settings, shop and receipt settings, the logo and the shared cash and refund notices
+    - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, layout and Square history shards.
+    - 6a, second piece **done in code (0206)**: the cash and refund notices shared between registers, in `src/lib/noticeShared.ts` and `src/lib/cloudkit/noticeSync.ts`. Write-once `Notice` records, unread on arrival, reading and clearing stay per iPad.
++   - 6a, third piece **done in code (0207)**: the uploaded logo image, one `logo-current` record with a CloudKit asset, reconciled each poll against a device-only `logoBase` (`src/lib/logoShared.ts`, `src/lib/cloudkit/logoSync.ts`). Still to do for 6: layout and Square history shards.
+    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
+    - 6c. The audit log (encrypted) and training progress
+    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 0ee8314..a67fd50 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1260,3 +1260,16 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8),
+ 7. Turn practice mode on at A and raise a cash notice. Pass: nothing reaches B. Turn it off. Pass: still nothing arrives later.
+ 8. On a register that has just joined, with notices older than a week on the others. Pass: it shows only the recent ones, and not more than 50.
+ 9. Pass: A never shows its own notice a second time after polling, whether it was read, cleared or left.
++
++## T96. Shared logo on two registers (0207)
++
++Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then. Nothing in this patch has been run on a device. Until the switch, confirm only that uploading and removing a logo under Settings ▸ Screensaver & display behave as before.
++
++1. On A upload a logo (a PNG under 700 KB). Wait for two polls. Pass: the screensaver preview on B shows the same image, without B having uploaded anything.
++2. On A upload a different logo. Pass: B follows within about 30 seconds, and B's old file is gone (Settings ▸ Screensaver & display shows one uploaded image).
++3. On A tap **Remove uploaded image**. Pass: B no longer has an uploaded image, and falls back to the logo link.
++4. Set up C as a new register (or join a fresh iPad) while the shop has a logo and C has its own different upload. Pass: C ends with the shop's logo.
++5. Airplane mode on A and B. Upload a different logo on each. Reconnect A first, then B. Pass: B's logo is on both iPads, and A's earlier one is gone.
++6. Upload a PNG over 700 KB on A. Pass: it works on A, nothing reaches B, and B's logo is unchanged.
++7. Turn practice mode on at A and upload a logo. Pass: nothing reaches B. Turn it off, then upload a logo for real. Pass: B receives that one.
++8. Leave both iPads alone for a few minutes on Wi-Fi with a network monitor on. Pass: the logo image is not downloaded again (only a small record is read each poll).
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 31225c9..424ebad 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -487,3 +487,17 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
+ 6. **A device that does not hold the feature skips the kind.** A companion without the drawer takes in no cash notices, the same as `notify` does for its own. The notice is still marked taken in, so it does not appear if the feature is switched on later.
+ 7. **Notices carry no extra detail.** A shared notice is its kind, title, body, route and time, plus the register's id and name. The title and body can contain a sale's short id or an order name, never a card or customer detail. They are not encrypted.
+ 8. **The whole list is read each poll.** Notices are read like payment attempts: every record, every poll. Cash and refund notices are rare, so this stays small, but it grows with history. A later patch could read only recent ones.
++
++## Shared logo (0207)
++
++These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 14). Each is a guess, change any you disagree with.
++
++1. **"The logo" is the image uploaded under Settings ▸ Screensaver & display.** It is the only logo image the app stores on a device (`screensaver.logoFile`). The shop's website logo link (`BUSINESS_LOGO_URL`, also the default link) is a constant in the app, and the receipt screen shows that constant, so nothing in the printed receipt changes. Item 14 says a new register should "print the logo"; if you want the receipt to use the shared image, that is a separate small patch to `Receipt.tsx` and `receiptDoc`.
++2. **The https logo link stays per device.** It is a link, not an image, and the screensaver settings as a whole stay per device (the screensaver's own colours and timings are not shared). Only the uploaded image is.
++3. **A register that has just joined takes the shop's image over its own.** With no `logoBase` there is nothing to tell who changed, so the shop's wins, the same rule as shared settings (0205). The exception: if the shop's logo was removed and this register has one, this register's is sent rather than deleted on a guess.
++4. **Both changed: this register wins** (the one running the poll), the same as shared settings. The other register then follows on its next poll.
++5. **A removal is shared.** Removing the uploaded image on one register removes it on the others (the file is deleted there, and the screensaver falls back to the link). The alternative was to keep a removal local.
++6. **700 KB limit, the same as backups.** A larger file is never sent, and while a register holds one the shop's image is not taken over it unseen. Settings does not stop you uploading a larger one today; it only stays on that iPad.
++7. **Checked by content, not by name.** A downloaded image is installed only if its hash matches the record's. A mismatch, an unreadable file or a missing asset changes nothing and is tried again next poll.
++8. **One record, history not kept.** `logo-current` is overwritten each time. Nothing keeps earlier logos.
++9. **The poll reads one small record each time and downloads the image only when it changed.** The hash of this register's file is worked out once per file, not per poll.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 6302809..d7da176 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -187,6 +187,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0204 | 2026-11-02 | CloudKit patch 5, saved carts with conflict merging (your request: continue). **Saved carts already went through the shared-state seam (cart put, get and list exist in the backend and the Swift), so this patch fixes how they merge rather than adding a transport.** New pure `src/lib/savedMerge.ts`: `parseSavedRow` (a record it cannot read is skipped, where one bad record used to abort the whole pull), `mergeSaved` and `applyPulled`. The rules: a delete wins over an edit (a late save used to bring a deleted cart back); a cart not changed here takes the shared copy when it is the same version or newer; a cart changed here and untouched elsewhere is sent; a cart changed on both sides is merged in three parts (name and note, assignment, contents) against `base`, the content both sides last agreed on, and a part both changed takes the later edit. `sync.ts`: `pullSaved` reads every page (it read only the first 100, and deleted carts stay as records, so open carts could be past it), `pushSaved` reads each cart back and merges before writing, runs one at a time, and no longer marks a cart clean if it was edited again while being sent; edits stamp `updatedAt`. `SavedCart` gains optional `updatedAt` and `base`. The Shopify path gets the same code. `help/sales/saved-carts.md` rewritten where it said the last sender wins. Tests: `tests/savedmerge.test.ts` (11: parsing, each rule, the three-way cases, the pull, source pins on the wiring). I broke the delete rule and the three-way rule on purpose and confirmed each fails a test; a change to the same-version shortcut did not, because the three-way gives the same answer. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Nothing sets the CloudKit backend until patch 8; on Shopify storage this changes saved cart behaviour today. The Swift is unchanged and untried.** **Not done:** the soft lock, an atomic compare-and-set in the Swift, and tidying deleted carts. Device test T93. **Decided without you:** see `dev_docs/GUESSES.md`, 'Saved carts'. | your request |
+ | 0205 | 2026-11-02 | CloudKit patch 6a, first piece: **the wider set of shared settings, read safely and merged between registers** (your request: continue on the repo, returned as a patch). New pure `src/lib/sharedSettings.ts`. **Two key sets:** on Shopify the shared record is exactly the original seven keys, as before; on CloudKit it also carries the shop name, the receipt details, the pass and gift claim server addresses, auto-receipt, smart change, consolidate, and the assistant's connection (address, model name, options), per decisions items 3, 19 to 21, 23 and O2. Staff already carried each person's display mode, theme, accent and tile size, so item 2 needed nothing more. **Reading is now safe on both backends:** `parseShared` takes only the backend's own keys, type checks each, drops a staff entry that is not a real person, and never fills in a missing key, so an older build that never wrote the new keys cannot reset them (before, `pullSettings` spread whatever JSON arrived into the settings). **Merging:** `pushSharedSettings` on CloudKit reads the shop's record first and joins it with this register's edits against `sharedBase`, what both last agreed (new device-only setting, in `DEVICE_KEYS`): a setting only the shop changed is taken, a setting changed here is kept, and **staff is merged person by person**, so people added on two registers both stay and a removed person stays removed. Without this, widening the set would have let a stale register undo another's shop-name or fee edit. **Sending:** a small watcher in `sync.ts` sends the CloudKit-only settings 1.5 s after typing stops (receipt fields save per keystroke), skips practice mode, Shopify and an unsent retry, and cannot echo: after a push or a pull the base equals what the register holds. **Not shared, on purpose:** the assistant's log cap and its data gate, the API key and pass codes (patch 6d), the logo, notices (their own patches), and everything per device. No native code changed; the existing `putSettings` and `getSettings` carry it. Wording: Smart change in Settings and two help pages, and the Cloud sync help page, say what is shared and how edits join. Tests: `tests/sharedsettings.test.ts` (15); `tests/assistantsettings.test.ts` had a test pinning the old rule that the assistant is never shared, rewritten to the new one. I broke the removal rule, the keep-ours rule, the key whitelist and the assistant strip on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, 1630 of 1630 tests pass, `help:check` green. **Nothing sets the CloudKit backend until patch 8, so the Shopify path is the only live one; its record is the same seven keys, now read through the whitelist.** Device test T94. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared settings'. | your request |
+ | 0206 | 2026-11-02 | CloudKit patch 6a, second piece: **the cash and refund notices, shared between registers** (your request: continue on the repo, returned as patches; decisions item 10, Q2). New pure `src/lib/noticeShared.ts`: only `cash` and `refund` are shared (the other six describe one iPad). A notice is one write-once `notice-<register id>-<notice id>` record holding kind, title, body, route, time and the register's id and name, with no card or customer detail. **Sending:** `notify` in the store now hands each notice it adds to a sink (`setNoticeSink`, set in `sync.ts`), the same hook pattern as the events sink, so a cash or refund notice goes to CloudKit when raised, and a catch-up once per launch sends this register's unread ones CloudKit lacks. **Taking in:** the poll reads every register's notices (`cloudkit/noticeSync.ts`, `noticeCloud.ts`) and adds the new ones unread with a new optional `Notice.from` (the register's name), shown as a **From** line on the Notifications list. **Reading and clearing stay per iPad:** nothing about reading is sent, and a device-only `noticesSeen` list (new, in `DEVICE_KEYS`) remembers which records were taken in, so a notice cleared here never returns. Own notices are never taken back, a notice older than 7 days is neither sent nor shown, a kind this device does not hold is skipped (`noticeAllowed`), a repeat of an unread notice is skipped, at most 50 arrive per read, and practice mode sends and takes in nothing. Notices come in through `patchPos`, not `notify`, so they are never sent back. Native: `putNotice` (write once) and `listNotices` added to the Swift module, its TypeScript wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. The decisions doc is replaced with the 2 November version (Part 1 and 2 added, items 1 to 27 kept) and updated for this patch. Tests: `tests/noticeshared.test.ts` (12) and `tests/noticesync.test.ts` (17: the transport and call sites on a fake native module, plus source pins for the sink, the poll, the Swift and the device-only key). I broke the seen rule, the own-notice rule, the kind list, the age rule, the per-read limit and the read filter on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is unchanged in how it writes and still untried on a Mac.** **Not done:** the logo, layout and Square history shards (the rest of 6a). Device test T95. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared notices'. | your request |
++| 0207 | 2026-11-02 | CloudKit patch 6a, third piece: **the logo, shared between registers** (your request: continue on the repo, returned as a patch; decisions item 14). New pure `src/lib/logoShared.ts`: the image is the one uploaded under Settings ▸ Screensaver & display (`screensaver.logoFile`), which is the only logo image the app stores. It is one `logo-current` record with the image as a CloudKit asset and plain fields (content hash, type, size, who and when); a removal is the same record with `removed` set and no asset. **How registers agree:** each keeps a device-only `logoBase` (new, in `DEVICE_KEYS`), the hash both it and the shop last agreed on. `decideLogo` compares this register's image, the shop's and the base: same on both is nothing; a change made here is sent (this register wins when both changed); a change made only on the shop is taken, or removes the local file if the shop removed it; a register with no base takes the shop's image, except that it keeps and sends its own when the shop removed theirs. **Running:** `cloudkit/logoSync.ts` does one reconcile per poll (`sync.ts`, after the notices, outside practice mode); `cloudkit/logoCloud.ts` is the transport; `logoFiles.ts` does the file work and is loaded on demand. The shop's fields are read without the image, which is downloaded only when it changed; a downloaded image is installed only if its hash matches the record, an over-700 KB image is never sent, and a failed run changes nothing and moves no base. **Native:** `putLogo`, `getLogo` (fields only, `desiredKeys`) and `downloadLogo` added to the Swift module, its wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. Docs: decisions doc, plan, guesses and device tests updated. Tests: `tests/logoshared.test.ts` (12) and `tests/logosync.test.ts` (17: the rules, the transport and call site on a fake native module and file system, source pins for the poll, the lazy file import, the device-only key and the Swift). I broke the base rule and the hash check on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is untried on a Mac.** **Not done:** layout and Square history shards (the rest of 6a); the receipt still shows the fixed shop logo link, not the shared image. Device test T96. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared logo'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index 88f6fd5..118eec4 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "bb13b4c1",
++ "version": "f2d5bd70",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1734,7 +1734,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### The logo on every register\nOnce sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index 4fd2dda..f13d60d 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -50,6 +50,9 @@ Once sync is switched on, two kinds of notice reach every register: **cash** (ca
+ 
+ Reading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.
+ 
++### The logo on every register
++Once sync is switched on, the logo image you upload under **Settings ▸ Screensaver & display** is shared. Upload it on one iPad and the others pick it up a few seconds later, with nothing to upload on them. Replace it and they follow. Remove it and it is removed on the others too, so they fall back to the logo link. If two iPads change it at the same moment, the one that finishes last is kept. The logo link (the https address) is not shared, and neither is anything else on that page. The image must be a PNG, JPG, GIF or WebP under 700 KB; a larger one stays on the iPad you uploaded it on. Practice mode never sends or takes in a logo.
++
+ ### What is and is not kept in iCloud
+ The Cloud sync page lists this in full under **What is kept in iCloud**. In short:
+ - **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index 88a0ef6..00c1258 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -209,6 +209,19 @@ export async function listNotices(limit = 100, after?: string | null): Promise<P
+   if (!native?.listNotices) return { rows: [], next: null };
+   return native.listNotices(limit, after ?? null);
+ }
++// Patch 6a: the shared logo. The names match LogoNative in src/lib/cloudkit/logoCloud.ts.
++export async function putLogo(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>> {
++  if (!native?.putLogo) throw new Error(CLOUDKIT_MISSING);
++  return native.putLogo(fields, filePath);
++}
++export async function getLogo(): Promise<Record<string, any> | null> {
++  if (!native?.getLogo) return null;
++  return native.getLogo();
++}
++export async function downloadLogo(): Promise<string | null> {
++  if (!native?.downloadLogo) return null;
++  return native.downloadLogo();
++}
+ export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+   if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
+   return native.putResolution(handle, fields);
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index 398447b..1125180 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -168,6 +168,21 @@ public class CloudKitSyncModule: Module {
+       try await self.listRecords(recordType: "Notice", limit: limit, after: after)
+     }
+ 
++    // --- Patch 6a: the shared logo ---
++    // One record, `logo-current`, with the image as a CKAsset. A removal clears the asset and sets `removed`. The fields are read without
++    // downloading the image, so the poll never pulls it down unless it has changed; `downloadLogo` fetches it on its own.
++    AsyncFunction("putLogo") { (fields: [String: Any], filePath: String?) async throws -> [String: Any] in
++      try await self.putLogo(fields: fields, filePath: filePath)
++    }
++
++    AsyncFunction("getLogo") { () async throws -> [String: Any]? in
++      try await self.getLogoFields()
++    }
++
++    AsyncFunction("downloadLogo") { () async throws -> String? in
++      try await self.downloadLogoFile()
++    }
++
+     // --- Patch 5: saved carts ---
+     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
+@@ -359,6 +374,71 @@ public class CloudKitSyncModule: Module {
+     }
+   }
+ 
++  // --- Patch 6a helpers: the logo asset ---------------------------------------------------------------------
++
++  private var logoRecordID: CKRecord.ID { CKRecord.ID(recordName: "logo-current", zoneID: storeZoneID) }
++
++  /// Create or change the logo record. With a file path the image is attached as the asset; without one the asset is cleared (a removal).
++  /// Goes through the same fetch, change, save and retry loop as upsertRecord, because the asset cannot be set through copyFields.
++  private func putLogo(fields: [String: Any], filePath: String?) async throws -> [String: Any] {
++    var lastError: Error?
++    for _ in 0..<3 {
++      let record: CKRecord
++      do {
++        record = try await database().record(for: logoRecordID)
++      } catch let error as CKError where error.code == .unknownItem {
++        record = makeRecord(recordType: "Logo", recordName: "logo-current")
++      }
++      copyFields(fields, into: record)
++      if let filePath, !filePath.isEmpty {
++        let url = filePath.hasPrefix("file://") ? (URL(string: filePath) ?? URL(fileURLWithPath: filePath)) : URL(fileURLWithPath: filePath)
++        record["asset"] = CKAsset(fileURL: url)
++      } else {
++        record["asset"] = nil
++      }
++      do {
++        let saved = try await database().save(record)
++        return logoDict(saved)
++      } catch let error as CKError where error.code == .serverRecordChanged {
++        lastError = error
++      }
++    }
++    throw lastError ?? NSError(domain: CKErrorDomain, code: CKError.Code.serverRecordChanged.rawValue)
++  }
++
++  /// The plain fields only. `desiredKeys` leaves the asset out of the fetch, so no image is downloaded.
++  private func getLogoFields() async throws -> [String: Any]? {
++    let plain = ["hash", "mime", "bytes", "removed", "ts", "registerId", "registerName"]
++    let results = try await database().records(for: [logoRecordID], desiredKeys: plain)
++    guard let result = results[logoRecordID] else { return nil }
++    switch result {
++    case .success(let record): return logoDict(record)
++    case .failure(let error):
++      if let ck = error as? CKError, ck.code == .unknownItem { return nil }
++      throw error
++    }
++  }
++
++  /// Fetch the record with its asset and copy the image to a temporary file the JavaScript side can read. The extension comes from the
++  /// stored type, because the app tells image types apart by it. Null when the record has no image.
++  private func downloadLogoFile() async throws -> String? {
++    let record: CKRecord
++    do { record = try await database().record(for: logoRecordID) }
++    catch let error as CKError where error.code == .unknownItem { return nil }
++    guard let asset = record["asset"] as? CKAsset, let source = asset.fileURL else { return nil }
++    let mime = (record["mime"] as? String) ?? ""
++    let ext = ["image/png": "png", "image/jpeg": "jpg", "image/gif": "gif", "image/webp": "webp"][mime] ?? ""
++    if ext.isEmpty { return nil }
++    let dest = FileManager.default.temporaryDirectory.appendingPathComponent("shared-logo-\(UUID().uuidString).\(ext)")
++    try FileManager.default.copyItem(at: source, to: dest)
++    return dest.path
++  }
++
++  /// recordToDict without the asset, which would otherwise come back as the text of the object.
++  private func logoDict(_ record: CKRecord) -> [String: Any] {
++    var out = recordToDict(record); out.removeValue(forKey: "asset"); return out
++  }
++
+   // --- Patch 4 helpers -------------------------------------------------------
+ 
+   private func database() -> CKDatabase {
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index 6fd7ed8..e940e78 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -55,6 +55,10 @@ export type CloudKitSyncNative = {
+   listResolutions?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+   putNotice?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+   listNotices?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  // Patch 6a: the shared logo (one record with an image asset)
++  putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
++  getLogo?(): Promise<Record<string, any> | null>;
++  downloadLogo?(): Promise<string | null>;
+   // Patch 6b: the shared cash drawer
+   putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
+   getDrawerShift?(): Promise<Record<string, any> | null>;
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index db558a5..cb6f1e3 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
++export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'logoBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
+ 
+ export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+diff --git a/src/lib/cloudkit/logoCloud.ts b/src/lib/cloudkit/logoCloud.ts
+new file mode 100644
+index 0000000..2385e50
+--- /dev/null
++++ b/src/lib/cloudkit/logoCloud.ts
+@@ -0,0 +1,36 @@
++// Location: src/lib/cloudkit/logoCloud.ts
++// CloudKit sync, patch 6a (the logo, transport half): the shared logo written to and read from one CloudKit record with an asset.
++// It joins the pure pieces (logoShared.ts) to a small native interface. The native module is passed in, so the flow is tested with an
++// in-memory fake and no iPad (tests/logocloud.test.ts). Nothing reaches it unless the CloudKit backend is the active one.
++// Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 14.
++import { logoFromFields, logoRemovedFields, logoToFields, type LogoType, type RemoteLogo } from '../logoShared';
++
++type Rec = Record<string, any>;
++
++/** What the logo needs of the native module. Reading the fields and fetching the image are separate, so a poll that finds nothing new never downloads the image. */
++export type LogoNative = {
++  /** Create or change the one logo record. `filePath` is the image file to attach as the asset, or null for a removal (the asset is cleared). */
++  putLogo(fields: Rec, filePath: string | null): Promise<Rec>;
++  /** The logo record's plain fields, or null when there is none. Does not download the image. */
++  getLogo(): Promise<Rec | null>;
++  /** Download the image to a temporary file and return its path, or null when the record has no image. */
++  downloadLogo(): Promise<string | null>;
++};
++
++/** The shop's logo as it stands. A record that cannot be read counts as absent. */
++export async function readCloudLogo(n: LogoNative): Promise<RemoteLogo> {
++  return logoFromFields(await n.getLogo());
++}
++
++/** Upload this register's image. Safe to repeat: it overwrites the same record with the same content. */
++export async function pushCloudLogo(n: LogoNative, registerId: string, registerName: string, image: { hash: string; type: LogoType; bytes: number; path: string }, ts: string): Promise<void> {
++  await n.putLogo(logoToFields(registerId, registerName, image, ts), image.path);
++}
++
++/** Tell the shop the logo was removed. */
++export async function pushCloudLogoRemoved(n: LogoNative, registerId: string, registerName: string, ts: string): Promise<void> {
++  await n.putLogo(logoRemovedFields(registerId, registerName, ts), null);
++}
++
++/** Fetch the shop's image to a temporary file. Null when there is none. */
++export const downloadCloudLogo = (n: LogoNative): Promise<string | null> => n.downloadLogo();
+diff --git a/src/lib/cloudkit/logoSync.ts b/src/lib/cloudkit/logoSync.ts
+new file mode 100644
+index 0000000..6821eaa
+--- /dev/null
++++ b/src/lib/cloudkit/logoSync.ts
+@@ -0,0 +1,69 @@
++// Location: src/lib/cloudkit/logoSync.ts
++// CloudKit sync, patch 6a (the logo, call site): one reconcile per poll that sends this register's logo, takes the shop's, or removes it.
++// As with notices, everything the app supplies is passed in, so the rules are tested without an iPad (tests/logosync.test.ts).
++// The app's one instance is made in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 14.
++import { decideLogo, MAX_LOGO_BYTES, type LogoState, type LogoType } from '../logoShared';
++import { downloadCloudLogo, pushCloudLogo, pushCloudLogoRemoved, readCloudLogo, type LogoNative } from './logoCloud';
++
++/** This register's image file, as read from disk. `tooBig` is an image over the size limit, which is never sent. */
++export type LocalLogo = { path: string; hash: string; type: LogoType; bytes: number } | { tooBig: true } | null;
++
++export type LogoSyncDeps = {
++  /** True only when the CloudKit backend is the one in use. */
++  active: () => boolean;
++  /** True in practice mode, when nothing is ever sent or taken in. */
++  training: () => boolean;
++  who: () => { id: string; name: string };
++  native: () => Promise<LogoNative>;
++  /** The uploaded logo file on this iPad, hashed (the app caches the hash per path), or null when there is none. */
++  readLocal: () => Promise<LocalLogo>;
++  /** Hash and size of a downloaded file, or null when it is not a readable image of an allowed type. */
++  inspect: (path: string) => Promise<{ hash: string; type: LogoType; bytes: number } | null>;
++  /** Put the downloaded image in place as this register's logo, replacing and deleting the old file. */
++  install: (tempPath: string, type: LogoType) => Promise<void>;
++  /** Remove this register's uploaded logo. */
++  clear: () => Promise<void>;
++  /** The hash both this register and the shop last agreed on (device only). */
++  base: () => string | null;
++  setBase: (hash: string) => void;
++  now?: () => string;
++};
++
++export type LogoResult = 'none' | 'pushed' | 'pulled' | 'cleared';
++
++export function createLogoSync(d: LogoSyncDeps) {
++  const now = d.now ?? (() => new Date().toISOString());
++  let running = false;
++  return {
++    /**
++     * Compare this register's logo with the shop's and act on it (see `decideLogo`). Returns what was done, or null when nothing was
++     * attempted (not active, practice mode, no register id, already running) or it failed. Never throws: the next poll tries again.
++     * A failure changes nothing here, and the base moves only after the shop and this register truly agree.
++     */
++    async run(): Promise<LogoResult | null> {
++      if (!d.active() || d.training() || running) return null;
++      const w = d.who(); if (!w.id) return null;
++      running = true;
++      try {
++        const n = await d.native();
++        const local = await d.readLocal();
++        if (local && 'tooBig' in local) return 'none'; // never sent, and the shop's is not allowed to replace it unseen either
++        const state: LogoState = local ? { hash: local.hash, type: local.type, bytes: local.bytes } : { hash: '' };
++        const remote = await readCloudLogo(n);
++        const action = decideLogo(state, remote, d.base());
++        if (action === 'none') { if (remote.kind !== 'absent') d.setBase(state.hash); return 'none'; }
++        if (action === 'push') {
++          if (local) await pushCloudLogo(n, w.id, w.name, local, now()); else await pushCloudLogoRemoved(n, w.id, w.name, now());
++          d.setBase(state.hash); return 'pushed';
++        }
++        if (action === 'clear') { await d.clear(); d.setBase(''); return 'cleared'; }
++        // pull: the image is checked before it replaces anything, so a damaged or swapped file leaves this register's logo as it was
++        const tmp = await downloadCloudLogo(n); if (!tmp) return null;
++        const got = await d.inspect(tmp);
++        if (!got || remote.kind !== 'image' || got.hash !== remote.hash || got.bytes > MAX_LOGO_BYTES) return null;
++        await d.install(tmp, got.type); d.setBase(got.hash); return 'pulled';
++      } catch { return null; } finally { running = false; }
++    },
++  };
++}
++export type LogoSync = ReturnType<typeof createLogoSync>;
+diff --git a/src/lib/eventRecords.ts b/src/lib/eventRecords.ts
+index dbd6bed..0d6d417 100644
+--- a/src/lib/eventRecords.ts
++++ b/src/lib/eventRecords.ts
+@@ -26,7 +26,7 @@ export type EventInput = { ts: string; kind: EventKind; saleUuid?: string; refer
+ export type SharedEvent = EventInput & { id: string; registerId: string; registerName: string };
+ 
+ /** A 53-bit string hash (cyrb53). Not a secret, only a stable short name for the same text. */
+-function hash53(text: string): string {
++export function hash53(text: string): string {
+   let h1 = 0xdeadbeef, h2 = 0x41c6ce57;
+   for (let i = 0; i < text.length; i++) { const c = text.charCodeAt(i); h1 = Math.imul(h1 ^ c, 2654435761); h2 = Math.imul(h2 ^ c, 1597334677); }
+   h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+diff --git a/src/lib/logoFiles.ts b/src/lib/logoFiles.ts
+new file mode 100644
+index 0000000..6ef5448
+--- /dev/null
++++ b/src/lib/logoFiles.ts
+@@ -0,0 +1,50 @@
++// Location: src/lib/logoFiles.ts
++// CloudKit sync, patch 6a (the logo): the file work on this iPad for the shared logo. Reads and hashes the uploaded logo, checks a
++// downloaded one, and puts it in place the way Settings ▸ Screensaver & display does (a file in `branding/`, named in `screensaver.logoFile`).
++// Kept apart from the pure rules so those run in the node tests; this part needs the iPad's file system.
++import * as FS from 'expo-file-system/legacy';
++import { useApp } from '../state/store';
++import { isTraining } from './trainingGuard';
++import { LOGO_EXT, MAX_LOGO_BYTES, isLogoType, logoHash, logoTypeOfPath, type LogoType } from './logoShared';
++import type { LocalLogo, LogoSyncDeps } from './cloudkit/logoSync';
++
++// The hash is worked out once per file, not on every poll: the cache is keyed by the path and the size, and a new upload has a new path.
++let cache: { path: string; size: number; hash: string; type: LogoType } | null = null;
++
++async function hashFile(path: string): Promise<{ hash: string; type: LogoType; bytes: number } | null> {
++  const type = logoTypeOfPath(path); if (!type) return null;
++  const info = await FS.getInfoAsync(path); if (!info.exists || (info.size ?? 0) <= 0) return null;
++  const bytes = info.size ?? 0; if (bytes > MAX_LOGO_BYTES) return { hash: '', type, bytes };
++  if (cache && cache.path === path && cache.size === bytes) return { hash: cache.hash, type, bytes };
++  const hash = logoHash(await FS.readAsStringAsync(path, { encoding: FS.EncodingType.Base64 }));
++  cache = { path, size: bytes, hash, type }; return { hash, type, bytes };
++}
++
++export const readLocalLogo: LogoSyncDeps['readLocal'] = async (): Promise<LocalLogo> => {
++  const path = useApp.getState().settings.screensaver.logoFile; if (!path) return null;
++  const h = await hashFile(path); if (!h) return null; // a file that has gone missing counts as no logo, so the shop's replaces it
++  return h.bytes > MAX_LOGO_BYTES ? { tooBig: true } : { path, hash: h.hash, type: h.type, bytes: h.bytes };
++};
++
++export const inspectDownloadedLogo: LogoSyncDeps['inspect'] = async path => {
++  const h = await hashFile(path); return h && isLogoType(h.type) && h.hash ? h : null;
++};
++
++export const installDownloadedLogo: LogoSyncDeps['install'] = async (tempPath, type) => {
++  if (isTraining()) return; // a new file in Documents that nothing would clean up afterwards
++  const dir = `${FS.documentDirectory}branding/`; await FS.makeDirectoryAsync(dir, { intermediates: true }).catch(() => {});
++  const to = `${dir}logo-${Date.now()}.${LOGO_EXT[type]}`;
++  await FS.copyAsync({ from: tempPath, to });
++  const old = useApp.getState().settings.screensaver.logoFile;
++  const ss = useApp.getState().settings.screensaver;
++  useApp.getState().patchSettings({ screensaver: { ...ss, logoFile: to } });
++  if (old && old !== to) await FS.deleteAsync(old, { idempotent: true }).catch(() => {});
++  await FS.deleteAsync(tempPath, { idempotent: true }).catch(() => {});
++};
++
++export const clearLocalLogo: LogoSyncDeps['clear'] = async () => {
++  if (isTraining()) return;
++  const ss = useApp.getState().settings.screensaver; const old = ss.logoFile;
++  useApp.getState().patchSettings({ screensaver: { ...ss, logoFile: '' } });
++  if (old) await FS.deleteAsync(old, { idempotent: true }).catch(() => {});
++};
+diff --git a/src/lib/logoShared.ts b/src/lib/logoShared.ts
+new file mode 100644
+index 0000000..f68a683
+--- /dev/null
++++ b/src/lib/logoShared.ts
+@@ -0,0 +1,71 @@
++// Location: src/lib/logoShared.ts
++// CloudKit sync, patch 6a (the logo): the uploaded logo image, shared between registers.
++//
++// Decisions (dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 14): the branding logo syncs as an iCloud asset, so a new register shows the shop's
++// logo without a backup restore. The only logo image the app stores is the one uploaded under Settings ▸ Screensaver & display
++// (`screensaver.logoFile`, a file on this iPad). That is what is shared. The https link beside it stays per device: a link is not an image.
++//
++// One record, `logo-current`, holds the image as a CloudKit asset plus plain fields (hash, type, size, who and when). Removing the logo
++// writes the same record with `removed` set and no asset, so the removal reaches the other registers too.
++// Each register keeps `logoBase` (device only): the hash both it and the shop last agreed on, the base for telling who changed.
++// No React, no files, no native module: tested on its own (tests/logoshared.test.ts).
++import { hash53 } from './eventRecords';
++
++export const LOGO_RECORD = 'logo-current';
++/** The same ceiling the backup file uses. A bigger image is neither sent nor taken in. */
++export const MAX_LOGO_BYTES = 700_000;
++export const LOGO_TYPES = ['image/png', 'image/jpeg', 'image/gif', 'image/webp'] as const;
++export type LogoType = (typeof LOGO_TYPES)[number];
++export const LOGO_EXT: Record<LogoType, string> = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
++const BY_EXT: Record<string, LogoType> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp' };
++
++export const isLogoType = (x: unknown): x is LogoType => LOGO_TYPES.includes(x as LogoType);
++/** The image type a file name says it is, or null (an SVG, for one, is not supported). */
++export const logoTypeOfPath = (path: string): LogoType | null => BY_EXT[(path.split('?')[0].split('.').pop() ?? '').toLowerCase()] ?? null;
++/** A short name for the same image bytes. Not a secret. It is of the file's base64 text, so the same file hashes the same on every iPad. */
++export const logoHash = (base64: string): string => hash53(base64);
++
++/** What a register holds or the shop holds. `hash` is '' when there is no image (never set, or removed). */
++export type LogoState = { hash: string; type?: LogoType; bytes?: number };
++/** The shop's side as read back: nothing written yet, the logo was removed, or an image. */
++export type RemoteLogo = { kind: 'absent' } | { kind: 'removed' } | { kind: 'image'; hash: string; type: LogoType; bytes: number; registerId: string; registerName: string; ts: string };
++
++export type LogoAction = 'none' | 'push' | 'pull' | 'clear';
++
++/**
++ * What to do, given this register's image, the shop's, and `base` (the hash both last agreed on; null when they never have).
++ *  - Same on both sides: nothing, and the caller records the hash as the new base.
++ *  - The shop has never had a logo: send this register's, if it has one.
++ *  - This register changed its logo since the base (added, replaced or removed it): send it. This register wins when both changed.
++ *  - Only the shop changed: take the shop's image, or, if it was removed, remove this register's.
++ *  - No base (a register that has just joined): the shop's image is taken. If the shop removed its logo and this register has one,
++ *    this register's is sent, because deleting a file on a guess is worse than keeping one.
++ */
++export function decideLogo(local: LogoState, remote: RemoteLogo, base: string | null): LogoAction {
++  const l = local.hash; const r = remote.kind === 'image' ? remote.hash : '';
++  if (remote.kind === 'absent') return l ? 'push' : 'none';
++  if (l === r) return 'none';
++  if (base === null) return remote.kind === 'image' ? 'pull' : 'push';
++  if (l !== base) return 'push';
++  return remote.kind === 'image' ? 'pull' : 'clear';
++}
++
++type Fields = Record<string, string | number | boolean>;
++
++/** The plain fields of the logo record, for an image. The image itself travels as the asset. */
++export function logoToFields(registerId: string, registerName: string, s: { hash: string; type: LogoType; bytes: number }, ts: string): Fields {
++  return { hash: s.hash, mime: s.type, bytes: s.bytes, removed: 0, ts, registerId, registerName };
++}
++/** The plain fields for a removal. */
++export const logoRemovedFields = (registerId: string, registerName: string, ts: string): Fields => ({ hash: '', mime: '', bytes: 0, removed: 1, ts, registerId, registerName });
++
++const isRemoved = (x: unknown): boolean => x === 1 || x === true || x === '1';
++
++/** Reads the record's fields. A record that is not a readable logo is treated as absent, so one bad record cannot break the poll. */
++export function logoFromFields(f: Record<string, unknown> | null | undefined): RemoteLogo {
++  if (!f) return { kind: 'absent' };
++  if (isRemoved(f.removed)) return { kind: 'removed' };
++  const bytes = Number(f.bytes);
++  if (typeof f.hash !== 'string' || !f.hash || !isLogoType(f.mime) || !Number.isFinite(bytes) || bytes <= 0 || bytes > MAX_LOGO_BYTES) return { kind: 'absent' };
++  return { kind: 'image', hash: f.hash, type: f.mime, bytes, registerId: typeof f.registerId === 'string' ? f.registerId : '', registerName: typeof f.registerName === 'string' ? f.registerName : '', ts: typeof f.ts === 'string' ? f.ts : '' };
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index ba60bf1..c9e80ea 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -22,6 +22,8 @@ import { resolvedElsewhereNotice } from './attemptShared';
+ import { createEventSync } from './cloudkit/eventSync';
+ import { createNoticeSync } from './cloudkit/noticeSync';
+ import type { NoticeNative } from './cloudkit/noticeCloud';
++import { createLogoSync } from './cloudkit/logoSync';
++import type { LogoNative } from './cloudkit/logoCloud';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+ import { createOrderForSale } from './shopify/orders';
+@@ -73,6 +75,22 @@ const noticeSync = createNoticeSync({
+ });
+ setNoticeSink(n => { void noticeSync.upload(n); });
+ 
++// CloudKit patch 6a: the uploaded logo image is shared (decisions item 14). Once per poll this register's logo is compared with the shop's:
++// a change made here is sent, a change made elsewhere is taken, and a removal goes both ways. `logoBase` is the hash both last agreed on.
++// The file work lives in logoFiles.ts and is loaded on demand, so this file still imports in the node tests.
++const logoSync = createLogoSync({
++  active: () => activeBackendKind() === 'cloudkit',
++  training: isTraining,
++  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
++  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as LogoNative,
++  readLocal: async () => (await import('./logoFiles')).readLocalLogo(),
++  inspect: async p => (await import('./logoFiles')).inspectDownloadedLogo(p),
++  install: async (p, t) => (await import('./logoFiles')).installDownloadedLogo(p, t),
++  clear: async () => (await import('./logoFiles')).clearLocalLogo(),
++  base: () => st().settings.logoBase ?? null,
++  setBase: h => { if ((st().settings.logoBase ?? null) !== h) st().patchSettings({ logoBase: h }); },
++});
++
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+   const s = st();
+@@ -202,6 +220,7 @@ export async function pollShared() {
+       await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
+       await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
+       await noticeSync.pull(); // and take in the ones other registers raised
++      await logoSync.run(); // the logo image, both ways (never throws)
+     }
+     // stock
+     if (s.settings.locationId && s.data.stockSince) {
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 17cc8e3..8e6e488 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -43,6 +43,8 @@ export type Settings = {
+   sharedBase?: string;
+   /** Device only: the names of the shared cash and refund notices this register has already taken in, so a cleared one never comes back (0206). */
+   noticesSeen?: string[];
++  /** Device only: the hash of the uploaded logo image this register and the shop last agreed on, so a change made here can be told from one made elsewhere (0207). '' means they agreed there is no logo. */
++  logoBase?: string;
+   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
+   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
+diff --git a/tests/cloudkitswift.test.ts b/tests/cloudkitswift.test.ts
+index 5bfe342..f621809 100644
+--- a/tests/cloudkitswift.test.ts
++++ b/tests/cloudkitswift.test.ts
+@@ -23,7 +23,9 @@ test('putRecordOnce hands back the stored record when the name is taken, and nev
+ });
+ test('save() is only called in the helpers that deal with an existing record', () => {
+   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
+-  assert.deepEqual(callers.sort(), ['putRecordOnce', 'upsertRecord']);
++  // putLogo (0207) is the one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
++  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'upsertRecord']);
++  assert.match(body('putLogo'), /database\(\)\.record\(for: logoRecordID\)[\s\S]*\.save\(record\)[\s\S]*serverRecordChanged/);
+ });
+ 
+ // Encrypted sale fields (decisions item 17). The Swift cannot be built here, so these pin the rules by reading it.
+diff --git a/tests/logoshared.test.ts b/tests/logoshared.test.ts
+new file mode 100644
+index 0000000..fa68333
+--- /dev/null
++++ b/tests/logoshared.test.ts
+@@ -0,0 +1,70 @@
++// Location: tests/logoshared.test.ts
++// CloudKit patch 6a, the logo: the pure rules (what to do, how the record reads and writes).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { decideLogo, isLogoType, logoFromFields, logoHash, logoRemovedFields, logoToFields, logoTypeOfPath, MAX_LOGO_BYTES, type RemoteLogo } from '../src/lib/logoShared';
++
++const img = (hash: string): RemoteLogo => ({ kind: 'image', hash, type: 'image/png', bytes: 1000, registerId: 'reg-a', registerName: 'Front', ts: '2026-11-02T10:00:00.000Z' });
++const mine = (hash: string) => ({ hash, type: 'image/png' as const, bytes: 1000 });
++const none = { hash: '' };
++
++test('the same file hashes the same, a different file does not', () => {
++  assert.equal(logoHash('abcd'), logoHash('abcd')); assert.notEqual(logoHash('abcd'), logoHash('abce')); assert.match(logoHash('x'), /^[0-9a-f]{14}$/);
++});
++
++test('image types are read from the file name, and an SVG is not one', () => {
++  assert.equal(logoTypeOfPath('/docs/branding/logo-1.png'), 'image/png'); assert.equal(logoTypeOfPath('logo.JPG'), 'image/jpeg'); assert.equal(logoTypeOfPath('a.webp?x=1'), 'image/webp');
++  assert.equal(logoTypeOfPath('logo.svg'), null); assert.equal(logoTypeOfPath('logo'), null);
++  assert.ok(isLogoType('image/gif')); assert.ok(!isLogoType('image/svg+xml'));
++});
++
++test('the shop has never had a logo: this register sends its own, or nothing', () => {
++  assert.equal(decideLogo(mine('h1'), { kind: 'absent' }, null), 'push');
++  assert.equal(decideLogo(none, { kind: 'absent' }, null), 'none');
++  assert.equal(decideLogo(none, { kind: 'absent' }, 'h1'), 'none');
++});
++
++test('the same image on both sides needs nothing, whatever the base', () => {
++  assert.equal(decideLogo(mine('h1'), img('h1'), null), 'none'); assert.equal(decideLogo(mine('h1'), img('h1'), 'h0'), 'none');
++  assert.equal(decideLogo(none, { kind: 'removed' }, 'h1'), 'none');
++});
++
++test('a register that has just joined takes the shop\'s image, even over one of its own', () => {
++  assert.equal(decideLogo(none, img('h2'), null), 'pull'); assert.equal(decideLogo(mine('h1'), img('h2'), null), 'pull');
++});
++
++test('a register that has just joined keeps its own logo when the shop removed theirs, and sends it', () => {
++  assert.equal(decideLogo(mine('h1'), { kind: 'removed' }, null), 'push');
++});
++
++test('a change made here is sent: a new image, a replaced one, or a removal', () => {
++  assert.equal(decideLogo(mine('h2'), img('h1'), 'h1'), 'push');
++  assert.equal(decideLogo(none, img('h1'), 'h1'), 'push', 'removed here, still there on the shop');
++  assert.equal(decideLogo(mine('h2'), { kind: 'removed' }, 'h1'), 'push', 'added again here after the shop removed it');
++});
++
++test('a change made elsewhere is taken, and a removal made elsewhere removes the file here', () => {
++  assert.equal(decideLogo(mine('h1'), img('h2'), 'h1'), 'pull');
++  assert.equal(decideLogo(mine('h1'), { kind: 'removed' }, 'h1'), 'clear');
++  assert.equal(decideLogo(none, img('h2'), ''), 'pull', 'agreed there was none, then the shop got one');
++});
++
++test('both changed: this register, the one sending, wins', () => {
++  assert.equal(decideLogo(mine('h2'), img('h3'), 'h1'), 'push');
++});
++
++test('the record round-trips, and a removal reads as removed', () => {
++  const f = logoToFields('reg-a', 'Front', mine('h1'), '2026-11-02T10:00:00.000Z');
++  assert.deepEqual(logoFromFields(f), img('h1'));
++  assert.deepEqual(logoFromFields(logoRemovedFields('reg-a', 'Front', '2026-11-02T10:00:00.000Z')), { kind: 'removed' });
++  assert.equal(f.removed, 0);
++});
++
++test('a record that cannot be read as a logo counts as absent, and never throws', () => {
++  const ok = logoToFields('r', 'n', mine('h1'), 't');
++  for (const bad of [null, undefined, {}, { ...ok, hash: '' }, { ...ok, mime: 'image/svg+xml' }, { ...ok, bytes: 0 }, { ...ok, bytes: MAX_LOGO_BYTES + 1 }, { ...ok, bytes: 'big' }]) assert.deepEqual(logoFromFields(bad as any), { kind: 'absent' });
++});
++
++test('a number or a text for the removed flag both read as removed (CloudKit hands numbers back)', () => {
++  for (const v of [1, true, '1']) assert.deepEqual(logoFromFields({ ...logoToFields('r', 'n', mine('h1'), 't'), removed: v }), { kind: 'removed' });
++});
+diff --git a/tests/logosync.test.ts b/tests/logosync.test.ts
+new file mode 100644
+index 0000000..8a319c7
+--- /dev/null
++++ b/tests/logosync.test.ts
+@@ -0,0 +1,156 @@
++// Location: tests/logosync.test.ts
++// CloudKit patch 6a, the logo: the transport and the call site on an in-memory fake of the native module and the file system,
++// plus source pins for the wiring that cannot be run without an iPad (the poll, the Swift, the module's exports, the device-only key).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { createLogoSync, type LocalLogo, type LogoSyncDeps } from '../src/lib/cloudkit/logoSync';
++import type { LogoNative } from '../src/lib/cloudkit/logoCloud';
++import { logoHash, logoTypeOfPath, MAX_LOGO_BYTES, type LogoType } from '../src/lib/logoShared';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++
++type Rec = Record<string, any>;
++const NOW = '2026-11-02T10:00:00.000Z';
++
++/** The shop's one logo record, with the asset as the text of the file. */
++function cloud() {
++  const state: { rec: Rec | null; asset: string | null } = { rec: null, asset: null };
++  const calls = { puts: 0, gets: 0, downloads: 0 }; let fail = false; let tmp = 0;
++  const native: LogoNative = {
++    async putLogo(f, path) { if (fail) throw new Error('offline'); calls.puts++; state.rec = { ...f }; state.asset = path ? files.get(path) ?? null : null; return state.rec; },
++    async getLogo() { if (fail) throw new Error('offline'); calls.gets++; return state.rec ? { ...state.rec } : null; },
++    async downloadLogo() { if (fail) throw new Error('offline'); calls.downloads++; if (state.asset === null) return null; const p = `/tmp/dl-${tmp++}.${state.rec?.mime === 'image/jpeg' ? 'jpg' : 'png'}`; files.set(p, state.asset); return p; },
++  };
++  return { native, state, calls, setFail: (b: boolean) => { fail = b; } };
++}
++// One shared "disk" is fine: each register's own files get distinct names.
++const files = new Map<string, string>();
++
++function register(c: ReturnType<typeof cloud>, id: string, name: string, over: Partial<LogoSyncDeps> = {}) {
++  const me = { path: '', base: null as string | null, n: 0 };
++  const set = (content: string | null) => { if (me.path) files.delete(me.path); me.path = content === null ? '' : `/docs/${id}/logo-${me.n++}.png`; if (content !== null) files.set(me.path, content); };
++  const deps: LogoSyncDeps = {
++    active: () => true, training: () => false, who: () => ({ id, name }), native: async () => c.native,
++    readLocal: async (): Promise<LocalLogo> => { if (!me.path) return null; const t = files.get(me.path)!; if (t.length > MAX_LOGO_BYTES) return { tooBig: true }; return { path: me.path, hash: logoHash(t), type: 'image/png', bytes: t.length }; },
++    inspect: async p => { const t = files.get(p); const type = logoTypeOfPath(p); return t === undefined || !type ? null : { hash: logoHash(t), type: type as LogoType, bytes: t.length }; },
++    install: async (p) => { const t = files.get(p)!; set(t); },
++    clear: async () => set(null),
++    base: () => me.base, setBase: h => { me.base = h; }, now: () => NOW, ...over,
++  };
++  return { sync: createLogoSync(deps), me, set, content: () => (me.path ? files.get(me.path) : null) };
++}
++
++test('nothing happens when CloudKit is not active, in practice mode, or before the register has an id', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
++    const c = cloud(); const a = register(c, 'reg-a', 'Front', over); a.set('PNGDATA');
++    assert.equal(await a.sync.run(), null); assert.equal(c.calls.gets, 0); assert.equal(c.calls.puts, 0);
++  }
++});
++
++test('a logo uploaded on one register reaches the other, and neither sends it again', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.set('PNGDATA'); assert.equal(await a.sync.run(), 'pushed'); assert.equal(c.state.rec?.registerName, 'Front'); assert.equal(c.state.asset, 'PNGDATA');
++  assert.equal(await b.sync.run(), 'pulled'); assert.equal(b.content(), 'PNGDATA');
++  const puts = c.calls.puts; const downloads = c.calls.downloads;
++  assert.equal(await a.sync.run(), 'none'); assert.equal(await b.sync.run(), 'none');
++  assert.equal(c.calls.puts, puts, 'no second write'); assert.equal(c.calls.downloads, downloads, 'the image is not downloaded when nothing changed');
++});
++
++test('replacing the logo on one register replaces it on the other', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.set('ONE'); await a.sync.run(); await b.sync.run();
++  a.set('TWO'); assert.equal(await a.sync.run(), 'pushed'); assert.equal(await b.sync.run(), 'pulled'); assert.equal(b.content(), 'TWO');
++});
++
++test('removing the logo on one register removes it on the other, and the shop keeps a removed record, not an image', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.set('ONE'); await a.sync.run(); await b.sync.run();
++  a.set(null); assert.equal(await a.sync.run(), 'pushed'); assert.equal(c.state.rec?.removed, 1); assert.equal(c.state.asset, null);
++  assert.equal(await b.sync.run(), 'cleared'); assert.equal(b.content(), null);
++  assert.equal(await b.sync.run(), 'none'); assert.equal(await a.sync.run(), 'none');
++});
++
++test('a register that has just joined takes the shop\'s logo, and one with no logo sends nothing when the shop has none', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  assert.equal(await b.sync.run(), 'none'); assert.equal(c.calls.puts, 0);
++  a.set('SHOP'); await a.sync.run(); b.set('OLDER'); assert.equal(await b.sync.run(), 'pulled'); assert.equal(b.content(), 'SHOP');
++});
++
++test('both registers changing the logo at once: the one that runs second after the shop changed keeps its own, and the other follows', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.set('ONE'); await a.sync.run(); await b.sync.run();
++  a.set('FROM-A'); b.set('FROM-B'); await a.sync.run();
++  assert.equal(await b.sync.run(), 'pushed'); assert.equal(c.state.asset, 'FROM-B');
++  assert.equal(await a.sync.run(), 'pulled'); assert.equal(a.content(), 'FROM-B');
++});
++
++test('an offline register changes nothing and tries again, and its base does not move on a failure', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); a.set('ONE'); c.setFail(true);
++  assert.equal(await a.sync.run(), null); assert.equal(a.me.base, null); assert.equal(c.state.rec, null);
++  c.setFail(false); assert.equal(await a.sync.run(), 'pushed'); assert.equal(a.me.base, logoHash('ONE'));
++});
++
++test('a downloaded image whose content does not match what the shop recorded is not installed', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.set('GOOD'); await a.sync.run(); c.state.asset = 'SWAPPED'; b.set('MINE');
++  assert.equal(await b.sync.run(), null); assert.equal(b.content(), 'MINE'); assert.equal(b.me.base, null);
++});
++
++test('a download that finds no image changes nothing', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  a.set('GOOD'); await a.sync.run(); c.state.asset = null; b.set('MINE');
++  assert.equal(await b.sync.run(), null); assert.equal(b.content(), 'MINE');
++});
++
++test('an image over the size limit is never sent, and the shop\'s does not replace it unseen', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  b.set('SHOP'); await b.sync.run();
++  a.set('X'.repeat(MAX_LOGO_BYTES + 1)); assert.equal(await a.sync.run(), 'none'); assert.equal(c.state.asset, 'SHOP'); assert.equal(a.content()?.length, MAX_LOGO_BYTES + 1);
++});
++
++test('a run that overlaps another is skipped, not doubled', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); a.set('ONE');
++  const [r1, r2] = await Promise.all([a.sync.run(), a.sync.run()]);
++  assert.deepEqual([r1, r2].sort(), ['pushed', null].sort()); assert.equal(c.calls.puts, 1);
++});
++
++// ── source pins: the wiring that needs an iPad to run ───────────────────────────────────────────────────────────────────────
++const read = (p: string): string => readFileSync(p, 'utf8');
++
++test('the poll runs the logo reconcile after the notices, only outside practice mode', () => {
++  const s = read('src/lib/sync.ts'); const poll = s.slice(s.indexOf('export async function pollShared'));
++  const train = poll.indexOf('if (!isTraining()) {'); const logo = poll.indexOf('await logoSync.run()'); const notices = poll.indexOf('await noticeSync.pull()');
++  assert.ok(train >= 0 && notices > train && logo > notices, 'inside the practice-mode guard, after the notices');
++  assert.match(s, /createLogoSync\(\{[\s\S]*active: \(\) => activeBackendKind\(\) === 'cloudkit'[\s\S]*training: isTraining/);
++});
++
++test('the file work is loaded on demand so sync.ts still imports in the node tests', () => {
++  const s = read('src/lib/sync.ts'); assert.ok(!/^import .*logoFiles/m.test(s)); assert.match(s, /await import\('\.\/logoFiles'\)/);
++});
++
++test('what the logo is agreed on is a device-only setting, never restored from a backup or shared', () => {
++  assert.ok((DEVICE_KEYS as readonly string[]).includes('logoBase'));
++  assert.match(read('src/state/store.ts'), /logoBase\?: string/);
++  assert.ok(!/logoBase/.test(read('src/lib/sharedSettings.ts')));
++});
++
++test('installing a downloaded logo is blocked in practice mode and removes the old file', () => {
++  const f = read('src/lib/logoFiles.ts');
++  assert.match(f, /installDownloadedLogo[\s\S]*if \(isTraining\(\)\) return/); assert.match(f, /deleteAsync\(old/);
++  assert.match(f, /screensaver: \{ \.\.\.ss, logoFile: to \}/);
++});
++
++test('the native module exposes putLogo, getLogo and downloadLogo with the names the transport expects, and the poll never downloads', () => {
++  const swift = read('modules/cloudkit-sync/ios/CloudKitSyncModule.swift');
++  for (const name of ['putLogo', 'getLogo', 'downloadLogo']) assert.match(swift, new RegExp(`AsyncFunction\\("${name}"\\)`));
++  assert.match(swift, /recordName: "logo-current"/); assert.match(swift, /CKAsset\(fileURL:/); assert.match(swift, /record\["asset"\] = nil/);
++  const getFields = swift.slice(swift.indexOf('private func getLogoFields'), swift.indexOf('private func downloadLogoFile'));
++  assert.match(getFields, /desiredKeys: plain/); assert.ok(!/"asset"/.test(getFields), 'reading the fields does not ask for the image');
++  const idx = read('modules/cloudkit-sync/index.ts'); for (const name of ['putLogo', 'getLogo', 'downloadLogo']) assert.match(idx, new RegExp(`export async function ${name}\\(`));
++  const st = read('modules/cloudkit-sync/status.ts'); for (const name of ['putLogo', 'getLogo', 'downloadLogo']) assert.match(st, new RegExp(`${name}\\?\\(`));
++});
++
++test('the temporary file the Swift hands back is named by the stored type, so the app can tell the image type', () => {
++  const swift = read('modules/cloudkit-sync/ios/CloudKitSyncModule.swift'); const dl = swift.slice(swift.indexOf('private func downloadLogoFile'));
++  assert.match(dl, /"image\/png": "png"/); assert.match(dl, /appendingPathComponent\("shared-logo-/);
++});
