@@ -224,6 +224,8 @@ export type SaleRecord = {
 export type Notice = {
   id: string; ts: string; kind: 'sync' | 'queue' | 'stock' | 'reader' | 'refund' | 'pass' | 'info' | 'cash';
   title: string; body?: string; route?: string; read?: boolean;
+  /** The name of the register that raised it, set only on a cash or refund notice brought in from another register (patch 0206). */
+  from?: string;
 };
 
 export type Role = 'cashier' | 'manager' | 'owner';

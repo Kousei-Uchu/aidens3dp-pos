@@ -5,7 +5,7 @@ parent: settings
 summary: Set one register up to hold the shop's shared records, then join the others with its invite link.
 tags: [cloud, icloud, cloudkit, share, registers, sync, invite link, multiple ipads, join, join a shop]
 related: [settings/backup, orders/export, settings/shopify]
-updated: 2026-10-31
+updated: 2026-11-02
 roles: [manager, owner]
 ---
 Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.
@@ -44,6 +44,11 @@ Two things follow from that:
 
 ### One file of every register's events
 Once sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.
+
+### Cash and refund notices on every register
+Once sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.
+
+Reading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.
 
 ### What is and is not kept in iCloud
 The Cloud sync page lists this in full under **What is kept in iCloud**. In short:

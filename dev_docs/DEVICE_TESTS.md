@@ -1246,3 +1246,17 @@ Needs two iPads on the same shop. The new settings only travel once CloudKit is 
 7. Airplane mode on both. On A change the shop name. On B change Cash rounding. Reconnect both. Pass: both iPads end with the new name and the new rounding.
 8. Airplane mode on both. Add a staff member on A and a different one on B. Reconnect. Pass: both people exist on both iPads and can sign in with their PINs.
 9. Airplane mode on both. Remove a staff member on A and rename the same person on B. Reconnect. Pass: the person is gone from both.
+
+## T95. Shared cash and refund notices on two registers (0206)
+
+Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then. Nothing in this patch has been run on a device. Until the switch, confirm only that raising a notice and clearing the list behave as before.
+
+1. On A, take a cash payment while the drawer feature is off for A (or any case that raises "Cash outside the drawer"). Pass: B shows the notice unread within about 30 seconds, with "From" and A's name above it.
+2. On B, open the notice. Pass: it is read on B only, and A's copy is still unread.
+3. On B, tap Clear all. Wait for two polls. Pass: B's list stays empty, and A still has its notice.
+4. On A, cause a failed Shopify refund record (for example refund with Shopify unreachable). Pass: B shows "Refund not recorded in Shopify" unread, with A's name.
+5. Raise a sync notice or a reader notice on A. Pass: B does not get it.
+6. Airplane mode on A. Raise a cash notice on A. Reconnect. Pass: B receives it once, and not twice after more polls.
+7. Turn practice mode on at A and raise a cash notice. Pass: nothing reaches B. Turn it off. Pass: still nothing arrives later.
+8. On a register that has just joined, with notices older than a week on the others. Pass: it shows only the recent ones, and not more than 50.
+9. Pass: A never shows its own notice a second time after polling, whether it was read, cleared or left.

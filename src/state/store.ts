@@ -41,6 +41,8 @@ export type Settings = {
   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
   /** 0205: the shared settings as this register and the shop last agreed them (JSON text), the base for merging edits made on two registers. Per device bookkeeping, like sharedVersion; never shared. See lib/sharedSettings.ts. */
   sharedBase?: string;
+  /** Device only: the names of the shared cash and refund notices this register has already taken in, so a cleared one never comes back (0206). */
+  noticesSeen?: string[];
   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
@@ -116,6 +118,14 @@ export async function flushPersist(): Promise<void> {
   for (const key of Object.keys(pending)) { clearTimeout(timers[key]); const get = pending[key]; delete pending[key]; await kvSet(key, get()); }
 }
 
+/**
+ * Where a notice just raised here is handed, so a cash or refund one can be shared with the other registers (patch 0206). sync.ts sets it.
+ * It is a hook, not an import, because sync.ts imports this store. Notices brought in from another register are added without going
+ * through `notify`, so they are never sent back.
+ */
+let noticeSink: ((n: Notice) => void) | null = null;
+export const setNoticeSink = (fn: ((n: Notice) => void) | null): void => { noticeSink = fn; };
+
 export const useApp = create<App>((set, get) => ({
   ready: false, settings: defaultSettings(), data: emptyData(), grid: defaultGrid(), gridVersion: 0, pos: emptyPos(),
   sync: { state: 'idle' }, zeller: { ready: false, message: 'Reader not set up' }, sharedAttempts: [], unlocked: true,
@@ -130,7 +140,9 @@ export const useApp = create<App>((set, get) => ({
     if (!noticeAllowed(get().settings.appMode, get().settings.registerFeatures, n.kind)) return; // a feature this device does not hold raises no notices
     // collapse repeats of the same unread notice
     if (pos.notices.some(x => !x.read && x.kind === n.kind && x.title === n.title && x.body === n.body)) return;
-    get().patchPos({ notices: [{ ...n, id: uid(), ts: new Date().toISOString() }, ...pos.notices].slice(0, 200) });
+    const notice: Notice = { ...n, id: uid(), ts: new Date().toISOString() };
+    get().patchPos({ notices: [notice, ...pos.notices].slice(0, 200) });
+    noticeSink?.(notice);
   },
   hydrate: async () => {
     const [settings, data, g, pos] = await Promise.all([

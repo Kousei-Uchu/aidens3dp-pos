@@ -25,7 +25,7 @@ export default function Notifications({ onBack }: { onBack?: () => void } = {}) 
           {outbox.length - stuck.length > 0 ? <Row icon="time-outline" title={`${outbox.length - stuck.length} sale(s) queued`} sub="Uploads when the connection is back." right={<Money cents={outbox.reduce((s, o) => s + o.sale.netCents, 0)} />} /> : null}
           {low > 0 ? <Row icon="alert-circle-outline" title={`${low} item(s) low on stock (2 or fewer)`} onPress={() => nav.setTab('inventory')} /> : null}
           {neg > 0 ? <Row icon="alert-circle-outline" title={`${neg} item(s) with negative stock`} onPress={() => nav.setTab('inventory')} /> : null}</View>}
-        renderItem={({ item: n }) => <Row icon={ICON[n.kind] ?? 'information-circle-outline'} title={n.title} sub={[n.body, new Date(n.ts).toLocaleString()].filter(Boolean).join('\n')}
+        renderItem={({ item: n }) => <Row icon={ICON[n.kind] ?? 'information-circle-outline'} title={n.title} sub={[n.from ? `From ${n.from}` : '', n.body, new Date(n.ts).toLocaleString()].filter(Boolean).join('\n')}
           onPress={() => { patchPos({ notices: list.map(x => (x.id === n.id ? { ...x, read: true } : x)) }); if (n.route && routeAllowed(devMode, devFeatures, n.route)) nav.go(n.route); }}
           right={HELP[n.kind] || !n.read ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{HELP[n.kind] ? <HelpButton id={HELP[n.kind]} label={`Help for ${n.title}`} /> : null}{n.read ? null : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.bad }} />}</View> : undefined} />} />
     </View>

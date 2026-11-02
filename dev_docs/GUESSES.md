@@ -474,3 +474,16 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
 6. **Edits are sent 1.5 s after typing stops**, by a watcher, instead of each screen calling the push. Receipt fields save on every keystroke, and a watcher also covers screens added later.
 7. **Shopify reads now go through the whitelist.** The seven keys behave as before, but a record with extra or wrongly typed keys is no longer spread into the settings.
 8. **Shop name is shared but not pushed at connect time.** Connecting Shopify sets it on that register; the watcher then sends it like any other edit once CloudKit is active.
+
+## Shared notices (0206)
+
+These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 10, Q2). Each is a guess, change any you disagree with.
+
+1. **Seven days.** A notice older than a week is neither sent nor shown. Q2 does not say how far back a register that has just joined should look, and a cash or refund notice a week old has almost certainly been dealt with. It is one constant, `NOTICE_MAX_AGE_MS`.
+2. **Only unread notices are sent late.** The once-per-launch catch-up skips a notice already read here, because reading it means someone handled it here. A notice sent live is sent whether or not it is read later.
+3. **A cleared notice stays cleared.** Nothing is ever deleted from CloudKit, so a device-only `noticesSeen` list (capped at 500 names) remembers what this register has taken in. Without it, Clear all would be undone at the next poll.
+4. **At most 50 arrive at once.** A register that comes back after a long time takes in the newest 50 and marks the rest as taken in, so they do not turn up later.
+5. **A repeat is skipped.** An incoming notice with the same kind, title and body as one still unread on this register is not added, the same rule `notify` already uses. Cash notices include the sale's short id, so two different sales never match.
+6. **A device that does not hold the feature skips the kind.** A companion without the drawer takes in no cash notices, the same as `notify` does for its own. The notice is still marked taken in, so it does not appear if the feature is switched on later.
+7. **Notices carry no extra detail.** A shared notice is its kind, title, body, route and time, plus the register's id and name. The title and body can contain a sale's short id or an order name, never a card or customer detail. They are not encrypted.
+8. **The whole list is read each poll.** Notices are read like payment attempts: every record, every poll. Cash and refund notices are rare, so this stays small, but it grows with history. A later patch could read only recent ones.

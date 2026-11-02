@@ -200,6 +200,15 @@ export async function listAttempts(limit = 100, after?: string | null): Promise<
   if (!native?.listAttempts) return { rows: [], next: null };
   return native.listAttempts(limit, after ?? null);
 }
+// Patch 6a: the shared cash and refund notices. The names match NoticeNative in src/lib/cloudkit/noticeCloud.ts.
+export async function putNotice(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+  if (!native?.putNotice) throw new Error(CLOUDKIT_MISSING);
+  return native.putNotice(handle, fields);
+}
+export async function listNotices(limit = 100, after?: string | null): Promise<Page> {
+  if (!native?.listNotices) return { rows: [], next: null };
+  return native.listNotices(limit, after ?? null);
+}
 export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
   if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
   return native.putResolution(handle, fields);

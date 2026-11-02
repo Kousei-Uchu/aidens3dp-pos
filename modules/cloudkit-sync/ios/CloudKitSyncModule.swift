@@ -157,6 +157,17 @@ public class CloudKitSyncModule: Module {
       try await self.listRecords(recordType: "Resolution", limit: limit, after: after)
     }
 
+    // --- Patch 6a: shared cash and refund notices ---
+    // A notice is written once and never changed or deleted: reading or dismissing one is per device, so nothing about it is sent.
+    // If one is already there it is handed back untouched.
+    AsyncFunction("putNotice") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+      try await self.putRecordOnce(recordType: "Notice", recordName: "notice-\(handle)", fields: fields)
+    }
+
+    AsyncFunction("listNotices") { (limit: Int, after: String?) async throws -> [String: Any] in
+      try await self.listRecords(recordType: "Notice", limit: limit, after: after)
+    }
+
     // --- Patch 5: saved carts ---
     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
