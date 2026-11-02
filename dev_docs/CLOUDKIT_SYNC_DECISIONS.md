@@ -1,6 +1,6 @@
 # CloudKit sync: decisions, status and roadmap
 
-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0209
+Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0210
 
 This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
 
@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
 
 ### In one paragraph
 
-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0209 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0210 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
 
 ### Three things gate turning CloudKit on
 
@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the 
 
 ## Part 2. What has been built, and where we are going
 
-### 2.1 Patch ledger, 0188 to 0209
+### 2.1 Patch ledger, 0188 to 0210
 
 All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
 
@@ -52,6 +52,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 0207 | 2 Nov | **6a, third piece: the logo** (`logoShared.ts`, `cloudkit/logoCloud.ts`, `cloudkit/logoSync.ts`, `logoFiles.ts`). The uploaded logo image (Settings ▸ Screensaver & display) is one `logo-current` record with the image as a CloudKit asset and plain fields (hash, type, size, who, when). Each poll compares this register's logo with the shop's against a device-only `logoBase`: a change made here is sent, a change made elsewhere is taken, a removal goes both ways, and a downloaded image is checked against its hash before it replaces anything. The https link stays per device. T96. | Swift uncompiled. Inactive until patch 8. |
 | 0208 | 2 Nov | **6a, fourth piece: the grid layout** (`gridMerge.ts`, `reconcileLayout` in `sync.ts`). On CloudKit two registers' layout edits are joined page by page against a device-only `gridBase` instead of the last writer replacing the whole grid, and the version counter is no longer used to tell what is newer (item 27). A layout edited offline is sent at the next poll. No native code changed (layout already went through `putLayout` and `getLayout`). T97. | Inactive until patch 8. On Shopify the counter is unchanged. |
 | 0209 | 2 Nov | **6a, fifth and last piece: the Square history months** (`squareHistoryShared.ts`, `cloudkit/squareCloud.ts`, `cloudkit/squareSync.ts`, `squareHistorySyncIO.ts`). The imported history is shared one month at a time: each month file is one `squareshard-<month>-<id>` record with the packed file as a CloudKit asset, and one `square-manifest` record lists them. Each register compares every month with the shop's against a device-only `squareBase` (the file hash here and the shared id both last agreed on), so a month is sent, taken, or removed on both sides, and a month is only deleted on a register that had not changed it since. The manifest is replaced only if it is still at the change tag that was read, so two registers writing at once cannot drop each other's months. **The copy in iCloud has every customer's name, email and phone removed**, because the history files hold them and the plan says none reach CloudKit. Swift: four new functions, uncompiled. T98. | Inactive until patch 8. |
+| 0210 | 2 Nov | **6c, first half: training progress** (`trainingShared.ts`, `cloudkit/trainingSync.ts`, merge rules in `trainingProgress.ts`). One `training-<staff id>-<module id>` record per person per module, read and joined with this register's once per poll, and only the records that differ are written back. Work from two registers is kept (stages from either, earliest finish). A reset counts up an `epoch`, and the higher count wins whole, so a reset beats older work on another register. Owners reset anyone and managers reset cashiers (O1), from a new section on **More ▸ Training**. Nothing is sent during a practice run. Swift: two new functions, uncompiled. T99. | Inactive until patch 8. |
 
 ### 2.2 Build status of each decision
 
@@ -73,7 +74,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
 | 13 | Assistant audit log syncs, encrypted | **Not built** (6c). |
 | 14 | Logo syncs as an iCloud asset | Built (0207): the uploaded image, as a CKAsset on one record. The receipt and the screens that show the business logo still use the fixed shop link (see GUESSES, 0207). Swift uncompiled. |
-| 15 | Training progress syncs; owners and managers can reset | **Not built** (6c). |
+| 15 | Training progress syncs; owners and managers can reset | Built (0210): joined per person per module, reset by `epoch`, reset screen on More ▸ Training. Swift uncompiled. |
 | 16 | `cloudkit.backend` flag local | The app already reads an AsyncStorage `cloudkit.backend` value at start-up, but nothing sets the CloudKit backend. The rollback flag proper arrives with patch 8. |
 | 17 | Card fields encrypted, amounts plain | Built behind the `omit` switch (0194, 0195). Cross-Apple-ID test (O4, T85) not run. |
 | 18 | Staff name, notes, reasons and price adjustments on sales sync | Built (0194). Free-text notes stay plain, the known minor exception. |
@@ -86,7 +87,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
 | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
 | N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
-| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Audit log and training progress not yet. The migration lease and verification (patch 7) are not built. |
+| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Training progress is joined at every poll (0210), so it needs no separate upload. Audit log not yet. The migration lease and verification (patch 7) are not built. |
 | O2 | Assistant connection settings sync | Built (0205). The log cap and data gate stay per iPad, and the API key waits for 6d. |
 | O3 | CloudKit keeps every ledger entry; app loads the latest 1000 | Built with the checkpoint (0191, 0192). |
 
@@ -101,13 +102,13 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 | 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
 | 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Done** (0205 settings, 0206 notices, 0207 logo, 0208 layout, 0209 Square history months). Swift uncompiled. |
 | 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
-| 6c | Audit log (encrypted) and training progress | Not started. |
+| 6c | Audit log (encrypted) and training progress | **Training progress done** (0210). **Still to do:** the audit log. |
 | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
 | 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | Not started. |
 | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
 | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
 
-**Next up:** 6c (the audit log and training progress), then 7, with 6d and 6e after the encryption test and 8 last.
+**Next up:** 6c second half (the audit log), then 7, with 6d and 6e after the encryption test and 8 last.
 
 ### 2.4 Open items and things to confirm
 
@@ -143,16 +144,17 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 - Square history: a ticket name or line note a cashier typed is not scrubbed (the same minor exception as a note on a sale), and the history months that were replaced stay in iCloud as unused shard records, because nothing deletes them yet (0209).
 - Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
 
+- Training progress: two registers writing the same person's module in the same instant could lose one mark until the next poll, which joins them again. A reset cannot be lost this way, because the higher reset count always wins (0210).
 **CloudKit dashboard steps needed before it works on a real zone:**
 
 - The `Logo` type is fetched by its record name only, so it needs no index. Its `asset` field must be an Asset and `bytes` and `removed` Int(64).
 - The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
-- The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
+- The `Event`, `Attempt`, `Resolution`, `Notice` and `Training` types need `modificationDate` sortable and queryable.
 - A Sale’s `secure_json` is an encrypted field and needs no index.
 - The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
 - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
 
-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history).
+**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) and T99 (shared training progress).
 
 **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
 

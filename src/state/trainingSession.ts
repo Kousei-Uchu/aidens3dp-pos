@@ -14,7 +14,7 @@ import { passStateOf, resetPass, setPassState } from '../lib/trainingPass';
 import { getModule } from '../training';
 import { freshHints, nextHint, type HintState } from '../lib/trainingHints';
 import { elapsedSecs, finishStage, seeIntro, startRun, type Run } from '../lib/trainingRun';
-import { completeModule, emptyProgress, readProgress, recordStage, staffKey, type Progress } from '../lib/trainingProgress';
+import { completeModule, emptyProgress, readProgress, recordStage, resetAllFully, resetModuleFully, staffKey, type Progress } from '../lib/trainingProgress';
 import type { Gesture, Injection, Stage } from '../lib/trainingModule';
 import { setGate } from '../lib/trainingGate';
 import type { Rect } from '../lib/trainingGeometry';
@@ -45,6 +45,10 @@ type Sess = {
   /** Goes up each time the person asks "how do I do this?" while off course, so the card opens its steps. */
   howNonce: number; openHow: () => void;
   loadProgress: () => Promise<void>;
+  /** Replace the stored progress with a joined one from another register (CloudKit sync). */
+  adoptProgress: (p: Progress) => Promise<void>;
+  /** A manager or owner wipes one person's progress in one module, or in all of them (`moduleId` null). The caller checks the role. */
+  resetProgress: (staffId: string, moduleId: string | null) => void;
   begin: (moduleId: string, stage?: Stage) => void;
   setRun: (r: Run) => void;
   startPractice: () => Promise<string | null>;   // returns a message when it cannot start
@@ -92,6 +96,8 @@ export const useTraining = create<Sess>((set, get) => ({
     if (real) { const back = real; real = null; useApp.setState(back); setTrainingGuard(false); resetTrainingTerminal(); resetPass(); resetCheckout(); resetPracticeOrders(); resetPracticeGifts(); } // restore first, then drop the guard
     set({ sandbox: false, view: null });
   },
+  adoptProgress: async p => { set({ progress: p }); await kvSet(TRAINING_PROGRESS_KEY, p); },
+  resetProgress: (staffId, moduleId) => { const p = moduleId ? resetModuleFully(get().progress, staffId, moduleId) : resetAllFully(get().progress, staffId); set({ progress: p }); void kvSet(TRAINING_PROGRESS_KEY, p); },
   completeStage: () => {
     const run = get().run; if (!run) return null; const who = staffKey(realStaffId());
     let p = recordStage(get().progress, who, run.moduleId, run.stage);

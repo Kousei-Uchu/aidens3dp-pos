@@ -529,3 +529,16 @@ These fill gaps in the plan (patch 6a, "Square history structure and size") and 
 8. **An unreadable manifest is left alone.** Reading it as empty would look like every month had been removed. It needs fixing by hand or by a later patch.
 9. **Month files over 8 MB are neither sent nor taken in.** A busy month is a few hundred KB packed, so this only guards against a damaged file.
 10. **The stored manifest is rewritten after a month is taken in or removed**, from the files now on the iPad, then the rollups are rebuilt exactly as an import does. Its total sales and refunds are approximate until the next import, and nothing reads them (the meta is rebuilt from the files).
+
+## Shared training progress (0210)
+
+These fill gaps in the plan (patch 6c) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 15, O1). Each is a guess, change any you disagree with.
+
+1. **Progress is joined, not replaced.** Stages from either register are kept, the earliest finish stands, and the larger run count supplies hints and time. The alternative was last writer wins, which loses work done on two iPads.
+2. **A reset is a count that wins whole.** Each full reset adds one to a per-module `epoch`, and the higher count beats any older work. The alternative, a reset time, would depend on each iPad's clock.
+3. **A reset also takes the tick away.** The old `resetModule` keeps the tick until the person finishes again, so the new reset is separate (`resetModuleFully`), and the old one is unchanged.
+4. **Managers reset cashiers only, not other managers or themselves.** Owners reset anyone, themselves included. Read from O1: "managers can reset progress for lower roles".
+5. **The reset lives on More ▸ Training**, below the courses, for anyone who may reset someone. It lists people by name, with one reset per course and a reset-all.
+6. **Nothing is sent during a practice run.** Marks made then are kept on the iPad and sent at the next poll after the run.
+7. **A person's id is checked before it becomes a record name.** An id with a slash or other odd character is never sent. The shared record used when no staff are set up (`_shared`) does sync.
+8. **A removed staff member's progress is not tidied**, in iCloud or on the iPads.

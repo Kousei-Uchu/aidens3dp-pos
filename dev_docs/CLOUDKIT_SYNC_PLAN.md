@@ -200,6 +200,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
    - 6a, fifth piece **done in code (0209)**: the Square history months, one `squareshard-<month>-<id>` record each with a CloudKit asset and one `square-manifest` record, reconciled each poll against a device-only `squareBase` (`src/lib/squareHistoryShared.ts`, `src/lib/cloudkit/squareSync.ts`). The copy in iCloud has customer name, email and phone removed. This finishes 6a.
    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
    - 6c. The audit log (encrypted) and training progress
+     - 6c, first half **done in code (0210)**: training progress, one `training-<staff id>-<module id>` record per person per module, joined each poll (`src/lib/trainingShared.ts`, `src/lib/cloudkit/trainingSync.ts`), reset by a count that wins whole.
    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
    - 6e. The owner-only CloudKit export, one zip of JSON files (or fold it into 8)
 7. Migration lease, checkpoints and verification, extended so each register uploads its own local-only data once after joining (events, payment attempts, audit log, training progress)
