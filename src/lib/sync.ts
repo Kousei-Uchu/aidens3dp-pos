@@ -6,7 +6,8 @@ import { csv, setEventSink } from './csvStore';
 import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
 import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
 import { parseBundleConfig } from './bundles';
-import { parseGrid } from './grid';
+import { parseGrid, type Grid } from './grid';
+import { adoptAfterSend, gridText, planLayout } from './gridMerge';
 import { readLedger } from './cashLedger';
 import { mergeDrawer, missingEntries } from './drawerSync';
 import { buildWarningListEntries, mergeWarningList } from './warningList';
@@ -356,15 +357,36 @@ async function pullSaved() {
 // ── layout + shared settings ─────────────────────────────────────────────────────────────────────
 export async function pushLayout() {
   if (!hasCreds()) return;
+  if (sharedKind() === 'cloudkit') { await reconcileLayout(); return; }
   const s = st(); const version = s.gridVersion + 1;
   await putShared('layout', 'main', { layout_key: 'main', layout_json: JSON.stringify(s.grid), version, updated_by: s.settings.registerName, updated_at: new Date().toISOString() });
   s.setGrid(s.grid, version);
 }
 async function pullLayout() {
+  if (sharedKind() === 'cloudkit') { await reconcileLayout(); return; }
   const row = await getShared('layout', 'main'); if (!row) return;
   const v = Number(row.f.version) || 0;
   if (v > st().gridVersion) { try { st().setGrid(parseGrid(row.f.layout_json).grid, v); } catch { /* ignore a bad layout */ } }
 }
+// 0208: on CloudKit the layout is joined page by page against `gridBase`, not replaced by whichever register wrote last, and the version
+// counter is not used to tell what is newer (decisions item 27). One function serves the push after an edit and the poll, so an edit made
+// offline (never sent) is sent at the next poll instead of waiting for another edit. Rules and tests: lib/gridMerge.ts.
+let reconcilingLayout = false;
+async function reconcileLayout() {
+  if (reconcilingLayout || isTraining()) return; reconcilingLayout = true;
+  try {
+    const row = await getShared('layout', 'main'); const snapshot = st().grid;
+    let remote: Grid | null = null; if (row) { try { remote = parseGrid(row.f.layout_json).grid; } catch { remote = null; } }
+    const plan = planLayout(st().settings.gridBase, snapshot, remote);
+    if (plan.action === 'same') { rememberGrid(snapshot); return; }
+    if (plan.action === 'take') { st().setGrid(plan.grid, Math.max(st().gridVersion, Number(row?.f.version) || 0)); rememberGrid(plan.grid); return; }
+    const version = Math.max(st().gridVersion, Number(row?.f.version) || 0) + 1;
+    await putShared('layout', 'main', { layout_key: 'main', layout_json: JSON.stringify(plan.grid), version, updated_by: st().settings.registerName, updated_at: new Date().toISOString() });
+    const next = adoptAfterSend(snapshot, st().grid, plan.grid); // an edit made while this was sending is kept, and sent next time
+    st().setGrid(next, version); st().patchSettings({ gridBase: gridText(plan.grid) });
+  } finally { reconcilingLayout = false; }
+}
+const rememberGrid = (g: Grid) => { const t = gridText(g); if (st().settings.gridBase !== t) st().patchSettings({ gridBase: t }); };
 /** Which set of settings is shared: the original seven on Shopify, the wider set on CloudKit (0205, lib/sharedSettings.ts). */
 const sharedKind = (): SharedKind => (activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject');
 // 0205: the settings only CloudKit shares (shop name, receipt details, server addresses, auto-receipt, smart change, consolidate,

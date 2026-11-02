@@ -6,7 +6,7 @@ needs: [selling]
 summary: Tiles, categories, display groups and pages on the Quick Menu, how to change them, and how the layout is shared and moved.
 tags: [grid, quick menu, tile, category, group, page, edit, layout, import, export]
 related: [sales, sales/variants-and-stock]
-updated: 2026-10-18
+updated: 2026-11-02
 ---
 The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.
 
@@ -53,6 +53,9 @@ Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size
 
 ### Missing tiles
 A greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.
+
+### Two registers editing the layout
+Once iCloud sync is switched on, edits from two registers are joined page by page instead of the last one replacing the other. A page only one register changed is taken as it is, a page added on either is kept, and a page removed on either stays removed. If both registers change the same page, the one that sends last keeps its version of that page, so tiles added to it on the other register are lost. Pages moved by one register keep that order. Tiles are not merged one by one inside a page. A layout changed while a register was offline is sent at its next sync, not lost.
 
 ### Moving a layout in or out
 Settings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.
@@ -116,13 +119,13 @@ flowchart TD
 | Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |
 | Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |
 | Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |
-| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |
+| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version`. On iCloud both run `reconcileLayout`, which joins pages with `src/lib/gridMerge.ts` against the device-only `gridBase` and does not use the version |
 | Import and export | `GridSettings` in `Settings.tsx` |
 | Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |
 | Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |
 
 ### Reading the code for a fault
 - **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.
-- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
+- **A change did not reach another register.** On iCloud, check `gridBase` agrees with the shop (`planLayout`); the version is not used. On Shopify, `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
 - **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).
 - **Import said "N unsupported tiles skipped".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`.
