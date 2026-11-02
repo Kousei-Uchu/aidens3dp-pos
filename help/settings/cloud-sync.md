@@ -59,6 +59,9 @@ Once sync is switched on, imported Square history is shared one month at a time.
 ### Training progress on every register
 Once sync is switched on, each person's training progress is shared, so a tick earned on one iPad shows on the others. Work done on two registers is joined, not replaced. Owners and managers can reset progress from **More → Training**, and a reset clears it on every register. Practice data is never shared.
 
+### The assistant's conversation log on every register
+Once sync is on and the encrypted switch has been turned on, each conversation with the assistant is also sent to iCloud, encrypted, with the register's name. A manager opens **Settings ▸ AI assistant ▸ conversation log** and chooses **All registers** to read every register's conversations. This includes what a local model was sent, which can include a customer's name, so the copy is encrypted and only registers in your share can read it. A register's own log is sent once after it joins. Clearing or purging the log on an iPad does not remove the copy in iCloud. Conversations in a practice run are sent after the run ends. Nothing is sent until the encrypted switch is on.
+
 ### What is and is not kept in iCloud
 The Cloud sync page lists this in full under **What is kept in iCloud**. In short:
 - **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.

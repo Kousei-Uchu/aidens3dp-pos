@@ -199,8 +199,12 @@ test('the meta file is never counted as a conversation and a damaged one is repl
 });
 
 // ---- the rules about where the log may go ----
-test('the log stays off the sync and out of backups, and nothing is logged in practice mode', () => {
-  for (const f of ['src/lib/sync.ts', 'src/lib/backupFile.ts', 'src/lib/backupIO.ts']) assert.ok(!/assistantLog|assistant-log/.test(readFileSync(f, 'utf8')), `${f} must not touch the log`);
+test('the log stays out of backups and off the sync except through the audit sync, and nothing is logged in practice mode', () => {
+  for (const f of ['src/lib/backupFile.ts', 'src/lib/backupIO.ts']) assert.ok(!/assistantLog|assistant-log/.test(readFileSync(f, 'utf8')), `${f} must not touch the log`);
+  // Patch 0211 (decisions item 13): the log is shared, encrypted. sync.ts reaches it in exactly one place, the audit sync's read of this iPad's own events.
+  const touching = readFileSync('src/lib/sync.ts', 'utf8').split('\n').filter(l => /assistantLog|assistant-log/.test(l));
+  assert.equal(touching.length, 1, 'sync.ts may only read the log in the audit sync');
+  assert.match(touching[0], /readLocal: async \(\) => .*assistantLog\.events\(\)/);
   const io = readFileSync('src/lib/assistantLogIO.ts', 'utf8');
   assert.match(io, /isTraining\(\)/); assert.ok(!/documentDirectory\s*\+/.test(io), 'the folder comes from logDirFromDocuments only');
   assert.match(readFileSync('src/screens/Assistant.tsx', 'utf8'), /logged for the manager/);

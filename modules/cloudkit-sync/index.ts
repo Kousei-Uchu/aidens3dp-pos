@@ -218,6 +218,19 @@ export async function listTraining(limit = 200, after?: string | null): Promise<
   if (!native?.listTraining) return { rows: [], next: null };
   return native.listTraining(limit, after ?? null);
 }
+// Patch 6c: the shared audit log. The names match AuditNative in src/lib/cloudkit/auditCloud.ts. `encrypted` holds `secure_json`.
+export async function putAudit(handle: string, fields: Record<string, any>, encrypted: Record<string, any> = {}): Promise<Record<string, any>> {
+  if (!native?.putAudit) throw new Error(CLOUDKIT_MISSING);
+  return native.putAudit(handle, fields, encrypted);
+}
+export async function listAuditIndex(limit = 200, after?: string | null): Promise<Page> {
+  if (!native?.listAuditIndex) return { rows: [], next: null };
+  return native.listAuditIndex(limit, after ?? null);
+}
+export async function listAudit(limit = 200, after?: string | null): Promise<Page> {
+  if (!native?.listAudit) return { rows: [], next: null };
+  return native.listAudit(limit, after ?? null);
+}
 // Patch 6a: the shared logo. The names match LogoNative in src/lib/cloudkit/logoCloud.ts.
 export async function putLogo(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>> {
   if (!native?.putLogo) throw new Error(CLOUDKIT_MISSING);

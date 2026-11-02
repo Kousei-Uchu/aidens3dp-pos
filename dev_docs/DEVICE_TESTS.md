@@ -1314,3 +1314,18 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8), 
 5. As a manager, open the reset section. Pass: only cashiers are listed. As a cashier, there is no section.
 6. Start a practice run on A and finish a stage. Pass: nothing reaches B until the run is over, then it does at the next poll.
 7. Check in the CloudKit dashboard that a `training-` record holds only ids, stage names, a finish time, counts and the register name.
+
+## T100. Shared assistant conversation log on two registers (0211)
+
+Needs two iPads on the same shop with CloudKit as the active backend (patch 8) and the encrypted switch on (`setSaleCardMode('encrypted')`, only after T85 passes), so nothing here can run until then, and the Swift has never been compiled. Until then, confirm only that **Settings ▸ AI assistant ▸ conversation log** looks and works as before (there is no **All registers** choice while the shop is still on Shopify) and that asking the assistant a question still adds a line to the log.
+
+1. With the switch **off** and CloudKit active, ask the assistant a question on A. Pass: nothing appears in the CloudKit dashboard under `Audit`, and the log on A has the line.
+2. Turn the switch on and restart A. Pass: within about 30 seconds every line already in A's log is an `audit-` record, and a second restart adds no duplicates.
+3. Ask a question on A that names a customer (for example *Is Maria Lopez in stock?* with a local model). Open the new `audit-` record in the dashboard. Pass: `secure_json` shows as encrypted, and the plain fields hold only the register id and name, a day, a time and a kind. The customer's name is in none of them.
+4. On B as a manager open the conversation log and choose **All registers**. Pass: A's conversations are there, labelled with A's name, and opening one shows the question, the reply and the tools used. B's own lines are not shown twice.
+5. Sign in on B as a cashier. Pass: the log is not reachable, as before.
+6. On A clear the log. Pass: B still shows A's earlier conversations, and the help text says clearing does not remove the iCloud copy.
+7. Airplane mode on A. Ask two questions, then reconnect. Pass: both reach B within a poll or two.
+8. Start a practice run on A and use the coach. Pass: nothing reaches B until the run is over, then the lines arrive marked as practice.
+9. On B, use an Apple ID outside the share to read the zone if you can (the T85 setup). Pass: the record's label shows but the content is not readable, and B's viewer says how many conversations could not be read.
+10. Ask on A a question whose tool results are very large (a long product list). Pass: it still reaches B. If a result was cut, the line shows the tool's name and arguments with a note that the result was cut for iCloud.
