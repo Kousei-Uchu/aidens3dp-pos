@@ -1,0 +1,492 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index a379329..8789305 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,6 +1,6 @@
+ # CloudKit sync: decisions, status and roadmap
+ 
+-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 and 0207
++Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0208
+ 
+ This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
+ 
+@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
+ 
+ ### In one paragraph
+ 
+-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0207 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first three pieces of patch 6a (the wider shared settings, the cash and refund notices, and the logo), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0208 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first four pieces of patch 6a (the wider shared settings, the cash and refund notices, the logo, and the grid layout), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+ 
+ ### Three things gate turning CloudKit on
+ 
+@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the
+ 
+ ## Part 2. What has been built, and where we are going
+ 
+-### 2.1 Patch ledger, 0188 to 0207
++### 2.1 Patch ledger, 0188 to 0208
+ 
+ All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
+ 
+@@ -50,6 +50,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 0205 | 2 Nov | **6a, first piece.** The wider shared settings (`sharedSettings.ts`): shop name, receipt details, the two server addresses, auto-receipt, smart change, consolidate and the assistant connection, read safely and merged per key, with staff merged person by person. A 1.5 s watcher sends edits. T94. | On Shopify the record is still the original seven keys, now read through a whitelist. The new keys are CloudKit only. |
+ | 0206 | 2 Nov | **6a, second piece: the cash and refund notices** (`noticeShared.ts`, `cloudkit/noticeCloud.ts`, `cloudkit/noticeSync.ts`). Each is a write-once `notice-<register>-<id>` record, sent when raised and caught up once per launch, and taken in by the other registers unread, labelled **From** the register that raised it. Reading or clearing stays per iPad (a device-only `noticesSeen` list stops a cleared one returning). A week's age limit, 50 at a time. T95. | Swift uncompiled. Inactive until patch 8. |
+ | 0207 | 2 Nov | **6a, third piece: the logo** (`logoShared.ts`, `cloudkit/logoCloud.ts`, `cloudkit/logoSync.ts`, `logoFiles.ts`). The uploaded logo image (Settings ▸ Screensaver & display) is one `logo-current` record with the image as a CloudKit asset and plain fields (hash, type, size, who, when). Each poll compares this register's logo with the shop's against a device-only `logoBase`: a change made here is sent, a change made elsewhere is taken, a removal goes both ways, and a downloaded image is checked against its hash before it replaces anything. The https link stays per device. T96. | Swift uncompiled. Inactive until patch 8. |
++| 0208 | 2 Nov | **6a, fourth piece: the grid layout** (`gridMerge.ts`, `reconcileLayout` in `sync.ts`). On CloudKit two registers' layout edits are joined page by page against a device-only `gridBase` instead of the last writer replacing the whole grid, and the version counter is no longer used to tell what is newer (item 27). A layout edited offline is sent at the next poll. No native code changed (layout already went through `putLayout` and `getLayout`). T97. | Inactive until patch 8. On Shopify the counter is unchanged. |
+ 
+ ### 2.2 Build status of each decision
+ 
+@@ -80,7 +81,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ | 21 | Auto-receipt | Shared (0205), but **no screen edits it today**, so sharing it changes nothing yet. |
+ | 22, 24, 25, 26 | Local | Nothing to build. |
+ | 23 | Smart change and consolidate | Shared (0205). Settings and help text still need to say “shop-wide” once CloudKit is live (0203 left them as “this register only” on purpose). |
+-| 27 | Grid version counter | Not built. Layout and Square history shards are still to do. |
++| 27 | Grid version counter | Built (0208) for CloudKit: joined by page against `gridBase`, no counter. The Shopify path still uses it. Square history shards are still to do. |
+ | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
+ | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
+ | N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
+@@ -97,7 +98,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 1 to 3 | Entitlements and Swift module, zone and share and account screen, backend seam | Done before 31 October. |
+ | 4 | Sales and rollups with encrypted card fields, payment attempts, events | **Code complete** (0194 to 0201). Gated on the Swift build, T85 and the `encrypted` switch. |
+ | 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
+-| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Three pieces done** (0205 settings, 0206 notices, 0207 logo). **Still to do:** layout, Square history shards. |
++| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Four pieces done** (0205 settings, 0206 notices, 0207 logo, 0208 layout). **Still to do:** Square history shards. |
+ | 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
+ | 6c | Audit log (encrypted) and training progress | Not started. |
+ | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
+@@ -105,7 +106,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ | 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
+ | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
+ 
+-**Next up:** finish 6a (layout, then Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
++**Next up:** finish 6a (Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
+ 
+ ### 2.4 Open items and things to confirm
+ 
+@@ -122,6 +123,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - The events export is a button on the Cloud sync page, with a register name column and not the id (0201).
+ - The iCloud note is shown to everyone who can open the page, before and after joining, and describes the design rather than what is sent today (0202).
+ - The smart-change “typical day” now uses the whole shop’s sales (0203).
++- The grid layout is joined by page, not by tile: two registers editing the same page, the later sender keeps the whole page. A page removed on either side stays removed (0208).
+ - The shared logo is the uploaded screensaver image only. A register that has just joined takes the shop's logo over its own, and keeps its own if the shop removed theirs (0207).
+ - Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
+ - A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
+@@ -145,7 +147,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - A Sale’s `secure_json` is an encrypted field and needs no index.
+ - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
+ 
+-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) and T96 (shared logo).
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo) and T97 (shared layout).
+ 
+ **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
+ 
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index 24bc2d4..e6ad36e 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -196,6 +196,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+    - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, layout and Square history shards.
+    - 6a, second piece **done in code (0206)**: the cash and refund notices shared between registers, in `src/lib/noticeShared.ts` and `src/lib/cloudkit/noticeSync.ts`. Write-once `Notice` records, unread on arrival, reading and clearing stay per iPad.
+    - 6a, third piece **done in code (0207)**: the uploaded logo image, one `logo-current` record with a CloudKit asset, reconciled each poll against a device-only `logoBase` (`src/lib/logoShared.ts`, `src/lib/cloudkit/logoSync.ts`). Still to do for 6: layout and Square history shards.
++   - 6a, fourth piece **done in code (0208)**: the grid layout joined page by page against a device-only `gridBase` on CloudKit (`src/lib/gridMerge.ts`), no version counter. Still to do for 6: Square history shards.
+    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
+    - 6c. The audit log (encrypted) and training progress
+    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index a67fd50..4d2eab8 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1273,3 +1273,16 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8),
+ 6. Upload a PNG over 700 KB on A. Pass: it works on A, nothing reaches B, and B's logo is unchanged.
+ 7. Turn practice mode on at A and upload a logo. Pass: nothing reaches B. Turn it off, then upload a logo for real. Pass: B receives that one.
+ 8. Leave both iPads alone for a few minutes on Wi-Fi with a network monitor on. Pass: the logo image is not downloaded again (only a small record is read each poll).
++
++## T97. Shared grid layout on two registers (0208)
++
++Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then. Nothing in this patch has been run on a device. Until the switch, confirm only that editing the grid and Settings ▸ Grid import / export ▸ Push layout now behave as before.
++
++1. On A add a tile to Home. Pass: B shows it within about 30 seconds.
++2. Airplane mode on both. On A add a page called "Prints". On B add a page called "Parts". Reconnect both. Pass: both iPads end with both pages.
++3. On A add a tile to Home. On B add a different tile to Home, both online. Pass: both end on the same Home page, holding the tile of whichever iPad sent last, and nothing else is lost.
++4. On A remove the "Parts" page while B adds a tile to it. Pass: the page is gone on both.
++5. On A move a page to the front. Pass: B shows the same order.
++6. Airplane mode on A. Edit the grid, then reconnect and make no further edit. Pass: B receives the change at the next poll without any button.
++7. Join a new register C whose grid has a page of its own. Pass: C keeps that page and gains the shop's pages, and the shop gains C's page.
++8. Practice mode on A, edit the grid. Pass: nothing reaches B.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index 424ebad..9745187 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -501,3 +501,16 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
+ 7. **Checked by content, not by name.** A downloaded image is installed only if its hash matches the record's. A mismatch, an unreadable file or a missing asset changes nothing and is tried again next poll.
+ 8. **One record, history not kept.** `logo-current` is overwritten each time. Nothing keeps earlier logos.
+ 9. **The poll reads one small record each time and downloads the image only when it changed.** The hash of this register's file is worked out once per file, not per poll.
++
++## Shared layout (0208)
++
++These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 27). Each is a guess, change any you disagree with.
++
++1. **Merged by page, not by tile.** Tiles have no ids, so two registers editing different tiles of the same page cannot be told apart from two editing the same tile. The page is one value and the later sender keeps the whole page. A per-tile merge would need ids on tiles.
++2. **A removed page stays removed** even if the other register edited it meanwhile, the same rule as saved carts (0204) and staff (0205). The alternative was to keep an edited page.
++3. **Order: the sender's if it moved pages, otherwise the shop's.** A page that is new on one side goes after the others.
++4. **No counter on CloudKit.** The shared layout is told apart from this register's by comparing text with `gridBase`, not by `gridVersion`. The version field is still written (one more than the larger of the two) so a register on Shopify storage would still read it.
++5. **A layout edited offline is sent at the next poll.** Before, an edit made while offline was only sent if another edit followed. The poll now sends whenever this register's grid differs from `gridBase` and the shop's has not changed.
++6. **No base joins instead of replacing.** A register that has just joined keeps its own pages the shop lacks and takes the shop's version of pages both have.
++7. **A layout the shop holds that cannot be read is overwritten** by this register's, which repairs it. The alternative was to leave it alone.
++8. **An edit made while a send is running is kept**, and sent at the next poll.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index d7da176..493136a 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -188,6 +188,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0205 | 2026-11-02 | CloudKit patch 6a, first piece: **the wider set of shared settings, read safely and merged between registers** (your request: continue on the repo, returned as a patch). New pure `src/lib/sharedSettings.ts`. **Two key sets:** on Shopify the shared record is exactly the original seven keys, as before; on CloudKit it also carries the shop name, the receipt details, the pass and gift claim server addresses, auto-receipt, smart change, consolidate, and the assistant's connection (address, model name, options), per decisions items 3, 19 to 21, 23 and O2. Staff already carried each person's display mode, theme, accent and tile size, so item 2 needed nothing more. **Reading is now safe on both backends:** `parseShared` takes only the backend's own keys, type checks each, drops a staff entry that is not a real person, and never fills in a missing key, so an older build that never wrote the new keys cannot reset them (before, `pullSettings` spread whatever JSON arrived into the settings). **Merging:** `pushSharedSettings` on CloudKit reads the shop's record first and joins it with this register's edits against `sharedBase`, what both last agreed (new device-only setting, in `DEVICE_KEYS`): a setting only the shop changed is taken, a setting changed here is kept, and **staff is merged person by person**, so people added on two registers both stay and a removed person stays removed. Without this, widening the set would have let a stale register undo another's shop-name or fee edit. **Sending:** a small watcher in `sync.ts` sends the CloudKit-only settings 1.5 s after typing stops (receipt fields save per keystroke), skips practice mode, Shopify and an unsent retry, and cannot echo: after a push or a pull the base equals what the register holds. **Not shared, on purpose:** the assistant's log cap and its data gate, the API key and pass codes (patch 6d), the logo, notices (their own patches), and everything per device. No native code changed; the existing `putSettings` and `getSettings` carry it. Wording: Smart change in Settings and two help pages, and the Cloud sync help page, say what is shared and how edits join. Tests: `tests/sharedsettings.test.ts` (15); `tests/assistantsettings.test.ts` had a test pinning the old rule that the assistant is never shared, rewritten to the new one. I broke the removal rule, the keep-ours rule, the key whitelist and the assistant strip on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, 1630 of 1630 tests pass, `help:check` green. **Nothing sets the CloudKit backend until patch 8, so the Shopify path is the only live one; its record is the same seven keys, now read through the whitelist.** Device test T94. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared settings'. | your request |
+ | 0206 | 2026-11-02 | CloudKit patch 6a, second piece: **the cash and refund notices, shared between registers** (your request: continue on the repo, returned as patches; decisions item 10, Q2). New pure `src/lib/noticeShared.ts`: only `cash` and `refund` are shared (the other six describe one iPad). A notice is one write-once `notice-<register id>-<notice id>` record holding kind, title, body, route, time and the register's id and name, with no card or customer detail. **Sending:** `notify` in the store now hands each notice it adds to a sink (`setNoticeSink`, set in `sync.ts`), the same hook pattern as the events sink, so a cash or refund notice goes to CloudKit when raised, and a catch-up once per launch sends this register's unread ones CloudKit lacks. **Taking in:** the poll reads every register's notices (`cloudkit/noticeSync.ts`, `noticeCloud.ts`) and adds the new ones unread with a new optional `Notice.from` (the register's name), shown as a **From** line on the Notifications list. **Reading and clearing stay per iPad:** nothing about reading is sent, and a device-only `noticesSeen` list (new, in `DEVICE_KEYS`) remembers which records were taken in, so a notice cleared here never returns. Own notices are never taken back, a notice older than 7 days is neither sent nor shown, a kind this device does not hold is skipped (`noticeAllowed`), a repeat of an unread notice is skipped, at most 50 arrive per read, and practice mode sends and takes in nothing. Notices come in through `patchPos`, not `notify`, so they are never sent back. Native: `putNotice` (write once) and `listNotices` added to the Swift module, its TypeScript wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. The decisions doc is replaced with the 2 November version (Part 1 and 2 added, items 1 to 27 kept) and updated for this patch. Tests: `tests/noticeshared.test.ts` (12) and `tests/noticesync.test.ts` (17: the transport and call sites on a fake native module, plus source pins for the sink, the poll, the Swift and the device-only key). I broke the seen rule, the own-notice rule, the kind list, the age rule, the per-read limit and the read filter on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is unchanged in how it writes and still untried on a Mac.** **Not done:** the logo, layout and Square history shards (the rest of 6a). Device test T95. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared notices'. | your request |
+ | 0207 | 2026-11-02 | CloudKit patch 6a, third piece: **the logo, shared between registers** (your request: continue on the repo, returned as a patch; decisions item 14). New pure `src/lib/logoShared.ts`: the image is the one uploaded under Settings ▸ Screensaver & display (`screensaver.logoFile`), which is the only logo image the app stores. It is one `logo-current` record with the image as a CloudKit asset and plain fields (content hash, type, size, who and when); a removal is the same record with `removed` set and no asset. **How registers agree:** each keeps a device-only `logoBase` (new, in `DEVICE_KEYS`), the hash both it and the shop last agreed on. `decideLogo` compares this register's image, the shop's and the base: same on both is nothing; a change made here is sent (this register wins when both changed); a change made only on the shop is taken, or removes the local file if the shop removed it; a register with no base takes the shop's image, except that it keeps and sends its own when the shop removed theirs. **Running:** `cloudkit/logoSync.ts` does one reconcile per poll (`sync.ts`, after the notices, outside practice mode); `cloudkit/logoCloud.ts` is the transport; `logoFiles.ts` does the file work and is loaded on demand. The shop's fields are read without the image, which is downloaded only when it changed; a downloaded image is installed only if its hash matches the record, an over-700 KB image is never sent, and a failed run changes nothing and moves no base. **Native:** `putLogo`, `getLogo` (fields only, `desiredKeys`) and `downloadLogo` added to the Swift module, its wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. Docs: decisions doc, plan, guesses and device tests updated. Tests: `tests/logoshared.test.ts` (12) and `tests/logosync.test.ts` (17: the rules, the transport and call site on a fake native module and file system, source pins for the poll, the lazy file import, the device-only key and the Swift). I broke the base rule and the hash check on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is untried on a Mac.** **Not done:** layout and Square history shards (the rest of 6a); the receipt still shows the fixed shop logo link, not the shared image. Device test T96. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared logo'. | your request |
++| 0208 | 2026-11-02 | CloudKit patch 6a, fourth piece: **the grid layout, joined between registers** (your request: next; decisions item 27). The layout already travelled through the seam (`putLayout`, `getLayout`), but with a version counter and the whole grid replaced by whichever register wrote last, so two registers editing at once lost one's changes, and an edit made offline was only sent if another edit followed. New pure `src/lib/gridMerge.ts`: `mergeGrid` joins two grids page by page (by page id) against `base`, what both last agreed on (a page only one side changed is taken; both changed: the sender's; a page added on either is kept; a page removed on either stays removed; the sender's page order if it moved pages, else the shop's); `planLayout` decides same, take, send or merge; `adoptAfterSend` keeps an edit made while a send was running. A device-only `gridBase` (new, in `DEVICE_KEYS`) holds the agreed layout, so on CloudKit **the version counter is no longer used to tell what is newer**, as item 27 says. `sync.ts`: `pushLayout` and `pullLayout` both call one `reconcileLayout` on CloudKit (one at a time, skipped in practice mode), so the poll also sends an offline edit. **The Shopify path is unchanged**, still on the counter. Native: no change. Help: `help/sales/grid.md` has a new section and corrected fault-finding; `help.json` rebuilt. Tests: `tests/gridmerge.test.ts` (16: each merge rule, the plan, the race, two registers settling on one grid, source pins). I broke the removal rule and the base comparison on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing today.** **Not done:** per-tile merging (tiles have no ids) and Square history shards (the last of 6a). Device test T97. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared layout'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index 118eec4..2b3028d 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "f2d5bd70",
++ "version": "007e2cde",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1389,15 +1389,15 @@
+     "sales",
+     "sales/variants-and-stock"
+    ],
+-   "updated": "2026-10-18",
++   "updated": "2026-11-02",
+    "needs": [
+     "selling"
+    ],
+    "lead": "The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.",
+    "sections": {
+-    "basic": "### What a tile can be\n- **Item**: adds that product to the cart. If it has several variations you pick one first (see [[sales/variants-and-stock]]).\n- **Category**: opens inside to show its own tiles, then every product in that Shopify collection. The photo on the tile is the collection's picture.\n- **Display group**: a folder you fill yourself with any tiles you like. It can optionally act like a collection too.\n- **Action**: a button that does a job: Custom amount, Sell gift card, Clear cart, Create item, Customers, Discounts, Cart discount, Saved carts, Switch staff, Lock POS, Price check, Stock check, Check change.\n- **Discount**: applies a percentage or dollar discount to the whole cart.\n\nA small dot on an item tile shows its stock: green is fine, amber is low (2 or fewer), red is oversold (below zero). No dot means the stock is not tracked.\n\n### Moving around\nWhen you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.\n\n```screen\ntitle: Quick Menu\nsub: Home > Dragons\ntile: Highland Cow · Cream | $12.50\ntile: Tadling · Green | $8.00\ntile: Gemstone egg · Crushed Blue | $9.00\ntile: !1 Cows | 24 items\ntile: Sell gift card\ntile: 10% off\nnote: A dot on an item tile shows its stock. Tapping a category tile takes you inside it.\n```\n\n### Changing the grid\n1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.\n2. **Tap a tile** to change it: its label, its colour, and for a category or group what it shows and what is inside it.\n3. The **red minus** at a tile's top-left removes it. The **arrows** at its bottom-right move it earlier or later.\n4. The dashed **+** tile adds something: Items, Categories, Display groups, Actions or Discounts.\n5. Tap the green tick when you are done.\n\nYou are editing the level you are standing in. Open a category first to change what is inside it. Everything saves as you go, and your other registers get the change shortly afterwards.\n\n### Pages\nIf you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.\n\n### Tile size\nSettings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size the grid aims for. The tiles are then stretched or squeezed a little, keeping their shape, so the columns fill the width beside the cart with no gap at the edge. If less than about half a tile of space would be left over, the tiles grow to use it. If more, the grid adds another column and the tiles shrink a little to fit it. The grid always has at least two columns.\n\n### Missing tiles\nA greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.\n\n### Moving a layout in or out\nSettings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.",
++    "basic": "### What a tile can be\n- **Item**: adds that product to the cart. If it has several variations you pick one first (see [[sales/variants-and-stock]]).\n- **Category**: opens inside to show its own tiles, then every product in that Shopify collection. The photo on the tile is the collection's picture.\n- **Display group**: a folder you fill yourself with any tiles you like. It can optionally act like a collection too.\n- **Action**: a button that does a job: Custom amount, Sell gift card, Clear cart, Create item, Customers, Discounts, Cart discount, Saved carts, Switch staff, Lock POS, Price check, Stock check, Check change.\n- **Discount**: applies a percentage or dollar discount to the whole cart.\n\nA small dot on an item tile shows its stock: green is fine, amber is low (2 or fewer), red is oversold (below zero). No dot means the stock is not tracked.\n\n### Moving around\nWhen you open a category or group, a bar above the tiles shows where you are, for example *Home > Dragons > Highland cow*. Tap any earlier name to jump back to it, or use the back arrow to go up one step. Categories can sit inside categories as deep as you like.\n\n```screen\ntitle: Quick Menu\nsub: Home > Dragons\ntile: Highland Cow · Cream | $12.50\ntile: Tadling · Green | $8.00\ntile: Gemstone egg · Crushed Blue | $9.00\ntile: !1 Cows | 24 items\ntile: Sell gift card\ntile: 10% off\nnote: A dot on an item tile shows its stock. Tapping a category tile takes you inside it.\n```\n\n### Changing the grid\n1. On Checkout, with **Quick Menu** selected, tap the **pencil** at the top. It turns into a green tick.\n2. **Tap a tile** to change it: its label, its colour, and for a category or group what it shows and what is inside it.\n3. The **red minus** at a tile's top-left removes it. The **arrows** at its bottom-right move it earlier or later.\n4. The dashed **+** tile adds something: Items, Categories, Display groups, Actions or Discounts.\n5. Tap the green tick when you are done.\n\nYou are editing the level you are standing in. Open a category first to change what is inside it. Everything saves as you go, and your other registers get the change shortly afterwards.\n\n### Pages\nIf you have more than one page, a row of page names sits above the tiles. While editing, a **Pages** button (or tapping the current page's name) opens a list where you can rename the page, add a new one, move pages up and down, or delete one. You cannot delete the last page.\n\n### Tile size\nSettings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size the grid aims for. The tiles are then stretched or squeezed a little, keeping their shape, so the columns fill the width beside the cart with no gap at the edge. If less than about half a tile of space would be left over, the tiles grow to use it. If more, the grid adds another column and the tiles shrink a little to fit it. The grid always has at least two columns.\n\n### Missing tiles\nA greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.\n\n### Two registers editing the layout\nOnce iCloud sync is switched on, edits from two registers are joined page by page instead of the last one replacing the other. A page only one register changed is taken as it is, a page added on either is kept, and a page removed on either stays removed. If both registers change the same page, the one that sends last keeps its version of that page, so tiles added to it on the other register are lost. Pages moved by one register keep that order. Tiles are not merged one by one inside a page. A layout changed while a register was offline is sent at its next sync, not lost.\n\n### Moving a layout in or out\nSettings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.",
+     "deep": "### Category or display group?\nA **category** is tied to a Shopify collection. Open it and you see the tiles you put inside it first (usually sub-categories), then the products in the collection. A **display group** is just your own folder with its own tiles. If you switch on \"Acts like a collection\" for a group, it shows that collection's products after its tiles, like a category does.\n\n### Which products show where\nIf a product belongs to both a category and one of that category's sub-categories (at any depth), it only shows in the deepest one. This stops the same product appearing in every level. A product you pin yourself as an **Item** tile is never hidden by this, and it is not shown twice in the same place.\n\n### One product or one variation\nAn Item tile can point at a whole product (the picker appears if it has several variations) or at one specific variation (it is added straight away). Tiles you add from a product use the whole product.\n\n### What editing shows\nWhile editing, a category shows only the tiles stored inside it, not its collection's products, because those are filled in automatically and cannot be moved. A note under the grid says so.\n\n### Shared between registers\nThe layout is stored in Shopify, so every register shows the same grid. After you change something, the new layout is sent about a second and a half later. Each register checks for a newer layout about every 25 seconds while the app is open, and when it returns to the front. A layout that cannot be read is ignored, so a bad import cannot blank another register.",
+-    "advanced": "### The data\n```text\n{ \"version\": 1, \"pages\": [ { \"id\": \"...\", \"name\": \"Home\", \"tiles\": [ ... ] } ] }\n```\nA tile is one of five shapes, from `src/lib/grid.ts`:\n\n| `type` | Fields |\n|---|---|\n| `action` | `action` (one of `ACTIONS`), optional `label`, `color` |\n| `category` | `collectionId`, optional `label`, `color`, `subs` (more tiles) |\n| `item` | `variantId` or `productId`, optional `label`, `color` |\n| `discount` | `code`, `pct` or `amtCents`, optional `label`, `color` |\n| `group` | `name`, `tiles`, optional `collectionId`, `color` |\n\n`parseGrid` accepts a JSON string or object, drops any tile that fails `isTile` (counting them in `dropped`), and always returns at least one page. A new install gets `defaultGrid()`: one Home page with every action except Cart discount.\n\n### Paths and nesting\n`src/lib/gridNav.ts` is pure and works on a **path**: a list of tile indexes, one per level (`[2, 0]` is tile 2 on the page, then tile 0 inside it). `resolvePath` walks it and stops at the first step that no longer exists, so a layout change from another register cannot leave a screen pointing at nothing. `listAt`, `editListAt`, `updateTileAt`, `addTileAt`, `removeTileAt` and `moveTileAt` return changed copies and never edit in place.\n\n```mermaid\nflowchart TD\n  P[path from Checkout state] --> R[resolvePath]\n  R --> E{editing?}\n  E -->|yes| C[childTiles of the last container]\n  E -->|no| V[viewTiles: own tiles, then ownProductIds items]\n  C --> G[TileGrid]\n  V --> G\n  G -->|tap a container| O[onOpen: path plus index]\n  G -->|tap an item| A[handlers.onVariants]\n```\n\n`ownProductIds` implements the deepest-wins rule: it removes any product found in `descendantCollectionIds`. `viewTiles` also skips a product already pinned as an item tile inside the container. `breadcrumbs` builds the bar from the resolved nodes.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Edit mode, page chips, path state | `Checkout.tsx` (`editing`, `pageIdx`, `path`, `edit`, `editPage`) |\n| Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |\n| Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |\n| Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |\n| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |\n| Import and export | `GridSettings` in `Settings.tsx` |\n| Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |\n| Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |\n\n### Reading the code for a fault\n- **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.\n- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.\n- **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).\n- **Import said \"N unsupported tiles skipped\".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`."
++    "advanced": "### The data\n```text\n{ \"version\": 1, \"pages\": [ { \"id\": \"...\", \"name\": \"Home\", \"tiles\": [ ... ] } ] }\n```\nA tile is one of five shapes, from `src/lib/grid.ts`:\n\n| `type` | Fields |\n|---|---|\n| `action` | `action` (one of `ACTIONS`), optional `label`, `color` |\n| `category` | `collectionId`, optional `label`, `color`, `subs` (more tiles) |\n| `item` | `variantId` or `productId`, optional `label`, `color` |\n| `discount` | `code`, `pct` or `amtCents`, optional `label`, `color` |\n| `group` | `name`, `tiles`, optional `collectionId`, `color` |\n\n`parseGrid` accepts a JSON string or object, drops any tile that fails `isTile` (counting them in `dropped`), and always returns at least one page. A new install gets `defaultGrid()`: one Home page with every action except Cart discount.\n\n### Paths and nesting\n`src/lib/gridNav.ts` is pure and works on a **path**: a list of tile indexes, one per level (`[2, 0]` is tile 2 on the page, then tile 0 inside it). `resolvePath` walks it and stops at the first step that no longer exists, so a layout change from another register cannot leave a screen pointing at nothing. `listAt`, `editListAt`, `updateTileAt`, `addTileAt`, `removeTileAt` and `moveTileAt` return changed copies and never edit in place.\n\n```mermaid\nflowchart TD\n  P[path from Checkout state] --> R[resolvePath]\n  R --> E{editing?}\n  E -->|yes| C[childTiles of the last container]\n  E -->|no| V[viewTiles: own tiles, then ownProductIds items]\n  C --> G[TileGrid]\n  V --> G\n  G -->|tap a container| O[onOpen: path plus index]\n  G -->|tap an item| A[handlers.onVariants]\n```\n\n`ownProductIds` implements the deepest-wins rule: it removes any product found in `descendantCollectionIds`. `viewTiles` also skips a product already pinned as an item tile inside the container. `breadcrumbs` builds the bar from the resolved nodes.\n\n### Where the code is\n| Job | Where |\n|---|---|\n| Edit mode, page chips, path state | `Checkout.tsx` (`editing`, `pageIdx`, `path`, `edit`, `editPage`) |\n| Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |\n| Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |\n| Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |\n| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version`. On iCloud both run `reconcileLayout`, which joins pages with `src/lib/gridMerge.ts` against the device-only `gridBase` and does not use the version |\n| Import and export | `GridSettings` in `Settings.tsx` |\n| Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |\n| Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |\n\n### Reading the code for a fault\n- **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.\n- **A change did not reach another register.** On iCloud, check `gridBase` agrees with the shop (`planLayout`); the version is not used. On Shopify, `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.\n- **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).\n- **Import said \"N unsupported tiles skipped\".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`."
+    },
+    "figures": [
+     "<figure class=\"sf\"><div class=\"sf-frame\"><div class=\"sf-bar\"><span class=\"sf-title\">Quick Menu</span><span class=\"sf-sub\">Home &gt; Dragons</span></div><div class=\"sf-body\"><div class=\"sf-grid sf-tiles\"><span class=\"sf-tile\"><span class=\"sf-tile-label\">Highland Cow · Cream</span><span class=\"sf-tile-value\">$12.50</span></span><span class=\"sf-tile\"><span class=\"sf-tile-label\">Tadling · Green</span><span class=\"sf-tile-value\">$8.00</span></span><span class=\"sf-tile\"><span class=\"sf-tile-label\">Gemstone egg · Crushed Blue</span><span class=\"sf-tile-value\">$9.00</span></span><span class=\"sf-tile\"><span class=\"sf-badge\">1</span><span class=\"sf-tile-label\">Cows</span><span class=\"sf-tile-value\">24 items</span></span><span class=\"sf-tile\"><span class=\"sf-tile-label\">Sell gift card</span></span><span class=\"sf-tile\"><span class=\"sf-tile-label\">10% off</span></span></div></div></div><figcaption class=\"sf-note\">A dot on an item tile shows its stock. Tapping a category tile takes you inside it.</figcaption></figure>"
+diff --git a/help/sales/grid.md b/help/sales/grid.md
+index 43064af..d812390 100644
+--- a/help/sales/grid.md
++++ b/help/sales/grid.md
+@@ -6,7 +6,7 @@ needs: [selling]
+ summary: Tiles, categories, display groups and pages on the Quick Menu, how to change them, and how the layout is shared and moved.
+ tags: [grid, quick menu, tile, category, group, page, edit, layout, import, export]
+ related: [sales, sales/variants-and-stock]
+-updated: 2026-10-18
++updated: 2026-11-02
+ ---
+ The Quick Menu is your own layout of buttons. You decide what is on it, how it is grouped, and what colour each button is.
+ 
+@@ -54,6 +54,9 @@ Settings ▸ Theme ▸ **Tile size** (Small, Medium or Large) sets the tile size
+ ### Missing tiles
+ A greyed tile saying **Missing item** or **Missing category** points at something that no longer exists in Shopify. Remove the tile, or import your products again in Settings ▸ Shopify if it should still be there.
+ 
++### Two registers editing the layout
++Once iCloud sync is switched on, edits from two registers are joined page by page instead of the last one replacing the other. A page only one register changed is taken as it is, a page added on either is kept, and a page removed on either stays removed. If both registers change the same page, the one that sends last keeps its version of that page, so tiles added to it on the other register are lost. Pages moved by one register keep that order. Tiles are not merged one by one inside a page. A layout changed while a register was offline is sent at its next sync, not lost.
++
+ ### Moving a layout in or out
+ Settings ▸ **Grid import / export** lets you paste or pick a `grid.json` file, export your grid, or push the layout to your other registers right now. Any tile that cannot be understood is skipped, and you are told how many.
+ 
+@@ -116,13 +119,13 @@ flowchart TD
+ | Drawing tiles, the add sheet | `Tiles.tsx` (`TileGrid`, `TileView`, `AddTileSheet`) |
+ | Tile settings sheet | `TileSettings.tsx` (`TileSettingsSheet`) |
+ | Saving and sharing | `commitGrid` in `Tiles.tsx` (saves at once, `pushLayout` after 1.5 s) |
+-| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version` |
++| Push and pull | `pushLayout`, `pullLayout` in `src/lib/sync.ts`; stored in the `pos_layout` metaobject with a `version`. On iCloud both run `reconcileLayout`, which joins pages with `src/lib/gridMerge.ts` against the device-only `gridBase` and does not use the version |
+ | Import and export | `GridSettings` in `Settings.tsx` |
+ | Tile size to fit the pane | `tileColumnsForPane`, `tileSizeForPane` in `src/lib/gridLayout.ts`; the pane is measured by `TileGrid` in `Tiles.tsx` |
+ | Tests | `tests/gridnav.test.ts`, `tests/gridlayout.test.ts` |
+ 
+ ### Reading the code for a fault
+ - **A gap at the right edge of the grid.** The tile width is the pane width minus 16 points of padding, divided by the column count and rounded down to a quarter point, so at most a point or so per column can be left over. A bigger gap means the pane was measured wrong: `TileGrid` reports its own width through `onLayout`, and until it has reported, the grid guesses from the window width.
+-- **A change did not reach another register.** `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
++- **A change did not reach another register.** On iCloud, check `gridBase` agrees with the shop (`planLayout`); the version is not used. On Shopify, `pullLayout` only applies a layout whose `version` is higher than that register's `gridVersion`. Check the register is online (the strip on Checkout), then Settings ▸ Grid import / export ▸ Push layout now.
+ - **Items missing from a category.** Either the collection has no products on this device (import again) or the products also sit in a sub-category (`ownProductIds`).
+ - **Import said "N unsupported tiles skipped".** Those failed `isTile`: an unknown `type`, an `action` that is not in `ACTIONS`, or an item with neither `variantId` nor `productId`.
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index cb6f1e3..dbd15e6 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'logoBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
++export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'logoBase', 'gridBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
+ 
+ export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+diff --git a/src/lib/gridMerge.ts b/src/lib/gridMerge.ts
+new file mode 100644
+index 0000000..7878cfe
+--- /dev/null
++++ b/src/lib/gridMerge.ts
+@@ -0,0 +1,75 @@
++// Location: src/lib/gridMerge.ts
++// CloudKit sync, patch 6a (layout): how two registers' edits to the shared grid layout are joined. Pure code, no store and no network,
++// so the node tests pin every rule (tests/gridmerge.test.ts).
++//
++// Decisions (dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 27): on CloudKit the grid's version counter is not needed to tell whether the
++// shared layout is newer. Each register instead keeps `gridBase` (device only): the layout, as canonical text, that it and the shop last
++// agreed on. Comparing this register's grid and the shop's against that base says who changed what, as shared settings (0205) do.
++// The Shopify path keeps the counter and does not use any of this.
++import { parseGrid, type Grid, type GridPage } from './grid';
++import { canon } from './sharedSettings';
++
++/** The text a grid is compared and remembered by. Page and tile key order does not matter. */
++export const gridText = (g: Grid): string => canon(g);
++/** A remembered base read back as a grid, or null when there is none or it cannot be read. */
++export function readGridBase(text: string | undefined | null): Grid | null {
++  if (!text) return null; try { return parseGrid(text).grid; } catch { return null; }
++}
++
++/**
++ * Joins this register's grid with the shop's, page by page (by page id), against `base` (what both last agreed on).
++ *  - A page only one side changed takes that side's version. Changed on both: this register's wins (it is the one sending).
++ *    A page is one value: two registers editing different tiles of the same page, the later sender takes the whole page.
++ *  - A page removed on either side stays removed, even if the other side edited it (the same rule as saved carts and staff).
++ *  - A page added on either side is kept.
++ *  - Order: if this register moved pages (relative to the base) its order is used, otherwise the shop's. Pages only in the other order are added after.
++ *  - With no base nothing can be told to be a removal, so the two are joined, the shop's version of a page wins, and a page only here is kept.
++ */
++export function mergeGrid(base: Grid | null, local: Grid, remote: Grid): Grid {
++  const byId = (g: Grid) => new Map(g.pages.map(p => [p.id, p]));
++  const b = base ? byId(base) : null; const l = byId(local); const r = byId(remote);
++  const pick = (id: string): GridPage | null => {
++    const lp = l.get(id); const rp = r.get(id); const bp = b?.get(id);
++    if (lp && rp) return bp && canon(lp) !== canon(bp) ? lp : rp;
++    if (lp) return b && bp ? null : lp; // gone from the shop: removed there
++    if (rp) return b && bp ? null : rp; // gone from here: removed here
++    return null;
++  };
++  const baseIds = base ? base.pages.map(p => p.id) : [];
++  const localIds = local.pages.map(p => p.id); const remoteIds = remote.pages.map(p => p.id);
++  const inBase = new Set(baseIds); const inLocal = new Set(localIds);
++  // Did this register reorder the pages both it and the base still have?
++  const movedHere = !!base && localIds.filter(i => inBase.has(i)).join('\u0000') !== baseIds.filter(i => inLocal.has(i)).join('\u0000');
++  const order = movedHere ? [...localIds, ...remoteIds] : [...remoteIds, ...localIds];
++  const seen = new Set<string>(); const pages: GridPage[] = [];
++  for (const id of order) { if (seen.has(id)) continue; seen.add(id); const p = pick(id); if (p) pages.push(p); }
++  return pages.length ? { version: 1, pages } : remote; // never leave a grid with no page
++}
++
++export type LayoutPlan =
++  | { action: 'same' }                  // identical: nothing to do except remember it
++  | { action: 'take'; grid: Grid }      // only the shop changed: use its layout
++  | { action: 'send'; grid: Grid }      // only this register changed (or the shop has none): send this register's layout
++  | { action: 'merge'; grid: Grid };    // both changed: use the merged layout, and send it
++
++/**
++ * What to do with this register's grid and the shop's. `base` is `gridBase` as saved text. `remote` is null when the shop has no layout yet.
++ * A layout the shop holds that cannot be read is passed as null too, which makes this register send its own: that repairs it.
++ */
++export function planLayout(baseText: string | undefined | null, local: Grid, remote: Grid | null): LayoutPlan {
++  if (!remote) return { action: 'send', grid: local };
++  const lt = gridText(local); const rt = gridText(remote);
++  if (lt === rt) return { action: 'same' };
++  if (baseText) {
++    if (lt === baseText) return { action: 'take', grid: remote };
++    if (rt === baseText) return { action: 'send', grid: local };
++  }
++  return { action: 'merge', grid: mergeGrid(readGridBase(baseText), local, remote) };
++}
++
++/**
++ * After a layout was sent, edits made on this register while the send was running must not be undone by adopting what was sent.
++ * `snapshot` is the grid as it was when the send started, `current` is the grid now, `written` is what the shop now holds.
++ * Returns the grid this register should hold: `written` plus whatever was edited since the snapshot.
++ */
++export const adoptAfterSend = (snapshot: Grid, current: Grid, written: Grid): Grid => (gridText(snapshot) === gridText(current) ? written : mergeGrid(snapshot, current, written));
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index c9e80ea..e685955 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -6,7 +6,8 @@ import { csv, setEventSink } from './csvStore';
+ import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
+ import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
+ import { parseBundleConfig } from './bundles';
+-import { parseGrid } from './grid';
++import { parseGrid, type Grid } from './grid';
++import { adoptAfterSend, gridText, planLayout } from './gridMerge';
+ import { readLedger } from './cashLedger';
+ import { mergeDrawer, missingEntries } from './drawerSync';
+ import { buildWarningListEntries, mergeWarningList } from './warningList';
+@@ -356,15 +357,36 @@ async function pullSaved() {
+ // ── layout + shared settings ─────────────────────────────────────────────────────────────────────
+ export async function pushLayout() {
+   if (!hasCreds()) return;
++  if (sharedKind() === 'cloudkit') { await reconcileLayout(); return; }
+   const s = st(); const version = s.gridVersion + 1;
+   await putShared('layout', 'main', { layout_key: 'main', layout_json: JSON.stringify(s.grid), version, updated_by: s.settings.registerName, updated_at: new Date().toISOString() });
+   s.setGrid(s.grid, version);
+ }
+ async function pullLayout() {
++  if (sharedKind() === 'cloudkit') { await reconcileLayout(); return; }
+   const row = await getShared('layout', 'main'); if (!row) return;
+   const v = Number(row.f.version) || 0;
+   if (v > st().gridVersion) { try { st().setGrid(parseGrid(row.f.layout_json).grid, v); } catch { /* ignore a bad layout */ } }
+ }
++// 0208: on CloudKit the layout is joined page by page against `gridBase`, not replaced by whichever register wrote last, and the version
++// counter is not used to tell what is newer (decisions item 27). One function serves the push after an edit and the poll, so an edit made
++// offline (never sent) is sent at the next poll instead of waiting for another edit. Rules and tests: lib/gridMerge.ts.
++let reconcilingLayout = false;
++async function reconcileLayout() {
++  if (reconcilingLayout || isTraining()) return; reconcilingLayout = true;
++  try {
++    const row = await getShared('layout', 'main'); const snapshot = st().grid;
++    let remote: Grid | null = null; if (row) { try { remote = parseGrid(row.f.layout_json).grid; } catch { remote = null; } }
++    const plan = planLayout(st().settings.gridBase, snapshot, remote);
++    if (plan.action === 'same') { rememberGrid(snapshot); return; }
++    if (plan.action === 'take') { st().setGrid(plan.grid, Math.max(st().gridVersion, Number(row?.f.version) || 0)); rememberGrid(plan.grid); return; }
++    const version = Math.max(st().gridVersion, Number(row?.f.version) || 0) + 1;
++    await putShared('layout', 'main', { layout_key: 'main', layout_json: JSON.stringify(plan.grid), version, updated_by: st().settings.registerName, updated_at: new Date().toISOString() });
++    const next = adoptAfterSend(snapshot, st().grid, plan.grid); // an edit made while this was sending is kept, and sent next time
++    st().setGrid(next, version); st().patchSettings({ gridBase: gridText(plan.grid) });
++  } finally { reconcilingLayout = false; }
++}
++const rememberGrid = (g: Grid) => { const t = gridText(g); if (st().settings.gridBase !== t) st().patchSettings({ gridBase: t }); };
+ /** Which set of settings is shared: the original seven on Shopify, the wider set on CloudKit (0205, lib/sharedSettings.ts). */
+ const sharedKind = (): SharedKind => (activeBackendKind() === 'cloudkit' ? 'cloudkit' : 'metaobject');
+ // 0205: the settings only CloudKit shares (shop name, receipt details, server addresses, auto-receipt, smart change, consolidate,
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 8e6e488..01cb9fb 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -45,6 +45,8 @@ export type Settings = {
+   noticesSeen?: string[];
+   /** Device only: the hash of the uploaded logo image this register and the shop last agreed on, so a change made here can be told from one made elsewhere (0207). '' means they agreed there is no logo. */
+   logoBase?: string;
++  /** Device only: the grid layout (canonical text) this register and the shop last agreed on, the base for joining two registers' edits on CloudKit (0208). Never shared. See lib/gridMerge.ts. */
++  gridBase?: string;
+   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
+   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
+diff --git a/tests/gridmerge.test.ts b/tests/gridmerge.test.ts
+new file mode 100644
+index 0000000..d13086d
+--- /dev/null
++++ b/tests/gridmerge.test.ts
+@@ -0,0 +1,111 @@
++// Location: tests/gridmerge.test.ts
++// CloudKit patch 6a, layout: how two registers' edits to the shared grid are joined, and the source pins for the wiring.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import type { Grid, GridPage, Tile } from '../src/lib/grid';
++import { adoptAfterSend, gridText, mergeGrid, planLayout, readGridBase } from '../src/lib/gridMerge';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++
++const act = (action: any): Tile => ({ type: 'action', action });
++const page = (id: string, ...tiles: Tile[]): GridPage => ({ id, name: id.toUpperCase(), tiles });
++const grid = (...pages: GridPage[]): Grid => ({ version: 1, pages });
++const ids = (g: Grid) => g.pages.map(p => p.id);
++
++test('a page only the shop changed is taken, and a page only this register changed is kept', () => {
++  const base = grid(page('a', act('lock_pos')), page('b', act('clear_cart')));
++  const local = grid(page('a', act('lock_pos'), act('customers')), page('b', act('clear_cart')));
++  const remote = grid(page('a', act('lock_pos')), page('b', act('clear_cart'), act('discounts')));
++  const m = mergeGrid(base, local, remote);
++  assert.equal(m.pages[0].tiles.length, 2); assert.equal(m.pages[1].tiles.length, 2);
++});
++
++test('both changed the same page: this register, the one sending, wins that page', () => {
++  const base = grid(page('a', act('lock_pos')));
++  const local = grid(page('a', act('customers'))); const remote = grid(page('a', act('discounts')));
++  assert.deepEqual(mergeGrid(base, local, remote).pages[0].tiles, [act('customers')]);
++});
++
++test('pages added on two registers both stay', () => {
++  const base = grid(page('a')); const m = mergeGrid(base, grid(page('a'), page('x')), grid(page('a'), page('y')));
++  assert.deepEqual(ids(m).sort(), ['a', 'x', 'y']);
++});
++
++test('a page removed on either side stays removed, even when the other side edited it', () => {
++  const base = grid(page('a'), page('b', act('lock_pos')));
++  assert.deepEqual(ids(mergeGrid(base, grid(page('a')), grid(page('a'), page('b', act('lock_pos'), act('customers'))))), ['a'], 'removed here, edited there');
++  assert.deepEqual(ids(mergeGrid(base, grid(page('a'), page('b', act('customers'))), grid(page('a')))), ['a'], 'removed there, edited here');
++});
++
++test('the order: this register\'s if it moved pages, the shop\'s if it did not', () => {
++  const base = grid(page('a'), page('b'), page('c'));
++  assert.deepEqual(ids(mergeGrid(base, grid(page('c'), page('a'), page('b')), grid(page('a'), page('b'), page('c')))), ['c', 'a', 'b']);
++  assert.deepEqual(ids(mergeGrid(base, grid(page('a'), page('b'), page('c')), grid(page('b'), page('a'), page('c')))), ['b', 'a', 'c']);
++  assert.deepEqual(ids(mergeGrid(base, grid(page('a'), page('b'), page('c'), page('n')), grid(page('b'), page('a'), page('c')))), ['b', 'a', 'c', 'n'], 'a new page here goes after the shop\'s order');
++});
++
++test('with no base: the pages are joined, the shop\'s version of a page wins, and a page only here is kept', () => {
++  const m = mergeGrid(null, grid(page('a', act('customers')), page('mine')), grid(page('a', act('discounts')), page('theirs')));
++  assert.deepEqual(ids(m), ['a', 'theirs', 'mine']); assert.deepEqual(m.pages[0].tiles, [act('discounts')]);
++});
++
++test('a merge never leaves a grid with no page', () => {
++  const base = grid(page('a')); const m = mergeGrid(base, grid(page('x')), grid(page('y'))); assert.ok(m.pages.length >= 1);
++  const gone = mergeGrid(grid(page('a')), grid(page('b')), grid(page('c'))); assert.ok(gone.pages.length >= 1);
++});
++
++test('key order does not make two equal grids differ', () => {
++  const a = grid({ id: 'a', name: 'A', tiles: [] }); const b = { pages: [{ tiles: [], name: 'A', id: 'a' }], version: 1 } as Grid;
++  assert.equal(gridText(a), gridText(b));
++});
++
++test('a remembered base reads back, and a missing or broken one is null', () => {
++  const g = grid(page('a', act('lock_pos'))); assert.deepEqual(readGridBase(gridText(g)), g);
++  assert.equal(readGridBase(undefined), null); assert.equal(readGridBase('{nope'), null); assert.equal(readGridBase('{"version":2}'), null);
++});
++
++test('planLayout: identical grids need nothing; the shop having none sends this register\'s', () => {
++  const g = grid(page('a')); assert.deepEqual(planLayout(gridText(g), g, g), { action: 'same' });
++  assert.deepEqual(planLayout(undefined, g, null), { action: 'send', grid: g });
++});
++
++test('planLayout: only the shop changed takes it; only this register changed sends it; both changed merges', () => {
++  const base = grid(page('a')); const bt = gridText(base); const edited = grid(page('a', act('customers')));
++  assert.equal(planLayout(bt, base, edited).action, 'take');
++  assert.equal(planLayout(bt, edited, base).action, 'send');
++  const other = grid(page('a'), page('z')); const p = planLayout(bt, edited, other);
++  assert.equal(p.action, 'merge'); assert.deepEqual(ids((p as any).grid).sort(), ['a', 'z']); assert.equal((p as any).grid.pages.find((x: GridPage) => x.id === 'a').tiles.length, 1);
++});
++
++test('planLayout with no base joins instead of overwriting, so a register with its own pages loses none', () => {
++  const p = planLayout(undefined, grid(page('mine')), grid(page('theirs'))); assert.equal(p.action, 'merge'); assert.deepEqual(ids((p as any).grid).sort(), ['mine', 'theirs']);
++});
++
++test('adoptAfterSend: nothing edited during the send adopts what was sent; an edit made meanwhile is kept on top of it', () => {
++  const snap = grid(page('a')); const sent = grid(page('a'), page('shop'));
++  assert.deepEqual(adoptAfterSend(snap, snap, sent), sent);
++  const during = grid(page('a', act('customers'))); const r = adoptAfterSend(snap, during, sent);
++  assert.deepEqual(ids(r).sort(), ['a', 'shop']); assert.deepEqual(r.pages.find(p => p.id === 'a')!.tiles, [act('customers')]);
++});
++
++test('two registers editing in turn end on the same grid', () => {
++  const start = grid(page('a')); let shop = start; const aBase = { t: gridText(start) }; const bBase = { t: gridText(start) };
++  let A = grid(page('a'), page('fromA')); let B = grid(page('a'), page('fromB'));
++  const step = (me: Grid, base: { t: string }) => { const p = planLayout(base.t, me, shop); if (p.action === 'same') { base.t = gridText(me); return me; } const g = (p as any).grid as Grid; if (p.action !== 'take') shop = g; base.t = gridText(g); return g; };
++  A = step(A, aBase); B = step(B, bBase); A = step(A, aBase); B = step(B, bBase);
++  assert.deepEqual(ids(A).sort(), ['a', 'fromA', 'fromB']); assert.equal(gridText(A), gridText(B)); assert.equal(gridText(shop), gridText(A));
++});
++
++// ── source pins ──────────────────────────────────────────────────────────────────────────────────────────────────────────────
++const read = (p: string): string => readFileSync(p, 'utf8');
++test('on CloudKit the push and the poll both go through the reconcile; Shopify keeps the version counter', () => {
++  const s = read('src/lib/sync.ts');
++  assert.match(s, /export async function pushLayout\(\) \{[\s\S]*?sharedKind\(\) === 'cloudkit'\) \{ await reconcileLayout\(\); return; \}[\s\S]*?gridVersion \+ 1/);
++  assert.match(s, /async function pullLayout\(\) \{\s*if \(sharedKind\(\) === 'cloudkit'\) \{ await reconcileLayout\(\); return; \}[\s\S]*?v > st\(\)\.gridVersion/);
++  assert.match(s, /async function reconcileLayout\(\) \{\s*if \(reconcilingLayout \|\| isTraining\(\)\) return/);
++  assert.match(s, /adoptAfterSend\(snapshot, st\(\)\.grid, plan\.grid\)/);
++});
++test('the layout base is a device-only setting, never restored from a backup or shared', () => {
++  assert.ok((DEVICE_KEYS as readonly string[]).includes('gridBase')); assert.match(read('src/state/store.ts'), /gridBase\?: string/);
++  assert.ok(!/gridBase/.test(read('src/lib/sharedSettings.ts')));
++});
