@@ -589,3 +589,15 @@ These fill gaps in the plan (patch 7, section 6 steps 3 and 6). Each is a guess,
 10. **The runner stops after rollups and does not call `completeMigration`.** Only the count check may do that, so a bug here cannot switch every register to a half-filled zone.
 11. **Any error other than losing the lease is written as `failed`**, including a lost network. The next owner iPad (or this one after a relaunch) takes over at once with no two-minute wait, and carries on from the stored phase and cursor.
 12. **The Swift is untouched.** The runner uses only calls that already exist (`putLedgerEntry`, the checkpoint and shift writes, the seam's list, get and put).
+
+## Migration count check (0214)
+
+These fill gaps in the plan (patch 7, section 6 step 4). Each is a guess, change any you disagree with.
+
+1. **"Counts match" means every key Shopify has is present in CloudKit**, not that the two totals are equal. Another owner iPad may legitimately have written an extra record (a setting, for instance), and that should not stop the shop switching over.
+2. **Rows the runner skips are left out of the Shopify side too**, by using the runner's own rules, so one damaged row never blocks `done`.
+3. **The drawer check has three parts**: every ledger entry, the shift (when Shopify had one) and the shop's cash counts reading back equal. The counts are the one that would catch a bad starting checkpoint.
+4. **A shortfall rewinds to the earliest short phase and marks the run failed.** The next owner iPad takes over at once and repeats from that phase, including the later ones. It is not retried automatically by the same call, so a persistent mismatch shows as a repeating failed run with the reason in the record instead of an endless loop.
+5. **A read error during the check is also recorded as failed**, with "Count check could not run" and the reason, and never as done.
+6. **The check reads CloudKit by listing**, so a very large shop pays a few hundred reads once. It runs once, at the end of the import.
+7. **Nothing is deleted.** A record CloudKit has and Shopify does not is left alone.

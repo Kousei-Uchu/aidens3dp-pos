@@ -1359,3 +1359,15 @@ Needs the owner's iPad (A), a second iPad on the owner's Apple ID (B), a Shopify
 8. Start the run on A, and while it is running delete the `Migration` record in the dashboard and press the button on B. Pass: A stops at its next page and writes nothing more, B starts again from the first phase and finishes.
 9. Turn off Wi-Fi on A during sales. Pass: the record shows `failed` with a reason, and turning Wi-Fi on and pressing the button carries on from the stored page.
 10. Make the Shopify settings row's version lower than one you write by hand into CloudKit first. Pass: the CloudKit row is kept and the count still includes it.
+
+## T103. The count check on the real shop (0214)
+
+Same setup as T102, with the button now calling `runImport` instead of `runMigration`. Use a fresh Development zone.
+
+1. Press the button on A. Pass: it returns `done`. The dashboard `Migration` record has `status` done, `finishedAt` set and an empty `error`. On B (a second iPad on the owner's Apple ID) the lease reports `done` without writing.
+2. On P (a participant in the share) read the lease. Pass: it reports `done` and P never wrote the record.
+3. Reset the zone and run again, but delete one `Sale` record by hand in the dashboard **after** the sales phase has finished (pause with a breakpoint, or delete it while the check is reading rollups). Pass: the result is `short`, the record is `failed` with phase `sales` and `Count check failed: sales N-1 of N.`, and pressing the button again re-copies sales, then reports `done`.
+4. Edit the `drawer-checkpoint` counts by hand after the import. Pass: the check reports the drawer short, and a second run does not replace the checkpoint (it is never replaced), so the check keeps failing until the checkpoint is fixed or deleted and the drawer phase run again.
+5. With a shop of several hundred sales, time the check. Pass: it finishes without the lease being lost, and the dashboard shows heartbeat writes (the change tag moves) while it runs.
+6. Put A on a bad network during the check. Pass: A records `failed` with `Count check could not run` and never `done`.
+7. Add one extra record in CloudKit that Shopify does not have (a settings row with a new key). Pass: the check still reports `done`.
