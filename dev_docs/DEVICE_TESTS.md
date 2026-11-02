@@ -1344,3 +1344,18 @@ Needs two iPads on the **owner's** Apple ID (A and B), both on a build that carr
 8. On P (not the owner) call `claim()` at any time. Pass: it returns `wait` with `why: 'owner'` and never writes. After B finishes (call `finishPhase` through the six phases, then `completeMigration(..., true)`), P returns `done`.
 9. Call `completeMigration(..., false)`. Pass: it throws and the record is unchanged.
 10. Call `failMigration` on the holder, then `claim()` on the other owner iPad. Pass: it takes over at once (no two-minute wait), and `error` is empty again.
+
+## T102. The import runner against the real shop (0213)
+
+Needs the owner's iPad (A), a second iPad on the owner's Apple ID (B), a Shopify shop with real shared records (a few settings rows, a drawer with entries, a layout, a few saved carts, at least 250 sales and a few rollups), and a build with the Swift from 0212. There is still no screen and nothing calls the runner, so a developer builds a throwaway button that calls `runMigration` with the metaobject backend as the source, the CloudKit backend as the target and the CloudKit module as the drawer (the wiring is the next piece). Do this against the **Development** CloudKit environment first, with a fresh zone and no `migration-v1` record.
+
+1. On A press the button. Pass: it returns `finished`. The dashboard `Migration` record shows `status` running, phase `rollups`, and counts for all six phases. No record is marked done.
+2. Compare the counts with Shopify: settings rows (not counting `drawer`), layout, saved carts, sales and rollups each match the number of Shopify rows. The drawer count is the number of ledger entries.
+3. In the dashboard open a few sales, carts and rollups. Pass: the keys are the app's own (`sale-<uuid>`, `cart-<uuid>`, `rollup-<register>|<date>`), not Shopify's lowercased handles, and a sale has no customer name, email or phone and, while the card mode is `omit`, no card fields.
+4. Pass: the drawer has one `ledger-<id>` record per entry, one `drawer-checkpoint` holding the same counts as the Shopify drawer, and `drawer-shift` with the same open or closed state, float, paid in, paid out and loan owed. Read the drawer on a register and check its expected cash matches what Shopify's register showed.
+5. Press the button again on A. Pass: it returns `finished` again and writes no new ledger entry records (the dashboard record count does not change).
+6. Delete the zone's records, then press the button and force quit A while sales are importing. Relaunch A and press it. Pass: it resumes at once, the sales count in the dashboard ends equal to Shopify's, and no sale appears twice.
+7. Repeat step 6 but on B instead of relaunching A. Pass: B waits about two minutes, then takes over and finishes, with A's lease replaced and the counts right.
+8. Start the run on A, and while it is running delete the `Migration` record in the dashboard and press the button on B. Pass: A stops at its next page and writes nothing more, B starts again from the first phase and finishes.
+9. Turn off Wi-Fi on A during sales. Pass: the record shows `failed` with a reason, and turning Wi-Fi on and pressing the button carries on from the stored page.
+10. Make the Shopify settings row's version lower than one you write by hand into CloudKit first. Pass: the CloudKit row is kept and the count still includes it.
