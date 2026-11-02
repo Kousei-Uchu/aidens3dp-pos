@@ -1,0 +1,1032 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index c13c719..870c45a 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -1,8 +1,154 @@
+-# CloudKit sync: decisions and open items
+-
+-Aiden’s 3D Printing POS · 31 October 2026 · written against `main` at commit 9f855c2 (patch 0181)
+-
+-Rechecked on 31 October 2026 against `main` at 50af9e2 (patch 0188). Nothing here changed except the shared drawer shift (item 6) and the events list (item 12), which now carry the loan to the drawer added by 0188.
++# CloudKit sync: decisions, status and roadmap
++
++Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patch 0206
++
++This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
++
++Tags used throughout: **Sync** (goes to iCloud and is shared between registers), **Local** (stays on the device), **Open** (not settled yet).
++
++## Part 1. Where we are
++
++### In one paragraph
++
++Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0206 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and the first two pieces of patch 6a (the wider shared settings, and the cash and refund notices), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
++
++### Three things gate turning CloudKit on
++
++1. **The Swift has never been compiled or run.** Every patch since 0192 says so. It needs a Mac build in Xcode, and nothing has touched a real CloudKit zone.
++2. **The two-Apple-ID encryption test (O4, device test T85).** Waits for a second Apple ID and iPad. Until it passes, sale card details are not written at all (the `omit` switch, below), and the encrypted secrets and pass codes (patch 6d) are not built.
++3. **Patch 8**, which retires polling, adds the rollback flag and cuts over. Until then the CloudKit backend is selected by nothing.
++
++### The card-field switch
++
++`setSaleCardMode('encrypted' | 'omit')` (0194, 0195) defaults to **omit**. In that state the card details of a sale are left out of CloudKit entirely and are never written as plain fields. Turning on `encrypted` is one argument, and it should only be turned on after T85 passes. This is the build-behind-a-switch approach suggested under O4. It is still your suggestion-from-me rather than something you have explicitly agreed, so it is listed in Part 2 under things to confirm.
++
++## Part 2. What has been built, and where we are going
++
++### 2.1 Patch ledger, 0188 to 0206
++
++All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
++
++| Patch | Date | What it did | Status |
++|---|---|---|---|
++| 0188 | 31 Oct | **Loans to the drawer.** Paid in has a loan switch, the shift remembers `loanCents` owed back, Take loan back, a confirm on closing with a loan owed, Z-report line. | Live today (not CloudKit-dependent). The assistant’s cash view and the daily float report do not mention the loan yet. |
++| 0189 | 31 Oct | The 31 October decisions written into the repo: `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`, plan section 5 rewritten, help page and two store comments corrected. | Docs and comments only. |
++| 0190 | 31 Oct | **6b first half.** The drawer as records (`src/lib/drawerRecords.ts`): shift as `drawer-shift`, each ledger entry as `ledger-<id>`, counts replayed from entries oldest first. | Pure code. |
++| 0191 | 31 Oct | **Drawer checkpoint** (`src/lib/drawerCheckpoint.ts`): `drawer-checkpoint` holds counts at a point and the server stamp of the newest entry it covers, so counts stay right past 1000 entries. | Pure code. Working assumption, not yet confirmed by you. |
++| 0192 | 31 Oct | **6b second half.** The drawer transport (`drawerCloud.ts`) and the Swift functions for the shift, ledger entries and checkpoint; `upsertRecord`, `putRecordOnce`. `sync.ts` branches to it only when the CloudKit backend is active. | Swift uncompiled. |
++| 0193 | 31 Oct | **Every record write updates in place** (`upsertRecord`). Fixes a bug that would have made a second write of the same sale, rollup, cart, settings, layout, Square history or migration record fail. | Swift uncompiled. Fields a later write leaves out stay as they were. |
++| 0194 | 31 Oct | **4, first half.** A sale as a CloudKit record (`saleRecords.ts`): plain fields, one encrypted `secure_json`, customer never written (only the Shopify id), `CardMode` switch defaulting to `omit`. | Pure code. |
++| 0195 | 31 Oct | **4, second half.** `putSale` with encrypted values in the Swift; the backend reads encrypted keys back by name and still shows the sale when this device cannot read them. Two Swift guards keep encrypted keys out of plain fields. Device test T85 written out. | Swift uncompiled. Card mode is `omit`. |
++| 0196 | 31 Oct | **4, third piece.** Events and payment attempts as records (`eventRecords.ts`): `event-<id>` (register id plus a hash of the CSV row), `attempt-<sale>-<ref>` (status only moves forward), `resolve-<sale>-<ref>` (write-once, so the first resolution wins by construction). Combined CSV builder. | Pure code. |
++| 0197 | 31 Oct | Events and attempts through the native module (`eventCloud.ts`, `putEvent`, `putResolution`, `putAttempt` and the readers). Device test T86. | Swift uncompiled. |
++| 0198 | 31 Oct | **Event call sites.** Every `events.csv` row is also written to CloudKit once, with one timestamp shared by the row and the id. A once-per-launch catch-up uploads whatever CloudKit lacks, which is the one-off upload after joining (Q13). T87. | Inactive until patch 8. |
++| 0199 | 31 Oct | **Attempt call sites** in `Pay.tsx`. The app changes its own copy first, then tells CloudKit. A catch-up sends every attempt the register holds. If another register resolved the same payment first, an info notice names who. T88. | Inactive until patch 8. |
++| 0200 | 31 Oct | **Attempt pull.** Every register reads all registers’ attempts into an in-memory `sharedAttempts`; an `unknown` attempt another register resolved is marked resolved here with a local info notice. Diagnostics gained “Card payments waiting (all registers)”, read only. T89. | Inactive until patch 8. |
++| 0201 | 31 Oct | **Events read back and the combined CSV.** Cloud sync page has an **Export all events** button (managers and owners, off in practice mode, shown only when CloudKit is active). T90. | With this, patch 4’s code is complete. |
++| 0202 | 2 Nov | **The in-app iCloud note** on the Cloud sync page (`icloudNote.ts`): nine kept blocks, a never-kept list, two warnings. Help page updated. T91. | No behaviour change, nothing is sent. |
++| 0203 | 2 Nov | **Drawer audit** (item 6). Found one real gap: smart change and the assistant’s drawer snapshot sized the “typical day” from this register’s sales only. They now use every register’s. Stale “each iPad has its own drawer” wording fixed across the Cash help pages. T92. | Live today. |
++| 0204 | 2 Nov | **Patch 5, saved carts with conflict merging** (`savedMerge.ts`): a delete beats an edit, three-part merge (name and note, assignment, contents) against a shared base, one bad record no longer aborts the pull, the pull reads every page. T93. | **Live today on Shopify too**, because carts already ran through the seam. |
++| 0205 | 2 Nov | **6a, first piece.** The wider shared settings (`sharedSettings.ts`): shop name, receipt details, the two server addresses, auto-receipt, smart change, consolidate and the assistant connection, read safely and merged per key, with staff merged person by person. A 1.5 s watcher sends edits. T94. | On Shopify the record is still the original seven keys, now read through a whitelist. The new keys are CloudKit only. |
++| 0206 | 2 Nov | **6a, second piece: the cash and refund notices** (`noticeShared.ts`, `cloudkit/noticeCloud.ts`, `cloudkit/noticeSync.ts`). Each is a write-once `notice-<register>-<id>` record, sent when raised and caught up once per launch, and taken in by the other registers unread, labelled **From** the register that raised it. Reading or clearing stays per iPad (a device-only `noticesSeen` list stops a cleared one returning). A week's age limit, 50 at a time. T95. | Swift uncompiled. Inactive until patch 8. |
++
++### 2.2 Build status of each decision
++
++“Built” means the code exists and is tested; none of it is live on CloudKit until patch 8.
++
++| Item | Decision | Build status |
++|---|---|---|
++| 1 | Staff with PIN and badge hashes sync | Built (0205), merged person by person. A removed person stays removed. |
++| 2 | Staff display settings sync | Built. They already travelled with the staff entry, so nothing more was needed. |
++| 3 | Receipt profile and receipt server URL sync | Built (0205). The receipt secret waits for 6d. |
++| 4 | Inventory prefs local | Nothing to build. |
++| 5 | Fees, cash rounding, Require PIN sync | Already in the original seven shared keys. |
++| 6 | One shared drawer | Built (0190 to 0192), audited (0203). Swift uncompiled. |
++| 7 | Bookkeeping fields local | Nothing to build. `sharedBase` was added as a new device-only key in `DEVICE_KEYS` (0205). |
++| 8 | Outbox local; another register can create a missing Shopify order (Q11) | Outbox unchanged. **The “find sales with no Shopify order and create it” recovery is not built.** |
++| 9 | Payment attempts sync with the register name; first resolution wins | Built (0196 to 0200). **Resolving another register’s payment from a different register is not built** (the shop-wide list is read only). |
++| 10 | Cash and refund notices sync | Built (0206). Reading or dismissing stays per iPad. Swift uncompiled. |
++| 11 | `pos.shared` becomes a CloudKit-fed cache | Not yet. Happens at cut-over. |
++| 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
++| 13 | Assistant audit log syncs, encrypted | **Not built** (6c). |
++| 14 | Logo syncs as an iCloud asset | **Not built** (6a). |
++| 15 | Training progress syncs; owners and managers can reset | **Not built** (6c). |
++| 16 | `cloudkit.backend` flag local | The app already reads an AsyncStorage `cloudkit.backend` value at start-up, but nothing sets the CloudKit backend. The rollback flag proper arrives with patch 8. |
++| 17 | Card fields encrypted, amounts plain | Built behind the `omit` switch (0194, 0195). Cross-Apple-ID test (O4, T85) not run. |
++| 18 | Staff name, notes, reasons and price adjustments on sales sync | Built (0194). Free-text notes stay plain, the known minor exception. |
++| 19 | Shop name | Built (0205). |
++| 20 | Pass and gift claim URLs | Built (0205). Secrets wait for 6d. |
++| 21 | Auto-receipt | Shared (0205), but **no screen edits it today**, so sharing it changes nothing yet. |
++| 22, 24, 25, 26 | Local | Nothing to build. |
++| 23 | Smart change and consolidate | Shared (0205). Settings and help text still need to say “shop-wide” once CloudKit is live (0203 left them as “this register only” on purpose). |
++| 27 | Grid version counter | Not built. Layout and Square history shards are still to do. |
++| N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
++| N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
++| N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
++| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Audit log and training progress not yet. The migration lease and verification (patch 7) are not built. |
++| O2 | Assistant connection settings sync | Built (0205). The log cap and data gate stay per iPad, and the API key waits for 6d. |
++| O3 | CloudKit keeps every ledger entry; app loads the latest 1000 | Built with the checkpoint (0191, 0192). |
++
++### 2.3 Where we are going
++
++The patch plan from the 31 October doc, updated with what has landed. Patches are small, one concern each, and the order below is the working order.
++
++| Patch | Scope | Status |
++|---|---|---|
++| 1 to 3 | Entitlements and Swift module, zone and share and account screen, backend seam | Done before 31 October. |
++| 4 | Sales and rollups with encrypted card fields, payment attempts, events | **Code complete** (0194 to 0201). Gated on the Swift build, T85 and the `encrypted` switch. |
++| 5 | Saved carts with conflict merging | **Done** (0204). Soft lock and atomic compare-and-set not built. |
++| 6a | Settings, staff, shop and receipt settings, logo, shared notices, layout, Square history shards | **Two pieces done** (0205 settings, 0206 notices). **Still to do:** the logo, layout, Square history shards. |
++| 6b | The shared drawer | **Done** (0190 to 0192, 0203). |
++| 6c | Audit log (encrypted) and training progress | Not started. |
++| 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
++| 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | Not started. |
++| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
++| 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
++
++**Next up:** finish 6a (the logo, then layout and Square history shards), then 6c, then 7, with 6d and 6e after the encryption test and 8 last.
++
++### 2.4 Open items and things to confirm
++
++**Still open from the decisions:** only **O4**, the cross-Apple-ID encryption test, which waits for a second device.
++
++**Working assumptions I made that you have not explicitly confirmed.** Each is written up in `dev_docs/GUESSES.md` under the patch number. Say if you disagree with any:
++
++- The card-field switch defaults to `omit` (0194).
++- The drawer checkpoint record and its use of CloudKit’s creation stamp (0191).
++- Gift card codes, gift recipients and the sale’s own receipt link go in the encrypted field with the card details (0194).
++- Events and attempts are not encrypted, and a resolution is its own write-once record (0196).
++- Events catch up once per launch by comparing `events.csv` with CloudKit, rather than keeping an “uploaded up to here” marker (0198).
++- Another register’s resolution only takes over an `unknown` attempt, never a `started` one, and it does not add a card tender (0200).
++- The events export is a button on the Cloud sync page, with a register name column and not the id (0201).
++- The iCloud note is shown to everyone who can open the page, before and after joining, and describes the design rather than what is sent today (0202).
++- The smart-change “typical day” now uses the whole shop’s sales (0203).
++- Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
++- A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
++- The assistant’s log cap and data gate stay per iPad. With no merge base the shop’s value wins (0205).
++
++**Known gaps and risks:**
++
++- Swift has never been compiled or run. Expect a build error or two on the first Mac build.
++- Two registers changing the same attempt in the same instant could still write an older status (the status check and the write are two calls). The resolution cannot be raced this way. A server-side compare would close it.
++- Saved cart saves read back and merge first, which narrows the overwrite window but does not close it, because there is no atomic compare-and-set. The soft lock is not built, and deleted carts are never tidied (the pull reads up to 1000 records).
++- Two registers editing different items in one saved cart count as one part changed on both sides, so the later edit wins. Two registers editing different fields of fees, receipt details, cart warnings or the assistant connection also lose to the later writer, because each is one value.
++- “Later” in the cart merge uses each iPad’s own clock.
++- Event catch-up cost grows with the history, which is a few pages at a few thousand events.
++- The Daily float report and the assistant’s cash view do not mention loans yet (0188).
++
++**CloudKit dashboard steps needed before it works on a real zone:**
++
++- The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
++- The `Event`, `Attempt`, `Resolution` and `Notice` types need `modificationDate` sortable and queryable.
++- A Sale’s `secure_json` is an encrypted field and needs no index.
++- The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
++
++**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) and T95 (shared notices).
++
++**Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
++
++## Part 3. Decisions (carried over in full from 31 October)
++
++The rest of this document is the 31 October decisions doc. It has been edited only where patch 0188 (the loan) and patch 0191 (the checkpoint) changed a line, and where the “suggested patch placement” has been replaced by the real plan in Part 2.3. The original proposal is kept in place at the end.
+ 
+ ## What this is
+ 
+@@ -131,7 +277,7 @@ All fourteen questions are answered. The numbers are the same as before.
+ - **O1.** All training modules can be reset. Owners can reset anyone’s progress, and managers can reset progress for lower roles.
+ - **O2.** Yes. The assistant’s connection settings (address, model name, options) sync along with the AI key, so a new register works straight away.
+ - **O3.** CloudKit keeps every drawer ledger entry. The app loads the latest 1000.
+-  - Working assumption from patch 0191, to be confirmed: a `drawer-checkpoint` record holds the counts at a point in time and the server stamp of the newest entry it covers, written when a shift opens or closes. A register replays only entries stamped after it, so the counts do not depend on the 1000 loaded. The stamp is CloudKit's creation time, not the entry's `ts`, so an entry an offline register uploads late is still counted.
++  - Working assumption from patch 0191, to be confirmed: a `drawer-checkpoint` record holds the counts at a point in time and the server stamp of the newest entry it covers, written when a shift opens or closes. A register replays only entries stamped after it, so the counts do not depend on the 1000 loaded. The stamp is CloudKit’s creation time, not the entry’s `ts`, so an entry an offline register uploads late is still counted.
+ - **O4.** Deferred. There is no second Apple ID or device to test with right now. My suggestion, not yet agreed: build the encrypted fields behind a switch, and run the cross-Apple-ID test before turning on the encrypted secrets and pass codes (patch 6d).
+ - **O5.** The export is one zip of JSON files containing everything stored in CloudKit. Because it includes the secrets, the zip is as sensitive as the Shopify login itself. Keep it owner-only.
+ 
+@@ -156,7 +302,9 @@ Only the encryption test (O4), which waits for a second device.
+ 5. `help/settings/cloud-sync.md`: fix “cash stays on the register it was counted on” and “each register keeps its own settings”.
+ 6. Store comments for `smartChange` and the sales and drawer split need updating.
+ 
+-## Suggested patch placement (proposal, not agreed)
++## Suggested patch placement (the 31 October proposal, kept for the record)
++
++Superseded by the patch plan and status in Part 2.3, which is what is being followed. The proposal as written on 31 October:
+ 
+ - **Patch 4 (sales and rollups):** sale records with encrypted card fields, payment attempts, events, and first the two-Apple-ID encryption test.
+ - **Patch 5 (saved carts):** unchanged.
+@@ -166,5 +314,5 @@ Only the encryption test (O4), which waits for a second device.
+ - **Patch 7 (migration):** extend to cover each register’s own local-only data (Q13).
+ - **Patch 8:** unchanged.
+ 
+-* **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
+-* **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.
++- **New patch 6d:** the encrypted logins, secrets and cashier pass codes, built only after the encryption test (O4) passes.
++- **New patch 6e:** the owner-only CloudKit export (N3), or folded into patch 8.
+diff --git a/dev_docs/CLOUDKIT_SYNC_PLAN.md b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+index 98c8bb9..9133e85 100644
+--- a/dev_docs/CLOUDKIT_SYNC_PLAN.md
++++ b/dev_docs/CLOUDKIT_SYNC_PLAN.md
+@@ -193,7 +193,8 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
+ 4. The CloudKit backend for sales and rollups, with encrypted card fields, payment attempts and events (run the two-Apple-ID encryption test first)
+ 5. Saved carts with conflict merging
+ 6. Settings, layout and Square history shards, plus staff and staff display settings, shop and receipt settings, the logo and the shared cash and refund notices
+-   - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, the cash and refund notices, layout and Square history shards.
++   - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, layout and Square history shards.
++   - 6a, second piece **done in code (0206)**: the cash and refund notices shared between registers, in `src/lib/noticeShared.ts` and `src/lib/cloudkit/noticeSync.ts`. Write-once `Notice` records, unread on arrival, reading and clearing stay per iPad.
+    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
+    - 6c. The audit log (encrypted) and training progress
+    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
+diff --git a/dev_docs/DEVICE_TESTS.md b/dev_docs/DEVICE_TESTS.md
+index 780eaae..0ee8314 100644
+--- a/dev_docs/DEVICE_TESTS.md
++++ b/dev_docs/DEVICE_TESTS.md
+@@ -1246,3 +1246,17 @@ Needs two iPads on the same shop. The new settings only travel once CloudKit is
+ 7. Airplane mode on both. On A change the shop name. On B change Cash rounding. Reconnect both. Pass: both iPads end with the new name and the new rounding.
+ 8. Airplane mode on both. Add a staff member on A and a different one on B. Reconnect. Pass: both people exist on both iPads and can sign in with their PINs.
+ 9. Airplane mode on both. Remove a staff member on A and rename the same person on B. Reconnect. Pass: the person is gone from both.
++
++## T95. Shared cash and refund notices on two registers (0206)
++
++Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then. Nothing in this patch has been run on a device. Until the switch, confirm only that raising a notice and clearing the list behave as before.
++
++1. On A, take a cash payment while the drawer feature is off for A (or any case that raises "Cash outside the drawer"). Pass: B shows the notice unread within about 30 seconds, with "From" and A's name above it.
++2. On B, open the notice. Pass: it is read on B only, and A's copy is still unread.
++3. On B, tap Clear all. Wait for two polls. Pass: B's list stays empty, and A still has its notice.
++4. On A, cause a failed Shopify refund record (for example refund with Shopify unreachable). Pass: B shows "Refund not recorded in Shopify" unread, with A's name.
++5. Raise a sync notice or a reader notice on A. Pass: B does not get it.
++6. Airplane mode on A. Raise a cash notice on A. Reconnect. Pass: B receives it once, and not twice after more polls.
++7. Turn practice mode on at A and raise a cash notice. Pass: nothing reaches B. Turn it off. Pass: still nothing arrives later.
++8. On a register that has just joined, with notices older than a week on the others. Pass: it shows only the recent ones, and not more than 50.
++9. Pass: A never shows its own notice a second time after polling, whether it was read, cleared or left.
+diff --git a/dev_docs/GUESSES.md b/dev_docs/GUESSES.md
+index ff964aa..31225c9 100644
+--- a/dev_docs/GUESSES.md
++++ b/dev_docs/GUESSES.md
+@@ -474,3 +474,16 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
+ 6. **Edits are sent 1.5 s after typing stops**, by a watcher, instead of each screen calling the push. Receipt fields save on every keystroke, and a watcher also covers screens added later.
+ 7. **Shopify reads now go through the whitelist.** The seven keys behave as before, but a record with extra or wrongly typed keys is no longer spread into the settings.
+ 8. **Shop name is shared but not pushed at connect time.** Connecting Shopify sets it on that register; the watcher then sends it like any other edit once CloudKit is active.
++
++## Shared notices (0206)
++
++These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md` (item 10, Q2). Each is a guess, change any you disagree with.
++
++1. **Seven days.** A notice older than a week is neither sent nor shown. Q2 does not say how far back a register that has just joined should look, and a cash or refund notice a week old has almost certainly been dealt with. It is one constant, `NOTICE_MAX_AGE_MS`.
++2. **Only unread notices are sent late.** The once-per-launch catch-up skips a notice already read here, because reading it means someone handled it here. A notice sent live is sent whether or not it is read later.
++3. **A cleared notice stays cleared.** Nothing is ever deleted from CloudKit, so a device-only `noticesSeen` list (capped at 500 names) remembers what this register has taken in. Without it, Clear all would be undone at the next poll.
++4. **At most 50 arrive at once.** A register that comes back after a long time takes in the newest 50 and marks the rest as taken in, so they do not turn up later.
++5. **A repeat is skipped.** An incoming notice with the same kind, title and body as one still unread on this register is not added, the same rule `notify` already uses. Cash notices include the sale's short id, so two different sales never match.
++6. **A device that does not hold the feature skips the kind.** A companion without the drawer takes in no cash notices, the same as `notify` does for its own. The notice is still marked taken in, so it does not appear if the feature is switched on later.
++7. **Notices carry no extra detail.** A shared notice is its kind, title, body, route and time, plus the register's id and name. The title and body can contain a sale's short id or an order name, never a card or customer detail. They are not encrypted.
++8. **The whole list is read each poll.** Notices are read like payment attempts: every record, every poll. Cash and refund notices are rare, so this stays small, but it grows with history. A later patch could read only recent ones.
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index b458d63..6302809 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -186,6 +186,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0203 | 2026-11-02 | CloudKit, the audit of code that still assumed "this till's drawer" (decisions item 6; your request: continue). **Found one behaviour gap and a lot of stale wording.** Expected cash and the float report already read the shared ledger (`ledgerCashSince`), so those agree. The gap: the smart-change profile (`cashProfile.ts`) and the assistant's drawer snapshot (`assistantCashIO.ts`) sized their "typical day" from this register's sales alone while the ledger holds every register's cash, so a quiet register planned for too short a day. Both now use `allSales(pos.sales, pos.shared.sales)`. Wording fixed: the Cash help pages (index, open and close, float report, smart change, change, pay/cash) and `concepts/data-and-sync` said each iPad has its own drawer, that cash is not added together, and quoted a `cashSince(..., registerId, ...)` that is no longer used; the practice drawer screen said "No drawer open on this register." where the real screen says "No drawer open."; three code comments updated. `help.json` rebuilt. Tests: `tests/shopdrawer.test.ts` (6: the horizon grows with the shop's sales, no double count, source pins on both readers and on Drawer, no help page claims a per-iPad drawer, the practice string). I put the profile back to this register's sales on purpose and confirmed a test fails. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Not changed on purpose:** Smart change and consolidate stay described as per iPad until patch 6a syncs them. The decisions' stale store comment was already fixed. Device test T92. **Decided without you:** see `dev_docs/GUESSES.md`, 'Drawer audit'. | your request |
+ | 0204 | 2026-11-02 | CloudKit patch 5, saved carts with conflict merging (your request: continue). **Saved carts already went through the shared-state seam (cart put, get and list exist in the backend and the Swift), so this patch fixes how they merge rather than adding a transport.** New pure `src/lib/savedMerge.ts`: `parseSavedRow` (a record it cannot read is skipped, where one bad record used to abort the whole pull), `mergeSaved` and `applyPulled`. The rules: a delete wins over an edit (a late save used to bring a deleted cart back); a cart not changed here takes the shared copy when it is the same version or newer; a cart changed here and untouched elsewhere is sent; a cart changed on both sides is merged in three parts (name and note, assignment, contents) against `base`, the content both sides last agreed on, and a part both changed takes the later edit. `sync.ts`: `pullSaved` reads every page (it read only the first 100, and deleted carts stay as records, so open carts could be past it), `pushSaved` reads each cart back and merges before writing, runs one at a time, and no longer marks a cart clean if it was edited again while being sent; edits stamp `updatedAt`. `SavedCart` gains optional `updatedAt` and `base`. The Shopify path gets the same code. `help/sales/saved-carts.md` rewritten where it said the last sender wins. Tests: `tests/savedmerge.test.ts` (11: parsing, each rule, the three-way cases, the pull, source pins on the wiring). I broke the delete rule and the three-way rule on purpose and confirmed each fails a test; a change to the same-version shortcut did not, because the three-way gives the same answer. Checked: `tsc --noEmit` clean, full suite and `help:check` green. **Nothing sets the CloudKit backend until patch 8; on Shopify storage this changes saved cart behaviour today. The Swift is unchanged and untried.** **Not done:** the soft lock, an atomic compare-and-set in the Swift, and tidying deleted carts. Device test T93. **Decided without you:** see `dev_docs/GUESSES.md`, 'Saved carts'. | your request |
+ | 0205 | 2026-11-02 | CloudKit patch 6a, first piece: **the wider set of shared settings, read safely and merged between registers** (your request: continue on the repo, returned as a patch). New pure `src/lib/sharedSettings.ts`. **Two key sets:** on Shopify the shared record is exactly the original seven keys, as before; on CloudKit it also carries the shop name, the receipt details, the pass and gift claim server addresses, auto-receipt, smart change, consolidate, and the assistant's connection (address, model name, options), per decisions items 3, 19 to 21, 23 and O2. Staff already carried each person's display mode, theme, accent and tile size, so item 2 needed nothing more. **Reading is now safe on both backends:** `parseShared` takes only the backend's own keys, type checks each, drops a staff entry that is not a real person, and never fills in a missing key, so an older build that never wrote the new keys cannot reset them (before, `pullSettings` spread whatever JSON arrived into the settings). **Merging:** `pushSharedSettings` on CloudKit reads the shop's record first and joins it with this register's edits against `sharedBase`, what both last agreed (new device-only setting, in `DEVICE_KEYS`): a setting only the shop changed is taken, a setting changed here is kept, and **staff is merged person by person**, so people added on two registers both stay and a removed person stays removed. Without this, widening the set would have let a stale register undo another's shop-name or fee edit. **Sending:** a small watcher in `sync.ts` sends the CloudKit-only settings 1.5 s after typing stops (receipt fields save per keystroke), skips practice mode, Shopify and an unsent retry, and cannot echo: after a push or a pull the base equals what the register holds. **Not shared, on purpose:** the assistant's log cap and its data gate, the API key and pass codes (patch 6d), the logo, notices (their own patches), and everything per device. No native code changed; the existing `putSettings` and `getSettings` carry it. Wording: Smart change in Settings and two help pages, and the Cloud sync help page, say what is shared and how edits join. Tests: `tests/sharedsettings.test.ts` (15); `tests/assistantsettings.test.ts` had a test pinning the old rule that the assistant is never shared, rewritten to the new one. I broke the removal rule, the keep-ours rule, the key whitelist and the assistant strip on purpose and confirmed each fails a test. Checked: `tsc --noEmit` clean, 1630 of 1630 tests pass, `help:check` green. **Nothing sets the CloudKit backend until patch 8, so the Shopify path is the only live one; its record is the same seven keys, now read through the whitelist.** Device test T94. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared settings'. | your request |
++| 0206 | 2026-11-02 | CloudKit patch 6a, second piece: **the cash and refund notices, shared between registers** (your request: continue on the repo, returned as patches; decisions item 10, Q2). New pure `src/lib/noticeShared.ts`: only `cash` and `refund` are shared (the other six describe one iPad). A notice is one write-once `notice-<register id>-<notice id>` record holding kind, title, body, route, time and the register's id and name, with no card or customer detail. **Sending:** `notify` in the store now hands each notice it adds to a sink (`setNoticeSink`, set in `sync.ts`), the same hook pattern as the events sink, so a cash or refund notice goes to CloudKit when raised, and a catch-up once per launch sends this register's unread ones CloudKit lacks. **Taking in:** the poll reads every register's notices (`cloudkit/noticeSync.ts`, `noticeCloud.ts`) and adds the new ones unread with a new optional `Notice.from` (the register's name), shown as a **From** line on the Notifications list. **Reading and clearing stay per iPad:** nothing about reading is sent, and a device-only `noticesSeen` list (new, in `DEVICE_KEYS`) remembers which records were taken in, so a notice cleared here never returns. Own notices are never taken back, a notice older than 7 days is neither sent nor shown, a kind this device does not hold is skipped (`noticeAllowed`), a repeat of an unread notice is skipped, at most 50 arrive per read, and practice mode sends and takes in nothing. Notices come in through `patchPos`, not `notify`, so they are never sent back. Native: `putNotice` (write once) and `listNotices` added to the Swift module, its TypeScript wrapper and its type. Help: `help/settings/cloud-sync.md` has a new section. The decisions doc is replaced with the 2 November version (Part 1 and 2 added, items 1 to 27 kept) and updated for this patch. Tests: `tests/noticeshared.test.ts` (12) and `tests/noticesync.test.ts` (17: the transport and call sites on a fake native module, plus source pins for the sink, the poll, the Swift and the device-only key). I broke the seen rule, the own-notice rule, the kind list, the age rule, the per-read limit and the read filter on purpose and confirmed each fails a test. **Nothing sets the CloudKit backend until patch 8, so this changes nothing on Shopify. The Swift is unchanged in how it writes and still untried on a Mac.** **Not done:** the logo, layout and Square history shards (the rest of 6a). Device test T95. **Decided without you:** see `dev_docs/GUESSES.md`, 'Shared notices'. | your request |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+ | 0169 | 2026-10-18 | AI assistant, patch 10, the last two tools (your request, "work on patch 10"): **the settings reader and the app and sync status tool**, from the plan's tool list (3.2 tools 12 and 15). `read_settings` tells an owner or a manager how the register is set up (cash rounding, smart change, card fee rates, whether a receipt page, ABN, return policy, gift claim page or pass server is set, how many owners, managers and cashiers there are and whether a PIN is needed, which roles may not set price adjustments, cart warnings, display, screensaver and, for a person who can open the AI assistant settings, the model name, whether the address is local or remote, the numbers and the seven privacy choices), by group or all together. `app_status` tells **every role** how the till is doing (app version and build, sync state and how long ago it finished, sales waiting to upload and any stuck, the oldest and up to three different errors, whether the card reader is ready, whether Shopify is connected, whether a receipt page is set up, the catalogue's size and last import, and the last five sync, queue, stock, reader and info notices). Neither can write, and neither is ever given a secret: `assistantStatusIO.ts` reads the store once when the question is asked and `buildSettingsView` and `buildStatusView` copy only yes or no and plain values, so no web address, key, PIN, badge, staff name, receipt contact detail or logo address is in what the tools can reach. Errors are cut to one line with web addresses taken out, then the gate masks emails, numbers, cards and keys. **Tools can now be limited to some roles** (`roles` on a tool, `toolsFor(role)`), and the prompt is built from the tool names offered, so a cashier's request leaves `read_settings` out and the prompt never names it or counts it (fifteen tools for a cashier, sixteen for a manager or an owner). A cashier who calls it anyway gets the answer for a tool that does not exist. Both are snapshots, empty on practice data. Files: `src/lib/assistantStatus.ts`, `src/lib/assistantStatusIO.ts`; `assistantTools.ts` (`roles`, `toolsFor`, `till` in the context), `assistantChat.ts` (prompt by tool names), `Assistant.tsx`. Help pages `settings/ask-assistant` (all roles) and `settings/assistant` (manager and owner only) updated, `help.json` rebuilt, spec note in `dev_docs/WRITING_ASSISTANT.md`, plan revision 24. Tests: `tests/assistantstatus.test.ts` (22), and the pinned tool lists, counts and prompt tests were updated. Device test T67. **Decided without you, change any you disagree with:** settings reader for manager and owner only and left out of a cashier's request; the AI assistant group follows the Settings row; the card reader's ready state is reported as the app's own state, not as a terminal detail; no printer is reported because the app has none; refund and pass notices are left out of the status; the Shopify store's own domain is included. Not tried on a real iPad. Not in this patch: cash drawer, calculators and current cart (patch 8), the practice mode coach (patch 9) | your request |
+ | 0168 | 2026-10-18 | Cash drawer, your urgent request: **the drawer is now one shared drawer for the shop and its status syncs between registers.** Until now a register's drawer (the shift and the notes-and-coins ledger) never left the device. A change is still written locally first, exactly as before, so the drawer keeps working offline, and is then uploaded to the same `pos_settings` metaobject the shared settings and scanner calibration use (handle `drawer`, versioned like them); the 25-second poll in `App.tsx` picks up another register's copy. A push folds in any ledger entries another register wrote before it writes, so a cash sale on one iPad is never overwritten by the other: entries are merged by id and the counts move by the deltas we had not seen. The shift (open/closed, float, paid in and out) is last-write-wins by version, but a push that only changed the ledger follows a newer shift from the other register, so a sale here cannot revert a drawer just opened there. **Expected cash now counts every register's cash since the drawer opened**, not just this one, because there is one physical drawer. New `src/lib/drawerSync.ts` (pure: which entries are new to us, and the merged ledger), tests `tests/drawersync.test.ts` (10). `drawerChanged()` in `src/lib/sync.ts` marks and uploads a change, called from the drawer screen (open, paid in/out, correct contents, close), swap, daily banking, a cash refund and a cash sale. Practice mode never sends, like everything else behind the training guard. **Decided without you, change any you disagree with:** one shared drawer (you chose this), so two registers opening at once is last-one-wins; the sync carries the drawer's state only, not a copy per register. **Worth knowing:** a register that already had a local drawer keeps it until something changes it, and the first register to change the drawer after this update creates the shared copy. Not tried on a real iPad. | your urgent request |
+diff --git a/help/help.json b/help/help.json
+index c11c030..88f6fd5 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "4a9cdaf5",
++ "version": "bb13b4c1",
+  "pages": [
+   {
+    "id": "cash",
+@@ -1726,7 +1726,7 @@
+     "orders/export",
+     "settings/shopify"
+    ],
+-   "updated": "2026-10-31",
++   "updated": "2026-11-02",
+    "roles": [
+     "manager",
+     "owner"
+@@ -1734,7 +1734,7 @@
+    "lead": "Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.",
+    "sections": {
+     "basic": "### Set up the register that holds the shop\n- Open **Settings**, tap **Data**, then **Cloud sync**.\n- Tap **Set up this till**. The page says this register holds the shop records and shows an **Invite link**.\n- Tap **Share the invite link** to send it by Messages, email or AirDrop, or to copy it.\n\n### Join from another register\n- On the other iPad, open **Settings ▸ Data ▸ Cloud sync**.\n- Paste the link into the box and tap **Join**. The page then says the register has joined.\n- If the link is tapped on the iPad itself, the app opens with the link already in the box: just tap **Join**.\n\n### What you need\n- Both iPads signed in to iCloud. The top of the Cloud sync page says whether this one is.\n- One register set up first. Joining needs its link: there is no list of shops to pick from.\n- A manager or owner signed in, on both iPads.",
+-    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
++    "deep": "### One register holds the records\nThe register that sets the shop up is the owner. The shared records live in that Apple ID's iCloud storage, and that account's storage allowance pays for them, not each iPad's. A share can carry up to 100 registers.\n\nTwo things follow from that:\n- If that Apple ID is lost, or the share is turned off, the shared copy goes with it. Shopify, and the CSV files each iPad keeps, are not affected.\n- Ownership cannot be handed to another register later.\n\n### What travels\n- Sales, refunds, gift cards and the other shop records travel, so every register can report on all of them.\n- The cash drawer is one drawer for the whole shop: its shift (open or closed, float, paid in and out, any loan) and its notes and coins ledger are merged between registers, so a cash sale on one iPad counts everywhere.\n- The shared settings are the same on every register: staff (with each person's display settings), bundles, fees, cash rounding, Require PIN, adjust permissions, cart warnings, and, once sync is on, the shop name, the receipt details and the receipt, pass and claim server addresses, auto-receipt, Smart change, Consolidate identical items, and the AI assistant's address, model name and options. How each iPad looks (theme, accent, tile size, screensaver), its register name, and the assistant's log size and data rules stay on that iPad, and [[settings/backup]] is still how you copy a whole setup across.\n- If two registers change settings while apart, they are joined when they meet. A setting changed on one is kept, a setting changed on both takes the later one, and people added to Staff on two registers are both kept. Someone removed from Staff on either stays removed.\n\n### One file of every register's events\nOnce sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.\n\n### Cash and refund notices on every register\nOnce sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.\n\nReading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.\n\n### What is and is not kept in iCloud\nThe Cloud sync page lists this in full under **What is kept in iCloud**. In short:\n- **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.\n- **Never kept:** the Shopify access token, the cart being rung up, each iPad's own look and settings, the queue of sales waiting for Shopify, the catalogue cache and Training or Demo data.\n- **Customer names:** sales hold only the Shopify customer id. The assistant's log can still contain names a local model was sent, and a sale's note can contain one.\n- **The invite link is a key.** Anyone who holds it can read and write the shop records.\n\nYour shop's own privacy policy and App Store privacy details are yours to update.",
+     "advanced": "### How a register is linked\n```mermaid\nflowchart TD\n  A[Settings, Data, Cloud sync] --> B{Role}\n  B -->|First register| C[Set up this till: open the zone and make the invite link]\n  C --> D[Share the link]\n  B -->|Another register| E[Paste the link and Join]\n  D --> E\n  E --> F[Both registers read and write the shop records]\n```\n\n| Job | Where |\n|---|---|\n| The page itself, and the all-events export | `src/screens/CloudSync.tsx` |\n| The wording of the iCloud note | `src/lib/icloudNote.ts` |\n| The bridge and the no-native fallback | `modules/cloudkit-sync/index.ts` and `modules/cloudkit-sync/status.ts` |\n| The CloudKit calls (zone, share, join) | `modules/cloudkit-sync/ios/CloudKitSyncModule.swift` |\n| The iCloud container and the share link handler | `plugins/withCloudKit.js` |\n| The plan and the patch list | `dev_docs/CLOUDKIT_SYNC_PLAN.md` |\n\n### If it will not join\n- **\"This till is not signed in to iCloud.\"** Sign in to iCloud in the iPad's own Settings app on this iPad, then tap **Check again**.\n- **The link opens nothing.** The app was built without its iCloud entitlement, or the link belongs to a different iCloud container. Rebuild with `npm run ios:reset`.\n- **A link from another shop will not join.** A link only opens the shop it was made for. Ask the other shop's owner for its link, or set this register up as its own shop.\n- **CloudKit has two environments.** A build from Xcode uses the development environment; TestFlight and the App Store use production. A share made in one is not visible in the other, so link registers that were built the same way.\n\n### The parts that are easy to miss\n- The zone is called Store on both sides. The register that set up holds it in its private database; a register that joined sees it in its shared database. That is how each register knows which side it is on.\n- The invite link lets anyone who has it read and write the shop records, so treat it like a password. Turning the share off in iCloud stops it.\n- iOS gives the app the share link through the AppDelegate method added by `plugins/withCloudKit.js`, because Expo does not forward that call itself. The link is also kept, so a link tapped while the app was closed can be finished from the page."
+    }
+   },
+diff --git a/help/settings/cloud-sync.md b/help/settings/cloud-sync.md
+index 57ed257..4fd2dda 100644
+--- a/help/settings/cloud-sync.md
++++ b/help/settings/cloud-sync.md
+@@ -5,7 +5,7 @@ parent: settings
+ summary: Set one register up to hold the shop's shared records, then join the others with its invite link.
+ tags: [cloud, icloud, cloudkit, share, registers, sync, invite link, multiple ipads, join, join a shop]
+ related: [settings/backup, orders/export, settings/shopify]
+-updated: 2026-10-31
++updated: 2026-11-02
+ roles: [manager, owner]
+ ---
+ Open **More ▸ Settings ▸ Data ▸ Cloud sync** to link a second register to the records this one holds. One register sets the shop up and shows a link; every other register joins with that link. Both iPads need to be signed in to iCloud, and only managers and owners see this page.
+@@ -45,6 +45,11 @@ Two things follow from that:
+ ### One file of every register's events
+ Once sync is switched on, the Cloud sync page has an **Export all events** button. It makes one CSV of the declined payments, voids, overrides, paid in and out, shift opens and closes, no-sales, cancelled and failed refunds and staff switches from every register, oldest first, with a **register** column at the end. It is built from iCloud each time you tap it. Each iPad's own `events.csv` is not changed. Practice mode cannot make it.
+ 
++### Cash and refund notices on every register
++Once sync is switched on, two kinds of notice reach every register: **cash** (cash taken outside the drawer, to add to the next count) and **refund** (a refund Shopify did not record, which needs a manager). A notice raised on one iPad shows up unread on the others a few seconds later, with **From** and the register's name above it. The other kinds (sync, queue, stock, reader, pass and info) describe one iPad, so they stay on it.
++
++Reading or clearing a notice only affects the iPad you do it on. It is never sent, so it does not clear the notice on the other iPads, and a notice you cleared does not come back. A notice older than a week is not sent or shown, so a register that has just joined does not open on a pile of old ones. Practice mode never sends or takes in any.
++
+ ### What is and is not kept in iCloud
+ The Cloud sync page lists this in full under **What is kept in iCloud**. In short:
+ - **Kept, and readable by every till in the share:** shop settings, staff (with PIN and badge hashes, not PINs), sales (card details encrypted, amounts plain), payment attempts, events, the one shared cash drawer, the grid layout, saved carts, Square history, cash and refund notices, training progress and the assistant's log (encrypted). The Shopify login, the pass, gift claim and receipt secrets, the assistant's key and cashier pass codes join them only after the encryption test has passed.
+diff --git a/modules/cloudkit-sync/index.ts b/modules/cloudkit-sync/index.ts
+index 95b8ee6..88a0ef6 100644
+--- a/modules/cloudkit-sync/index.ts
++++ b/modules/cloudkit-sync/index.ts
+@@ -200,6 +200,15 @@ export async function listAttempts(limit = 100, after?: string | null): Promise<
+   if (!native?.listAttempts) return { rows: [], next: null };
+   return native.listAttempts(limit, after ?? null);
+ }
++// Patch 6a: the shared cash and refund notices. The names match NoticeNative in src/lib/cloudkit/noticeCloud.ts.
++export async function putNotice(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
++  if (!native?.putNotice) throw new Error(CLOUDKIT_MISSING);
++  return native.putNotice(handle, fields);
++}
++export async function listNotices(limit = 100, after?: string | null): Promise<Page> {
++  if (!native?.listNotices) return { rows: [], next: null };
++  return native.listNotices(limit, after ?? null);
++}
+ export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
+   if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
+   return native.putResolution(handle, fields);
+diff --git a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+index c90d7da..398447b 100644
+--- a/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
++++ b/modules/cloudkit-sync/ios/CloudKitSyncModule.swift
+@@ -157,6 +157,17 @@ public class CloudKitSyncModule: Module {
+       try await self.listRecords(recordType: "Resolution", limit: limit, after: after)
+     }
+ 
++    // --- Patch 6a: shared cash and refund notices ---
++    // A notice is written once and never changed or deleted: reading or dismissing one is per device, so nothing about it is sent.
++    // If one is already there it is handed back untouched.
++    AsyncFunction("putNotice") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
++      try await self.putRecordOnce(recordType: "Notice", recordName: "notice-\(handle)", fields: fields)
++    }
++
++    AsyncFunction("listNotices") { (limit: Int, after: String?) async throws -> [String: Any] in
++      try await self.listRecords(recordType: "Notice", limit: limit, after: after)
++    }
++
+     // --- Patch 5: saved carts ---
+     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
+       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
+diff --git a/modules/cloudkit-sync/status.ts b/modules/cloudkit-sync/status.ts
+index c3378c5..6fd7ed8 100644
+--- a/modules/cloudkit-sync/status.ts
++++ b/modules/cloudkit-sync/status.ts
+@@ -53,6 +53,8 @@ export type CloudKitSyncNative = {
+   putResolution?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
+   getResolution?(handle: string): Promise<Record<string, any> | null>;
+   listResolutions?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
++  putNotice?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
++  listNotices?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+   // Patch 6b: the shared cash drawer
+   putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
+   getDrawerShift?(): Promise<Record<string, any> | null>;
+diff --git a/src/lib/backupFile.ts b/src/lib/backupFile.ts
+index 442e283..db558a5 100644
+--- a/src/lib/backupFile.ts
++++ b/src/lib/backupFile.ts
+@@ -11,7 +11,7 @@ export const BACKUP_APP = 'shopify-zeller-pos';
+ export const BACKUP_VERSION = 1;
+ export const MIN_PASSPHRASE = 8;
+ /** Settings that identify this particular device and must never be copied to another one. */
+-export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
++export const DEVICE_KEYS = ['registerId', 'registerName', 'sharedVersion', 'sharedSettingsPending', 'sharedBase', 'noticesSeen', 'scannerCalVersion', 'scannerCalPending', 'appMode', 'registerFeatures', 'setupDone', 'autoLockMinutes', 'stepUpMinutes'] as const;
+ 
+ export type BackupCredentials = { shopifyDomain: string; shopifyClientId: string; shopifyClientSecret: string; passSecret: string; receiptSecret: string; claimSecret?: string; assistantKey?: string /* the AI assistant model API key, only when one is set */ };
+ export type BackupV1 = {
+diff --git a/src/lib/cloudkit/noticeCloud.ts b/src/lib/cloudkit/noticeCloud.ts
+new file mode 100644
+index 0000000..eac52f1
+--- /dev/null
++++ b/src/lib/cloudkit/noticeCloud.ts
+@@ -0,0 +1,42 @@
++// Location: src/lib/cloudkit/noticeCloud.ts
++// CloudKit sync, patch 6a (notices, transport half): the shared cash and refund notices written to and read from CloudKit records.
++// It joins the pure pieces (noticeShared.ts) to a small native interface. The native module is passed in, so the flow is tested with
++// an in-memory fake and no iPad (tests/noticecloud.test.ts). Nothing reaches it unless the CloudKit backend is the active one.
++// Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 10, Q2.
++import type { Notice } from '../types';
++import { noticeFromFields, noticeHandle, noticeHandleFromRecord, noticeToFields, noticesToUpload, type SharedNotice } from '../noticeShared';
++import { pageAll, PAGE_SIZE } from './drawerCloud';
++
++type Rec = Record<string, any>;
++type Page = { rows: Rec[]; next: string | null };
++
++/** What notices need of the native module. */
++export type NoticeNative = {
++  /** Write one notice if it is not there yet. A notice that already exists is returned as it is, never changed. */
++  putNotice(handle: string, fields: Rec): Promise<Rec>;
++  listNotices(limit: number, after?: string | null): Promise<Page>;
++};
++
++/** Every shared notice in CloudKit, from every register. Records that cannot be read are skipped. */
++export async function pullCloudNotices(n: NoticeNative): Promise<SharedNotice[]> {
++  const out: SharedNotice[] = [];
++  for (const r of await pageAll(after => n.listNotices(PAGE_SIZE, after))) {
++    const handle = noticeHandleFromRecord(String(r.recordName ?? '')); const s = handle ? noticeFromFields(handle, r) : null;
++    if (s) out.push(s);
++  }
++  return out;
++}
++
++/** Upload one notice as it is raised. Written once under its own name, so repeating this is safe. */
++export async function pushCloudNotice(n: NoticeNative, registerId: string, registerName: string, notice: Notice): Promise<void> {
++  await n.putNotice(noticeHandle(registerId, notice.id), noticeToFields(registerId, registerName, notice));
++}
++
++/** Upload this register's own notices CloudKit lacks (see `noticesToUpload`), oldest first. Safe to repeat. Returns how many were new. */
++export async function pushCloudNotices(n: NoticeNative, registerId: string, registerName: string, local: Notice[], now: number): Promise<number> {
++  const remote = new Set<string>();
++  for (const r of await pageAll(after => n.listNotices(PAGE_SIZE, after))) { const h = noticeHandleFromRecord(String(r.recordName ?? '')); if (h) remote.add(h); }
++  const todo = noticesToUpload(registerId, local, remote, now);
++  for (const notice of todo) await pushCloudNotice(n, registerId, registerName, notice);
++  return todo.length;
++}
+diff --git a/src/lib/cloudkit/noticeSync.ts b/src/lib/cloudkit/noticeSync.ts
+new file mode 100644
+index 0000000..54f3fea
+--- /dev/null
++++ b/src/lib/cloudkit/noticeSync.ts
+@@ -0,0 +1,64 @@
++// Location: src/lib/cloudkit/noticeSync.ts
++// CloudKit sync, patch 6a (notices, call sites): when a cash or refund notice is uploaded, when the ones that were missed are
++// caught up, and when other registers' notices are read back in.
++// As with events and attempts, everything the app supplies is passed in, so the rules are tested without an iPad
++// (tests/noticesync.test.ts). The app's one instance is made in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 10, Q2.
++import type { Notice } from '../types';
++import { importNotices, isSharedNoticeKind } from '../noticeShared';
++import { pullCloudNotices, pushCloudNotice, pushCloudNotices, type NoticeNative } from './noticeCloud';
++
++export type NoticeSyncDeps = {
++  /** True only when the CloudKit backend is the one in use. */
++  active: () => boolean;
++  /** True in practice mode, when nothing is ever sent or taken in. */
++  training: () => boolean;
++  /** This register's id and name. An empty id means the register is not set up yet, so nothing is sent. */
++  who: () => { id: string; name: string };
++  native: () => Promise<NoticeNative>;
++  /** This register's notices, newest first, as the app holds them now. */
++  local: () => Notice[];
++  setLocal: (list: Notice[]) => void;
++  /** The record names already taken in (device only), and where they are kept. */
++  seen: () => string[];
++  setSeen: (names: string[]) => void;
++  /** Whether this device holds the feature a kind of notice belongs to. */
++  allowed: (kind: Notice['kind']) => boolean;
++  now?: () => number;
++};
++
++export function createNoticeSync(d: NoticeSyncDeps) {
++  const now = d.now ?? Date.now;
++  // Starts true so each launch sends this register's own unread notices once. A failed upload sets it again.
++  // Nothing is stored: the app's own list is the record, CloudKit is the copy.
++  let behind = true;
++  const ready = (): { id: string; name: string } | null => { if (!d.active() || d.training()) return null; const w = d.who(); return w.id ? w : null; };
++  return {
++    /** Upload a notice just raised here. Only cash and refund are sent. Never throws: the app already holds it, and the catch-up covers a failure. */
++    async upload(n: Notice): Promise<void> {
++      const w = ready(); if (!w || !isSharedNoticeKind(n.kind) || behind) return; // while a catch-up is due it sends this one with the rest
++      try { await pushCloudNotice(await d.native(), w.id, w.name, n); } catch { behind = true; }
++    },
++    /** Send this register's unread cash and refund notices that CloudKit lacks, if a catch-up is due. Returns how many were new, or null when nothing was attempted or it failed. */
++    async catchUp(): Promise<number | null> {
++      const w = ready(); if (!w || !behind) return null;
++      try { const sent = await pushCloudNotices(await d.native(), w.id, w.name, d.local(), now()); behind = false; return sent; } catch { return null; }
++    },
++    /**
++     * Read every register's shared notices and take in the ones not taken in yet (see `importNotices`). Returns how many notices
++     * were added to the list, or null when nothing was attempted or the read failed. Never throws: the next poll tries again.
++     */
++    async pull(): Promise<number | null> {
++      const w = ready(); if (!w) return null;
++      try {
++        const remote = await pullCloudNotices(await d.native());
++        // The list and the taken-in names are read only now, after the await, so a notice raised or cleared while CloudKit was answering is not undone.
++        const r = importNotices({ remote, local: d.local(), seen: d.seen(), registerId: w.id, now: now(), allowed: d.allowed });
++        if (r.changed) { if (r.added) d.setLocal(r.notices); d.setSeen(r.seen); }
++        return r.added;
++      } catch { return null; }
++    },
++    /** For tests and diagnostics: whether a catch-up is waiting. */
++    isBehind: () => behind,
++  };
++}
++export type NoticeSync = ReturnType<typeof createNoticeSync>;
+diff --git a/src/lib/noticeShared.ts b/src/lib/noticeShared.ts
+new file mode 100644
+index 0000000..1ab806c
+--- /dev/null
++++ b/src/lib/noticeShared.ts
+@@ -0,0 +1,110 @@
++// Location: src/lib/noticeShared.ts
++// CloudKit sync, patch 6a (notices): the cash and refund notices, shared between registers.
++//
++// Decisions (dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 10, Q2): only the two kinds that need a person wherever they are sync.
++// `cash` (cash taken outside a drawer, which is now a shared drawer, so any register can add it to a count) and `refund` (a
++// refund Shopify did not record needs a manager). The other six kinds describe one iPad or are worked out from Shopify on each
++// iPad, so they stay local. Reading or dismissing a notice is per iPad: nothing about a notice changing on one register is ever sent.
++//
++// Each notice is one record, written once and never edited, named `notice-<register id>-<notice id>`. Because nothing is edited or
++// deleted in CloudKit, a register that clears its notices would see them come back on the next read. `noticesSeen`, a device-only
++// list of the record names this register has already taken in, stops that: a name in it is never brought in again, whether the
++// notice is still on the list or was cleared. No React, no store, no native module: tested on its own (tests/noticeshared.test.ts).
++import type { Notice } from './types';
++
++type Fields = Record<string, string>;
++
++export const SHARED_NOTICE_KINDS: readonly Notice['kind'][] = ['cash', 'refund'];
++export const isSharedNoticeKind = (kind: unknown): kind is 'cash' | 'refund' => SHARED_NOTICE_KINDS.includes(kind as Notice['kind']);
++
++/** A notice older than this is not sent and not brought in. A register that has just joined should not open on a pile of old ones. */
++export const NOTICE_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
++/** The most notices one read brings in. Anything beyond it is marked taken in too, so it never arrives later as a late flood. */
++export const IMPORT_LIMIT = 50;
++/** How many record names `noticesSeen` keeps, newest last. Past this the oldest are forgotten, which is safe because they are past the age limit. */
++export const SEEN_CAP = 500;
++/** The same size as the local list in `notify`. */
++export const NOTICE_LIST_CAP = 200;
++
++/** A notice as read back: who raised it is part of it. `handle` is the record's name without its `notice-` prefix. */
++export type SharedNotice = { handle: string; kind: 'cash' | 'refund'; title: string; body?: string; route?: string; ts: string; registerId: string; registerName: string };
++
++export const noticeHandle = (registerId: string, noticeId: string): string => `${registerId}-${noticeId}`;
++export const noticeRecordName = (handle: string): string => `notice-${handle}`;
++export const noticeHandleFromRecord = (name: string): string | null => (name.startsWith('notice-') && name.length > 7 ? name.slice(7) : null);
++
++/** The notice as record fields, labelled with the register that raised it. Notices hold no card or customer detail. */
++export function noticeToFields(registerId: string, registerName: string, n: Notice): Fields {
++  const f: Fields = { kind: n.kind, title: n.title, ts: n.ts, registerId, registerName };
++  if (n.body) f.body = n.body; if (n.route) f.route = n.route;
++  return f;
++}
++
++/** Null for a record that is not a readable shared notice, so one bad record cannot break the read. */
++export function noticeFromFields(handle: string, f: Record<string, unknown>): SharedNotice | null {
++  if (!handle || !isSharedNoticeKind(f.kind) || typeof f.title !== 'string' || !f.title) return null;
++  if (typeof f.ts !== 'string' || Number.isNaN(Date.parse(f.ts)) || typeof f.registerId !== 'string' || !f.registerId) return null;
++  const n: SharedNotice = { handle, kind: f.kind, title: f.title, ts: f.ts, registerId: f.registerId, registerName: typeof f.registerName === 'string' ? f.registerName : '' };
++  if (typeof f.body === 'string' && f.body) n.body = f.body; if (typeof f.route === 'string' && f.route) n.route = f.route;
++  return n;
++}
++
++const fresh = (ts: string, now: number): boolean => { const t = Date.parse(ts); return !Number.isNaN(t) && now - t <= NOTICE_MAX_AGE_MS; };
++
++/**
++ * This register's own notices that CloudKit lacks, oldest first: still unread, of a shared kind, and not past the age limit.
++ * A notice already read here has been dealt with here, so sending it late would only raise a flag nobody needs.
++ */
++export function noticesToUpload(registerId: string, local: Notice[], remoteHandles: Set<string>, now: number): Notice[] {
++  const seen = new Set<string>(); const out: Notice[] = [];
++  for (const n of local) {
++    if (n.read || !isSharedNoticeKind(n.kind) || !fresh(n.ts, now)) continue;
++    const h = noticeHandle(registerId, n.id);
++    if (remoteHandles.has(h) || seen.has(h)) continue;
++    seen.add(h); out.push(n);
++  }
++  return out.sort((a, b) => a.ts.localeCompare(b.ts) || a.id.localeCompare(b.id));
++}
++
++export type ImportInput = {
++  remote: SharedNotice[];
++  /** This register's notices, newest first, as the app holds them now. */
++  local: Notice[];
++  /** The record names already taken in (`noticesSeen`). */
++  seen: string[];
++  registerId: string;
++  now: number;
++  /** False for a kind this device does not hold (a companion without the drawer raises no cash notices). */
++  allowed: (kind: Notice['kind']) => boolean;
++};
++export type ImportResult = { notices: Notice[]; seen: string[]; added: number; changed: boolean };
++
++/** The id a notice brought in from another register gets here. Worked out from the record, so it is the same however many times it is read. */
++export const importedNoticeId = (handle: string): string => `shared-${handle}`;
++
++/**
++ * Take in the notices other registers raised that this register has not taken in yet. Rules:
++ * - this register's own notices are never brought back (they are already here, or were cleared here on purpose);
++ * - a record name in `seen` is never brought in again, so clearing or reading one stays per iPad;
++ * - a notice past the age limit, of a kind this device does not hold, or the same as an unread one already listed is not shown,
++ *   but is still marked taken in, so it does not come back later;
++ * - at most IMPORT_LIMIT arrive at once, the newest, and the list stays newest first and capped.
++ */
++export function importNotices(i: ImportInput): ImportResult {
++  const seen = new Set(i.seen); const have = new Set(i.local.map(n => n.id));
++  const todo = i.remote.filter(r => r.registerId !== i.registerId && !seen.has(r.handle)).sort((a, b) => b.ts.localeCompare(a.ts) || a.handle.localeCompare(b.handle));
++  if (!todo.length) return { notices: i.local, seen: i.seen, added: 0, changed: false };
++  const added: Notice[] = []; const taken: string[] = []; const list = [...i.local];
++  for (const r of todo) {
++    taken.push(r.handle);
++    const id = importedNoticeId(r.handle);
++    if (have.has(id) || !fresh(r.ts, i.now) || !i.allowed(r.kind) || added.length >= IMPORT_LIMIT) continue;
++    if (list.some(x => !x.read && x.kind === r.kind && x.title === r.title && x.body === r.body)) continue;
++    const n: Notice = { id, ts: r.ts, kind: r.kind, title: r.title, from: r.registerName || 'another register', read: false };
++    if (r.body) n.body = r.body; if (r.route) n.route = r.route;
++    added.push(n); list.unshift(n); have.add(id);
++  }
++  const nextSeen = [...i.seen, ...taken.reverse()].slice(-SEEN_CAP);
++  const notices = added.length ? list.sort((a, b) => b.ts.localeCompare(a.ts)).slice(0, NOTICE_LIST_CAP) : i.local;
++  return { notices, seen: nextSeen, added: added.length, changed: true };
++}
+diff --git a/src/lib/sync.ts b/src/lib/sync.ts
+index cad7580..ba60bf1 100644
+--- a/src/lib/sync.ts
++++ b/src/lib/sync.ts
+@@ -1,7 +1,7 @@
+ // Location: src/lib/sync.ts
+ // Outbox + polling. Cash and saved carts work offline; sales queue locally and upload later; card needs internet.
+ // Every outbox step is idempotent, so a crash or retry never double-books.
+-import { useApp, currentStaff, type OutboxItem, type SavedCart, type Shift } from '../state/store';
++import { useApp, currentStaff, setNoticeSink, type OutboxItem, type SavedCart, type Shift } from '../state/store';
+ import { csv, setEventSink } from './csvStore';
+ import { applyRecord, emptyTotals, rollupKey, type RollupRow, type Totals } from './rollup';
+ import { afterPull, decodeSaleRow, emptySharedHistory, SALES_PULL_MS } from './salesHistory';
+@@ -20,6 +20,8 @@ import { pullCloudDrawerState, pushCloudDrawer, type DrawerNative } from './clou
+ import { createAttemptSync } from './cloudkit/attemptSync';
+ import { resolvedElsewhereNotice } from './attemptShared';
+ import { createEventSync } from './cloudkit/eventSync';
++import { createNoticeSync } from './cloudkit/noticeSync';
++import type { NoticeNative } from './cloudkit/noticeCloud';
+ import type { EventNative } from './cloudkit/eventCloud';
+ import { readCalibration, type ScannerCalibration } from './scanSpeed';
+ import { createOrderForSale } from './shopify/orders';
+@@ -27,7 +29,7 @@ import { createGiftCard } from './shopify/giftcards';
+ import { ReceiptConfigError, receiptsEnabled, uploadReceipt } from './receiptSync';
+ import { adjustStock } from './shopify/inventory';
+ import type { BundleConfig, Cart, SaleRecord } from './types';
+-import { featureOn } from './appMode';
++import { featureOn, noticeAllowed } from './appMode';
+ 
+ const st = () => useApp.getState();
+ let running = false;
+@@ -55,6 +57,22 @@ export const attemptSync = createAttemptSync({
+   notifyResolved: a => { const n = resolvedElsewhereNotice(a); st().notify({ kind: 'info', title: n.title, body: n.body }); },
+ });
+ 
++// CloudKit patch 6a: cash and refund notices are shared with the other registers (decisions item 10). A notice raised here is handed over by
++// `notify` through the store's sink; the poll sends any that were missed and takes in the ones other registers raised. Reading or clearing
++// one stays on this iPad: `noticesSeen` remembers what was taken in, so a cleared notice does not return.
++const noticeSync = createNoticeSync({
++  active: () => activeBackendKind() === 'cloudkit',
++  training: isTraining,
++  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
++  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as NoticeNative,
++  local: () => st().pos.notices,
++  setLocal: list => st().patchPos({ notices: list }),
++  seen: () => st().settings.noticesSeen ?? [],
++  setSeen: names => st().patchSettings({ noticesSeen: names }),
++  allowed: kind => noticeAllowed(st().settings.appMode, st().settings.registerFeatures, kind),
++});
++setNoticeSink(n => { void noticeSync.upload(n); });
++
+ // ── record a finished sale locally (the single entry point after tender completes) ──────────────
+ export async function recordSale(sale: SaleRecord) {
+   const s = st();
+@@ -182,6 +200,8 @@ export async function pollShared() {
+       await events.catchUp(); // events the live upload missed, and a register's own history once after it joins (never throws)
+       await attemptSync.catchUp(); // the same for payment attempts
+       await attemptSync.pull(); // then read every register's attempts back (the shop-wide list, and a payment another register resolved)
++      await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
++      await noticeSync.pull(); // and take in the ones other registers raised
+     }
+     // stock
+     if (s.settings.locationId && s.data.stockSince) {
+diff --git a/src/lib/types.ts b/src/lib/types.ts
+index c0f4f24..6c642c9 100644
+--- a/src/lib/types.ts
++++ b/src/lib/types.ts
+@@ -224,6 +224,8 @@ export type SaleRecord = {
+ export type Notice = {
+   id: string; ts: string; kind: 'sync' | 'queue' | 'stock' | 'reader' | 'refund' | 'pass' | 'info' | 'cash';
+   title: string; body?: string; route?: string; read?: boolean;
++  /** The name of the register that raised it, set only on a cash or refund notice brought in from another register (patch 0206). */
++  from?: string;
+ };
+ 
+ export type Role = 'cashier' | 'manager' | 'owner';
+diff --git a/src/screens/Notifications.tsx b/src/screens/Notifications.tsx
+index 9b0131b..b807aeb 100644
+--- a/src/screens/Notifications.tsx
++++ b/src/screens/Notifications.tsx
+@@ -25,7 +25,7 @@ export default function Notifications({ onBack }: { onBack?: () => void } = {})
+           {outbox.length - stuck.length > 0 ? <Row icon="time-outline" title={`${outbox.length - stuck.length} sale(s) queued`} sub="Uploads when the connection is back." right={<Money cents={outbox.reduce((s, o) => s + o.sale.netCents, 0)} />} /> : null}
+           {low > 0 ? <Row icon="alert-circle-outline" title={`${low} item(s) low on stock (2 or fewer)`} onPress={() => nav.setTab('inventory')} /> : null}
+           {neg > 0 ? <Row icon="alert-circle-outline" title={`${neg} item(s) with negative stock`} onPress={() => nav.setTab('inventory')} /> : null}</View>}
+-        renderItem={({ item: n }) => <Row icon={ICON[n.kind] ?? 'information-circle-outline'} title={n.title} sub={[n.body, new Date(n.ts).toLocaleString()].filter(Boolean).join('\n')}
++        renderItem={({ item: n }) => <Row icon={ICON[n.kind] ?? 'information-circle-outline'} title={n.title} sub={[n.from ? `From ${n.from}` : '', n.body, new Date(n.ts).toLocaleString()].filter(Boolean).join('\n')}
+           onPress={() => { patchPos({ notices: list.map(x => (x.id === n.id ? { ...x, read: true } : x)) }); if (n.route && routeAllowed(devMode, devFeatures, n.route)) nav.go(n.route); }}
+           right={HELP[n.kind] || !n.read ? <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>{HELP[n.kind] ? <HelpButton id={HELP[n.kind]} label={`Help for ${n.title}`} /> : null}{n.read ? null : <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: c.bad }} />}</View> : undefined} />} />
+     </View>
+diff --git a/src/state/store.ts b/src/state/store.ts
+index 3eb9f76..17cc8e3 100644
+--- a/src/state/store.ts
++++ b/src/state/store.ts
+@@ -41,6 +41,8 @@ export type Settings = {
+   sharedVersion: number; sharedSettingsPending: boolean; // retry a shared settings push missed by a disconnected register
+   /** 0205: the shared settings as this register and the shop last agreed them (JSON text), the base for merging edits made on two registers. Per device bookkeeping, like sharedVersion; never shared. See lib/sharedSettings.ts. */
+   sharedBase?: string;
++  /** Device only: the names of the shared cash and refund notices this register has already taken in, so a cleared one never comes back (0206). */
++  noticesSeen?: string[];
+   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
+   // 0168: the cash drawer is shared between registers (one physical drawer for the shop). The drawer itself is pos.shift and pos.ledger;
+   // these are its sync bookkeeping: `drawerVersion` is the shared record's version we last saw, `drawerPending` an unsent change,
+@@ -116,6 +118,14 @@ export async function flushPersist(): Promise<void> {
+   for (const key of Object.keys(pending)) { clearTimeout(timers[key]); const get = pending[key]; delete pending[key]; await kvSet(key, get()); }
+ }
+ 
++/**
++ * Where a notice just raised here is handed, so a cash or refund one can be shared with the other registers (patch 0206). sync.ts sets it.
++ * It is a hook, not an import, because sync.ts imports this store. Notices brought in from another register are added without going
++ * through `notify`, so they are never sent back.
++ */
++let noticeSink: ((n: Notice) => void) | null = null;
++export const setNoticeSink = (fn: ((n: Notice) => void) | null): void => { noticeSink = fn; };
++
+ export const useApp = create<App>((set, get) => ({
+   ready: false, settings: defaultSettings(), data: emptyData(), grid: defaultGrid(), gridVersion: 0, pos: emptyPos(),
+   sync: { state: 'idle' }, zeller: { ready: false, message: 'Reader not set up' }, sharedAttempts: [], unlocked: true,
+@@ -130,7 +140,9 @@ export const useApp = create<App>((set, get) => ({
+     if (!noticeAllowed(get().settings.appMode, get().settings.registerFeatures, n.kind)) return; // a feature this device does not hold raises no notices
+     // collapse repeats of the same unread notice
+     if (pos.notices.some(x => !x.read && x.kind === n.kind && x.title === n.title && x.body === n.body)) return;
+-    get().patchPos({ notices: [{ ...n, id: uid(), ts: new Date().toISOString() }, ...pos.notices].slice(0, 200) });
++    const notice: Notice = { ...n, id: uid(), ts: new Date().toISOString() };
++    get().patchPos({ notices: [notice, ...pos.notices].slice(0, 200) });
++    noticeSink?.(notice);
+   },
+   hydrate: async () => {
+     const [settings, data, g, pos] = await Promise.all([
+diff --git a/tests/noticeshared.test.ts b/tests/noticeshared.test.ts
+new file mode 100644
+index 0000000..fa530d8
+--- /dev/null
++++ b/tests/noticeshared.test.ts
+@@ -0,0 +1,107 @@
++// Location: tests/noticeshared.test.ts
++// CloudKit patch 6a, notices: which notices are shared, how one becomes a record and back, what is still to upload, and the rules for
++// taking in other registers' notices (decisions item 10, Q2). Pure, no native module.
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { IMPORT_LIMIT, NOTICE_MAX_AGE_MS, SEEN_CAP, importNotices, importedNoticeId, isSharedNoticeKind, noticeFromFields, noticeHandle, noticeHandleFromRecord, noticeRecordName, noticeToFields, noticesToUpload, type SharedNotice } from '../src/lib/noticeShared';
++import type { Notice } from '../src/lib/types';
++
++const NOW = Date.parse('2026-11-02T10:00:00.000Z');
++const ago = (ms: number): string => new Date(NOW - ms).toISOString();
++const HOUR = 3600_000;
++const notice = (id: string, o: Partial<Notice> = {}): Notice => ({ id, ts: ago(HOUR), kind: 'cash', title: 'Cash outside the drawer', body: `$5.00 cash from sale ${id}`, ...o });
++const shared = (handle: string, o: Partial<SharedNotice> = {}): SharedNotice => ({ handle, kind: 'cash', title: 'Cash outside the drawer', body: `body ${handle}`, ts: ago(HOUR), registerId: 'reg-b', registerName: 'Back', ...o });
++const allow = () => true;
++const base = { local: [] as Notice[], seen: [] as string[], registerId: 'reg-a', now: NOW, allowed: allow };
++
++test('only cash and refund notices are shared, the other six stay on the iPad', () => {
++  assert.deepEqual(['cash', 'refund'].map(isSharedNoticeKind), [true, true]);
++  for (const k of ['sync', 'queue', 'stock', 'reader', 'pass', 'info', 'nonsense', undefined]) assert.equal(isSharedNoticeKind(k), false, String(k));
++});
++
++test('a notice becomes a record and comes back, labelled with the register that raised it', () => {
++  const n = notice('n1', { kind: 'refund', title: 'Refund not recorded in Shopify', body: '#1042: timeout', route: 'notifications', read: true });
++  const f = noticeToFields('reg-a', 'Front', n);
++  assert.deepEqual(f, { kind: 'refund', title: n.title, ts: n.ts, registerId: 'reg-a', registerName: 'Front', body: '#1042: timeout', route: 'notifications' });
++  assert.ok(!('read' in f) && !('id' in f), 'whether it was read here is never sent');
++  const back = noticeFromFields(noticeHandle('reg-a', 'n1'), f)!;
++  assert.deepEqual(back, { handle: 'reg-a-n1', kind: 'refund', title: n.title, body: '#1042: timeout', route: 'notifications', ts: n.ts, registerId: 'reg-a', registerName: 'Front' });
++  assert.equal(noticeRecordName(back.handle), 'notice-reg-a-n1');
++  assert.equal(noticeHandleFromRecord('notice-reg-a-n1'), 'reg-a-n1');
++  assert.equal(noticeHandleFromRecord('event-x'), null); assert.equal(noticeHandleFromRecord('notice-'), null);
++});
++
++test('optional parts are left out when empty, and a record that is not a readable shared notice is null', () => {
++  assert.deepEqual(Object.keys(noticeToFields('r', 'R', { id: 'x', ts: ago(0), kind: 'cash', title: 'T' })).sort(), ['kind', 'registerId', 'registerName', 'title', 'ts']);
++  const ok = noticeToFields('r', 'R', notice('x'));
++  assert.ok(noticeFromFields('r-x', ok));
++  for (const bad of [{ ...ok, kind: 'info' }, { ...ok, kind: 5 }, { ...ok, title: '' }, { ...ok, title: 7 }, { ...ok, ts: 'yesterday' }, { ...ok, ts: undefined }, { ...ok, registerId: '' }, {}]) assert.equal(noticeFromFields('r-x', bad as any), null);
++  assert.equal(noticeFromFields('', ok), null);
++  assert.equal(noticeFromFields('r-x', { ...ok, registerName: undefined })!.registerName, '');
++});
++
++test('to upload: own unread shared notices that CloudKit lacks and that are not too old, oldest first, each once', () => {
++  const list: Notice[] = [
++    notice('new', { ts: ago(HOUR) }), notice('old', { ts: ago(3 * HOUR) }), notice('dup', { ts: ago(2 * HOUR) }), notice('dup', { ts: ago(2 * HOUR) }),
++    notice('read', { read: true }), notice('stale', { ts: ago(NOTICE_MAX_AGE_MS + HOUR) }), notice('info', { kind: 'info' }), notice('there'), notice('badts', { ts: 'nope' }),
++  ];
++  const up = noticesToUpload('reg-a', list, new Set(['reg-a-there']), NOW);
++  assert.deepEqual(up.map(n => n.id), ['old', 'dup', 'new']);
++});
++
++test('taking in: another register\'s notice is added unread, labelled with who raised it, and marked taken in', () => {
++  const r = importNotices({ ...base, remote: [shared('reg-b-1', { kind: 'refund', route: 'notifications' })] });
++  assert.equal(r.added, 1); assert.equal(r.changed, true);
++  assert.deepEqual(r.notices[0], { id: importedNoticeId('reg-b-1'), ts: ago(HOUR), kind: 'refund', title: 'Cash outside the drawer', from: 'Back', read: false, body: 'body reg-b-1', route: 'notifications' });
++  assert.deepEqual(r.seen, ['reg-b-1']);
++});
++
++test('taking in: a register\'s own notices never come back, even after it cleared them', () => {
++  const r = importNotices({ ...base, remote: [shared('reg-a-1', { registerId: 'reg-a' })], local: [] });
++  assert.equal(r.added, 0); assert.equal(r.changed, false); assert.deepEqual(r.notices, []);
++});
++
++test('taking in: clearing or reading a notice here is per iPad, because a name already taken in is never added again', () => {
++  const first = importNotices({ ...base, remote: [shared('reg-b-1')] });
++  const cleared = importNotices({ ...base, remote: [shared('reg-b-1')], local: [], seen: first.seen });
++  assert.equal(cleared.added, 0); assert.deepEqual(cleared.notices, []);
++  const read = importNotices({ ...base, remote: [shared('reg-b-1')], local: first.notices.map(n => ({ ...n, read: true })), seen: first.seen });
++  assert.equal(read.added, 0); assert.equal(read.changed, false); assert.equal(read.notices[0].read, true, 'a read notice stays read');
++});
++
++test('taking in: old ones, kinds this device does not hold and repeats of an unread notice are not shown but are still marked taken in', () => {
++  const local = [notice('mine', { title: 'Same', body: 'same body' })];
++  const r = importNotices({ ...base, local, allowed: k => k !== 'refund', remote: [
++    shared('b-old', { ts: ago(NOTICE_MAX_AGE_MS + HOUR) }), shared('b-refund', { kind: 'refund' }), shared('b-same', { title: 'Same', body: 'same body' }), shared('b-ok'),
++  ] });
++  assert.deepEqual(r.notices.map(n => n.id), [importedNoticeId('b-ok'), 'mine']);
++  assert.equal(r.added, 1); assert.deepEqual([...r.seen].sort(), ['b-ok', 'b-old', 'b-refund', 'b-same']);
++  const again = importNotices({ ...base, local: r.notices, seen: r.seen, remote: [shared('b-old', { ts: ago(NOTICE_MAX_AGE_MS + HOUR) }), shared('b-refund', { kind: 'refund' }), shared('b-ok')] });
++  assert.equal(again.changed, false);
++});
++
++test('taking in: a read notice does not hide a new one that looks the same', () => {
++  const r = importNotices({ ...base, local: [notice('mine', { title: 'T', body: 'B', read: true })], remote: [shared('b-1', { title: 'T', body: 'B' })] });
++  assert.equal(r.added, 1);
++});
++
++test('taking in: at most the newest IMPORT_LIMIT arrive at once, the rest are marked taken in so they do not arrive later', () => {
++  const remote = Array.from({ length: IMPORT_LIMIT + 5 }, (_, i) => shared(`b-${String(i).padStart(3, '0')}`, { ts: ago(HOUR + i * 1000), body: `n${i}` }));
++  const r = importNotices({ ...base, remote });
++  assert.equal(r.added, IMPORT_LIMIT); assert.equal(r.seen.length, IMPORT_LIMIT + 5);
++  assert.equal(r.notices[0].body, 'n0', 'newest first'); assert.ok(!r.notices.some(n => n.body === `n${IMPORT_LIMIT + 4}`));
++});
++
++test('taking in: the list stays newest first and capped at 200, and the taken-in names are capped', () => {
++  const local = Array.from({ length: 200 }, (_, i) => notice(`l${i}`, { ts: ago(2 * HOUR + i * 1000), kind: 'info', body: `l${i}` }));
++  const r = importNotices({ ...base, local, remote: [shared('b-new', { ts: ago(30 * 60_000) })] });
++  assert.equal(r.notices.length, 200); assert.equal(r.notices[0].id, importedNoticeId('b-new')); assert.ok(!r.notices.some(n => n.id === 'l199'));
++  const many = importNotices({ ...base, seen: Array.from({ length: SEEN_CAP }, (_, i) => `old-${i}`), remote: [shared('b-last')] });
++  assert.equal(many.seen.length, SEEN_CAP); assert.equal(many.seen[many.seen.length - 1], 'b-last'); assert.equal(many.seen[0], 'old-1');
++});
++
++test('nothing changes and nothing is returned new when there is nothing to take in', () => {
++  const local = [notice('mine')]; const seen = ['x'];
++  const r = importNotices({ ...base, local, seen, remote: [] });
++  assert.equal(r.notices, local); assert.equal(r.seen, seen); assert.equal(r.changed, false);
++});
+diff --git a/tests/noticesync.test.ts b/tests/noticesync.test.ts
+new file mode 100644
+index 0000000..7c58999
+--- /dev/null
++++ b/tests/noticesync.test.ts
+@@ -0,0 +1,168 @@
++// Location: tests/noticesync.test.ts
++// CloudKit patch 6a, notices: the transport and the call sites on an in-memory fake of the native module, plus source pins for the
++// wiring that cannot be run without an iPad (the store's sink, the poll, the Swift and the module's exports).
++import test from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import { createNoticeSync, type NoticeSyncDeps } from '../src/lib/cloudkit/noticeSync';
++import { pullCloudNotices, pushCloudNotices, type NoticeNative } from '../src/lib/cloudkit/noticeCloud';
++import { importedNoticeId, noticeHandle } from '../src/lib/noticeShared';
++import { DEVICE_KEYS } from '../src/lib/backupFile';
++import type { Notice } from '../src/lib/types';
++
++type Rec = Record<string, any>;
++const NOW = Date.parse('2026-11-02T10:00:00.000Z');
++const HOUR = 3600_000;
++const ago = (ms: number): string => new Date(NOW - ms).toISOString();
++const notice = (id: string, o: Partial<Notice> = {}): Notice => ({ id, ts: ago(HOUR), kind: 'cash', title: 'Cash outside the drawer', body: `cash from ${id}`, ...o });
++
++function cloud() {
++  const records: Rec[] = []; const calls = { writes: 0, lists: 0 }; let failWrites = 0; let failLists = false;
++  const native = {
++    async putNotice(h: string, f: Rec) { if (failWrites > 0) { failWrites--; throw new Error('offline'); } const name = `notice-${h}`; const had = records.find(r => r.recordName === name); if (had) return had; calls.writes++; const r = { recordName: name, ...f }; records.push(r); return r; },
++    async listNotices(limit: number, after?: string | null) { calls.lists++; if (failLists) throw new Error('offline'); const from = after ? Number(after) : 0; return { rows: records.slice(from, from + limit), next: from + limit < records.length ? String(from + limit) : null }; },
++  } as unknown as NoticeNative;
++  return { native, records, calls, failNext: (k: number) => { failWrites = k; }, failLists: (b: boolean) => { failLists = b; } };
++}
++
++function register(c: ReturnType<typeof cloud>, id: string, name: string, over: Partial<NoticeSyncDeps> = {}) {
++  const state = { notices: [] as Notice[], seen: [] as string[] };
++  const deps: NoticeSyncDeps = {
++    active: () => true, training: () => false, who: () => ({ id, name }), native: async () => c.native,
++    local: () => state.notices, setLocal: l => { state.notices = l; }, seen: () => state.seen, setSeen: s => { state.seen = s; }, allowed: () => true, now: () => NOW, ...over,
++  };
++  return { sync: createNoticeSync(deps), state };
++}
++
++test('nothing is sent or read when CloudKit is not active, in practice mode, or before the register has an id', async () => {
++  for (const over of [{ active: () => false }, { training: () => true }, { who: () => ({ id: '', name: '' }) }]) {
++    const c = cloud(); const a = register(c, 'reg-a', 'Front', over); a.state.notices = [notice('n1')];
++    assert.equal(await a.sync.catchUp(), null); assert.equal(await a.sync.pull(), null); await a.sync.upload(notice('n2'));
++    assert.equal(c.records.length, 0); assert.equal(c.calls.lists, 0);
++  }
++});
++
++test('a register that has just launched sends its own unread cash and refund notices once, and nothing is written twice', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front');
++  a.state.notices = [notice('n1'), notice('n2', { kind: 'refund' }), notice('n3', { kind: 'info' }), notice('n4', { read: true })];
++  assert.equal(await a.sync.catchUp(), 2);
++  assert.deepEqual(c.records.map(r => r.recordName).sort(), ['notice-reg-a-n1', 'notice-reg-a-n2']);
++  assert.ok(c.records.every(r => r.registerId === 'reg-a' && r.registerName === 'Front'));
++  assert.equal(await a.sync.catchUp(), null, 'no second pass until something fails'); assert.equal(c.calls.writes, 2);
++});
++
++test('after the catch-up a cash or refund notice is written straight away with no listing, and other kinds never are', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); await a.sync.catchUp(); const lists = c.calls.lists;
++  await a.sync.upload(notice('n1')); await a.sync.upload(notice('n2', { kind: 'refund' }));
++  await a.sync.upload(notice('n3', { kind: 'sync' })); await a.sync.upload(notice('n4', { kind: 'reader' })); await a.sync.upload(notice('n5', { kind: 'info' }));
++  assert.equal(c.records.length, 2); assert.equal(c.calls.lists, lists);
++});
++
++test('a notice raised before the first catch-up waits for it and still arrives once', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); a.state.notices = [notice('n1')];
++  await a.sync.upload(notice('n1')); assert.equal(c.records.length, 0);
++  await a.sync.catchUp(); assert.equal(c.records.length, 1);
++});
++
++test('a live upload that fails is caught up later, and the one already sent is not sent again', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); await a.sync.catchUp();
++  a.state.notices = [notice('n2'), notice('n1')];
++  await a.sync.upload(notice('n1'));
++  c.failNext(1); await a.sync.upload(notice('n2'));
++  assert.equal(a.sync.isBehind(), true); assert.equal(c.records.length, 1);
++  assert.equal(await a.sync.catchUp(), 1); assert.equal(c.records.length, 2); assert.equal(c.calls.writes, 2);
++});
++
++test('a failed catch-up reports null and is tried again next time', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); a.state.notices = [notice('n1')];
++  c.failNext(1); assert.equal(await a.sync.catchUp(), null); assert.equal(a.sync.isBehind(), true);
++  assert.equal(await a.sync.catchUp(), 1);
++});
++
++test('a notice raised on one register reaches the other, unread and labelled with who raised it', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  await a.sync.catchUp(); await b.sync.catchUp();
++  await a.sync.upload(notice('n1', { kind: 'refund', title: 'Refund not recorded in Shopify', route: 'notifications' }));
++  assert.equal(await b.sync.pull(), 1);
++  assert.equal(b.state.notices.length, 1);
++  assert.deepEqual(b.state.notices[0], { id: importedNoticeId('reg-a-n1'), ts: ago(HOUR), kind: 'refund', title: 'Refund not recorded in Shopify', body: 'cash from n1', route: 'notifications', from: 'Front', read: false });
++  assert.deepEqual(b.state.seen, ['reg-a-n1']);
++  assert.equal(await a.sync.pull(), 0, 'the register that raised it does not get it back'); assert.deepEqual(a.state.notices, []);
++});
++
++test('reading or clearing a notice on one register leaves the other register\'s copy alone, and a cleared one does not return', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); const b = register(c, 'reg-b', 'Back');
++  await a.sync.catchUp(); await a.sync.upload(notice('n1'));
++  await b.sync.pull(); await a.sync.pull();
++  b.state.notices = b.state.notices.map(n => ({ ...n, read: true })); await b.sync.pull();
++  assert.equal(b.state.notices[0].read, true);
++  b.state.notices = []; assert.equal(await b.sync.pull(), 0); assert.deepEqual(b.state.notices, [], 'cleared stays cleared');
++  assert.equal(c.records.length, 1, 'nothing was sent about reading or clearing it');
++});
++
++test('a device that does not hold the feature takes in no notice of that kind, and an unreadable read changes nothing', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); await a.sync.catchUp(); await a.sync.upload(notice('n1'));
++  const b = register(c, 'reg-b', 'Back', { allowed: () => false });
++  assert.equal(await b.sync.pull(), 0); assert.deepEqual(b.state.notices, []);
++  const d = register(c, 'reg-d', 'Phone'); c.failLists(true);
++  assert.equal(await d.sync.pull(), null); assert.deepEqual(d.state.notices, []); assert.deepEqual(d.state.seen, []);
++});
++
++test('a notice cleared or raised while CloudKit was answering is not undone', async () => {
++  const c = cloud(); const a = register(c, 'reg-a', 'Front'); await a.sync.catchUp(); await a.sync.upload(notice('n1'));
++  const b = register(c, 'reg-b', 'Back'); const orig = c.native.listNotices.bind(c.native);
++  (c.native as any).listNotices = async (l: number, after?: string | null) => { const p = await orig(l, after); b.state.notices = [notice('late', { kind: 'info' })]; return p; };
++  await b.sync.pull();
++  assert.deepEqual(b.state.notices.map(n => n.id), [importedNoticeId('reg-a-n1'), 'late']);
++});
++
++test('pulling skips records it cannot read, and reads every page', async () => {
++  const c = cloud();
++  c.records.push({ recordName: 'notice-junk', kind: 'info', title: 'x', ts: ago(0), registerId: 'r' }, { recordName: 'other-1' }, { recordName: 'notice-r-1', kind: 'cash', title: 'ok', ts: ago(0), registerId: 'r' });
++  for (let i = 0; i < 450; i++) c.records.push({ recordName: `notice-r-p${i}`, kind: 'refund', title: `t${i}`, ts: ago(0), registerId: 'r' });
++  const got = await pullCloudNotices(c.native);
++  assert.equal(got.length, 451); assert.ok(c.calls.lists >= 3);
++});
++
++test('uploading in bulk lists first and only writes what CloudKit lacks', async () => {
++  const c = cloud(); c.records.push({ recordName: noticeHandle('reg-a', 'n1').replace(/^/, 'notice-') });
++  const sent = await pushCloudNotices(c.native, 'reg-a', 'Front', [notice('n1'), notice('n2')], NOW);
++  assert.equal(sent, 1); assert.equal(c.calls.writes, 1);
++});
++
++// ── source pins: the wiring that needs an iPad to run ───────────────────────────────────────────────────────────────────────
++const read = (p: string): string => readFileSync(p, 'utf8');
++
++test('notify hands each notice it adds to the sink, and notices taken in from elsewhere are not sent back', () => {
++  const store = read('src/state/store.ts');
++  assert.match(store, /export const setNoticeSink/);
++  assert.match(store, /get\(\)\.patchPos\(\{ notices: \[notice, \.\.\.pos\.notices\]\.slice\(0, 200\) \}\);\s*noticeSink\?\.\(notice\);/);
++  const sync = read('src/lib/sync.ts');
++  assert.match(sync, /setNoticeSink\(n => \{ void noticeSync\.upload\(n\); \}\);/);
++  assert.doesNotMatch(read('src/lib/cloudkit/noticeSync.ts'), /\.notify\(/, 'taking one in must not go through notify, or it would be sent again');
++});
++
++test('the poll sends missed notices and takes in new ones, only outside practice mode', () => {
++  const sync = read('src/lib/sync.ts'); const poll = sync.slice(sync.indexOf('export async function pollShared'));
++  const i = poll.indexOf('if (!isTraining()) {'); const j = poll.indexOf('// stock');
++  const block = poll.slice(i, j);
++  assert.ok(block.includes('noticeSync.catchUp()') && block.includes('noticeSync.pull()'));
++  assert.ok(block.indexOf('noticeSync.catchUp()') < block.indexOf('noticeSync.pull()'));
++});
++
++test('what a device has taken in is a device-only setting, never restored from a backup or shared', () => {
++  assert.ok(DEVICE_KEYS.includes('noticesSeen'));
++  assert.match(read('src/state/store.ts'), /noticesSeen\?: string\[\]/);
++});
++
++test('the native module exposes putNotice and listNotices, written once and listed, with the names the transport expects', () => {
++  const swift = read('modules/cloudkit-sync/ios/CloudKitSyncModule.swift');
++  assert.match(swift, /AsyncFunction\("putNotice"\)[\s\S]*?putRecordOnce\(recordType: "Notice", recordName: "notice-\\\(handle\)"/);
++  assert.match(swift, /AsyncFunction\("listNotices"\)[\s\S]*?listRecords\(recordType: "Notice"/);
++  const idx = read('modules/cloudkit-sync/index.ts'); assert.match(idx, /export async function putNotice/); assert.match(idx, /export async function listNotices/);
++  assert.match(read('modules/cloudkit-sync/status.ts'), /putNotice\?\(/);
++});
++
++test('the Notifications list says which register a shared notice came from', () => {
++  assert.match(read('src/screens/Notifications.tsx'), /n\.from \? `From \$\{n\.from\}` : ''/);
++});
