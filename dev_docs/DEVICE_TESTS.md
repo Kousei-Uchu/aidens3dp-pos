@@ -1329,3 +1329,18 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8) a
 8. Start a practice run on A and use the coach. Pass: nothing reaches B until the run is over, then the lines arrive marked as practice.
 9. On B, use an Apple ID outside the share to read the zone if you can (the T85 setup). Pass: the record's label shows but the content is not readable, and B's viewer says how many conversations could not be read.
 10. Ask on A a question whose tool results are very large (a long product list). Pass: it still reaches B. If a result was cut, the line shows the tool's name and arguments with a note that the result was cut for iCloud.
+
+## T101. The migration lease on two owner iPads (0212)
+
+Needs two iPads on the **owner's** Apple ID (A and B), both on a build that carries the Swift from 0212, and one more iPad on a different Apple ID in the share (P). The import itself does not exist yet (the next piece), so this only tests the lease record. There is no screen for it, so a developer builds a throwaway button or calls `createMigrationWatch(...).claim()` from a debug console. Nothing here can run in the shipped app until patch 8, and the Swift has never been compiled. Use the **Development** environment only.
+
+1. Make sure the dashboard has no `migration-v1` record (delete it by hand). On A call `claim()`. Pass: it returns `held` with `how: 'start'`, and the dashboard shows one `Migration` record with `status` running, `phase` settings, `holder` A's register id, and no field called `tag`.
+2. On B call `claim()` straight away. Pass: it returns `wait` with `why: 'busy'`, and the record is unchanged.
+3. Put both iPads in airplane mode, delete the record in the dashboard, then turn airplane mode off on both and call `claim()` on A and B as close together as you can. Pass: exactly one returns `held`, the other returns `lost` or `wait`, and the dashboard shows one record with one holder.
+4. On A, with the lease held, call `saveProgress` three times with a new cursor each time. Pass: each returns a state with a new `tag`, and the dashboard cursor follows.
+5. Stop A (force quit) and leave it. On B call `claim()` every 30 seconds. Pass: it keeps returning `wait` for about two minutes, then returns `held` with `how: 'takeover'`, the same phase, cursor and counts A left, and `holder` is now B.
+6. Relaunch A and call `saveProgress` using the state it held before the quit. Pass: it returns null (lease lost) and the dashboard is unchanged.
+7. Change B's date and time by a few hours (Settings, General, Date and Time, turn off Set Automatically) and repeat step 5 with A as the one that stopped. Pass: the wait is still about two minutes. Put B's clock back after.
+8. On P (not the owner) call `claim()` at any time. Pass: it returns `wait` with `why: 'owner'` and never writes. After B finishes (call `finishPhase` through the six phases, then `completeMigration(..., true)`), P returns `done`.
+9. Call `completeMigration(..., false)`. Pass: it throws and the record is unchanged.
+10. Call `failMigration` on the holder, then `claim()` on the other owner iPad. Pass: it takes over at once (no two-minute wait), and `error` is empty again.

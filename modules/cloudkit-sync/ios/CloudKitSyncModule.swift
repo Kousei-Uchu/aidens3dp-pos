@@ -279,13 +279,15 @@ public class CloudKitSyncModule: Module {
       try await self.listRecords(recordType: "SquareHistory", limit: limit, after: after)
     }
 
-    // --- Patch 7: migration state ---
-    AsyncFunction("putMigration") { (fields: [String: Any]) async throws -> [String: Any] in
-      try await self.putRecord(recordType: "Migration", recordName: "migration-v1", fields: fields)
+    // --- Patch 7: the migration lease ---
+    // `migration-v1` says which owner iPad is running the one-off import and how far it has got. It is never written unconditionally
+    // (the old putMigration did that, and was removed in 0212): every write names the change tag the caller read, so only one iPad can win.
+    AsyncFunction("getMigration") { () async throws -> [String: Any]? in
+      try await self.getMigrationFields()
     }
 
-    AsyncFunction("getMigration") { () async throws -> [String: Any]? in
-      try await self.getRecord(recordType: "Migration", recordName: "migration-v1")
+    AsyncFunction("putMigrationIfUnchanged") { (fields: [String: Any], expectedTag: String?) async throws -> [String: Any] in
+      try await self.putMigrationIfUnchanged(fields: fields, expectedTag: expectedTag)
     }
 
     // Patch 6b: the shared cash drawer. The shift and the checkpoint are single records that are updated in place; each
@@ -541,6 +543,48 @@ public class CloudKitSyncModule: Module {
       record = makeRecord(recordType: "SquareManifest", recordName: "square-manifest")
     }
     copyFields(fields, into: record)
+    do {
+      let saved = try await database().save(record)
+      return ["changed": false, "tag": saved.recordChangeTag ?? ""]
+    } catch let error as CKError where error.code == .serverRecordChanged {
+      return ["changed": true]
+    }
+  }
+
+  /// The migration record's plain fields and CloudKit's change tag for it (as `tag`). Null when there is none. recordToDict is not changed
+  /// for this, because every other record type reads its fields straight into rows and a stray `tag` field would end up in them.
+  private func getMigrationFields() async throws -> [String: Any]? {
+    let id = CKRecord.ID(recordName: "migration-v1", zoneID: storeZoneID)
+    do {
+      let record = try await database().record(for: id)
+      var out = recordToDict(record)
+      out["tag"] = record.recordChangeTag ?? ""
+      return out
+    } catch let error as CKError where error.code == .unknownItem {
+      return nil
+    }
+  }
+
+  /// Write the migration record only if it is still the one the caller read. `expectedTag` is that record's change tag, or empty or nil
+  /// when the caller saw no record (then it is created, and a record that has appeared in the meantime counts as changed). Same shape as
+  /// putSquareManifest. If another iPad wrote in between, nothing is written and `changed` is true.
+  private func putMigrationIfUnchanged(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
+    let id = CKRecord.ID(recordName: "migration-v1", zoneID: storeZoneID)
+    var found: CKRecord? = nil
+    do { found = try await database().record(for: id) }
+    catch let error as CKError where error.code == .unknownItem { found = nil }
+    let expected = expectedTag ?? ""
+    let record: CKRecord
+    if let current = found {
+      guard !expected.isEmpty, current.recordChangeTag == expected else { return ["changed": true] }
+      record = current
+    } else {
+      if !expected.isEmpty { return ["changed": true] }
+      record = makeRecord(recordType: "Migration", recordName: "migration-v1")
+    }
+    var plain = fields
+    plain["tag"] = nil // the tag is what a write has to match, never something stored
+    copyFields(plain, into: record)
     do {
       let saved = try await database().save(record)
       return ["changed": false, "tag": saved.recordChangeTag ?? ""]

@@ -1,6 +1,6 @@
 # CloudKit sync: decisions, status and roadmap
 
-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0211
+Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0212
 
 This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
 
@@ -10,7 +10,7 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
 
 ### In one paragraph
 
-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0211 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer) and patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months), and they add the in-app iCloud note and the drawer audit. **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0212 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they start patch 7 with the migration lease (0212). **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
 
 ### Three things gate turning CloudKit on
 
@@ -24,7 +24,7 @@ Patches 1 to 3 (entitlements and the native module, the zone and share, and the 
 
 ## Part 2. What has been built, and where we are going
 
-### 2.1 Patch ledger, 0188 to 0211
+### 2.1 Patch ledger, 0188 to 0212
 
 All of these were requested by you, in order. “Pure code” means no native code and no behaviour change.
 
@@ -54,6 +54,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 0209 | 2 Nov | **6a, fifth and last piece: the Square history months** (`squareHistoryShared.ts`, `cloudkit/squareCloud.ts`, `cloudkit/squareSync.ts`, `squareHistorySyncIO.ts`). The imported history is shared one month at a time: each month file is one `squareshard-<month>-<id>` record with the packed file as a CloudKit asset, and one `square-manifest` record lists them. Each register compares every month with the shop's against a device-only `squareBase` (the file hash here and the shared id both last agreed on), so a month is sent, taken, or removed on both sides, and a month is only deleted on a register that had not changed it since. The manifest is replaced only if it is still at the change tag that was read, so two registers writing at once cannot drop each other's months. **The copy in iCloud has every customer's name, email and phone removed**, because the history files hold them and the plan says none reach CloudKit. Swift: four new functions, uncompiled. T98. | Inactive until patch 8. |
 | 0210 | 2 Nov | **6c, first half: training progress** (`trainingShared.ts`, `cloudkit/trainingSync.ts`, merge rules in `trainingProgress.ts`). One `training-<staff id>-<module id>` record per person per module, read and joined with this register's once per poll, and only the records that differ are written back. Work from two registers is kept (stages from either, earliest finish). A reset counts up an `epoch`, and the higher count wins whole, so a reset beats older work on another register. Owners reset anyone and managers reset cashiers (O1), from a new section on **More ▸ Training**. Nothing is sent during a practice run. Swift: two new functions, uncompiled. T99. | Inactive until patch 8. |
 | 0211 | 2 Nov | **6c, second half: the audit log** (`auditShared.ts`, `cloudkit/auditCloud.ts`, `cloudkit/auditSync.ts`, `auditHook.ts`). Each assistant log event is one `audit-<register id>-<event id>` record, written once by the register that made it. The whole event is in one encrypted `secure_json` field; only the register, day, time and kind are plain. **Nothing is sent until the encrypted switch is on**: it follows `setSaleCardMode`, so one flip after T85 turns on sales' card details and the audit log together. Each launch sends the register's own log once (Q13); the log's append hands each new event over live. A manager can choose **All registers** in the conversation log viewer to read the others' events. The local log stays the safety copy and is unchanged. Swift: three new functions and an `Audit` entry in the encrypted-key list, uncompiled. T100. | Inactive until patch 8, and sends nothing until the switch is on. |
+| 0212 | 2 Nov | **Patch 7, first piece: the migration lease** (`migrationLease.ts`, `cloudkit/migrationCloud.ts`). One `migration-v1` record says which owner iPad is running the one-off import, which of six phases (settings, drawer, layout, carts, sales, rollups) it is in, a cursor inside the phase, and the counts imported so far. Every write is checked against CloudKit's change tag, so two owner iPads that both try to start cannot both win, and an iPad that has been replaced finds out on its next write and stops. A holder that has not written for two minutes is replaced and the new holder carries on from the stored phase and cursor. Quiet is judged on the watcher's own clock (how long a tag has stayed the newest one it can see), so a wrong clock on any iPad cannot make a live holder look dead. Only the owner can run it, a participant only waits and sees `done`. `done` can only be written from the last phase and with a `verified` flag. The old unconditional `putMigration` was removed. Swift: `putMigrationIfUnchanged` and a `getMigration` that returns the change tag, uncompiled. T101. | Inactive until patch 8. Nothing calls it yet: the import runner is the next piece. |
 
 ### 2.2 Build status of each decision
 
@@ -88,7 +89,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
 | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
 | N3, O5 | Owner-only CloudKit export, one zip of JSON | **Not built** (6e). This is different from the events CSV export in 0201. |
-| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Training progress is joined at every poll (0210), so it needs no separate upload. The audit log's catch-up (0211) is the one-off upload and waits for the encrypted switch. The migration lease and verification (patch 7) are not built. |
+| Q13 | Each register uploads its own local-only data once after joining | Done for events (0198) and attempts (0199) by their catch-ups. Training progress is joined at every poll (0210), so it needs no separate upload. The audit log's catch-up (0211) is the one-off upload and waits for the encrypted switch. So every kind of local-only data already has its one-off upload. The migration lease is built (0212); the import and verification (patch 7, rest) are not. |
 | O2 | Assistant connection settings sync | Built (0205). The log cap and data gate stay per iPad, and the API key waits for 6d. |
 | O3 | CloudKit keeps every ledger entry; app loads the latest 1000 | Built with the checkpoint (0191, 0192). |
 
@@ -106,10 +107,10 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 | 6c | Audit log (encrypted) and training progress | **Done** (0210 training progress, 0211 audit log). Swift uncompiled. |
 | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
 | 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | Not started. |
-| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | Not started. |
+| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Started.** The lease is built (0212). The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: the import runner with its phases and checkpoints, the count check, and the "Setting up sync" screen. |
 | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | Not started. |
 
-**Next up:** patch 7 (migration lease, checkpoints and verification, and the remaining local-only upload), then 6d and 6e after the encryption test, and 8 last. Two smaller leftovers can go at any point: resolving another register's payment from a different register (item 9) and the "find sales with no Shopify order and create it" recovery (item 8).
+**Next up:** the rest of patch 7 (the import runner with its phases and checkpoints, then the count check), then 6d and 6e after the encryption test, and 8 last. Two smaller leftovers can go at any point: resolving another register's payment from a different register (item 9) and the "find sales with no Shopify order and create it" recovery (item 8).
 
 ### 2.4 Open items and things to confirm
 

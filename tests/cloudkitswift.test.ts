@@ -25,7 +25,8 @@ test('save() is only called in the helpers that deal with an existing record', (
   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
   // putLogo (0207) is one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
   // putSquareShardOnce and putSquareManifest (0209) are the others: a shard is written once and handed back if the name is taken, and the manifest is compared with its change tag first.
-  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'putSquareManifest', 'putSquareShardOnce', 'upsertRecord']);
+  // putMigrationIfUnchanged (0212) is the migration lease: like the manifest, it is compared with its change tag before it is saved.
+  assert.deepEqual(callers.sort(), ['putLogo', 'putMigrationIfUnchanged', 'putRecordOnce', 'putSquareManifest', 'putSquareShardOnce', 'upsertRecord']);
   assert.match(body('putLogo'), /database\(\)\.record\(for: logoRecordID\)[\s\S]*\.save\(record\)[\s\S]*serverRecordChanged/);
 });
 
@@ -58,4 +59,26 @@ test('events and resolutions are written once, and attempts are updated in place
 test('the names the JavaScript side builds match the names the Swift reads', () => {
   for (const [name, prefix, type] of [['getAttempt', 'attempt-', 'Attempt'], ['getResolution', 'resolve-', 'Resolution']] as const) assert.match(fn(name), new RegExp(`getRecord\\(recordType: "${type}", recordName: "${prefix}`));
   for (const [name, type] of [['listEvents', 'Event'], ['listAttempts', 'Attempt'], ['listResolutions', 'Resolution']] as const) assert.match(fn(name), new RegExp(`listRecords\\(recordType: "${type}"`));
+});
+
+// The migration lease (0212). Two owner iPads must never both win, so every write is checked against the change tag the caller read.
+test('the migration record is only written through the checked helper, never by an unconditional put', () => {
+  assert.doesNotMatch(src, /AsyncFunction\("putMigration"\)/);
+  assert.match(fn('putMigrationIfUnchanged'), /putMigrationIfUnchanged\(fields: fields, expectedTag: expectedTag\)/);
+  assert.doesNotMatch(src, /putRecord\(recordType: "Migration"/);
+  assert.doesNotMatch(src, /upsertRecord\(recordType: "Migration"/);
+});
+test('putMigrationIfUnchanged compares the change tag first, and treats a lost race as changed', () => {
+  const b = body('putMigrationIfUnchanged');
+  assert.match(b, /current\.recordChangeTag == expected/);
+  assert.match(b, /guard !expected\.isEmpty/);
+  assert.match(b, /if !expected\.isEmpty \{ return \["changed": true\] \}/);
+  assert.match(b, /serverRecordChanged/);
+  assert.ok(b.indexOf('recordChangeTag == expected') < b.indexOf('.save(record)'), 'compare before save');
+  assert.match(b, /plain\["tag"\] = nil/);
+});
+test('getMigration returns the change tag, without changing what other records read', () => {
+  assert.match(fn('getMigration'), /getMigrationFields\(\)/);
+  assert.match(body('getMigrationFields'), /out\["tag"\] = record\.recordChangeTag/);
+  assert.doesNotMatch(body('recordToDict'), /recordChangeTag/);
 });
