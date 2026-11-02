@@ -13,7 +13,7 @@ export const IN_ICLOUD: NoteBlock[] = [
   { title: 'Sales', text: 'Every sale with its lines, tenders, staff name, notes, reasons and price changes, and the daily totals. Card details (the masked number, last four digits, approval code and references) are encrypted. Amounts are not, so reports can add them up. A sale refers to its Shopify customer by id only.' },
   { title: 'Payments and events', text: 'Card payment attempts, and who resolved each one, and the events log (declined and unknown payments, voids, overrides, paid in and out, shift opens and closes, no-sales, failed refunds, staff switches), each labelled with the till that made it.' },
   { title: 'Cash drawer', text: 'One drawer for the whole shop: its shift, any loan owed back, and every note and coin movement.' },
-  { title: 'Layout and carts', text: 'The item grid layout, saved carts and the Square history files.' },
+  { title: 'Layout and carts', text: 'The item grid layout, saved carts and the Square history files. In iCloud the history has each customer\'s name, email and phone taken out.' },
   { title: 'Notices and training', text: 'Cash and refund notices, and each person\'s training progress (never the practice data).' },
   { title: 'The assistant\'s log', text: 'Every exchange with the assistant, from every till, encrypted.' },
   { title: 'Logins and secrets (later)', text: 'Only after the encryption test has passed: the Shopify login, the pass, gift claim and receipt secrets, the assistant\'s key and the cashier pass codes, all encrypted.' },

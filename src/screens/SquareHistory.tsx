@@ -9,6 +9,7 @@ import { Btn, Field, Row, Section, Txt, alertMsg, confirm } from '../ui/kit';
 import { CameraScanner } from './Scanner';
 import { QR } from '../ui/QR';
 import { isManifestUrl } from '../lib/squareHistory';
+import { activeBackendKind } from '../lib/syncBackend';
 import { installFromPicked, installFromUrl, rebuild, removeSquareHistory, squareMeta, type SquareMeta } from '../lib/squareHistoryIO';
 import { startShare, type ShareEnd, type ShareHandle } from '../lib/squareShareIO';
 import { isTraining } from '../lib/trainingGuard';
@@ -82,7 +83,7 @@ export function SquareHistorySettings() {
       {meta ? <ShareSection /> : null}
       {meta ? <Section title="Maintenance" footer="Re-match after you refresh the catalogue from Shopify, so new SKUs link up. This only re-reads the files already on this device.">
         <Row icon="refresh-outline" title="Re-match to Shopify catalogue" onPress={() => !busy && void run(() => rebuild(setBusy))} />
-        <Row icon="trash-outline" title="Delete imported Square history" danger last onPress={async () => { if (await confirm('Delete Square history?', 'Removes the imported files from this iPad. You can import again from the PC.', 'Delete', true)) { await removeSquareHistory(); setMeta(null); } }} />
+        <Row icon="trash-outline" title="Delete imported Square history" danger last onPress={async () => { if (await confirm('Delete Square history?', (activeBackendKind() === 'cloudkit' ? 'Removes the imported files from this iPad, and from iCloud and every other register, because the history is shared. You can import again from the PC.' : 'Removes the imported files from this iPad. You can import again from the PC.'), 'Delete', true)) { await removeSquareHistory(); setMeta(null); } }} />
       </Section> : null}
       <CameraScanner visible={scan} title="Scan the QR code on your PC or another register" onClose={() => setScan(false)} onScan={code => { if (!isManifestUrl(code)) return null; setScan(false); void fromUrl(code); return 'Found it'; }} />
     </>

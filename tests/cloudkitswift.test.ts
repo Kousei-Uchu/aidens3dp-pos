@@ -23,8 +23,9 @@ test('putRecordOnce hands back the stored record when the name is taken, and nev
 });
 test('save() is only called in the helpers that deal with an existing record', () => {
   const callers = src.split('\n  private func ').slice(1).filter(f => /\.save\(record\)/.test(f)).map(f => f.slice(0, f.indexOf('(')));
-  // putLogo (0207) is the one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
-  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'upsertRecord']);
+  // putLogo (0207) is one other: it fetches the record first like upsertRecord, because an asset cannot go through copyFields.
+  // putSquareShardOnce and putSquareManifest (0209) are the others: a shard is written once and handed back if the name is taken, and the manifest is compared with its change tag first.
+  assert.deepEqual(callers.sort(), ['putLogo', 'putRecordOnce', 'putSquareManifest', 'putSquareShardOnce', 'upsertRecord']);
   assert.match(body('putLogo'), /database\(\)\.record\(for: logoRecordID\)[\s\S]*\.save\(record\)[\s\S]*serverRecordChanged/);
 });
 

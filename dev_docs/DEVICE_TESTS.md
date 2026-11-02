@@ -1286,3 +1286,19 @@ Needs two iPads on the same shop with CloudKit as the active backend (patch 8), 
 6. Airplane mode on A. Edit the grid, then reconnect and make no further edit. Pass: B receives the change at the next poll without any button.
 7. Join a new register C whose grid has a page of its own. Pass: C keeps that page and gains the shop's pages, and the shop gains C's page.
 8. Practice mode on A, edit the grid. Pass: nothing reaches B.
+
+## T98. Shared Square history on two registers (0209)
+
+Needs two iPads on the same shop with CloudKit as the active backend (patch 8), so nothing here can run until then, and the Swift has never been compiled. Nothing in this patch has been run on a device. Until the switch, confirm only that importing, re-matching and **Delete imported Square history** (Settings ▸ Square history) behave as before, and that the delete message does not mention iCloud.
+
+1. Import the Square history on A. Pass: within about 30 seconds B has the same months, shows them in Reports as Square (old) and in Transactions, and A did not download anything.
+2. In Transactions on B, search for the name of a customer who bought in an imported month. Pass: B finds nothing for that name, and A finds it. No customer name, email or phone shows on B.
+3. In iCloud's CloudKit dashboard open a `squareshard-` record and its asset. Pass: no customer name, email or phone is in the file.
+4. Import on A a newer export that has one month changed. Pass: B shows the new month's sales and keeps the others.
+5. Airplane mode on both. On A import a month B lacks. On B import a different month A lacks. Reconnect both. Pass: both end with both months.
+6. Join a new register C with no history. Pass: C gains every month without a QR code.
+7. On A tap **Delete imported Square history**. Pass: the message says it also removes it from iCloud and the other registers, and after confirming B and C lose the history and their Square (old) report rows go.
+8. Import on A again. Pass: B and C get it back.
+9. Airplane mode on B. On A delete the history. On B re-import one month, then reconnect B. Pass: the month B re-imported survives on both and the rest is gone.
+10. Practice mode on A, and import or delete. Pass: nothing reaches B.
+11. With the shop's `square-manifest` record edited by hand to hold text that is not a month list, wait for a poll on B. Pass: B's history is untouched.

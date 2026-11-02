@@ -222,6 +222,23 @@ export async function downloadLogo(): Promise<string | null> {
   if (!native?.downloadLogo) return null;
   return native.downloadLogo();
 }
+// Patch 6a: the shared Square history. The names match SquareNative in src/lib/cloudkit/squareCloud.ts.
+export async function putSquareShard(handle: string, fields: Record<string, any>, filePath: string): Promise<Record<string, any>> {
+  if (!native?.putSquareShard) throw new Error(CLOUDKIT_MISSING);
+  return native.putSquareShard(handle, fields, filePath);
+}
+export async function getSquareManifest(): Promise<Record<string, any> | null> {
+  if (!native?.getSquareManifest) return null;
+  return native.getSquareManifest();
+}
+export async function putSquareManifest(fields: Record<string, any>, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }> {
+  if (!native?.putSquareManifest) throw new Error(CLOUDKIT_MISSING);
+  return native.putSquareManifest(fields, expectedTag);
+}
+export async function downloadSquareShard(handle: string): Promise<string | null> {
+  if (!native?.downloadSquareShard) return null;
+  return native.downloadSquareShard(handle);
+}
 export async function putResolution(handle: string, fields: Record<string, any>): Promise<Record<string, any>> {
   if (!native?.putResolution) throw new Error(CLOUDKIT_MISSING);
   return native.putResolution(handle, fields);

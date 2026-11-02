@@ -183,6 +183,26 @@ public class CloudKitSyncModule: Module {
       try await self.downloadLogoFile()
     }
 
+    // --- Patch 6a: the shared Square history ---
+    // One `square-manifest` record lists the months. Each month is its own `squareshard-<month>-<id>` record with the packed file as a
+    // CKAsset. A shard is written once and never changed, because its name holds the id of its content. Only the manifest is ever replaced,
+    // and only if it is still at the change tag the caller read (the call returns `changed` instead of overwriting another register's write).
+    AsyncFunction("putSquareShard") { (handle: String, fields: [String: Any], filePath: String) async throws -> [String: Any] in
+      try await self.putSquareShardOnce(handle: handle, fields: fields, filePath: filePath)
+    }
+
+    AsyncFunction("getSquareManifest") { () async throws -> [String: Any]? in
+      try await self.getSquareManifestFields()
+    }
+
+    AsyncFunction("putSquareManifest") { (fields: [String: Any], expectedTag: String?) async throws -> [String: Any] in
+      try await self.putSquareManifest(fields: fields, expectedTag: expectedTag)
+    }
+
+    AsyncFunction("downloadSquareShard") { (handle: String) async throws -> String? in
+      try await self.downloadSquareShardFile(handle: handle)
+    }
+
     // --- Patch 5: saved carts ---
     AsyncFunction("putCart") { (handle: String, fields: [String: Any]) async throws -> [String: Any] in
       try await self.putRecord(recordType: "Cart", recordName: "cart-\(handle)", fields: fields)
@@ -436,6 +456,89 @@ public class CloudKitSyncModule: Module {
 
   /// recordToDict without the asset, which would otherwise come back as the text of the object.
   private func logoDict(_ record: CKRecord) -> [String: Any] {
+    var out = recordToDict(record); out.removeValue(forKey: "asset"); return out
+  }
+
+  // --- Patch 6a helpers: the Square history shards -------------------------------------------------------
+
+  private var squareManifestID: CKRecord.ID { CKRecord.ID(recordName: "square-manifest", zoneID: storeZoneID) }
+
+  /// A shard handle is `<YYYY-MM>-<id>`. Checked here as well as in JavaScript, because it becomes part of a record name and a file name.
+  private func validShardHandle(_ handle: String) -> Bool {
+    handle.range(of: "^[0-9]{4}-[0-9]{2}-[A-Za-z0-9_-]{1,40}$", options: .regularExpression) != nil
+  }
+
+  /// Write one month's shard. If the name is taken, the stored one is handed back untouched (the name holds the content's id, so it is the same file).
+  private func putSquareShardOnce(handle: String, fields: [String: Any], filePath: String) async throws -> [String: Any] {
+    guard validShardHandle(handle) else { throw NSError(domain: CKErrorDomain, code: CKError.Code.invalidArguments.rawValue) }
+    let name = "squareshard-\(handle)"
+    let record = makeRecord(recordType: "SquareShard", recordName: name)
+    copyFields(fields, into: record)
+    let url = filePath.hasPrefix("file://") ? (URL(string: filePath) ?? URL(fileURLWithPath: filePath)) : URL(fileURLWithPath: filePath)
+    record["asset"] = CKAsset(fileURL: url)
+    do {
+      let saved = try await database().save(record)
+      return squareDict(saved)
+    } catch let error as CKError where error.code == .serverRecordChanged {
+      let id = CKRecord.ID(recordName: name, zoneID: storeZoneID)
+      return squareDict(try await database().record(for: id))
+    }
+  }
+
+  /// The manifest's plain fields and CloudKit's change tag for it. Null when there is none.
+  private func getSquareManifestFields() async throws -> [String: Any]? {
+    let results = try await database().records(for: [squareManifestID])
+    guard let result = results[squareManifestID] else { return nil }
+    switch result {
+    case .success(let record):
+      var out = squareDict(record)
+      out["tag"] = record.recordChangeTag ?? ""
+      return out
+    case .failure(let error):
+      if let ck = error as? CKError, ck.code == .unknownItem { return nil }
+      throw error
+    }
+  }
+
+  /// Replace the manifest only if it is still the one the caller read. `expectedTag` is that record's change tag, or empty or nil when
+  /// the caller saw no manifest. If another register wrote in between, nothing is written and `changed` is true.
+  private func putSquareManifest(fields: [String: Any], expectedTag: String?) async throws -> [String: Any] {
+    var found: CKRecord? = nil
+    do { found = try await database().record(for: squareManifestID) }
+    catch let error as CKError where error.code == .unknownItem { found = nil }
+    let expected = expectedTag ?? ""
+    let record: CKRecord
+    if let current = found {
+      guard !expected.isEmpty, current.recordChangeTag == expected else { return ["changed": true] }
+      record = current
+    } else {
+      if !expected.isEmpty { return ["changed": true] }
+      record = makeRecord(recordType: "SquareManifest", recordName: "square-manifest")
+    }
+    copyFields(fields, into: record)
+    do {
+      let saved = try await database().save(record)
+      return ["changed": false, "tag": saved.recordChangeTag ?? ""]
+    } catch let error as CKError where error.code == .serverRecordChanged {
+      return ["changed": true]
+    }
+  }
+
+  /// Fetch one shard with its asset and copy the file to a temporary path the JavaScript side can read. Null when it is not there.
+  private func downloadSquareShardFile(handle: String) async throws -> String? {
+    guard validShardHandle(handle) else { return nil }
+    let id = CKRecord.ID(recordName: "squareshard-\(handle)", zoneID: storeZoneID)
+    let record: CKRecord
+    do { record = try await database().record(for: id) }
+    catch let error as CKError where error.code == .unknownItem { return nil }
+    guard let asset = record["asset"] as? CKAsset, let source = asset.fileURL else { return nil }
+    let dest = FileManager.default.temporaryDirectory.appendingPathComponent("square-shard-\(UUID().uuidString).json.gz")
+    try FileManager.default.copyItem(at: source, to: dest)
+    return dest.path
+  }
+
+  /// recordToDict without the asset, which would otherwise come back as the text of the object.
+  private func squareDict(_ record: CKRecord) -> [String: Any] {
     var out = recordToDict(record); out.removeValue(forKey: "asset"); return out
   }
 

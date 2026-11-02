@@ -514,3 +514,18 @@ These fill gaps in the plan (patch 6a) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
 6. **No base joins instead of replacing.** A register that has just joined keeps its own pages the shop lacks and takes the shop's version of pages both have.
 7. **A layout the shop holds that cannot be read is overwritten** by this register's, which repairs it. The alternative was to leave it alone.
 8. **An edit made while a send is running is kept**, and sent at the next poll.
+
+## Shared Square history (0209)
+
+These fill gaps in the plan (patch 6a, "Square history structure and size") and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`. Each is a guess, change any you disagree with.
+
+1. **Customer name, email and phone are removed from the copy in iCloud.** The history files hold them (the importer keeps Square's customer on each sale) and the plan says none reach CloudKit, so shipping the files as they are would have broken that rule. The Square customer id stays. The alternatives were to send the files whole, or to encrypt them. The cost of removing is that a register that took the history from iCloud has no names to search by, and it needs a second id per month (below). If you want the names on every register, say so and the answer is an encrypted asset, which waits on the encryption test (O4).
+2. **Ticket names and line notes are not scrubbed.** A cashier can type a name there. It is the same known minor exception as a note on a sale (decisions item 18).
+3. **Each month has two ids.** `hash` is the register's own file and `sid` the copy in iCloud, because they are different bytes. `squareBase` holds the pair both last agreed on, so a pulled month is not mistaken for a change and sent back.
+4. **A shard is named by month and shared id and never rewritten.** The manifest points at exact versions, so a reader can never pair a manifest with a half-updated file. The cost is that an old version stays in iCloud as an unused record. Nothing deletes them yet.
+5. **The manifest is a compare-and-set.** It is written only if it is still at the change tag that was read, and the pass is repeated (up to three times) if another register wrote first. A real compare is cheap here because there is one small manifest. Saved carts still have no such compare.
+6. **Both registers changed the same month: the one with more sales wins, a tie keeps this register's.** The same rule on both sides, so they settle on one. A register that only knows a month's file name counts it as 0 sales.
+7. **Removing the history removes it everywhere.** It is a deliberate action, the confirmation now says so when iCloud sync is on, and the manifest and a base that both sides agreed on guard against a stray deletion: a month is never deleted on a register that changed it since, and never deleted when there was no agreed base. The alternative was to keep a removal local, which would let the shop's copy come straight back.
+8. **An unreadable manifest is left alone.** Reading it as empty would look like every month had been removed. It needs fixing by hand or by a later patch.
+9. **Month files over 8 MB are neither sent nor taken in.** A busy month is a few hundred KB packed, so this only guards against a damaged file.
+10. **The stored manifest is rewritten after a month is taken in or removed**, from the files now on the iPad, then the rollups are rebuilt exactly as an import does. Its total sales and refunds are approximate until the next import, and nothing reads them (the meta is rebuilt from the files).

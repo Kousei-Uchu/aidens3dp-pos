@@ -11,6 +11,8 @@ import type { HistSale } from './squareConvert';
 import { addToRollups, buildLinkIndex, canonicalName, finishRollups, linkSale, linkedStats, packJson, parseManifest, safeName, unpackJson, type SquareManifest } from './squareHistory';
 
 const dir = () => `${FS.documentDirectory ?? ''}square-history/`;
+/** The folder the stored files are in, for the iCloud sharing of the months (squareHistorySyncIO.ts). */
+export const squareHistoryDir = dir;
 const META_KEY = 'squareHistoryMeta';
 /** Demo mode and training run on a copy of the till's data, but these files are the real ones on this iPad: installing, re-matching and deleting
  *  change them for good, so each of the four starts here. Reading the history (loadSquareRollups, loadSquareSales) stays open. */
