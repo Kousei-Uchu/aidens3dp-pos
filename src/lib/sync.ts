@@ -25,6 +25,8 @@ import { createNoticeSync } from './cloudkit/noticeSync';
 import type { NoticeNative } from './cloudkit/noticeCloud';
 import { createLogoSync } from './cloudkit/logoSync';
 import type { LogoNative } from './cloudkit/logoCloud';
+import { createSquareSync } from './cloudkit/squareSync';
+import type { SquareNative } from './cloudkit/squareCloud';
 import type { EventNative } from './cloudkit/eventCloud';
 import { readCalibration, type ScannerCalibration } from './scanSpeed';
 import { createOrderForSale } from './shopify/orders';
@@ -90,6 +92,25 @@ const logoSync = createLogoSync({
   clear: async () => (await import('./logoFiles')).clearLocalLogo(),
   base: () => st().settings.logoBase ?? null,
   setBase: h => { if ((st().settings.logoBase ?? null) !== h) st().patchSettings({ logoBase: h }); },
+});
+
+// CloudKit patch 6a: the imported Square history is shared one month at a time (plan, "Square history structure and size"). Once per poll
+// this register's month files are compared with the shop's: a month changed here is sent (with customer names, emails and phones taken
+// out), a month changed elsewhere is taken, and a removal goes both ways. `squareBase` is what both last agreed on, month by month.
+// The file work lives in squareHistorySyncIO.ts and is loaded on demand, so this file still imports in the node tests.
+const squareSync = createSquareSync({
+  active: () => activeBackendKind() === 'cloudkit',
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId, name: st().settings.registerName }),
+  native: async () => (await import('../../modules/cloudkit-sync')) as unknown as SquareNative,
+  listLocal: async () => (await import('./squareHistorySyncIO')).listLocalMonths(),
+  prepare: async m => (await import('./squareHistorySyncIO')).prepareShard(m),
+  inspect: async p => (await import('./squareHistorySyncIO')).inspectDownloadedShard(p),
+  install: async (m, p) => (await import('./squareHistorySyncIO')).installShard(m, p),
+  removeLocal: async m => (await import('./squareHistorySyncIO')).removeLocalMonth(m),
+  finish: async (meta, sales) => (await import('./squareHistorySyncIO')).finishSquareChange(meta, sales),
+  base: () => st().settings.squareBase,
+  setBase: t => { if ((st().settings.squareBase ?? '') !== t) st().patchSettings({ squareBase: t }); },
 });
 
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
@@ -222,6 +243,7 @@ export async function pollShared() {
       await noticeSync.catchUp(); // cash and refund notices the live upload missed (never throws)
       await noticeSync.pull(); // and take in the ones other registers raised
       await logoSync.run(); // the logo image, both ways (never throws)
+      await squareSync.run(); // the Square history months, both ways (never throws)
     }
     // stock
     if (s.settings.locationId && s.data.stockSince) {

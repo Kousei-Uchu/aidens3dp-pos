@@ -5,7 +5,7 @@ parent: orders
 summary: Export old Square sales on a PC, import them onto each register (from the PC or from another register), and understand how they appear in Reports and Transactions.
 tags: [Square, history, import, export, QR, PC, share, copy, another register, Wi-Fi, SKU, barcode, reports, transactions, read only]
 related: [orders, orders/reports]
-updated: 2026-10-17
+updated: 2026-11-02
 ---
 Square history is a one-time, read-only import of old Square sales and refunds. It never changes Shopify items, stock or customers.
 
@@ -26,6 +26,11 @@ The import shows how many sales and refunds were loaded and how many item lines 
 Once one register has the history, the others do not need the PC. On the register that has it, open **Settings ▸ Square history** and tap **Show QR for another register**. On the other register, open **Settings ▸ Square history**, tap **Scan QR from PC** and scan that code. Both registers must be on the same Wi-Fi.
 
 The code is a single small address, not the data itself, so it scans easily. The sharing register shows how many registers it has sent to. Keep its page open until the other register says it is done, then tap **Stop sharing**. Sharing also stops by itself after 10 minutes, or if the app leaves the screen. The other register links the history to its own Shopify catalogue, so each register's matches and report numbers are built on that register.
+
+### Shared through iCloud
+Once iCloud sync is switched on (Settings ▸ Cloud sync), you do not need the QR code. Import on one register and the others take the months in by themselves a little later, then link them to their own catalogue. Import a newer export and it replaces the month on the others. **Delete imported Square history** removes it from iCloud and from every other register too, and the confirmation says so. A month that one register changed after the other removed it is kept, never deleted unseen.
+
+The copy in iCloud does not hold any customer's name, email or phone. The register that imported keeps its full files. Registers that took the history from iCloud show those sales without a customer name, so searching Transactions by customer name only finds them on the register that imported. If you want names on every register, use the QR code route above, which copies the full files. Until iCloud sync is switched on, nothing here changes.
 
 ### Find the imported records
 Imported sales appear in Reports as **Square (old)** and in Transactions when the **Square history** chip is selected. They are historical and read-only: they cannot be refunded from this POS.
@@ -68,6 +73,7 @@ flowchart TD
 | Share to another register (server, QR address, file serving) | `startShare` in `src/lib/squareShareIO.ts` |
 | Share rules (address, key, routing, progress) | `answerRequest`, `shareUrl`, `shareStatus` in `src/lib/squareShare.ts` |
 | Import screen | `SquareHistorySettings` in `src/screens/SquareHistory.tsx` |
+| Sharing months through iCloud (rules, then the file work) | `decideMonth`, `stripCustomers` in `src/lib/squareHistoryShared.ts`; `createSquareSync` in `src/lib/cloudkit/squareSync.ts`; `src/lib/squareHistorySyncIO.ts` |
 | Download, file copy and storage | `installFromUrl`, `installFromPicked`, `rebuild` in `src/lib/squareHistoryIO.ts` |
 | SKU/barcode matching and rollups | `linkSale`, `addToRollups` in `src/lib/squareHistory.ts` |
 | Transactions and reports display | `src/screens/Transactions.tsx`, `src/screens/Reports.tsx` |

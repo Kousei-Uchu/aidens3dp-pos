@@ -59,6 +59,11 @@ export type CloudKitSyncNative = {
   putLogo?(fields: Record<string, any>, filePath: string | null): Promise<Record<string, any>>;
   getLogo?(): Promise<Record<string, any> | null>;
   downloadLogo?(): Promise<string | null>;
+  // Patch 6a: the shared Square history (one shard record per month with an asset, and one manifest record)
+  putSquareShard?(handle: string, fields: Record<string, any>, filePath: string): Promise<Record<string, any>>;
+  getSquareManifest?(): Promise<Record<string, any> | null>;
+  putSquareManifest?(fields: Record<string, any>, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }>;
+  downloadSquareShard?(handle: string): Promise<string | null>;
   // Patch 6b: the shared cash drawer
   putDrawerShift?(fields: Record<string, any>): Promise<Record<string, any>>;
   getDrawerShift?(): Promise<Record<string, any> | null>;

@@ -107,7 +107,7 @@ Item numbers refer to `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`.
 | Secrets and cashier pass codes (Shopify login, pass, claim and receipt secrets, AI key) | Sync, encrypted, after the encryption test (N1, O4) |
 | `pos.saved` carts | Sync (unsynced `dirty` carts push from their own device) |
 | `grid` layout | Sync. The grid version counter is only kept during migration (item 27) |
-| Square history files | Sync as sharded `CKAsset`s with a manifest record |
+| Square history files | Sync as sharded `CKAsset`s with a manifest record (built in 0209, with customer name, email and phone removed from the copy) |
 | Device parts (`DEVICE_KEYS`), the `cloudkit.backend` flag, inventory screen prefs, the device's own theme, accent, tile size, glass surfaces, item spotlight, theme setup version | Stay local (items 4, 16, 22) |
 | Sync bookkeeping: `drawerVersion`, `drawerPending`, `drawerShiftPending`, `warningListVersion`, `warningListPending` | Stay local (item 7) |
 | Outbox, the other-tills cache (`pos.shared`), local CSV history files | Stay local (items 8, 11, 12) |
@@ -196,7 +196,8 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
    - 6a, first piece **done in code (0205)**: the shared settings set (staff with display settings, shop name, receipt details, server addresses, auto-receipt, smart change, consolidate, assistant connection) with safe reading and a merge between registers, in `src/lib/sharedSettings.ts`. Still to do for 6: the logo, layout and Square history shards.
    - 6a, second piece **done in code (0206)**: the cash and refund notices shared between registers, in `src/lib/noticeShared.ts` and `src/lib/cloudkit/noticeSync.ts`. Write-once `Notice` records, unread on arrival, reading and clearing stay per iPad.
    - 6a, third piece **done in code (0207)**: the uploaded logo image, one `logo-current` record with a CloudKit asset, reconciled each poll against a device-only `logoBase` (`src/lib/logoShared.ts`, `src/lib/cloudkit/logoSync.ts`). Still to do for 6: layout and Square history shards.
-   - 6a, fourth piece **done in code (0208)**: the grid layout joined page by page against a device-only `gridBase` on CloudKit (`src/lib/gridMerge.ts`), no version counter. Still to do for 6: Square history shards.
+   - 6a, fourth piece **done in code (0208)**: the grid layout joined page by page against a device-only `gridBase` on CloudKit (`src/lib/gridMerge.ts`), no version counter.
+   - 6a, fifth piece **done in code (0209)**: the Square history months, one `squareshard-<month>-<id>` record each with a CloudKit asset and one `square-manifest` record, reconciled each poll against a device-only `squareBase` (`src/lib/squareHistoryShared.ts`, `src/lib/cloudkit/squareSync.ts`). The copy in iCloud has customer name, email and phone removed. This finishes 6a.
    - 6b. The shared drawer: the shift as one record, each ledger entry as its own record
    - 6c. The audit log (encrypted) and training progress
    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes

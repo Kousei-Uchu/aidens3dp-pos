@@ -45,6 +45,8 @@ export type Settings = {
   noticesSeen?: string[];
   /** Device only: the hash of the uploaded logo image this register and the shop last agreed on, so a change made here can be told from one made elsewhere (0207). '' means they agreed there is no logo. */
   logoBase?: string;
+  /** Device only: for each month of imported Square history, the file hash here and the shared id in iCloud that this register and the shop last agreed on, as JSON text, so a month changed here can be told from one changed elsewhere (0209). */
+  squareBase?: string;
   /** Device only: the grid layout (canonical text) this register and the shop last agreed on, the base for joining two registers' edits on CloudKit (0208). Never shared. See lib/gridMerge.ts. */
   gridBase?: string;
   scannerCal?: ScannerCalibration; scannerCalVersion?: number; scannerCalPending?: boolean; // Settings ▸ Hardware ▸ Calibrate: what each scanner speed measures as (shared to every register through a metaobject)
