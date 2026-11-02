@@ -137,10 +137,13 @@ export async function listSquareHistory(limit = 100, after?: string | null): Pro
   return native.listSquareHistory(limit, after ?? null);
 }
 
-export async function putMigration(fields: Record<string, any>): Promise<Record<string, any>> {
-  if (!native?.putMigration) throw new Error(CLOUDKIT_MISSING);
-  return native.putMigration(fields);
+// Patch 7: the migration lease. Writes are always checked against the change tag the caller read (see MigrationNative in
+// src/lib/cloudkit/migrationCloud.ts), so there is no unconditional put. The old putMigration was removed in 0212 for that reason.
+export async function putMigrationIfUnchanged(fields: Record<string, any>, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }> {
+  if (!native?.putMigrationIfUnchanged) throw new Error(CLOUDKIT_MISSING);
+  return native.putMigrationIfUnchanged(fields, expectedTag);
 }
+/** The migration record's plain fields with its change tag as `tag`, or null when there is none. */
 export async function getMigration(): Promise<Record<string, any> | null> {
   if (!native?.getMigration) return null;
   return native.getMigration();

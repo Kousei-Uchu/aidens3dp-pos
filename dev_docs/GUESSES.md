@@ -557,3 +557,18 @@ These fill gaps in the plan (patch 6c) and `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`
 8. **A catch-up lists labels only** (the Swift asks CloudKit for just the plain fields), so it never downloads the log itself. It runs once per launch, like events.
 9. **A conversation this iPad cannot decrypt is counted, not listed.** The viewer says how many could not be read.
 10. **The manager's viewer is the only place the shared copy is read.** The assistant itself does not read other registers' conversations.
+
+## Migration lease (0212)
+
+These fill gaps in the plan (patch 7, section 6 steps 2 to 5). Each is a guess, change any you disagree with.
+
+1. **Six phases, not the plan's six.** The order is settings, drawer, layout, carts, sales, rollups. The drawer is its own phase because Shopify keeps it as one `drawer` settings blob (shift and ledger together) that has to be turned into a `drawer-shift` record and one record per ledger entry. Square history is not a phase: it is not in Shopify, and each register already shares its own months at every poll (0209).
+2. **A holder is gone after two minutes of no writes, and a holder writes about every 20 seconds.** That lets a holder miss two heartbeats in a row without losing the lease. Both numbers are constants at the top of `migrationLease.ts`.
+3. **"No writes" is judged by the watcher's own clock, not by a time stored in the record.** Every write changes CloudKit's change tag, so a watcher only asks how long the tag it sees has stayed the same. The plan said the record would hold a lease expiry time; that would have trusted two iPads' clocks to agree. The cost is that an iPad that has just launched waits a full two minutes before it can take over, even if the holder died long ago.
+4. **A failed run is picked up at once, with no wait.** The holder wrote `failed` itself, so it is known to have stopped. The reason is kept in the record until the next run starts.
+5. **An iPad that restarts resumes its own lease at once**, without waiting two minutes, because it knows its previous run is over. This assumes one app process per iPad.
+6. **A record written by a newer build is never touched**, even by the owner. The iPad waits and says it needs the latest version. A damaged record (this build's own layout, with nonsense in it) is taken over like a quiet holder, after the same two minutes.
+7. **A participant never writes the lease.** Only an iPad on the owner's Apple ID may run the import (plan step 1), so a participant only reads and waits, and switches over when it sees `done`.
+8. **`done` needs a `verified` flag and the last phase.** `completeMigration` throws otherwise, so a bug in the runner cannot make every register switch to an empty CloudKit zone.
+9. **A write that comes back without a change tag counts as not held.** Without the tag the next checked write could not be made, so carrying on would risk two holders.
+10. **The old unconditional `putMigration` is gone.** Nothing used it, and it would have let an iPad overwrite the lease.

@@ -93,7 +93,7 @@ export type CloudKitSyncNative = {
   putSquareHistory?(handle: string, fields: Record<string, any>): Promise<Record<string, any>>;
   getSquareHistory?(handle: string): Promise<Record<string, any> | null>;
   listSquareHistory?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
-  putMigration?(fields: Record<string, any>): Promise<Record<string, any>>;
+  putMigrationIfUnchanged?(fields: Record<string, any>, expectedTag: string | null): Promise<{ changed: boolean; tag?: string }>;
   getMigration?(): Promise<Record<string, any> | null>;
 };
 

@@ -119,7 +119,7 @@ Item numbers refer to `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`.
 
 1. **Owner only.** Only a device on the owner's Apple ID creates the zone and share and runs the import.
 2. **Lease record.** `migration-v1` is saved with `ifServerRecordUnchanged`, so only one device wins. It stores the device ID (`registerId`), a lease expiry with heartbeat, the current phase, and a cursor. If the holder dies, another owner device takes over using the record's change tag.
-3. **Phases, in order:** settings, layout, saved carts, sales, rollups, Square history. Shopify lists are paged. Writes go in batches of about 100 records (CloudKit's cap is 400 per operation). Each batch advances the cursor so a crash resumes where it stopped.
+3. **Phases, in order:** settings, drawer, layout, saved carts, sales, rollups (changed in 0212: the drawer is its own phase because Shopify keeps it as one blob that has to become a shift record and ledger entries, and Square history is not a phase because it is not in Shopify and each register already shares its months at every poll). Shopify lists are paged. Writes go in batches of about 100 records (CloudKit's cap is 400 per operation). Each batch advances the cursor so a crash resumes where it stopped.
 4. **Verify.** Compare per-type counts between Shopify and CloudKit. Only then set `status: done`. Clients switch to the CloudKit backend only once they see `done`.
 5. **Other devices during migration.** They show a "Setting up sync" state, queue local writes, and flush them once the import finishes.
 6. **Settings conflicts.** The Shopify settings row is canonical on first import. Local settings are used only if no row exists. Where both exist, the highest `sharedVersion` wins.
@@ -205,6 +205,8 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
    - 6d. Encrypted logins, secrets and cashier pass codes, only after the encryption test passes
    - 6e. The owner-only CloudKit export, one zip of JSON files (or fold it into 8)
 7. Migration lease, checkpoints and verification, extended so each register uploads its own local-only data once after joining (events, payment attempts, audit log, training progress)
+   - 7, first piece **done in code (0212)**: the lease. One `migration-v1` record, written only against CloudKit's change tag, with six phases (settings, drawer, layout, carts, sales, rollups), a cursor and per-phase counts (`src/lib/migrationLease.ts`, `src/lib/cloudkit/migrationCloud.ts`). Square history is not a phase: it is not in Shopify, and each register already shares its months at every poll (0209).
+   - The one-off uploads of local-only data are already covered by the catch-ups (0198, 0199, 0211) and the training poll (0210).
 8. Retire polling and add the rollback flag
 
 The four owner decisions left in section 7 do not block patch 3, which is a code seam with no CloudKit behaviour of its own.
