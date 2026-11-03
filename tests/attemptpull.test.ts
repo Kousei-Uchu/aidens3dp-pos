@@ -147,5 +147,5 @@ test('the shop-wide list lives in memory only and a resolved-elsewhere notice st
 });
 test('Diagnostics shows the all-registers section only once CloudKit has sent attempts', () => {
   const d = read('src/screens/Diagnostics.tsx');
-  assert.match(d, /sharedAttempts\.length \? <Section title="Card payments waiting \(all registers\)"/); assert.match(d, /unresolvedRows\(sharedAttempts\)/);
+  assert.match(d, /sharedAttempts\.length \? <Section title="Card payments waiting \(all registers\)"/); assert.match(d, /unresolvedRows\(sharedAttempts, 8, Date\.now\(\), registerId\)/);
 });
