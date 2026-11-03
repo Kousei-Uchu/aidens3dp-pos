@@ -11,7 +11,9 @@ import { useNav } from '../ui/nav';
 import { SPOT } from '../lib/trainingSpots';
 import { isTraining } from '../lib/trainingGuard';
 import { activeBackendKind } from '../lib/syncBackend';
-import { eventSync } from '../lib/sync';
+import { eventSync, migrationControl } from '../lib/sync';
+import { migrationPanel } from '../lib/migrationPanel';
+import type { MigrationView } from '../lib/cloudkit/migrationControl';
 import { ICLOUD_NOTE_INTRO, ICLOUD_WARNINGS, IN_ICLOUD, NOT_IN_ICLOUD } from '../lib/icloudNote';
 import {
   acceptShare,
@@ -30,6 +32,7 @@ export default function CloudSync() {
   const [link, setLink] = useState('');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
+  const [mig, setMig] = useState<MigrationView | null>(null);
   const practice = isTraining();
   const account = state?.account ?? 'couldNotDetermine';
   const role = state?.role ?? 'none';
@@ -46,6 +49,18 @@ export default function CloudSync() {
     void takePendingInvite().then(url => { if (url) setLink(url); });
     return onShareJoined(p => { setMsg(p.message); void refresh(); });
   }, []);
+
+  // The move to iCloud (patch 7): read the lease when the page opens and every few seconds while it is open, and redraw as the import
+  // reports progress. Reading writes nothing, and nothing here starts the import except the button.
+  const readMigration = async () => { try { setMig(await migrationControl.view()); } catch { /* the view never throws; this is for safety */ } };
+  useEffect(() => {
+    if (role === 'none') return;
+    void readMigration();
+    const off = migrationControl.subscribe(() => { void readMigration(); });
+    const t = setInterval(() => { void readMigration(); }, 5000);
+    return () => { off(); clearInterval(t); };
+  }, [role]);
+  const panel = migrationPanel(mig, role, practice);
 
   const setup = async () => {
     setBusy(true); setMsg('');
@@ -128,6 +143,18 @@ export default function CloudSync() {
             <Txt size={13} sub>Paste the invite link from the till that set the shop up.</Txt>
             <Field kind="code" label="Invite link" value={link} onChangeText={setLink} placeholder="https://www.icloud.com/share/..." />
             <Btn title="Join" icon="cloud-download-outline" spot={SPOT.cloudSyncJoin} busy={busy} disabled={!link.trim() || practice} onPress={() => void join(link)} />
+          </>
+        ) : null}
+
+        {panel.show ? (
+          <>
+            <Txt weight="600" style={{ marginTop: 6 }}>{panel.title}</Txt>
+            <Txt size={13}>{panel.status}</Txt>
+            {panel.progress ? <Txt size={13} sub>{panel.progress}</Txt> : null}
+            {panel.outcome ? <Txt size={13} sub>{panel.outcome}</Txt> : null}
+            {panel.explain.map(t => <Txt key={t} size={13} sub>{t}</Txt>)}
+            {panel.primary ? <Btn title={panel.primary.label} icon="cloud-upload-outline" onPress={() => void migrationControl.start()} /> : null}
+            {panel.showStop ? <Btn title="Stop" kind="secondary" onPress={() => migrationControl.stop()} /> : null}
           </>
         ) : null}
 

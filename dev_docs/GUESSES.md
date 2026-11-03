@@ -613,3 +613,15 @@ These fill gaps in the plan (patch 7, section 6 steps 1 and 5). Each is a guess,
 5. **Stop does not write anything.** The lease is left to lapse (two minutes), so another owner iPad waits that long. A stopped run on the same iPad resumes at once.
 6. **Practice mode refuses to start and stops a running import.**
 7. **A read failure is a sentence, not an error**, so a screen can always show something.
+
+## Migration screen (0216)
+
+These fill gaps in the plan (patch 7, the setup screen). Each is a guess, change any you disagree with.
+
+1. **It is a section on the existing Cloud sync page**, not a new screen, so there is nothing new to navigate to.
+2. **It is shown to every till in the shop**, owner or participant, so a participant can see why the shop is not on iCloud yet. Only the owner gets a button.
+3. **The page reads the lease every five seconds while open** (a few cheap reads) and not at all when closed or when the till is not in a shop.
+4. **No help text, tour spot or app-control entry** is added for the button. The help page for Cloud sync and the registry of controls (`appControls.ts`) are left as they are, because they have their own tests and wording rules; add them if you want the assistant and tour to know the button.
+5. **Stopping needs no confirmation**, because it loses nothing and pressing the button carries on.
+6. **The words say Shopify keeps its copy and nothing is deleted**, which is true of this patch. Revisit them in patch 8 when the switch is added.
+7. **The section stays visible after the import is done**, with the sentence "Sync is set up.", so the owner can see it finished.
