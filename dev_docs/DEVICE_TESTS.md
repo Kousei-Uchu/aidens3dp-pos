@@ -1396,3 +1396,13 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 6. Turn on a practice run. Pass: the button is gone on A.
 7. Leave the page while it runs and come back. Pass: the page shows the running import again (it continues while the app stays open).
 8. Turn off Wi-Fi mid import. Pass: the outcome line names the step and says what happened, and the button offers to carry on.
+
+## T106. Resolving another register's payment (0217)
+
+1. Needs two iPads in the shop (A and B) with CloudKit active. On A start a card payment and make it end with no result (turn the reader off mid-charge, or pull the reader's power after the tap) so A shows the payment as waiting. On B open Support and diagnostics. Pass: "Card payments waiting (all registers)" shows the payment with A's name, and Charged and Not charged buttons.
+2. On A's own Diagnostics page the same row has no buttons.
+3. On B press Charged, then Cancel on the question. Pass: nothing changes. Press Charged again and Confirm. Pass: the row goes away, and within one poll A shows the notice "Card payment resolved on another register" and its Pay screen no longer blocks.
+4. On B open the events export. Pass: an `unknown_resolved` row with `resolved: charged (payment from <A's name>)` and B's staff name.
+5. Repeat with A and B both on the Diagnostics page, and press at the same moment on a third iPad C and on B. Pass: one wins, the other sees "<name> resolved this payment first", and the dashboard has exactly one `resolve-` record for the payment.
+6. Start a charge on A and leave it running (a `started` payment). Pass: B shows it as in progress with no buttons.
+7. Turn off Wi-Fi on B and press a button. Pass: a message says it was not sent and nothing is logged. Turn Wi-Fi on and repeat. Pass: it works.

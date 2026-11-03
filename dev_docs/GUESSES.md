@@ -625,3 +625,13 @@ These fill gaps in the plan (patch 7, the setup screen). Each is a guess, change
 5. **Stopping needs no confirmation**, because it loses nothing and pressing the button carries on.
 6. **The words say Shopify keeps its copy and nothing is deleted**, which is true of this patch. Revisit them in patch 8 when the switch is added.
 7. **The section stays visible after the import is done**, with the sentence "Sync is set up.", so the owner can see it finished.
+
+## Resolving another register's payment (0217)
+
+Each is a guess, change any you disagree with.
+
+1. **Only a payment with no result yet (`unknown`) can be resolved from another register.** A `started` one may still be a charge running on its own reader, which is why 0200 never lets a resolution from elsewhere clear one. A register that stopped part way therefore keeps showing "stopped part way" until that register resolves it itself; say if you would rather allow resolving old `started` ones.
+2. **The charged or not-charged choice is only in the event, not in the record.** The resolution record has `resolvedBy` and a time and nothing else, so the owning register is told to check the terminal rather than being told the answer. Adding a field would change the record format.
+3. **Nothing is added to the other register's sale.** A resolution from elsewhere only clears the block (0200). The owning register decides what to do with its own sale.
+4. **Any signed-in person can do it**, the same as resolving on the Pay screen (Q10). The Diagnostics page is where it lives.
+5. **The other register's name is in the event message** ("payment from Front till"), so the shop's events show it was not resolved on the register that took the payment.

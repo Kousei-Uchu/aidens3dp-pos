@@ -5,7 +5,7 @@
 // (tests/attemptsync.test.ts). The app's one instance is made in sync.ts. Decisions: dev_docs/CLOUDKIT_SYNC_DECISIONS.md item 9, Q10, Q13.
 import type { Attempt } from '../../state/store';
 import type { SharedAttempt } from '../eventRecords';
-import { applyRemoteResolutions } from '../attemptShared';
+import { applyRemoteResolutions, canResolveElsewhere, resolvedElsewhereAttempt } from '../attemptShared';
 import { pullCloudAttempts, pushCloudAttempt, type EventNative } from './eventCloud';
 
 export type AttemptSyncDeps = {
@@ -27,6 +27,7 @@ export type AttemptSyncDeps = {
 };
 
 export function createAttemptSync(d: AttemptSyncDeps) {
+  let shared: SharedAttempt[] = []; // the last shop-wide list read, so a resolution made here can be shown straight away
   // Starts true so each launch sends the register's own attempts once (decisions Q13). A failed upload sets it again.
   // Nothing is stored: the app's own list of attempts is the record, CloudKit is the copy.
   let behind = true;
@@ -59,11 +60,26 @@ export function createAttemptSync(d: AttemptSyncDeps) {
       if (!d.active() || d.training()) return null;
       try {
         const all = await pullCloudAttempts(await d.native());
-        d.setShared(all);
+        shared = all; d.setShared(all);
         // Read this register's own list only now, after the await, so a change made while CloudKit was answering is not overwritten.
         const { list, resolved } = applyRemoteResolutions(d.local(), all);
         if (resolved.length) { d.setLocal(list); for (const a of resolved) d.notifyResolved(a); }
         return all.length;
+      } catch { return null; }
+    },
+    /**
+     * Resolve a payment that another register holds (decisions item 9, Q10): any register can, and the first resolution wins. Writes only the
+     * resolution (the attempt keeps the register that first wrote it) and returns the attempt as CloudKit now holds it, whose `resolvedBy`
+     * says who actually won. Null when nothing was sent: not active, practice mode, not a payment this register may resolve, or CloudKit
+     * could not be reached (the caller says so and the cashier can try again). Never throws.
+     */
+    async resolveElsewhere(a: SharedAttempt, resolvedBy: string): Promise<SharedAttempt | null> {
+      const w = d.who(); if (!d.active() || d.training() || !w.id) return null;
+      if (!canResolveElsewhere(a, w.id)) return null;
+      try {
+        const won = await pushCloudAttempt(await d.native(), w.id, w.name, resolvedElsewhereAttempt(a, resolvedBy));
+        if (won) { shared = shared.map(s => (s.saleUuid === won.saleUuid && s.ref === won.ref ? won : s)); d.setShared(shared); }
+        return won;
       } catch { return null; }
     },
     isBehind: () => behind,

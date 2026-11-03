@@ -38,7 +38,22 @@ export function resolvedElsewhereNotice(a: Attempt): { title: string; body: stri
   };
 }
 
-export type AttemptRow = { key: string; title: string; sub: string };
+/**
+ * Whether this register may resolve a shop-wide attempt from here (decisions item 9, Q10). Only a payment with no result yet (`unknown`)
+ * that another register holds: a `started` one may still be a charge running on its own reader, which is why 0200 never lets a resolution
+ * from elsewhere clear one, and this register's own payments are resolved on its Pay screen where the sale is.
+ */
+export const canResolveElsewhere = (a: SharedAttempt, myRegisterId: string): boolean => a.status === 'unknown' && !!myRegisterId && a.registerId !== myRegisterId;
+
+/** The attempt as it is pushed to resolve it from another register. The upload keeps the register that first wrote the attempt and writes the resolution once. */
+export const resolvedElsewhereAttempt = (a: SharedAttempt, resolvedBy: string): Attempt =>
+  ({ ref: a.ref, saleUuid: a.saleUuid, amountCents: a.amountCents, ts: a.ts, status: 'resolved', resolvedBy, ...(a.note ? { note: a.note } : {}) });
+
+/** The event logged on the register that resolved it, so the shop's events say who decided and that the payment belonged to another register. */
+export const resolvedElsewhereEvent = (a: SharedAttempt, charged: boolean, staff: string) =>
+  ({ kind: 'unknown_resolved' as const, saleUuid: a.saleUuid, reference: a.ref, amountCents: a.amountCents, staff, message: `resolved: ${charged ? 'charged' : 'not charged'} (payment from ${a.registerName || 'another register'})` });
+
+export type AttemptRow = { key: string; title: string; sub: string; /** Set only when the caller said which register it is: true when it may resolve this one from here. */ resolvable?: boolean; attempt?: SharedAttempt };
 
 /** How long a `started` attempt counts as a charge still running. The same window `paymentActive` (screensaver.ts) uses. */
 export const LIVE_WINDOW_MS = 5 * 60_000;
@@ -48,11 +63,12 @@ export const LIVE_WINDOW_MS = 5 * 60_000;
  * A `started` attempt older than the live window is not a charge still running (the register stopped part way, for example
  * the app closed mid-charge), so it is labelled that way instead of "in progress" for ever.
  */
-export function unresolvedRows(shared: SharedAttempt[], limit = 8, nowMs = Date.now()): AttemptRow[] {
+export function unresolvedRows(shared: SharedAttempt[], limit = 8, nowMs = Date.now(), myRegisterId?: string): AttemptRow[] {
   const label = (a: SharedAttempt): string => (a.status !== 'started' ? 'no result yet' : nowMs - Date.parse(a.ts) < LIVE_WINDOW_MS ? 'in progress' : 'stopped part way');
   return unresolvedAttempts(shared).slice(0, limit).map(a => ({
     key: `${a.saleUuid}|${a.ref}`,
     title: `${fmt(a.amountCents)} · ${label(a)}`,
     sub: `${a.registerName || 'Unnamed register'} · ${new Date(a.ts).toLocaleString()}`,
+    ...(myRegisterId === undefined ? {} : { resolvable: canResolveElsewhere(a, myRegisterId), attempt: a }),
   }));
 }
