@@ -1,0 +1,246 @@
+diff --git a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+index cc909cb..9e7b2df 100644
+--- a/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
++++ b/dev_docs/CLOUDKIT_SYNC_DECISIONS.md
+@@ -30,7 +30,7 @@ All of these were requested by you, in order. “Pure code” means no native co
+ 
+ | Patch | Date | What it did | Status |
+ |---|---|---|---|
+-| 0188 | 31 Oct | **Loans to the drawer.** Paid in has a loan switch, the shift remembers `loanCents` owed back, Take loan back, a confirm on closing with a loan owed, Z-report line. | Live today (not CloudKit-dependent). The assistant’s cash view and the daily float report do not mention the loan yet. |
++| 0188 | 31 Oct | **Loans to the drawer.** Paid in has a loan switch, the shift remembers `loanCents` owed back, Take loan back, a confirm on closing with a loan owed, Z-report line. | Live today (not CloudKit-dependent). The daily float report and the assistant’s cash view mention the loan since 0223. |
+ | 0189 | 31 Oct | The 31 October decisions written into the repo: `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`, plan section 5 rewritten, help page and two store comments corrected. | Docs and comments only. |
+ | 0190 | 31 Oct | **6b first half.** The drawer as records (`src/lib/drawerRecords.ts`): shift as `drawer-shift`, each ledger entry as `ledger-<id>`, counts replayed from entries oldest first. | Pure code. |
+ | 0191 | 31 Oct | **Drawer checkpoint** (`src/lib/drawerCheckpoint.ts`): `drawer-checkpoint` holds counts at a point and the server stamp of the newest entry it covers, so counts stay right past 1000 entries. | Pure code. Working assumption, not yet confirmed by you. |
+@@ -161,7 +161,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
+ - Two registers editing different items in one saved cart count as one part changed on both sides, so the later edit wins. Two registers editing different fields of fees, receipt details, cart warnings or the assistant connection also lose to the later writer, because each is one value.
+ - “Later” in the cart merge uses each iPad’s own clock.
+ - Event catch-up cost grows with the history, which is a few pages at a few thousand events.
+-- The Daily float report and the assistant’s cash view do not mention loans yet (0188).
++- Loans (0223): the Daily float report and the assistant’s drawer and float answers now name a loan still owed back, but the suggested float still includes the loan cash, because the ledger counts notes and coins and not whose they are. The note tells the person to take the loan back first and the report then updates.
+ - Square history: a ticket name or line note a cashier typed is not scrubbed (the same minor exception as a note on a sale), and the history months that were replaced stay in iCloud as unused shard records, because nothing deletes them yet (0209).
+ - Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
+ 
+diff --git a/dev_docs/PROGRESS.md b/dev_docs/PROGRESS.md
+index 17823f7..d1dfd6c 100644
+--- a/dev_docs/PROGRESS.md
++++ b/dev_docs/PROGRESS.md
+@@ -201,6 +201,7 @@ Legend: `[x]` done in code · `[~]` partly done / needs your device to confirm 
+ | 0218 | 2026-11-02 | CloudKit item 8 leftover: **another register creates a missing Shopify order** (your request: do the rest of the docs). The problem found first: today the shared sale row is written after the order, so a sale left in a dead iPad's queue leaves no trace anywhere. So with CloudKit on the outbox gets an `early` step that writes the sale before the receipt and the order (CloudKit only, sales only, not in practice mode; a failure is not fatal and the final entry step writes it again with the order on it); `runItem` now returns the finished sale and the entry fields come from one helper. `orderRecovery.ts` has the rules (stranded sale, claim handle and fields, stale claims, the gift card exception, the notice); `cloudkit/orderRecoverySync.ts` is the job: at most every ten minutes, three sales per run, a write-once claim first (so two registers cannot both create it), then `runItem` on the sale, then a notice. Run from `pollShared`. New `tests/orderrecovery.test.ts` (14 tests). Guesses and known gaps under 0218. |
+ | 0219 | 2026-11-02 | CloudKit patch 6e: **the owner-only CloudKit export** (your request: do the rest of the docs), plus corrections. The export: `exportAll.ts` is the pure half (the list of every record type, `readAll` that reads a whole list and fails loudly, `collectExport` that builds the files, manifest and README, `zipExport` with fflate); `exportAllIO.ts` writes the zip to the cache folder, adds the logo picture, and refuses in a practice run; the Cloud sync page has an owner-only **Back up everything** button that confirms first and shares the zip. New `tests/exportall.test.ts` (9 tests) and `tests/lazybackend.test.ts` (3 tests). **Corrections to earlier patches, found by a real type check and by installing `fflate` so the whole suite ran:** (1) the tsc setup in this repo does not check anything here (`expo/tsconfig.base` is missing), so the "tsc clean" I reported for 0213 to 0218 meant nothing. I ran a lenient check of every file I touched and it found two real bugs in 0216: `migrationPanel.ts` read `phase` from a failure result that has none (a failed count check), and `CloudSync.tsx` used `useApp` without importing it. Both fixed here, with tests. (2) With `fflate` installed the suite showed two failures in `demoguard.test.ts` that my patches caused: 0215 put `put()` calls in `sync.ts` outside the guarded seam, and the new export wrote a file with no guard. The direct backend handles now live in `cloudkit/lazyBackend.ts` (the write stops on the same guard as the seam) and the export checks the guard. With `fflate` installed the whole suite passes (1868, 0 failing). |
+ | 0220 | 2026-11-02 | CloudKit patch 8: **the switch** (your request: do the rest of the docs). Rules in `backendChoice.ts` (flag values, start-up kind, when to move, which of a till's own sales are the gap, what the page says), job in `cloudkit/backendSwitch.ts` (`install`, `check`, `rollBack`, `allowSwitch`, `view`), flag storage in `cloudkit/backendFlagIO.ts` (guarded, local). `App.tsx` now installs the backend through the switch instead of always Shopify; `pollShared` calls `backendSwitch.check()` first. Cloud sync page: where this till keeps shared data, with the rollback and its way back. **Decisions made here, in GUESSES:** cut over in one go (no dual-write); a switched till never falls back by itself; the gap is closed by sending a till's own recent sales, not by dual-writing. **Not done:** retiring the 25 s poll, which needs CloudKit subscriptions in Swift (8b). New `tests/backendchoice.test.ts` (9 tests) and `tests/backendswitch.test.ts` (11 tests); full suite 1891, 0 failing with `fflate` installed; a lenient type check of the new files is clean. |
++| 0223 | 2026-11-03 | **Loans in the float report and the assistant's cash view** (your request: loans, assistant cash view). `recommendFloat` takes an optional `loanOwed`, returns it, and adds a note when one is owed: the report banks the day's takings only, so the float includes the loan, and the note says to take the loan back first. The Daily float report screen passes `loanOwed(shift)`. The assistant's `cash_drawer` result gains `loan_owed_back` inside `shift` (only while a loan is owed, only while the shift is open) and the `cash_calculator` float result gains the same field; both are in the field maps, so the gate lets them through. **Not done on purpose:** the suggested float is not adjusted for the loan, because the ledger cannot tell which notes are the loan. **A first version lengthened the tool description and failed the owner-confirmed 8000-token budget test (985 left, 1000 needed), so the description is unchanged and the field name carries the meaning.** Help page `cash/float-report` has a Deep section. New tests: 2 in `floatreport.test.ts`, 3 in `assistantcash.test.ts`. Full suite 1896 pass, 0 fail with `@noble/hashes`, `@noble/ciphers` and `fflate` installed; `help:check` passes. |
+ | 0222 | 2026-11-03 | Docs and help only, follows 0221 (your request: keep going on what else needs doing). Corrected the older docs that 0221 showed were stale: **`CLOUDKIT_SYNC_PLAN.md` section 6** (step 2 stored a lease expiry, which 0212 replaced with the watcher's own clock; step 5 promised a write queue that was never built, now says what the code does instead; step 6 named `sharedVersion`, the field is `version`); **`GUESSES.md` 0213 item 6** (same unbuilt-queue claim); and **`help/settings/index.md`**, which still called Smart change register-only although it is shared once Cloud sync is on (the Payments help page and the Settings screen already said so). `help/help.json` regenerated with `tsx scripts/build-help.ts`, and `--check` passes. No code changed; the Jest suite was not run. |
+ | 0221 | 2026-11-03 | Docs only: **`CLOUDKIT_SYNC_DECISIONS.md` re-audited against `main` at 0220** (your request: continue the doc, the repo has moved on). Fixed what the per-patch edits had left stale: the summary and the gating list still said nothing selects the CloudKit backend (patch 8 is built; what gates it is the real-shop run of T102 to T109); item 9 still said resolving from another register was not built (0217); item 11 now says the shared-history pull already goes through the seam; patch 7 is complete in code; the device test list now includes T106 to T109; the dashboard steps now include the `Audit` and `Migration` types; working assumptions for 0210 to 0220 added; new known gaps from the switch. **One claim corrected rather than carried:** the doc and GUESSES (0213 item 6) said other registers' writes are queued until the import is done and that it \"comes with patch 8\". It was never built. From the code it looks unnecessary, because no till writes CloudKit before it sees the import `done`, but that is my reading and T102 and T109 should confirm it. No code changed. |
+ | 0171 | 2026-10-18 | **F1, F4, F5 done (your request, "do copilot review now, remove AI indicators, and prep the public repo face").** F1: full review of the Copilot patches (0035 to 0047, 0054 to 0058, 0063 to 0065) written to `dev_docs/archive/REVIEW-F1.md`; every patch verdict OK, nothing to undo; six documentation follow-ups found and all fixed (the stale starting-stock section in `stock/items`, the stale gift-card cancellation text in `pay/gift-card` which also closes F6, the wrong code path in `fix/reader`, a future-dated `staff/modes`, glossary wording for guided checkout, and a stale guides-count placeholder in the Docs Worker). F4: AI-indicator sweep using the `avoid-ai-writing` skill; Help and src were already clean, docs went from 68 em dashes to 2 (both kept because they are your dictated asides in the bug list); US spellings fixed to Australian (optimise etc.). F5: `README.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, a bug-report issue template and a PR template added. **Decided without you, change any you disagree with:** no LICENCE file was added (that is your call, the README currently says all rights reserved); Discussions left off until you say. Also this session: your Network Fixes commit was recovered after a force-push dropped it, and pushed to dev and main. Tests: 1245 pass, the 4 known training failures. help:check green, 64 pages. | F1, F4, F5 |
+diff --git a/help/cash/float-report.md b/help/cash/float-report.md
+index fe0844e..4f01cc4 100644
+--- a/help/cash/float-report.md
++++ b/help/cash/float-report.md
+@@ -31,6 +31,9 @@ The report uses the shop's one shared drawer ledger, so cash taken on any iPad i
+ 
+ ## Deep
+ 
++### A loan to the drawer
++If you put cash in as a loan to the drawer and have not taken it back, the report says so in a note under the amounts. The report banks the day's takings only, and the ledger counts notes and coins without knowing whose they are, so the suggested float includes the loan. To get a float without it, take the loan back first (**Take loan back** on the Cash drawer screen) and the report updates. The assistant's drawer and float answers mention the loan in the same way.
++
+ ### How it chooses what to bank
+ The report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.
+ 
+diff --git a/help/help.json b/help/help.json
+index 9efd9c6..ccfdcce 100644
+--- a/help/help.json
++++ b/help/help.json
+@@ -1,5 +1,5 @@
+ {
+- "version": "30b4d834",
++ "version": "ac610bc7",
+  "pages": [
+   {
+    "id": "cash",
+@@ -147,7 +147,7 @@
+    "lead": "The **Daily float report** helps you decide what notes and coins to bank and what to leave in the drawer. It is a suggestion: count and handle the actual cash yourself.",
+    "sections": {
+     "basic": "### Open the report\nGo to **More ▸ Cash drawer** and tap **Daily float report**. If the drawer is open, the report covers the time since it was opened; otherwise it covers today.\n\n### Read the figures\n- **Cash takings** is cash sales minus cash refunds for the chosen period.\n- **Take out (bank)** suggests notes and coins to remove. **Leave in the drawer as the float** shows what the ledger expects to remain. Each is drawn as notes and coins in squares with a count badge (**x3**), the same as the change screen, with the total beside the heading.\n- **Show another way** cycles through up to two other suggestions, when available.\n- A warning may say the ledger and sales disagree. Count the drawer before banking if the count might be wrong.\n- A line under the float says how many of a typical day's cash sales it could give exact change for (for example *about 94%*), and how that compares with the drawer as it is now.\n- **Top up if you can** appears only when a typical day would often go without exact change. It lists the few notes and coins that fix the most, and says what the percentage becomes with them. If nothing needs adding it says so. Notes that are rarely used as change may be listed as better banked.\n- The report takes a moment to work out when you open it (it says *Working it out*).\n\nIf the suggestion is right and you have physically taken the money out, tap **I took this out: record it**. Confirm the prompt. Do not record it before the cash has actually left the drawer. Tap **Close** to leave without changing the ledger.\n\n### Where the cash history comes from\nThe report uses the shop's one shared drawer ledger, so cash taken on any iPad is in it. Cash sales or change you chose not to track can make the ledger differ from the sales total. Correct it or count and close the drawer if needed: [[cash/open-close]].",
+-    "deep": "### How it chooses what to bank\nThe report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.\n\nTo judge a float it imagines a whole day of your cash sales (the change amounts and notes your customers usually give, 30 imagined days at a time) and counts how many could not be given exact change from that drawer. Notes handed over by one customer are available as change for the next, so a float does not have to hold a whole day's change at the start. Every way of banking the takings is tried against a short version, the best 30 against the full version, and the one whose float copes best wins, with a small penalty for each dollar it is away from the exact takings.\n\n### Why it asks for a top-up\nIt adds notes and coins one small step at a time, always the step that cuts the failure rate the most for what it costs, and stops as soon as about 97% of imagined sales work or nothing left is worth adding. Every dollar counts against a step, so a $20 note is only asked for when $20s really fix failures; it is not chosen because it is worth the most. A drawer that already copes, even with no $20s or $10s, is asked for nothing. It never asks for $50 or $100 notes, never more than $200 in one go, and never gives up more than about a second and a half of thinking: if it runs out of time it shows the best it had.\n\nThese are recommendations only; the cashier still takes out or adds the physical notes and coins.\n\n### A banking entry changes the ledger\nThe report does not move money automatically. After you confirm that cash was removed, **I took this out: record it** writes a **Paid out** entry with the selected denominations. If you close the report or do not confirm, it makes no ledger change. It records at most the option currently shown, so do not press it twice for one physical banking.",
++    "deep": "### A loan to the drawer\nIf you put cash in as a loan to the drawer and have not taken it back, the report says so in a note under the amounts. The report banks the day's takings only, and the ledger counts notes and coins without knowing whose they are, so the suggested float includes the loan. To get a float without it, take the loan back first (**Take loan back** on the Cash drawer screen) and the report updates. The assistant's drawer and float answers mention the loan in the same way.\n\n### How it chooses what to bank\nThe report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.\n\nTo judge a float it imagines a whole day of your cash sales (the change amounts and notes your customers usually give, 30 imagined days at a time) and counts how many could not be given exact change from that drawer. Notes handed over by one customer are available as change for the next, so a float does not have to hold a whole day's change at the start. Every way of banking the takings is tried against a short version, the best 30 against the full version, and the one whose float copes best wins, with a small penalty for each dollar it is away from the exact takings.\n\n### Why it asks for a top-up\nIt adds notes and coins one small step at a time, always the step that cuts the failure rate the most for what it costs, and stops as soon as about 97% of imagined sales work or nothing left is worth adding. Every dollar counts against a step, so a $20 note is only asked for when $20s really fix failures; it is not chosen because it is worth the most. A drawer that already copes, even with no $20s or $10s, is asked for nothing. It never asks for $50 or $100 notes, never more than $200 in one go, and never gives up more than about a second and a half of thinking: if it runs out of time it shows the best it had.\n\nThese are recommendations only; the cashier still takes out or adds the physical notes and coins.\n\n### A banking entry changes the ledger\nThe report does not move money automatically. After you confirm that cash was removed, **I took this out: record it** writes a **Paid out** entry with the selected denominations. If you close the report or do not confirm, it makes no ledger change. It records at most the option currently shown, so do not press it twice for one physical banking.",
+     "advanced": "### Calculation and ledger write\n```mermaid\nflowchart TD\n  A[Read the shared drawer ledger and cash sales] --> B[Choose period since open or today]\n  B --> C[Recommend notes to bank and float to keep]\n  C --> D{Cash physically removed}\n  D -->|no| E[Close without changing ledger]\n  D -->|yes| F[Confirm Paid out entry]\n```\n\n| Job | Where |\n|---|---|\n| Report sheet and confirmation | `FloatReportSheet` in `src/screens/FloatReport.tsx` |\n| Period cash total | `cashSince` in `src/screens/Drawer.tsx` |\n| Recommendation | `recommendFloat`, `ledgerTakings` in `src/lib/floatReport.ts` |\n| Day simulation, top-up and ranking | `dayScript`, `failRate`, `planTopUp`, `rankTakeOuts` in `src/lib/floatPlan.ts`; `makeScript`, `play` in `src/lib/changeImpact.ts` |\n| Ways of banking the takings | `findCombinationsLimited` (with `bigFirst`) in `src/lib/changeFinder.ts` |\n| Ledger entry | `newEntry`, `applyEntry` in `src/lib/cashLedger.ts` |\n| Learned cash profile | `useCashProfile` in `src/state/cashProfile.ts` |\n| Tests | `tests/floatreport.test.ts`, `tests/floatplan.test.ts` |\n\n`recommendFloat` limits the amount it recommends taking out to what the ledger says is present. With a usable profile, it lists combinations within $10 of takings (trying the most of each big note first, so a search that is cut short has still covered the ways that bank big notes), plays a short imagined day against every one with `rankTakeOuts`, plays the full day against the best 30, and picks the lowest cost, where cost is failure points plus 1.5 per dollar from the takings. `planTopUp` then adds pieces greedily from the float that stays. Without a profile it uses largest notes first and shows no percentages or top-up. The UI offers the best option and up to two alternatives. The imagined days are seeded, so the same drawer always gives the same answer. The calculation is bounded, so an unusually large search can show that its result is good but not the only possible one.\n\n| Number | Value | What it does |\n|---|---|---|\n| `DAY_TRIALS` | 30 | imagined days per drawer in the full comparison |\n| `DOLLAR_COST` | 0.04 points per dollar | what a dollar of float costs against failure points |\n| `GOOD_ENOUGH` | 3% | at or below this failure share nothing more is added |\n| `MIN_NET` | 0.5 points | a step must gain at least this, cost taken off |\n| `MAX_TOPUP` | $200 | most ever asked for |\n\n### If the figures look wrong\n- **The ledger saw a different amount from sales.** Denominations may have been entered incorrectly, cash may have moved outside the POS, or the ledger needs a count. Use **Count & close (Z-report)** or **Correct contents** before relying on the suggestion.\n- **There is no amount to take out.** There may be no cash takings, or the ledger has no cash available to bank.\n- **The report asks for a top-up.** It cannot add cash itself; take the displayed denominations from your safe or bank and add them by hand. The line under it shows the percentage before and after. If the top-up looks too big, check the profile line at the bottom: with few tracked sales it leans on item prices, and many large change amounts make big notes look necessary.\n- **No percentages and no top-up.** There is no profile yet (no tracked cash sales and no item prices), so it only takes the largest notes first.\n- **I took this out: record it** is missing. There is no positive amount in the suggested banking option to record.\n\n### Known boundaries\nThe report is per register, uses the local ledger and local sales, and does not move cash or connect to hardware. Its profile is rebuilt from available local data; recommendations do not guarantee the next customer's change can be made. Always check the physical drawer."
+    }
+   },
+diff --git a/src/lib/assistantCash.ts b/src/lib/assistantCash.ts
+index 0bffacf..749a70f 100644
+--- a/src/lib/assistantCash.ts
++++ b/src/lib/assistantCash.ts
+@@ -18,6 +18,7 @@ import { greedyChange, piecesOf, planChange } from './cashSale';
+ import { ledgerCashSince } from './drawerSync';
+ import { equalPlan, firstPlan } from './splitPlan';
+ import { recommendFloat } from './floatReport';
++import { loanOwed as loanOwedOf } from './drawerLoan';
+ import { buildProfile } from './changeScore';
+ import { fmt, roundCash, toCents } from './money';
+ import { flaggedLines } from './lineAdjust';
+@@ -29,7 +30,7 @@ import type { AssistantTool } from './assistantTools';
+ // ---------- what the tools are given ----------
+ /** What the drawer tools read. The real shift and ledger fit these, and a test can build them by hand. */
+ export type DrawerIn = {
+-  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number };
++  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; /** 0223: a loan to the drawer still owed back (Shift.loanCents) */ loanCents?: number };
+   ledger: CashLedger;
+   /** Sales and refunds from every register (the drawer is shared, 0203), for how long a "typical day" is when the float is judged. */
+   sales: readonly { ts: string; type: string; tenders?: readonly { kind: string }[] }[];
+@@ -73,7 +74,7 @@ export function buildDrawerView(d: DrawerIn, now: number): Record<string, unknow
+   if (sh.open) {
+     const cash = sh.openedAt ? ledgerCashSince(d.ledger, sh.openedAt) : 0;
+     const expected = sh.floatCents + cash + sh.paidInCents - sh.paidOutCents;
+-    view.shift = { open: true, ...(sh.openedAt ? { opened_at: whenText(sh.openedAt) ?? 'unknown' } : {}), float: fmt(sh.floatCents), cash_sales_since_open: fmt(cash), paid_in: fmt(sh.paidInCents), paid_out: fmt(sh.paidOutCents), expected_in_drawer: fmt(expected) };
++    view.shift = { open: true, ...(sh.openedAt ? { opened_at: whenText(sh.openedAt) ?? 'unknown' } : {}), float: fmt(sh.floatCents), cash_sales_since_open: fmt(cash), paid_in: fmt(sh.paidInCents), paid_out: fmt(sh.paidOutCents), expected_in_drawer: fmt(expected), ...(loanOwedOf(sh) > 0 ? { loan_owed_back: fmt(loanOwedOf(sh)) } : {}) };
+     const gap = heldTotal - expected;
+     view.ledger_compared_with_expected = gap === 0 ? 'The ledger matches the expected amount.' : `The ledger holds ${fmt(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the expected amount. Counting the drawer will settle it.`;
+   } else view.shift = { open: false };
+@@ -89,7 +90,7 @@ const COUNTS_GATE = { amount: 'shop', pieces: 'shop', notes_and_coins: flat('den
+ 
+ export const cashDrawerTool: AssistantTool = {
+   gate: {
+-    shift: flat('open', 'opened_at', 'float', 'cash_sales_since_open', 'paid_in', 'paid_out', 'expected_in_drawer'),
++    shift: flat('open', 'opened_at', 'float', 'cash_sales_since_open', 'paid_in', 'paid_out', 'expected_in_drawer', 'loan_owed_back'),
+     ledger_compared_with_expected: 'shop', ledger_holds: COUNTS_GATE, cash_takings_today: 'shop', recent_movements: flat('when', 'what', 'amount'),
+   },
+   def: { type: 'function', function: {
+@@ -146,9 +147,10 @@ export function floatInfo(d: DrawerIn, now: number, takingsOverride?: number): R
+   if (totalOf(held) === 0) return { error: 'The ledger holds no cash, so there is nothing to base a float on. The drawer needs opening or counting first.' };
+   const takings = takingsOverride ?? ledgerCashSince(d.ledger, startOfDay(now));
+   const profile = buildProfile({ entries: d.ledger.entries as CashLedger['entries'], sales: d.sales as { ts: string; type: string; tenders?: { kind: string }[] }[], prices: d.prices as number[], now });
+-  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500 });
++  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500, loanOwed: d.shift.open ? loanOwedOf(d.shift) : 0 });
+   return {
+     cash_takings: fmt(rep.takings), drawer_holds: fmt(rep.drawerTotal),
++    ...(rep.loanOwed > 0 ? { loan_owed_back: fmt(rep.loanOwed) } : {}),
+     take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
+     ...(totalOf(rep.topUp) > 0 ? { top_up_from_bank: countsView(rep.topUp) } : {}), suggested_float: fmt(rep.suggestedFloat),
+     ...(totalOf(rep.bankable) > 0 ? { big_notes_better_banked: countsView(rep.bankable) } : {}),
+@@ -163,7 +165,7 @@ export const cashCalculatorTool: AssistantTool = {
+     amount_due: 'shop', cash_due_after_rounding: 'shop', amount_given: 'shop', short_by: 'shop', change_to_give: 'shop', largest_notes_first: COUNTS_GATE,
+     from_this_drawer: { possible: 'shop', fewest_pieces: 'shop', note: 'shop', ...COUNTS_GATE },
+     total: 'shop', split: 'shop', payments: flat('number', 'amount'), last_payment_if_paid_in_cash: 'shop',
+-    cash_takings: 'shop', drawer_holds: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
++    cash_takings: 'shop', drawer_holds: 'shop', loan_owed_back: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
+     big_notes_better_banked: COUNTS_GATE, sales_without_exact_change: flat('drawer_now', 'after_banking', 'after_top_up'), notes: 'shop', search_cut_short: 'shop',
+   },
+   def: { type: 'function', function: {
+diff --git a/src/lib/floatReport.ts b/src/lib/floatReport.ts
+index ec13249..f0f18b4 100644
+--- a/src/lib/floatReport.ts
++++ b/src/lib/floatReport.ts
+@@ -41,6 +41,8 @@ export type FloatReport = {
+   suggestedFloat: number;
+   /** $50 and $100 notes left in the drawer: never used as change, so usually better banked. */
+   bankable: Counts;
++  /** 0223: cents of the drawer's cash that is a loan to the drawer, still owed back to the owner (0 when there is none). */
++  loanOwed: number;
+   notes: string[];
+   truncated: boolean;
+ };
+@@ -53,7 +55,7 @@ const option = (drawer: Counts, takeOut: Counts): FloatOption => { const keep =
+  * the best 30, and picks the one whose float copes best, with a penalty for each dollar away from the takings. It then asks `planTopUp` what, if anything, is worth adding. Without a profile it takes the largest notes first. It never takes
+  * out more than the drawer holds. `budgetMs` caps the top-up search (the best so far is used when it runs out).
+  */
+-export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number }): FloatReport {
++export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number; /** 0223: cents of a loan to the drawer still owed back (Shift.loanCents). Informational: it does not change what is banked. */ loanOwed?: number }): FloatReport {
+   const drawer = cleanCounts(Object.fromEntries(Object.entries(o.drawer).filter(([, n]) => n > 0))); const drawerTotal = totalOf(drawer);
+   const takings = Math.max(0, Math.min(o.takings, drawerTotal)); const prof = profileUsable(o.profile) ? o.profile : null;
+   const day: CashProfile | null = prof ? { ...prof, horizon: prof.horizon * 2 } : null; // the profile's horizon is half a day
+@@ -82,7 +84,11 @@ export function recommendFloat(o: { drawer: Counts; takings: number; profile?: C
+   else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the day's takings so the float keeps the notes and coins you'll need.`);
+   if (o.takings > drawerTotal) notes.push('The ledger holds less than the takings, so it may be out of date. Count the drawer first.');
+   if (plan && failTopUp !== null && failTopUp > 0.1) notes.push(`Even with the top-up, about ${Math.round(failTopUp * 100)}% of a typical day's cash sales would get no exact change. More of the same notes and coins would not fix it cheaply.`);
+-  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, notes, truncated };
++  // 0223: a loan to the drawer is cash in the drawer that is not the day's takings. The ledger counts notes and coins, not whose they are, so
++  // the float below still includes it. Say so, and say how to get a float without it, rather than guessing which notes are the loan.
++  const loanOwed = Number.isFinite(o.loanOwed) ? Math.max(0, Math.round(o.loanOwed ?? 0)) : 0;
++  if (loanOwed > 0) notes.push(`${fmtMoney(Math.min(loanOwed, drawerTotal))} of the cash in the drawer is a loan still owed back to you. This banks the day's takings only, so the float includes the loan. Take the loan back first (Take loan back) and this updates to a float without it.`);
++  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, loanOwed, notes, truncated };
+ }
+ 
+ const fmtMoney = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;
+diff --git a/src/screens/FloatReport.tsx b/src/screens/FloatReport.tsx
+index 5418179..f7f8707 100644
+--- a/src/screens/FloatReport.tsx
++++ b/src/screens/FloatReport.tsx
+@@ -13,21 +13,22 @@ import { applyEntry, newEntry, summariseCounts, totalOf, type Counts } from '../
+ import { CountSquares } from '../ui/CountSquares';
+ import { ledgerTakings, recommendFloat, type FloatOption, type FloatReport } from '../lib/floatReport';
+ import { profileNote } from '../lib/changeScore';
++import { loanOwed as loanOwedOf } from '../lib/drawerLoan';
+ import { fmt } from '../lib/money';
+ 
+ const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
+ const pct = (x: number | null) => (x === null ? '' : `${Math.round(x * 100)}%`);
+ 
+ export function FloatReportSheet({ visible, onClose, cashTakings, since }: { visible: boolean; onClose: () => void; cashTakings: (sinceISO: string) => number; since?: string }) {
+-  const { c } = useTheme(); const ledger = useApp(s => s.pos.ledger); const shift = useApp(s => s.pos.shift); const patchPos = useApp(s => s.patchPos); const profile = useCashProfile(true);
++  const { c } = useTheme(); const ledger = useApp(s => s.pos.ledger); const shift = useApp(s => s.pos.shift); const loanOwed = loanOwedOf(shift); const patchPos = useApp(s => s.patchPos); const profile = useCashProfile(true);
+   const [alt, setAlt] = useState(0); useEffect(() => { if (visible) setAlt(0); }, [visible]);
+   const sinceMs = since ? new Date(since).getTime() : startOfToday(); const label = since ? 'since the drawer opened' : 'today';
+   const takings = visible ? cashTakings(new Date(sinceMs).toISOString()) : 0; const seen = useMemo(() => ledgerTakings(ledger.entries, sinceMs), [ledger.entries, sinceMs]);
+   const [rep, setRep] = useState<FloatReport | null>(null);
+   useEffect(() => {
+     if (!visible) return; setRep(null); // let the sheet draw first, then do the sums
+-    const t = setTimeout(() => setRep(recommendFloat({ drawer: ledger.counts, takings, profile, budgetMs: 2500 })), 40); return () => clearTimeout(t);
+-  }, [visible, ledger.counts, takings, profile]);
++    const t = setTimeout(() => setRep(recommendFloat({ drawer: ledger.counts, takings, profile, budgetMs: 2500, loanOwed })), 40); return () => clearTimeout(t);
++  }, [visible, ledger.counts, takings, profile, loanOwed]);
+   const options: FloatOption[] = rep ? [rep.best, ...rep.alternatives] : []; const shown = rep ? options[Math.min(alt, options.length - 1)] : null;
+   const bank = async () => {
+     if (!shown || !totalOf(shown.takeOut)) return;
+diff --git a/tests/assistantcash.test.ts b/tests/assistantcash.test.ts
+index 00cf075..8dadf2f 100644
+--- a/tests/assistantcash.test.ts
++++ b/tests/assistantcash.test.ts
+@@ -258,3 +258,21 @@ test('the three definitions stay small, because they share a small context with
+   const size = JSON.stringify(toolDefs(CASH_TOOLS)).length;
+   assert.ok(size < 2600, `three definitions are ${size} characters`);
+ });
++
++// ---- 0223: a loan to the drawer shows in the assistant's cash view ----
++test('a loan owed back shows in the drawer view, and only while one is owed', () => {
++  const v: any = buildDrawerView(drawer({}, { paidInCents: 2000, loanCents: 2000 }), NOW);
++  assert.equal(v.shift.loan_owed_back, '$20.00'); assert.equal(v.shift.paid_in, '$20.00');
++  assert.equal((buildDrawerView(drawer(), NOW) as any).shift.loan_owed_back, undefined);
++  assert.equal((buildDrawerView(drawer({}, { loanCents: 0 }), NOW) as any).shift.loan_owed_back, undefined);
++  assert.deepEqual((buildDrawerView(drawer({}, { open: false, loanCents: 2000 }), NOW) as any).shift, { open: false });
++});
++test('the float suggestion says how much of the drawer is a loan, and says nothing without one', () => {
++  const r: any = floatInfo(drawer({}, { loanCents: 2000 }), NOW);
++  assert.equal(r.loan_owed_back, '$20.00'); assert.ok(r.notes.some((n: string) => /loan still owed back/.test(n)));
++  const none: any = floatInfo(drawer(), NOW); assert.equal(none.loan_owed_back, undefined); assert.ok(!none.notes.some((n: string) => /loan/.test(n)));
++});
++test('the loan field gets through the gate to a shop-level reader', () => {
++  const res = out(run('cash_drawer', {}, state({ drawer: drawer({}, { paidInCents: 2000, loanCents: 2000 }) }), resolvePolicy('remote')));
++  assert.match(JSON.stringify(res), /loan_owed_back/);
++});
+diff --git a/tests/floatreport.test.ts b/tests/floatreport.test.ts
+index 97bd09a..acc2cc5 100644
+--- a/tests/floatreport.test.ts
++++ b/tests/floatreport.test.ts
+@@ -11,6 +11,22 @@ const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(),
+ const prof = profile({ amounts: [{ cents: 500, p: 0.4 }, { cents: 800, p: 0.3 }, { cents: 1500, p: 0.3 }], needPerSale: { '500': 0.8, '200': 0.6, '100': 1.2, '1000': 0.3 }, inPerSale: {}, horizon: 6, confidence: 1, source: 'history', samples: 30 });
+ const ts = (h: number) => new Date(Date.UTC(2026, 9, 10, h)).toISOString();
+ 
++// 0223: a loan to the drawer is named in the report and changes nothing else
++test('a loan owed back is reported and noted, and does not change what is banked', () => {
++  const drawer: Counts = { '5000': 1, '2000': 3, '1000': 4, '500': 2, '100': 10 };
++  const plain = recommendFloat({ drawer, takings: 4000 });
++  const loan = recommendFloat({ drawer, takings: 4000, loanOwed: 2000 });
++  assert.equal(plain.loanOwed, 0); assert.ok(!plain.notes.some(n => /loan/.test(n)));
++  assert.equal(loan.loanOwed, 2000); assert.ok(loan.notes.some(n => /\$20\.00 of the cash in the drawer is a loan/.test(n)));
++  assert.deepEqual(loan.best.takeOut, plain.best.takeOut); assert.equal(loan.suggestedFloat, plain.suggestedFloat);
++});
++test('a loan amount that makes no sense is ignored or capped to what the drawer holds', () => {
++  const drawer: Counts = { '2000': 1 };
++  for (const bad of [NaN, -500, undefined]) assert.equal(recommendFloat({ drawer, takings: 0, loanOwed: bad as number }).loanOwed, 0);
++  const big = recommendFloat({ drawer, takings: 0, loanOwed: 99900 });
++  assert.equal(big.loanOwed, 99900); assert.ok(big.notes.some(n => /^\$20\.00 of the cash/.test(n)));
++});
++
+ test('ledgerTakings: received minus change minus cash refunds since a time, and how many sales', () => {
+   const since = Date.UTC(2026, 9, 10, 0);
+   const e = [
