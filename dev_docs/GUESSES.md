@@ -648,3 +648,16 @@ Each is a guess, change any you disagree with.
 6. **A sale with a gift card sold or spent is not finished from here.** The card code is only in iCloud as an encrypted field, which is off until O4 passes, so another register could make the order but not the card. A notice tells a person once per launch to open the register that took it.
 7. **Card references, the receipt link and the customer's name are not in the CloudKit sale** (decisions item 17 and the customer rule), so an order made from here has the customer's Shopify id but no name, and card payments without their references. Say if you want this limited further.
 8. **No new event kind.** The recovering register raises a sync notice, not a CSV event.
+
+## Owner-only CloudKit export (0219)
+
+Each is a guess, change any you disagree with.
+
+1. **It reads CloudKit directly**, not through the seam, so it works whichever backend the app is using, and before patch 8 it exports whatever the migration has copied.
+2. **Every record type has its own file, as returned.** Records are not reshaped, so a later restore tool can read them. Encrypted fields are in the clear where this iPad could read them, and the README says to treat the zip like the Shopify login (O5).
+3. **One failed list stops the whole export**, with the list's name. A partial backup that looks complete is worse than none.
+4. **The Square history shard files are not included**, only their records and the manifest. They are derived from Square exports and can be imported again. The logo picture is included.
+5. **Shopify's own data is not part of it.** It is a backup of what is in iCloud.
+6. **The secrets (6d) will be added by adding them to the list in `exportAll.ts`**, when they exist.
+7. **The zip is made in memory.** For a shop with very many thousands of sales this is large but still fine on an iPad. Revisit if it ever runs out of memory.
+8. **Owner only, with a confirm that says how private it is.** The button is off during a practice run.

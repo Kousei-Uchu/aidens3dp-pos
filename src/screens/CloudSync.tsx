@@ -6,13 +6,16 @@ import React, { useEffect, useState } from 'react';
 import { Share, View } from 'react-native';
 import * as FS from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
-import { Btn, Field, Page, Txt, alertMsg } from '../ui/kit';
+import { Btn, Field, Page, Txt, alertMsg, confirm } from '../ui/kit';
 import { useNav } from '../ui/nav';
+import { useApp } from '../state/store';
 import { SPOT } from '../lib/trainingSpots';
 import { isTraining } from '../lib/trainingGuard';
 import { activeBackendKind } from '../lib/syncBackend';
 import { eventSync, migrationControl } from '../lib/sync';
 import { migrationPanel } from '../lib/migrationPanel';
+import { exportSummary } from '../lib/cloudkit/exportAll';
+import { writeCloudKitExport } from '../lib/cloudkit/exportAllIO';
 import type { MigrationView } from '../lib/cloudkit/migrationControl';
 import { ICLOUD_NOTE_INTRO, ICLOUD_WARNINGS, IN_ICLOUD, NOT_IN_ICLOUD } from '../lib/icloudNote';
 import {
@@ -108,6 +111,22 @@ export default function CloudSync() {
     setBusy(false);
   };
 
+  // Patch 6e (N3, O5): the owner's backup of everything in iCloud, one zip of JSON. Owner only, because it can hold card details and
+  // payment references once encryption is on, so it is as sensitive as the Shopify login.
+  const exportEverything = async () => {
+    if (!(await confirm('Back up everything in iCloud?', 'Makes one zip of everything the shop keeps in iCloud. It can hold card references, gift card codes and the assistant log, so keep it as private as the Shopify login. Do not email it.', 'Make the backup'))) return;
+    setBusy(true); setMsg('');
+    try {
+      if (!(await Sharing.isAvailableAsync())) throw new Error('Sharing is not available on this device.');
+      const ck = await import('../../modules/cloudkit-sync');
+      const st = useApp.getState().settings;
+      const f = await writeCloudKitExport(ck as any, { exportedAt: new Date().toISOString(), registerId: st.registerId, registerName: st.registerName }, w => setMsg(`Reading ${w}…`));
+      await Sharing.shareAsync(f.path, { mimeType: 'application/zip', dialogTitle: f.name, UTI: 'public.zip-archive' });
+      setMsg(`Made ${f.name}: ${exportSummary(f.counts)}.`);
+    } catch (e: any) { alertMsg('Could not make the backup', e?.message ?? String(e), 'settings/cloud-sync'); setMsg(''); }
+    setBusy(false);
+  };
+
   return (
     <Page title="Cloud sync" onBack={nav.pop} helpId="settings/cloud-sync">
       <View style={{ padding: 16, gap: 10 }}>
@@ -155,6 +174,14 @@ export default function CloudSync() {
             {panel.explain.map(t => <Txt key={t} size={13} sub>{t}</Txt>)}
             {panel.primary ? <Btn title={panel.primary.label} icon="cloud-upload-outline" onPress={() => void migrationControl.start()} /> : null}
             {panel.showStop ? <Btn title="Stop" kind="secondary" onPress={() => migrationControl.stop()} /> : null}
+          </>
+        ) : null}
+
+        {role === 'owner' ? (
+          <>
+            <Txt weight="600" style={{ marginTop: 6 }}>Back up everything in iCloud</Txt>
+            <Txt size={13} sub>Makes one zip of JSON files with everything the shop keeps in iCloud, so you have a copy that does not depend on this Apple ID. Owner only. It is as private as the Shopify login.</Txt>
+            <Btn title="Back up everything" icon="archive-outline" busy={busy} disabled={practice} onPress={() => void exportEverything()} />
           </>
         ) : null}
 

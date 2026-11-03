@@ -1417,3 +1417,13 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 6. Take a gift card sale on A and kill A before it finishes. Pass: after the wait, B raises "Sales with no Shopify order" and creates nothing. Reopen A and let its queue finish. Pass: the order and card are made.
 7. Turn Shopify credentials off on B. Pass: B does nothing and raises no notice.
 8. Start a practice run on B. Pass: B does nothing.
+
+## T108. The owner-only CloudKit export (0219)
+
+1. On the owner iPad with some records in CloudKit (after T102 to T105, or a shop already on CloudKit), open Settings, Cloud sync. Pass: "Back up everything in iCloud" shows with a **Back up everything** button. On a participant iPad it does not show.
+2. Press it and Cancel the question. Pass: nothing is read. Press it again and Confirm. Pass: the line shows "Reading ..." for each kind of record, then the share sheet opens with `pos-icloud-backup-<date>.zip`.
+3. Save it to Files and open it on a Mac. Pass: one folder with `manifest.json`, `README.txt`, a JSON file for each kind of record and the logo picture if there was one. The counts in the manifest match the dashboard's record counts for sales, events and drawer movements.
+4. Open `sales.json`. Pass: each record is as iCloud holds it, with no customer name, email or phone. With encryption off no card details; with it on and the iPad able to read them, the encrypted fields are present.
+5. Turn off Wi-Fi and run it. Pass: a message says which list could not be read and no zip is shared.
+6. Start a practice run and look at the page. Pass: the button is off.
+7. Export on an empty shop. Pass: a valid zip with empty lists and a manifest of zeros.

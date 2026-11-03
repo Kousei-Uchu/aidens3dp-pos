@@ -212,6 +212,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
    - 7, last piece **done in code (0216)**: the "Move the shop to iCloud" section on the Cloud sync page (`src/lib/migrationPanel.ts`, `src/screens/CloudSync.tsx`). Patch 7 is complete in code; it needs T102 to T105 on a real shop before patch 8.
    - Leftover (item 9) **done in code (0217)**: any register can resolve another register's payment that has no result yet, from the Diagnostics page (`attemptSync.resolveElsewhere`).
    - Leftover (item 8) **done in code (0218)**: the outbox writes the sale to CloudKit early, and another register can find sales with no Shopify order and create it, after a write-once claim (`src/lib/orderRecovery.ts`, `src/lib/cloudkit/orderRecoverySync.ts`).
+   - 6e **done in code (0219)**: the owner-only CloudKit export, one zip of JSON (`src/lib/cloudkit/exportAll.ts`, `exportAllIO.ts`, a button on the Cloud sync page).
    - The one-off uploads of local-only data are already covered by the catch-ups (0198, 0199, 0211) and the training poll (0210).
 8. Retire polling and add the rollback flag
 
