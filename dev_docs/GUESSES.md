@@ -601,3 +601,15 @@ These fill gaps in the plan (patch 7, section 6 step 4). Each is a guess, change
 5. **A read error during the check is also recorded as failed**, with "Count check could not run" and the reason, and never as done.
 6. **The check reads CloudKit by listing**, so a very large shop pays a few hundred reads once. It runs once, at the end of the import.
 7. **Nothing is deleted.** A record CloudKit has and Shopify does not is left alone.
+
+## Migration wiring (0215)
+
+These fill gaps in the plan (patch 7, section 6 steps 1 and 5). Each is a guess, change any you disagree with.
+
+1. **Nothing starts the import by itself.** The owner presses a button (the next piece). Starting it automatically at launch would run a one-off import on the shop's data before anyone had agreed.
+2. **The owner is decided by the iCloud role**, the same `getState().role` the Cloud sync page shows, not by the app's staff roles. An owner-role staff member on a participant iPad cannot start it.
+3. **Shopify is always read through the metaobject backend and CloudKit always written through the CloudKit backend**, whichever backend `setBackend` points the app at. Before patch 8 that is always the metaobject one.
+4. **A second press while running is refused**, not queued, and the guard is taken before the first wait.
+5. **Stop does not write anything.** The lease is left to lapse (two minutes), so another owner iPad waits that long. A stopped run on the same iPad resumes at once.
+6. **Practice mode refuses to start and stops a running import.**
+7. **A read failure is a sentence, not an error**, so a screen can always show something.
