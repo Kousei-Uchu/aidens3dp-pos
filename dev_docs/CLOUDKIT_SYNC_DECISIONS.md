@@ -1,6 +1,6 @@
 # CloudKit sync: decisions, status and roadmap
 
-Aiden’s 3D Printing POS · updated 2 November 2026 · checked against `main` at commit 02b789f (patch 0205), then updated for patches 0206 to 0220
+Aiden’s 3D Printing POS · updated 3 November 2026 · checked against `main` at commit b576e0b (patch 0220). Parts 1 and 2 were re-audited against the code and the GUESSES, PROGRESS and DEVICE_TESTS docs in patch 0221
 
 This replaces the 31 October decisions doc. Nothing from that doc has been dropped: every decision, question, answer and note is in Part 3, with the original numbering (items 1 to 27, Q1 to Q14, N1 to N3, O1 to O5), so existing cross-references still work. Parts 1 and 2 are new. They say where the work is up to and where it is going.
 
@@ -10,13 +10,13 @@ Tags used throughout: **Sync** (goes to iCloud and is shared between registers),
 
 ### In one paragraph
 
-Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0220 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they start patch 7 with the migration lease (0212) the import runner (0213) the count check (0214), the wiring (0215) and the screen section (0216). **None of the CloudKit code is live.** Nothing sets the CloudKit backend until patch 8, so every register still runs on Shopify metaobjects, with one exception: saved-cart merging (0204) and the safe settings reader (0205) changed behaviour on the Shopify path too.
+Patches 1 to 3 (entitlements and the native module, the zone and share, and the backend seam) were done before the decisions. Since the 31 October doc was written (patch 0181), patches 0188 to 0220 have landed. They finish most of patch 4 (sales, events and payment attempts), patch 5 (saved carts), patch 6b (the shared drawer), patch 6a (the wider shared settings, the cash and refund notices, the logo, the grid layout and the Square history months) and patch 6c (training progress and the audit log), they add the in-app iCloud note and the drawer audit, and they finish patch 7 (the migration lease 0212, the import runner 0213, the count check 0214, the wiring 0215 and the screen section 0216), the two leftovers (resolving another register's payment 0217, creating a missing Shopify order 0218), the owner-only export (6e, 0219) and the switch (patch 8, 0220). **The code is complete but not live in practice.** Every register still runs on Shopify metaobjects until an owner iPad presses **Set up sync** and the import finishes and passes its count check. Only then does each till in the shop's share move itself to CloudKit on its next poll (about 25 seconds). Nothing starts the import automatically. Two changes already affect the Shopify path today: saved-cart merging (0204) and the safe settings reader (0205).
 
 ### Three things gate turning CloudKit on
 
 1. **The Swift has never been compiled or run.** Every patch since 0192 says so. It needs a Mac build in Xcode, and nothing has touched a real CloudKit zone.
 2. **The two-Apple-ID encryption test (O4, device test T85).** Waits for a second Apple ID and iPad. Until it passes, sale card details are not written at all (the `omit` switch, below), and the encrypted secrets and pass codes (patch 6d) are not built.
-3. **Patch 8**, which retires polling, adds the rollback flag and cuts over. Until then the CloudKit backend is selected by nothing.
+3. **The real-shop run of T102 to T109.** Patch 8 (0220) is built: the rollback flag, the move and the gap send exist, and a till moves to CloudKit by itself once it sees the import `done`. What is missing is proof on a real shop. The only brake today is that the import does not start until an owner presses **Set up sync**, so do not press it until T102 to T105 have passed. Retiring the 25 second poll (8b) still needs Swift subscriptions and is not a gate on moving.
 
 ### The card-field switch
 
@@ -78,9 +78,9 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 6 | One shared drawer | Built (0190 to 0192), audited (0203). Swift uncompiled. |
 | 7 | Bookkeeping fields local | Nothing to build. `sharedBase` was added as a new device-only key in `DEVICE_KEYS` (0205). |
 | 8 | Outbox local; another register can create a missing Shopify order (Q11) | Outbox unchanged. **Built (0218):** the sale goes to CloudKit early, and another register can find sales with no Shopify order and create it after a write-once claim. |
-| 9 | Payment attempts sync with the register name; first resolution wins | Built (0196 to 0200). **Resolving another register’s payment from a different register is not built** (the shop-wide list is read only). |
+| 9 | Payment attempts sync with the register name; first resolution wins | Built (0196 to 0200). **Resolving another register’s payment from a different register: built (0217)** on the Diagnostics page, for an `unknown` attempt only, never a `started` one. |
 | 10 | Cash and refund notices sync | Built (0206). Reading or dismissing stays per iPad. Swift uncompiled. |
-| 11 | `pos.shared` becomes a CloudKit-fed cache | Not yet. Happens at cut-over. |
+| 11 | `pos.shared` becomes a CloudKit-fed cache | No separate build. `pullSalesHistory` in `sync.ts` reads through the backend seam, so once a till has moved (0220) the same throttled pull is fed from CloudKit and `pos.shared` stays a local cache. Not yet seen running on CloudKit. |
 | 12 | Events sync, combined CSV on demand, local CSVs unchanged | Built (0196 to 0201). |
 | 13 | Assistant audit log syncs, encrypted | Built (0211): one record per event, content in one encrypted field, sent only once the switch is on. A manager reads every register's events under **All registers** in the viewer. Swift uncompiled. |
 | 14 | Logo syncs as an iCloud asset | Built (0207): the uploaded image, as a CKAsset on one record. The receipt and the screens that show the business logo still use the fixed shop link (see GUESSES, 0207). Swift uncompiled. |
@@ -92,7 +92,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 | 20 | Pass and gift claim URLs | Built (0205). Secrets wait for 6d. |
 | 21 | Auto-receipt | Shared (0205), but **no screen edits it today**, so sharing it changes nothing yet. |
 | 22, 24, 25, 26 | Local | Nothing to build. |
-| 23 | Smart change and consolidate | Shared (0205). Settings and help text still need to say “shop-wide” once CloudKit is live (0203 left them as “this register only” on purpose). |
+| 23 | Smart change and consolidate | Shared (0205). `help/settings/payments.md` already says smart change is this register only until Cloud sync is switched on, then every register. Other places that name smart change or consolidate (the Settings screen text, the Cash help pages) were not re-checked in 0221. |
 | 27 | Grid version counter | Built (0208) for CloudKit: joined by page against `gridBase`, no counter. The Shopify path still uses it. |
 | N1 | Secrets and pass codes sync, encrypted | **Not built** (6d), gated on O4. |
 | N2 | Audit log is the customer-data exception | Written into the in-app note (0202). |
@@ -115,7 +115,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 | 6c | Audit log (encrypted) and training progress | **Done** (0210 training progress, 0211 audit log). Swift uncompiled. |
 | 6d | Encrypted logins, secrets and cashier pass codes | Not started. Only after O4 passes. |
 | 6e | Owner-only CloudKit export (one zip of JSON), or fold into 8 | **Built (0219).** Gated on nothing; T108. |
-| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Started.** The lease (0212), the import runner with its phases and checkpoints (0213) the count check that marks the import done (0214), the controller wired into `sync.ts` (0215) and the screen section (0216) are built. The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: run T102 to T105 on a real shop. |
+| 7 | Migration lease, checkpoints and verification, plus each register’s one-off upload of local-only data (Q13) | **Complete in code.** The lease (0212), the import runner with its phases and checkpoints (0213) the count check that marks the import done (0214), the controller wired into `sync.ts` (0215) and the screen section (0216) are built. The one-off uploads of local-only data are already done by the catch-ups (events, attempts, audit log) and the poll (training). Still to do: run T102 to T105 on a real shop. |
 | 8 | Retire polling, add the rollback flag, decide dual-write or cut over | **Built in code (0220), except retiring polling.** Cut over in one go; the flag, the move and the rollback are done. T109. |
 | 8b | Push-driven change callbacks (CloudKit subscriptions) so the 25 s poll can be retired | Not started. Needs Swift (a subscription and a silent-push entitlement). |
 
@@ -142,6 +142,14 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 - Shared notices: a notice older than seven days is not sent or shown, at most 50 arrive in one read, and a notice a register has taken in is never shown again even if it was only cleared (0206).
 - A delete wins over an edit for saved carts, and the merge is by three parts, not by field (0204).
 - The assistant’s log cap and data gate stay per iPad. With no merge base the shop’s value wins (0205).
+- Training: stages from either register are kept, a reset is a per-module `epoch` count that wins whole, and managers reset cashiers only (0210).
+- Audit log: one record per event (not one per register per day), the whole event encrypted with four plain labels, nothing sent until the same switch as card details is on, and the manager's viewer reads the newest 500 on demand (0211).
+- Migration: six phases with the drawer as its own, a holder is gone after two minutes judged on the watcher's own clock, a page is 100 rows, higher version wins for settings and layout, and the runner never marks the import done, only the count check does (0212 to 0214).
+- Migration start: nothing starts the import by itself. Only an owner-role iPad presses the button, and the section is visible to every till (0215, 0216).
+- Resolving from another register applies to `unknown` attempts only, and the charged or not-charged choice is kept in the event, not the record (0217).
+- Missing-order recovery: a 15 minute wait, three sales per run, newest 500 read, gift card sales left for a person, and an order made from here has no customer name or card references (0218).
+- The export reads CloudKit directly, stops whole on any failed list, leaves out the Square shard files, and is built in memory (0219).
+- The switch: cut over in one go with no dual-write, a till moves on the poll rather than at relaunch, each till sends its own gap sales once, a moved till never falls back by itself, and after a rollback it stays on Shopify until **Use iCloud again** is pressed (0220).
 
 **Known gaps and risks:**
 
@@ -158,18 +166,21 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 - Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
 
 - Import runner (0213): a Shopify row with no usable key, or with a field the CloudKit backend cannot write, is skipped or fails the run; a skipped row is not counted, and the count check (0214) applies the same rule to Shopify's side. A kept CloudKit settings or layout row with a higher version still counts as imported.
-- Import runner (0213): saved carts, sales and rollups are copied with a plain upsert and no version check, which is safe only because other registers queue their writes until the import is done (plan section 6, step 5). That queueing is not built yet; it comes with patch 8.
+- Import runner (0213): saved carts, sales and rollups are copied with a plain upsert and no version check, which is safe only because other registers queue their writes until the import is done (plan section 6, step 5). That queueing was never built, and patch 8 (0220) did not add it. My reading of the code is that it is not needed: a till writes to CloudKit only after `backendSwitch.check()` sees the import `done`, and the owner iPad running the import is itself still on Shopify until then. Confirm this in T102 and T109 before relying on it.
 - Training progress: two registers writing the same person's module in the same instant could lose one mark until the next poll, which joins them again. A reset cannot be lost this way, because the higher reset count always wins (0210).
+- The switch (0220): the 25 second poll stays (8b). The rollback is per iPad, so a till rolled back while the others stay on iCloud reads an old copy until every till is done. A till that has moved never falls back by itself, even with iCloud signed out. Settings, layout and carts written in the gap between the import finishing and a till moving are not sent specially: the next poll merges them by version. A till that never joined the share stays on Shopify.
+- Missing-order recovery (0218) and the audit log (0211) both depend on the CloudKit sale and the encrypted switch for their full effect: an order made from another register has no customer name or card references, and gift card sales are left for a person.
 **CloudKit dashboard steps needed before it works on a real zone:**
 
 - The `Logo` type is fetched by its record name only, so it needs no index. Its `asset` field must be an Asset and `bytes` and `removed` Int(64).
 - The `LedgerEntry` type needs its `creationDate` and `modificationDate` sortable and queryable.
-- The `Event`, `Attempt`, `Resolution`, `Notice` and `Training` types need `modificationDate` sortable and queryable.
+- The `Event`, `Attempt`, `Resolution`, `Notice`, `Training` and `Audit` types need `modificationDate` sortable and queryable (the Swift lists them newest first). The `Audit` type holds one encrypted `secure_json` field and needs no index on it.
+- The `Migration` type is fetched by its record name (`migration-v1`) and needs no index.
 - A Sale’s `secure_json` is an encrypted field and needs no index.
 - The `SquareManifest` and `SquareShard` types (0209) are read by record name, so they need no index. The development environment creates them on first write; they must be deployed to Production like the others.
 - The schema must be deployed to the Production environment, which is separate and empty. The migration would run again there.
 
-**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213), T103 (the count check, 0214) and T104 (the controller, 0215) and T105 (the screen, 0216) are written.
+**Device tests** that now exist and have not been run on a device: T85 (encryption across two Apple IDs), T86 to T91 (events, attempts, the events export, the note), T92 (shared drawer), T93 (saved carts), T94 (shared settings) T95 (shared notices) T96 (shared logo), T97 (shared layout) and T98 (shared Square history) T99 (shared training progress), T100 (shared audit log) and T101 (the migration lease). T102 (the import runner, 0213), T103 (the count check, 0214), T104 (the controller, 0215), T105 (the screen, 0216), T106 (resolving another register's payment, 0217), T107 (missing-order recovery, 0218), T108 (the owner export, 0219) and T109 (the switch, 0220) are written. Run T102 to T105 first, because they exercise the import; T109 needs a real shop where they passed, with iPads A (owner), B (in the share) and C (not in the share).
 
 **Yours to do, not code:** the shop’s privacy policy and the App Store privacy details (these changes add payment and staff data to what is stored), and the CloudKit container and App ID setup from patch 1.
 
