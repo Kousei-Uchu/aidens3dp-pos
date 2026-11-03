@@ -30,10 +30,10 @@ import { createTrainingSync } from './cloudkit/trainingSync';
 import { createAuditSync } from './cloudkit/auditSync';
 import { createMigrationControl } from './cloudkit/migrationControl';
 import { createOrderRecovery } from './cloudkit/orderRecoverySync';
+import { lazyBackend, loadBackend } from './cloudkit/lazyBackend';
 import { READ_PAGES } from './orderRecovery';
 import type { MigrationNative } from './cloudkit/migrationCloud';
 import type { VerifyTarget } from './cloudkit/migrationVerify';
-import type { SharedBackend } from './syncBackend';
 import type { AuditNative } from './cloudkit/auditCloud';
 import { setAuditHook } from './auditHook';
 import type { TrainingNative } from './cloudkit/trainingSync';
@@ -151,12 +151,6 @@ setAuditHook(e => { void auditSync.upload(e); });
 // CloudKit patch 7: the one-off import of the shop's Shopify records into CloudKit. Nothing starts it by itself; the "Setting up sync" screen
 // (next piece) calls `migrationControl.start()` on the owner's iPad. Shopify is always read through the metaobject backend and CloudKit
 // written through the CloudKit backend, whichever of them the app is using. Both are loaded on demand so the node tests still import this file.
-const loadBackend = async (kind: 'metaobject' | 'cloudkit'): Promise<SharedBackend> => kind === 'cloudkit' ? (await import('./cloudkit/cloudkitBackend')).cloudkitBackend : (await import('./shopify/metaobjectBackend')).metaobjectBackend;
-const lazyBackend = (kind: 'metaobject' | 'cloudkit'): VerifyTarget => ({
-  list: async (t, o) => (await loadBackend(kind)).list(t, o),
-  get: async (t, h) => (await loadBackend(kind)).get(t, h),
-  put: async (t, h, f) => (await loadBackend(kind)).put(t, h, f),
-});
 export const migrationControl = createMigrationControl({
   native: async () => (await import('../../modules/cloudkit-sync')) as unknown as MigrationNative & DrawerNative,
   source: () => lazyBackend('metaobject'),

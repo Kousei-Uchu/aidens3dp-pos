@@ -46,3 +46,12 @@ test('every outcome has plain words and names the step in plain terms', () => {
   assert.match(outcomeLine({ kind: 'short', held: null, short: [], message: 'Count check failed: carts 1 of 2.' }), /carts 1 of 2\. Press/);
   assert.equal(outcomeLine(null), ''); assert.equal(outcomeLine({ kind: 'refused', why: 'Only the shop owner\'s iPad sets up sync.' }), 'Only the shop owner\'s iPad sets up sync.');
 });
+
+test('a failed count check or read, which has no step, still has plain words', () => {
+  assert.equal(outcomeLine({ kind: 'failed', message: 'Count check could not run: offline' } as any), 'Count check could not run: offline Press the button to try again.');
+});
+
+test('the Cloud sync page imports the store it reads the register name from', async () => {
+  const { readFileSync } = await import('node:fs'); const s = readFileSync('src/screens/CloudSync.tsx', 'utf8');
+  assert.match(s, /import \{ useApp \} from '\.\.\/state\/store';/);
+});

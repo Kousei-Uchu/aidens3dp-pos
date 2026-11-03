@@ -37,7 +37,7 @@ export function outcomeLine(last: MigrationView['last']): string {
     case 'done': return 'Done. Every record is in iCloud and the counts match.';
     case 'finished': return 'The records are copied. The check has not been done yet.';
     case 'short': return `${last.message} Press the button to copy what is missing.`;
-    case 'failed': return `The setup stopped at the ${STEP_NAME[last.phase] ?? last.phase} step: ${last.message} Press the button to carry on.`;
+    case 'failed': return 'phase' in last ? `The setup stopped at the ${STEP_NAME[last.phase] ?? last.phase} step: ${last.message} Press the button to carry on.` : `${last.message} Press the button to try again.`;
     case 'lost': return 'Another iPad took over the setup, so this one stopped.';
     case 'stopped': return 'Stopped. Press the button to carry on.';
     case 'wait': return '';
