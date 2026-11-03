@@ -30,7 +30,7 @@ All of these were requested by you, in order. “Pure code” means no native co
 
 | Patch | Date | What it did | Status |
 |---|---|---|---|
-| 0188 | 31 Oct | **Loans to the drawer.** Paid in has a loan switch, the shift remembers `loanCents` owed back, Take loan back, a confirm on closing with a loan owed, Z-report line. | Live today (not CloudKit-dependent). The assistant’s cash view and the daily float report do not mention the loan yet. |
+| 0188 | 31 Oct | **Loans to the drawer.** Paid in has a loan switch, the shift remembers `loanCents` owed back, Take loan back, a confirm on closing with a loan owed, Z-report line. | Live today (not CloudKit-dependent). The daily float report and the assistant’s cash view mention the loan since 0223. |
 | 0189 | 31 Oct | The 31 October decisions written into the repo: `dev_docs/CLOUDKIT_SYNC_DECISIONS.md`, plan section 5 rewritten, help page and two store comments corrected. | Docs and comments only. |
 | 0190 | 31 Oct | **6b first half.** The drawer as records (`src/lib/drawerRecords.ts`): shift as `drawer-shift`, each ledger entry as `ledger-<id>`, counts replayed from entries oldest first. | Pure code. |
 | 0191 | 31 Oct | **Drawer checkpoint** (`src/lib/drawerCheckpoint.ts`): `drawer-checkpoint` holds counts at a point and the server stamp of the newest entry it covers, so counts stay right past 1000 entries. | Pure code. Working assumption, not yet confirmed by you. |
@@ -161,7 +161,7 @@ The patch plan from the 31 October doc, updated with what has landed. Patches ar
 - Two registers editing different items in one saved cart count as one part changed on both sides, so the later edit wins. Two registers editing different fields of fees, receipt details, cart warnings or the assistant connection also lose to the later writer, because each is one value.
 - “Later” in the cart merge uses each iPad’s own clock.
 - Event catch-up cost grows with the history, which is a few pages at a few thousand events.
-- The Daily float report and the assistant’s cash view do not mention loans yet (0188).
+- Loans (0223): the Daily float report and the assistant’s drawer and float answers now name a loan still owed back, but the suggested float still includes the loan cash, because the ledger counts notes and coins and not whose they are. The note tells the person to take the loan back first and the report then updates.
 - Square history: a ticket name or line note a cashier typed is not scrubbed (the same minor exception as a note on a sale), and the history months that were replaced stay in iCloud as unused shard records, because nothing deletes them yet (0209).
 - Square history: a register that imported a month through the PC and a register that took it from iCloud hold different bytes for it (the second has no customer details), so a re-import on the second sends its own copy and the shop's wins by sales count (0209).
 

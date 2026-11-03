@@ -18,6 +18,7 @@ import { greedyChange, piecesOf, planChange } from './cashSale';
 import { ledgerCashSince } from './drawerSync';
 import { equalPlan, firstPlan } from './splitPlan';
 import { recommendFloat } from './floatReport';
+import { loanOwed as loanOwedOf } from './drawerLoan';
 import { buildProfile } from './changeScore';
 import { fmt, roundCash, toCents } from './money';
 import { flaggedLines } from './lineAdjust';
@@ -29,7 +30,7 @@ import type { AssistantTool } from './assistantTools';
 // ---------- what the tools are given ----------
 /** What the drawer tools read. The real shift and ledger fit these, and a test can build them by hand. */
 export type DrawerIn = {
-  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number };
+  shift: { open: boolean; openedAt?: string; floatCents: number; paidInCents: number; paidOutCents: number; /** 0223: a loan to the drawer still owed back (Shift.loanCents) */ loanCents?: number };
   ledger: CashLedger;
   /** Sales and refunds from every register (the drawer is shared, 0203), for how long a "typical day" is when the float is judged. */
   sales: readonly { ts: string; type: string; tenders?: readonly { kind: string }[] }[];
@@ -73,7 +74,7 @@ export function buildDrawerView(d: DrawerIn, now: number): Record<string, unknow
   if (sh.open) {
     const cash = sh.openedAt ? ledgerCashSince(d.ledger, sh.openedAt) : 0;
     const expected = sh.floatCents + cash + sh.paidInCents - sh.paidOutCents;
-    view.shift = { open: true, ...(sh.openedAt ? { opened_at: whenText(sh.openedAt) ?? 'unknown' } : {}), float: fmt(sh.floatCents), cash_sales_since_open: fmt(cash), paid_in: fmt(sh.paidInCents), paid_out: fmt(sh.paidOutCents), expected_in_drawer: fmt(expected) };
+    view.shift = { open: true, ...(sh.openedAt ? { opened_at: whenText(sh.openedAt) ?? 'unknown' } : {}), float: fmt(sh.floatCents), cash_sales_since_open: fmt(cash), paid_in: fmt(sh.paidInCents), paid_out: fmt(sh.paidOutCents), expected_in_drawer: fmt(expected), ...(loanOwedOf(sh) > 0 ? { loan_owed_back: fmt(loanOwedOf(sh)) } : {}) };
     const gap = heldTotal - expected;
     view.ledger_compared_with_expected = gap === 0 ? 'The ledger matches the expected amount.' : `The ledger holds ${fmt(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the expected amount. Counting the drawer will settle it.`;
   } else view.shift = { open: false };
@@ -89,7 +90,7 @@ const COUNTS_GATE = { amount: 'shop', pieces: 'shop', notes_and_coins: flat('den
 
 export const cashDrawerTool: AssistantTool = {
   gate: {
-    shift: flat('open', 'opened_at', 'float', 'cash_sales_since_open', 'paid_in', 'paid_out', 'expected_in_drawer'),
+    shift: flat('open', 'opened_at', 'float', 'cash_sales_since_open', 'paid_in', 'paid_out', 'expected_in_drawer', 'loan_owed_back'),
     ledger_compared_with_expected: 'shop', ledger_holds: COUNTS_GATE, cash_takings_today: 'shop', recent_movements: flat('when', 'what', 'amount'),
   },
   def: { type: 'function', function: {
@@ -146,9 +147,10 @@ export function floatInfo(d: DrawerIn, now: number, takingsOverride?: number): R
   if (totalOf(held) === 0) return { error: 'The ledger holds no cash, so there is nothing to base a float on. The drawer needs opening or counting first.' };
   const takings = takingsOverride ?? ledgerCashSince(d.ledger, startOfDay(now));
   const profile = buildProfile({ entries: d.ledger.entries as CashLedger['entries'], sales: d.sales as { ts: string; type: string; tenders?: { kind: string }[] }[], prices: d.prices as number[], now });
-  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500 });
+  const rep = recommendFloat({ drawer: held, takings, profile, budgetMs: 1500, loanOwed: d.shift.open ? loanOwedOf(d.shift) : 0 });
   return {
     cash_takings: fmt(rep.takings), drawer_holds: fmt(rep.drawerTotal),
+    ...(rep.loanOwed > 0 ? { loan_owed_back: fmt(rep.loanOwed) } : {}),
     take_out_to_bank: countsView(rep.best.takeOut), leave_as_float: countsView(rep.best.keep),
     ...(totalOf(rep.topUp) > 0 ? { top_up_from_bank: countsView(rep.topUp) } : {}), suggested_float: fmt(rep.suggestedFloat),
     ...(totalOf(rep.bankable) > 0 ? { big_notes_better_banked: countsView(rep.bankable) } : {}),
@@ -163,7 +165,7 @@ export const cashCalculatorTool: AssistantTool = {
     amount_due: 'shop', cash_due_after_rounding: 'shop', amount_given: 'shop', short_by: 'shop', change_to_give: 'shop', largest_notes_first: COUNTS_GATE,
     from_this_drawer: { possible: 'shop', fewest_pieces: 'shop', note: 'shop', ...COUNTS_GATE },
     total: 'shop', split: 'shop', payments: flat('number', 'amount'), last_payment_if_paid_in_cash: 'shop',
-    cash_takings: 'shop', drawer_holds: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
+    cash_takings: 'shop', drawer_holds: 'shop', loan_owed_back: 'shop', take_out_to_bank: COUNTS_GATE, leave_as_float: COUNTS_GATE, top_up_from_bank: COUNTS_GATE, suggested_float: 'shop',
     big_notes_better_banked: COUNTS_GATE, sales_without_exact_change: flat('drawer_now', 'after_banking', 'after_top_up'), notes: 'shop', search_cut_short: 'shop',
   },
   def: { type: 'function', function: {

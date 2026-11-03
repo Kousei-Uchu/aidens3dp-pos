@@ -31,6 +31,9 @@ The report uses the shop's one shared drawer ledger, so cash taken on any iPad i
 
 ## Deep
 
+### A loan to the drawer
+If you put cash in as a loan to the drawer and have not taken it back, the report says so in a note under the amounts. The report banks the day's takings only, and the ledger counts notes and coins without knowing whose they are, so the suggested float includes the loan. To get a float without it, take the loan back first (**Take loan back** on the Cash drawer screen) and the report updates. The assistant's drawer and float answers mention the loan in the same way.
+
 ### How it chooses what to bank
 The report tries to take out an amount close to the period's cash takings while leaving notes and coins that are useful for future change. If it has enough history, it uses the same learned profile as [[cash/smart-change]], whether Smart change is switched on or off. With little or no usable history it takes the largest notes first.
 
