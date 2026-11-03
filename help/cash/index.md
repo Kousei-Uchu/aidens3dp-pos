@@ -37,7 +37,7 @@ You rarely have to touch the ledger, because most of it happens as you work:
 ### It works with the drawer closed
 A cash sale updates the ledger whether or not a drawer is open. The shift figures, though, only count sales made **after** you opened the drawer, so open it at the start of the day.
 
-### Each iPad has its own
+### One drawer for the shop
 There is one drawer for the whole shop. The shift and the ledger are shared between registers, so a drawer opened on one iPad is open on all of them and a cash sale on any iPad counts in it. They are not in the backup file. If you use two registers, open and count the drawer once, not once per iPad.
 
 ### Keeping it honest

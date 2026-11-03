@@ -13,7 +13,7 @@ updated: 2026-10-11
 ## Basic
 
 ### Turning it on
-Settings ▸ Payments ▸ **Smart change**. It applies to **this iPad only**, like the drawer record it learns from. A line under the switch says what it is currently based on.
+Settings ▸ Payments ▸ **Smart change**. It applies to **this iPad only** until Cloud sync is switched on, and then to **every register**, because the drawer it learns from is shared too. A line under the switch says what it is currently based on.
 
 With it off, nothing changes: change is the fewest pieces, and Check change still judges "worth it?" using a spread of typical change amounts.
 
