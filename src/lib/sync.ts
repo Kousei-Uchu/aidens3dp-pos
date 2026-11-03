@@ -31,6 +31,10 @@ import { createAuditSync } from './cloudkit/auditSync';
 import { createMigrationControl } from './cloudkit/migrationControl';
 import { createOrderRecovery } from './cloudkit/orderRecoverySync';
 import { lazyBackend, loadBackend } from './cloudkit/lazyBackend';
+import { createBackendSwitch } from './cloudkit/backendSwitch';
+import { backendFlagStore, caughtUpStore } from './cloudkit/backendFlagIO';
+import { loadMigration } from './cloudkit/migrationCloud';
+import { setBackend } from './syncBackend';
 import { READ_PAGES } from './orderRecovery';
 import type { MigrationNative } from './cloudkit/migrationCloud';
 import type { VerifyTarget } from './cloudkit/migrationVerify';
@@ -185,6 +189,26 @@ const orderRecovery = createOrderRecovery({
   now: () => Date.now(),
 });
 
+// CloudKit patch 8 (the switch): installs the backend this till uses at start-up, moves it to CloudKit when the import is done, and puts it
+// back on Shopify when the owner asks. Cut over in one go, no dual-write; the sales this till finished while the import ran are sent once
+// after it moves. The flag is local to this iPad (decisions item 16). `check` runs from the poll, `install` from App.tsx.
+export const backendSwitch = createBackendSwitch({
+  flag: backendFlagStore,
+  install: async kind => { setBackend(await loadBackend(kind)); },
+  activeKind: activeBackendKind,
+  role: async () => (await (await import('../../modules/cloudkit-sync')).getState()).role,
+  readMigration: async () => loadMigration((await import('../../modules/cloudkit-sync')) as unknown as MigrationNative),
+  training: isTraining,
+  who: () => ({ id: st().settings.registerId }),
+  sales: () => st().pos.sales,
+  outboxIds: () => new Set(st().pos.outbox.map(o => o.id)),
+  inCloudKit: async uuid => (await (await loadBackend('cloudkit')).get('sale', uuid)) !== null,
+  catchUpSale: async (sale, done) => { await runItem({ id: sale.uuid, sale, queuedAt: new Date().toISOString(), done: { ...done }, tries: 0 }); },
+  markPending: () => st().patchSettings({ drawerPending: true }),
+  caughtUp: caughtUpStore,
+  notify: n => st().notify({ kind: 'info', title: n.title, body: n.body }),
+});
+
 // ── record a finished sale locally (the single entry point after tender completes) ──────────────
 export async function recordSale(sale: SaleRecord) {
   const s = st();
@@ -317,6 +341,7 @@ export async function pollShared() {
     // Practice data is never sent: the seam refuses these writes in training anyway, and skipping them here keeps a course
     // from showing a sync error for a push that was never meant to happen.
     if (!isTraining()) {
+      await backendSwitch.check(); // moves this till to iCloud once the import is done (never throws)
       if (s.settings.sharedSettingsPending) await pushSharedSettings();
       if (s.settings.scannerCalPending) await pushScannerCalibration().catch(() => {});
       if (s.settings.drawerPending) await pushDrawer().catch(() => {});

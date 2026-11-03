@@ -661,3 +661,17 @@ Each is a guess, change any you disagree with.
 6. **The secrets (6d) will be added by adding them to the list in `exportAll.ts`**, when they exist.
 7. **The zip is made in memory.** For a shop with very many thousands of sales this is large but still fine on an iPad. Revisit if it ever runs out of memory.
 8. **Owner only, with a confirm that says how private it is.** The button is off during a practice run.
+
+## The switch (0220)
+
+Each is a guess, change any you disagree with.
+
+1. **Cut over in one go, no dual-write.** The plan said to prefer this with only a few iPads. Dual-write would double every write and every failure mode, and its only gain is a smoother rollback, which the untouched Shopify records already give. Change it if you disagree.
+2. **A till moves when it sees the import `done`, on the poll (about 25 seconds), not at the next launch.** Waiting for a relaunch would leave tills writing Shopify for hours. Nothing is restarted.
+3. **The gap is closed by each till sending its own sales since the import began.** Tills still on Shopify after the import finished write sales to Shopify only, so each one, when it moves, sends its own sales from ten minutes before the import began that CloudKit lacks, through the queue's own entry and totals steps (safe to repeat). It is done once per till, and retried at each poll if it failed.
+4. **Settings, layout and carts in the gap are not sent specially.** They are overwritten or merged by the next poll and the versions already on them. The drawer is marked as having something to send, so its first poll on CloudKit uploads any entries written in the gap.
+5. **A switched till never falls back to Shopify by itself**, even with iCloud signed out. Only the rollback, set on purpose, sends it back.
+6. **The rollback is local to each iPad (item 16).** The page tells the person to do every till. A till on Shopify storage while the others are on iCloud sees an old copy.
+7. **After a rollback the till does not move again until "Use iCloud again" is pressed**, even though the import is still done.
+8. **Only a till in the shop's share moves.** One that never joined stays on Shopify.
+9. **The poll is not retired.** CloudKit's push needs a subscription and a silent-push entitlement in Swift. Until that exists the 25 second poll reads CloudKit, as it read Shopify.

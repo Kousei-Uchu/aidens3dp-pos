@@ -8,11 +8,10 @@ import { NavProvider, useNav, type Route, type Tab } from './src/ui/nav';
 import { Btn, Txt } from './src/ui/kit';
 import { useApp } from './src/state/store';
 import { loadCreds } from './src/lib/shopify/client';
-import { pollShared, processOutbox, pushSaved } from './src/lib/sync';
-import { forceMetaobjectBackend, metaobjectForced, setBackend } from './src/lib/syncBackend';
+import { backendSwitch, pollShared, processOutbox, pushSaved } from './src/lib/sync';
+import { backendFlagStore } from './src/lib/cloudkit/backendFlagIO';
+import { forceMetaobjectBackend, setBackend } from './src/lib/syncBackend';
 import { metaobjectBackend } from './src/lib/shopify/metaobjectBackend';
-import { cloudkitBackend } from './src/lib/cloudkit/cloudkitBackend';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import Checkout from './src/screens/Checkout';
 import GuidedCheckout from './src/screens/GuidedCheckout';
 import CartPane from './src/screens/CartPane';
@@ -146,22 +145,10 @@ function Shell() {
   // backend from the start.
   useEffect(() => {
     void (async () => {
-      try {
-        const raw = await AsyncStorage.getItem('cloudkit.backend');
-        if (raw === 'force_meta') {
-          forceMetaobjectBackend(true);
-          setBackend(metaobjectBackend);
-          return;
-        }
-      } catch {}
-      try {
-        // Try CloudKit if available; fall back to metaobjects
-        if (!metaobjectForced() && (cloudkitBackend as any)) {
-          // Only switch if explicitly enabled or native available? Keep metaobjects by default for now
-          // but allow a rollback flag
-        }
-      } catch {}
-      setBackend(metaobjectBackend);
+      // Patch 8: the flag decides. `force_meta` is the rollback; `cloudkit` means this till has already moved and stays there; unset
+      // means Shopify until the poll sees the import done. A failure to read the flag means unset.
+      try { forceMetaobjectBackend((await backendFlagStore.get()) === 'force_meta'); } catch {}
+      try { await backendSwitch.install(); } catch { setBackend(metaobjectBackend); }
     })();
   }, []);
   useEffect(() => { void useApp.getState().hydrate().then(async () => { await loadCreds(); const s = useApp.getState(); if (lockRequired(s.settings) && s.settings.staff.length) s.set({ unlocked: false }); runBackground(); }); }, []);

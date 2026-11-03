@@ -1427,3 +1427,16 @@ Needs the owner iPad (A) and a second iPad (B) that has joined the shop, on a sh
 5. Turn off Wi-Fi and run it. Pass: a message says which list could not be read and no zip is shared.
 6. Start a practice run and look at the page. Pass: the button is off.
 7. Export on an empty shop. Pass: a valid zip with empty lists and a manifest of zeros.
+
+## T109. The switch (0220)
+
+1. Needs the owner iPad A, a second iPad B in the shop, and a third iPad C that has not joined the share, on a real shop where T102 to T105 passed (the import is done). All three start on Shopify storage. Pass: each Cloud sync page (A and B) says the till keeps shared data in Shopify, before the first poll after the import finished.
+2. Wait one poll on A and B. Pass: each shows "Now using iCloud" and the page says iCloud. C stays on Shopify and does not offer the section.
+3. Before step 2, on B take a cash sale while still on Shopify, after the import has finished. Then let B move. Pass: the sale appears in CloudKit (dashboard) with its order number, and B's day totals in iCloud include it exactly once. Repeat the poll. Pass: nothing is sent twice.
+4. Take a sale on A and on B after both have moved. Pass: each shows the other's sale in the shop-wide sales view, and no sale is in Shopify's metaobjects after the move.
+5. Force quit B and reopen. Pass: it starts on iCloud, not Shopify.
+6. Turn iCloud off on B in Settings and reopen. Pass: B stays on iCloud and shows sync errors; it does not start writing to Shopify.
+7. On B press Go back to Shopify storage and Confirm. Pass: the page says it is switched back on purpose, a notice tells you to do every till, and B stops reading iCloud. Reopen. Pass: B stays on Shopify. Wait three polls. Pass: B does not move back by itself.
+8. On B press Use iCloud again. Pass: B moves back to iCloud on that press or the next poll.
+9. Start a practice run on a Shopify-storage till that has not moved. Pass: it does not move, and the rollback and Use iCloud again buttons are off.
+10. Break the gap send (a debug build where `runItem` fails for a caught-up sale) on B. Pass: B is on iCloud, the catch-up is not remembered, and a later poll finishes it.

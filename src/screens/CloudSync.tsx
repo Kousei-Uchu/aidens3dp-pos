@@ -12,7 +12,8 @@ import { useApp } from '../state/store';
 import { SPOT } from '../lib/trainingSpots';
 import { isTraining } from '../lib/trainingGuard';
 import { activeBackendKind } from '../lib/syncBackend';
-import { eventSync, migrationControl } from '../lib/sync';
+import { backendSwitch, eventSync, migrationControl } from '../lib/sync';
+import { backendLine, type BackendFlag } from '../lib/backendChoice';
 import { migrationPanel } from '../lib/migrationPanel';
 import { exportSummary } from '../lib/cloudkit/exportAll';
 import { writeCloudKitExport } from '../lib/cloudkit/exportAllIO';
@@ -36,6 +37,7 @@ export default function CloudSync() {
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState('');
   const [mig, setMig] = useState<MigrationView | null>(null);
+  const [bk, setBk] = useState<{ kind: 'metaobject' | 'cloudkit' | 'none'; flag: BackendFlag } | null>(null);
   const practice = isTraining();
   const account = state?.account ?? 'couldNotDetermine';
   const role = state?.role ?? 'none';
@@ -64,6 +66,20 @@ export default function CloudSync() {
     return () => { off(); clearInterval(t); };
   }, [role]);
   const panel = migrationPanel(mig, role, practice);
+
+  // Patch 8: where this till keeps the shop's shared data, and the way back. Local to this iPad (decisions item 16), so a rollback has to be
+  // done on every till. Nothing here moves a till to iCloud by itself: that happens on the poll once the import is done.
+  const readBackend = async () => { try { setBk(await backendSwitch.view()); } catch { /* the view does not throw */ } };
+  useEffect(() => { if (role !== 'none') void readBackend(); }, [role]);
+  const goBack = async () => {
+    if (!(await confirm('Go back to Shopify storage?', 'This till will keep the shop\'s shared data in Shopify again. Shopify still has its copy, but anything saved in iCloud since the switch will not be there. Do the same on every till, or the tills will stop seeing each other\'s changes.', 'Go back', true))) return;
+    try { await backendSwitch.rollBack(); setMsg('This till is back on Shopify storage.'); } catch (e: any) { alertMsg('Could not switch back', e?.message ?? String(e), 'settings/cloud-sync'); }
+    await readBackend();
+  };
+  const useICloudAgain = async () => {
+    try { await backendSwitch.allowSwitch(); const moved = await backendSwitch.check(); setMsg(moved ? 'This till is using iCloud again.' : 'This till will use iCloud as soon as the setup is done.'); } catch (e: any) { alertMsg('Could not switch', e?.message ?? String(e), 'settings/cloud-sync'); }
+    await readBackend();
+  };
 
   const setup = async () => {
     setBusy(true); setMsg('');
@@ -174,6 +190,15 @@ export default function CloudSync() {
             {panel.explain.map(t => <Txt key={t} size={13} sub>{t}</Txt>)}
             {panel.primary ? <Btn title={panel.primary.label} icon="cloud-upload-outline" onPress={() => void migrationControl.start()} /> : null}
             {panel.showStop ? <Btn title="Stop" kind="secondary" onPress={() => migrationControl.stop()} /> : null}
+          </>
+        ) : null}
+
+        {role !== 'none' && bk ? (
+          <>
+            <Txt weight="600" style={{ marginTop: 6 }}>Where this till keeps shared data</Txt>
+            <Txt size={13}>{backendLine(bk.kind, bk.flag)}</Txt>
+            {bk.kind === 'cloudkit' ? <Btn title="Go back to Shopify storage" kind="secondary" disabled={practice} onPress={() => void goBack()} /> : null}
+            {bk.flag === 'force_meta' ? <Btn title="Use iCloud again" kind="secondary" disabled={practice} onPress={() => void useICloudAgain()} /> : null}
           </>
         ) : null}
 

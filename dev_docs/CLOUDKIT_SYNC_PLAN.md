@@ -156,7 +156,7 @@ All four are answered (see "Answered by the owner" below). Nothing here blocks p
 - [x] Whether the customer data held in sales records raises privacy-policy questions once stored in iCloud. Answered: an in-app note now, policy wording the owner's.
 - [x] Owner iCloud storage headroom for sales and Square history. Answered: ample.
 - [x] Whether to use `encryptedValues` for sales and customer fields from the start. Answered 20 October: plain fields for now. **Replaced 31 October:** the card fields of a tender are encrypted with CloudKit's encrypted fields from the first sales patch, and amounts stay plain (decisions item 17, Q6). The two-Apple-ID test (O4) still has to pass before the encrypted secrets and pass codes are turned on.
-- [x] Dual-write or cut over in one go. Answered: decided at patch 8.
+- [x] Dual-write or cut over in one go. Answered: decided at patch 8. **Decided in 0220: cut over in one go, no dual-write.**
 
 ### Answered by the owner (20 October 2026, before patch 4)
 
@@ -213,6 +213,7 @@ Never in iCloud: the Shopify access token (each register fetches its own), the o
    - Leftover (item 9) **done in code (0217)**: any register can resolve another register's payment that has no result yet, from the Diagnostics page (`attemptSync.resolveElsewhere`).
    - Leftover (item 8) **done in code (0218)**: the outbox writes the sale to CloudKit early, and another register can find sales with no Shopify order and create it, after a write-once claim (`src/lib/orderRecovery.ts`, `src/lib/cloudkit/orderRecoverySync.ts`).
    - 6e **done in code (0219)**: the owner-only CloudKit export, one zip of JSON (`src/lib/cloudkit/exportAll.ts`, `exportAllIO.ts`, a button on the Cloud sync page).
+   - 8 **done in code (0220), except retiring the poll**: cut over in one go (no dual-write), the local `cloudkit.backend` flag, a till moving to CloudKit when it sees the import done and sending its own gap sales once, and the rollback on the Cloud sync page (`src/lib/backendChoice.ts`, `src/lib/cloudkit/backendSwitch.ts`, `backendFlagIO.ts`). The 25 s poll stays, reading CloudKit, until CloudKit subscriptions are built in Swift (8b).
    - The one-off uploads of local-only data are already covered by the catch-ups (0198, 0199, 0211) and the training poll (0210).
 8. Retire polling and add the rollback flag
 
