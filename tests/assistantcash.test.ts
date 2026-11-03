@@ -258,3 +258,21 @@ test('the three definitions stay small, because they share a small context with 
   const size = JSON.stringify(toolDefs(CASH_TOOLS)).length;
   assert.ok(size < 2600, `three definitions are ${size} characters`);
 });
+
+// ---- 0223: a loan to the drawer shows in the assistant's cash view ----
+test('a loan owed back shows in the drawer view, and only while one is owed', () => {
+  const v: any = buildDrawerView(drawer({}, { paidInCents: 2000, loanCents: 2000 }), NOW);
+  assert.equal(v.shift.loan_owed_back, '$20.00'); assert.equal(v.shift.paid_in, '$20.00');
+  assert.equal((buildDrawerView(drawer(), NOW) as any).shift.loan_owed_back, undefined);
+  assert.equal((buildDrawerView(drawer({}, { loanCents: 0 }), NOW) as any).shift.loan_owed_back, undefined);
+  assert.deepEqual((buildDrawerView(drawer({}, { open: false, loanCents: 2000 }), NOW) as any).shift, { open: false });
+});
+test('the float suggestion says how much of the drawer is a loan, and says nothing without one', () => {
+  const r: any = floatInfo(drawer({}, { loanCents: 2000 }), NOW);
+  assert.equal(r.loan_owed_back, '$20.00'); assert.ok(r.notes.some((n: string) => /loan still owed back/.test(n)));
+  const none: any = floatInfo(drawer(), NOW); assert.equal(none.loan_owed_back, undefined); assert.ok(!none.notes.some((n: string) => /loan/.test(n)));
+});
+test('the loan field gets through the gate to a shop-level reader', () => {
+  const res = out(run('cash_drawer', {}, state({ drawer: drawer({}, { paidInCents: 2000, loanCents: 2000 }) }), resolvePolicy('remote')));
+  assert.match(JSON.stringify(res), /loan_owed_back/);
+});

@@ -41,6 +41,8 @@ export type FloatReport = {
   suggestedFloat: number;
   /** $50 and $100 notes left in the drawer: never used as change, so usually better banked. */
   bankable: Counts;
+  /** 0223: cents of the drawer's cash that is a loan to the drawer, still owed back to the owner (0 when there is none). */
+  loanOwed: number;
   notes: string[];
   truncated: boolean;
 };
@@ -53,7 +55,7 @@ const option = (drawer: Counts, takeOut: Counts): FloatOption => { const keep = 
  * the best 30, and picks the one whose float copes best, with a penalty for each dollar away from the takings. It then asks `planTopUp` what, if anything, is worth adding. Without a profile it takes the largest notes first. It never takes
  * out more than the drawer holds. `budgetMs` caps the top-up search (the best so far is used when it runs out).
  */
-export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number }): FloatReport {
+export function recommendFloat(o: { drawer: Counts; takings: number; profile?: CashProfile | null; maxNodes?: number; budgetMs?: number; /** 0223: cents of a loan to the drawer still owed back (Shift.loanCents). Informational: it does not change what is banked. */ loanOwed?: number }): FloatReport {
   const drawer = cleanCounts(Object.fromEntries(Object.entries(o.drawer).filter(([, n]) => n > 0))); const drawerTotal = totalOf(drawer);
   const takings = Math.max(0, Math.min(o.takings, drawerTotal)); const prof = profileUsable(o.profile) ? o.profile : null;
   const day: CashProfile | null = prof ? { ...prof, horizon: prof.horizon * 2 } : null; // the profile's horizon is half a day
@@ -82,7 +84,11 @@ export function recommendFloat(o: { drawer: Counts; takings: number; profile?: C
   else if (gap !== 0) notes.push(`${gap > 0 ? 'Takes' : 'Leaves'} ${fmtMoney(Math.abs(gap))} ${gap > 0 ? 'more' : 'less'} than the day's takings so the float keeps the notes and coins you'll need.`);
   if (o.takings > drawerTotal) notes.push('The ledger holds less than the takings, so it may be out of date. Count the drawer first.');
   if (plan && failTopUp !== null && failTopUp > 0.1) notes.push(`Even with the top-up, about ${Math.round(failTopUp * 100)}% of a typical day's cash sales would get no exact change. More of the same notes and coins would not fix it cheaply.`);
-  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, notes, truncated };
+  // 0223: a loan to the drawer is cash in the drawer that is not the day's takings. The ledger counts notes and coins, not whose they are, so
+  // the float below still includes it. Say so, and say how to get a float without it, rather than guessing which notes are the loan.
+  const loanOwed = Number.isFinite(o.loanOwed) ? Math.max(0, Math.round(o.loanOwed ?? 0)) : 0;
+  if (loanOwed > 0) notes.push(`${fmtMoney(Math.min(loanOwed, drawerTotal))} of the cash in the drawer is a loan still owed back to you. This banks the day's takings only, so the float includes the loan. Take the loan back first (Take loan back) and this updates to a float without it.`);
+  return { takings, drawerTotal, usedProfile: !!prof, best, alternatives, gap, topUp: cleanCounts(topUp), failNow, failKeep, failTopUp, suggestedFloat: best.keepTotal + totalOf(topUp), bankable, loanOwed, notes, truncated };
 }
 
 const fmtMoney = (c: number) => `$${Math.floor(c / 100)}.${String(c % 100).padStart(2, '0')}`;

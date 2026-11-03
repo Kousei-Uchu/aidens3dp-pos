@@ -11,6 +11,22 @@ const profile = (o: Partial<CashProfile>): CashProfile => ({ ...emptyProfile(), 
 const prof = profile({ amounts: [{ cents: 500, p: 0.4 }, { cents: 800, p: 0.3 }, { cents: 1500, p: 0.3 }], needPerSale: { '500': 0.8, '200': 0.6, '100': 1.2, '1000': 0.3 }, inPerSale: {}, horizon: 6, confidence: 1, source: 'history', samples: 30 });
 const ts = (h: number) => new Date(Date.UTC(2026, 9, 10, h)).toISOString();
 
+// 0223: a loan to the drawer is named in the report and changes nothing else
+test('a loan owed back is reported and noted, and does not change what is banked', () => {
+  const drawer: Counts = { '5000': 1, '2000': 3, '1000': 4, '500': 2, '100': 10 };
+  const plain = recommendFloat({ drawer, takings: 4000 });
+  const loan = recommendFloat({ drawer, takings: 4000, loanOwed: 2000 });
+  assert.equal(plain.loanOwed, 0); assert.ok(!plain.notes.some(n => /loan/.test(n)));
+  assert.equal(loan.loanOwed, 2000); assert.ok(loan.notes.some(n => /\$20\.00 of the cash in the drawer is a loan/.test(n)));
+  assert.deepEqual(loan.best.takeOut, plain.best.takeOut); assert.equal(loan.suggestedFloat, plain.suggestedFloat);
+});
+test('a loan amount that makes no sense is ignored or capped to what the drawer holds', () => {
+  const drawer: Counts = { '2000': 1 };
+  for (const bad of [NaN, -500, undefined]) assert.equal(recommendFloat({ drawer, takings: 0, loanOwed: bad as number }).loanOwed, 0);
+  const big = recommendFloat({ drawer, takings: 0, loanOwed: 99900 });
+  assert.equal(big.loanOwed, 99900); assert.ok(big.notes.some(n => /^\$20\.00 of the cash/.test(n)));
+});
+
 test('ledgerTakings: received minus change minus cash refunds since a time, and how many sales', () => {
   const since = Date.UTC(2026, 9, 10, 0);
   const e = [

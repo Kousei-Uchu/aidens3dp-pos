@@ -13,21 +13,22 @@ import { applyEntry, newEntry, summariseCounts, totalOf, type Counts } from '../
 import { CountSquares } from '../ui/CountSquares';
 import { ledgerTakings, recommendFloat, type FloatOption, type FloatReport } from '../lib/floatReport';
 import { profileNote } from '../lib/changeScore';
+import { loanOwed as loanOwedOf } from '../lib/drawerLoan';
 import { fmt } from '../lib/money';
 
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); };
 const pct = (x: number | null) => (x === null ? '' : `${Math.round(x * 100)}%`);
 
 export function FloatReportSheet({ visible, onClose, cashTakings, since }: { visible: boolean; onClose: () => void; cashTakings: (sinceISO: string) => number; since?: string }) {
-  const { c } = useTheme(); const ledger = useApp(s => s.pos.ledger); const shift = useApp(s => s.pos.shift); const patchPos = useApp(s => s.patchPos); const profile = useCashProfile(true);
+  const { c } = useTheme(); const ledger = useApp(s => s.pos.ledger); const shift = useApp(s => s.pos.shift); const loanOwed = loanOwedOf(shift); const patchPos = useApp(s => s.patchPos); const profile = useCashProfile(true);
   const [alt, setAlt] = useState(0); useEffect(() => { if (visible) setAlt(0); }, [visible]);
   const sinceMs = since ? new Date(since).getTime() : startOfToday(); const label = since ? 'since the drawer opened' : 'today';
   const takings = visible ? cashTakings(new Date(sinceMs).toISOString()) : 0; const seen = useMemo(() => ledgerTakings(ledger.entries, sinceMs), [ledger.entries, sinceMs]);
   const [rep, setRep] = useState<FloatReport | null>(null);
   useEffect(() => {
     if (!visible) return; setRep(null); // let the sheet draw first, then do the sums
-    const t = setTimeout(() => setRep(recommendFloat({ drawer: ledger.counts, takings, profile, budgetMs: 2500 })), 40); return () => clearTimeout(t);
-  }, [visible, ledger.counts, takings, profile]);
+    const t = setTimeout(() => setRep(recommendFloat({ drawer: ledger.counts, takings, profile, budgetMs: 2500, loanOwed })), 40); return () => clearTimeout(t);
+  }, [visible, ledger.counts, takings, profile, loanOwed]);
   const options: FloatOption[] = rep ? [rep.best, ...rep.alternatives] : []; const shown = rep ? options[Math.min(alt, options.length - 1)] : null;
   const bank = async () => {
     if (!shown || !totalOf(shown.takeOut)) return;
