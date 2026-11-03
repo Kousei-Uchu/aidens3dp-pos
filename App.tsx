@@ -8,7 +8,7 @@ import { NavProvider, useNav, type Route, type Tab } from './src/ui/nav';
 import { Btn, Txt } from './src/ui/kit';
 import { useApp } from './src/state/store';
 import { loadCreds } from './src/lib/shopify/client';
-import { backendSwitch, pollShared, processOutbox, pushSaved } from './src/lib/sync';
+import { backendSwitch, pollShared, processOutbox, pushSaved, pushPoll } from './src/lib/sync';
 import { backendFlagStore } from './src/lib/cloudkit/backendFlagIO';
 import { forceMetaobjectBackend, setBackend } from './src/lib/syncBackend';
 import { metaobjectBackend } from './src/lib/shopify/metaobjectBackend';
@@ -157,7 +157,8 @@ function Shell() {
   useEffect(() => { if (ready && !setupDone && !isTraining() && nav.stack.length === 0) nav.push('setup'); }, [ready, setupDone, nav.stack.length]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (!ready) return;
-    const tick = () => { if (isTraining()) return; runBackground(); const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
+    const tick = () => { if (isTraining()) return; runBackground(); void pushPoll.start(); // patch 8b: change pushes, once this till is on CloudKit; the tick stays as the fallback
+       const neg = Object.values(useApp.getState().data.variants).filter(v => (v.stock ?? 0) < 0).length; if (neg) useApp.getState().notify({ kind: 'stock', title: `${neg} item(s) with negative stock`, route: 'inventory' }); };
     const t = setInterval(tick, 25000); const sub = AppState.addEventListener('change', st => { if (st === 'active') tick(); });
     return () => { clearInterval(t); sub.remove(); };
   }, [ready]);

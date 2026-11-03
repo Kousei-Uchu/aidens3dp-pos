@@ -62,6 +62,8 @@ export type CloudKitSyncNative = {
   putAudit?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
   listAuditIndex?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
   listAudit?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;
+  // Patch 8b: change pushes (true when both databases are subscribed)
+  startSubscriptions?(): Promise<boolean>;
   // Patch 6d: shared secrets (one record per secret, content in one encrypted field)
   putSecret?(handle: string, fields: Record<string, any>, encrypted: Record<string, any>): Promise<Record<string, any>>;
   listSecrets?(limit: number, after?: string | null): Promise<{ rows: Record<string, any>[]; next: string | null }>;

@@ -690,3 +690,16 @@ Each is a guess, change any you disagree with.
 8. **Pass codes sync so any iPad can print or send a pass again.** Before, only the iPad that issued it could. StaffPass still checks the code against the staff hash before showing it.
 9. **The secrets are in the 6e export** (O5), as the export plan said. The zip is as sensitive as the Shopify login.
 10. **Taking a Shopify login goes through `saveCreds`,** which normalises the domain and drops the cached token. The next run may send the normalised form once before it settles.
+
+## Change pushes (0225)
+
+Each is a guess, change any you disagree with.
+
+1. **The 25 second tick stays.** The pushes make reads faster and do not replace the tick, because iOS can delay or drop silent pushes and never wakes a force-quit app. Slow or remove the tick only after T111.
+2. **Both databases are always subscribed,** with fixed ids (`aidens3dp-private-changes`, `aidens3dp-shared-changes`). A joined till hears the owner's changes through the shared database, and an owner hears its own through the private one. Subscribing both avoids asking which role this iPad has.
+3. **Silent only.** The subscription carries `shouldSendContentAvailable` and no alert, sound or badge, so nothing asks the person for permission and nothing appears on screen.
+4. **Subscribe from the existing tick,** once a till is on CloudKit, rather than at launch. It costs nothing once listening, and a till that moves later starts listening without a restart. The first read after a move is therefore by the tick.
+5. **A push reads only the shop's shared records** (`pollShared`), not the outbox or saved carts.
+6. **At least 2 seconds between push reads.** A burst becomes one read now and one later, reads never overlap, and a push that arrives during a read earns exactly one more.
+7. **Expo's `appDelegateSubscribers`** receives the push, so nothing is written into the generated AppDelegate for it.
+8. **`aps-environment` is `development` in the plugin,** and an existing value is kept. A distribution archive is expected to carry `production`; check on the first TestFlight build.
